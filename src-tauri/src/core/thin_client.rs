@@ -314,17 +314,66 @@ fn pins_path(dir: &std::path::Path) -> PathBuf {
     dir.join("thin_client_pins.json")
 }
 
-fn load_pins(dir: &std::path::Path) -> Pins {
-    std::fs::read(pins_path(dir))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+/// Reads the pin file. A missing file is an empty set; an unreadable or
+/// unparseable one is an error (the bad file is moved aside) so a damaged file
+/// can never silently turn the next connect into a fresh trust-on-first-use.
+fn load_pins(dir: &std::path::Path) -> Result<Pins, String> {
+    let path = pins_path(dir);
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Pins::default()),
+        Err(e) => return Err(format!("pins-unreadable: {e}")),
+    };
+    match serde_json::from_slice(&bytes) {
+        Ok(p) => Ok(p),
+        Err(e) => {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let aside = dir.join(format!("thin_client_pins.json.corrupt-{ts}"));
+            let _ = std::fs::rename(&path, &aside);
+            Err(format!(
+                "pins-corrupt: the saved desktop certificates could not be read ({e}); the old file was kept as {}. Connect again to re-pair.",
+                aside.display()
+            ))
+        }
+    }
+}
+
+/// Writes next to the target and renames over it, so a crash mid-write leaves
+/// the old file intact instead of a truncated one.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(format!(".{}.{ts}.tmp", std::process::id()));
+    let tmp = path.with_file_name(name);
+    let result = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path).or_else(|_| {
+            // A scanner can hold the target briefly on Windows; retry once.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            std::fs::rename(&tmp, path)
+        })
+    })();
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    Ok(())
 }
 
 fn save_pins(dir: &std::path::Path, pins: &Pins) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let bytes = serde_json::to_vec_pretty(pins).map_err(|e| e.to_string())?;
-    std::fs::write(pins_path(dir), bytes).map_err(|e| e.to_string())
+    write_atomic(&pins_path(dir), &bytes)
 }
 
 fn digest_from_hex(text: &str) -> Option<[u8; 32]> {
@@ -370,7 +419,7 @@ pub struct Connected {
 pub async fn connect(data_dir: PathBuf, url: &str) -> Result<Connected, String> {
     let (host, port) = parse_desktop(url)?;
     let key = format!("{host}:{port}");
-    let mut pins = load_pins(&data_dir);
+    let mut pins = load_pins(&data_dir)?;
     let known = pins.0.get(&key).and_then(|h| digest_from_hex(h));
     let (_stream, seen) = connect_tls(&host, port, known).await?;
     let first_use = known.is_none();
@@ -397,7 +446,12 @@ pub async fn connect(data_dir: PathBuf, url: &str) -> Result<Connected, String> 
 /// Drops the pin for a desktop whose certificate was replaced on purpose.
 pub fn forget(data_dir: PathBuf, url: &str) -> Result<(), String> {
     let (host, port) = parse_desktop(url)?;
-    let mut pins = load_pins(&data_dir);
+    let mut pins = match load_pins(&data_dir) {
+        Ok(p) => p,
+        // The damaged file was moved aside; forgetting is then already done.
+        Err(e) if e.starts_with("pins-corrupt:") => return Ok(()),
+        Err(e) => return Err(e),
+    };
     pins.0.remove(&format!("{host}:{port}"));
     save_pins(&data_dir, &pins)
 }
@@ -454,5 +508,57 @@ mod tests {
     #[test]
     fn fingerprint_matches_the_desktops_format() {
         assert_eq!(fingerprint(&[0xab, 0x01, 0xff]), "AB:01:FF");
+    }
+
+    #[test]
+    fn load_pins_missing_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(load_pins(dir.path()).unwrap().0.is_empty());
+    }
+
+    #[test]
+    fn load_pins_corrupt_file_errors_and_moves_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(pins_path(dir.path()), b"{ not json").unwrap();
+        let err = load_pins(dir.path()).err().expect("corrupt file must error");
+        assert!(err.starts_with("pins-corrupt:"));
+        assert!(!pins_path(dir.path()).exists());
+        let kept = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().contains(".corrupt-"));
+        assert!(kept);
+    }
+
+    #[test]
+    fn connect_refuses_to_pin_when_pins_file_corrupt() {
+        // connect() propagates the load error before any network call.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(pins_path(dir.path()), b"  ").unwrap();
+        assert!(load_pins(dir.path()).is_err());
+        assert!(!pins_path(dir.path()).exists());
+    }
+
+    #[test]
+    fn save_pins_roundtrip_leaves_no_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut pins = Pins::default();
+        pins.0.insert("pc:1340".into(), "ab".into());
+        save_pins(dir.path(), &pins).unwrap();
+        assert_eq!(load_pins(dir.path()).unwrap().0.get("pc:1340").unwrap(), "ab");
+        let names: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["thin_client_pins.json".to_string()]);
+    }
+
+    #[test]
+    fn forget_recovers_from_corrupt_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(pins_path(dir.path()), b"garbage").unwrap();
+        assert!(forget(dir.path().to_path_buf(), "pc:1340").is_ok());
+        assert!(load_pins(dir.path()).unwrap().0.is_empty());
     }
 }

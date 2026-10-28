@@ -100,6 +100,10 @@ export function createPresenceSync(
   // Sessions already revived this run: one try each, so a refusal cannot loop.
   const revived = new Set<string>()
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
+  // Backoff retries after a failed registration, and how many were spent.
+  const retries = new Map<string, ReturnType<typeof setTimeout>>()
+  const attempts = new Map<string, number>()
+  const MAX_REGISTER_RETRIES = 8
   const runs = new Map<string, string>()
   // Sessions last reported as stopped on an approval prompt.
   const waiting = new Set<string>()
@@ -159,7 +163,34 @@ export function createPresenceSync(
       if (registrations.get(sessionId) === done) registrations.delete(sessionId)
     }
     done.then(settle, settle)
+    done.then(
+      () => {
+        attempts.delete(sessionId)
+      },
+      (e) => {
+        // Not recorded as registered: a later sync may try again, and so do we
+        // after a backoff, so a transient refusal does not leave the session
+        // unknown to the backend until something else changes it.
+        if (registered.get(sessionId) === key) registered.delete(sessionId)
+        if ((e as { code?: string } | null)?.code === 'session_deleted') return
+        scheduleRetry(sessionId)
+      }
+    )
     safe('register', () => done)
+  }
+
+  const scheduleRetry = (sessionId: string) => {
+    const tried = attempts.get(sessionId) ?? 0
+    if (tried >= MAX_REGISTER_RETRIES || retries.has(sessionId)) return
+    attempts.set(sessionId, tried + 1)
+    const delay = Math.min(2000 * 2 ** tried, 60_000)
+    retries.set(
+      sessionId,
+      setTimeout(() => {
+        retries.delete(sessionId)
+        registerNow(sessionId)
+      }, delay)
+    )
   }
 
   /**
@@ -201,6 +232,10 @@ export function createPresenceSync(
       if (timer) clearTimeout(timer)
       pending.delete(s.id)
       registered.delete(s.id)
+      const retry = retries.get(s.id)
+      if (retry) clearTimeout(retry)
+      retries.delete(s.id)
+      attempts.delete(s.id)
       // Archived, not deleted: no tombstone (see notifySessionArchived).
       if (archivedSessions.delete(s.id)) continue
       notifySessionRemoved(s.id)
@@ -317,6 +352,8 @@ export function createPresenceSync(
       offOptOut()
       for (const timer of pending.values()) clearTimeout(timer)
       pending.clear()
+      for (const timer of retries.values()) clearTimeout(timer)
+      retries.clear()
       for (const sid of [...heartbeats.keys()]) stopHeartbeat(sid)
     }
   }

@@ -34,6 +34,27 @@ pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
     LOG_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// The lines of a JSO\n log, lossily decoded. A line with invalid UTF-8 (a torn
+/// write, a bad byte from a crash) comes back with replacement characters and
+/// simply fails to parse, instead of ending the iteration and hiding every
+/// record after it. A read error still ends it.
+pub(crate) fn lossy_lines(file: std::fs::File) -> impl Iterator<Item = String> {
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(file);
+    let mut buf = Vec::new();
+    std::iter::from_fn(move || {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => Some(
+                String::from_utf8_lossy(&buf)
+                    .trim_end_matches(['\n', '\r'])
+                    .to_string(),
+            ),
+        }
+    })
+}
+
 /// What a request log may hold. The tightest limit wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Retention {

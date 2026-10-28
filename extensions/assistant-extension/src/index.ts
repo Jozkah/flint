@@ -11,6 +11,9 @@ const V2_IDENTITY_LINE =
 export default class JanAssistantExtension extends AssistantExtension {
   private readonly CURRENT_MIGRATION_VERSION = 5
   private readonly MIGRATION_FILE = 'file://assistants/.migration_version'
+  // Folders whose assistant.json exists but could not be parsed. Seeding must
+  // never overwrite them: the user's data is still in the file.
+  private corruptIds = new Set<string>()
 
   /**
    * Called when the extension is loaded.
@@ -24,7 +27,7 @@ export default class JanAssistantExtension extends AssistantExtension {
     await this.runMigrations()
 
     const assistants = await this.readAssistantsFromDisk()
-    if (assistants.length === 0) {
+    if (assistants.length === 0 && this.corruptIds.size === 0) {
       // Add default parameters when creating the assistant
       const assistantWithParams = {
         ...this.defaultAssistant,
@@ -34,7 +37,7 @@ export default class JanAssistantExtension extends AssistantExtension {
           top_p: 0.8,
         },
       }
-      await this.createAssistant(assistantWithParams as Assistant)
+      await this.seedAssistant(assistantWithParams as Assistant)
     }
   }
 
@@ -262,7 +265,7 @@ Current date: {{current_date}}`
     const existingIds = new Set(persisted.map((assistant) => assistant.id))
 
     if (persisted.length === 0) {
-      await this.createAssistant({
+      await this.seedAssistant({
         ...this.defaultAssistant,
         parameters: {
           temperature: 0.7,
@@ -275,7 +278,7 @@ Current date: {{current_date}}`
 
     for (const assistant of BUILT_IN_ASSISTANTS) {
       if (existingIds.has(assistant.id)) continue
-      await this.createAssistant(assistant)
+      await this.seedAssistant(assistant)
       existingIds.add(assistant.id)
     }
   }
@@ -290,7 +293,7 @@ Current date: {{current_date}}`
     const existingIds = new Set(persisted.map((assistant) => assistant.id))
     for (const assistant of STARTER_ASSISTANTS) {
       if (existingIds.has(assistant.id)) continue
-      await this.createAssistant(assistant)
+      await this.seedAssistant(assistant)
       existingIds.add(assistant.id)
     }
   }
@@ -317,14 +320,56 @@ Current date: {{current_date}}`
       ])
       if (!(await fs.existsSync(assistantPath))) continue
 
+      let raw: string | undefined
       try {
-        const assistantData = JSON.parse(await fs.readFileSync(assistantPath))
+        raw = await fs.readFileSync(assistantPath)
+        const assistantData = JSON.parse(raw as string)
         assistantsData.push(assistantData as Assistant)
       } catch (error) {
         logger.error(`Failed to read assistant ${assistant}:`, error)
+        this.corruptIds.add(assistant)
+        await this.preserveCorrupt(assistant, assistantPath, raw)
       }
     }
     return assistantsData
+  }
+
+  /**
+   * Keeps a copy of an unparseable assistant.json next to it, once, so the
+   * user's data survives whatever writes the folder next.
+   */
+  private async preserveCorrupt(
+    folderName: string,
+    assistantPath: string,
+    raw: string | undefined
+  ): Promise<void> {
+    if (raw === undefined) return
+    try {
+      const folder = await joinPath(['file://assistants', folderName])
+      const names = await fs.readdirSync(folder)
+      if (names.some((n: string) => n.startsWith('assistant.json.corrupt-'))) {
+        return
+      }
+      await fs.writeFileSync(`${assistantPath}.corrupt-${Date.now()}`, raw)
+    } catch (error) {
+      logger.error(`Failed to keep a copy of assistant ${folderName}:`, error)
+    }
+  }
+
+  /**
+   * Writes a built-in or default assistant only when nothing is there yet.
+   * Unlike createAssistant (an explicit save, which overwrites), seeding never
+   * replaces an existing or unreadable file.
+   */
+  private async seedAssistant(assistant: Assistant): Promise<void> {
+    if (this.corruptIds.has(assistant.id)) return
+    const assistantPath = await joinPath([
+      'file://assistants',
+      assistant.id,
+      'assistant.json',
+    ])
+    if (await fs.existsSync(assistantPath)) return
+    await this.createAssistant(assistant)
   }
 
   async getAssistants(): Promise<Assistant[]> {

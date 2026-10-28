@@ -232,12 +232,19 @@ pub async fn start_engine<R: tauri::Runtime>(
     custom_server_path: Option<String>,
 ) -> Result<EngineInfo, String> {
     let mut guard = state.engine.lock().await;
-    if let Some(existing) = guard.as_ref() {
-        // Idempotent: a second start must not orphan the first worker.
-        return Ok(EngineInfo::from(existing));
+    if let Some(existing) = guard.as_mut() {
+        // A worker that already died is not "running": drop it and spawn a
+        // fresh one, or every start would keep handing back a closed port.
+        if let Some(status) = existing.exited() {
+            log::warn!("flint-llama-worker exited unexpectedly: {status}; starting a new one");
+            *guard = None;
+        } else {
+            // Idempotent: a second start must not orphan the first worker.
+            return Ok(EngineInfo::from(&*existing));
+        }
     }
 
-    let mut envs = envs;
+    let mut envs = super::env_policy::sanitize_envs(envs);
     let api_key = generate_worker_key();
     // Filled from the handshake, after the worker is up; a fault before then
     // is worded without it.
@@ -491,7 +498,7 @@ pub async fn engine_devices<R: tauri::Runtime>(
     envs: HashMap<String, String>,
 ) -> Result<Vec<EngineDevice>, String> {
     let exe = resolve_worker_exe(&app_handle)?;
-    let mut envs = envs;
+    let mut envs = super::env_policy::sanitize_envs(envs);
     super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);

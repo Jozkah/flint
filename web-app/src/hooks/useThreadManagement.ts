@@ -81,7 +81,6 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
           (thread) => home.memberships[thread.id]?.groupId === id || thread.metadata?.project?.id === id
         )
 
-        const serviceHub = getServiceHub()
         // The project record is archived with the ids of its threads, so a
         // restore can put the threads back into a project of the same name.
         const folder = get().folders.find((f) => f.id === id)
@@ -89,12 +88,20 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
         // failure part-way leaves the store, the backend and the project
         // record agreeing about which threads are gone.
         const removed: string[] = []
-        for (const thread of projectThreads) {
-          if (permanent) await serviceHub.threads().deleteThread(thread.id, true)
-          else await serviceHub.threads().deleteThread(thread.id)
-          if (permanent) threadsState.deleteThread(thread.id, true)
-          else threadsState.deleteThread(thread.id)
-          removed.push(thread.id)
+        // deleteThreadAsync drops the thread from the store, runs the cleanup
+        // and the single backend delete, and rejects if the backend fails.
+        try {
+          for (const thread of projectThreads) {
+            if (permanent) await threadsState.deleteThreadAsync(thread.id, true)
+            else await threadsState.deleteThreadAsync(thread.id)
+            removed.push(thread.id)
+          }
+        } catch (e) {
+          console.warn('[Projects] Thread delete failed, keeping the project:', {
+            removed,
+            error: e,
+          })
+          throw e
         }
         // Reached only when every thread went; a throw above keeps the project.
         if (!permanent && folder && (await archiveEnabled())) {

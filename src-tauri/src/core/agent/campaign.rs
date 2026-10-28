@@ -1522,6 +1522,20 @@ pub fn write_handoff(data_folder: &Path, id: &str, task_id: &str, text: &str) ->
     Ok(format!("tasks/{task_id}/handoff.md"))
 }
 
+/// `text` cut to at most `MAX_HANDOFF` bytes on a character boundary, with a
+/// marker when something was cut.
+fn clip_handoff(text: &str) -> String {
+    const MARK: &str = "\n[handoff cut]";
+    if text.len() <= MAX_HANDOFF {
+        return text.to_string();
+    }
+    let mut end = MAX_HANDOFF - MARK.len();
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{MARK}", &text[..end])
+}
+
 /// Record how a task's run ended. The first ending wins: a late settle of a
 /// task that has already ended returns the record unchanged.
 pub fn task_settle(
@@ -1567,8 +1581,13 @@ pub fn task_settle(
         },
     );
     if let Some(text) = input.handoff.as_deref() {
-        let rel = write_handoff(data_folder, id, task_id, text)?;
-        c.task_mut(task_id)?.handoff_path = Some(rel);
+        // A handoff the model made too long, or one that cannot be written,
+        // must not leave the task unsettled and stuck Running.
+        let clipped = clip_handoff(text);
+        match write_handoff(data_folder, id, task_id, &clipped) {
+            Ok(rel) => c.task_mut(task_id)?.handoff_path = Some(rel),
+            Err(e) => log::warn!("campaign {id}: handoff for {task_id} was not saved: {e:?}"),
+        }
     }
     let reviewing = advance_to_review(&mut c);
     c.updated_at = now();
@@ -2700,6 +2719,35 @@ pub(crate) mod tests {
         let mut i = input(Some("c"), vec![plan("a", &[], &[])]);
         i.limits = Some(CampaignLimits { max_parallel: 40, ..Default::default() });
         assert_eq!(create(&d, i).unwrap().limits.max_parallel, MAX_PARALLEL_CAP);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn settle_with_oversized_handoff_still_settles() {
+        let d = data_dir("big-handoff");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        for s in [CampaignStatus::Approved, CampaignStatus::Running] {
+            transition(&d, "c", TransitionInput { campaign: Some(s), task: None, integration: None }).unwrap();
+        }
+        for to in [TaskStatus::Queued, TaskStatus::Running] {
+            let mv = TransitionInput {
+                campaign: None,
+                task: Some(TaskMove { id: "a".into(), to, verdict: None, patch: TaskPatch::default() }),
+                integration: None,
+            };
+            transition(&d, "c", mv).unwrap();
+        }
+        let huge = "é".repeat(MAX_HANDOFF);
+        let c = task_settle(
+            &d,
+            "c",
+            "a",
+            SettleInput { outcome: Outcome::Completed, detail: "ok".into(), handoff: Some(huge), tokens_used: None, fingerprint: None },
+        )
+        .unwrap();
+        assert_eq!(c.tasks[0].status, TaskStatus::Completed);
+        let written = std::fs::read_to_string(d.join("campaigns/c/tasks/a/handoff.md")).unwrap();
+        assert!(written.len() <= MAX_HANDOFF && written.ends_with("[handoff cut]"));
         std::fs::remove_dir_all(&d).ok();
     }
 

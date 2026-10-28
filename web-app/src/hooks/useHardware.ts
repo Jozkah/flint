@@ -128,12 +128,11 @@ export const useHardware = create<HardwareStore>()(
       gpuLoading: {},
       pollingPaused: false,
       setGpuLoading: (index, loading) =>
-        set((state) => ({
-          gpuLoading: {
-            ...state.gpuLoading,
-            [state.hardwareData.gpus[index].uuid]: loading,
-          },
-        })),
+        set((state) => {
+          const gpu = state.hardwareData.gpus[index]
+          if (!gpu) return state
+          return { gpuLoading: { ...state.gpuLoading, [gpu.uuid]: loading } }
+        }),
       pausePolling: () => set({ pollingPaused: true }),
       resumePolling: () => set({ pollingPaused: false }),
 
@@ -212,6 +211,15 @@ export const useHardware = create<HardwareStore>()(
       name: localStorageKey.settingHardware,
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
+      // Live usage and the polling flag change every few seconds; persisting
+      // them rewrote the settings file constantly and rehydrated stale values.
+      partialize: (state) => ({ hardwareData: state.hardwareData }),
+      merge: (persisted, current) => ({
+        ...current,
+        hardwareData:
+          (persisted as Partial<HardwareStore> | undefined)?.hardwareData ??
+          current.hardwareData,
+      }),
     }
   )
 )

@@ -566,19 +566,21 @@ pub fn masked_failure_note(output: &str) -> Option<String> {
 /// `EXIT=<n>` when the output printed one, else 1 (an error record carries no
 /// code). Only called for output the shell reported as successful.
 pub fn masked_failure(output: &str) -> Option<(i32, String)> {
+    // Only a whole line `EXIT=<n>` counts: the text "EXIT=2" inside a log
+    // line, a doc or an echoed command is not the trailing status statement.
     let reported = output
-        .match_indices("EXIT=")
-        .filter_map(|(i, _)| {
-            let digits: String = output[i + 5..]
-                .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '-')
-                .collect();
-            digits.parse::<i64>().ok()
-        })
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("EXIT=")?.parse::<i64>().ok())
         .find(|code| *code != 0);
-    let native_error = output.contains("NativeCommandError")
-        || output.contains("UnauthorizedAccessException")
-        || output.contains("ItemNotFoundException");
+    // Likewise an error record is the `+ CategoryInfo` / `+ FullyQualifiedErrorId`
+    // line PowerShell prints, not a mention of the exception name in prose.
+    let native_error = output.lines().any(|line| {
+        let line = line.trim_start();
+        (line.starts_with("+ CategoryInfo") || line.starts_with("+ FullyQualifiedErrorId"))
+            && (line.contains("NativeCommandError")
+                || line.contains("UnauthorizedAccessException")
+                || line.contains("ItemNotFoundException"))
+    });
     let (code, what) = match (reported, native_error) {
         (Some(code), _) => (
             i32::try_from(code).unwrap_or(1),
@@ -1264,9 +1266,20 @@ mod missing_hint_tests {
         let vet = "go : go: vet.exe failed: open NUL: Access is denied.\n\
                    + FullyQualifiedErrorId : NativeCommandError\nEXIT=2\n[exit 0]";
         assert!(masked_failure_note(vet).unwrap().contains("exited with 2"));
-        let copy = "Copy-Item : Access is denied\n UnauthorizedAccessException\nCOPIED\n[exit 0]";
+        let copy = "Copy-Item : Access is denied\n+ CategoryInfo : PermissionDenied: (a:b) \
+                    [Copy-Item], UnauthorizedAccessException\nCOPIED\n[exit 0]";
         assert!(masked_failure_note(copy).unwrap().contains("error record"));
         assert!(masked_failure_note("go version go1.26\nEXIT=0\n[exit 0]").is_none());
+    }
+
+    #[test]
+    fn masked_failure_ignores_prose_mention() {
+        // The words appear in ordinary output, not as a status line or record.
+        assert!(masked_failure("docs: set EXIT=2 to fail, see NativeCommandError\n[exit 0]").is_none());
+        assert!(masked_failure("cat notes.txt: UnauthorizedAccessException is thrown when\n[exit 0]").is_none());
+        assert!(masked_failure("echo \"EXIT=2\" printed\n[exit 0]").is_none());
+        // A whole-line status still counts.
+        assert_eq!(masked_failure("EXIT=2\n[exit 0]").unwrap().0, 2);
     }
 
     #[test]
@@ -1276,7 +1289,7 @@ mod missing_hint_tests {
         assert_eq!(code, 2);
         assert!(note.contains("[shell: reported exit 0, but"), "{note}");
         assert!(note.contains("carries exit 2"), "{note}");
-        let (code, _) = masked_failure("x NativeCommandError\n[exit 0]").unwrap();
+        let (code, _) = masked_failure("+ FullyQualifiedErrorId : NativeCommandError\n[exit 0]").unwrap();
         assert_eq!(code, 1);
 
         // Only the real marker line is rewritten: not an echoed one mid-line,

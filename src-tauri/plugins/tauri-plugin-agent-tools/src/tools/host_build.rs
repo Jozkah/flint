@@ -11,8 +11,10 @@
 //! user's rights. So the gate asks about every call, each time, and the app
 //! shows the exact command and folder in the question. What this module adds is
 //! confinement: the program is one of a short list, the arguments are an argv
-//! array (never a shell string), and the folder must be one the run may write
-//! to, so a build cannot be pointed at some other part of the disk. Output is
+//! array (never a shell string), and the working folder must be one the run
+//! may write to. Arguments are not path-checked, so flags such as `--prefix` or
+//! `--manifest-path` can still name another folder; the per-call approval shows
+//! the full command for that reason. Output is
 //! redacted and bounded, and a build that has not finished by its limit is
 //! stopped.
 

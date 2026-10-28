@@ -592,19 +592,50 @@ export default class mlx_extension extends AIEngine {
       path: modelConfigPath,
     })
 
-    // Check if model_path is a relative path within mlx folder
+    // Stop the server first so it does not hold the weights open.
+    try {
+      const sInfo = await invoke<SessionInfo>(
+        'plugin:mlx|find_mlx_session_by_model',
+        { modelId }
+      )
+      if (sInfo) await unloadMlxModel(sInfo.pid)
+    } catch (e) {
+      logger.warn(`Could not unload ${modelId} before delete:`, e)
+    }
+
+    // model_path is relative to the data folder for downloaded models.
+    // Remove only what that path points at, and only when it sits strictly
+    // below <provider>/models. When unsure, delete less.
     if (!isAbsoluteModelPath(modelConfig.model_path)) {
-      // Model file is at {janDataFolder}/{model_path}
-      // Delete the parent folder containing the actual model file
       const janDataFolderPath = await getJanDataFolderPath()
       const modelPath = await joinPath([
         janDataFolderPath,
         modelConfig.model_path,
       ])
-      const parentDir = modelPath.substring(0, modelPath.lastIndexOf('/'))
-      // Only delete if it's different from modelDir (i.e., not the same folder)
-      if (parentDir !== modelDir) {
-        await fs.rm(parentDir)
+      const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
+      const modelsRoot = norm(
+        await joinPath([await this.getProviderPath(), 'models'])
+      )
+      const stat = await fs.fileStat(modelPath).catch(() => null)
+      let target: string | null = null
+      if (stat?.isDirectory) {
+        target = norm(modelPath)
+      } else if (stat) {
+        target = norm(modelPath.substring(0, modelPath.lastIndexOf('/')))
+      }
+      const safe =
+        target !== null &&
+        target !== modelsRoot &&
+        target.startsWith(modelsRoot + '/') &&
+        !target.split('/').includes('..')
+      if (target && safe && target !== norm(modelDir)) {
+        // A parent that holds another model.yml belongs to another model.
+        const holdsOtherModel = await fs.existsSync(
+          await joinPath([target, 'model.yml'])
+        )
+        if (!holdsOtherModel) await fs.rm(target)
+      } else if (target && !safe) {
+        logger.warn(`Not removing ${target}: outside the models folder`)
       }
     }
 

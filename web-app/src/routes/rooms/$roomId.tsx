@@ -199,7 +199,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           )}
         >
           <RoomControls room={room} />
-          <RoomEditor room={room} />
+          <RoomEditor key={room.id} room={room} />
         </aside>
       </div>
     </div>

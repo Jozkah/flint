@@ -561,7 +561,19 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         std::process::id(),
         N.fetch_add(1, Ordering::SeqCst)
     ));
-    std::fs::write(&temp, bytes)?;
+    {
+        use std::io::Write as _;
+        // `create_new` fails rather than write through a link planted here.
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        if let Err(e) = file.write_all(bytes) {
+            drop(file);
+            let _ = std::fs::remove_file(&temp);
+            return Err(e);
+        }
+    }
     std::fs::rename(&temp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&temp);
     })

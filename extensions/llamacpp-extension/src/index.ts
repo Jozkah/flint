@@ -53,6 +53,8 @@ import {
   setDefaultEmbeddingModelId,
   isValidModelId,
   isSafeModelRef,
+  legacyAutoUnload,
+  modelsMaxFromAutoUnload,
   type EmbedBatchResult,
 } from './util'
 import {
@@ -62,6 +64,7 @@ import {
   DEFAULT_EMBEDDING_UBATCH,
   CACHE_RAM_AUTO,
   describeFitBudget,
+  toModelId,
 } from './preset'
 import {
   kvDefaultsInEffect,
@@ -524,6 +527,14 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // check_for_updates, auto_update_engine, verify_backend_deps) from the
     // persisted set on its own.
     const settings = structuredClone(SETTINGS)
+    // registerSettings rewrites the persisted set without `auto_unload`, so
+    // the legacy value has to be read first.
+    let legacyAutoUnloadValue: boolean | undefined
+    try {
+      legacyAutoUnloadValue = legacyAutoUnload(await readSettingsFile())
+    } catch (e) {
+      logger.warn('Could not read legacy auto_unload:', e)
+    }
     await this.registerSettings(settings)
 
     this.config = (await this.loadConfig(settings)) as LlamacppConfig
@@ -533,7 +544,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // back on for users the old force-off migration left with it disabled.
     await this.migrateFitOn()
 
-    await this.migrateAutoUnloadToModelsMax()
+    await this.migrateAutoUnloadToModelsMax(legacyAutoUnloadValue)
 
     await this.migrateUbatchAuto()
 
@@ -586,14 +597,21 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * "download a backend first" and "start first for availability" is gone.
    */
   private ensureProvisioned(): Promise<void> {
-    this.provisioning ??= (async () => {
-      try {
-        await this.startEngine()
-      } catch (e) {
-        logger.error('Engine failed to start during provisioning:', e)
-        this.reportMissingLibrariesFromError(e)
-      }
-    })()
+    if (!this.provisioning) {
+      const run: Promise<void> = (async () => {
+        try {
+          await this.startEngine()
+        } catch (e) {
+          logger.error('Engine failed to start during provisioning:', e)
+          this.reportMissingLibrariesFromError(e)
+          // Forget the failed run so the next call retries instead of handing
+          // back the cached failure for the rest of the session.
+          await Promise.resolve()
+          if (this.provisioning === run) this.provisioning = undefined
+        }
+      })()
+      this.provisioning = run
+    }
     this.backgroundInit = this.provisioning
     return this.provisioning
   }
@@ -1124,7 +1142,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         `Engine preset reloaded: +${report.added.length} ~${report.changed.length} -${report.removed.length}, ${report.kept.length} kept loaded`
       )
     } catch (e) {
-      logger.warn('Live engine reload failed; falling back to restart:', e)
+      logger.warn('Live engine reload failed; stopping and restarting the engine:', e)
+      // start_engine is idempotent while a worker is up, so without a stop the
+      // "restart" returned the same worker holding the old preset.
+      await pluginStopEngine()
+      this.enginePort = undefined
+      this.engineApiKey = undefined
       await this.startEngine()
     }
   }
@@ -1253,17 +1276,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
-  private async migrateAutoUnloadToModelsMax(): Promise<void> {
+  private async migrateAutoUnloadToModelsMax(
+    old: boolean | undefined
+  ): Promise<void> {
     const MIGRATION_KEY = 'llamacpp_models_max_migrated_v1'
     if (await getBackendSetting(MIGRATION_KEY)) return
 
     try {
-      const old = await this.getSetting<boolean | undefined>(
-        'auto_unload',
-        undefined
-      )
       if (old !== undefined) {
-        const targetValue = old ? '1' : '0'
+        const targetValue = modelsMaxFromAutoUnload(old)
         const settings = await this.getSettings()
         await this.updateSettings(
           settings.map((item) => {
@@ -1897,9 +1918,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       // check if model.yml exists
       const modelConfigPath = await joinPath([currentDir, 'model.yml'])
       if (await fs.existsSync(modelConfigPath)) {
-        // +1 to remove the leading slash
-        // NOTE: this does not handle Windows path \\
-        modelIds.push(currentDir.slice(modelsDir.length + 1))
+        modelIds.push(toModelId(modelsDir, currentDir))
         continue
       }
 
@@ -2018,9 +2037,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
               })
               const legacyModelPath = legacyModelConfig.files?.[0]
               if (!legacyModelPath) continue
-              // +1 to remove the leading slash
-              // NOTE: this does not handle Windows path \\
-              let modelId = currentDir.slice(modelsDir.length + 1)
+              let modelId = toModelId(modelsDir, currentDir)
 
               modelId =
                 modelId !== 'imported'
@@ -2089,6 +2106,36 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   /**
+   * Unload a model if it is running so its files are not held open by the
+   * worker while we rename or delete them. Worker-down errors are ignored.
+   */
+  private async unloadIfLoaded(modelId: string): Promise<void> {
+    try {
+      const sInfo = await pluginFindSessionByModel(modelId)
+      if (!sInfo) return
+      await unloadLlamaModel(modelId)
+    } catch (e) {
+      logger.warn(`Could not unload ${modelId} before changing its files:`, e)
+    }
+    this.loadedChatOrder = this.loadedChatOrder.filter((m) => m !== modelId)
+  }
+
+  /** rm with a few bounded retries; Windows keeps files busy briefly. */
+  private async rmWithRetry(path: string): Promise<void> {
+    let delay = 200
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await fs.rm(path)
+        return
+      } catch (e) {
+        if (attempt >= 5) throw e
+        await new Promise((r) => setTimeout(r, delay))
+        delay *= 2
+      }
+    }
+  }
+
+  /**
    * Update a model with new information.
    * @param modelId
    * @param model
@@ -2119,6 +2166,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       throw new Error(`Model with ID ${model.id} already exists`)
     }
     const newModelConfigPath = await joinPath([newFolderPath, 'model.yml'])
+    await this.unloadIfLoaded(modelId)
     await fs.mv(modelFolderPath, newFolderPath)
     try {
       // now replace what values have previous model name with format
@@ -3001,8 +3049,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * Delete downloaded GGUFs no remaining model.yml references. Files outside
    * `downloads/` (user-imported in place) are never touched.
    */
-  private async removeUnreferencedDownloads(files: string[]): Promise<void> {
-    if (files.length === 0) return
+  private async removeUnreferencedDownloads(
+    files: string[]
+  ): Promise<string[]> {
+    const failed: string[] = []
+    if (files.length === 0) return failed
     try {
       const modelsDir = await joinPath([await this.getProviderPath(), 'models'])
       const stillUsed = new Set<string>()
@@ -3031,11 +3082,13 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           await fs.rm(await joinPath([dataFolder, rel]))
         } catch (e) {
           logger.warn(`Could not remove downloaded file ${rel}:`, e)
+          failed.push(rel)
         }
       }
     } catch (e) {
       logger.warn('Cleanup of downloaded model files failed:', e)
     }
+    return failed
   }
 
   override async delete(modelId: string): Promise<void> {
@@ -3052,13 +3105,22 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
     // Collect the model's downloaded files before its yaml goes away.
     const owned = await this.downloadedFilesOf(modelDir)
-    await fs.rm(modelDir)
-    await this.removeUnreferencedDownloads(owned)
-
+    await this.unloadIfLoaded(modelId)
+    await this.rmWithRetry(modelDir)
+    let leftovers: string[] = []
     try {
-      await this.refreshEnginePreset()
-    } catch (e) {
-      logger.warn(`Router refresh after delete(${modelId}) failed:`, e)
+      leftovers = await this.removeUnreferencedDownloads(owned)
+    } finally {
+      try {
+        await this.refreshEnginePreset()
+      } catch (e) {
+        logger.warn(`Router refresh after delete(${modelId}) failed:`, e)
+      }
+    }
+    if (leftovers.length > 0) {
+      throw new Error(
+        `Model ${modelId} was removed but these files could not be deleted: ${leftovers.join(', ')}`
+      )
     }
   }
 

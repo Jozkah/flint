@@ -323,8 +323,22 @@ fn write_atomic_with(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+    // `create_new` never follows a link planted at the temp name and never
+    // reuses a leftover: it fails instead of writing through it.
+    let temp = crate::atomic_file::temp_sibling(path);
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = file.write_all(bytes) {
+            drop(file);
+            let _ = std::fs::remove_file(&temp);
+            return Err(e.to_string());
+        }
+    }
     if let Some(perms) = perms {
         if let Err(e) = std::fs::set_permissions(&temp, perms) {
             let _ = std::fs::remove_file(&temp);
@@ -1347,6 +1361,25 @@ pub fn reject(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn temp_symlink_planted_not_followed() {
+        let dir = crate::test_temp_root().join(format!("prop-temp-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let victim = dir.join("victim.txt");
+        std::fs::write(&victim, "keep").unwrap();
+        let target = dir.join("a.rs");
+        // Occupy every name a writer could pick next with a link to the victim.
+        for _ in 0..8 {
+            let temp = crate::atomic_file::temp_sibling(&target);
+            let _ = std::os::unix::fs::symlink(&victim, &temp);
+        }
+        let _ = write_atomic(&target, b"new");
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {

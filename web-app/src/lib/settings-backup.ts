@@ -80,18 +80,34 @@ export interface BackupIo {
 export class BackupError extends Error {}
 
 const SECRET_NAME =
-  /(api[-_]?keys?|secret|password|passwd|authorization)|^(access_|auth_|refresh_|bearer_)?tokens?$/i
+  /(api[-_]?keys?|secret|password|passwd|authorization)|(^|[_-])(access_|auth_|refresh_|bearer_|[a-z]+_)?tokens?$/i
+
+const SECRET_HEADER =
+  /^(authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)$|token|secret|key$/i
+
+function snake(key: string): string {
+  return key.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+}
 
 /** Drop credential-looking fields, and blank the value of secret custom headers. */
 export function stripSecretFields(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripSecretFields)
   if (value === null || typeof value !== 'object') return value
   const record = value as Record<string, unknown>
-  const isSecretHeader = record.secret === true && 'value' in record
+  const headerName =
+    typeof record.header === 'string'
+      ? record.header
+      : typeof record.name === 'string'
+        ? record.name
+        : ''
+  const isSecretHeader =
+    'value' in record &&
+    (record.secret === true || (headerName !== '' && SECRET_HEADER.test(headerName)))
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(record)) {
     // `secret: true` on a header row is a flag, not a credential: keep it.
-    if (SECRET_NAME.test(k) && typeof v !== 'boolean') continue
+    // A token count is a number, a flag a boolean: neither is a credential.
+    if (SECRET_NAME.test(snake(k)) && typeof v !== 'boolean' && typeof v !== 'number') continue
     out[k] = isSecretHeader && k === 'value' ? '' : stripSecretFields(v)
   }
   return out

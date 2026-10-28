@@ -10,7 +10,7 @@
  * one show as separate emoji.
  */
 const INVISIBLE =
-  /[\u{E0000}-\u{E007F}\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2060-\u2064\uFEFF]/gu
+  /[\u{E0000}-\u{E007F}\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2060-\u2064\uFEFF\uFE00-\uFE0D\u{E0100}-\u{E01EF}\u00AD\u061C\u180E]/gu
 
 /**
  * `text` without invisible characters, and how many were removed. A BOM at the

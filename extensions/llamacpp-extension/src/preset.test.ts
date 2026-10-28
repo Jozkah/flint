@@ -55,6 +55,7 @@ import {
   autoCacheRamMiB,
   defaultContextSize,
   CACHE_RAM_AUTO,
+  toModelId,
 } from './preset'
 
 const CONFIG = {} as any
@@ -1713,5 +1714,17 @@ describe('generatePreset slots for a model fit has to trim', () => {
     expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).not.toContain(
       'parallel = 1'
     )
+  })
+})
+
+describe('toModelId', () => {
+  it('toModelId_windows_backslash_to_slash', () => {
+    expect(
+      toModelId('C:\\data\\models', 'C:\\data\\models\\org\\name')
+    ).toBe('org/name')
+  })
+  it('toModelId_posix_unchanged', () => {
+    expect(toModelId('/d/models', '/d/models/org/name')).toBe('org/name')
+    expect(toModelId('/d/models', '/d/models/flat')).toBe('flat')
   })
 })

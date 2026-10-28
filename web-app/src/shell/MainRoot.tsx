@@ -5,7 +5,7 @@ import { ModelReplaceDialog } from '@/containers/ModelReplaceDialog'
 import { UnknownWindowDialog } from '@/containers/rooms/UnknownWindowDialog'
 import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useShellMotion } from '@/components/shell/useShellMotion'
 import { ThemeProvider } from '@/providers/ThemeProvider'
@@ -163,22 +163,24 @@ const LogsLayout = () => {
   )
 }
 
+function getInitialLayoutType() {
+  const pathname = window.location.pathname
+  return (
+    pathname === route.localApiServerlogs ||
+    pathname === route.systemMonitor ||
+    pathname === route.appLogs
+  )
+}
+
 /** The main window's root: the whole app shell. */
 export default function MainRootLayout() {
   const searchOpen = useSearchDialog((s) => s.open)
   const setSearchOpen = useSearchDialog((s) => s.setOpen)
   // Motion components follow Flint's Reduce motion setting, not the OS.
   const reduceMotion = useInterfaceSettings((s) => s.reduceMotion)
-  const getInitialLayoutType = () => {
-    const pathname = window.location.pathname
-    return (
-      pathname === route.localApiServerlogs ||
-      pathname === route.systemMonitor ||
-      pathname === route.appLogs
-    )
-  }
-
-  const IS_LOGS_ROUTE = getInitialLayoutType()
+  // Decided once at mount: the standalone logs/system-monitor windows load at
+  // their path, and an in-shell navigation must not swap the whole layout.
+  const [isLogsRoute] = useState(getInitialLayoutType)
 
   return (
     <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
@@ -199,7 +201,7 @@ export default function MainRootLayout() {
                 not render it. */}
             <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
             <CommandPalette />
-            {IS_LOGS_ROUTE ? <LogsLayout /> : <AppLayout />}
+            {isLogsRoute ? <LogsLayout /> : <AppLayout />}
           </ExtensionProvider>
           {/* <TanStackRouterDevtools position="bottom-right" /> */}
           <AttachmentIngestionDialog />

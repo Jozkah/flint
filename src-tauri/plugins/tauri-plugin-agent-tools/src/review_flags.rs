@@ -230,6 +230,20 @@ fn parse_manifest(name: &str, text: &str) -> Option<Deps> {
                     read_tables(&format!("target.{cfg}."), t);
                 }
             }
+            // `[patch]` and `[replace]` swap the source of a dependency that
+            // is not listed under `[dependencies]` at all.
+            if let Some(patch) = doc.get("patch").and_then(toml::Value::as_table) {
+                for (registry, t) in patch {
+                    for (dep, v) in t.as_table().into_iter().flatten() {
+                        deps.insert(format!("{dep} (patch.{registry})"), cargo_source(v));
+                    }
+                }
+            }
+            if let Some(replace) = doc.get("replace").and_then(toml::Value::as_table) {
+                for (spec, v) in replace {
+                    deps.insert(format!("{spec} (replace)"), cargo_source(v));
+                }
+            }
         }
         "pyproject.toml" => {
             let doc: toml::Value = text.parse().ok()?;
@@ -264,14 +278,28 @@ fn parse_manifest(name: &str, text: &str) -> Option<Deps> {
         }
         "go.mod" => {
             let mut in_block = false;
+            let mut in_replace = false;
             for line in text.lines().map(str::trim) {
                 let line = line.split("//").next().unwrap_or("").trim();
                 if line.starts_with("require (") {
                     in_block = true;
                     continue;
                 }
-                if in_block && line == ")" {
+                if line.starts_with("replace (") {
+                    in_replace = true;
+                    continue;
+                }
+                if (in_block || in_replace) && line == ")" {
                     in_block = false;
+                    in_replace = false;
+                    continue;
+                }
+                // `replace a => b` swaps where a module is fetched from.
+                if in_replace || line.starts_with("replace ") {
+                    let spec = if in_replace { line } else { line["replace ".len()..].trim() };
+                    if let Some((from, to)) = spec.split_once("=>") {
+                        deps.insert(format!("{} (replace)", from.trim()), to.trim().to_string());
+                    }
                     continue;
                 }
                 let spec = if in_block {
@@ -475,6 +503,24 @@ mod tests {
         assert!(d.contains(&"github.com/c/d added at v0.1.0".to_string()), "{d:?}");
         let d = details("pyproject.toml", None, Some("[project]\nname='x'\ndependencies=['httpx>=0.27']\n"));
         assert!(d.contains(&"httpx (project) added at >=0.27".to_string()), "{d:?}");
+    }
+
+    #[test]
+    fn cargo_patch_flagged() {
+        let before = "[package]\nname='x'\n[dependencies]\nserde = \"1\"\n";
+        let after = "[package]\nname='x'\n[dependencies]\nserde = \"1\"\n[patch.crates-io]\nserde = { git = \"https://example.com/serde\" }\n[replace]\n\"tokio:1.0.0\" = { path = \"../t\" }\n";
+        let d = details("Cargo.toml", Some(before), Some(after));
+        assert!(d.iter().any(|x| x.starts_with("serde (patch.crates-io) added at git https://example.com/serde")), "{d:?}");
+        assert!(d.iter().any(|x| x.starts_with("tokio:1.0.0 (replace) added at path ../t")), "{d:?}");
+    }
+
+    #[test]
+    fn go_replace_flagged() {
+        let before = "module m\n\nrequire github.com/a/b v1.0.0\n";
+        let after = "module m\n\nrequire github.com/a/b v1.0.0\n\nreplace github.com/a/b => github.com/evil/b v1.0.0\n\nreplace (\n\tgithub.com/c/d => ../d\n)\n";
+        let d = details("go.mod", Some(before), Some(after));
+        assert!(d.contains(&"github.com/a/b (replace) added at github.com/evil/b v1.0.0".to_string()), "{d:?}");
+        assert!(d.contains(&"github.com/c/d (replace) added at ../d".to_string()), "{d:?}");
     }
 
     #[test]

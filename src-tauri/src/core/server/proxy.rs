@@ -831,6 +831,49 @@ pub(crate) fn transform_openai_response_to_anthropic(
     })
 }
 
+/// Which remote provider serves `model_id`, the same way every run.
+///
+/// Providers that list the id are the candidates. One candidate wins outright.
+/// With several, the `provider/` prefix of the id picks among them when it names
+/// one; otherwise the first by provider key wins and the choice is logged, so
+/// the answer no longer depends on `HashMap` iteration order. With none listing
+/// it, a `provider/` prefix that names a configured provider, or the id itself
+/// naming one, decides.
+fn resolve_provider_name(
+    pc: &HashMap<String, ProviderConfig>,
+    model_id: &str,
+) -> Option<String> {
+    let prefix = model_id.find('/').map(|at| &model_id[..at]);
+    let mut candidates: Vec<(&String, &ProviderConfig)> = pc
+        .iter()
+        .filter(|(_, config)| config.models.iter().any(|m| m == model_id))
+        .collect();
+    candidates.sort_by(|a, b| a.0.cmp(b.0));
+    match candidates.as_slice() {
+        [] => {}
+        [(_, only)] => return Some(only.provider.clone()),
+        several => {
+            let named = prefix.and_then(|p| several.iter().find(|(key, _)| key.as_str() == p));
+            let chosen = named.unwrap_or(&several[0]);
+            if named.is_none() {
+                log::warn!(
+                    "Model '{model_id}' is listed by several providers ({}); using '{}'. \
+                     Prefix the id with the provider name to choose.",
+                    several.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>().join(", "),
+                    chosen.0
+                );
+            }
+            return Some(chosen.1.provider.clone());
+        }
+    }
+    if let Some(prefix) = prefix {
+        if pc.contains_key(prefix) {
+            return Some(prefix.to_string());
+        }
+    }
+    pc.get(model_id).map(|c| c.provider.clone())
+}
+
 /// Configuration for the proxy server
 #[derive(Clone)]
 pub struct ProxyConfig {
@@ -1464,19 +1507,7 @@ async fn proxy_request(
                         let pc = provider_configs.lock().await;
 
                         // Try to find a provider for this model
-                        let provider_name: Option<String> = pc
-                            .iter()
-                            .find(|(_, config)| config.models.iter().any(|m| m == model_id))
-                            .map(|(_, config)| config.provider.clone())
-                            .or_else(|| {
-                                if let Some(sep_pos) = model_id.find('/') {
-                                    let potential_provider: &str = &model_id[..sep_pos];
-                                    if pc.contains_key(potential_provider) {
-                                        return Some(potential_provider.to_string());
-                                    }
-                                }
-                                pc.get(model_id).map(|c| c.provider.clone())
-                            });
+                        let provider_name: Option<String> = resolve_provider_name(&pc, model_id);
 
                         drop(pc);
 
@@ -1986,24 +2017,7 @@ async fn proxy_request(
                         let pc = provider_configs.lock().await;
 
                         // Try to find a provider that has this model configured
-                        let provider_name = pc
-                            .iter()
-                            .find(|(_, config)| {
-                                // Check if any model in this provider matches
-                                config.models.iter().any(|m| m == model_id)
-                            })
-                            .map(|(_, config)| config.provider.clone())
-                            .or_else(|| {
-                                // Try to find by provider name in model_id (e.g., "anthropic/claude-3-opus")
-                                if let Some(sep_pos) = model_id.find('/') {
-                                    let potential_provider: &str = &model_id[..sep_pos];
-                                    if pc.contains_key(potential_provider) {
-                                        return Some(potential_provider.to_string());
-                                    }
-                                }
-                                // Also check if the model_id itself matches a provider name
-                                pc.get(model_id).map(|c| c.provider.clone())
-                            });
+                        let provider_name = resolve_provider_name(&pc, model_id);
 
                         drop(pc);
 
@@ -4390,5 +4404,49 @@ mod api_limits_tests {
         assert!(!origin_is_trusted("http://192.168.1.5:3000", &none));
         assert!(!origin_is_trusted("http://10.0.0.2", &none));
         assert!(origin_is_trusted("http://192.168.1.5:3000", &[vec!["192.168.1.5".into()]]));
+    }
+}
+
+#[cfg(test)]
+mod provider_routing_tests {
+    use super::*;
+
+    fn provider(name: &str, models: &[&str]) -> (String, ProviderConfig) {
+        (
+            name.to_string(),
+            ProviderConfig {
+                provider: name.to_string(),
+                models: models.iter().map(|m| m.to_string()).collect(),
+                ..Default::default()
+            },
+        )
+    }
+
+    #[test]
+    fn bare_model_id_with_two_providers_is_deterministic() {
+        let pc: HashMap<_, _> =
+            [provider("zeta", &["shared"]), provider("alpha", &["shared"]), provider("mid", &["other"])]
+                .into_iter()
+                .collect();
+        for _ in 0..20 {
+            assert_eq!(resolve_provider_name(&pc, "shared").as_deref(), Some("alpha"));
+        }
+        assert_eq!(resolve_provider_name(&pc, "other").as_deref(), Some("mid"));
+        assert_eq!(resolve_provider_name(&pc, "unknown"), None);
+    }
+
+    #[test]
+    fn prefix_model_id_routes_to_named_provider() {
+        let pc: HashMap<_, _> = [
+            provider("alpha", &["zeta/shared"]),
+            provider("zeta", &["zeta/shared"]),
+            provider("openai", &[]),
+        ]
+        .into_iter()
+        .collect();
+        // Both list the id; the prefix names zeta, so it wins over the sort order.
+        assert_eq!(resolve_provider_name(&pc, "zeta/shared").as_deref(), Some("zeta"));
+        // Nobody lists it, but the prefix names a configured provider.
+        assert_eq!(resolve_provider_name(&pc, "openai/gpt-x").as_deref(), Some("openai"));
     }
 }

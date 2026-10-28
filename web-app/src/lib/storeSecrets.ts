@@ -28,17 +28,22 @@ function invoker(): Invoke | null {
   }
 }
 
-/** Store (or, for an empty value, delete) a secret in the keyring. */
+/**
+ * Store (or, for an empty value, delete) a secret in the keyring. Resolves
+ * true only when the keyring accepted the write.
+ */
 export async function persistStoreSecret(
   key: string,
   value: string
-): Promise<void> {
+): Promise<boolean> {
   const invoke = invoker()
-  if (!invoke) return
+  if (!invoke) return false
   try {
     await invoke('set_secret', { key, value })
+    return true
   } catch (err) {
     console.warn(`Failed to persist ${key} to the keyring:`, err)
+    return false
   }
 }
 
@@ -57,7 +62,8 @@ export async function readStoreSecret(key: string): Promise<string | null> {
  * Move a secret field out of a persisted state object into the keyring and
  * delete it from the object. For store `migrate` steps and the one-time
  * localStorage migration, so a key an older build wrote in plaintext is not
- * left in `settings.json`.
+ * left in `settings.json`. When the keyring write fails the field is kept, so
+ * the secret is never dropped.
  */
 export async function moveFieldToKeyring(
   state: Record<string, unknown> | undefined,
@@ -70,8 +76,9 @@ export async function moveFieldToKeyring(
   if (typeof value === 'string' && value.length > 0) {
     if (invoke) {
       await invoke('set_secret', { key: secretKey, value })
-    } else {
-      await persistStoreSecret(secretKey, value)
+    } else if (!(await persistStoreSecret(secretKey, value))) {
+      // Keyring unavailable: keep the field so the secret is not lost.
+      return
     }
   }
   delete state[field]

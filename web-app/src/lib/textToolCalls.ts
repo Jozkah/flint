@@ -219,6 +219,16 @@ function parseToolCode(body: string): TextToolCall[] | null {
   return calls.length > 0 ? calls : null
 }
 
+/** An unclosed `<function=` block is complete only if it ends on `</function>`. */
+function functionTagComplete(body: string): boolean {
+  const trimmed = body.trim()
+  if (!trimmed.startsWith('<function=')) return true
+  if (!trimmed.endsWith('</function>')) return false
+  const opened = (trimmed.match(/<parameter=/g) ?? []).length
+  const closed = (trimmed.match(/<\/parameter>/g) ?? []).length
+  return opened === closed
+}
+
 function parseToolCallBlock(
   body: string,
   types: ArgTypes
@@ -251,6 +261,9 @@ export function parseTextToolCalls(
       const end = rest.indexOf('</tool_call>')
       // An unclosed final block is accepted: some templates end on EOS.
       const body = end === -1 ? rest : rest.slice(0, end)
+      // ...but only when the call itself finished: a `<function=` body cut off
+      // mid-parameter would otherwise run with a half-written argument.
+      if (end === -1 && !functionTagComplete(body)) return null
       const parsed = parseToolCallBlock(body, types)
       if (!parsed) return null
       calls.push(...parsed)

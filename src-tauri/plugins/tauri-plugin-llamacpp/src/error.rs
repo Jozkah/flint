@@ -277,7 +277,10 @@ fn extract_missing_libraries(output: &str) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
 
     for line in output.lines() {
-        let lower = line.to_lowercase();
+        // ASCII-only lowering keeps byte offsets equal to `line`'s; a full
+        // Unicode lowercase (dotted capital I) changes the length and made the
+        // slices below panic.
+        let lower = line.to_ascii_lowercase();
 
         // `<...>: libfoo.so.1: cannot open shared object file: ...`
         if let Some(idx) = lower.find("cannot open shared object file") {
@@ -624,6 +627,13 @@ mod tests {
     fn always_keeps_the_raw_engine_output_in_details() {
         let raw = "libcudart.so.12: cannot open shared object file: No such file or directory";
         assert_eq!(classify(raw).details.as_deref(), Some(raw));
+    }
+
+    #[test]
+    fn missing_libs_dotted_capital_i_no_panic() {
+        // U+0130 lowercases to two chars; offsets must stay valid.
+        let out = "\u{130}\u{130}\u{130}: libfoo.so.1: cannot open shared object file: No such file";
+        assert_eq!(extract_missing_libraries(out), vec!["libfoo.so.1".to_string()]);
     }
 
     // A missing model file is a different failure with different advice, and it

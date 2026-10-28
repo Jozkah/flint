@@ -494,3 +494,20 @@ export function isSafeModelRef(id: unknown): id is string {
   if (/^[a-zA-Z]:/.test(id)) return false
   return id.split(/[\\/]/).every((s) => s !== '' && s !== '.' && s !== '..')
 }
+
+/**
+ * The legacy `auto_unload` value out of a settings snapshot. Read before
+ * `registerSettings`, which drops keys that no longer exist in SETTINGS, so
+ * reading it afterwards always found nothing and the migration never ran.
+ */
+export function legacyAutoUnload(
+  settings: ReadonlyArray<{ key?: string; controllerProps?: { value?: unknown } }>
+): boolean | undefined {
+  const v = settings.find((s) => s.key === 'auto_unload')?.controllerProps?.value
+  return typeof v === 'boolean' ? v : undefined
+}
+
+/** `auto_unload` true kept one model loaded; false meant unlimited (0). */
+export function modelsMaxFromAutoUnload(old: boolean): string {
+  return old ? '1' : '0'
+}
