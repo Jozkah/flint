@@ -2785,6 +2785,10 @@
     "truncatedOnAdd": "Mostrando os primeiros {{shown}} de {{total}} (o anexo foi cortado quando foi adicionado)"
   },
   "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
+  "chatPaneDrop": {
+    "overlay": "Solte arquivos para anexar",
+    "unsupported": "Não é possível anexar {{names}}: este tipo de arquivo não é compatível."
+  },
   "sampler": {
     "label": "Parâmetros de amostragem",
     "notSupported": "Não suportado por {{provider}}"

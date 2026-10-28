@@ -2787,6 +2787,10 @@
     "truncatedOnAdd": "Mostrati i primi {{shown}} di {{total}} (l'allegato è stato troncato quando è stato aggiunto)"
   },
   "dropAttachFailed": "Impossibile allegare i file trascinati",
+  "chatPaneDrop": {
+    "overlay": "Rilascia i file per allegarli",
+    "unsupported": "Impossibile allegare {{names}}: questo tipo di file non è supportato."
+  },
   "sampler": {
     "label": "Parametri di campionamento",
     "notSupported": "Non supportato da {{provider}}"

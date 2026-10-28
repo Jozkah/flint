@@ -2846,6 +2846,10 @@
     "truncatedOnAdd": "Wyświetlono pierwsze {{shown}} z {{total}} (załącznik został przycięty przy dodawaniu)"
   },
   "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
+  "chatPaneDrop": {
+    "overlay": "Upuść pliki, aby je załączyć",
+    "unsupported": "Nie można załączyć {{names}}: ten typ pliku nie jest obsługiwany."
+  },
   "sampler": {
     "label": "Parametry próbkowania",
     "notSupported": "Nieobsługiwane przez {{provider}}"

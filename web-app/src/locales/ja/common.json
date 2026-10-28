@@ -2736,6 +2736,10 @@
     "truncatedOnAdd": "{{total}} のうち最初の {{shown}} を表示しています（添付ファイルは追加時に切り詰められました）"
   },
   "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
+  "chatPaneDrop": {
+    "overlay": "ファイルをドロップして添付",
+    "unsupported": "{{names}} を添付できません: このファイル形式はサポートされていません。"
+  },
   "sampler": {
     "label": "サンプリングパラメータ",
     "notSupported": "{{provider}} では未対応"

@@ -2788,6 +2788,10 @@
     "truncatedOnAdd": "Affichage des {{shown}} premiers sur {{total}} (la pièce jointe a été tronquée lors de son ajout)"
   },
   "dropAttachFailed": "Impossible de joindre les fichiers déposés",
+  "chatPaneDrop": {
+    "overlay": "Déposez des fichiers pour les joindre",
+    "unsupported": "Impossible de joindre {{names}} : ce type de fichier n'est pas pris en charge."
+  },
   "sampler": {
     "label": "Paramètres d'échantillonnage",
     "notSupported": "Non pris en charge par {{provider}}"

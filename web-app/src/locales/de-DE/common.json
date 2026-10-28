@@ -2742,6 +2742,10 @@
     "truncatedOnAdd": "Die ersten {{shown}} von {{total}} werden angezeigt (der Anhang wurde beim Hinzufügen gekürzt)"
   },
   "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden",
+  "chatPaneDrop": {
+    "overlay": "Dateien hier ablegen, um sie anzuhängen",
+    "unsupported": "{{names}} kann nicht angehängt werden: Dieser Dateityp wird nicht unterstützt."
+  },
   "sampler": {
     "label": "Sampling-Parameter",
     "notSupported": "Wird von {{provider}} nicht unterstützt"

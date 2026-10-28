@@ -2741,6 +2741,10 @@
     "truncatedOnAdd": "顯示 {{total}} 中的前 {{shown}}（附件在加入時已被截斷）"
   },
   "dropAttachFailed": "無法附加拖放的檔案",
+  "chatPaneDrop": {
+    "overlay": "拖放檔案以加入附件",
+    "unsupported": "無法附加 {{names}}：不支援此檔案類型。"
+  },
   "sampler": {
     "label": "取樣參數",
     "notSupported": "{{provider}} 不支援"

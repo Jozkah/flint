@@ -2738,6 +2738,10 @@
     "truncatedOnAdd": "{{total}} 중 처음 {{shown}}만 표시 중 (첨부 파일이 추가될 때 잘렸습니다)"
   },
   "dropAttachFailed": "끌어다 놓은 파일을 첨부할 수 없습니다",
+  "chatPaneDrop": {
+    "overlay": "파일을 놓아 첨부하기",
+    "unsupported": "{{names}}을(를) 첨부할 수 없습니다: 지원되지 않는 파일 형식입니다."
+  },
   "sampler": {
     "label": "샘플링 매개변수",
     "notSupported": "{{provider}}에서 지원하지 않음"

@@ -2845,6 +2845,10 @@
     "truncatedOnAdd": "Zobrazeno prvních {{shown}} z {{total}} (příloha byla při přidání zkrácena)"
   },
   "dropAttachFailed": "Přetažené soubory se nepodařilo připojit",
+  "chatPaneDrop": {
+    "overlay": "Přetáhněte soubory sem a připojte je",
+    "unsupported": "{{names}} nelze připojit: tento typ souboru není podporován."
+  },
   "sampler": {
     "label": "Parametry vzorkování",
     "notSupported": "Nepodporuje {{provider}}"

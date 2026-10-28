@@ -2789,6 +2789,10 @@
     "truncatedOnAdd": "Se muestran los primeros {{shown}} de {{total}} (el adjunto se recortó al añadirlo)"
   },
   "dropAttachFailed": "No se pudieron adjuntar los archivos soltados",
+  "chatPaneDrop": {
+    "overlay": "Suelta archivos para adjuntarlos",
+    "unsupported": "No se puede adjuntar {{names}}: este tipo de archivo no es compatible."
+  },
   "sampler": {
     "label": "Parámetros de muestreo",
     "notSupported": "No compatible con {{provider}}"
