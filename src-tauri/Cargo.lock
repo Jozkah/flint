@@ -8064,6 +8064,7 @@ dependencies = [
  "flate2",
  "html2text",
  "infer 0.15.0",
+ "jan-utils",
  "log",
  "lopdf",
  "pdf-extract",
