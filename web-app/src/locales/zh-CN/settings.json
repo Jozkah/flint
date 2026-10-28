@@ -496,6 +496,7 @@
     "failedToRelocateDataFolder": "无法重新定位数据文件夹",
     "couldNotRelocateToRoot": "无法将数据文件夹重新定位到根目录。请选择其他位置。",
     "couldNotResetRootDirectory": "当数据文件夹设置为根目录时，无法重置。请手动删除数据文件夹。",
+    "factoryResetFailed": "恢复出厂设置失败：{{error}}",
     "failedToRelocateDataFolderDesc": "无法重新定位数据文件夹。请重试。",
     "devVersion": "检测到开发版本",
     "noUpdateAvailable": "您正在运行最新版本",

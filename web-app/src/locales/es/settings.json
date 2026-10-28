@@ -498,6 +498,7 @@
     "failedToRelocateDataFolder": "Error al reubicar la carpeta de datos",
     "couldNotRelocateToRoot": "No se puede reubicar la carpeta de datos al directorio raíz. Por favor elige otra ubicación.",
     "couldNotResetRootDirectory": "No se puede restablecer la carpeta de datos cuando está en un directorio raíz. Por favor elimina la carpeta de datos manualmente.",
+    "factoryResetFailed": "El restablecimiento de fábrica falló: {{error}}",
     "failedToRelocateDataFolderDesc": "Error al reubicar la carpeta de datos. Por favor, inténtalo de nuevo.",
     "devVersion": "Versión de desarrollo detectada",
     "noUpdateAvailable": "Estás usando la última versión",

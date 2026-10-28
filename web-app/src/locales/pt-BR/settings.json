@@ -498,6 +498,7 @@
     "failedToRelocateDataFolder": "Falha ao realocar pasta de dados",
     "couldNotRelocateToRoot": "Não é possível realocar pasta de dados para diretório raiz. Por favor, escolha outra localização.",
     "couldNotResetRootDirectory": "Não é possível redefinir pasta de dados quando está definida para um diretório raiz. Por favor, delete a pasta de dados manualmente.",
+    "factoryResetFailed": "A redefinição de fábrica falhou: {{error}}",
     "failedToRelocateDataFolderDesc": "Falha ao realocar pasta de dados. Tente novamente.",
     "devVersion": "Versão de desenvolvimento detectada",
     "noUpdateAvailable": "Você está executando a versão mais recente",

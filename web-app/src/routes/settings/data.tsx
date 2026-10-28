@@ -28,6 +28,7 @@ import { SystemEvent } from '@/types/events'
 import { isPlatformTauri, isServedByFlint } from '@/lib/platform/utils'
 import { useHardware } from '@/hooks/useHardware'
 import { isRootDir } from '@/utils/path'
+import { runFactoryReset } from '@/lib/runFactoryReset'
 import {
   importConversations,
   parseChatGptExport,
@@ -76,7 +77,7 @@ function DataSettings() {
       return t('settings:general.openContainingFolder')
     }
   }
-  const { pausePolling } = useHardware()
+  const { pausePolling, resumePolling } = useHardware()
   const [janDataFolder, setJanDataFolder] = useState<string | undefined>()
   const [unavailableDataFolder, setUnavailableDataFolder] = useState<
     string | undefined
@@ -98,14 +99,22 @@ function DataSettings() {
     fetchDataFolder()
   }, [serviceHub])
 
-  const resetApp = async (options: FactoryResetOptions) => {
-    if (isRootDir(janDataFolder ?? '/')) {
-      toast.error(t('settings:general.couldNotResetRootDirectory'))
-      return
-    }
-    pausePolling()
-    await serviceHub.app().factoryReset(options)
-  }
+  const resetApp = (options: FactoryResetOptions) =>
+    runFactoryReset(options, {
+      // F6m-025: the folder may not have loaded yet; ask for it instead of
+      // treating "unknown" as the root directory.
+      getDataFolder: async () =>
+        janDataFolder ?? (await serviceHub.app().getJanDataFolder()),
+      factoryReset: (o) => serviceHub.app().factoryReset(o),
+      pausePolling,
+      resumePolling,
+      onRootDir: () =>
+        toast.error(t('settings:general.couldNotResetRootDirectory')),
+      onError: (error) =>
+        toast.error(
+          t('settings:general.factoryResetFailed', { error: String(error) })
+        ),
+    })
 
   const handleOpenLogs = async () => {
     try {

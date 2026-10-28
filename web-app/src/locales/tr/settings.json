@@ -496,6 +496,7 @@
     "failedToRelocateDataFolder": "Veri klasörü taşınamadı",
     "couldNotRelocateToRoot": "Veri klasörü kök dizine taşınamaz. Lütfen başka bir konum seçin.",
     "couldNotResetRootDirectory": "Veri klasörü kök dizine ayarlıyken sıfırlanamaz. Lütfen veri klasörünü elle silin.",
+    "factoryResetFailed": "Fabrika ayarlarına sıfırlama başarısız oldu: {{error}}",
     "failedToRelocateDataFolderDesc": "Veri klasörü taşınamadı. Lütfen tekrar deneyin.",
     "devVersion": "Geliştirme sürümü algılandı",
     "noUpdateAvailable": "En son sürümü kullanıyorsunuz",

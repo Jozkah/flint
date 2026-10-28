@@ -500,6 +500,7 @@
     "failedToRelocateDataFolder": "Błąd zmiany katalogu danych",
     "couldNotRelocateToRoot": "Nie można przenieść folderu danych do katalogu głównego. Proszę wybrać inną lokalizację.",
     "couldNotResetRootDirectory": "Nie można zresetować folderu danych, gdy jest ustawiony na katalog główny. Proszę ręcznie usunąć folder danych.",
+    "factoryResetFailed": "Przywracanie ustawień fabrycznych nie powiodło się: {{error}}",
     "failedToRelocateDataFolderDesc": "Nie udało się przenieść katalogu danych. Proszę spróbować później.",
     "devVersion": "Wykryto wersję deweloperską",
     "noUpdateAvailable": "Używasz najnowszej wersji",

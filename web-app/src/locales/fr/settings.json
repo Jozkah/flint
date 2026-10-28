@@ -498,6 +498,7 @@
     "failedToRelocateDataFolder": "Échec du déplacement du dossier de données",
     "couldNotRelocateToRoot": "Impossible de déplacer le dossier de données vers le répertoire racine. Veuillez choisir un autre emplacement.",
     "couldNotResetRootDirectory": "Impossible de réinitialiser le dossier de données lorsqu'il est défini sur un répertoire racine. Veuillez supprimer le dossier de données manuellement.",
+    "factoryResetFailed": "La réinitialisation d'usine a échoué : {{error}}",
     "failedToRelocateDataFolderDesc": "Échec du déplacement du dossier de données. Veuillez réessayer.",
     "devVersion": "Version de développement détectée",
     "noUpdateAvailable": "Vous utilisez la dernière version",

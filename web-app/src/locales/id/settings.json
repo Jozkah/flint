@@ -494,6 +494,7 @@
     "failedToRelocateDataFolder": "Gagal memindahkan folder data",
     "couldNotRelocateToRoot": "Tidak dapat memindahkan folder data ke direktori root. Silakan pilih lokasi lain.",
     "couldNotResetRootDirectory": "Tidak dapat mengatur ulang folder data saat diatur ke direktori root. Silakan hapus folder data secara manual.",
+    "factoryResetFailed": "Reset pabrik gagal: {{error}}",
     "failedToRelocateDataFolderDesc": "Gagal memindahkan folder data. Silakan coba lagi.",
     "devVersion": "Versi pengembangan terdeteksi",
     "noUpdateAvailable": "Anda menjalankan versi terbaru",

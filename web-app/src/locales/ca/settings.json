@@ -500,6 +500,7 @@
     "failedToRelocateDataFolder": "No s’ha pogut traslladar la carpeta de dades",
     "couldNotRelocateToRoot": "No es pot traslladar la carpeta de dades a l’arrel. Tria una altra ubicació.",
     "couldNotResetRootDirectory": "No es pot restablir la carpeta de dades quan és a l’arrel. Suprimeix-la manualment.",
+    "factoryResetFailed": "No s'ha pogut fer el restabliment de fàbrica: {{error}}",
     "failedToRelocateDataFolderDesc": "No s’ha pogut traslladar la carpeta de dades. Torna-ho a provar.",
     "devVersion": "S’ha detectat la versió de desenvolupament",
     "noUpdateAvailable": "Ja utilitzes l’última versió",
