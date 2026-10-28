@@ -352,41 +352,22 @@ pub(super) fn key_is_ctrl(key: &KeyEvent) -> bool {
     !altgr_text
 }
 
-pub(super) async fn handle_key(
+/// The screens that own the keyboard while open: the `/login` prompt, a pending
+/// browser question, the `/context` overlay and the settings, MCP and provider
+/// docks. True when one of them took the key.
+async fn handle_modal_key(
     app: &mut App,
     key: KeyEvent,
-    registry: &PermissionRegistry,
-    current: &mut Option<CurrentRun>,
+    ctrl: bool,
+    ctrl_c: bool,
     mcp_servers: &crate::core::state::SharedMcpServers,
-) {
-    if key.kind != KeyEventKind::Press {
-        return;
-    }
-
-    let ctrl = key_is_ctrl(&key);
-    // Ctrl-L is the readline/less spelling of "redraw". It sits ahead of every
-    // mode guard below because the screen can be damaged at any moment,
-    // including while a prompt or picker owns the keyboard. It changes only
-    // the display.
-    if ctrl && key.code == KeyCode::Char('l') {
-        app.request_repaint();
-        return;
-    }
-    let alt = key.modifiers.contains(KeyModifiers::ALT);
-    let sup = key.modifiers.contains(KeyModifiers::SUPER);
-    // A modified Enter is a newline, never a submit or a completion, so the
-    // hint popups below have to let it through to the editing keys.
-    let newline =
-        key.code == KeyCode::Enter && (alt || key.modifiers.contains(KeyModifiers::SHIFT));
-    let ctrl_c = ctrl && key.code == KeyCode::Char('c');
-    let ctrl_d = ctrl && key.code == KeyCode::Char('d');
-
+) -> bool {
     // The `/login` prompt owns the keyboard while open: every keystroke is part
     // of a secret being typed, so none of it may reach the input box or the
     // transcript shortcuts.
     if app.login.is_some() {
         handle_login_key(app, key, ctrl);
-        return;
+        return true;
     }
 
     // A pending browser question owns the keyboard the same way, so a `y`/`n`
@@ -403,7 +384,7 @@ pub(super) async fn handle_key(
                 _ => {}
             }
         }
-        return;
+        return true;
     }
     // The `/context` overlay owns the keyboard while open, matching the
     // pickers: Esc (and `q` when not ctrl) closes it, and Ctrl-C closes it
@@ -420,27 +401,44 @@ pub(super) async fn handle_key(
             }
             _ => {}
         }
-        return;
+        return true;
     }
 
     // The `/settings` edit dock owns the keyboard while open, same as `/login`.
     if app.settings_prompt.is_some() {
         handle_settings_key(app, key, ctrl);
-        return;
+        return true;
     }
 
     // The MCP add/edit wizard owns the keyboard while open.
     if app.mcp_prompt.is_some() {
         handle_mcp_prompt_key(app, key, ctrl, mcp_servers).await;
-        return;
+        return true;
     }
 
     // The provider add/edit wizard owns the keyboard while open.
     if app.provider_prompt.is_some() {
         handle_provider_prompt_key(app, key, ctrl);
-        return;
+        return true;
     }
+    false
+}
 
+/// A pending permission prompt captures its decision keys. True when one was
+/// pending (it always takes the key, answered or not).
+#[allow(clippy::too_many_arguments)]
+async fn handle_permission_key(
+    app: &mut App,
+    key: KeyEvent,
+    ctrl: bool,
+    alt: bool,
+    sup: bool,
+    newline: bool,
+    ctrl_c: bool,
+    ctrl_d: bool,
+    registry: &PermissionRegistry,
+    current: &mut Option<CurrentRun>,
+) -> bool {
     // A pending permission prompt captures y/a/n; Ctrl-C or Ctrl-D cancels the
     // run and denies everything queued, so it can't be wedged waiting on an
     // unanswered prompt. Several subagents can have requests queued at once
@@ -453,7 +451,7 @@ pub(super) async fn handle_key(
             }
             abort_run(current);
             app.cancel_run();
-            return;
+            return true;
         }
         let pending = app
             .pending_queue
@@ -507,16 +505,25 @@ pub(super) async fn handle_key(
             // queued) — publish the recomputed status either way.
             app.publish_agent_status();
         }
-        return;
+        return true;
     }
+    false
+}
 
+/// The model picker and the generic picker own navigation, Enter and Esc while
+/// open. True when one was open.
+async fn handle_picker_key(
+    app: &mut App,
+    key: KeyEvent,
+    ctrl: bool,
+    ctrl_c: bool,
+    ctrl_d: bool,
+    mcp_servers: &crate::core::state::SharedMcpServers,
+) -> bool {
     if app.model_picker.is_some() {
         handle_model_picker_key(app, key, ctrl);
-        return;
+        return true;
     }
-
-    // Ctrl-C and Ctrl-D both cancel a run, clear a draft, or (on a blank idle
-    // composer, and only on a second press) quit.
 
     // An open picker owns navigation/Enter/Esc. One-shot pickers (thread/model)
     // act and close; the `/mcp` picker toggles the selected row in place.
@@ -537,14 +544,14 @@ pub(super) async fn handle_key(
             KeyCode::Char(' ') if picker.kind == PickerKind::ToggleMcp => {
                 let item = &mut picker.items[picker.selected];
                 if item.value.is_empty() {
-                    return;
+                    return true;
                 }
                 let name = item.value.clone();
                 let enable = !item.checkbox.unwrap_or(false);
                 // The row flips only once mcp_config.json has been written: a
                 // failed write leaves it showing the state that is on disk.
                 let Some(connect) = set_mcp_active(app, mcp_servers, &name, enable).await else {
-                    return;
+                    return true;
                 };
                 if let Some(item) = app
                     .picker
@@ -563,7 +570,7 @@ pub(super) async fn handle_key(
                 let name = picker.items[picker.selected].value.clone();
                 // The watermark row of an empty config: nothing to open.
                 if name.is_empty() {
-                    return;
+                    return true;
                 }
                 open_mcp_detail(app, &name, mcp_servers).await;
             }
@@ -581,7 +588,7 @@ pub(super) async fn handle_key(
                     .unwrap_or_default();
                 // The watermark row (no subagents running) has no id to open.
                 if run_id.is_empty() {
-                    return;
+                    return true;
                 }
                 picker.kind = PickerKind::AgentDetail;
                 app.agent_detail = Some(run_id);
@@ -608,14 +615,14 @@ pub(super) async fn handle_key(
             KeyCode::Char('e') if picker.kind == PickerKind::ToggleMcp => {
                 let name = picker.items[picker.selected].value.clone();
                 if name.is_empty() {
-                    return;
+                    return true;
                 }
                 edit_mcp_server(app, &name);
             }
             KeyCode::Char('d') if picker.kind == PickerKind::ToggleMcp => {
                 let name = picker.items[picker.selected].value.clone();
                 if name.is_empty() {
-                    return;
+                    return true;
                 }
                 app.picker = None;
                 remove_mcp_server(app, &name, mcp_servers).await;
@@ -631,12 +638,12 @@ pub(super) async fn handle_key(
             }
             KeyCode::Char('d') if picker.kind == PickerKind::ProviderSettings => {
                 let Some(item) = picker.items.get(picker.selected) else {
-                    return;
+                    return true;
                 };
                 let name = item.value.clone();
                 if name.is_empty() {
                     // The watermark row: nothing to delete.
-                    return;
+                    return true;
                 }
                 let sel = picker.selected;
                 if picker.armed_delete == Some(sel) {
@@ -660,7 +667,7 @@ pub(super) async fn handle_key(
             KeyCode::Char('x') if picker.kind == PickerKind::ProviderSettings => {
                 let name = picker.items[picker.selected].value.clone();
                 if name.is_empty() {
-                    return;
+                    return true;
                 }
                 sign_out_provider(app, &name);
             }
@@ -706,7 +713,7 @@ pub(super) async fn handle_key(
                 let toml_path = app.agent_dir.join("agent.toml");
                 let Some(def) = AGENT_SETTINGS.iter().find(|d| d.key == key) else {
                     // The leading "providers" row has no key to unset.
-                    return;
+                    return true;
                 };
                 match write_setting(def, &toml_path, None) {
                     Ok(()) => {
@@ -741,7 +748,7 @@ pub(super) async fn handle_key(
                     &name,
                 ) {
                     app.note(&format!("{name} is not signed in"));
-                    return;
+                    return true;
                 }
                 sign_out_provider(app, &name);
                 // Refresh the status labels so the row flips to
@@ -889,8 +896,19 @@ pub(super) async fn handle_key(
             }
             _ => {}
         }
-        return;
+        return true;
     }
+    false
+}
+
+/// Ctrl-C and Ctrl-D cancel a run, clear a draft, or (on a blank idle composer,
+/// and only on a second press) quit. True when the key was one of them.
+fn handle_cancel_key(
+    app: &mut App,
+    ctrl_c: bool,
+    ctrl_d: bool,
+    current: &mut Option<CurrentRun>,
+) -> bool {
     if ctrl_c || ctrl_d {
         if app.status == Status::Running {
             // Cancel-first: an in-flight task is what Ctrl-C interrupts, and
@@ -911,9 +929,13 @@ pub(super) async fn handle_key(
             app.exit_armed = true;
             app.system(Level::Warn, "press Ctrl-C or Ctrl-D again to quit");
         }
-        return;
+        return true;
     }
+    false
+}
 
+/// The slash-command and path-hint popups. True when one took the key.
+fn handle_hint_key(app: &mut App, key: KeyEvent, newline: bool) -> bool {
     // Slash-command hint popup: while typing a `/command` name (idle, no space
     // yet) with at least one match, it owns Up/Down/Tab/Esc and Enter-to-accept.
     // Enter on a fully-typed command falls through to run it; typed chars fall
@@ -922,26 +944,26 @@ pub(super) async fn handle_key(
         match key.code {
             KeyCode::Up => {
                 app.slash_move(-1);
-                return;
+                return true;
             }
             KeyCode::Down => {
                 app.slash_move(1);
-                return;
+                return true;
             }
             KeyCode::Tab => {
                 app.accept_slash();
-                return;
+                return true;
             }
             KeyCode::Esc => {
                 app.slash_dismissed = true;
-                return;
+                return true;
             }
             KeyCode::Enter if !newline => {
                 let matches = app.slash_matches();
                 let sel = app.slash_selected.min(matches.len() - 1);
                 if app.input.trim() != matches[sel].name() {
                     app.accept_slash();
-                    return;
+                    return true;
                 }
                 // Exact match: fall through to the normal Enter path to run it.
             }
@@ -955,29 +977,62 @@ pub(super) async fn handle_key(
         match key.code {
             KeyCode::Up => {
                 app.path_hint_move(-1);
-                return;
+                return true;
             }
             KeyCode::Down => {
                 app.path_hint_move(1);
-                return;
+                return true;
             }
             KeyCode::Tab | KeyCode::Enter if !newline => {
                 app.accept_path_hint();
-                return;
+                return true;
             }
             KeyCode::Esc => {
                 app.path_hint_dismissed = true;
                 app.path_hints.clear();
-                return;
+                return true;
             }
             _ => {}
         }
     }
+    false
+}
 
-    // Any composer key that isn't the blank-idle Ctrl-C means composing has
-    // resumed, so it disarms a pending second-Ctrl-C exit.
-    app.exit_armed = false;
+/// Up/Down recall submitted messages into the composer when there is something
+/// to recall; otherwise they scroll the transcript. PageUp/PageDown always
+/// scroll, so scrollback is never unreachable. True when the key was a scroll key.
+fn handle_scroll_key(app: &mut App, key: KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Up | KeyCode::PageUp => {
+            if key.code == KeyCode::Up && app.recall_prev() {
+                return true;
+            }
+            let step = if key.code == KeyCode::PageUp { 10 } else { 1 };
+            app.scrollback = app.scrollback.saturating_add(step);
+            true
+        }
+        KeyCode::Down | KeyCode::PageDown => {
+            if key.code == KeyCode::Down && app.recall_next() {
+                return true;
+            }
+            let step = if key.code == KeyCode::PageDown { 10 } else { 1 };
+            app.scrollback = app.scrollback.saturating_sub(step);
+            true
+        }
+        _ => false,
+    }
+}
 
+/// Composer keys that act on the session rather than edit the text: Esc, the
+/// newline spellings, Ctrl-O, Alt-T and Ctrl-V. True when the key was one.
+fn handle_composer_command(
+    app: &mut App,
+    key: KeyEvent,
+    ctrl: bool,
+    alt: bool,
+    newline: bool,
+    current: &mut Option<CurrentRun>,
+) -> bool {
     match key.code {
         KeyCode::Esc => {
             // Esc cancels a run or clears typed input; it never quits (that's
@@ -1033,30 +1088,119 @@ pub(super) async fn handle_key(
         KeyCode::Char('v') if ctrl => {
             app.attach_clipboard_image();
         }
-        // Readline editing keys, so the composer behaves like the shell the
-        // user just came from. Motion and word-kills are line-wise because the
-        // buffer is multi-line.
-        KeyCode::Char('a') if ctrl => app.cursor_line_start(),
-        KeyCode::Char('e') if ctrl => app.cursor_line_end(),
-        KeyCode::Char('b') if ctrl => app.cursor_left(),
-        KeyCode::Char('f') if ctrl => app.cursor_right(),
-        KeyCode::Char('h') if ctrl => app.input_backspace(),
-        KeyCode::Char('w') if ctrl => app.delete_unix_word_left(),
-        KeyCode::Char('u') if ctrl => app.delete_to_line_start(),
-        KeyCode::Char('k') if ctrl => app.delete_to_line_end(),
-        KeyCode::Char('t') if ctrl => app.transpose_chars(),
-        // Ctrl-P/Ctrl-N are Up/Down's shell spelling; recall declines when
-        // there is nothing to recall, and unlike the arrows they never fall
-        // through to scrolling.
-        KeyCode::Char('p') if ctrl => {
+        _ => return false,
+    }
+    true
+}
+
+/// A text-editing action a readline-style key stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EditAction {
+    CursorLineStart,
+    CursorLineEnd,
+    CursorLeft,
+    CursorRight,
+    CursorWordLeft,
+    CursorWordRight,
+    Backspace,
+    Delete,
+    DeleteUnixWordLeft,
+    DeleteToLineStart,
+    DeleteToLineEnd,
+    DeleteWordLeft,
+    DeleteWordRight,
+    TransposeChars,
+    RecallPrev,
+    RecallNext,
+}
+
+/// Map a key to its readline editing action, so the composer behaves like the
+/// shell the user just came from. Motion and word-kills are line-wise because
+/// the buffer is multi-line. Cmd (SUPER) is line-wise, Alt/Ctrl word-wise, bare
+/// char-wise; SUPER only arrives from a terminal with the keyboard enhancement
+/// flags on, so the macOS Cmd bindings degrade to nothing rather than misfiring.
+/// Ctrl-P/Ctrl-N are Up/Down's shell spelling; recall declines when there is
+/// nothing to recall, and unlike the arrows they never fall through to scrolling.
+pub(super) fn readline_action(code: KeyCode, ctrl: bool, alt: bool, sup: bool) -> Option<EditAction> {
+    Some(match code {
+        KeyCode::Char('a') if ctrl => EditAction::CursorLineStart,
+        KeyCode::Char('e') if ctrl => EditAction::CursorLineEnd,
+        KeyCode::Char('b') if ctrl => EditAction::CursorLeft,
+        KeyCode::Char('f') if ctrl => EditAction::CursorRight,
+        KeyCode::Char('h') if ctrl => EditAction::Backspace,
+        KeyCode::Char('w') if ctrl => EditAction::DeleteUnixWordLeft,
+        KeyCode::Char('u') if ctrl => EditAction::DeleteToLineStart,
+        KeyCode::Char('k') if ctrl => EditAction::DeleteToLineEnd,
+        KeyCode::Char('t') if ctrl => EditAction::TransposeChars,
+        KeyCode::Char('p') if ctrl => EditAction::RecallPrev,
+        KeyCode::Char('n') if ctrl => EditAction::RecallNext,
+        KeyCode::Char('b') if alt => EditAction::CursorWordLeft,
+        KeyCode::Char('f') if alt => EditAction::CursorWordRight,
+        KeyCode::Char('d') if alt => EditAction::DeleteWordRight,
+        KeyCode::Backspace if sup => EditAction::DeleteToLineStart,
+        KeyCode::Backspace if alt || ctrl => EditAction::DeleteWordLeft,
+        KeyCode::Backspace => EditAction::Backspace,
+        KeyCode::Delete if alt || ctrl => EditAction::DeleteWordRight,
+        KeyCode::Delete => EditAction::Delete,
+        KeyCode::Left if sup => EditAction::CursorLineStart,
+        KeyCode::Left if alt || ctrl => EditAction::CursorWordLeft,
+        KeyCode::Left => EditAction::CursorLeft,
+        KeyCode::Right if sup => EditAction::CursorLineEnd,
+        KeyCode::Right if alt || ctrl => EditAction::CursorWordRight,
+        KeyCode::Right => EditAction::CursorRight,
+        KeyCode::Home => EditAction::CursorLineStart,
+        KeyCode::End => EditAction::CursorLineEnd,
+        _ => return None,
+    })
+}
+
+/// Run an editing action on the composer.
+fn apply_edit_action(app: &mut App, action: EditAction) {
+    match action {
+        EditAction::CursorLineStart => app.cursor_line_start(),
+        EditAction::CursorLineEnd => app.cursor_line_end(),
+        EditAction::CursorLeft => app.cursor_left(),
+        EditAction::CursorRight => app.cursor_right(),
+        EditAction::CursorWordLeft => app.cursor_word_left(),
+        EditAction::CursorWordRight => app.cursor_word_right(),
+        EditAction::Backspace => app.input_backspace(),
+        EditAction::Delete => app.input_delete(),
+        EditAction::DeleteUnixWordLeft => app.delete_unix_word_left(),
+        EditAction::DeleteToLineStart => app.delete_to_line_start(),
+        EditAction::DeleteToLineEnd => app.delete_to_line_end(),
+        EditAction::DeleteWordLeft => app.delete_word_left(),
+        EditAction::DeleteWordRight => app.delete_word_right(),
+        EditAction::TransposeChars => app.transpose_chars(),
+        EditAction::RecallPrev => {
             app.recall_prev();
         }
-        KeyCode::Char('n') if ctrl => {
+        EditAction::RecallNext => {
             app.recall_next();
         }
-        KeyCode::Char('b') if alt => app.cursor_word_left(),
-        KeyCode::Char('f') if alt => app.cursor_word_right(),
-        KeyCode::Char('d') if alt => app.delete_word_right(),
+    }
+}
+
+/// Everything left once the screens, popups and scroll keys have passed: the
+/// session-level composer keys, the readline editing keys, Enter to submit and
+/// plain text.
+async fn handle_composer_key(
+    app: &mut App,
+    key: KeyEvent,
+    ctrl: bool,
+    alt: bool,
+    sup: bool,
+    newline: bool,
+    current: &mut Option<CurrentRun>,
+    mcp_servers: &crate::core::state::SharedMcpServers,
+) {
+    if handle_composer_command(app, key, ctrl, alt, newline, current) {
+        return;
+    }
+    if let Some(action) = readline_action(key.code, ctrl, alt, sup) {
+        apply_edit_action(app, action);
+        return;
+    }
+    match key.code {
         KeyCode::Enter => {
             let text = app.input.trim().to_string();
             app.input_clear();
@@ -1071,52 +1215,10 @@ pub(super) async fn handle_key(
                 }
             }
         }
-        // Cmd (SUPER) is line-wise, Alt/Ctrl word-wise, bare char-wise. SUPER
-        // only arrives from a terminal with the keyboard enhancement flags on,
-        // so the macOS Cmd bindings degrade to nothing rather than misfiring.
-        KeyCode::Backspace if sup => {
-            app.delete_to_line_start();
-        }
-        KeyCode::Backspace if alt || ctrl => {
-            app.delete_word_left();
-        }
-        KeyCode::Backspace => {
-            app.input_backspace();
-        }
-        KeyCode::Delete if alt || ctrl => {
-            app.delete_word_right();
-        }
-        KeyCode::Delete => {
-            app.input_delete();
-        }
-        KeyCode::Left if sup => {
-            app.cursor_line_start();
-        }
-        KeyCode::Left if alt || ctrl => {
-            app.cursor_word_left();
-        }
-        KeyCode::Left => {
-            app.cursor_left();
-        }
-        KeyCode::Right if sup => {
-            app.cursor_line_end();
-        }
-        KeyCode::Right if alt || ctrl => {
-            app.cursor_word_right();
-        }
-        KeyCode::Right => {
-            app.cursor_right();
-        }
-        KeyCode::Home => {
-            app.cursor_line_start();
-        }
         // Shift+Tab (crossterm sends it as BackTab, not Tab+SHIFT) cycles
         // reasoning effort low -> medium -> high -> low, matching Claude Code.
         KeyCode::BackTab => {
             app.cycle_reasoning_effort();
-        }
-        KeyCode::End => {
-            app.cursor_line_end();
         }
         // Tab is a no-op in normal input mode; slash-command and path-hint
         // popups intercept it before reaching this arm.
@@ -1124,25 +1226,62 @@ pub(super) async fn handle_key(
         KeyCode::Char(c) if !ctrl => {
             app.input_insert(c);
         }
-        // Up/Down recall submitted messages into the composer when there is
-        // something to recall; otherwise they scroll the transcript as before.
-        // PageUp/PageDown always scroll, so scrollback is never unreachable.
-        KeyCode::Up | KeyCode::PageUp => {
-            if key.code == KeyCode::Up && app.recall_prev() {
-                return;
-            }
-            let step = if key.code == KeyCode::PageUp { 10 } else { 1 };
-            app.scrollback = app.scrollback.saturating_add(step);
-        }
-        KeyCode::Down | KeyCode::PageDown => {
-            if key.code == KeyCode::Down && app.recall_next() {
-                return;
-            }
-            let step = if key.code == KeyCode::PageDown { 10 } else { 1 };
-            app.scrollback = app.scrollback.saturating_sub(step);
-        }
         _ => {}
     }
+}
+
+pub(super) async fn handle_key(
+    app: &mut App,
+    key: KeyEvent,
+    registry: &PermissionRegistry,
+    current: &mut Option<CurrentRun>,
+    mcp_servers: &crate::core::state::SharedMcpServers,
+) {
+    if key.kind != KeyEventKind::Press {
+        return;
+    }
+
+    let ctrl = key_is_ctrl(&key);
+    // Ctrl-L is the readline/less spelling of "redraw". It sits ahead of every
+    // mode guard below because the screen can be damaged at any moment,
+    // including while a prompt or picker owns the keyboard. It changes only
+    // the display.
+    if ctrl && key.code == KeyCode::Char('l') {
+        app.request_repaint();
+        return;
+    }
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let sup = key.modifiers.contains(KeyModifiers::SUPER);
+    // A modified Enter is a newline, never a submit or a completion, so the
+    // hint popups below have to let it through to the editing keys.
+    let newline =
+        key.code == KeyCode::Enter && (alt || key.modifiers.contains(KeyModifiers::SHIFT));
+    let ctrl_c = ctrl && key.code == KeyCode::Char('c');
+    let ctrl_d = ctrl && key.code == KeyCode::Char('d');
+    if handle_modal_key(app, key, ctrl, ctrl_c, mcp_servers).await {
+        return;
+    }
+    if handle_permission_key(app, key, ctrl, alt, sup, newline, ctrl_c, ctrl_d, registry, current).await {
+        return;
+    }
+    if handle_picker_key(app, key, ctrl, ctrl_c, ctrl_d, mcp_servers).await {
+        return;
+    }
+    if handle_cancel_key(app, ctrl_c, ctrl_d, current) {
+        return;
+    }
+    if handle_hint_key(app, key, newline) {
+        return;
+    }
+
+    // Any composer key that isn't the blank-idle Ctrl-C means composing has
+    // resumed, so it disarms a pending second-Ctrl-C exit.
+    app.exit_armed = false;
+
+    if handle_scroll_key(app, key) {
+        return;
+    }
+    handle_composer_key(app, key, ctrl, alt, sup, newline, current, mcp_servers).await;
 }
 
 pub(super) async fn deny(registry: &PermissionRegistry, request_id: &str) {
