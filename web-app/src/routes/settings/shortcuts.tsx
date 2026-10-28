@@ -67,7 +67,7 @@ function FixedKeys({ children }: { children: React.ReactNode }) {
   )
 }
 
- 
+
 export const Route = createFileRoute(route.settings.shortcuts)({
   component: Shortcuts,
 })

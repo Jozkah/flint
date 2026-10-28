@@ -123,8 +123,10 @@ const FILE_XLOCK_NAME: &str = "provider_secrets.enc.lock";
 const INDEX_XLOCK_NAME: &str = "provider_secrets.index.lock";
 /// A lock file older than this is from a writer that died mid-update.
 const XLOCK_STALE: std::time::Duration = std::time::Duration::from_secs(10);
-/// How long a writer waits for another process before going ahead anyway.
-const XLOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+/// How long a writer waits for another process before giving up. Longer
+/// than `XLOCK_STALE` so a lock left by a crashed writer is reclaimed inside
+/// the wait rather than failing the save.
+const XLOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// A cross-process lock on one of the secret files.
 ///
@@ -139,7 +141,11 @@ struct CrossProcessLock {
 }
 
 impl CrossProcessLock {
-    fn acquire(name: &str) -> Self {
+    fn acquire(name: &str) -> Result<Self, String> {
+        Self::acquire_within(name, XLOCK_WAIT)
+    }
+
+    fn acquire_within(name: &str, wait: std::time::Duration) -> Result<Self, String> {
         let path = resolve_jan_data_folder().join(name);
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
@@ -151,7 +157,7 @@ impl CrossProcessLock {
                 .create_new(true)
                 .open(&path)
             {
-                Ok(_) => return Self { path: Some(path) },
+                Ok(_) => return Ok(Self { path: Some(path) }),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     if lock_is_stale(&path) {
                         reclaim_stale_lock(&path);
@@ -159,17 +165,17 @@ impl CrossProcessLock {
                     }
                 }
                 Err(e) => {
-                    log::warn!("Cannot take secrets lock {}: {e}", path.display());
-                    return Self { path: None };
+                    return Err(format!("Cannot take secrets lock {}: {e}", path.display()));
                 }
             }
-            if started.elapsed() >= XLOCK_WAIT {
-                log::warn!(
-                    "Secrets lock {} still held after {:?}; proceeding without it",
+            if started.elapsed() >= wait {
+                // Writing without the lock could interleave with another
+                // process's read-modify-write and drop its secret.
+                return Err(format!(
+                    "Secrets lock {} still held after {:?}",
                     path.display(),
-                    XLOCK_WAIT
-                );
-                return Self { path: None };
+                    wait
+                ));
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -596,7 +602,13 @@ fn index_set(provider: &str, present: bool) {
     let Ok(_guard) = INDEX_LOCK.lock() else {
         return;
     };
-    let _xlock = CrossProcessLock::acquire(INDEX_XLOCK_NAME);
+    let _xlock = match CrossProcessLock::acquire(INDEX_XLOCK_NAME) {
+        Ok(l) => l,
+        Err(e) => {
+            log::warn!("Skipping secrets index update for {provider}: {e}");
+            return;
+        }
+    };
     let mut names = read_index();
     let changed = match present {
         true => names.insert(provider.to_string()),
@@ -627,7 +639,7 @@ pub fn has_stored_key(provider: &str) -> bool {
 
 fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
-    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
+    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME)?;
     let path = secrets_file_path();
     let mut map = read_file_map_for_write(&path)?;
     map.insert(provider.to_string(), keys.to_vec());
@@ -636,7 +648,7 @@ fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
 
 fn file_remove(provider: &str) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
-    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
+    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME)?;
     let path = secrets_file_path();
     // Nothing readable to remove from: leave an unreadable file as it is.
     let Some(mut map) = try_read_file_map(&path) else {
@@ -1309,8 +1321,7 @@ mod tests {
             .map(|_| {
                 let (h, o) = (holders.clone(), overlap.clone());
                 std::thread::spawn(move || {
-                    let g = CrossProcessLock::acquire("provider_secrets.race.lock");
-                    if g.path.is_some() {
+                    if let Ok(_g) = CrossProcessLock::acquire("provider_secrets.race.lock") {
                         if h.fetch_add(1, Ordering::SeqCst) != 0 {
                             o.store(true, Ordering::SeqCst);
                         }
@@ -1324,6 +1335,36 @@ mod tests {
             t.join().unwrap();
         }
         assert!(!overlap.load(Ordering::SeqCst), "two holders at once");
+    }
+
+    /// A lock held by a live writer past the wait is an error, not a
+    /// lockless write.
+    #[test]
+    fn acquire_times_out_with_an_error_instead_of_going_lockless() {
+        use std::sync::Arc;
+        let _tmp = TempDataFolder::new();
+        let name = "provider_secrets.held.lock";
+        let path = resolve_jan_data_folder().join(name);
+        fs::write(&path, b"live").unwrap();
+        // Keep the holder's mtime fresh so it never looks stale.
+        let stop = Arc::new(AtomicBool::new(false));
+        let toucher = {
+            let (p, s) = (path.clone(), stop.clone());
+            std::thread::spawn(move || {
+                while !s.load(Ordering::SeqCst) {
+                    let _ = fs::File::options()
+                        .write(true)
+                        .open(&p)
+                        .and_then(|f| f.set_modified(std::time::SystemTime::now()));
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+            })
+        };
+        let got = CrossProcessLock::acquire_within(name, std::time::Duration::from_secs(1));
+        stop.store(true, Ordering::SeqCst);
+        toucher.join().unwrap();
+        assert!(got.is_err(), "acquired a lock another writer holds");
+        assert!(path.exists(), "the live holder's lock was removed");
     }
 
     #[test]

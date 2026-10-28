@@ -3152,8 +3152,8 @@ mod tests {
 
     #[tokio::test]
     async fn split_git_piece_checks_repo_config() {
-        // The null-device split path in handlers.rs must call the same check.
-        let src = include_str!("handlers.rs");
+        // The null-device split path in handlers/bash.rs must call the same check.
+        let src = include_str!("handlers/bash.rs");
         let at = src.find("Piece::Git(argv) =>").expect("split git arm");
         assert!(src[at..at + 1500].contains("check_repo_config"));
         // And that check refuses a planted filter driver in a real repository.

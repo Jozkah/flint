@@ -23,7 +23,7 @@ import { useSchedules } from '@/containers/schedules/useSchedules'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ScheduledTask } from '@/lib/schedules'
 
- 
+
 export const Route = createFileRoute(route.settings.schedules)({
   component: SchedulesContent,
 })

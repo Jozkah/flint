@@ -44,7 +44,7 @@ import { AvatarStack, RoomCard } from '@/containers/rooms/RoomCard'
 import { roomFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
 
- 
+
 export const Route = createFileRoute('/rooms/')({
   component: RoomsList,
   // `?new=1` opens the create dialog: the sidebar's "New room" lands here, and

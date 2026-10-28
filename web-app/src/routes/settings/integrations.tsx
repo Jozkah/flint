@@ -21,7 +21,7 @@ type IntegrationTab = (typeof INTEGRATION_TABS)[number]
 
 type IntegrationsSearch = { tab?: IntegrationTab }
 
- 
+
 export const Route = createFileRoute(route.settings.integrations)({
   component: IntegrationsSettings,
   validateSearch: (search: Record<string, unknown>): IntegrationsSearch =>
