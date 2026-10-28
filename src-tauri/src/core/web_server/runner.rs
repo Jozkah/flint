@@ -42,7 +42,7 @@ use hyper::{header, Response};
 use serde_json::{json, Value};
 use tauri_plugin_agent_tools::tools::gate::PermissionDecision;
 use tokio::sync::{broadcast, mpsc, oneshot};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 
 use super::agent::Fail;
@@ -448,7 +448,7 @@ impl Runner {
     /// caller then serves the finite replay of what is on disk).
     pub fn tail(&self, id: &str, after: u64) -> Option<Resp> {
         let live = self.get(id)?;
-        let (tx, rx) = mpsc::unbounded_channel::<Bytes>();
+        let (tx, rx) = mpsc::channel::<Bytes>(super::events::SSE_QUEUE);
         let shared = live.shared.clone();
         let id = id.to_owned();
         // Subscribe and snapshot under one lock; see `Shared::publish`.
@@ -478,12 +478,12 @@ impl Runner {
             (events, backlog, preface + hello.as_str(), after)
         };
         tokio::spawn(async move {
-            if tx.send(Bytes::from(hello)).is_err() {
+            if !super::events::put(&tx, Bytes::from(hello)).await {
                 return;
             }
             for (seq, json) in backlog {
                 last = seq;
-                if tx.send(Bytes::from(sse_frame(seq, &json))).is_err() {
+                if !super::events::put(&tx, Bytes::from(sse_frame(seq, &json))).await {
                     return;
                 }
             }
@@ -511,7 +511,7 @@ impl Runner {
                             Bytes::from(buffer)
                         }
                         Err(broadcast::error::RecvError::Closed) => {
-                            let _ = tx.send(Bytes::from_static(b"event: end\ndata: {\"reason\":\"closed\"}\n\n"));
+                            let _ = tx.try_send(Bytes::from_static(b"event: end\ndata: {\"reason\":\"closed\"}\n\n"));
                             break;
                         }
                     },
@@ -519,13 +519,13 @@ impl Runner {
                 };
                 // A client that went away ends the task here, on the next
                 // event or heartbeat.
-                if tx.send(chunk).is_err() {
+                if !super::events::offer(&tx, chunk) {
                     break;
                 }
             }
         });
         let body = StreamBody::new(
-            UnboundedReceiverStream::new(rx).map(|bytes| Ok::<_, Infallible>(Frame::data(bytes))),
+            ReceiverStream::new(rx).map(|bytes| Ok::<_, Infallible>(Frame::data(bytes))),
         );
         let mut response = Response::new(body.boxed_unsync());
         let headers = response.headers_mut();
