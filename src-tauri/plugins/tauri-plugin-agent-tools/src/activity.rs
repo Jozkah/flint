@@ -667,14 +667,24 @@ mod legacy_trim_tests {
 /// The legacy file's events, in file order. A line that does not parse costs
 /// that line only.
 pub fn read_legacy(data_folder: &Path) -> Vec<ToolActivityEvent> {
+    read_legacy_for(data_folder, None)
+}
+
+/// [`read_legacy`] for one session: a line that does not name the session as
+/// a JSON string anywhere is skipped before it is parsed, so a session read
+/// over a large legacy file does not deserialise every other session's lines.
+fn read_legacy_for(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityEvent> {
     let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
         return Vec::new();
     };
+    let needle = session.and_then(|s| serde_json::to_string(s).ok());
     std::io::BufReader::new(file)
         .lines()
         .map_while(Result::ok)
         .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(&l).ok())
+        .filter(|l| needle.as_deref().is_none_or(|n| l.contains(n)))
+        .filter_map(|l| serde_json::from_str::<ToolActivityEvent>(&l).ok())
+        .filter(|e| session.is_none_or(|s| e.session == s))
         .collect()
 }
 
@@ -749,9 +759,8 @@ pub fn read_all(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityEv
         .iter()
         .map(|e| (e.session.clone(), e.call.clone(), e.event_type, e.phase))
         .collect();
-    let mut out: Vec<ToolActivityEvent> = read_legacy(data_folder)
+    let mut out: Vec<ToolActivityEvent> = read_legacy_for(data_folder, session)
         .into_iter()
-        .filter(|e| session.is_none_or(|s| e.session == s))
         .filter(|e| !known.contains(&(e.session.clone(), e.call.clone(), e.event_type, e.phase)))
         .collect();
     out.extend(canonical);
