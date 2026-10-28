@@ -14,6 +14,7 @@ import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
 import { archiveEnabled, trackArchiveWork } from '@/lib/archive'
 
@@ -60,6 +61,29 @@ type ThreadState = {
   deleteAllThreadsByProject: (projectId: string) => void
   searchIndex: Fzf<Thread[]> | null
 }
+
+// Drops every per-thread entry the sibling stores keep for a deleted thread,
+// so none of them outlives it (a tool grant for a gone thread would otherwise
+// sit in the persisted record forever).
+const forgetThreadState = (threadId: string) => {
+  useAgentMode.getState().removeThread(threadId)
+  useChatSessions.getState().removeSession(threadId)
+  useAppState.getState().clearThreadState(threadId)
+  // The chat's model-setting overrides are keyed by thread id; left
+  // behind they would sit in the record forever.
+  useModelOverrides.getState().dropThread(threadId)
+  useThreadToolGrants.getState().dropThread(threadId)
+  useToolApproval.getState().revokeThread(threadId)
+}
+
+// The selected thread id, or undefined when that thread was just deleted.
+const stillSelected = (
+  currentThreadId: string | undefined,
+  deletedIds: string[]
+): string | undefined =>
+  currentThreadId && deletedIds.includes(currentThreadId)
+    ? undefined
+    : currentThreadId
 
 // Helper function to clean up vector DB collection for a thread
 const cleanupVectorDB = async (threadId: string) => {
@@ -250,13 +274,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [threadId]: _, ...remainingThreads } = state.threads
 
-      useAgentMode.getState().removeThread(threadId)
-      useChatSessions.getState().removeSession(threadId)
-      useAppState.getState().clearThreadState(threadId)
-      // The chat's model-setting overrides are keyed by thread id; left
-      // behind they would sit in the record forever.
-      useModelOverrides.getState().dropThread(threadId)
-      useThreadToolGrants.getState().dropThread(threadId)
+      forgetThreadState(threadId)
       cleanupThreadArtifacts(threadId, permanent)
       backend = deleteThreadBackend(threadId, permanent)
 
@@ -294,6 +312,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
       // Delete threads and clean up their out-of-store artifacts
       threadsToDeleteIds.forEach((threadId) => {
+        forgetThreadState(threadId)
         cleanupThreadArtifacts(threadId)
         deleteThreadBackend(threadId)
       })
@@ -309,6 +328,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
       return {
         threads: remainingThreads,
+        currentThreadId: stillSelected(state.currentThreadId, threadsToDeleteIds),
         searchIndex: new Fzf<Thread[]>(
           Object.values(remainingThreads).filter(
             (t) => t.id !== TEMPORARY_CHAT_ID && t.title
@@ -325,9 +345,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       const allThreadIds = Object.keys(state.threads)
 
       allThreadIds.forEach((threadId) => {
-        useAgentMode.getState().removeThread(threadId)
-        useChatSessions.getState().removeSession(threadId)
-        useAppState.getState().clearThreadState(threadId)
+        forgetThreadState(threadId)
         cleanupThreadArtifacts(threadId)
         deleteThreadBackend(threadId)
       })
@@ -352,8 +370,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       )
 
       threadsToDeleteIds.forEach((threadId) => {
-        useChatSessions.getState().removeSession(threadId)
-        useAppState.getState().clearThreadState(threadId)
+        forgetThreadState(threadId)
         cleanupThreadArtifacts(threadId)
         deleteThreadBackend(threadId)
       })
@@ -371,6 +388,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
       return {
         threads: remainingThreads,
+        currentThreadId: stillSelected(state.currentThreadId, threadsToDeleteIds),
         searchIndex: new Fzf<Thread[]>(Object.values(remainingThreads).filter(t => t.id !== TEMPORARY_CHAT_ID && t.title), {
           selector: (item: Thread) => item.title ?? '',
         }),
