@@ -228,6 +228,7 @@ export const WidgetCard = memo(function WidgetCard({
         onClick={() => {
           setStalled(false)
           setPainted(false)
+          setError(null)
           setRunKey((n) => n + 1)
         }}
       >
@@ -247,6 +248,7 @@ export const WidgetCard = memo(function WidgetCard({
         variant="outline"
         onClick={() => {
           setParked(false)
+          setError(null)
           setRunKey((n) => n + 1)
         }}
       >

@@ -9,6 +9,11 @@ pub enum ErrorCode {
     ModelLoadTimedOut,
     ModelArchNotSupported,
     OutOfMemory,
+    /// A running server died of a GPU allocation failure on one request
+    /// (mlx-server has no chunked prefill, so a long prompt can do this).
+    PromptOutOfMemory,
+    /// A running server exited for any other reason.
+    EngineStopped,
     MlxProcessError,
     IoError,
     InternalError,
@@ -29,6 +34,24 @@ impl MlxError {
             code,
             message,
             details,
+        }
+    }
+
+    /// Why a server that had finished loading is gone. Out-of-memory here
+    /// means one prompt was too large for the GPU, not the model itself.
+    pub fn from_crash(exit_status: &str, stderr: &str) -> Self {
+        let details = Some(format!("Exit status: {exit_status}\n\nStderr:\n{stderr}"));
+        match Self::from_stderr(stderr).code {
+            ErrorCode::OutOfMemory => Self::new(
+                ErrorCode::PromptOutOfMemory,
+                "The model ran out of GPU memory on this prompt; try a shorter context or a smaller model.".into(),
+                details,
+            ),
+            _ => Self::new(
+                ErrorCode::EngineStopped,
+                format!("The MLX server stopped unexpectedly ({exit_status})."),
+                details,
+            ),
         }
     }
 

@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Ten model używa typu kwantyzacji, którego backend GPU nie obsługuje. Pobierz inną kwantyzację, na przykład Q4_K_M, lub wyłącz odciążanie na GPU.",
     "ENGINE_STOPPED": "Silnik nieoczekiwanie się zatrzymał. Wczytaj model ponownie, aby go uruchomić; jeśli problem się powtarza, powód widać w ostatnim wyniku silnika poniżej.",
     "OUT_OF_MEMORY": "Brakuje pamięci do uruchomienia tego modelu. Zwykle pomaga mniejszy model lub mniejszy rozmiar kontekstu.",
+    "PROMPT_OUT_OF_MEMORY": "Modelowi zabrakło pamięci GPU przy tym prompcie, więc jego serwer się zatrzymał. Spróbuj krótszego kontekstu lub mniejszego modelu; następna wiadomość uruchomi serwer ponownie.",
     "INVALID_ARGUMENT": "Jedno z ustawień modelu jest nieprawidłowe.",
     "IO_ERROR": "Nie udało się odczytać ani zapisać pliku podczas uruchamiania modelu.",
     "INTERNAL_ERROR": "Coś poszło nie tak wewnątrz Flint podczas uruchamiania modelu."

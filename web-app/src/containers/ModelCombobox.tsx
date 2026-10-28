@@ -91,11 +91,14 @@ function useDropdownPosition(
     }
 
     window.addEventListener('resize', handleResize)
-    window.addEventListener('scroll', handleResize)
+    window.addEventListener('scroll', handleResize, {
+      capture: true,
+      passive: true,
+    })
 
     return () => {
       window.removeEventListener('resize', handleResize)
-      window.removeEventListener('scroll', handleResize)
+      window.removeEventListener('scroll', handleResize, true)
     }
   }, [open, updateDropdownPosition])
 

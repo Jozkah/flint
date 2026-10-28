@@ -378,7 +378,15 @@ Current date: {{current_date}}`
     return assistantsData.length > 0 ? assistantsData : [this.defaultAssistant]
   }
 
+  /** An id becomes a folder name, so it must not be able to leave `assistants/`. */
+  private assertSafeId(id: unknown): asserts id is string {
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/.test(id)) {
+      throw new Error(`Invalid assistant id: ${String(id)}`)
+    }
+  }
+
   async createAssistant(assistant: Assistant): Promise<void> {
+    this.assertSafeId(assistant.id)
     const assistantPath = await joinPath([
       'file://assistants',
       assistant.id,
@@ -392,6 +400,7 @@ Current date: {{current_date}}`
   }
 
   async deleteAssistant(assistant: Assistant): Promise<void> {
+    this.assertSafeId(assistant.id)
     const assistantPath = await joinPath([
       'file://assistants',
       assistant.id,

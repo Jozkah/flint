@@ -2742,7 +2742,11 @@
     "noVision": "このモデルは画像を読み取れません",
     "details": "{{name}} の詳細",
     "previewLoading": "プレビューを読み込んでいます…",
-    "previewNone": "プレビューはありません"
+    "previewNone": "プレビューはありません",
+    "pagesAsImages": "ページを画像として送信",
+    "pagesAsImagesHint": "この PDF のページを画像として送信し、モデルがスキャン・グラフ・レイアウトを読めるようにします",
+    "pdfPagesCut": "{{name}} の全 {{total}} ページのうち最初の {{sent}} ページを画像として送信しました",
+    "pdfScannedAsImages": "{{name}} にはテキストがないため、ページを画像として送信しました"
   },
   "fileViewer": {
     "openFull": "完全なプレビューを開く",
@@ -3087,5 +3091,10 @@
     "reject": "却下",
     "applying": "適用中…",
     "applySelected": "選択を適用"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

@@ -250,5 +250,9 @@
     "remove": "Entfernen",
     "replace": "Gespeichert. Tippe, um zu ersetzen.",
     "enter": "Nicht gesetzt"
-  }
+  },
+  "skippedLinkedTitle": "Übersprungene Modelle: {{count}}",
+  "skippedLinkedBody": "Diese Modelle liegen hinter einer Verknüpfung, die aus dem Datenordner von Flint herausführt, daher hat Flint sie nicht geladen:",
+  "skippedLinkedHowTo": "Um eines zu nutzen, importiere die GGUF-Datei über ihren Pfad (Flint lässt sie, wo sie ist), oder verschiebe die Dateien zurück in den Modellordner.",
+  "skippedLinkedDismiss": "Schließen"
 }

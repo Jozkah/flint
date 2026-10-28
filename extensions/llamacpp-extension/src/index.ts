@@ -1925,8 +1925,22 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return kwargs
   }
 
+  /**
+   * Models the last `list()` left out because their model.yml resolves outside
+   * the data folder (janhq/jan#8374: a junction or symlink under
+   * `llamacpp/models` pointing at another drive). `read_yaml` refuses those on
+   * purpose; this only records them so the UI can say why they are missing.
+   */
+  private skippedLinkedModels: { id: string; path: string; reason: 'outside_data_folder' }[] = []
+
+  getSkippedModels(): { id: string; path: string; reason: 'outside_data_folder' }[] {
+    return [...this.skippedLinkedModels]
+  }
+
   // Implement the required LocalProvider interface methods
   override async list(): Promise<modelInfo[]> {
+    const skipped: { id: string; path: string; reason: 'outside_data_folder' }[] = []
+    this.skippedLinkedModels = skipped
     const modelsDir = await joinPath([await this.getProviderPath(), 'models'])
     if (!(await fs.existsSync(modelsDir))) {
       await fs.mkdir(modelsDir)
@@ -2031,6 +2045,13 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         modelInfos.push(modelInfo)
       } catch (err) {
         logger.warn(`list: skipping model ${modelId}: ${String(err)}`)
+        if (String(err).includes('outside of Jan data folder')) {
+          skipped.push({
+            id: modelId,
+            path: await joinPath([modelsDir, modelId]),
+            reason: 'outside_data_folder',
+          })
+        }
       }
     }
 

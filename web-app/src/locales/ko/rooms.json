@@ -646,5 +646,6 @@
     "ranTools": "이번 턴 앞부분에서 이미 도구를 실행했습니다({{ran}}). {{reason}} 파일이나 상태를 변경한 작업은 반복하지 말고, 아직 필요한 것만 다시 읽으세요.",
     "ranToolsDropped": "그 출력은 컨텍스트 창에 맞추기 위해 삭제되었습니다.",
     "ranToolsRetry": "이후 공급자에서 오류가 발생하여 요청을 다시 시도하는 중입니다."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

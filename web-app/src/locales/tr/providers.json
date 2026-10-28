@@ -250,5 +250,9 @@
     "remove": "Kaldır",
     "replace": "Kaydedildi. Değiştirmek için yazın.",
     "enter": "Ayarlanmadı"
-  }
+  },
+  "skippedLinkedTitle": "Atlanan modeller: {{count}}",
+  "skippedLinkedBody": "Bu modeller Flint'in veri klasörünün dışını gösteren bir bağlantı üzerinden saklandığı için Flint bunları yüklemedi:",
+  "skippedLinkedHowTo": "Birini kullanmak için GGUF dosyasını yoluyla içe aktarın (Flint dosyayı yerinde bırakır) veya dosyaları model klasörüne geri taşıyın.",
+  "skippedLinkedDismiss": "Kapat"
 }

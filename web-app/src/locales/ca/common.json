@@ -2793,7 +2793,11 @@
     "noVision": "Aquest model no pot llegir imatges",
     "details": "Detalls de {{name}}",
     "previewLoading": "Carregant la previsualització…",
-    "previewNone": "No hi ha cap previsualització disponible"
+    "previewNone": "No hi ha cap previsualització disponible",
+    "pagesAsImages": "Envia les pàgines com a imatges",
+    "pagesAsImagesHint": "Envia les pàgines d'aquest PDF com a imatges perquè el model vegi escanejats, gràfics i disseny",
+    "pdfPagesCut": "S'han enviat les primeres {{sent}} de {{total}} pàgines de {{name}} com a imatges",
+    "pdfScannedAsImages": "{{name}} no té text, així que les seves pàgines s'han enviat com a imatges"
   },
   "fileViewer": {
     "openFull": "Obre la vista prèvia completa",
@@ -3156,5 +3160,10 @@
     "reject": "Rebutja",
     "applying": "Aplicant…",
     "applySelected": "Aplica la selecció"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }
