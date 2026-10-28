@@ -81,10 +81,20 @@ function linkifyMentions(text: string, colors: Map<string, string>): string {
   })
 }
 
+/** The href is model-written text: a malformed escape (`%`) must not throw. */
+function safeDecode(value: string): string | null {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
+}
+
 const MentionAnchor = (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
   const href = props.href ?? ''
   if (href.startsWith(MENTION_PREFIX)) {
-    const color = decodeURIComponent(href.slice(MENTION_PREFIX.length))
+    const color = safeDecode(href.slice(MENTION_PREFIX.length))
+    if (color === null) return <span data-room-mention>{props.children}</span>
     return (
       <span className="font-semibold" style={{ color }} data-room-mention>
         {props.children}
