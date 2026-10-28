@@ -555,7 +555,8 @@ mod tests {
 
             let configs = load_global_config().expect("load");
             let cfg = configs.get(PROVIDER).expect("tokamak present");
-            assert_eq!(cfg.api_key.as_deref(), Some("tk-1"));
+            assert_eq!(cfg.api_key, None, "the key is in the credential store, not config.toml");
+            assert_eq!(stored_api_key().as_deref(), Some("tk-1"));
             assert_eq!(cfg.base_url.as_deref(), Some(BASE_URL));
             assert_eq!(cfg.models, vec!["m-a".to_string(), "m-b".to_string()]);
             assert!(super::super::providers::is_cli_reachable(cfg));
@@ -612,11 +613,7 @@ mod tests {
             let login = persist("tk-1", Vec::new()).expect("persist");
             assert!(login.models.is_empty());
             assert_eq!(login.default_model, None);
-            let configs = load_global_config().expect("load");
-            assert_eq!(
-                configs.get(PROVIDER).unwrap().api_key.as_deref(),
-                Some("tk-1")
-            );
+            assert_eq!(stored_api_key().as_deref(), Some("tk-1"));
         });
     }
 
@@ -627,7 +624,7 @@ mod tests {
             persist("tk-new", vec!["m-c".into()]).expect("second");
             let configs = load_global_config().expect("load");
             let cfg = configs.get(PROVIDER).unwrap();
-            assert_eq!(cfg.api_key.as_deref(), Some("tk-new"));
+            assert_eq!(stored_api_key().as_deref(), Some("tk-new"));
             assert_eq!(cfg.models, vec!["m-c".to_string()]);
         });
     }
