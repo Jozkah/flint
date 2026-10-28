@@ -3946,6 +3946,13 @@ fn confined_screenshot_document(bytes: &[u8], svg: bool) -> Result<Vec<u8>, Stri
 /// slashes and forward slashes (`file:///C:/...`); `file://C:\...` names a
 /// host, which Chrome can't load (Jozkah/jan#242). `%`, spaces and `#` are
 /// escaped so the path survives as one URL.
+/// Whether the screenshot's headless Chrome is started with `--no-sandbox`:
+/// only when it runs as root (Chrome refuses to start sandboxed there) or the
+/// user set `FLINT_BROWSER_NO_SANDBOX`.
+fn screenshot_needs_no_sandbox(as_root: bool, opted_out: bool) -> bool {
+    as_root || opted_out
+}
+
 fn local_file_url(path: &Path) -> String {
     let raw = path.to_string_lossy();
     let escaped = raw.replace('%', "%25").replace(' ', "%20").replace('#', "%23");
@@ -4032,8 +4039,15 @@ pub async fn render_html_png(
     // stops headless Chrome from writing the screenshot at all.
     let resolver_quoted = shell_quote("--host-resolver-rules=MAP * ~NOTFOUND");
     let bypass_quoted = shell_quote("--proxy-bypass-list=<-loopback>");
+    // Chrome keeps its own sandbox unless it cannot start with one (running as
+    // root, typically a container) or the user opted out.
+    let no_sandbox = screenshot_needs_no_sandbox(
+        crate::browser::confine::running_as_root(),
+        std::env::var_os("FLINT_BROWSER_NO_SANDBOX").is_some(),
+    );
+    let no_sandbox_flag = if no_sandbox { " --no-sandbox" } else { "" };
     let cmd = format!(
-        "{chrome_quoted} --headless=new --disable-gpu --hide-scrollbars --no-sandbox \
+        "{chrome_quoted} --headless=new --disable-gpu --hide-scrollbars{no_sandbox_flag} \
          --disable-dev-shm-usage --no-first-run --user-data-dir={profile_quoted} \
          --proxy-server=127.0.0.1:9 {bypass_quoted} {resolver_quoted} \
          --disable-background-networking --disable-component-update --no-pings \
@@ -4053,7 +4067,6 @@ pub async fn render_html_png(
             "--headless=new",
             "--disable-gpu",
             "--hide-scrollbars",
-            "--no-sandbox",
             "--disable-dev-shm-usage",
             "--no-first-run",
             "--proxy-server=127.0.0.1:9",
@@ -4063,8 +4076,11 @@ pub async fn render_html_png(
             "--disable-component-update",
             "--no-pings",
         ])
-        .arg(format!("--user-data-dir={}", profile.display()))
-        .arg(format!("--force-device-scale-factor={scale}"))
+        .arg(format!("--user-data-dir={}", profile.display()));
+        if no_sandbox {
+            c.arg("--no-sandbox");
+        }
+        c.arg(format!("--force-device-scale-factor={scale}"))
         .arg(format!("--window-size={width},{height}"))
         .arg(format!("--screenshot={}", shot.display()))
         .arg(&file_url);
@@ -9536,6 +9552,13 @@ export function verifyPassword(password: string, stored: string) {
         crate::browser_discovery::restore_chosen_browser(before);
         assert_eq!(found.as_deref(), Some(exe.as_path()));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn screenshot_args_no_nosandbox_by_default() {
+        assert!(!screenshot_needs_no_sandbox(false, false));
+        assert!(screenshot_needs_no_sandbox(true, false));
+        assert!(screenshot_needs_no_sandbox(false, true));
     }
 
     /// Jozkah/jan#242: a Windows drive path becomes a three-slash URL with
