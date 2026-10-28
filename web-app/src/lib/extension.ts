@@ -258,18 +258,29 @@ export class ExtensionManager {
   /**
    * Install a new extension.
    * @param {Array.<installOptions | string>} extensions A list of NPM specifiers, or installation configuration objects.
-   * @returns {Promise.<Array.<Extension> | false>} extension as defined by the main process. Has property cancelled set to true if installation was cancelled in the main process.
+   * @returns {Promise.<Array.<Extension> | undefined>} the installed and activated extensions, or undefined outside a window.
    */
   async install(extensions: ExtensionManifest[]) {
     if (typeof window === 'undefined') {
       return
     }
     const res = await getServiceHub().core().installExtension(extensions)
-    return res.map(async (ext: ExtensionManifest) => {
-      const extension = new Extension(ext.name, ext.url)
-      await this.activateExtension(extension)
-      return extension
-    })
+    // Awaited: a failed activation rejects the install instead of going
+    // unhandled, and callers get Extensions, not promises.
+    return Promise.all(
+      res.map(async (ext: ExtensionManifest) => {
+        const extension = new Extension(
+          ext.url,
+          ext.name,
+          ext.productName,
+          ext.active,
+          ext.description,
+          ext.version
+        )
+        await this.activateExtension(extension)
+        return extension
+      })
+    )
   }
 
   /**

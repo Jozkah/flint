@@ -173,8 +173,24 @@ describe('ExtensionManager - coverage', () => {
       mockInstallExtension.mockResolvedValue([
         { url: 'http://new', name: 'new-ext' },
       ])
+      const activate = vi.spyOn(manager, 'activateExtension').mockResolvedValue(undefined)
       const result = await manager.install([{ url: 'http://new', name: 'new-ext' }])
-      expect(result).toBeDefined()
+      expect(result).toHaveLength(1)
+      expect(result![0].url).toBe('http://new')
+      expect(result![0].name).toBe('new-ext')
+      expect(activate).toHaveBeenCalledTimes(1)
+      activate.mockRestore()
+    })
+
+    it('rejects when an activation fails', async () => {
+      mockInstallExtension.mockResolvedValue([{ url: 'http://bad', name: 'bad-ext' }])
+      const activate = vi
+        .spyOn(manager, 'activateExtension')
+        .mockRejectedValue(new Error('boom'))
+      await expect(
+        manager.install([{ url: 'http://bad', name: 'bad-ext' }])
+      ).rejects.toThrow('boom')
+      activate.mockRestore()
     })
   })
 
