@@ -5593,6 +5593,20 @@ fn accept_quoted_path_hint_replaces_whole_quoted_token() {
 }
 
 #[test]
+fn accept_unterminated_quoted_hint_keeps_text_after_the_cursor() {
+    let mut app = test_app();
+    app.input = r#"look @"src/fo and more"#.into();
+    app.cursor = r#"look @"src/fo"#.len();
+    app.path_hints = vec![super::super::PathHintItem {
+        path: "src/foo.rs".into(),
+        name: "foo.rs".into(),
+        is_dir: false,
+    }];
+    app.accept_path_hint();
+    assert_eq!(app.input, r#"look @"src/foo.rs" and more"#);
+}
+
+#[test]
 fn accept_completion_with_space_quotes() {
     let mut app = test_app();
     app.input = "use @rep".into();
