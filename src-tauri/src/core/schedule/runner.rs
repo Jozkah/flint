@@ -271,6 +271,9 @@ pub fn tick(store: &Store, data_folder: &Path, launcher: &dyn Launcher, now: Dat
         report.errors.push(e.message);
         return report;
     }
+    for id in &due.clock_notices {
+        log::warn!("schedule: the saved clock position for task {id} was far in the future; reset to now");
+    }
     for skip in &due.skipped {
         let Some(task) = tasks.iter().find(|t| t.id == skip.task_id) else { continue };
         let why = match skip.reason {
