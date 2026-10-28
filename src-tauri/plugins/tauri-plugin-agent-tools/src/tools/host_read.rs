@@ -46,6 +46,16 @@ pub const QUERIES: &[&str] = &[
     "printers",
 ];
 
+/// Queries that read private data and so are asked about every time: other
+/// programs' registry settings, window titles, per-process connections,
+/// scheduled task command lines, startup entries and environment variable names.
+pub fn is_private_query(query: &str) -> bool {
+    matches!(
+        query,
+        "registry" | "windows" | "network" | "scheduled_tasks" | "env_names" | "startup_items"
+    )
+}
+
 /// A value name that is never shown, whatever key it sits in.
 const SECRET_NAMES: &str = "(?i)pass|secret|token|credential|api.?key|private|cookie|session|auth";
 
@@ -476,6 +486,17 @@ mod tests {
 
     fn env_of(plan: &Plan, key: &str) -> Option<String> {
         plan.env.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
+    }
+
+    #[test]
+    fn host_query_registry_prompts() {
+        for q in ["registry", "windows", "network", "scheduled_tasks", "env_names", "startup_items"] {
+            assert!(is_private_query(q), "{q}");
+            assert!(QUERIES.contains(&q), "{q}");
+        }
+        for q in ["system", "disks", "ports", "processes"] {
+            assert!(!is_private_query(q), "{q}");
+        }
     }
 
     #[test]
