@@ -5,8 +5,8 @@ import { createFakeApi, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomComposer } from '../RoomComposer'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 vi.mock('@/lib/platform/utils', async (orig) => ({
   ...(await orig<typeof import('@/lib/platform/utils')>()),

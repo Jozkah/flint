@@ -31,8 +31,10 @@ vi.mock('@/containers/HeaderPage', () => ({
   default: ({ children }: { children?: React.ReactNode }) => <div data-testid="header-page">{children}</div>,
 }))
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('@/containers/rooms/__tests__/roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }) }
+  const u = await import('@/containers/rooms/__tests__/roomsT')
+  const i18n = { language: 'en', t: u.t }
+  const hook = { t: u.t, i18n }
+  return { useTranslation: () => hook, i18n }
 })
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('@/containers/rooms/__tests__/roomsTestUtils')

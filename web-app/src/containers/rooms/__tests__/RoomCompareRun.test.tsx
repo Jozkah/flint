@@ -15,8 +15,8 @@ import { RoomTranscript } from '../RoomTranscript'
 import { RoomEditor } from '../RoomEditor'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('./roomsTestUtils')

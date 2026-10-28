@@ -80,14 +80,14 @@ vi.mock('@tanstack/react-router', () => ({
   Link: (props: any) => <a {...props} />,
 }))
 
-vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({
-    t: (k: string, opts?: Record<string, unknown>) =>
-      opts && typeof opts === 'object'
-        ? `${k}#${Object.values(opts).join(',')}`
-        : k,
-  }),
-}))
+vi.mock('@/i18n/react-i18next-compat', () => {
+  const t = (k: string, opts?: Record<string, unknown>) =>
+    opts && typeof opts === 'object'
+      ? `${k}#${Object.values(opts).join(',')}`
+      : k
+  const hook = { t }
+  return { useTranslation: () => hook, i18n: { t } }
+})
 
 vi.mock('sonner', () => ({ toast: h.toast }))
 
