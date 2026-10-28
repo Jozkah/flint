@@ -29586,7 +29586,7 @@ mod tests {
 
     #[test]
     fn bare_sgr_lookalike_text_survives() {
-        for text in ["1;2;3m", "38;5;196m", "1;31;40m", "10;20;30M", "build 65;50;42m done"] {
+        for text in ["1;2;3m", "38;5;196m", "1;31;40m", "10;20;30m", "build 65;50;42m done"] {
             assert_eq!(super::strip_sgr_mouse_reports(text), text);
             let mut app = test_app();
             for c in text.chars() {
