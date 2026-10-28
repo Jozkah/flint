@@ -1383,6 +1383,7 @@
       "settleFailed": "無法解決該衝突",
       "forgotten": "已忘記記憶",
       "forgetFailed": "無法忘記該記憶",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "無法變更該記憶",
       "updated": "記憶已更新",
       "updateFailed": "無法更新該記憶",

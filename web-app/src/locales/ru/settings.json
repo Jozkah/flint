@@ -1417,6 +1417,7 @@
       "settleFailed": "Не удалось разрешить конфликт",
       "forgotten": "Воспоминание забыто",
       "forgetFailed": "Не удалось забыть воспоминание",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Не удалось изменить воспоминание",
       "updated": "Воспоминание обновлено",
       "updateFailed": "Не удалось обновить воспоминание",

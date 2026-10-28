@@ -1556,6 +1556,7 @@
       "settleFailed": "충돌을 해결할 수 없습니다",
       "forgotten": "메모리를 삭제했습니다",
       "forgetFailed": "메모리를 삭제할 수 없습니다",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "메모리를 변경할 수 없습니다",
       "updated": "메모리를 업데이트했습니다",
       "updateFailed": "메모리를 업데이트할 수 없습니다",

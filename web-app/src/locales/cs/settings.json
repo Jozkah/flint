@@ -1417,6 +1417,7 @@
       "settleFailed": "Tento rozpor se nepodařilo vyřešit",
       "forgotten": "Vzpomínka zapomenuta",
       "forgetFailed": "Tuto vzpomínku se nepodařilo zapomenout",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Tuto vzpomínku se nepodařilo změnit",
       "updated": "Vzpomínka aktualizována",
       "updateFailed": "Tuto vzpomínku se nepodařilo aktualizovat",

@@ -1559,6 +1559,7 @@
       "settleFailed": "No se pudo resolver ese conflicto",
       "forgotten": "Recuerdo olvidado",
       "forgetFailed": "No se pudo olvidar ese recuerdo",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "No se pudo cambiar ese recuerdo",
       "updated": "Recuerdo actualizado",
       "updateFailed": "No se pudo actualizar ese recuerdo",

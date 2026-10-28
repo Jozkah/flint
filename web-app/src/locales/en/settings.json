@@ -1383,6 +1383,7 @@
       "settleFailed": "Could not settle that conflict",
       "forgotten": "Memory forgotten",
       "forgetFailed": "Could not forget that memory",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Could not change that memory",
       "updated": "Memory updated",
       "updateFailed": "Could not update that memory",

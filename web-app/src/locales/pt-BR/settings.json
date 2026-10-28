@@ -1415,6 +1415,7 @@
       "settleFailed": "Não foi possível resolver esse conflito",
       "forgotten": "Memória esquecida",
       "forgetFailed": "Não foi possível esquecer essa memória",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Não foi possível alterar essa memória",
       "updated": "Memória atualizada",
       "updateFailed": "Não foi possível atualizar essa memória",

@@ -1383,6 +1383,7 @@
       "settleFailed": "Không thể giải quyết mâu thuẫn đó",
       "forgotten": "Đã quên ký ức",
       "forgetFailed": "Không thể quên ký ức đó",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Không thể thay đổi ký ức đó",
       "updated": "Đã cập nhật ký ức",
       "updateFailed": "Không thể cập nhật ký ức đó",
