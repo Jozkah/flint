@@ -2020,6 +2020,11 @@ struct App {
     slash_matches_cache: RefCell<Option<(String, Vec<SlashMatch>)>>,
     /// File-path hint entries matching the current `@query` in the input buffer.
     path_hints: Vec<PathHintItem>,
+    /// An edit asked for fresh hints. The search runs at most once per tick,
+    /// off the render loop, instead of once per keystroke on it.
+    path_hints_dirty: bool,
+    /// Bumped by every edit; a search result for an older number is dropped.
+    path_hint_gen: u64,
     /// Highlighted row in the path-hint popup (clamped to matches).
     path_hint_selected: usize,
     /// Set by Esc to dismiss the path-hint popup; cleared on next char edit.
@@ -2604,6 +2609,8 @@ impl App {
             slash_matches_cache: RefCell::new(None),
             slash_catalog,
             path_hints: Vec::new(),
+            path_hints_dirty: false,
+            path_hint_gen: 0,
             path_hint_selected: 0,
             path_hint_dismissed: false,
             status: Status::Idle,
@@ -4000,23 +4007,47 @@ impl App {
         Some(after_at.to_string())
     }
 
-    /// Refresh path hints from the input buffer: detect `@query`, search files.
+    /// An edit happened: note that the hints need refreshing. Cheap -- the
+    /// directory search itself is [`App::take_path_hint_request`] plus
+    /// [`search_path_hints`], run off the loop once per tick. Clearing is
+    /// immediate, so a popup never outlives its `@` token.
     fn refresh_path_hints(&mut self) {
-        if self.path_hint_dismissed || self.status != Status::Idle {
+        if self.path_hint_dismissed || self.status != Status::Idle || self.path_hint_query().is_none() {
             self.path_hints.clear();
+            self.path_hints_dirty = false;
+            self.path_hint_gen += 1;
             return;
         }
-        let Some(query) = self.path_hint_query() else {
-            self.path_hints.clear();
-            return;
-        };
+        self.path_hints_dirty = true;
+        self.path_hint_gen += 1;
+    }
 
-        let entries = path_refs::search_files_sync(self.work_root(), &query, 30);
-        self.path_hints = entries
-            .into_iter()
-            .map(|(path, name, is_dir)| PathHintItem { path, name, is_dir })
-            .collect();
+    /// The search an edit is owed, if any: `(generation, root, query)`. Taking
+    /// it clears the flag, so a burst of edits becomes one search per tick.
+    fn take_path_hint_request(&mut self) -> Option<(u64, PathBuf, String)> {
+        if !std::mem::take(&mut self.path_hints_dirty) {
+            return None;
+        }
+        let query = self.path_hint_query()?;
+        Some((self.path_hint_gen, self.work_root().to_path_buf(), query))
+    }
+
+    /// Install a finished search, unless the buffer has moved on since.
+    fn apply_path_hints(&mut self, generation: u64, items: Vec<PathHintItem>) {
+        if generation != self.path_hint_gen || self.path_hint_dismissed || self.status != Status::Idle {
+            return;
+        }
+        self.path_hints = items;
         self.path_hint_selected = 0;
+    }
+
+    /// Search now and install the result (tests, and callers with no loop).
+    #[cfg(test)]
+    fn flush_path_hints(&mut self) {
+        if let Some((generation, root, query)) = self.take_path_hint_request() {
+            let items = search_path_hints(&root, &query);
+            self.apply_path_hints(generation, items);
+        }
     }
 
     /// Accept the highlighted path hint: replace the `@query` token with the
@@ -8743,6 +8774,35 @@ async fn await_login_begin(
 /// is a poll, not every tick.
 const BRANCH_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
+/// The hint rows for an `@query`, from a blocking directory read. A query that
+/// climbs out of the project (`..`) gets none: hints are for the project.
+fn search_path_hints(root: &std::path::Path, query: &str) -> Vec<PathHintItem> {
+    if query.split(['/', '\\']).any(|part| part == "..") {
+        return Vec::new();
+    }
+    path_refs::search_files_sync(root, query, 30)
+        .into_iter()
+        .map(|(path, name, is_dir)| PathHintItem { path, name, is_dir })
+        .collect()
+}
+
+type PathHintTask = tokio::task::JoinHandle<(u64, Vec<PathHintItem>)>;
+
+fn spawn_path_hint_search(generation: u64, root: PathBuf, query: String) -> PathHintTask {
+    tokio::task::spawn_blocking(move || (generation, search_path_hints(&root, &query)))
+}
+
+/// Await the in-flight hint search once, clearing the slot. Same cancel-safe
+/// borrow as `await_branch_poll`; pends forever when idle.
+async fn await_path_hints(task: &mut Option<PathHintTask>) -> Option<(u64, Vec<PathHintItem>)> {
+    let joined = match task.as_mut() {
+        Some(h) => h.await,
+        None => return pending().await,
+    };
+    *task = None;
+    joined.ok()
+}
+
 /// Re-read the current git branch off-loop (a blocking `git` call), only when
 /// no poll is already in flight. A no-op when the project isn't a git repo.
 fn spawn_branch_poll(project_root: &std::path::Path) -> tokio::task::JoinHandle<Option<String>> {
@@ -9224,6 +9284,8 @@ async fn chat_loop<B: Backend>(
     let mut branch_task: Option<tokio::task::JoinHandle<Option<String>>> = None;
     let mut branch_poll = tokio::time::interval(BRANCH_POLL_INTERVAL);
     branch_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // `@path` hints: edits mark them dirty, the 50 ms tick starts one search.
+    let mut hint_task: Option<PathHintTask> = None;
 
     // Nothing to say when there is no seed message: the splash already invites
     // the first one (`Banner::awaiting_first_message`).
@@ -9477,6 +9539,9 @@ async fn chat_loop<B: Backend>(
 
         tokio::select! {
             _ = ticker.tick() => {
+                if let Some((generation, root, query)) = app.take_path_hint_request() {
+                    hint_task = Some(spawn_path_hint_search(generation, root, query));
+                }
                 // Advance the throbber at its own fixed cadence, catching up
                 // whole frames if a tick stalled (a burst of deltas / slow term).
                 app.advance_spinner(Instant::now());
@@ -9514,6 +9579,11 @@ async fn chat_loop<B: Backend>(
             }
             branch = await_branch_poll(&mut branch_task) => {
                 app.git_branch = branch;
+            }
+            found = await_path_hints(&mut hint_task) => {
+                if let Some((generation, items)) = found {
+                    app.apply_path_hints(generation, items);
+                }
             }
             outcome = await_mcp(&mut mcp_task) => {
                 mcp_ready = true;
@@ -19053,7 +19123,7 @@ mod tests {
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
         apply_repaint, apply_resume, assistant_is_awaiting_user_answer, assistant_runs,
-        autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
+        TerminalGuard, normalize_paste, panic_restore_sequence, autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
         estimate_token_count, finish_compaction, finish_context_report,
         finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
@@ -23231,7 +23301,10 @@ mod tests {
         assert_eq!(app.input, "draft");
         assert_eq!(app.scrollback, 1);
 
+        // Esc clears the draft but keeps it in recall, newest of all.
         press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
         assert_eq!(app.cursor, "second".len(), "caret sits at the end");
@@ -23243,6 +23316,8 @@ mod tests {
 
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "", "past the newest is a fresh message");
         assert_eq!(app.scrollback, 1, "recall never scrolls the transcript");
@@ -34808,6 +34883,54 @@ mod tests {
         app.accept_path_hint();
         assert_eq!(app.input, "use @\"my docs/report.md\"");
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn many_edits_make_one_search_per_tick() {
+        let mut app = test_app();
+        for c in "see @src".chars() {
+            app.input_insert(c);
+        }
+        assert!(app.path_hints_dirty, "an edit only marks the hints dirty");
+        let first = app.take_path_hint_request();
+        assert!(first.is_some());
+        assert_eq!(first.unwrap().2, "src");
+        assert!(app.take_path_hint_request().is_none(), "one search for the whole burst");
+    }
+
+    #[test]
+    fn stale_generation_result_ignored() {
+        let mut app = test_app();
+        app.input = "@a".into();
+        app.cursor = app.input.len();
+        app.refresh_path_hints();
+        let (old_gen, _, _) = app.take_path_hint_request().unwrap();
+        app.input_insert('b');
+        let item = || vec![super::PathHintItem { path: "ab".into(), name: "ab".into(), is_dir: false }];
+        app.apply_path_hints(old_gen, item());
+        assert!(app.path_hints.is_empty(), "a result for an older buffer is dropped");
+        let (new_gen, _, _) = app.take_path_hint_request().unwrap();
+        app.apply_path_hints(new_gen, item());
+        assert_eq!(app.path_hints.len(), 1);
+    }
+
+    #[test]
+    fn hint_search_does_not_climb_out_of_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "x").unwrap();
+        assert_eq!(super::search_path_hints(dir.path(), "a").len(), 1);
+        assert!(super::search_path_hints(dir.path(), "../").is_empty());
+        assert!(super::search_path_hints(dir.path(), "x/../a").is_empty());
+    }
+
+    #[test]
+    fn flush_installs_hints_for_the_current_buffer() {
+        let mut app = test_app();
+        app.input = "@Cargo".into();
+        app.cursor = app.input.len();
+        app.refresh_path_hints();
+        app.flush_path_hints();
+        assert!(!app.path_hints_dirty);
     }
 
     #[test]

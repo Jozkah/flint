@@ -90,13 +90,22 @@ fn parse_schedule(input: &TaskInput) -> Result<Option<Schedule>, HarnessError> {
     Ok(input.cron.as_ref().map(|expr| Schedule::Cron { expr: expr.clone() }))
 }
 
-/// The zone named by `TZ` when it is a real one, else UTC. A task always
-/// stores its zone, so this is only the default for `schedule add`.
-fn default_timezone() -> String {
-    std::env::var("TZ")
-        .ok()
-        .filter(|z| parse_timezone(z).is_ok())
-        .unwrap_or_else(|| "UTC".to_string())
+/// The zone a new task defaults to: `TZ` when it names a real one, else the
+/// machine's own zone. A task always stores its zone, so this is only the
+/// default for `schedule add` and `schedule preview`. When neither is known the
+/// answer is an error, not UTC: a daily 09:00 task that silently fires at 09:00
+/// UTC is a task that runs at the wrong hour.
+fn default_timezone() -> Result<String, HarnessError> {
+    pick_timezone(std::env::var("TZ").ok(), || iana_time_zone::get_timezone().ok()).map_err(invalid)
+}
+
+fn pick_timezone(tz_env: Option<String>, detect: impl FnOnce() -> Option<String>) -> Result<String, String> {
+    let valid = |z: &String| parse_timezone(z).is_ok();
+    tz_env
+        .map(|z| z.trim().to_string())
+        .filter(valid)
+        .or_else(|| detect().map(|z| z.trim().to_string()).filter(valid))
+        .ok_or_else(|| "could not tell this machine's time zone; pass --timezone (for example Europe/Berlin)".to_string())
 }
 
 fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
@@ -177,6 +186,7 @@ fn print_task(task: &Task, json: bool) {
         next,
         task.name
     );
+    println!("timezone: {}", task.timezone);
 }
 
 /// One line per task, for the TUI's `/schedule` and anything else that cannot
@@ -231,7 +241,10 @@ pub fn add(input: TaskInput, json: bool) -> Result<(), HarnessError> {
         name,
         prompt,
         schedule: Schedule::Cron { expr: String::new() },
-        timezone: default_timezone(),
+        timezone: match &input.timezone {
+            Some(z) => z.clone(),
+            None => default_timezone()?,
+        },
         model,
         project: String::new(),
         profile: None,
@@ -292,7 +305,10 @@ pub fn preview(id: Option<&str>, input: TaskInput, count: usize, json: bool) -> 
         None => (
             parse_schedule(&input)?
                 .ok_or_else(|| invalid("give a task id, or --daily, --weekdays, --weekly or --cron"))?,
-            input.timezone.clone().unwrap_or_else(default_timezone),
+            match &input.timezone {
+                Some(z) => z.clone(),
+                None => default_timezone()?,
+            },
         ),
     };
     let tz = parse_timezone(&tz_name).map_err(|e| invalid(e.message))?;
@@ -430,6 +446,20 @@ pub fn os(action: &str, interval_minutes: Option<u32>, yes: bool, json: bool) ->
 mod tests {
     use super::*;
     use crate::core::schedule::spec::fixtures::task;
+
+    #[test]
+    fn unset_tz_uses_detected_zone() {
+        assert_eq!(pick_timezone(None, || Some("Europe/Berlin".into())).unwrap(), "Europe/Berlin");
+        assert_eq!(pick_timezone(Some("garbage".into()), || Some("Asia/Tokyo".into())).unwrap(), "Asia/Tokyo");
+        assert_eq!(pick_timezone(Some("America/Chicago".into()), || Some("Asia/Tokyo".into())).unwrap(), "America/Chicago");
+    }
+
+    #[test]
+    fn detection_failure_requires_timezone_flag() {
+        let err = pick_timezone(None, || None).unwrap_err();
+        assert!(err.contains("--timezone"), "{err}");
+        assert!(pick_timezone(Some("nope".into()), || Some("also nope".into())).is_err());
+    }
 
     #[test]
     fn schedule_flags_parse_and_conflict() {

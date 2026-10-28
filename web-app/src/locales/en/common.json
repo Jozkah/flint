@@ -2975,5 +2975,49 @@
       "medium": "Medium",
       "low": "Low"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Stop",
+    "title": "Stop running work",
+    "description": "Choose how far this reaches. This cannot be undone: stopped work is not resumed, including after a restart.",
+    "legend": "What to stop",
+    "stopping": "Stopping. Killing owned processes…",
+    "report": {
+      "clean": "Stopped. {{stopped}} stopped, {{already}} already stopped, nothing left running.",
+      "partial_one": "Stopped {{stopped}}, but {{count}} process is still running. Cleanup did not finish.",
+      "partial_other": "Stopped {{stopped}}, but {{count}} processes are still running. Cleanup did not finish."
+    },
+    "error": "Could not stop: {{error}}",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirmBusy": "Stopping…",
+    "scope": {
+      "call": {
+        "name": "This tool call",
+        "desc": "This tool call only ({{id}}). Everything else in the run keeps going.",
+        "confirm": "Stop tool call"
+      },
+      "run": {
+        "name": "This run",
+        "desc": "This run ({{id}}), including its tool calls, shell commands, MCP calls and subagents. Other runs are untouched.",
+        "confirm": "Stop run"
+      },
+      "session": {
+        "name": "This session",
+        "desc": "Every run in this session ({{id}}). Other sessions are untouched.",
+        "confirm": "Stop session"
+      },
+      "application": {
+        "name": "Everything in Flint",
+        "desc": "All work everywhere in Flint, in every session. Nothing running is spared.",
+        "confirm": "Stop everything"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Show API key",
+    "hide": "Hide API key",
+    "copy": "Copy API key",
+    "copied": "Copied"
   }
 }
