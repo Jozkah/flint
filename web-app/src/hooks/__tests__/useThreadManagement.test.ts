@@ -61,7 +61,7 @@ vi.mock('@/hooks/useThreads', () => ({
         't3': { id: 't3', metadata: { project: { id: 'p2' } } },
       },
       updateThread: mockUpdateThread,
-      deleteThread: mockDeleteThreadState,
+      deleteThreadAsync: mockDeleteThreadState,
     }),
   },
 }))
@@ -81,6 +81,7 @@ const getStore = () => {
 describe('useThreadManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockDeleteThreadState.mockReset()
     mockGetProjects.mockResolvedValue([])
   })
 
@@ -169,17 +170,44 @@ describe('useThreadManagement', () => {
       await result.current.deleteFolderWithThreads('p1')
     })
 
-    // Should delete backend threads for project p1
-    expect(mockDeleteThread).toHaveBeenCalledWith('t1')
-    expect(mockDeleteThread).toHaveBeenCalledWith('t2')
+    // Each thread goes through the store action once; the service is not
+    // called a second time directly.
+    expect(mockDeleteThread).not.toHaveBeenCalled()
+    expect(mockDeleteThreadState).toHaveBeenCalledTimes(2)
     expect(mockDeleteThreadState).toHaveBeenCalledWith('t1')
     expect(mockDeleteThreadState).toHaveBeenCalledWith('t2')
     expect(mockDeleteProject).toHaveBeenCalledWith('p1')
   })
 
+  it('passes permanent through to the store action', async () => {
+    mockDeleteThreadState.mockResolvedValue(undefined)
+    mockDeleteProject.mockResolvedValue(undefined)
+    mockGetProjects.mockResolvedValue([])
+    const { result } = renderHook(() => useThreadManagement())
+    await act(async () => {
+      await result.current.deleteFolderWithThreads('p1', true)
+    })
+    expect(mockDeleteThreadState).toHaveBeenCalledWith('t1', true)
+    expect(mockDeleteThreadState).toHaveBeenCalledWith('t2', true)
+  })
+
+  it('a backend failure on the 2nd thread stops, keeps the project record and rethrows', async () => {
+    mockDeleteThreadState
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('disk'))
+    const { result } = renderHook(() => useThreadManagement())
+    await expect(
+      act(async () => {
+        await result.current.deleteFolderWithThreads('p1')
+      })
+    ).rejects.toThrow('disk')
+    expect(mockDeleteThreadState).toHaveBeenCalledTimes(2)
+    expect(mockDeleteProject).not.toHaveBeenCalled()
+  })
+
   it('is archive work the Archive page waits for, from the first thread to the last step', async () => {
     let release: () => void = () => {}
-    mockDeleteThread.mockReturnValue(new Promise<void>((r) => (release = r)))
+    mockDeleteThreadState.mockReturnValue(new Promise<void>((r) => (release = r)))
     mockDeleteProject.mockResolvedValue(undefined)
     mockGetProjects.mockResolvedValue([])
     const { result } = renderHook(() => useThreadManagement())
