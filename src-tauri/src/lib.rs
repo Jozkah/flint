@@ -909,6 +909,9 @@ pub fn build_app() -> tauri::App {
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
             mcp_lazy: Default::default(),
         })
+        .manage(core::filesystem::grants::ReadGrants::with_home(
+            dirs::home_dir(),
+        ))
         .setup(|app| {
             // A marker left by the previous run means it did not shut down
             // cleanly; say so in the log, once, so a crash report has a lead.
@@ -946,6 +949,9 @@ pub fn build_app() -> tauri::App {
                 (None, None) => {}
             }
             crash_notes.extend(stack_note);
+            // Load the webview read grants before any IPC is served, so a path
+            // the user picked in an earlier session stays readable.
+            core::filesystem::grants::init(app.handle());
             core::diffusion::register(app.handle());
             core::browser_verify::commands::install_activity_mirror(app.handle());
             // Project folders the user trusted to run their own hooks and

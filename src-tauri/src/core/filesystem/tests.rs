@@ -8,6 +8,73 @@ use std::path::{Path, PathBuf};
 use tauri::test::mock_app;
 
 #[test]
+fn test_read_commands_follow_the_grants() {
+    use super::grants::{ReadGrants, DENIED_PREFIX};
+    use tauri::Manager;
+
+    let app = mock_app();
+    app.manage(ReadGrants::default());
+    fs::create_dir_all(get_jan_data_folder_path(app.handle().clone())).unwrap();
+
+    // file: URIs and relative paths may not leave the data folder.
+    for escape in ["file://../outside.txt", "../outside.txt"] {
+        assert!(!exists_sync(app.handle().clone(), vec![escape.into()]).unwrap());
+        assert!(read_file_sync(app.handle().clone(), vec![escape.into()]).is_err());
+    }
+
+    let picked = tempfile::tempdir().unwrap();
+    fs::write(picked.path().join("config.json"), "{\"a\":1}").unwrap();
+    let dir = picked.path().to_string_lossy().to_string();
+    let config = picked.path().join("config.json").to_string_lossy().to_string();
+    let missing = picked.path().join("nope.txt").to_string_lossy().to_string();
+
+    // Not picked yet: a real file and a missing one answer the same.
+    for path in [&config, &missing] {
+        assert!(!exists_sync(app.handle().clone(), vec![path.clone()]).unwrap());
+        let err = read_file_sync(app.handle().clone(), vec![path.clone()]).unwrap_err();
+        assert!(err.starts_with(DENIED_PREFIX), "{err}");
+        let err = file_stat(app.handle().clone(), path.clone()).err().unwrap();
+        assert!(err.starts_with(DENIED_PREFIX), "{err}");
+    }
+    let err = readdir_sync(app.handle().clone(), vec![dir.clone()]).unwrap_err();
+    assert!(err.starts_with(DENIED_PREFIX), "{err}");
+
+    assert!(app.state::<ReadGrants>().record_pick(picked.path()));
+    assert!(exists_sync(app.handle().clone(), vec![config.clone()]).unwrap());
+    assert!(!exists_sync(app.handle().clone(), vec![missing]).unwrap());
+    assert!(file_stat(app.handle().clone(), dir.clone()).unwrap().is_directory);
+    assert_eq!(
+        read_file_sync(app.handle().clone(), vec![config]).unwrap(),
+        "{\"a\":1}"
+    );
+    assert_eq!(readdir_sync(app.handle().clone(), vec![dir]).unwrap().len(), 1);
+}
+
+#[test]
+fn test_readdir_hides_secret_stores_in_a_picked_folder() {
+    use super::grants::ReadGrants;
+    use tauri::Manager;
+
+    let app = mock_app();
+    app.manage(ReadGrants::default());
+    let picked = tempfile::tempdir().unwrap();
+    fs::create_dir_all(picked.path().join(".ssh")).unwrap();
+    fs::write(picked.path().join("readme.md"), "x").unwrap();
+    app.state::<ReadGrants>().record_pick(picked.path());
+
+    let listed = readdir_sync(
+        app.handle().clone(),
+        vec![picked.path().to_string_lossy().to_string()],
+    )
+    .unwrap();
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert!(listed[0].ends_with("readme.md"));
+    let key = picked.path().join(".ssh").join("id_rsa");
+    fs::write(&key, "k").unwrap();
+    assert!(!exists_sync(app.handle().clone(), vec![key.to_string_lossy().to_string()]).unwrap());
+}
+
+#[test]
 fn test_rm() {
     let app = mock_app();
     let path = "test_rm_dir";
