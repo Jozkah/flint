@@ -1218,6 +1218,7 @@
       "updated": "Aktualizováno {{when}}",
       "loading": "Načítání kampaní",
       "loadFailed": "Kampaně se nepodařilo načíst.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Přeskočen {{count}} nečitelný záznam kampaně. Soubory zůstaly na místě.",
       "skipped_few": "Přeskočeny {{count}} nečitelné záznamy kampaní. Soubory zůstaly na místě.",
       "skipped_other": "Přeskočeno {{count}} nečitelných záznamů kampaní. Soubory zůstaly na místě.",

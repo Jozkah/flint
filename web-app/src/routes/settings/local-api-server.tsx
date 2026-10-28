@@ -41,8 +41,8 @@ import {
 import { LoaderCircle } from 'lucide-react'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.local_api_server as any)({
+ 
+export const Route = createFileRoute(route.settings.local_api_server)({
   component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
 

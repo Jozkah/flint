@@ -1376,6 +1376,7 @@
       "updated": "Actualizada {{when}}",
       "loading": "Cargando campañas",
       "loadFailed": "No se pudieron cargar las campañas.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Se omitió {{count}} registro de campaña ilegible. Los archivos se dejaron en su sitio.",
       "skipped_other": "Se omitieron {{count}} registros de campaña ilegibles. Los archivos se dejaron en su sitio.",
       "skipped_many": "Se omitieron {{count}} registros de campaña ilegibles. Los archivos se dejaron en su sitio.",

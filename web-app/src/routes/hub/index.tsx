@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { isServedByFlint } from '@/lib/platform/utils'
 import { DesktopOnlyPage } from '@/containers/DesktopOnlyPage'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
@@ -80,7 +80,7 @@ import {
 } from '@/lib/modelCompatibility'
 import { Select } from '@/components/ui/select'
 
-export const Route = createFileRoute(route.hub.index as any)({
+export const Route = createFileRoute(route.hub.index)({
   // Everything here is the desktop app's; a browser gets one line instead.
   component: () =>
     isServedByFlint() ? <DesktopOnlyTitle /> : <ModelDiscoverRoute />,

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useAssetUrl } from '@/lib/assetPath'
 import {
@@ -50,7 +50,7 @@ import type { GalleryItem } from '@/lib/studio/studio'
 import { ImageViewer } from '@/components/ImageViewer'
 import { VideoDialog } from '@/containers/studio/StudioPage'
 
-export const Route = createFileRoute(route.artifacts as any)({
+export const Route = createFileRoute(route.artifacts)({
   beforeLoad: () => ensureCoworkEnabled(),
   component: ArtifactsPage,
 })

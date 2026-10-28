@@ -21,8 +21,8 @@ type IntegrationTab = (typeof INTEGRATION_TABS)[number]
 
 type IntegrationsSearch = { tab?: IntegrationTab }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.integrations as any)({
+ 
+export const Route = createFileRoute(route.settings.integrations)({
   component: IntegrationsSettings,
   validateSearch: (search: Record<string, unknown>): IntegrationsSearch =>
     INTEGRATION_TABS.includes(search.tab as IntegrationTab)

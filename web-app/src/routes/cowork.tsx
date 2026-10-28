@@ -604,7 +604,7 @@ import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
-export const Route = createFileRoute(route.cowork as any)({
+export const Route = createFileRoute(route.cowork)({
   beforeLoad: () => ensureCoworkEnabled(),
   component: CoworkRoute,
 })

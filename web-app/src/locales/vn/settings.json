@@ -1203,6 +1203,7 @@
       "updated": "Cập nhật {{when}}",
       "loading": "Đang tải chiến dịch",
       "loadFailed": "Không thể tải chiến dịch.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Đã bỏ qua {{count}} bản ghi chiến dịch không đọc được. Các tệp vẫn được giữ nguyên.",
       "skipped_other": "Đã bỏ qua {{count}} bản ghi chiến dịch không đọc được. Các tệp vẫn được giữ nguyên.",
       "skipped_many": "Đã bỏ qua {{count}} bản ghi chiến dịch không đọc được. Các tệp vẫn được giữ nguyên.",
