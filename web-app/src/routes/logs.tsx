@@ -6,7 +6,7 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { LogsDashboard } from '@/containers/LogViewer'
 
- 
+
 export const Route = createFileRoute(route.appLogs)({
   component: LogsViewer,
 })

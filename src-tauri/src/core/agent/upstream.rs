@@ -945,6 +945,10 @@ pub(crate) async fn resolve_upstream_for_model(
             // engine loaded from persisted settings has none -- fall through to
             // the MLX session / llama-server router resolution below.
             if let Some(api_url) = provider_cfg.base_url.clone().filter(|u| !u.is_empty()) {
+                // A CLI-bridge provider needs its loopback server up first.
+                if crate::core::cli_bridge::is_bridge_url(&api_url) {
+                    crate::core::cli_bridge::ensure_started().await?;
+                }
                 // An endpoint the user never vouched for (a project override
                 // pointing the name elsewhere) gets only the key written next
                 // to it. If a credential is stored under the name, sending the

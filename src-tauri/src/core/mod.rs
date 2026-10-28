@@ -28,6 +28,7 @@ pub mod browser_verify;
 // The agent's tools for the built-in browser pane; desktop-only like web_preview.
 #[cfg(not(feature = "cli"))]
 pub mod browser_agent;
+pub mod cli_bridge;
 pub use jan_process::compat_env;
 #[cfg(not(feature = "cli"))]
 pub mod crash_trace;

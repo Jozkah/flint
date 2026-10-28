@@ -60,7 +60,7 @@ import { SubagentSettings } from '@/containers/SubagentSettings'
 import { CampaignParallelSetting } from '@/containers/CampaignSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
- 
+
 export const Route = createFileRoute(route.settings.agent)({
   // Everything here is the desktop app's; a browser gets one line instead.
   component: () =>

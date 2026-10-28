@@ -358,4 +358,3 @@ export const ToolContent = memo(
 )
 
 ToolContent.displayName = 'ToolContent'
-

@@ -73,7 +73,7 @@ import { cn } from '@/lib/utils'
 import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
 import { ModelDefaultsCard } from '@/containers/ModelDefaultsCard'
 
- 
+
 export const Route = createFileRoute('/settings/providers/')({
   component: ModelProviders,
 })

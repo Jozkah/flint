@@ -5,7 +5,7 @@ import { useServerLogs } from '@/hooks/useServerLogs'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { LogsDashboard } from '@/containers/LogViewer'
 
- 
+
 export const Route = createFileRoute(route.localApiServerlogs)({
   component: LogsViewer,
 })
