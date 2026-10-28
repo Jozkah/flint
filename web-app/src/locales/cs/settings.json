@@ -277,7 +277,7 @@
     "caBundleBroken": "Tento balíček nelze použít ({{kind}}): odchozí HTTPS nedůvěřuje ničemu, dokud se to neopraví nebo balíček neodebere.",
     "ignoreSslScope": "Platí pro veškerý provoz přes proxy. Jednotlivý poskytovatel může také povolit neplatné certifikáty pro svou vlastní adresu, na své stránce v části Poskytovatelé modelů.",
     "proxyUrlInvalid": "Toto nevypadá jako adresa proxy. Použijte hostitel:port nebo http://hostitel:port.",
-    "proxyUrlScheme": "Podporovány jsou pouze proxy http a https.",
+    "proxyUrlScheme": "Podporovány jsou pouze proxy http, https, socks5 a socks5h.",
     "ignoreSslConfirmTitle": "Ignorovat certifikáty SSL?",
     "ignoreSslConfirmBody": "Flint bude přijímat certifikáty s vlastním podpisem, prošlé nebo neodpovídající pro veškerý provoz přes proxy, takže jej kdokoli na cestě může číst nebo měnit. Pokračujte, jen pokud proxy a síti důvěřujete.",
     "ignoreSslConfirm": "Ignorovat certifikáty",

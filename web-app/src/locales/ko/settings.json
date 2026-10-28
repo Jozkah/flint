@@ -275,7 +275,7 @@
     "caBundleBroken": "이 번들을 사용할 수 없습니다({{kind}}): 수정하거나 제거할 때까지 외부 HTTPS는 아무것도 신뢰하지 않습니다.",
     "ignoreSslScope": "프록시를 거치는 모든 트래픽에 적용됩니다. 개별 제공자도 모델 제공자의 해당 페이지에서 자신의 주소에 한해 잘못된 인증서를 허용할 수 있습니다.",
     "proxyUrlInvalid": "프록시 주소처럼 보이지 않습니다. host:port 또는 http://host:port 형식을 사용하세요.",
-    "proxyUrlScheme": "http 및 https 프록시만 지원됩니다.",
+    "proxyUrlScheme": "http, https, socks5, socks5h 프록시만 지원됩니다.",
     "ignoreSslConfirmTitle": "SSL 인증서를 무시할까요?",
     "ignoreSslConfirmBody": "Flint는 프록시를 거치는 모든 트래픽에 대해 자체 서명, 만료 또는 불일치 인증서를 허용하므로 경로상의 누구나 트래픽을 읽거나 변조할 수 있습니다. 프록시와 네트워크를 신뢰하는 경우에만 계속하세요.",
     "ignoreSslConfirm": "인증서 무시",

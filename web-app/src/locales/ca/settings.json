@@ -278,7 +278,7 @@
     "caBundleBroken": "Aquest paquet no es pot usar ({{kind}}): l'HTTPS de sortida no confia en res fins que es corregeixi o s'elimini.",
     "ignoreSslScope": "S'aplica a tot el trànsit passat pel proxy. Un sol proveïdor també pot permetre certificats no vàlids per a la seva pròpia adreça, a la seva pàgina a Proveïdors de models.",
     "proxyUrlInvalid": "Això no sembla una adreça de servidor intermediari. Utilitza amfitrió:port o http://amfitrió:port.",
-    "proxyUrlScheme": "Només es admeten servidors intermediaris http i https.",
+    "proxyUrlScheme": "Només s'admeten proxies http, https, socks5 i socks5h.",
     "ignoreSslConfirmTitle": "Ignorar els certificats SSL?",
     "ignoreSslConfirmBody": "Flint acceptarà certificats autofirmats, caducats o que no coincideixin per a tot el trànsit passat pel servidor intermediari, de manera que qualsevol persona al camí podria llegir-lo o alterar-lo. Continua només si confies en el servidor intermediari i en la xarxa.",
     "ignoreSslConfirm": "Ignora els certificats",
