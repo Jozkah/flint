@@ -113,7 +113,8 @@ fn apply_input(task: &mut Task, input: &TaskInput) -> Result<(), HarnessError> {
         let path = std::fs::canonicalize(v).map_err(|e| invalid(format!("project folder '{v}': {e}")))?;
         let text = path.to_string_lossy().to_string();
         // canonicalize on Windows yields a verbatim path; keep the plain one.
-        task.project = text.strip_prefix(r"\\?\").unwrap_or(&text).to_string();
+        // `\\?\UNC\srv\sh` must become `\\srv\sh`, not `UNC\srv\sh`.
+        task.project = super::pathnorm::strip_verbatim(&text);
     }
     if let Some(v) = &input.timezone {
         task.timezone = v.clone();
