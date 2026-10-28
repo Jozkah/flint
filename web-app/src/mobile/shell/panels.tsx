@@ -10,6 +10,7 @@ import { act, app, client, closeAll, openSheet, toast, useApp } from '../state/a
 import { invalidate, useRpc } from '../state/rpc'
 import { insertIntoComposer } from '../state/attachments'
 import { t } from '../i18n'
+import { activate } from '../ui/a11y'
 
 const SECTION_ICON: Record<string, IconId> = {
   model: 'cube',
@@ -191,7 +192,7 @@ export function CodeTab({ id }: { id: string }) {
       {state.open.length > 0 && (
         <div className="ctabs" role="tablist">
           {state.open.map((p) => (
-            <span key={p} role="tab" aria-selected={p === active} className={`ctab${p === active ? ' on' : ''}`} onClick={() => setCode(state.open, p)}>
+            <span key={p} role="tab" aria-selected={p === active} className={`ctab${p === active ? ' on' : ''}`} {...activate(() => setCode(state.open, p))}>
               {p.split('/').pop()}
               {touched.has(p) && <span className="mdot">M</span>}
               <button type="button" className="ib" style={{ width: 18, height: 18 }} aria-label={t('panels.closeFile', { path: p })} onClick={(e) => { e.stopPropagation(); close(p) }}>

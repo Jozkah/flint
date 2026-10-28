@@ -265,6 +265,13 @@ export function useSetupChecklist(options?: { enabled?: boolean }) {
   const runningRef = useRef(false)
 
   const rerunQueuedRef = useRef(false)
+  const aliveRef = useRef(true)
+  useEffect(() => {
+    aliveRef.current = true
+    return () => {
+      aliveRef.current = false
+    }
+  }, [])
 
   const rerun = useCallback(async () => {
     // A request arriving mid-run is queued rather than dropped: it usually
@@ -294,6 +301,13 @@ export function useSetupChecklist(options?: { enabled?: boolean }) {
           hub.models().verifyGpuOffload(),
           hub.models().verifyEmbeddingModel(),
         ])
+
+    // Unmounted while the probes ran: nothing to show, nothing to queue.
+    if (!aliveRef.current) {
+      runningRef.current = false
+      rerunQueuedRef.current = false
+      return
+    }
 
     const hardware =
       system.status === 'fulfilled'

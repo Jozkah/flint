@@ -311,6 +311,8 @@ export const useAppState = create<AppState>()((set) => ({
       const errorMessages = { ...state.errorMessages }
       const busyThreads = { ...state.busyThreads }
       const embeddingThreads = { ...state.embeddingThreads }
+      const modelLoadFailures = { ...state.modelLoadFailures }
+      delete modelLoadFailures[threadId]
       delete streamingContents[threadId]
       delete loadingModels[threadId]
       delete promptProgresses[threadId]
@@ -330,19 +332,10 @@ export const useAppState = create<AppState>()((set) => ({
         errorMessages,
         busyThreads,
         embeddingThreads,
+        modelLoadFailures,
       }
     }),
 }))
-
-export const useActiveThreadIds = () =>
-  useAppState((state) => {
-    const ids = new Set<string>()
-    Object.keys(state.streamingContents).forEach((id) => ids.add(id))
-    Object.keys(state.loadingModels).forEach((id) => ids.add(id))
-    Object.keys(state.cancelToolCalls).forEach((id) => ids.add(id))
-    Object.keys(state.busyThreads).forEach((id) => ids.add(id))
-    return ids
-  })
 
 export const useIsThreadActive = (threadId: string | undefined) =>
   useAppState((state) =>

@@ -120,13 +120,17 @@ pub(crate) fn base64_decoded_len(payload: &str) -> Result<usize, String> {
     if !payload.len().is_multiple_of(4) {
         return Err("base64 payload length is not a multiple of 4".to_string());
     }
+    if payload.is_empty() {
+        return Err("base64 payload is empty".to_string());
+    }
     let padding = payload.bytes().rev().take_while(|b| *b == b'=').count();
     if padding > 2 {
         return Err("base64 payload has too much padding".to_string());
     }
-    if !payload
-        .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=')
+    // `=` is padding: only the last one or two characters may be it.
+    if !payload.as_bytes()[..payload.len() - padding]
+        .iter()
+        .all(|b| b.is_ascii_alphanumeric() || *b == b'+' || *b == b'/')
     {
         return Err("base64 payload has a character outside the alphabet".to_string());
     }
@@ -136,6 +140,15 @@ pub(crate) fn base64_decoded_len(payload: &str) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base64_length_rejects_empty_and_misplaced_padding() {
+        assert!(base64_decoded_len("").is_err());
+        assert!(base64_decoded_len("AA=A").is_err());
+        assert_eq!(base64_decoded_len("AAAA").unwrap(), 3);
+        assert_eq!(base64_decoded_len("AAA=").unwrap(), 2);
+        assert_eq!(base64_decoded_len("AA==").unwrap(), 1);
+    }
 
     fn image(name: &str, url: &str) -> PendingImage {
         PendingImage {

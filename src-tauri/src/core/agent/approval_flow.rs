@@ -83,19 +83,29 @@ impl Runtime {
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 const TABLE_CAP: usize = 512;
 
-static SCOPE_CHOICES: Mutex<Option<HashMap<String, ApprovalScope>>> = Mutex::new(None);
-static DEFER_MARKS: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+/// Insertion order of the ids in each table, so a full table drops its oldest
+/// entry rather than wiping every pending answer.
+type Order = std::collections::VecDeque<String>;
+static SCOPE_CHOICES: Mutex<Option<(HashMap<String, ApprovalScope>, Order)>> = Mutex::new(None);
+static DEFER_MARKS: Mutex<Option<(HashSet<String>, Order)>> = Mutex::new(None);
 
 /// The scope a person picked for open request `request_id`. Called by the
 /// surface that relays the answer, before it sends the decision.
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn record_scope_choice(request_id: &str, scope: ApprovalScope) {
     let mut table = SCOPE_CHOICES.lock().unwrap_or_else(|e| e.into_inner());
-    let table = table.get_or_insert_with(HashMap::new);
-    if table.len() >= TABLE_CAP {
-        table.clear();
+    let (table, order) = table.get_or_insert_with(Default::default);
+    if table.insert(request_id.to_string(), scope).is_none() {
+        order.push_back(request_id.to_string());
     }
-    table.insert(request_id.to_string(), scope);
+    while table.len() > TABLE_CAP {
+        match order.pop_front() {
+            Some(old) => {
+                table.remove(&old);
+            }
+            None => break,
+        }
+    }
 }
 
 /// The scope picked for `request_id`, once; it never outlives its request.
@@ -104,7 +114,7 @@ pub(crate) fn take_scope_choice(request_id: &str) -> Option<ApprovalScope> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .as_mut()
-        .and_then(|t| t.remove(request_id))
+        .and_then(|(t, _)| t.remove(request_id))
 }
 
 /// "Answer later" for open request `request_id`: the surface then sends a
@@ -112,11 +122,18 @@ pub(crate) fn take_scope_choice(request_id: &str) -> Option<ApprovalScope> {
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn mark_defer(request_id: &str) {
     let mut marks = DEFER_MARKS.lock().unwrap_or_else(|e| e.into_inner());
-    let marks = marks.get_or_insert_with(HashSet::new);
-    if marks.len() >= TABLE_CAP {
-        marks.clear();
+    let (marks, order) = marks.get_or_insert_with(Default::default);
+    if marks.insert(request_id.to_string()) {
+        order.push_back(request_id.to_string());
     }
-    marks.insert(request_id.to_string());
+    while marks.len() > TABLE_CAP {
+        match order.pop_front() {
+            Some(old) => {
+                marks.remove(&old);
+            }
+            None => break,
+        }
+    }
 }
 
 pub(crate) fn take_defer_mark(request_id: &str) -> bool {
@@ -124,7 +141,7 @@ pub(crate) fn take_defer_mark(request_id: &str) -> bool {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .as_mut()
-        .is_some_and(|s| s.remove(request_id))
+        .is_some_and(|(s, _)| s.remove(request_id))
 }
 
 /// What an earlier deferred answer says about a call that is being put to the
@@ -454,6 +471,16 @@ mod tests {
         assert!(note.contains("..."), "{note}");
         assert!(!note.contains('\n'), "{note}");
         assert!(!note.contains(&"x".repeat(100)), "{note}");
+    }
+
+    #[test]
+    fn a_full_table_evicts_the_oldest_and_keeps_the_newest() {
+        for i in 0..(TABLE_CAP + 50) {
+            record_scope_choice(&format!("evict-{i}"), ApprovalScope::Run);
+        }
+        let newest = format!("evict-{}", TABLE_CAP + 49);
+        assert_eq!(take_scope_choice(&newest), Some(ApprovalScope::Run));
+        assert_eq!(take_scope_choice("evict-0"), None, "oldest was dropped");
     }
 
     #[test]

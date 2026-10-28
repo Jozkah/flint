@@ -16,8 +16,12 @@ use crate::core::mcp::helpers::{stop_mcp_servers_with_context, ShutdownContext};
 use crate::core::state::AppState;
 
 fn is_safe_to_delete(path: &std::path::Path) -> bool {
-    let count = path.components().count();
-    count >= 3
+    // Count real folder names: a drive prefix and root do not make `C:\Users` deeper.
+    let depth = path
+        .components()
+        .filter(|c| matches!(c, std::path::Component::Normal(_)))
+        .count();
+    depth >= 2
 }
 
 fn remove_dir(data_folder: &std::path::Path, name: &str) -> Vec<String> {
@@ -2286,6 +2290,11 @@ mod tests {
     fn test_is_safe_to_delete() {
         assert!(!is_safe_to_delete(std::path::Path::new("/")));
         assert!(!is_safe_to_delete(std::path::Path::new("/home")));
+        #[cfg(windows)]
+        {
+            assert!(!is_safe_to_delete(std::path::Path::new(r"C:\Users")));
+            assert!(is_safe_to_delete(std::path::Path::new(r"C:\Users\name")));
+        }
         assert!(is_safe_to_delete(std::path::Path::new("/home/user/jan")));
         assert!(is_safe_to_delete(std::path::Path::new(
             "/home/user/.local/share/jan"
