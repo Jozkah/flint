@@ -5363,8 +5363,8 @@ mod tests {
 
     #[test]
     fn sink_safe_escapes_only_for_a_terminal() {
-        assert_eq!(sink_safe("a\x1b]0;pwned\x07b", true), "a^[]0;pwned^Gb");
-        assert!(matches!(sink_safe("a\x1b[2Jb", false), std::borrow::Cow::Borrowed(_)));
+        assert_eq!(sink_safe("a\u{1b}]0;pwned\u{7}b", true), "a^[]0;pwned^Gb");
+        assert!(matches!(sink_safe("a\u{1b}[2Jb", false), std::borrow::Cow::Borrowed(_)));
         assert_eq!(sink_safe("line one\n\tline two", true), "line one\n\tline two");
     }
 
