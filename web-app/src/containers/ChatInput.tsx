@@ -1266,6 +1266,8 @@ const ChatInput = memo(function ChatInput({
     typed: string
     modelId: string
     at: number
+    /** The composer text when the send parked; editing it cancels the send. */
+    draft: string
     options: { steer: boolean; allowNoWeb: boolean; capabilityAsked: boolean }
   } | null>(null)
   const updateThreadModelFor = useThreads((state) => state.updateThreadModel)
@@ -1338,13 +1340,18 @@ const ChatInput = memo(function ChatInput({
       const checked = check instanceof Promise ? await check : check
       if (checked.status === 'stop') return
       if (checked.status === 'retry') {
-        pendingSendRef.current = {
-          typed,
-          modelId: checked.modelId,
-          at: Date.now(),
-          options: { steer, allowNoWeb, capabilityAsked },
+        // The replacement is already the selected model: no switch is coming
+        // for the effect below to see, so send now rather than park forever.
+        if (selectedModel?.id !== checked.modelId) {
+          pendingSendRef.current = {
+            typed,
+            modelId: checked.modelId,
+            at: Date.now(),
+            draft: draftAtStart,
+            options: { steer, allowNoWeb, capabilityAsked },
+          }
+          return
         }
-        return
       }
     }
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
@@ -1362,6 +1369,7 @@ const ChatInput = memo(function ChatInput({
             typed,
             modelId: pick.model,
             at: Date.now(),
+            draft: draftAtStart,
             options: { steer, allowNoWeb, capabilityAsked },
           }
           selectModelProvider(pick.provider, pick.model)
@@ -1702,6 +1710,16 @@ const ChatInput = memo(function ChatInput({
       // processing is complete.
     }
   }
+
+  // A parked send belongs to the thread and the text it was typed for: moving
+  // to another thread or editing the draft cancels it instead of sending later.
+  useEffect(() => {
+    pendingSendRef.current = null
+  }, [currentThreadId])
+  useEffect(() => {
+    const pending = pendingSendRef.current
+    if (pending && prompt !== pending.draft) pendingSendRef.current = null
+  }, [prompt])
 
   // The replacement model has shown: send the message that was waiting for it.
   useEffect(() => {
