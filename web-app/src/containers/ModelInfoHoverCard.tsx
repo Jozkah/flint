@@ -33,8 +33,6 @@ interface ModelInfoHoverCardProps {
 
 type TriggerStyle = {
   icon: LucideIcon
-  label: string
-  detail: string
   pill: string
   dot: string
 }
@@ -42,29 +40,21 @@ type TriggerStyle = {
 const TRIGGER_STYLES: Record<FitTier, TriggerStyle> = {
   green: {
     icon: Check,
-    label: 'Fits',
-    detail: 'Should run comfortably on your device',
     pill: 'bg-success-tint text-success',
     dot: 'bg-success',
   },
   yellow: {
     icon: TriangleAlert,
-    label: 'May be slow',
-    detail: 'Will run but leaves little memory headroom',
     pill: 'bg-warning-tint text-warning',
     dot: 'bg-warning',
   },
   red: {
     icon: X,
-    label: "Won't fit",
-    detail: 'Likely exceeds your available memory',
     pill: 'bg-destructive-tint text-destructive',
     dot: 'bg-destructive',
   },
   unknown: {
     icon: CircleHelp,
-    label: 'Fit unknown',
-    detail: 'Could not estimate memory requirements',
     pill: 'bg-muted text-fg-2',
     dot: 'bg-border-strong',
   },
@@ -94,6 +84,8 @@ export const ModelInfoHoverCard = ({
   )
   const style = TRIGGER_STYLES[tier]
   const Icon = style.icon
+  const fitLabel = t(`hub:fit.${tier}.label`)
+  const fitDetail = t(`hub:fit.${tier}.detail`)
 
   const trigger = children ?? (
     <button
@@ -103,10 +95,10 @@ export const ModelInfoHoverCard = ({
         isDefaultVariant ? 'text-xs px-2 py-1' : 'text-[length:calc(var(--ui-font-base)*0.6875)] px-1.5 py-0.5',
         style.pill
       )}
-      aria-label={`Device compatibility: ${style.label}`}
+      aria-label={t('hub:fit.ariaLabel', { label: fitLabel })}
     >
       <Icon size={isDefaultVariant ? 14 : 12} />
-      {isDefaultVariant && <span>{style.label}</span>}
+      {isDefaultVariant && <span>{fitLabel}</span>}
     </button>
   )
 
@@ -121,8 +113,8 @@ export const ModelInfoHoverCard = ({
             </h4>
             <p className="text-xs text-muted-foreground mt-1">
               {!isDefaultVariant
-                ? 'Model Variant Information'
-                : 'Model Information'}
+                ? t('hub:fit.variantInfo')
+                : t('hub:fit.modelInfo')}
             </p>
           </div>
 
@@ -130,17 +122,19 @@ export const ModelInfoHoverCard = ({
             {!model.is_mlx && (
               <div>
                 <span className="text-muted-foreground block">
-                  {isDefaultVariant ? 'Default Quantization' : 'Quantization'}
+                  {isDefaultVariant
+                    ? t('hub:fit.defaultQuantization')
+                    : t('hub:fit.quantization')}
                 </span>
                 <span className="font-medium mt-1 inline-block">
-                  {extractQuantLabel(displayVariant?.model_id) || 'N/A'}
+                  {extractQuantLabel(displayVariant?.model_id) || t('hub:fit.notAvailable')}
                 </span>
               </div>
             )}
 
             <div>
               <span className="text-muted-foreground block">
-                Device compatibility
+                {t('hub:fit.deviceCompatibility')}
               </span>
               <div className="flex items-start gap-2 mt-1">
                 <div
@@ -150,13 +144,12 @@ export const ModelInfoHoverCard = ({
                   )}
                 />
                 <div>
-                  <p className="font-medium">{style.label}</p>
-                  <p className="text-muted-foreground mt-0.5">{style.detail}</p>
+                  <p className="font-medium">{fitLabel}</p>
+                  <p className="text-muted-foreground mt-0.5">{fitDetail}</p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Estimated from file size and your hardware. Actual performance
-                depends on quantization and context length.
+                {t('hub:fit.estimateNote')}
               </p>
             </div>
           </div>
@@ -164,7 +157,7 @@ export const ModelInfoHoverCard = ({
           {((model.num_mmproj ?? 0) > 0 || model.tools) && (
             <div className="border-t border-border pt-3">
               <h5 className="text-xs font-medium text-muted-foreground mb-2">
-                Features
+                {t('hub:fit.features')}
               </h5>
               <div className="flex flex-wrap gap-2">
                 {model.tools && (

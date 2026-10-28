@@ -333,7 +333,8 @@
       "settings": "Configuració",
       "threads": "Converses"
     },
-    "openItem": "Obre {{item}}"
+    "openItem": "Obre {{item}}",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "Pàgines",
@@ -894,7 +895,9 @@
         "httpError": "El lloc ha retornat un error: {{message}}",
         "failed": "No s'ha pogut obtenir la pàgina: {{message}}"
       }
-    }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "Tria com ingerir els adjunts",
@@ -2607,7 +2610,15 @@
     "noMatches": "Cap paràmetre coincideix",
     "noneForProvider": "Aquest proveïdor no té paràmetres ajustables.",
     "maybeUnsupported": "Pot ser que {{providers}} no ho admeti",
-    "modelReports": "Model: {{value}}"
+    "modelReports": "Model: {{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "Fixa el progrés sobre la conversa",
@@ -2625,7 +2636,76 @@
     "restartManually": "Reinicia Flint per començar a utilitzar les dades migrades.",
     "chooseNote": "No es copia res fins que confirmis. Les dades de JAN mai es modifiquen ni s'esborren.",
     "copyDescription": "Copia les teves converses, la configuració i les claus de proveïdors de JAN a Flint, per als elements marcats a sota. JAN mai no es canvia ni s'esborra.",
-    "freshDescription": "Inicia Flint buit. No es llegeix ni es copia res de JAN, ni tan sols les seves claus de proveïdors, ara ni en inicis posteriors. Sempre pots importar des de Configuració, Carpeta de dades."
+    "freshDescription": "Inicia Flint buit. No es llegeix ni es copia res de JAN, ni tan sols les seves claus de proveïdors, ara ni en inicis posteriors. Sempre pots importar des de Configuració, Carpeta de dades.",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "fileCount_many": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "conflictCount_many": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "Imatge {{n}}",
@@ -3199,7 +3279,13 @@
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}"
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
   },
   "imageLoadFailed": "This image could not be loaded.",
   "attachedImage": "Attached image {{n}}",

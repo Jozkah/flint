@@ -52,11 +52,14 @@ function SchedulesContent() {
             <p role="alert" className="px-3.5 py-4 text-xs text-muted-foreground">
               {error}
             </p>
-          ) : loading ? null : views.length === 0 ? (
-            <div className="flex flex-col gap-1 px-3.5 py-5" data-testid="schedules-empty">
-              <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{t('schedules:empty')}</p>
-              <p className="text-xs text-muted-foreground">{t('schedules:emptyHint')}</p>
-            </div>
+          ) : null}
+          {views.length === 0 ? (
+            error || loading ? null : (
+              <div className="flex flex-col gap-1 px-3.5 py-5" data-testid="schedules-empty">
+                <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{t('schedules:empty')}</p>
+                <p className="text-xs text-muted-foreground">{t('schedules:emptyHint')}</p>
+              </div>
+            )
           ) : (
             views.map((view) => (
               <ScheduleTaskRow

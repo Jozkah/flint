@@ -47,7 +47,8 @@
     "memoriesSent": "Gesendete Erinnerungen",
     "withheld": "Zurückgehalten wegen Widerspruch: {{ids}}",
     "perSec": "{{n}} Tokens/Sek.",
-    "count": "{{n}} Tokens"
+    "count": "{{n}} Tokens",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Server-Host bearbeiten"

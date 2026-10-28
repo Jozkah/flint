@@ -60,5 +60,32 @@
       "unknownTitle": "Adéquation inconnue",
       "unknownDetail": "Informations insuffisantes sur le matériel local ou la taille du fichier"
     }
+  },
+  "fit": {
+    "green": {
+      "label": "Fits",
+      "detail": "Should run comfortably on your device"
+    },
+    "yellow": {
+      "label": "May be slow",
+      "detail": "Will run but leaves little memory headroom"
+    },
+    "red": {
+      "label": "Won't fit",
+      "detail": "Likely exceeds your available memory"
+    },
+    "unknown": {
+      "label": "Fit unknown",
+      "detail": "Could not estimate memory requirements"
+    },
+    "ariaLabel": "Device compatibility: {{label}}",
+    "variantInfo": "Model Variant Information",
+    "modelInfo": "Model Information",
+    "defaultQuantization": "Default Quantization",
+    "quantization": "Quantization",
+    "deviceCompatibility": "Device compatibility",
+    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "features": "Features",
+    "notAvailable": "N/A"
   }
 }

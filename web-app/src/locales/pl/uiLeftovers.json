@@ -47,7 +47,8 @@
     "memoriesSent": "Wysłane wspomnienia",
     "withheld": "Wstrzymane jako sprzeczne: {{ids}}",
     "perSec": "{{n}} tokenów/s",
-    "count": "{{n}} tokenów"
+    "count": "{{n}} tokenów",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Edytuj hosta serwera"
