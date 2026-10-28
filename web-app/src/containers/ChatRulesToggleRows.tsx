@@ -24,7 +24,7 @@ export function ChatRulesToggleRows({
   const off = new Set(disabled ?? [])
   return (
     <div data-testid="chat-rules-rows" className="border-b px-2 py-1">
-      <p className="px-2 pt-1 text-[11px] font-medium text-muted-foreground">
+      <p className="px-2 pt-1 text-[length:calc(var(--ui-font-base)*11/16)] font-medium text-muted-foreground">
         {t('common:chatRules')}
       </p>
       {applicable.map((rule) => (
