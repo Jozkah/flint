@@ -7,8 +7,8 @@
 //!
 //! The call never prompts and never guesses: `BatchMode` means a password or
 //! passphrase prompt fails instead of waiting, and a host the user has not
-//! already trusted fails instead of being added silently (`StrictHostKeyChecking`
-//! stays on its default, which asks, and with no one to ask refuses). The target
+//! already trusted fails instead of being added silently (`StrictHostKeyChecking=yes`
+//! is set explicitly, so a user config that relaxes it does not apply). The target
 //! is checked so it can never be read as an option, and `--` ends the options.
 
 use std::time::Duration;
@@ -77,7 +77,7 @@ pub fn display(plan: &Plan) -> String {
 }
 
 pub fn argv(plan: &Plan) -> Vec<String> {
-    let mut args: Vec<String> = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "NumberOfPasswordPrompts=0", "-T"]
+    let mut args: Vec<String> = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=15", "-o", "NumberOfPasswordPrompts=0", "-T"]
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -141,10 +141,10 @@ mod tests {
         let p = plan(&json!({ "host": "devbox", "command": "echo 'a b'; ls", "port": 22 })).unwrap();
         let args = argv(&p);
         assert!(args.windows(2).any(|w| w == ["-o", "BatchMode=yes"]));
+        assert!(args.windows(2).any(|w| w == ["-o", "StrictHostKeyChecking=yes"]));
         assert!(args.windows(2).any(|w| w == ["-o", "NumberOfPasswordPrompts=0"]));
         let dashes = args.iter().position(|a| a == "--").unwrap();
         assert_eq!(&args[dashes + 1..], ["devbox", "echo 'a b'; ls"]);
-        assert!(!args.iter().any(|a| a.contains("StrictHostKeyChecking")));
     }
 
     #[test]
