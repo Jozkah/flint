@@ -181,7 +181,7 @@
     "kpiArtifacts": "アーティファクト",
     "kpiArtifactsSub": "今週 {{count}} 件が新規",
     "kpiSessions": "Cowork から",
-    "kpiSessionsSub": "{{count}} 個のセッションにわたる",
+    "kpiSessionsSub": "保存済みの成果物あり",
     "kpiDisk": "ディスク上",
     "kpiDiskSub": "セッションサンドボックス内",
     "kindCode": "コード",

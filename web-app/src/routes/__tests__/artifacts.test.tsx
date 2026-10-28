@@ -276,4 +276,22 @@ describe('Library route (/artifacts)', () => {
     fireEvent.click(screen.getByText('common:artifactsOpenCowork'))
     expect(h.navigate).toHaveBeenCalledWith({ to: '/cowork' })
   })
+
+  it('sessions tile shows the distinct session count', async () => {
+    const turn = (path: string) => ({
+      role: 'tool',
+      name: 'write',
+      content: '',
+      args: { path },
+      result: `Created ${path} (120 bytes)`,
+    })
+    h.sessions = [
+      { ...session, id: 's1', turns: [turn('a.html'), turn('b.html')] },
+      { ...session, id: 's2', turns: [turn('c.html'), turn('d.html')] },
+      { ...session, id: 's3', turns: [turn('e.html')] },
+    ]
+    await renderPage()
+    expect(screen.getByTestId('kpi-artifacts')).toHaveTextContent('5')
+    expect(screen.getByTestId('kpi-sessions')).toHaveTextContent('3')
+  })
 })

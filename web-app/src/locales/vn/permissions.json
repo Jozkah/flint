@@ -366,5 +366,33 @@
     "none": "Thư mục này không khai báo hook.",
     "error": "Không đọc được tệp hook",
     "loadFailed": "Không đọc được các hook"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Cho phép tác tử thay đổi tệp trong thư mục này?",
+        "file": "Cho phép tác tử thay đổi tệp này?"
+      },
+      "read": {
+        "folder": "Cho phép tác tử đọc thư mục này?",
+        "file": "Cho phép tác tử đọc tệp này?"
+      }
+    },
+    "asking": "{{task}} đang yêu cầu truy cập ngoài không gian làm việc của nó.",
+    "askingFrom": "{{origin}} trong {{task}} đang yêu cầu truy cập ngoài không gian làm việc của nó.",
+    "thisConversation": "cuộc trò chuyện này",
+    "folderLabel": "Thư mục (và mọi thứ bên trong)",
+    "fileLabel": "Tệp",
+    "requestedAs": "Được yêu cầu dưới dạng {{requested}}, trỏ tới đường dẫn ở trên.",
+    "reason": "Lý do được nêu",
+    "access": "Quyền truy cập:",
+    "readWrite": "Đọc và ghi",
+    "readOnly": "Chỉ đọc",
+    "grantNote": "\"Cho phép cho cuộc trò chuyện này\" kết thúc khi cuộc trò chuyện kết thúc, hoặc sau 8 giờ. \"Luôn cho phép\" áp dụng cho mọi cuộc trò chuyện cho đến khi bạn thu hồi trong Cài đặt > Quyền > Quyền truy cập thư mục.",
+    "moreWaiting_one": "Còn {{count}} yêu cầu đang chờ.",
+    "moreWaiting_other": "Còn {{count}} yêu cầu đang chờ.",
+    "deny": "Từ chối",
+    "always": "Luôn cho phép",
+    "session": "Cho phép cho cuộc trò chuyện này"
   }
 }

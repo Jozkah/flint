@@ -181,7 +181,7 @@
     "kpiArtifacts": "成品",
     "kpiArtifactsSub": "本週新增 {{count}} 個",
     "kpiSessions": "來自 Cowork",
-    "kpiSessionsSub": "涉及 {{count}} 個工作階段",
+    "kpiSessionsSub": "含已儲存的產物",
     "kpiDisk": "磁碟上",
     "kpiDiskSub": "在工作階段沙箱中",
     "kindCode": "程式碼",

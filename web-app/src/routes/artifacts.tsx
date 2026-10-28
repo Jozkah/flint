@@ -365,7 +365,9 @@ function ArtifactsPage() {
     [navigate]
   )
 
-  const sessionCount = new Set(rows.map((r) => r.sessionId)).size
+  const sessionCount = new Set(
+    rows.filter((r) => !r.studio && r.sessionId).map((r) => r.sessionId)
+  ).size
   const now = Date.now()
   const thisWeek = rows.filter((r) => r.updated && now - r.updated < WEEK_MS)
   const sized = rows.filter((r) => r.bytes)
@@ -394,6 +396,7 @@ function ArtifactsPage() {
             title={t('engine:library.kpiArtifacts')}
             icon={<Icon name="x-library" />}
             value={rows.length}
+            testId="kpi-artifacts"
             sub={t('engine:library.kpiArtifactsSub', {
               count: thisWeek.length,
             })}
@@ -402,8 +405,9 @@ function ArtifactsPage() {
           <KpiTile
             title={t('engine:library.kpiSessions')}
             icon={<Icon name="x-cowork" />}
-            value={rows.length}
-            sub={t('engine:library.kpiSessionsSub', { count: sessionCount })}
+            value={sessionCount}
+            testId="kpi-sessions"
+            sub={t('engine:library.kpiSessionsSub')}
             delay={90}
           />
           <KpiTile

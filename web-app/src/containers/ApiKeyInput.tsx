@@ -94,16 +94,21 @@ export function ApiKeyInput({
       <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
         <button
           onClick={() => setShowPassword(!showPassword)}
-          className="p-1 rounded hover:bg-secondary/50 text-muted-foreground"
+          className="p-1 rounded hover:bg-secondary/50 text-muted-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
           type="button"
+          aria-label={
+            showPassword ? t('common:apiKey.hide') : t('common:apiKey.show')
+          }
+          aria-pressed={showPassword}
         >
           {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
         <button
           onClick={handleCopy}
           disabled={!inputValue}
-          className="p-1 rounded hover:bg-secondary/50 text-muted-foreground disabled:opacity-40 disabled:pointer-events-none"
+          className="p-1 rounded hover:bg-secondary/50 text-muted-foreground disabled:opacity-40 disabled:pointer-events-none pointer-coarse:min-h-11 pointer-coarse:min-w-11"
           type="button"
+          aria-label={t('common:apiKey.copy')}
         >
           {copied ? (
             <CopyCheck size={16} className="text-primary" />
@@ -112,6 +117,9 @@ export function ApiKeyInput({
           )}
         </button>
       </div>
+      <span className="sr-only" role="status" aria-live="polite">
+        {copied ? t('common:apiKey.copied') : ''}
+      </span>
       {hasError && (
         <p className="text-destructive text-xs mt-1 absolute -bottom-5 left-0">
           {error}

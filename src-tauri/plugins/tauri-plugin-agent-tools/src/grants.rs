@@ -967,6 +967,7 @@ mod tests {
             workspace: ws.clone(),
             repository: repo.canonicalize().unwrap(),
             read_roots: vec![],
+            allow_network: true,
         };
         let build = || confined_command(Path::new("node"), &[], None, &authority, None);
         let appcontainer = jail::backend() == jail::Backend::AppContainer;
