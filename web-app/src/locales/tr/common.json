@@ -536,6 +536,7 @@
   "threadImage": "Konu görseli",
   "editMessage": "Mesajı düzenle",
   "deleteMessage": "Mesajı sil",
+  "deleteMessageDescription": "Bu mesajı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
   "deleteThread": "Konuyu sil",
   "renameThread": "Konuyu yeniden adlandır",
   "threadTitle": "Konu başlığı",
@@ -1361,7 +1362,8 @@
     "binaryRefused": "{{name}} bir metin dosyası değil, uzantısı ne derse desin",
     "chooseAgainAction": "Yeniden seç",
     "externalGone": "Bu dosya projenin dışından açıldı ve bu erişim korunmadı. Yeniden açmak için tekrar seçin.",
-    "oneFolderAtATime": "Aynı anda yalnızca bir klasör eklenebilir. \"{{name}}\" eklenmedi."
+    "oneFolderAtATime": "Aynı anda yalnızca bir klasör eklenebilir. \"{{name}}\" eklenmedi.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Ayarlarda ara",
@@ -3113,5 +3115,9 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
-  }
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…"
 }

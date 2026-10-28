@@ -23,7 +23,7 @@ type Props = {
  * it produced; the tool calls it was denied are listed under "Blocked on".
  */
 export function ScheduleRunHistory({ taskId, version }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [runs, setRuns] = useState<ScheduleRun[] | null>(null)
 
   const load = useCallback(async () => {
@@ -62,7 +62,7 @@ export function ScheduleRunHistory({ taskId, version }: Props) {
             <Chip tone={statusTone(run.status)} live={run.status === 'running'} dot>
               {t(`schedules:status.${run.status}`)}
             </Chip>
-            <span className="text-foreground">{formatWhen(run.startedAtMs)}</span>
+            <span className="text-foreground">{formatWhen(run.startedAtMs, i18n?.language)}</span>
             <span className="text-muted-foreground">{t(`schedules:trigger.${run.trigger}`)}</span>
             {run.spend.turns > 0 && (
               <span className="text-muted-foreground">

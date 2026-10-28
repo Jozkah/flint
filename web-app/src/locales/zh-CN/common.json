@@ -536,6 +536,7 @@
   "threadImage": "会话图片",
   "editMessage": "编辑消息",
   "deleteMessage": "删除消息",
+  "deleteMessageDescription": "确定要删除这条消息吗？此操作无法撤销。",
   "deleteThread": "删除会话",
   "renameThread": "重命名会话",
   "threadTitle": "会话标题",
@@ -1363,7 +1364,8 @@
     "binaryRefused": "{{name}} 不是文本文件，无论其扩展名如何",
     "chooseAgainAction": "重新选择",
     "externalGone": "此文件是从项目之外打开的，该访问权限未能保留。请重新选择它以再次打开。",
-    "oneFolderAtATime": "一次只能添加一个文件夹。未添加“{{name}}”。"
+    "oneFolderAtATime": "一次只能添加一个文件夹。未添加“{{name}}”。",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "搜索设置",
@@ -3101,5 +3103,9 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
-  }
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…"
 }

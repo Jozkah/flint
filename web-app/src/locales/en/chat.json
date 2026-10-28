@@ -2,6 +2,15 @@
   "welcome": "Hi, how are you?",
   "description": "How can I help you today?",
   "startedAt": "Started {{time}}",
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
+  },
   "home": {
     "title": "New chat",
     "notSaved": "Nothing is saved until you send",

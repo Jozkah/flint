@@ -552,6 +552,7 @@
   "threadImage": "Obrázek vlákna",
   "editMessage": "Upravit zprávu",
   "deleteMessage": "Smazat zprávu",
+  "deleteMessageDescription": "Opravdu chcete tuto zprávu smazat? Tuto akci nelze vrátit zpět.",
   "deleteThread": "Smazat vlákno",
   "renameThread": "Přejmenovat vlákno",
   "threadTitle": "Název vlákna",
@@ -1394,7 +1395,8 @@
     "binaryRefused": "{{name}} není textový soubor, ať už jeho přípona říká cokoli",
     "chooseAgainAction": "Vybrat znovu",
     "externalGone": "Tento soubor byl otevřen zvenčí projektu a tento přístup nepřetrval. Vyberte ho znovu, abyste ho otevřeli.",
-    "oneFolderAtATime": "Najednou lze přidat jen jednu složku. „{{name}}“ nebyla přidána."
+    "oneFolderAtATime": "Najednou lze přidat jen jednu složku. „{{name}}“ nebyla přidána.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Hledat v nastavení",
@@ -3246,5 +3248,9 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
-  }
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…"
 }

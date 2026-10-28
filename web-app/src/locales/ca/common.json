@@ -541,6 +541,7 @@
   "threadImage": "Imatge del fil",
   "editMessage": "Edita el missatge",
   "deleteMessage": "Suprimeix el missatge",
+  "deleteMessageDescription": "Segur que vols suprimir aquest missatge? Aquesta acció no es pot desfer.",
   "deleteThread": "Suprimeix el fil",
   "renameThread": "Canvia el nom del fil",
   "threadTitle": "Títol del fil",
@@ -1375,7 +1376,8 @@
     "binaryRefused": "{{name}} no és un fitxer de text, digui el que digui l'extensió",
     "chooseAgainAction": "Tria de nou",
     "externalGone": "Aquest fitxer es va obrir des de fora del projecte i aquest accés no s'ha conservat. Tria'l de nou per reobrir-lo.",
-    "oneFolderAtATime": "Només una carpeta alhora. «{{name}}» no s'ha afegit."
+    "oneFolderAtATime": "Només una carpeta alhora. «{{name}}» no s'ha afegit.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Cerca a la configuració",
@@ -3165,5 +3167,9 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
-  }
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…"
 }

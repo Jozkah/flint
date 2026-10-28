@@ -202,8 +202,12 @@ function HuggingFaceModelDetail() {
               variant="outline"
               size="sm"
               onClick={() => {
-                void navigator.clipboard.writeText(model.id)
-                toast.success(t('hub:detail.repoCopied'))
+                navigator.clipboard
+                  .writeText(model.id)
+                  .then(() => toast.success(t('hub:detail.repoCopied')))
+                  .catch((error: unknown) => {
+                    console.error('Failed to copy to clipboard:', error)
+                  })
               }}
             >
               <Copy className="size-3.5" /> {t('hub:detail.copyRepo')}

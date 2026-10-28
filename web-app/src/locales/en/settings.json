@@ -544,6 +544,18 @@
     "reset": "Reset",
     "huggingfaceToken": "HuggingFace Token",
     "huggingfaceTokenDesc": "Your HuggingFace API token for accessing models.",
+    "hfToken": {
+      "empty": "Please enter a Hugging Face token to validate",
+      "valid": "Token is valid",
+      "signedInAs": "Signed in as {{name}}",
+      "validDesc": "Your Hugging Face token is valid.",
+      "invalid": "Token invalid",
+      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
+      "timedOut": "Validation timed out",
+      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
+      "failed": "Validation failed",
+      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+    },
     "closeToTray": "Close to tray",
     "closeToTrayDesc": "Closing the window hides Flint to the system tray instead of quitting. Quit from the tray menu.",
     "downloadLimit": "Download speed limit",
