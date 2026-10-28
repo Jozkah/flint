@@ -401,6 +401,12 @@ fn excel_datetime(dt: &calamine::ExcelDateTime) -> String {
     let (y, mo, d, h, mi, s, ms) = dt.to_ymd_hms_milli();
     // Round to whole seconds: 10:00:00 as a float sits just below the exact value.
     let total_secs = (h as u32 * 3600 + mi as u32 * 60 + s as u32) + u32::from(ms >= 500);
+    // Rounding up from 23:59:59.5 reaches the next day: carry it into the date.
+    let (y, mo, d) = if total_secs >= 86_400 {
+        next_day(i64::from(y), i64::from(mo), i64::from(d))
+    } else {
+        (i64::from(y), i64::from(mo), i64::from(d))
+    };
     let time = format!(
         "{:02}:{:02}:{:02}",
         (total_secs / 3600) % 24,
@@ -416,6 +422,24 @@ fn excel_datetime(dt: &calamine::ExcelDateTime) -> String {
         date
     } else {
         format!("{}T{}", date, time)
+    }
+}
+
+/// The calendar day after `y-m-d` (proleptic Gregorian).
+fn next_day(y: i64, m: i64, d: i64) -> (i64, i64, i64) {
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if d < days {
+        (y, m, d + 1)
+    } else if m < 12 {
+        (y, m + 1, 1)
+    } else {
+        (y + 1, 1, 1)
     }
 }
 
@@ -792,6 +816,10 @@ mod tests {
         assert_eq!(format_cell(&dt(45123.5)), "2023-07-16T12:00:00");
         assert_eq!(format_cell(&dt(0.75)), "18:00:00");
         assert_eq!(format_cell(&dt(44927.0 + 10.0 / 24.0)), "2023-01-01T10:00:00");
+        // 23:59:59.5 rounds up into the next day, month and year.
+        let almost = 45123.0 + 86_399.5 / 86_400.0;
+        assert_eq!(format_cell(&dt(almost)), "2023-07-17T00:00:00");
+        assert_eq!(format_cell(&dt(44926.0 + 86_399.5 / 86_400.0)), "2023-01-01T00:00:00");
     }
 
     #[test]
