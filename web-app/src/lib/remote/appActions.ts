@@ -304,7 +304,8 @@ export function appActions(navigate: Navigate): RemoteActions {
         return 1
       }
       if (kind === 'chat') {
-        ;(await ensureChatComposer(id))?.stop?.()
+        const composer = await ensureChatComposer(id)
+        composer?.stop?.()
       } else if (useCoworkRun.getState().runs[id]) {
         holdQueueThenStop([id], () => abortRun(id))
       }
