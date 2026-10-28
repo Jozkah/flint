@@ -243,17 +243,17 @@ fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> 
     if verbose {
         println!("[VectorDB] Trying {} sqlite-vec candidates...", paths.len());
     }
-    for p in paths {
+    for p in &paths {
         if verbose {
             println!("[VectorDB]   Trying: {}", p);
         }
-        let loaded = unsafe { conn.load_extension(&p, Some("sqlite3_vec_init")).is_ok() };
+        let loaded = unsafe { conn.load_extension(p, Some("sqlite3_vec_init")).is_ok() };
         if loaded && vec0_module_available(conn) {
             if verbose {
                 println!("[VectorDB] sqlite-vec loaded from: {}", p);
             }
             if let Ok(mut g) = VEC_PROBE.lock() {
-                *g = Some(Some(p));
+                *g = Some(Some(p.clone()));
             }
             return true;
         }
@@ -261,6 +261,12 @@ fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> 
 
     if let Ok(mut g) = VEC_PROBE.lock() {
         *g = Some(None);
+    }
+    if !paths.is_empty() {
+        eprintln!(
+            "[VectorDB] sqlite-vec library not loadable from any of: {}",
+            paths.join(", ")
+        );
     }
     if verbose {
         println!("[VectorDB] sqlite-vec unavailable; using linear search");
@@ -288,20 +294,50 @@ const SQLITE_VEC_SYSTEM_DIRS: &[&str] = if cfg!(target_os = "macos") {
     ]
 };
 
+/// Tauri's resource folder, set once at plugin setup. The bundle puts
+/// `resources/bin/sqlite-vec.<ext>` under it, which in an AppImage
+/// (`usr/lib/<product>/`) or a macOS `.app` (`Contents/Resources/`) is not next
+/// to the executable.
+static RESOURCE_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Record the app's resource folder so the bundled sqlite-vec is tried first.
+pub fn set_resource_dir(dir: PathBuf) {
+    let _ = RESOURCE_DIR.set(dir);
+}
+
 pub fn possible_sqlite_vec_paths() -> Vec<String> {
     build_sqlite_vec_paths(
         crate::compat_env::var("SQLITE_VEC_PATH").ok(),
+        RESOURCE_DIR.get().cloned(),
         std::env::current_exe().ok(),
     )
 }
 
-fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -> Vec<String> {
+/// `<dir>/resources/bin/sqlite-vec`, the layout the tauri confs bundle.
+fn bundled_vec_path(dir: &std::path::Path) -> String {
+    dir.join("resources")
+        .join("bin")
+        .join("sqlite-vec")
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn build_sqlite_vec_paths(
+    override_path: Option<String>,
+    resource_dir: Option<PathBuf>,
+    exe: Option<PathBuf>,
+) -> Vec<String> {
     let mut paths = Vec::new();
 
     if let Some(custom) = override_path {
         if !custom.trim().is_empty() {
             paths.push(custom);
         }
+    }
+
+    // The copy the installer bundles (tauri.<os>.conf.json resources).
+    if let Some(dir) = resource_dir {
+        paths.push(bundled_vec_path(&dir));
     }
 
     // Dev builds only: the checkout's resources, anchored at compile time. A
@@ -318,11 +354,7 @@ fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -
     // Exe-relative paths
     if let Some(exe) = exe {
         if let Some(dir) = exe.parent() {
-            let mut d = dir.to_path_buf();
-            d.push("resources");
-            d.push("bin");
-            d.push("sqlite-vec");
-            paths.push(d.to_string_lossy().to_string());
+            paths.push(bundled_vec_path(dir));
         }
 
         #[cfg(target_os = "macos")]
@@ -337,8 +369,8 @@ fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -
         }
     }
 
-    // System installs: the library is not bundled, so a package-manager copy is
-    // the usual source of ANN acceleration.
+    // System installs: a package-manager copy, for builds whose bundle has no
+    // library for the platform (e.g. Windows arm64).
     for dir in SQLITE_VEC_SYSTEM_DIRS {
         for stem in SQLITE_VEC_STEMS {
             paths.push(format!("{dir}{}{stem}", std::path::MAIN_SEPARATOR));
@@ -1142,21 +1174,53 @@ mod tests {
         assert!(rows[0].1 < 1e-6);
     }
 
+    // AppImage: exe in usr/bin, resources in usr/lib/<product>. The resource
+    // folder copy must come before the exe-relative guess and system dirs.
+    #[test]
+    fn resource_dir_is_tried_before_exe_relative_and_system_paths() {
+        let res = PathBuf::from("/tmp/.mount_flint/usr/lib/Flint");
+        let paths = build_sqlite_vec_paths(
+            None,
+            Some(res.clone()),
+            Some(PathBuf::from("/tmp/.mount_flint/usr/bin/flint")),
+        );
+        let bundled = bundled_vec_path(&res);
+        assert_eq!(paths.first(), Some(&bundled), "{paths:?}");
+        let exe_rel = bundled_vec_path(std::path::Path::new("/tmp/.mount_flint/usr/bin"));
+        let exe_pos = paths.iter().position(|p| *p == exe_rel).expect("exe-relative fallback kept");
+        let sys_pos = paths
+            .iter()
+            .position(|p| SQLITE_VEC_SYSTEM_DIRS.iter().any(|dir| p.starts_with(dir)))
+            .expect("system fallback kept");
+        assert!(exe_pos > 0 && sys_pos > exe_pos, "{paths:?}");
+    }
+
+    #[test]
+    fn override_still_beats_resource_dir() {
+        let paths = build_sqlite_vec_paths(
+            Some("/custom/vec".to_string()),
+            Some(PathBuf::from("/res")),
+            None,
+        );
+        assert_eq!(paths[0], "/custom/vec");
+        assert_eq!(paths[1], bundled_vec_path(std::path::Path::new("/res")));
+    }
+
     #[test]
     fn override_takes_priority_over_every_other_candidate() {
-        let paths = build_sqlite_vec_paths(Some("/custom/vec".to_string()), None);
+        let paths = build_sqlite_vec_paths(Some("/custom/vec".to_string()), Some(PathBuf::from("/res")), None);
         assert_eq!(paths.first().map(String::as_str), Some("/custom/vec"));
     }
 
     #[test]
     fn blank_override_is_ignored() {
-        let paths = build_sqlite_vec_paths(Some("   ".to_string()), None);
+        let paths = build_sqlite_vec_paths(Some("   ".to_string()), None, None);
         assert!(!paths.iter().any(|p| p.trim().is_empty()), "{paths:?}");
     }
 
     #[test]
     fn bundled_paths_are_searched_before_system_paths() {
-        let paths = build_sqlite_vec_paths(None, Some(PathBuf::from("/opt/jan/bin/jan")));
+        let paths = build_sqlite_vec_paths(None, None, Some(PathBuf::from("/opt/jan/bin/jan")));
         let bundled = paths
             .iter()
             .position(|p| p.contains("resources"))
@@ -1170,11 +1234,10 @@ mod tests {
         assert!(bundled < system, "{paths:?}");
     }
 
-    // A package-manager install is the only way to get ANN now that the library
-    // is deliberately not bundled.
+    // A package-manager install covers platforms the bundle has no library for.
     #[test]
     fn searches_system_library_directories() {
-        let paths = build_sqlite_vec_paths(None, None);
+        let paths = build_sqlite_vec_paths(None, None, None);
         assert!(
             paths.iter().any(|p| p.starts_with("/usr/")
                 || p.starts_with("/opt/")
@@ -1187,7 +1250,7 @@ mod tests {
     // from the launch directory or PATH.
     #[test]
     fn never_offers_bare_or_cwd_relative_candidates() {
-        let paths = build_sqlite_vec_paths(None, Some(PathBuf::from("/opt/jan/bin/jan")));
+        let paths = build_sqlite_vec_paths(None, None, Some(PathBuf::from("/opt/jan/bin/jan")));
         for p in &paths {
             assert!(
                 std::path::Path::new(p).is_absolute() || p.starts_with('/'),
@@ -1198,7 +1261,7 @@ mod tests {
 
     #[test]
     fn candidates_are_unique() {
-        let paths = build_sqlite_vec_paths(None, Some(PathBuf::from("/opt/jan/bin/jan")));
+        let paths = build_sqlite_vec_paths(None, None, Some(PathBuf::from("/opt/jan/bin/jan")));
         let mut seen = paths.clone();
         seen.sort();
         seen.dedup();
