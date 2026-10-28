@@ -79,6 +79,8 @@ pub fn purge_cleanup(data: &Path, meta: &ArchiveMeta, _dir: &Path) -> Result<(),
             if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(data, &meta.id) {
                 log::warn!("could not remove request records for a purged thread: {e}");
             }
+            // Files attached to the thread and its document index.
+            crate::core::attachments::cleanup::remove_thread_data(data, &meta.id);
             // The thread's agent scratch dir in the OS temp folder is ours to
             // remove too (Jozkah/jan#186).
             if let Some(scratch) = crate::core::threads::utils::thread_scratch_dir(&meta.id) {
