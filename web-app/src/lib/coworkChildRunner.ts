@@ -605,6 +605,7 @@ ${req.description}`
       }
     } finally {
       env.signal.removeEventListener('abort', stopChild)
+      teamSignal?.removeEventListener('abort', stopChild)
       roster.leave()
       unregisterSubagent(env.sessionId, childTaskId)
       // A throw from the dispatch would otherwise leave the record running with
