@@ -144,9 +144,14 @@ pub fn gguf_shard_paths(path: &str) -> Vec<String> {
         return vec![path.to_string()];
     }
     let (head_end, tail) = (stem.len() - tail_len, &stem[stem.len() - tail_len..]);
+    // A non-ASCII byte in the tail would make the str slices below split a
+    // character and panic.
+    if !tail.is_ascii() {
+        return vec![path.to_string()];
+    }
     let b = tail.as_bytes();
     let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
-    if b[0] != b'-' || &tail[6..10] != "-of-" || !digits(1..6) || !digits(10..15) {
+    if b[0] != b'-' || &b[6..10] != b"-of-" || !digits(1..6) || !digits(10..15) {
         return vec![path.to_string()];
     }
     let total: u32 = tail[10..15].parse().unwrap_or(0);
@@ -553,6 +558,14 @@ mod tests {
             check_apple_silicon_compatibility(&apple_silicon(16 * 1024), usable + 1).unwrap(),
             ModelSupportStatus::Red
         );
+    }
+
+    #[test]
+    fn shard_paths_non_ascii_does_not_panic() {
+        let p = "/m/m-aaaa\u{e9}bbbbbbbb.gguf";
+        assert_eq!(gguf_shard_paths(p), vec![p.to_string()]);
+        let q = "/m/a-0000\u{e9}-of-00003.gguf";
+        assert_eq!(gguf_shard_paths(q), vec![q.to_string()]);
     }
 
     #[test]
