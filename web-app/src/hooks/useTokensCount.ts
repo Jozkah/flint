@@ -22,6 +22,7 @@ import { estimateTokens, inlineFilesText } from '@/lib/context-manager'
 import { fixedPromptTokens } from '@/lib/contextBreakdown'
 import {
   finalizeTokenUsage,
+  readContextTokens,
   readTokenUsage,
   type TokenUsage,
 } from '@/lib/tokenUsage'
@@ -116,6 +117,17 @@ const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
       return usage
   }
   return {}
+}
+
+// What the latest measured turn occupies in the window: its last request, not
+// the sum of a tool loop's steps (janhq/jan#9468). Older messages fall back to
+// their usage total.
+const getLatestContextTokens = (messages: ThreadMessage[]): number | undefined => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const ctx = readContextTokens(messages[i].metadata)
+    if (ctx !== undefined && ctx > 0) return ctx
+  }
+  return undefined
 }
 
 /**
@@ -334,9 +346,12 @@ export const useTokensCount = (
       }
       const usage = source?.usage ?? getLatestServerUsage(messages)
       const unmeasured = source?.usage ? 0 : estimateUnmeasuredTokens(messages, fixedTokens)
+      const filled = source?.usage
+        ? usage.totalTokens
+        : (getLatestContextTokens(messages) ?? usage.totalTokens)
       return {
         tokenCount:
-          sourceOverflow?.requestTokens ?? (usage.totalTokens ?? 0) + unmeasured,
+          sourceOverflow?.requestTokens ?? (filled ?? 0) + unmeasured,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         usage,
@@ -384,8 +399,11 @@ export const useTokensCount = (
     // last measured request, as the remote branch does (C012).
     const unmeasured =
       liveStats || source?.usage ? 0 : estimateUnmeasuredTokens(messages, fixedTokens)
-    const tokenCount =
-      overflow?.requestTokens ?? (usage.totalTokens ?? 0) + unmeasured
+    const filled =
+      liveStats || source?.usage
+        ? usage.totalTokens
+        : (getLatestContextTokens(messages) ?? usage.totalTokens)
+    const tokenCount = overflow?.requestTokens ?? (filled ?? 0) + unmeasured
     // A runtime that reports `n_ctx: 0`, or a server whose overflow error
     // carried a zero limit, has told us nothing about the window. Left as `0`
     // it renders as `0 / 0` and reads as a model with no room at all.

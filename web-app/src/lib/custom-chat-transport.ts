@@ -2887,6 +2887,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
             usage,
+            contextTokens: usageCollector.contextTokens(),
             ...(reasoningClock.totalMs() > 0
               ? { reasoningMs: Math.round(reasoningClock.totalMs()) }
               : {}),
