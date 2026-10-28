@@ -9,6 +9,7 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { Switch } from '@/components/ui/switch'
 import { BuildUpdateItem } from '@/containers/BuildUpdateItem'
+import { UpdateChannelItem } from '@/containers/UpdateChannelItem'
 import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -114,6 +115,7 @@ function General() {
             }
           />
           {isPlatformTauri() && <BuildUpdateItem />}
+          {isPlatformTauri() && <UpdateChannelItem />}
           <CardItem
             anchor="settings-general-language"
             title={t('common:language')}
