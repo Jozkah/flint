@@ -84,6 +84,13 @@ type ModelProviderState = {
   addDeletedModels: (modelIds: string[], provider: string) => void
 }
 
+// Order matters (fallbacks are tried in sequence); undefined equals empty.
+const sameKeyList = (a?: string[], b?: string[]): boolean => {
+  const x = a ?? []
+  const y = b ?? []
+  return x.length === y.length && x.every((key, i) => key === y[i])
+}
+
 export const useModelProvider = create<ModelProviderState>()(
   persist(
     (set, get) => ({
@@ -294,18 +301,23 @@ export const useModelProvider = create<ModelProviderState>()(
         // Reconfiguring a provider makes past failures meaningless: a new base
         // URL or key is a different endpoint, and the old verdict would just
         // be an accusation carried forward.
-        if (
-          'base_url' in data ||
-          'api_key' in data ||
-          'api_key_fallbacks' in data
-        ) {
+        // Callers often spread the whole provider back in, so a key being
+        // present is not a change: compare against what is stored.
+        const previous = get().providers.find(
+          (p) => p.provider === providerName
+        )
+        const urlChanged =
+          'base_url' in data && data.base_url !== previous?.base_url
+        const keyChanged =
+          'api_key' in data && data.api_key !== previous?.api_key
+        const fallbacksChanged =
+          'api_key_fallbacks' in data &&
+          !sameKeyList(data.api_key_fallbacks, previous?.api_key_fallbacks)
+        if (urlChanged || keyChanged || fallbacksChanged) {
           // A context window learned from the old endpoint's own refusal would
           // be enforced silently against the new one. Forgetting returns it to
           // unknown, which still dispatches; a stale limit does not.
           forgetAllServerLimits()
-          const previous = get().providers.find(
-            (p) => p.provider === providerName
-          )
           for (const url of [previous?.base_url, data.base_url]) {
             const origin = originOf(url)
             if (origin) useProviderReachability.getState().forgetOrigin(origin)
