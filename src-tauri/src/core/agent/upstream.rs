@@ -2630,6 +2630,13 @@ impl SseAccumulator {
                     .and_then(|v| v.as_u64())
                     .map(|i| i as usize)
                     .unwrap_or(position);
+                // A hostile or buggy server could send a huge index and force
+                // a giant allocation; no real turn has this many parallel calls.
+                const MAX_TOOL_CALL_INDEX: usize = 128;
+                if idx > MAX_TOOL_CALL_INDEX {
+                    log::warn!("ignoring tool call delta with index {idx}");
+                    continue;
+                }
                 while self.tool_calls.len() <= idx {
                     self.tool_calls.push(ToolCallAccum::default());
                 }
@@ -4465,6 +4472,20 @@ mod tests {
             })
             .collect();
         assert_eq!(started, vec![("call_1".to_string(), "write".to_string())]);
+    }
+
+    #[test]
+    fn huge_tool_call_index_is_ignored_without_allocating() {
+        let (tx, _rx) = sink();
+        let mut acc = SseAccumulator::default();
+        acc.ingest(
+            &json!({ "choices": [{ "delta": { "tool_calls": [
+                { "index": 4000000000u64, "id": "call_x", "function": { "name": "read", "arguments": "" } }
+            ] } }] })
+            .to_string(),
+            &tx,
+        );
+        assert!(acc.tool_calls.len() <= 1);
     }
 
     #[test]
