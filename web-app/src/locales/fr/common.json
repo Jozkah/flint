@@ -3072,5 +3072,42 @@
     "hide": "Masquer la clé API",
     "copy": "Copier la clé API",
     "copied": "Copié"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Changement de dépendances",
+      "lockfile": "Fichier de verrouillage",
+      "migration": "Migration irréversible",
+      "binary": "Fichier binaire",
+      "deletion": "Suppression"
+    },
+    "reviewed": "J'ai examiné ce que cela change",
+    "moreLines_one": "… {{count}} ligne de plus",
+    "moreLines_other": "… {{count}} lignes de plus",
+    "lines": "Lignes {{from}}–{{to}}",
+    "sensitive": "Semble contenir un identifiant, donc jamais appliqué.",
+    "wholeBinary": "Binaire : appliqué ou laissé en entier.",
+    "wholeLarge": "Trop volumineux pour être découpé : appliqué ou laissé en entier.",
+    "noWorktree": "aucun enregistrement de worktree à partir duquel proposer",
+    "nothingSelected": "Rien n'est sélectionné. Rejetez la proposition pour l'abandonner.",
+    "applied_one": "{{count}} fichier appliqué.",
+    "applied_other": "{{count}} fichiers appliqués.",
+    "appliedPartial_one": "{{count}} fichier appliqué ; le reste a été écarté.",
+    "appliedPartial_other": "{{count}} fichiers appliqués ; le reste a été écarté.",
+    "rejected": "Rejetée. Rien n'a changé dans votre dossier.",
+    "heading": "{{title}} vers {{root}}",
+    "defaultTitle": "Modifications proposées",
+    "ownCopy": "Cette exécution travaille sur sa propre copie. Rien n'atteint votre dossier avant que vous l'appliquiez.",
+    "collecting": "Collecte…",
+    "review": "Examiner les modifications",
+    "exporting": "Exportation…",
+    "exportPatch": "Exporter en patch",
+    "exported": "Paquet de patch écrit dans {{path}}",
+    "lockFiles": "Fichiers de verrouillage ({{count}}), séparés des modifications de source ci-dessus",
+    "needsAck": "Pour appliquer, marquez-les comme examinés ou écartez-les : {{files}}",
+    "selectedCount": "{{chosen}} sur {{total}} modifications sélectionnées",
+    "reject": "Rejeter",
+    "applying": "Application…",
+    "applySelected": "Appliquer la sélection"
   }
 }

@@ -552,8 +552,38 @@ async fn run_job<R: Runtime>(
     let mut guard = JobGuard { live: live.clone(), armed: true };
     let outcome = poll_job(app, port, &live, path, body, cancel_key).await;
     guard.armed = false;
-    release_job(&live, false).await;
-    outcome
+    // A job abandoned because the wait gave up, or because its status could not
+    // be read, may still be running on the engine: it is told to stop, or it
+    // keeps the GPU busy while the next request is refused as "busy".
+    release_job(&live, matches!(&outcome, Err(e) if e.cancel_job)).await;
+    outcome.map_err(|e| e.message)
+}
+
+/// Why waiting on a job ended in failure, and whether the engine may still be
+/// running that job.
+struct PollError {
+    message: String,
+    /// The job should be cancelled on the engine: we stopped waiting for it, it
+    /// did not stop on its own.
+    cancel_job: bool,
+}
+
+impl PollError {
+    fn abandoned(message: impl Into<String>) -> Self {
+        Self { message: message.into(), cancel_job: true }
+    }
+}
+
+impl From<String> for PollError {
+    fn from(message: String) -> Self {
+        Self { message, cancel_job: false }
+    }
+}
+
+impl From<&str> for PollError {
+    fn from(message: &str) -> Self {
+        message.to_string().into()
+    }
 }
 
 /// Frees the engine when a generation's future is dropped before it finished.
@@ -611,7 +641,7 @@ async fn poll_job<R: Runtime>(
     path: &str,
     body: Value,
     _cancel_key: &str,
-) -> Result<(String, Value), String> {
+) -> Result<(String, Value), PollError> {
     let client = http()?;
     let base = format!("http://127.0.0.1:{port}");
     let submit = client
@@ -629,7 +659,8 @@ async fn poll_job<R: Runtime>(
             400 => format!("The image engine refused the request: {message}"),
             429 => "The image engine is busy. Try again in a moment.".to_string(),
             code => format!("The image engine answered {code}: {message}"),
-        });
+        }
+        .into());
     }
     let job_id = submitted["id"]
         .as_str()
@@ -642,7 +673,7 @@ async fn poll_job<R: Runtime>(
     let started = Instant::now();
     loop {
         if started.elapsed() > JOB_TIMEOUT {
-            return Err("The generation took too long and was stopped.".to_string());
+            return Err(PollError::abandoned("The generation took too long and was stopped."));
         }
         tokio::time::sleep(Duration::from_millis(400)).await;
         let (fraction, phase) = live
@@ -665,23 +696,26 @@ async fn poll_job<R: Runtime>(
                 // A stop the person asked for ends the engine under us; that is a
                 // cancellation, not a failure to report.
                 if CANCEL_REQUESTED.load(Ordering::SeqCst) {
-                    return Err("Cancelled.".to_string());
+                    return Err("Cancelled.".into());
                 }
                 // Otherwise the engine stopped on its own: a crash, or an unload.
-                return Err(format!("{} ({e})", diagnose(live)));
+                return Err(format!("{} ({e})", diagnose(live)).into());
             }
         };
         if response.status().as_u16() == 404 || response.status().as_u16() == 410 {
-            return Err("The image engine lost the job.".to_string());
+            return Err("The image engine lost the job.".into());
         }
-        let job: Value = response.json().await.map_err(|e| format!("The engine's answer was unreadable: {e}"))?;
+        let job: Value = response
+            .json()
+            .await
+            .map_err(|e| PollError::abandoned(format!("The engine's answer was unreadable: {e}")))?;
         match job["status"].as_str().unwrap_or("") {
             "completed" => return Ok((job_id, job["result"].clone())),
-            "cancelled" => return Err("Cancelled.".to_string()),
+            "cancelled" => return Err("Cancelled.".into()),
             "failed" => {
                 let why = diagnose(live);
                 let message = job["error"]["message"].as_str().unwrap_or("");
-                return Err(if message.is_empty() { why } else { format!("{why} ({message})") });
+                return Err(if message.is_empty() { why } else { format!("{why} ({message})") }.into());
             }
             _ => {}
         }
@@ -1071,5 +1105,25 @@ mod guard_tests {
         assert!(refused.unwrap_err().contains("busy"));
         assert!(same.is_ok());
         assert!(check_can_replace("model-b").await.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod poll_error_tests {
+    use super::*;
+
+    #[test]
+    fn only_an_abandoned_wait_asks_the_engine_to_cancel() {
+        // We gave up waiting (timeout, unreadable answer): the job may still run.
+        assert!(PollError::abandoned("took too long").cancel_job);
+        // The engine said it is done, gone or refused: nothing left to cancel.
+        assert!(!PollError::from("The image engine lost the job.").cancel_job);
+        assert!(!PollError::from("Cancelled.".to_string()).cancel_job);
+    }
+
+    #[test]
+    fn the_message_is_kept_as_written() {
+        assert_eq!(PollError::abandoned("x").message, "x");
+        assert_eq!(PollError::from("y").message, "y");
     }
 }

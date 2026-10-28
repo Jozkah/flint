@@ -157,11 +157,21 @@ pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) ->
         return Err("Local image generation needs Windows x64 or Linux x64.".to_string());
     }
     if !catalog::available_backends().contains(&backend) { return Err("This engine backend is not available on this platform.".into()); }
-    let dir = engine_dir(app, backend);
+    // One install at a time: two would unpack into, and delete, the same folders.
+    let _installing = INSTALL_LOCK
+        .try_lock()
+        .map_err(|_| "An engine install is already running.".to_string())?;
+    // A running engine holds its folder open (Windows cannot replace it), and
+    // the new one is about to take its place.
+    super::runtime::unload(app).await;
+    let final_dir = engine_dir(app, backend);
     let staging = diffusion_root(app).join("downloads");
     tokio::fs::create_dir_all(&staging).await.map_err(|e| e.to_string())?;
-    // Start clean: a half-unpacked folder from an earlier try must not be mixed in.
-    let _ = tokio::fs::remove_dir_all(&dir).await;
+    // The new engine is built next to the installed one and swapped in only
+    // once it has passed its start-up check, so a failed install leaves the
+    // working engine alone.
+    clean_stale_staging(&final_dir);
+    let dir = staging_path(&final_dir);
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
 
     let mut assets = vec![catalog::engine_asset(backend)];
@@ -199,13 +209,117 @@ pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) ->
         let _ = tokio::fs::remove_dir_all(&dir).await;
         return Err(e);
     }
-    Ok(dir)
+    let (new, old) = (dir.clone(), final_dir.clone());
+    let swapped = tokio::task::spawn_blocking(move || swap_in(&old, &new))
+        .await
+        .map_err(|e| format!("Installing stopped: {e}"))?;
+    if let Err(e) = swapped {
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        return Err(e);
+    }
+    Ok(final_dir)
+}
+
+/// Only one install runs at a time.
+static INSTALL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// The sibling folder an install is built in before it replaces `dir`.
+fn staging_path(dir: &Path) -> PathBuf {
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    dir.with_file_name(format!("{name}.staging-{}", std::process::id()))
+}
+
+/// Removes staging folders an interrupted install left beside `dir`.
+fn clean_stale_staging(dir: &Path) {
+    let (Some(parent), Some(name)) = (dir.parent(), dir.file_name()) else {
+        return;
+    };
+    let prefix = format!("{}.staging-", name.to_string_lossy());
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(&prefix) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+}
+
+/// Puts the finished `staging` folder in place of `dir`. Windows cannot rename
+/// over an existing folder, so the old one is moved aside first and put back if
+/// the second rename fails.
+fn swap_in(dir: &Path, staging: &Path) -> Result<(), String> {
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let old = dir.with_file_name(format!("{name}.old"));
+    let _ = std::fs::remove_dir_all(&old);
+    let had_old = dir.exists();
+    if had_old {
+        std::fs::rename(dir, &old).map_err(|e| format!("Could not move the old engine aside: {e}"))?;
+    }
+    if let Err(e) = std::fs::rename(staging, dir) {
+        if had_old {
+            let _ = std::fs::rename(&old, dir);
+        }
+        return Err(format!("Could not put the new engine in place: {e}"));
+    }
+    let _ = std::fs::remove_dir_all(&old);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+
+    fn engine_folder(root: &Path, file: &str, text: &str) -> PathBuf {
+        let dir = root.join("engine");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), text).unwrap();
+        dir
+    }
+
+    #[test]
+    fn swap_replaces_the_old_engine() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = engine_folder(root.path(), "sd-server", "old");
+        let staging = staging_path(&dir);
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("sd-server"), "new").unwrap();
+        swap_in(&dir, &staging).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("sd-server")).unwrap(), "new");
+        assert!(!staging.exists() && !root.path().join("engine.old").exists());
+    }
+
+    #[test]
+    fn swap_restores_old_on_rename_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = engine_folder(root.path(), "sd-server", "old");
+        // The staging folder is missing, so the second rename fails.
+        let missing = root.path().join("engine.staging-none");
+        assert!(swap_in(&dir, &missing).is_err());
+        assert_eq!(std::fs::read_to_string(dir.join("sd-server")).unwrap(), "old");
+        assert!(!root.path().join("engine.old").exists());
+    }
+
+    #[test]
+    fn stale_staging_cleaned() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = engine_folder(root.path(), "sd-server", "old");
+        let stale = root.path().join("engine.staging-99999");
+        std::fs::create_dir_all(stale.join("x")).unwrap();
+        let other = root.path().join("engines-else");
+        std::fs::create_dir_all(&other).unwrap();
+        clean_stale_staging(&dir);
+        assert!(!stale.exists());
+        assert!(other.exists() && dir.exists());
+    }
+
+    #[test]
+    fn concurrent_install_second_rejected() {
+        let first = INSTALL_LOCK.try_lock().expect("free to start");
+        assert!(INSTALL_LOCK.try_lock().is_err(), "a second install must be refused");
+        drop(first);
+        assert!(INSTALL_LOCK.try_lock().is_ok());
+    }
 
     #[test]
     fn the_engine_is_recognised_by_its_help_text() {

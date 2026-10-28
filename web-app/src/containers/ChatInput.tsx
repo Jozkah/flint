@@ -184,14 +184,22 @@ import {
   type ModelCapabilities,
   type RejectionReason,
 } from '@/lib/attachmentSupport'
-import { readAsDataUrl } from '@/lib/attachmentIntake'
+import { safeSessionSet } from '@/lib/safeStorage'
+import {
+  VIDEO_EXTS,
+  mediaBatchErrors,
+  prepareAudioFiles,
+  prepareImageFiles,
+  prepareVideoFiles,
+  splitNewByName,
+  splitNewImages,
+  videoMimeForExt,
+  withoutSent,
+} from '@/lib/attachmentIntake'
 import {
   Attachment,
   attachmentsToIngestAsImages,
-  createImageAttachment,
   createDocumentAttachment,
-  createAudioAttachment,
-  createVideoAttachment,
 } from '@/types/attachment'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
@@ -416,23 +424,6 @@ type ChatInputProps = {
   slashProject?: string | null
   /** Surface built-ins; Home gets `/new` by default. `/help` is always there. */
   slashBuiltins?: SlashBuiltin[]
-}
-
-// Video containers llama-server can decode via ffmpeg/ffprobe into frames.
-const VIDEO_EXTS = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v']
-const videoMimeForExt = (ext: string | undefined): string => {
-  switch (ext) {
-    case 'mov':
-      return 'video/quicktime'
-    case 'webm':
-      return 'video/webm'
-    case 'mkv':
-      return 'video/x-matroska'
-    case 'avi':
-      return 'video/x-msvideo'
-    default:
-      return 'video/mp4'
-  }
 }
 
 const ChatInput = memo(function ChatInput({
@@ -1184,9 +1175,6 @@ const ChatInput = memo(function ChatInput({
   const setAttachmentsForThread = useChatAttachments(
     (state) => state.setAttachments
   )
-  const clearAttachmentsForThread = useChatAttachments(
-    (state) => state.clearAttachments
-  )
   const transferAttachments = useChatAttachments(
     (state) => state.transferAttachments
   )
@@ -1328,6 +1316,9 @@ const ChatInput = memo(function ChatInput({
     // Tag characters and bidi controls pasted along with text are hidden
     // instructions the sender cannot see; they never reach the model.
     const typed = stripInvisible(unescapeComposerMarkdown(typedRaw)).text
+    // What the composer held when this send began; typing after that is not
+    // part of the message and must survive the clear.
+    const draftAtStart = latestPromptRef.current
     setWebOffPrompt(null)
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
       setWebOffPrompt(typed)
@@ -1475,10 +1466,16 @@ const ChatInput = memo(function ChatInput({
     })
     const effectivePrompt = withMentionBlocks(referencedPrompt, mentions)
 
-    if (!effectivePrompt.trim() && !hasSendableMedia) {
+    // Files can be attached, or finish ingesting, while @references and
+    // mentions resolve above; what is sent is what is attached now, not what
+    // the render that started the send saw.
+    const liveAttachments = useChatAttachments
+      .getState()
+      .getAttachments(attachmentsKey)
+    if (!effectivePrompt.trim() && !liveAttachments.some(isSendableAttachment)) {
       return
     }
-    if (ingestingAny) {
+    if (liveAttachments.some((a) => a.processing)) {
       toast.info(t('sweep:chat.waitAttachments'))
       return
     }
@@ -1506,21 +1503,21 @@ const ChatInput = memo(function ChatInput({
         return
       }
 
-      const imageFiles = attachments
+      const imageFiles = liveAttachments
         .filter((att) => att.type === 'image' && att.dataUrl)
         .map((att) => ({
           type: 'file',
           mediaType: att.mimeType ?? 'image/jpeg',
           url: att.dataUrl!,
         }))
-      const audioFiles = attachments
+      const audioFiles = liveAttachments
         .filter((att) => att.type === 'audio' && att.dataUrl)
         .map((att) => ({
           type: 'file',
           mediaType: att.audioFormat === 'mp3' ? 'audio/mpeg' : 'audio/wav',
           url: att.dataUrl!,
         }))
-      const videoFiles = attachments
+      const videoFiles = liveAttachments
         .filter((att) => att.type === 'video' && att.dataUrl)
         .map((att) => ({
           type: 'file',
@@ -1529,7 +1526,7 @@ const ChatInput = memo(function ChatInput({
         }))
       const files = [...imageFiles, ...audioFiles, ...videoFiles]
 
-      const sentAttachments = attachments
+      const sentAttachments = liveAttachments
       onSubmit(effectivePrompt, files.length > 0 ? files : undefined, () => {
         // After the clear below, which a synchronous refusal would precede.
         queueMicrotask(() => {
@@ -1550,8 +1547,12 @@ const ChatInput = memo(function ChatInput({
           }
         })
       })
-      setPrompt('')
-      clearAttachmentsForThread(attachmentsKey)
+      // Not over something typed while the send was resolving.
+      if (latestPromptRef.current === draftAtStart) setPrompt('')
+      // Only what was sent: a file attached after the list was read stays.
+      setAttachmentsForThread(attachmentsKey, (prev) =>
+        withoutSent(prev, sentAttachments)
+      )
     } else {
       // No onSubmit provided - create a new thread and navigate to it.
       // Media attachments (image/audio/video) are NOT serialized into
@@ -1570,11 +1571,11 @@ const ChatInput = memo(function ChatInput({
 
       if (isTemporaryChat) {
         // For temporary chat, store message and navigate to temporary thread
-        sessionStorage.setItem(
+        safeSessionSet(
           SESSION_STORAGE_KEY.INITIAL_MESSAGE_TEMPORARY,
           JSON.stringify(messagePayload)
         )
-        sessionStorage.setItem('temp-chat-nav', 'true')
+        safeSessionSet('temp-chat-nav', 'true')
         // Not taken by a temporary chat: forget it so it cannot leak into a later one.
         useDraftSampling.getState().clearAll()
         // Transfer agent mode from home screen to temporary thread
@@ -1676,7 +1677,7 @@ const ChatInput = memo(function ChatInput({
         }
 
         // Store the initial message for the new thread
-        sessionStorage.setItem(
+        safeSessionSet(
           `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${newThread.id}`,
           JSON.stringify(messagePayload)
         )
@@ -1687,7 +1688,7 @@ const ChatInput = memo(function ChatInput({
         })
       }
 
-      setPrompt('')
+      if (latestPromptRef.current === draftAtStart) setPrompt('')
       // Don't clear attachments here — document attachments stored under
       // NEW_THREAD_ATTACHMENT_KEY need to survive until the thread detail
       // page transfers and processes them.  The thread detail page's
@@ -2027,28 +2028,6 @@ const ChatInput = memo(function ChatInput({
     )
   }
 
-  const getFileTypeFromExtension = (fileName: string): string => {
-    const extension = fileName.toLowerCase().split('.').pop()
-    switch (extension) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg'
-      case 'png':
-        return 'image/png'
-      default:
-        return ''
-    }
-  }
-
-  const hashBase64 = async (base64: string): Promise<string> => {
-    const binary = atob(base64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    const hashBuffer = await crypto.subtle.digest('SHA-256', bytes)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-  }
-
   /**
    * An attach that is waiting on the user, because the model cannot read the
    * images in it. The whole batch is held, not just the pictures: cancelling
@@ -2235,72 +2214,21 @@ const ChatInput = memo(function ChatInput({
         processed: true,
       })
     }
-    for (const file of validFiles) {
-      const detectedType = file.type || getFileTypeFromExtension(file.name)
-      const actualType = getFileTypeFromExtension(file.name) || detectedType
-
-      let result: string
-      try {
-        result = await readAsDataUrl(file)
-      } catch {
-        // One unreadable file must not stall the rest of the batch.
-        rejected.push({ name: file.name, reason: 'unreadable' })
-        continue
-      }
-      const base64String = result.split(',')[1]
-      preparedFiles.push(
-        createImageAttachment({
-          name: file.name,
-          size: file.size,
-          mimeType: actualType,
-          base64: base64String,
-          dataUrl: result,
-        })
-      )
+    const images = await prepareImageFiles(validFiles)
+    for (const name of images.unreadable) {
+      // One unreadable file must not stall the rest of the batch.
+      rejected.push({ name, reason: 'unreadable' })
     }
-
-    // Compute content hashes for deduplication (allows different images with same filename)
-    for (const att of preparedFiles) {
-      if (att.base64) {
-        att.contentHash = await hashBase64(att.base64)
-      }
-    }
-
-    const duplicates: string[] = []
-    const newFiles: Attachment[] = []
+    preparedFiles.push(...images.prepared)
 
       const currentAttachments = useChatAttachments
         .getState()
         .getAttachments(attachmentsKey)
 
-    const existingImageHashes = new Set<string>()
-    const existingImageNames = new Set<string>()
-    for (const a of currentAttachments) {
-      if (a.type !== 'image') continue
-      if (a.contentHash) {
-        existingImageHashes.add(a.contentHash)
-      } else if (a.base64) {
-        existingImageHashes.add(await hashBase64(a.base64))
-      } else {
-        existingImageNames.add(a.name)
-      }
-    }
-
-    const seenHashesInBatch = new Set<string>()
-    for (const att of preparedFiles) {
-      const hash = att.contentHash
-      const isDuplicateByContent =
-          hash && (existingImageHashes.has(hash) || seenHashesInBatch.has(hash))
-        const isDuplicateByName = existingImageNames.has(att.name)
-      if (isDuplicateByContent || isDuplicateByName) {
-        duplicates.push(att.name)
-        continue
-      }
-      if (hash) {
-        seenHashesInBatch.add(hash)
-      }
-      newFiles.push(att)
-    }
+    const { fresh: newFiles, duplicates } = await splitNewImages(
+      preparedFiles,
+      currentAttachments
+    )
 
     setAttachmentsForThread(attachmentsKey, (prev) =>
       newFiles.length > 0 ? [...prev, ...newFiles] : prev
@@ -2471,81 +2399,17 @@ const ChatInput = memo(function ChatInput({
     focusComposer()
   }
 
-  const decodeAudioDuration = (dataUrl: string): Promise<number | undefined> =>
-    new Promise((resolve) => {
-      try {
-        const audio = new Audio()
-        audio.preload = 'metadata'
-        audio.onloadedmetadata = () => {
-          const d = audio.duration
-          resolve(Number.isFinite(d) && d > 0 ? d : undefined)
-        }
-        audio.onerror = () => resolve(undefined)
-        audio.src = dataUrl
-      } catch {
-        resolve(undefined)
-      }
-    })
-
   const processAudioFiles = useCallback(
     async (files: File[]) => {
-      const maxBytes = 25 * 1024 * 1024
-      const oversized: string[] = []
-      const invalid: string[] = []
-      const prepared: Attachment[] = []
-
-      for (const file of Array.from(files)) {
-        const lower = file.name.toLowerCase()
-        const ext = lower.split('.').pop()
-        const isWav =
-          file.type === 'audio/wav' ||
-          file.type === 'audio/x-wav' ||
-          ext === 'wav'
-        const isMp3 =
-          file.type === 'audio/mpeg' ||
-          file.type === 'audio/mp3' ||
-          ext === 'mp3'
-        if (!isWav && !isMp3) {
-          invalid.push(file.name)
-          continue
-        }
-        if (file.size > maxBytes) {
-          oversized.push(file.name)
-          continue
-        }
-        const fmt: 'wav' | 'mp3' = isWav ? 'wav' : 'mp3'
-        const mimeType = fmt === 'wav' ? 'audio/wav' : 'audio/mpeg'
-        const dataUrl: string = await readAsDataUrl(file)
-        const base64 = dataUrl.split(',')[1] ?? ''
-        const durationSec = await decodeAudioDuration(dataUrl)
-        prepared.push(
-          createAudioAttachment({
-            name: file.name,
-            base64,
-            dataUrl,
-            mimeType,
-            audioFormat: fmt,
-            size: file.size,
-            durationSec,
-          })
-        )
-      }
-
+      const batch = await prepareAudioFiles(files)
       const current = useChatAttachments
         .getState()
         .getAttachments(attachmentsKey)
-      const existingNames = new Set(
-        current.filter((a) => a.type === 'audio').map((a) => a.name)
+      const { fresh: newOnes, duplicates } = splitNewByName(
+        batch.prepared,
+        current,
+        'audio'
       )
-      const duplicates: string[] = []
-      const newOnes: Attachment[] = []
-      for (const att of prepared) {
-        if (existingNames.has(att.name)) {
-          duplicates.push(att.name)
-          continue
-        }
-        newOnes.push(att)
-      }
 
       if (newOnes.length > 0) {
         setAttachmentsForThread(attachmentsKey, (prev) => [...prev, ...newOnes])
@@ -2556,17 +2420,7 @@ const ChatInput = memo(function ChatInput({
           description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
         })
       }
-      const errors: string[] = []
-      if (oversized.length > 0) {
-        errors.push(
-          `Audio file${oversized.length > 1 ? 's' : ''} too large (max 25MB): ${oversized.join(', ')}`
-        )
-      }
-      if (invalid.length > 0) {
-        errors.push(
-          `Invalid audio type${invalid.length > 1 ? 's' : ''} (only WAV, MP3 allowed): ${invalid.join(', ')}`
-        )
-      }
+      const errors = mediaBatchErrors('audio', batch)
       if (errors.length > 0) {
         setMessage(errors.join(' | '))
         if (audioInputRef.current) audioInputRef.current.value = ''
@@ -2626,54 +2480,15 @@ const ChatInput = memo(function ChatInput({
 
   const processVideoFiles = useCallback(
     async (files: File[]) => {
-      const maxBytes = 100 * 1024 * 1024
-      const oversized: string[] = []
-      const invalid: string[] = []
-      const prepared: Attachment[] = []
-
-      for (const file of Array.from(files)) {
-        const ext = file.name.toLowerCase().split('.').pop()
-        const isVideo =
-          file.type.startsWith('video/') || VIDEO_EXTS.includes(ext ?? '')
-        if (!isVideo) {
-          invalid.push(file.name)
-          continue
-        }
-        if (file.size > maxBytes) {
-          oversized.push(file.name)
-          continue
-        }
-        const mimeType = file.type.startsWith('video/')
-          ? file.type
-          : videoMimeForExt(ext)
-        const dataUrl: string = await readAsDataUrl(file)
-        const base64 = dataUrl.split(',')[1] ?? ''
-        prepared.push(
-          createVideoAttachment({
-            name: file.name,
-            base64,
-            dataUrl,
-            mimeType,
-            size: file.size,
-          })
-        )
-      }
-
+      const batch = await prepareVideoFiles(files)
       const current = useChatAttachments
         .getState()
         .getAttachments(attachmentsKey)
-      const existingNames = new Set(
-        current.filter((a) => a.type === 'video').map((a) => a.name)
+      const { fresh: newOnes, duplicates } = splitNewByName(
+        batch.prepared,
+        current,
+        'video'
       )
-      const duplicates: string[] = []
-      const newOnes: Attachment[] = []
-      for (const att of prepared) {
-        if (existingNames.has(att.name)) {
-          duplicates.push(att.name)
-          continue
-        }
-        newOnes.push(att)
-      }
 
       if (newOnes.length > 0) {
         setAttachmentsForThread(attachmentsKey, (prev) => [...prev, ...newOnes])
@@ -2684,17 +2499,7 @@ const ChatInput = memo(function ChatInput({
           description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
         })
       }
-      const errors: string[] = []
-      if (oversized.length > 0) {
-        errors.push(
-          `Video file${oversized.length > 1 ? 's' : ''} too large (max 100MB): ${oversized.join(', ')}`
-        )
-      }
-      if (invalid.length > 0) {
-        errors.push(
-          `Invalid video type${invalid.length > 1 ? 's' : ''}: ${invalid.join(', ')}`
-        )
-      }
+      const errors = mediaBatchErrors('video', batch)
       if (errors.length > 0) {
         setMessage(errors.join(' | '))
         if (videoInputRef.current) videoInputRef.current.value = ''
