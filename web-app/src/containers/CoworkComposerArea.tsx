@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react'
 import ChatInput from '@/containers/ChatInput'
 import { type SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
 import { CoworkBarStack } from '@/containers/CoworkBarStack'
@@ -76,7 +77,10 @@ type CoworkComposerAreaProps = {
   projectInitOffered: boolean
   setInstructionsVersion: Dispatch<SetStateAction<number>>
   coworkPane: CoworkPane | null
-  composerModel: { selection: { selectedProvider: any; selectedModel: any; }; unavailable: any; }
+  composerModel: {
+    selection: ComponentProps<typeof ChatInput>['modelSelection']
+    unavailable: ComponentProps<typeof ChatInput>['unavailableModel']
+  }
   confirmSessionModel: () => Promise<{ status: "stop"; modelId?: undefined; } | { status: "retry"; modelId: string; }> | { status: "ok"; }
   applyFolders: string[]
   attachFolder: (given?: string) => Promise<void>
