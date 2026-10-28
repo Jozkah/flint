@@ -2417,125 +2417,27 @@ pub(crate) fn spawn_subagent(
     // watching. With the lock held across both, a teardown either finds the
     // entry or runs before the child exists.
     let mut registry_guard = bg.inner.lock().unwrap();
-    let handle = tokio::spawn(async move {
-        // Registered for the life of the child so a scope-wide stop finds it.
-        let _child_registered = child_token
-            .clone()
-            .map(tauri_plugin_agent_tools::lifecycle::register);
-        let permit = match admitted {
-            Ok(p) => p,
-            Err(_) => {
-                let p = semaphore
-                    .acquire_owned()
-                    .await
-                    .expect("subagent semaphore is never closed");
-                // Cancelled while it waited: the cancel took it off the queue
-                // count and announced its end, and it must not start now. The
-                // permit goes straight back to the next child in line.
-                if task_phase
-                    .compare_exchange(
-                        PHASE_QUEUED,
-                        PHASE_RUNNING,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    )
-                    .is_err()
-                {
-                    return;
-                }
-                queued_counter.queued.fetch_sub(1, Ordering::SeqCst);
-                p
-            }
-        };
-        let _permit = permit;
-        // One attempt, repeatable: `retry_once` runs it a second time.
-        let attempt = || {
-            run_subagent(
-                parent_args.clone(),
-                resolved.clone(),
-                description.clone(),
-                inherited.clone(),
-                task_events.clone(),
-                run_id_task.clone(),
-                max_turns,
-            )
-        };
-        let work = async {
-            let first = attempt().await;
-            match &first {
-                Err(e) if policy == FailurePolicy::RetryOnce && is_retryable(e) => {
-                    retried_task.store(true, Ordering::SeqCst);
-                    attempt().await
-                }
-                _ => first,
-            }
-        };
-        // The parent's stop reaches the child: the body races the token, and
-        // whatever the child had produced is discarded rather than reported,
-        // because a cancelled run's answer is not an answer.
-        let result = match child_token.clone() {
-            None => work.await,
-            Some(token) => {
-                tauri_plugin_agent_tools::lifecycle::with_current(token.clone(), async move {
-                    tokio::select! {
-                        biased;
-                        produced = work => match token.stopped() {
-                            None => produced,
-                            Some(_) => Err(SubagentError::Cancelled),
-                        },
-                        _ = async {
-                            while !token.is_stopped() {
-                                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                            }
-                        } => Err(SubagentError::Cancelled),
-                    }
-                })
-                .await
-            }
-        };
-        // A child cancelled on its own after it had already produced an answer
-        // still reports cancelled: the cancel was announced first, and a late
-        // result must not bring it back. Its checkout was settled by the
-        // cancel, so it is not settled a second time here.
-        let result = if task_phase
-            .compare_exchange(
-                PHASE_RUNNING,
-                PHASE_FINISHED,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            )
-            .is_ok()
-        {
-            // Recorded before the result is handed over, so a parent that
-            // reads the review list right after collecting sees how the child
-            // ended.
-            if let Some(c) = checkout {
-                settle_checkout(c, &result).await;
-            }
-            // A failure is recorded before anyone can collect it, so the parent
-            // is told about it with the next thing it hears.
-            if let Err(e) = &result {
-                if !matches!(e, SubagentError::Cancelled) {
-                    queued_counter.record_failure(ChildFailure {
-                        run_id: run_id_task_failed.clone(),
-                        name: failure_name.clone(),
-                        reason: e.to_string(),
-                        retried: retried.load(Ordering::SeqCst),
-                    });
-                    if policy == FailurePolicy::Stop {
-                        let stopped = queued_counter.stop_siblings(&run_id_task_failed, &failure_name);
-                        if !stopped.is_empty() {
-                            log::info!("subagent {run_id_task_failed} failed; stopped {} sibling(s): on_failure = stop", stopped.len());
-                        }
-                    }
-                }
-            }
-            result
-        } else {
-            Err(SubagentError::Cancelled)
-        };
-        let _ = tx.send(result);
-    });
+    let handle = tokio::spawn(run_child(ChildTask {
+        admitted,
+        semaphore,
+        task_phase,
+        queued_counter,
+        child_token,
+        parent_args,
+        resolved,
+        description,
+        inherited,
+        task_events,
+        run_id_task,
+        max_turns,
+        policy,
+        retried_task,
+        retried,
+        checkout,
+        run_id_task_failed,
+        failure_name,
+        tx,
+    }));
 
     registry_guard.insert(
         run_id.clone(),
@@ -2552,6 +2454,173 @@ pub(crate) fn spawn_subagent(
     );
     drop(registry_guard);
     Ok(run_id)
+}
+
+/// Everything a spawned child needs, moved into its task in one piece.
+struct ChildTask {
+    admitted: Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    task_phase: Arc<std::sync::atomic::AtomicU8>,
+    queued_counter: Arc<BackgroundSubagents>,
+    child_token: Option<tauri_plugin_agent_tools::lifecycle::Token>,
+    parent_args: crate::core::agent::r#loop::OrchestrationArgs,
+    resolved: ResolvedDispatch,
+    description: String,
+    inherited: ParentRun,
+    task_events: tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+    run_id_task: String,
+    max_turns: Option<u32>,
+    policy: FailurePolicy,
+    retried_task: Arc<std::sync::atomic::AtomicBool>,
+    retried: Arc<std::sync::atomic::AtomicBool>,
+    checkout: Option<ChildCheckout>,
+    run_id_task_failed: String,
+    failure_name: String,
+    tx: tokio::sync::oneshot::Sender<Result<String, SubagentError>>,
+}
+
+/// The body of a background child: wait for a slot, run (with the failure
+/// policy's retry), settle the checkout, record a failure, hand the result over.
+async fn run_child(task: ChildTask) {
+    use std::sync::atomic::Ordering;
+    let ChildTask {
+        admitted,
+        semaphore,
+        task_phase,
+        queued_counter,
+        child_token,
+        parent_args,
+        resolved,
+        description,
+        inherited,
+        task_events,
+        run_id_task,
+        max_turns,
+        policy,
+        retried_task,
+        retried,
+        checkout,
+        run_id_task_failed,
+        failure_name,
+        tx,
+    } = task;
+    // Registered for the life of the child so a scope-wide stop finds it.
+    let _child_registered = child_token
+        .clone()
+        .map(tauri_plugin_agent_tools::lifecycle::register);
+    let permit = match admitted {
+        Ok(p) => p,
+        Err(_) => {
+            let p = semaphore
+                .acquire_owned()
+                .await
+                .expect("subagent semaphore is never closed");
+            // Cancelled while it waited: the cancel took it off the queue
+            // count and announced its end, and it must not start now. The
+            // permit goes straight back to the next child in line.
+            if task_phase
+                .compare_exchange(
+                    PHASE_QUEUED,
+                    PHASE_RUNNING,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_err()
+            {
+                return;
+            }
+            queued_counter.queued.fetch_sub(1, Ordering::SeqCst);
+            p
+        }
+    };
+    let _permit = permit;
+    // One attempt, repeatable: `retry_once` runs it a second time.
+    let attempt = || {
+        run_subagent(
+            parent_args.clone(),
+            resolved.clone(),
+            description.clone(),
+            inherited.clone(),
+            task_events.clone(),
+            run_id_task.clone(),
+            max_turns,
+        )
+    };
+    let work = async {
+        let first = attempt().await;
+        match &first {
+            Err(e) if policy == FailurePolicy::RetryOnce && is_retryable(e) => {
+                retried_task.store(true, Ordering::SeqCst);
+                attempt().await
+            }
+            _ => first,
+        }
+    };
+    // The parent's stop reaches the child: the body races the token, and
+    // whatever the child had produced is discarded rather than reported,
+    // because a cancelled run's answer is not an answer.
+    let result = match child_token.clone() {
+        None => work.await,
+        Some(token) => {
+            tauri_plugin_agent_tools::lifecycle::with_current(token.clone(), async move {
+                tokio::select! {
+                    biased;
+                    produced = work => match token.stopped() {
+                        None => produced,
+                        Some(_) => Err(SubagentError::Cancelled),
+                    },
+                    _ = async {
+                        while !token.is_stopped() {
+                            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                        }
+                    } => Err(SubagentError::Cancelled),
+                }
+            })
+            .await
+        }
+    };
+    // A child cancelled on its own after it had already produced an answer
+    // still reports cancelled: the cancel was announced first, and a late
+    // result must not bring it back. Its checkout was settled by the
+    // cancel, so it is not settled a second time here.
+    let result = if task_phase
+        .compare_exchange(
+            PHASE_RUNNING,
+            PHASE_FINISHED,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        )
+        .is_ok()
+    {
+        // Recorded before the result is handed over, so a parent that
+        // reads the review list right after collecting sees how the child
+        // ended.
+        if let Some(c) = checkout {
+            settle_checkout(c, &result).await;
+        }
+        // A failure is recorded before anyone can collect it, so the parent
+        // is told about it with the next thing it hears.
+        if let Err(e) = &result {
+            if !matches!(e, SubagentError::Cancelled) {
+                queued_counter.record_failure(ChildFailure {
+                    run_id: run_id_task_failed.clone(),
+                    name: failure_name.clone(),
+                    reason: e.to_string(),
+                    retried: retried.load(Ordering::SeqCst),
+                });
+                if policy == FailurePolicy::Stop {
+                    let stopped = queued_counter.stop_siblings(&run_id_task_failed, &failure_name);
+                    if !stopped.is_empty() {
+                        log::info!("subagent {run_id_task_failed} failed; stopped {} sibling(s): on_failure = stop", stopped.len());
+                    }
+                }
+            }
+        }
+        result
+    } else {
+        Err(SubagentError::Cancelled)
+    };
+    let _ = tx.send(result);
 }
 
 /// Block until the background subagent `run_id` finishes and return its final
@@ -4776,6 +4845,25 @@ auto_compact_window = 9000
     }
 
     // ── max-parallel admission (semaphore queue) ───────────────────────────
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn build_child_args_roots_the_child_in_its_checkout() {
+        let parent = max_par_args(&std::env::temp_dir());
+        let unchanged = build_child_args(&parent, None);
+        assert_eq!(unchanged.project_root, parent.project_root);
+        let checkout = ChildCheckout {
+            path: "/work/checkout".into(),
+            branch: "b".into(),
+            parent_session: "s".into(),
+            task_id: "t".into(),
+            data_folder: "d".into(),
+        };
+        let rooted = build_child_args(&parent, Some(&checkout));
+        assert_eq!(rooted.project_root, Some(PathBuf::from("/work/checkout")));
+        // Nothing else about the parent changes.
+        assert_eq!(rooted.subagents_enabled, parent.subagents_enabled);
+    }
 
     /// Minimal run args for queue tests: empty providers (so dispatched
     /// children fail fast instead of hanging), a real project root holding the
