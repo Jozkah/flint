@@ -168,12 +168,11 @@ impl Report {
 
 /// Whether this project asked for its checks to be run (AH-063).
 pub fn enabled(project_root: &Path) -> bool {
-    let path = project_root.join(".jan").join("agent").join("agent.toml");
-    let Ok(raw) = std::fs::read_to_string(path) else { return false };
-    let Ok(doc) = raw.parse::<toml::Value>() else { return false };
-    doc.get("tools")
-        .and_then(|t| t.get("diagnostics"))
-        .and_then(toml::Value::as_bool)
+    // Through the shared loader so an untrusted folder's opt-in is dropped:
+    // the checker runs the repository's own build code.
+    super::project::load_agent_config(project_root)
+        .ok()
+        .and_then(|cfg| cfg.tools.diagnostics)
         .unwrap_or(false)
 }
 
