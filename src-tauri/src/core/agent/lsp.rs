@@ -211,13 +211,28 @@ pub fn encode(message: &Value) -> Vec<u8> {
     out
 }
 
+const MAX_HEADER_LINE_BYTES: u64 = 8 * 1024;
+const MAX_HEADERS: usize = 64;
+
 /// Read one framed message. `Ok(None)` at a clean end of stream.
 pub fn decode(reader: &mut impl BufRead) -> Result<Option<Value>, String> {
     let mut length: Option<usize> = None;
     let mut saw_header = false;
+    let mut headers = 0usize;
     loop {
         let mut line = String::new();
-        let read = reader.read_line(&mut line).map_err(|e| format!("reading from the server failed: {e}"))?;
+        // A header line is bounded: a server that never sends a newline must
+        // not grow this buffer without limit.
+        let read = std::io::Read::take(&mut *reader, MAX_HEADER_LINE_BYTES + 1)
+            .read_line(&mut line)
+            .map_err(|e| format!("reading from the server failed: {e}"))?;
+        if read as u64 > MAX_HEADER_LINE_BYTES {
+            return Err(format!("a header line longer than {MAX_HEADER_LINE_BYTES} bytes"));
+        }
+        headers += 1;
+        if headers > MAX_HEADERS {
+            return Err(format!("more than {MAX_HEADERS} header lines"));
+        }
         if read == 0 {
             return if saw_header { Err("the server's stream ended inside a message".to_string()) } else { Ok(None) };
         }
@@ -228,7 +243,11 @@ pub fn decode(reader: &mut impl BufRead) -> Result<Option<Value>, String> {
         }
         if let Some((name, value)) = line.split_once(':') {
             if name.trim().eq_ignore_ascii_case("content-length") {
-                length = Some(value.trim().parse().map_err(|_| format!("a bad Content-Length: {value:?}"))?);
+                let parsed: usize = value.trim().parse().map_err(|_| format!("a bad Content-Length: {value:?}"))?;
+                if length.is_some_and(|earlier| earlier != parsed) {
+                    return Err("conflicting Content-Length headers".to_string());
+                }
+                length = Some(parsed);
             }
         }
     }
@@ -1092,6 +1111,15 @@ two
 
         let oversized = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
         assert!(decode(&mut std::io::Cursor::new(oversized.into_bytes())).unwrap_err().contains("larger than"));
+        let long = format!("X-Pad: {}
+
+{{}}", "a".repeat(9000));
+        assert!(decode(&mut std::io::Cursor::new(long.into_bytes())).is_err());
+        let twice = b"Content-Length: 2
+Content-Length: 3
+
+{}".to_vec();
+        assert!(decode(&mut std::io::Cursor::new(twice)).unwrap_err().contains("conflicting"));
         assert!(decode(&mut std::io::Cursor::new(b"X-Other: 1\r\n\r\n{}".to_vec())).unwrap_err().contains("Content-Length"));
         let cut = b"Content-Length: 50\r\n\r\n{\"a\":1}".to_vec();
         assert!(decode(&mut std::io::Cursor::new(cut)).unwrap_err().contains("cut short"));
