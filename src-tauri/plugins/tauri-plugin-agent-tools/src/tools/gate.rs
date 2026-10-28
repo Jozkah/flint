@@ -562,13 +562,113 @@ pub fn resolve_decision(
     // planted link cannot widen what one covers; deny rules and the secret
     // guard below also look here, so a link cannot hide what it opens.
     let resolved = resolved_aliases(&resources);
+    let ctx = GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources: &resources,
+        resolved: &resolved,
+    };
+    STAGES
+        .iter()
+        .find_map(|stage| stage(&ctx))
+        .unwrap_or_else(|| capability_default(&ctx))
+}
 
+
+/// Everything one decision looks at, built once. The stages below each read
+/// from it and answer `Some(decision)` or `None` to hand over to the next.
+#[derive(Clone, Copy)]
+struct GateCtx<'a> {
+    tool: &'a BuiltinTool,
+    args: &'a serde_json::Value,
+    project_root: &'a Path,
+    scratch: Option<&'a Path>,
+    read_roots: &'a [PathBuf],
+    perms: &'a ToolPermissions,
+    grants: &'a SessionGrants,
+    hide_jan: bool,
+    network: &'a NetworkPolicy,
+    subject: &'a crate::subject::Subject,
+    /// What this call actually touches, normalized once.
+    resources: &'a [crate::resource::Resource],
+    /// Where those paths really lead through symlinks (Jozkah/jan#235).
+    resolved: &'a [crate::resource::Resource],
+}
+
+type Stage = fn(&GateCtx) -> Option<Decision>;
+
+/// The order is the precedence: deny first, then network, secrets, unresolved
+/// paths, destructive git, hidden state, git internals, persistence files,
+/// home deletion, ask rules, always-ask tools, allow rules, per-tool
+/// classification. The first stage that answers wins; the capability default
+/// answers when none does.
+const STAGES: &[Stage] = &[
+    stage_deny_rules,
+    stage_network,
+    stage_secret_files,
+    stage_unknown_resource,
+    stage_destructive_git,
+    stage_hidden_paths,
+    stage_git_internals,
+    stage_persistence,
+    stage_delete_home,
+    stage_ask_rules,
+    stage_always_asks,
+    stage_allow_rules,
+    stage_per_tool,
+];
+
+#[allow(unused_variables)]
+fn stage_deny_rules(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     if perms.denies_call(tool.name, &resources, subject).is_some()
         || (!resolved.is_empty() && perms.denies_call(tool.name, &resolved, subject).is_some())
     {
-        return Decision::HardDeny(DenyReason::Policy);
+        return Some(Decision::HardDeny(DenyReason::Policy));
     }
 
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_network(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Network, checked here rather than in each web tool. AH-042/AH-043.
     //
     // `allow_network = false` used to confine the shell and leave the web tools
@@ -578,7 +678,7 @@ pub fn resolve_decision(
     // deny first, because a deny list nobody can override is the only kind
     // worth having.
     if tool.capability == Capability::Net && !network.allowed {
-        return Decision::HardDeny(DenyReason::NetworkOff);
+        return Some(Decision::HardDeny(DenyReason::NetworkOff));
     }
     // The git tool leaves the machine for fetch, pull, push, ls-remote, clone
     // and every gh call (W10): the same switch applies, and each host in
@@ -587,16 +687,36 @@ pub fn resolve_decision(
         && !network.allowed
         && crate::tools::git_tool::plan_from_args(args).is_ok_and(|p| p.reaches_remote)
     {
-        return Decision::HardDeny(DenyReason::NetworkOff);
+        return Some(Decision::HardDeny(DenyReason::NetworkOff));
     }
-    for resource in &resources {
+    for resource in resources {
         if let crate::resource::Resource::Net { host, .. } = resource {
-            if let Some(refused) = network.refuses(host) {
-                return Decision::HardDeny(DenyReason::Domain(refused));
+            if let Some(refused) = network.refuses(&host) {
+                return Some(Decision::HardDeny(DenyReason::Domain(refused)));
             }
         }
     }
 
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_secret_files(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Files that hold credentials. AH-044.
     //
     // The name is the whole signal and it is enough: `.env`, a private key, a
@@ -611,26 +731,66 @@ pub fn resolve_decision(
     if let Some(secret) = resources.iter().find_map(secret_file_name) {
         let named = perms.names_call(tool.name, &resources, &harmless_files(&resources), subject);
         if !named {
-            return Decision::HardDeny(DenyReason::SecretFile(secret));
+            return Some(Decision::HardDeny(DenyReason::SecretFile(secret)));
         }
     }
     // Reached through a link: only a rule naming the secret itself allows it.
     if let Some(secret) = resolved.iter().find_map(secret_file_name) {
         let named = perms.names_call(tool.name, &resolved, &harmless_files(&resolved), subject);
         if !named {
-            return Decision::HardDeny(DenyReason::SecretFile(secret));
+            return Some(Decision::HardDeny(DenyReason::SecretFile(secret)));
         }
     }
 
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_unknown_resource(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // A resource the gate could not determine is refused rather than guessed
     // at. `Unknown` carries why, so the model is told what was unreadable.
     if resources
         .iter()
         .any(|r| matches!(r, crate::resource::Resource::Unknown { .. }))
     {
-        return Decision::HardDeny(DenyReason::Resource);
+        return Some(Decision::HardDeny(DenyReason::Resource));
     }
 
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_destructive_git(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // AH-046: a destructive git operation needs a rule that names it. An
     // `allow = ["bash"]` blanket does not count -- that is the difference
     // between "may run shell commands" and "may throw away my uncommitted
@@ -646,9 +806,29 @@ pub fn resolve_decision(
             .collect();
         let named = perms.names_call(tool.name, &resources, &harmless, subject);
         if !named {
-            return Decision::HardDeny(DenyReason::DestructiveGit(op));
+            return Some(Decision::HardDeny(DenyReason::DestructiveGit(op)));
         }
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_hidden_paths(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Nothing under .jan is reachable while hidden: skills/memory only through
     // their dedicated tools, config, threads and the dir listing not at all.
     // Checked ahead of allow rules so an allowed tool name cannot bypass it.
@@ -681,8 +861,28 @@ pub fn resolve_decision(
             .map(|c| command_touches_hidden_jan_path_in(project_root, write_roots, c))
             .unwrap_or(false);
     if hits_hidden || exec_hits_hidden {
-        return Decision::HardDeny(DenyReason::Hidden);
+        return Some(Decision::HardDeny(DenyReason::Hidden));
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_git_internals(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Nothing that changes files may reach a repository's `.git`: a hook or a
     // config key written there is a program the `git` tool (which runs
     // outside the sandbox) would run. Checked on every surface and for every
@@ -701,9 +901,29 @@ pub fn resolve_decision(
                 .and_then(|v| v.as_str())
                 .is_some_and(crate::tools::sandbox::command_names_git_internals);
         if path_hits || command_hits {
-            return Decision::HardDeny(DenyReason::GitInternals);
+            return Some(Decision::HardDeny(DenyReason::GitInternals));
         }
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_persistence(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Files that run code later -- Git hooks, editor tasks, dev containers, CI
     // definitions, shell startup files, `.envrc`, `.npmrc` -- are persistence:
     // a write outlives the run and executes outside the sandbox. They are asked
@@ -738,9 +958,29 @@ pub fn resolve_decision(
                 .and_then(|v| v.as_str())
                 .is_some_and(crate::tools::sandbox::command_names_protected_persistence);
         if path_hits || command_hits {
-            return Decision::Prompt(PromptKind::Ask);
+            return Some(Decision::Prompt(PromptKind::Ask));
         }
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_delete_home(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Deleting a home directory or a filesystem root is asked about every
     // time, in every mode: no allow rule, session grant or auto-approval
     // covers it. Not a hard deny -- the user may mean it -- but it is the one
@@ -751,20 +991,80 @@ pub fn resolve_decision(
             .and_then(|v| v.as_str())
             .is_some_and(deletes_home_or_root)
     {
-        return Decision::Prompt(PromptKind::Ask);
+        return Some(Decision::Prompt(PromptKind::Ask));
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_ask_rules(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // Ask sits between deny and allow: a matching ask rule overrides an allow
     // and forces a prompt every time (deny above still wins). Inert unless the
     // project wrote an `ask` list.
     if perms.asks_call(tool.name, &resources, subject).is_some() {
-        return Decision::Prompt(PromptKind::Ask);
+        return Some(Decision::Prompt(PromptKind::Ask));
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_always_asks(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // The calls below that are asked about every time stay asked about even
     // when an allow rule matches: a project's settings file ships with the
     // repository, so its allow list must not switch off these prompts.
     if always_asks(tool.name, args) {
-        return Decision::Prompt(PromptKind::Ask);
+        return Some(Decision::Prompt(PromptKind::Ask));
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_allow_rules(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     if let Some(rule) = perms.allows_call(tool.name, &resources, subject) {
         // A relative pattern (`write(src/**)`) names something in the project
         // (Jozkah/jan#222). Its any-directory match exists so deny rules catch
@@ -773,9 +1073,29 @@ pub fn resolve_decision(
         // the escape prompt below still decides.
         let relative = rule_pattern(rule.source()).is_some_and(|p| !is_absolute_pattern(p));
         if !(relative && call_escapes(tool, args, project_root, scratch, read_roots, grants)) {
-            return Decision::Allow;
+            return Some(Decision::Allow);
         }
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn stage_per_tool(c: &GateCtx) -> Option<Decision> {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     // The `git` tool is classified per call (tools/git_tool.rs): a read runs
     // without asking; a local change is gated like a write, so a session grant
     // or auto-approval inside the run's own folders covers it; anything that
@@ -783,100 +1103,100 @@ pub fn resolve_decision(
     // auto-approval ever covers. A call the classifier refuses is let through
     // to the handler, which refuses it with the reason and runs nothing.
     if tool.name == "git" {
-        return match crate::tools::git_tool::plan_from_args(args) {
+        return Some(match crate::tools::git_tool::plan_from_args(args) {
             Ok(plan) if plan.always_asks() => Decision::Prompt(PromptKind::Ask),
             Ok(plan) if plan.class == crate::tools::git_tool::GitClass::Read => Decision::Allow,
             Ok(_) => gated(PromptKind::Write, grants),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // `host_action` ends a process or changes a service. Every call that names
     // a real action is asked about, each time: no session grant and no mode that
     // auto-approves covers it. A call the planner refuses is let through to the
     // handler, which refuses it with the reason and runs nothing.
     if tool.name == "host_action" {
-        return match crate::tools::host_action::plan(args) {
+        return Some(match crate::tools::host_action::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // `host_build` runs the project's own build scripts outside the sandbox, so
     // it is asked about every time too.
     if tool.name == "host_build" {
-        return match crate::tools::host_build::plan(args) {
+        return Some(match crate::tools::host_build::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // The clipboard holds what a person copied a moment ago, and `open_path`
     // starts a program on their screen: both asked about every time.
     if tool.name == "computer" {
-        return match crate::tools::computer::plan(args) {
+        return Some(match crate::tools::computer::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     if tool.name == "clipboard" {
-        return match crate::tools::clipboard::plan(args) {
+        return Some(match crate::tools::clipboard::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     if tool.name == "open_path" {
-        return match crate::tools::open_path::plan(args) {
+        return Some(match crate::tools::open_path::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // Some host_query kinds read private data (every app's registry settings,
     // window titles, which program talks to which host, scheduled task command
     // lines, startup entries, env var names): asked about every time. The
     // plain machine facts (system, disks, ports, processes, ...) stay free.
     if tool.name == "host_query" {
-        return match args.get("query").and_then(|q| q.as_str()) {
+        return Some(match args.get("query").and_then(|q| q.as_str()) {
             Some(q) if crate::tools::host_read::is_private_query(q) => {
                 Decision::Prompt(PromptKind::Ask)
             }
             _ => Decision::Allow,
-        };
+        });
     }
     // Any loopback port can hold an admin or credentialed API (Docker, Ollama,
     // a dev server's file endpoints): asked about every time, with the address
     // in the call the user sees. The admin ports themselves are refused by the
     // tool.
     if tool.name == "local_http" {
-        return match crate::tools::local_http::parse(args) {
+        return Some(match crate::tools::local_http::parse(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // winget: looking is free, changing a program is asked about every time.
     if tool.name == "host_package" {
-        return match crate::tools::host_package::plan(args) {
+        return Some(match crate::tools::host_package::plan(args) {
             Ok(plan) if plan.verb.changes() => Decision::Prompt(PromptKind::Ask),
             Ok(_) | Err(_) => Decision::Allow,
-        };
+        });
     }
     // A command in a Linux distribution, or on another machine, is as
     // powerful as a script: asked about every time.
     if tool.name == "host_wsl" {
-        return match crate::tools::host_wsl::plan(args) {
+        return Some(match crate::tools::host_wsl::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     if tool.name == "host_ssh" {
-        return match crate::tools::host_ssh::plan(args) {
+        return Some(match crate::tools::host_ssh::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // A script runs with the user's own rights, so it is asked about every time.
     if tool.name == "host_powershell" {
-        return match crate::tools::host_powershell::plan(args) {
+        return Some(match crate::tools::host_powershell::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
-        };
+        });
     }
     // The interactive browser is classified per call (tools/browser_tool.rs):
     // looking at a page the run already opened runs; acting on it is gated
@@ -884,7 +1204,7 @@ pub fn resolve_decision(
     // asked about every time, because the model chooses which local service
     // the browser reaches and a script can do what no single click can.
     if tool.name == "browser" {
-        return match crate::tools::browser_tool::class_of(args) {
+        return Some(match crate::tools::browser_tool::class_of(args) {
             crate::tools::browser_tool::Class::Read => Decision::Allow,
             crate::tools::browser_tool::Class::Act => gated(PromptKind::Write, grants),
             // A file from the run's folders is gated like a write; one from
@@ -898,26 +1218,46 @@ pub fn resolve_decision(
             }
             crate::tools::browser_tool::Class::Open
             | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
-        };
+        });
     }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
     // sanitized name, so they never prompt (deny above still wins).
     if crate::tools::is_workspace_tool(tool.name) {
-        return Decision::Allow;
+        return Some(Decision::Allow);
     }
     // Session-messaging tools touch only the mailbox under the data folder:
     // no project file, no command, no network. Same standing as the workspace
     // tools -- never a prompt, and the deny check above still wins.
     if crate::tools::is_mailbox_tool(tool.name) {
-        return Decision::Allow;
+        return Some(Decision::Allow);
     }
     // `request_access` grants nothing by being called: the user is asked, and
     // the path is vetted by `access::prepare`. `list_plugins` reads Flint's own
     // plugin state; `open_in_browser` hands a URL to the user's browser.
     // None touches a project file.
     if crate::tools::is_host_tool(tool.name) {
-        return Decision::Allow;
+        return Some(Decision::Allow);
     }
+    None
+}
+
+#[allow(unused_variables)]
+fn capability_default(c: &GateCtx) -> Decision {
+    let GateCtx {
+        tool,
+        args,
+        project_root,
+        scratch,
+        read_roots,
+        perms,
+        grants,
+        hide_jan,
+        network,
+        subject,
+        resources,
+        resolved,
+    } = *c;
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
     match tool.capability {
         Capability::Read => {
             // Read roots widen only this branch. The Write branch below keeps
@@ -1007,6 +1347,7 @@ pub fn resolve_decision(
     }
 }
 
+
 /// Calls that are asked about every time (see the per-tool branches in
 /// `decide`), checked before any allow rule.
 fn always_asks(name: &str, args: &serde_json::Value) -> bool {
@@ -1020,6 +1361,11 @@ fn always_asks(name: &str, args: &serde_json::Value) -> bool {
         "open_path" => open_path::plan(args).is_ok(),
         "host_package" => host_package::plan(args).is_ok_and(|p| p.verb.changes()),
         "host_wsl" => host_wsl::plan(args).is_ok(),
+        "host_query" => args
+            .get("query")
+            .and_then(|q| q.as_str())
+            .is_some_and(host_read::is_private_query),
+        "local_http" => local_http::parse(args).is_ok(),
         "host_ssh" => host_ssh::plan(args).is_ok(),
         "host_powershell" => host_powershell::plan(args).is_ok(),
         "browser" => matches!(
@@ -1396,6 +1742,30 @@ mod tests {
         }
         assert_eq!(simple("local_http", json!({"url": "http://localhost:5173/"})), ask);
         assert_eq!(simple("local_http", json!({})), Decision::Allow);
+        // An allow rule shipped in a repository settings file does not switch
+        // the prompt off (they are in always_asks).
+        let allow_all = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["host_query".to_string(), "local_http".to_string()],
+            &[],
+            &[],
+        );
+        let with_allow = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &allow_all,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        assert_eq!(with_allow("host_query", json!({"query": "registry"})), ask);
+        assert_eq!(with_allow("local_http", json!({"url": "http://localhost:3000/"})), ask);
+        assert_eq!(with_allow("host_query", json!({"query": "system"})), Decision::Allow);
         assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
         assert_eq!(simple("open_path", json!({})), Decision::Allow);
         assert_eq!(simple("host_powershell", json!({"script": "Get-Date"})), ask);
@@ -3696,5 +4066,599 @@ mod security_corpus {
         assert!(!grants.covers(PromptKind::Secret));
         assert!(PromptKind::Secret.is_every_time() && PromptKind::Ask.is_every_time());
         assert!(!PromptKind::Write.is_every_time());
+    }
+}
+
+#[cfg(test)]
+mod differential {
+    //! W14: `resolve_decision` was split into ordered stages. This module keeps
+    //! a frozen copy of the pre-split function and checks, over a large
+    //! deterministic sample of tools, arguments and policies, that both agree.
+    use super::*;
+    use crate::permissions::{PermissionDefault, ToolPermissions};
+    use serde_json::json;
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_decision_frozen(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    project_root: &Path,
+    scratch: Option<&Path>,
+    read_roots: &[PathBuf],
+    perms: &ToolPermissions,
+    grants: &SessionGrants,
+    hide_jan: bool,
+    network: &NetworkPolicy,
+    // Who is asking. AH-007: rules have always parsed
+    // `[subject/]tool[(pattern)]`, but nothing compared the subject, so
+    // `agent(reviewer)/write` bound the main agent and every other subagent
+    // identically -- a child could never be narrower than its parent, which is
+    // the one thing a subject qualifier exists to express. An unqualified rule
+    // still covers every subject, so existing rule sets are unchanged.
+    subject: &crate::subject::Subject,
+) -> Decision {
+    // What this call actually touches, normalized once and reused for the deny
+    // check, the allow check and the destructive-git guard below.
+    let resources = crate::resource::Resource::for_builtin(
+        tool.name,
+        tool.path_args,
+        tool.capability == Capability::Net,
+        args,
+        Some(project_root),
+    );
+
+    // Where those paths really lead, when a symlink makes that somewhere else
+    // (Jozkah/jan#235). Allow rules keep matching only the lexical path, so a
+    // planted link cannot widen what one covers; deny rules and the secret
+    // guard below also look here, so a link cannot hide what it opens.
+    let resolved = resolved_aliases(&resources);
+
+    if perms.denies_call(tool.name, &resources, subject).is_some()
+        || (!resolved.is_empty() && perms.denies_call(tool.name, &resolved, subject).is_some())
+    {
+        return Decision::HardDeny(DenyReason::Policy);
+    }
+
+    // Network, checked here rather than in each web tool. AH-042/AH-043.
+    //
+    // `allow_network = false` used to confine the shell and leave the web tools
+    // alone, so a run with its network switched off could still fetch a URL --
+    // the setting meant "no network for Bash" while reading as "no network". A
+    // destination is separately checked against the project's domain lists,
+    // deny first, because a deny list nobody can override is the only kind
+    // worth having.
+    if tool.capability == Capability::Net && !network.allowed {
+        return Decision::HardDeny(DenyReason::NetworkOff);
+    }
+    // The git tool leaves the machine for fetch, pull, push, ls-remote, clone
+    // and every gh call (W10): the same switch applies, and each host in
+    // `resources` goes through the domain lists below.
+    if tool.name == "git"
+        && !network.allowed
+        && crate::tools::git_tool::plan_from_args(args).is_ok_and(|p| p.reaches_remote)
+    {
+        return Decision::HardDeny(DenyReason::NetworkOff);
+    }
+    for resource in &resources {
+        if let crate::resource::Resource::Net { host, .. } = resource {
+            if let Some(refused) = network.refuses(host) {
+                return Decision::HardDeny(DenyReason::Domain(refused));
+            }
+        }
+    }
+
+    // Files that hold credentials. AH-044.
+    //
+    // The name is the whole signal and it is enough: `.env`, a private key, a
+    // `.netrc`. Reading one puts its contents in the transcript, where they
+    // reach the model and the log. A rule that names the file explicitly still
+    // allows it -- someone who writes a rule spelling out the path has said
+    // what they mean -- but a blanket `allow = ["read"]` has not.
+    //
+    // "Names" means the rule is about the secret, not merely resource-qualified:
+    // `read(**)` also covers the same call on an ordinary file beside it, so it
+    // is a blanket rule in parentheses and counts as one (Jozkah/jan#47).
+    if let Some(secret) = resources.iter().find_map(secret_file_name) {
+        let named = perms.names_call(tool.name, &resources, &harmless_files(&resources), subject);
+        if !named {
+            return Decision::HardDeny(DenyReason::SecretFile(secret));
+        }
+    }
+    // Reached through a link: only a rule naming the secret itself allows it.
+    if let Some(secret) = resolved.iter().find_map(secret_file_name) {
+        let named = perms.names_call(tool.name, &resolved, &harmless_files(&resolved), subject);
+        if !named {
+            return Decision::HardDeny(DenyReason::SecretFile(secret));
+        }
+    }
+
+    // A resource the gate could not determine is refused rather than guessed
+    // at. `Unknown` carries why, so the model is told what was unreadable.
+    if resources
+        .iter()
+        .any(|r| matches!(r, crate::resource::Resource::Unknown { .. }))
+    {
+        return Decision::HardDeny(DenyReason::Resource);
+    }
+
+    // AH-046: a destructive git operation needs a rule that names it. An
+    // `allow = ["bash"]` blanket does not count -- that is the difference
+    // between "may run shell commands" and "may throw away my uncommitted
+    // work" -- so this is checked before the generic allow below.
+    //
+    // As with secrets, a rule that also covers the same git subcommand without
+    // what made it destructive (`bash(git *)`, `bash(git:*)`) does not name the
+    // operation (Jozkah/jan#47).
+    if let Some(op) = resources.iter().find_map(|r| r.destructive_git()) {
+        let harmless: Vec<crate::resource::Resource> = resources
+            .iter()
+            .map(|r| r.harmless_git_twin().unwrap_or_else(|| r.clone()))
+            .collect();
+        let named = perms.names_call(tool.name, &resources, &harmless, subject);
+        if !named {
+            return Decision::HardDeny(DenyReason::DestructiveGit(op));
+        }
+    }
+    // Nothing under .jan is reachable while hidden: skills/memory only through
+    // their dedicated tools, config, threads and the dir listing not at all.
+    // Checked ahead of allow rules so an allowed tool name cannot bypass it.
+    //
+    // *Reading* it is allowed when not hiding, so an unconfined CLI run can
+    // look at its own `.jan` like any other project state. *Changing* it is
+    // not, on any surface: `.jan/agent/` holds the files that decide what this
+    // harness will do -- the tool policy, and since AH-127 the hooks, which
+    // are shell commands run around every call. A model that can write one has
+    // granted itself everything the policy withheld, so the rule that stops it
+    // cannot be conditional on a sandbox the CLI does not use.
+    //
+    // Every granted write root counts, not only the workspace: a managed
+    // worktree or a repository edited in place has the project's own
+    // `.jan/agent` in it (Jozkah/jan#124).
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
+    let write_roots = grants.write_roots();
+    let hits_hidden = (hide_jan || mutating)
+        && tool.path_args.iter().any(|key| {
+            args.get(key)
+                .and_then(|v| v.as_str())
+                .map(|p| is_hidden_jan_path_in(project_root, write_roots, p))
+                .unwrap_or(false)
+        });
+    let exec_hits_hidden = (hide_jan || mutating)
+        && tool.capability == Capability::Exec
+        && args
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(|c| command_touches_hidden_jan_path_in(project_root, write_roots, c))
+            .unwrap_or(false);
+    if hits_hidden || exec_hits_hidden {
+        return Decision::HardDeny(DenyReason::Hidden);
+    }
+    // Nothing that changes files may reach a repository's `.git`: a hook or a
+    // config key written there is a program the `git` tool (which runs
+    // outside the sandbox) would run. Checked on every surface and for every
+    // path, since any folder a run can write to may be a repository.
+    if mutating {
+        let path_hits = tool.path_args.iter().any(|key| {
+            args.get(key)
+                .and_then(|v| v.as_str())
+                .is_some_and(|p| {
+                    crate::tools::sandbox::names_git_internals_resolved(project_root, p)
+                })
+        });
+        let command_hits = tool.capability == Capability::Exec
+            && args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::command_names_git_internals);
+        if path_hits || command_hits {
+            return Decision::HardDeny(DenyReason::GitInternals);
+        }
+    }
+    // Files that run code later -- Git hooks, editor tasks, dev containers, CI
+    // definitions, shell startup files, `.envrc`, `.npmrc` -- are persistence:
+    // a write outlives the run and executes outside the sandbox. They are asked
+    // about every time (`Ask`: no session grant, saved rule or mode that only
+    // removes prompts covers it), though an explicit allow rule that names the
+    // path is not honoured either, since a repository ships its own allow list.
+    if mutating {
+        // A write that leaves the sandbox with no grant covering it keeps its
+        // own classification further down (`WriteEscape`, with its
+        // request-access route); asking here instead would hide that and turn a
+        // refusal into a prompt for something that is refused anyway. Once a
+        // grant covers the escape, the persistence prompt below still applies.
+        let escape_unapproved = !grants.covers(PromptKind::WriteEscape)
+            && tool.path_args.iter().any(|key| {
+                args.get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|p| {
+                        escapes_write_roots(project_root, scratch, grants.write_roots(), p)
+                            .unwrap_or(true)
+                    })
+                    .unwrap_or(false)
+            });
+        let path_hits = !escape_unapproved
+            && tool.path_args.iter().any(|key| {
+                args.get(key)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(crate::tools::sandbox::names_protected_persistence)
+            });
+        let command_hits = tool.capability == Capability::Exec
+            && args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::command_names_protected_persistence);
+        if path_hits || command_hits {
+            return Decision::Prompt(PromptKind::Ask);
+        }
+    }
+    // Deleting a home directory or a filesystem root is asked about every
+    // time, in every mode: no allow rule, session grant or auto-approval
+    // covers it. Not a hard deny -- the user may mean it -- but it is the one
+    // command whose cost no later review can undo.
+    if tool.capability == Capability::Exec
+        && args
+            .get("command")
+            .and_then(|v| v.as_str())
+            .is_some_and(deletes_home_or_root)
+    {
+        return Decision::Prompt(PromptKind::Ask);
+    }
+    // Ask sits between deny and allow: a matching ask rule overrides an allow
+    // and forces a prompt every time (deny above still wins). Inert unless the
+    // project wrote an `ask` list.
+    if perms.asks_call(tool.name, &resources, subject).is_some() {
+        return Decision::Prompt(PromptKind::Ask);
+    }
+    // The calls below that are asked about every time stay asked about even
+    // when an allow rule matches: a project's settings file ships with the
+    // repository, so its allow list must not switch off these prompts.
+    if always_asks(tool.name, args) {
+        return Decision::Prompt(PromptKind::Ask);
+    }
+    if let Some(rule) = perms.allows_call(tool.name, &resources, subject) {
+        // A relative pattern (`write(src/**)`) names something in the project
+        // (Jozkah/jan#222). Its any-directory match exists so deny rules catch
+        // every `secrets/`; for an allow rule it would also cover every `src`
+        // on the host. So when such a rule matched a path outside the project,
+        // the escape prompt below still decides.
+        let relative = rule_pattern(rule.source()).is_some_and(|p| !is_absolute_pattern(p));
+        if !(relative && call_escapes(tool, args, project_root, scratch, read_roots, grants)) {
+            return Decision::Allow;
+        }
+    }
+    // The `git` tool is classified per call (tools/git_tool.rs): a read runs
+    // without asking; a local change is gated like a write, so a session grant
+    // or auto-approval inside the run's own folders covers it; anything that
+    // writes to a remote or can lose work is an `Ask`, which no grant and no
+    // auto-approval ever covers. A call the classifier refuses is let through
+    // to the handler, which refuses it with the reason and runs nothing.
+    if tool.name == "git" {
+        return match crate::tools::git_tool::plan_from_args(args) {
+            Ok(plan) if plan.always_asks() => Decision::Prompt(PromptKind::Ask),
+            Ok(plan) if plan.class == crate::tools::git_tool::GitClass::Read => Decision::Allow,
+            Ok(_) => gated(PromptKind::Write, grants),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // `host_action` ends a process or changes a service. Every call that names
+    // a real action is asked about, each time: no session grant and no mode that
+    // auto-approves covers it. A call the planner refuses is let through to the
+    // handler, which refuses it with the reason and runs nothing.
+    if tool.name == "host_action" {
+        return match crate::tools::host_action::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // `host_build` runs the project's own build scripts outside the sandbox, so
+    // it is asked about every time too.
+    if tool.name == "host_build" {
+        return match crate::tools::host_build::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // The clipboard holds what a person copied a moment ago, and `open_path`
+    // starts a program on their screen: both asked about every time.
+    if tool.name == "computer" {
+        return match crate::tools::computer::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "clipboard" {
+        return match crate::tools::clipboard::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "open_path" {
+        return match crate::tools::open_path::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // Some host_query kinds read private data (every app's registry settings,
+    // window titles, which program talks to which host, scheduled task command
+    // lines, startup entries, env var names): asked about every time. The
+    // plain machine facts (system, disks, ports, processes, ...) stay free.
+    if tool.name == "host_query" {
+        return match args.get("query").and_then(|q| q.as_str()) {
+            Some(q) if crate::tools::host_read::is_private_query(q) => {
+                Decision::Prompt(PromptKind::Ask)
+            }
+            _ => Decision::Allow,
+        };
+    }
+    // Any loopback port can hold an admin or credentialed API (Docker, Ollama,
+    // a dev server's file endpoints): asked about every time, with the address
+    // in the call the user sees. The admin ports themselves are refused by the
+    // tool.
+    if tool.name == "local_http" {
+        return match crate::tools::local_http::parse(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // winget: looking is free, changing a program is asked about every time.
+    if tool.name == "host_package" {
+        return match crate::tools::host_package::plan(args) {
+            Ok(plan) if plan.verb.changes() => Decision::Prompt(PromptKind::Ask),
+            Ok(_) | Err(_) => Decision::Allow,
+        };
+    }
+    // A command in a Linux distribution, or on another machine, is as
+    // powerful as a script: asked about every time.
+    if tool.name == "host_wsl" {
+        return match crate::tools::host_wsl::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "host_ssh" {
+        return match crate::tools::host_ssh::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // A script runs with the user's own rights, so it is asked about every time.
+    if tool.name == "host_powershell" {
+        return match crate::tools::host_powershell::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // The interactive browser is classified per call (tools/browser_tool.rs):
+    // looking at a page the run already opened runs; acting on it is gated
+    // like a write; opening an address and running script in the page are
+    // asked about every time, because the model chooses which local service
+    // the browser reaches and a script can do what no single click can.
+    if tool.name == "browser" {
+        return match crate::tools::browser_tool::class_of(args) {
+            crate::tools::browser_tool::Class::Read => Decision::Allow,
+            crate::tools::browser_tool::Class::Act => gated(PromptKind::Write, grants),
+            // A file from the run's folders is gated like a write; one from
+            // anywhere else is a write escape (refused where nobody can approve it).
+            crate::tools::browser_tool::Class::Upload | crate::tools::browser_tool::Class::Download => {
+                if call_escapes(tool, args, project_root, scratch, read_roots, grants) {
+                    Decision::Prompt(PromptKind::WriteEscape)
+                } else {
+                    gated(PromptKind::Write, grants)
+                }
+            }
+            crate::tools::browser_tool::Class::Open
+            | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
+        };
+    }
+    // Dedicated skill/memory tools act only on the agent's own workspace by a
+    // sanitized name, so they never prompt (deny above still wins).
+    if crate::tools::is_workspace_tool(tool.name) {
+        return Decision::Allow;
+    }
+    // Session-messaging tools touch only the mailbox under the data folder:
+    // no project file, no command, no network. Same standing as the workspace
+    // tools -- never a prompt, and the deny check above still wins.
+    if crate::tools::is_mailbox_tool(tool.name) {
+        return Decision::Allow;
+    }
+    // `request_access` grants nothing by being called: the user is asked, and
+    // the path is vetted by `access::prepare`. `list_plugins` reads Flint's own
+    // plugin state; `open_in_browser` hands a URL to the user's browser.
+    // None touches a project file.
+    if crate::tools::is_host_tool(tool.name) {
+        return Decision::Allow;
+    }
+    match tool.capability {
+        Capability::Read => {
+            // Read roots widen only this branch. The Write branch below keeps
+            // the unchanged `escapes_project`, which is what makes an attached
+            // folder readable and not writable.
+            let escapes = tool.path_args.iter().any(|key| {
+                args.get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|p| {
+                        escapes_read_roots(project_root, scratch, read_roots, p).unwrap_or(true)
+                    })
+                    .unwrap_or(false)
+            });
+            if !escapes || grants.covers(PromptKind::ReadEscape) {
+                Decision::Allow
+            } else {
+                Decision::Prompt(PromptKind::ReadEscape)
+            }
+        }
+        // Native web tools (Net) touch no filesystem path and run no shell
+        // command; they only perform outbound HTTP through Jan's provider
+        // adapter. Treat them like read-only reads inside the project: allowed
+        // without a prompt (an explicit agent.toml deny above still wins).
+        Capability::Net => Decision::Allow,
+        // A write inside the project may prompt (the CLI approves it); one that
+        // escapes the project -- absolute or `..` -- can reach host files no
+        // sandbox confines, so mirror the Read branch and gate it separately. It
+        // is refused outright on the desktop, where no prompt round-trip exists.
+        Capability::Write => {
+            // Widened only by roots the session was explicitly granted. With
+            // none — the default, and every session that never chose an access
+            // mode — this is the unchanged `escapes_project` check.
+            let escapes = tool.path_args.iter().any(|key| {
+                args.get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|p| {
+                        escapes_write_roots(project_root, scratch, grants.write_roots(), p)
+                            .unwrap_or(true)
+                    })
+                    .unwrap_or(false)
+            });
+            if escapes {
+                if grants.covers(PromptKind::WriteEscape) {
+                    Decision::Allow
+                } else {
+                    Decision::Prompt(PromptKind::WriteEscape)
+                }
+            } else {
+                gated(PromptKind::Write, grants)
+            }
+        }
+        Capability::Exec => {
+            let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            // Polling a previously backgrounded command (job_id, no new
+            // command) never prompts: the exec permission was already
+            // granted (or denied above) when the command was started. A real
+            // command wins over a stray model-supplied job_id.
+            // The same holds for inspecting, cancelling and listing the
+            // run's own background commands: none of them runs anything new,
+            // and the handler confines each to the conversation that started
+            // the job, so an id from elsewhere reaches nothing.
+            if command.trim().is_empty()
+                && (args
+                    .get("job_id")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|job_id| !job_id.trim().is_empty())
+                    || args.get("action").and_then(|v| v.as_str()) == Some("list"))
+            {
+                return Decision::Allow;
+            }
+            // Known read-only commands (`ls`, `cat src/x`, `git status`) do not
+            // need a question. Every check above has already run, and the
+            // command still runs inside the same sandbox.
+            if grants.covers_command(command)
+                || (tool.name == "bash"
+                    && perms.readonly_shell()
+                    && crate::tools::readonly_shell::is_read_only(
+                        command,
+                        crate::tools::proc::shell().flavor,
+                    ))
+            {
+                Decision::Allow
+            } else {
+                Decision::Prompt(PromptKind::Exec)
+            }
+        }
+    }
+}
+
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0 >> 33
+        }
+        fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
+            &items[(self.next() as usize) % items.len()]
+        }
+    }
+
+    #[test]
+    fn staged_resolve_decision_matches_the_frozen_copy() {
+        let root = std::env::temp_dir().join("flint-gate-diff-root");
+        let scratch = std::env::temp_dir().join("flint-gate-diff-scratch");
+        let strings = [
+            "", "ls", "ls -la", "cat src/main.rs", "git status", "git reset --hard HEAD",
+            "git push --force origin main", "git clean -fdx", "rm -rf ~", "rm -rf /",
+            "rm -rf \"$HOME\"/", "npm test", "echo hi > .git/hooks/pre-commit",
+            "cat .env", "echo x >> ~/.bashrc", "curl http://example.com", "cargo build",
+            "src/main.rs", "README.md", ".env", ".jan/agent/agent.toml", ".git/config",
+            ".github/workflows/ci.yml", "../outside.txt", "/etc/passwd", "C:\\Windows\\win.ini",
+            "id_rsa", "docs/a.pdf", "http://localhost:5173/", "http://localhost:2375/",
+            "https://example.com/x", "https://evil.test/", "registry", "system", "windows",
+            "network", "ports", "list",
+        ];
+        let keys = [
+            "command", "path", "file_path", "url", "query", "action", "pattern", "script",
+            "job_id", "program", "name", "id", "args", "key", "text", "method",
+        ];
+        let rule_sets: Vec<(PermissionDefault, Vec<String>, Vec<String>, Vec<String>)> = vec![
+            (PermissionDefault::ReadOnly, vec![], vec![], vec![]),
+            (PermissionDefault::Allow, vec![], vec![], vec![]),
+            (PermissionDefault::Deny, vec![], vec![], vec![]),
+            (PermissionDefault::ReadOnly, vec!["bash".into()], vec![], vec![]),
+            (PermissionDefault::ReadOnly, vec!["write(src/**)".into(), "read".into()], vec![], vec![]),
+            (PermissionDefault::Allow, vec![], vec!["read(.env)".into(), "bash(rm *)".into()], vec![]),
+            (PermissionDefault::ReadOnly, vec!["git".into(), "host_query".into(), "local_http".into()], vec![], vec![]),
+            (PermissionDefault::Allow, vec!["bash(git *)".into(), "read(**)".into()], vec![], vec!["src/**".into()]),
+        ];
+        let mut rng = Lcg(0x5eed);
+        let mut disagreements = Vec::new();
+        let total = 60_000usize;
+        for _ in 0..total {
+            let tool = rng.pick(crate::tools::BUILTIN_TOOLS);
+            let mut args = serde_json::Map::new();
+            for _ in 0..(rng.next() % 4) {
+                let key = *rng.pick(&keys);
+                let value = if key == "args" {
+                    json!([rng.pick(&strings)])
+                } else {
+                    json!(rng.pick(&strings))
+                };
+                args.insert(key.to_string(), value);
+            }
+            for key in tool.path_args {
+                if rng.next() % 2 == 0 {
+                    args.insert((*key).to_string(), json!(rng.pick(&strings)));
+                }
+            }
+            let args = serde_json::Value::Object(args);
+            let (default, allow, deny, allow_write) = rng.pick(&rule_sets).clone();
+            let perms = ToolPermissions::new(default, &allow, &deny, &allow_write);
+            let mut grants = SessionGrants::default();
+            match rng.next() % 5 {
+                0 => grants.grant(PromptKind::Write),
+                1 => grants.grant(PromptKind::ReadEscape),
+                2 => grants.grant(PromptKind::WriteEscape),
+                3 => grants.grant_command("ls"),
+                _ => {}
+            }
+            let network = match rng.next() % 3 {
+                0 => NetworkPolicy::open(),
+                1 => NetworkPolicy { allowed: false, ..NetworkPolicy::default() },
+                _ => NetworkPolicy {
+                    allowed: true,
+                    allow_domains: vec![],
+                    deny_domains: vec!["evil.test".to_string()],
+                },
+            };
+            let hide_jan = rng.next() % 2 == 0;
+            let scratch_opt = if rng.next() % 2 == 0 { Some(scratch.as_path()) } else { None };
+            let read_roots: Vec<PathBuf> = if rng.next() % 3 == 0 { vec![scratch.clone()] } else { vec![] };
+            let subject = crate::subject::Subject::MainAgent;
+            let new = resolve_decision(
+                tool, &args, &root, scratch_opt, &read_roots, &perms, &grants, hide_jan, &network,
+                &subject,
+            );
+            let old = resolve_decision_frozen(
+                tool, &args, &root, scratch_opt, &read_roots, &perms, &grants, hide_jan, &network,
+                &subject,
+            );
+            if new != old {
+                disagreements.push(format!("{} {args} -> new {new:?} old {old:?}", tool.name));
+                if disagreements.len() > 5 {
+                    break;
+                }
+            }
+        }
+        assert!(disagreements.is_empty(), "{disagreements:#?}");
     }
 }
