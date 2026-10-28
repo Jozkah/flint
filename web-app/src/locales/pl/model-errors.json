@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Nie udało się uruchomić modelu",
   "serverStartFailed": "Nie udało się uruchomić serwera",
   "azureEndpointMissing": "Nie skonfigurowano punktu końcowego dla {{provider}}. Ustaw bazowy adres URL w Ustawienia > Dostawcy modeli.",
-  "emptyReply": "Model zakończył bez zwrócenia odpowiedzi. Spróbuj wygenerować ją ponownie lub sprawdź ustawienia dostawcy."
+  "emptyReply": "Model zakończył bez zwrócenia odpowiedzi. Spróbuj wygenerować ją ponownie lub sprawdź ustawienia dostawcy.",
+  "gpuCrashCpuFallbackTitle": "Sterownik GPU uległ awarii",
+  "gpuCrashCpuFallbackQuestion": "Sterownik GPU uległ awarii podczas ładowania tego modelu. Załadować go na CPU? Będzie działać wolniej.",
+  "gpuCrashCpuFallbackConfirm": "Załaduj na CPU"
 }
