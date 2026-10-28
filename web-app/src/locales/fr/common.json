@@ -861,6 +861,27 @@
       "noneConfigured": "Aucun serveur MCP n'est configuré.",
       "filterActive": "Ce projet utilise uniquement : {{servers}}",
       "filterNone": "Ce projet n'utilise aucun serveur MCP"
+    },
+    "webPage": {
+      "open": "Ajouter une page web",
+      "title": "Ajouter une page web",
+      "description": "Récupère une page et conserve son texte lisible comme fichier du projet. Seules les adresses publiques http et https fonctionnent.",
+      "urlLabel": "Adresse de la page",
+      "add": "Ajouter la page",
+      "refresh": "Actualiser",
+      "added": "« {{name}} » ajouté",
+      "refreshed": "« {{name}} » actualisé",
+      "truncated": "La page dépassait la taille maximale ; seule la première partie a été conservée.",
+      "refreshFailed": "Impossible d'actualiser la page",
+      "errors": {
+        "invalidUrl": "Saisissez une adresse web complète commençant par http:// ou https://.",
+        "blocked": "Cette adresse pointe vers cet ordinateur ou un réseau privé, elle n'a donc pas été récupérée.",
+        "timeout": "La page a mis trop de temps à répondre. Réessayez plus tard.",
+        "notHtml": "Cette adresse n'est pas une page web avec du texte lisible (par exemple un PDF, une image ou un téléchargement).",
+        "tooLarge": "La page est trop volumineuse.",
+        "httpError": "Le site a renvoyé une erreur : {{message}}",
+        "failed": "Impossible de récupérer la page : {{message}}"
+      }
     }
   },
   "attachmentsIngestion": {
@@ -2780,7 +2801,11 @@
     "noVision": "Ce modèle ne peut pas lire les images",
     "details": "Détails de {{name}}",
     "previewLoading": "Chargement de l'aperçu…",
-    "previewNone": "Aucun aperçu disponible"
+    "previewNone": "Aucun aperçu disponible",
+    "pagesAsImages": "Envoyer les pages en images",
+    "pagesAsImagesHint": "Envoyer les pages de ce PDF en images pour que le modèle voie les scans, graphiques et la mise en page",
+    "pdfPagesCut": "Les {{sent}} premières pages sur {{total}} de {{name}} ont été envoyées en images",
+    "pdfScannedAsImages": "{{name}} ne contient pas de texte, ses pages ont donc été envoyées en images"
   },
   "fileViewer": {
     "openFull": "Ouvrir l’aperçu complet",

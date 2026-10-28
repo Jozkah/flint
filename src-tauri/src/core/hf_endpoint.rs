@@ -33,6 +33,12 @@ pub(crate) fn hf_endpoint() -> Result<Url, String> {
     parse_endpoint(std::env::var("HF_ENDPOINT").ok().as_deref())
 }
 
+/// Whether the access token may be sent to `endpoint`: only over https, so a
+/// plain-http mirror never sees it (ENG-024).
+pub(crate) fn token_allowed_for(endpoint: &Url) -> bool {
+    endpoint.scheme() == "https"
+}
+
 /// `base` with `parts` appended as path segments.
 pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
     let mut url = base.clone();
@@ -51,6 +57,14 @@ pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_only_goes_to_https_endpoints() {
+        let https = parse_endpoint(Some("https://huggingface.co")).unwrap();
+        let http = parse_endpoint(Some("http://mirror.lan")).unwrap();
+        assert!(token_allowed_for(&https));
+        assert!(!token_allowed_for(&http));
+    }
 
     #[test]
     fn endpoint_defaults_and_normalises() {

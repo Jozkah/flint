@@ -23,11 +23,11 @@ const setupMobileViewport = () => {
                    window.matchMedia('(max-width: 768px)').matches
 
   if (isMobile) {
-    // Update viewport meta tag to disable zoom
+    // Keep pinch zoom available (accessibility); only extend under the notch
     const viewportMeta = document.querySelector('meta[name="viewport"]')
     if (viewportMeta) {
       viewportMeta.setAttribute('content',
-        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+        'width=device-width, initial-scale=1.0, viewport-fit=cover'
       )
     }
 

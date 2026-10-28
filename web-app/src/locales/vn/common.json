@@ -854,6 +854,27 @@
       "noneConfigured": "Chưa cấu hình máy chủ MCP nào.",
       "filterActive": "Dự án này chỉ dùng: {{servers}}",
       "filterNone": "Dự án này không dùng máy chủ MCP nào"
+    },
+    "webPage": {
+      "open": "Thêm trang web",
+      "title": "Thêm một trang web",
+      "description": "Tải một trang và lưu phần văn bản đọc được thành tệp dự án. Chỉ dùng được địa chỉ http và https công khai.",
+      "urlLabel": "Địa chỉ trang",
+      "add": "Thêm trang",
+      "refresh": "Làm mới",
+      "added": "Đã thêm \"{{name}}\"",
+      "refreshed": "Đã làm mới \"{{name}}\"",
+      "truncated": "Trang vượt quá giới hạn kích thước nên chỉ lưu phần đầu.",
+      "refreshFailed": "Không thể làm mới trang",
+      "errors": {
+        "invalidUrl": "Nhập địa chỉ web đầy đủ bắt đầu bằng http:// hoặc https://.",
+        "blocked": "Địa chỉ này trỏ tới máy này hoặc mạng riêng nên không được tải.",
+        "timeout": "Trang phản hồi quá lâu. Hãy thử lại sau.",
+        "notHtml": "Địa chỉ này không phải trang web có văn bản đọc được (ví dụ PDF, hình ảnh hoặc tệp tải xuống).",
+        "tooLarge": "Trang quá lớn để tải.",
+        "httpError": "Trang web trả về lỗi: {{message}}",
+        "failed": "Không thể tải trang: {{message}}"
+      }
     }
   },
   "attachmentsIngestion": {
@@ -2731,7 +2752,11 @@
     "noVision": "Mô hình này không đọc được ảnh",
     "details": "Chi tiết về {{name}}",
     "previewLoading": "Đang tải bản xem trước…",
-    "previewNone": "Không có bản xem trước"
+    "previewNone": "Không có bản xem trước",
+    "pagesAsImages": "Gửi các trang dưới dạng hình ảnh",
+    "pagesAsImagesHint": "Gửi các trang của PDF này dưới dạng hình ảnh để mô hình thấy bản quét, biểu đồ và bố cục",
+    "pdfPagesCut": "Đã gửi {{sent}} trên {{total}} trang đầu của {{name}} dưới dạng hình ảnh",
+    "pdfScannedAsImages": "{{name}} không có văn bản nên các trang đã được gửi dưới dạng hình ảnh"
   },
   "fileViewer": {
     "openFull": "Mở bản xem trước đầy đủ",

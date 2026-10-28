@@ -324,10 +324,6 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
             Ok(p) => p.to_string_lossy().replace('\\', "/"),
             Err(_) => continue,
         };
-        if entries.len() >= MAX_LIST_ENTRIES {
-            truncated = true;
-            break;
-        }
         entries.push(ProjectEntry {
             name,
             rel_path,
@@ -339,7 +335,14 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
         b.is_dir
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.name.cmp(&b.name))
     });
+    // Cut after sorting: read_dir order is arbitrary, so cutting first would
+    // list a different 1000 entries on each run.
+    if entries.len() > MAX_LIST_ENTRIES {
+        entries.truncate(MAX_LIST_ENTRIES);
+        truncated = true;
+    }
     Ok(ProjectListing { entries, truncated })
 }
 
@@ -456,6 +459,23 @@ mod tests {
         let listing = list_dir(root.to_str().unwrap(), "").unwrap();
         let names: Vec<_> = listing.entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, vec!["alpha", "zeta", "Apple.txt", "beta.txt"]);
+    }
+
+    #[test]
+    fn a_long_listing_is_cut_after_sorting() {
+        let root = temp_project();
+        for i in 0..(MAX_LIST_ENTRIES + 50) {
+            std::fs::write(root.join(format!("f{i:05}.txt")), "x").unwrap();
+        }
+        std::fs::create_dir(root.join("zz-dir")).unwrap();
+        let first = list_dir(root.to_str().unwrap(), "").unwrap();
+        let second = list_dir(root.to_str().unwrap(), "").unwrap();
+        assert!(first.truncated);
+        assert_eq!(first.entries.len(), MAX_LIST_ENTRIES);
+        assert_eq!(first.entries[0].name, "zz-dir");
+        assert_eq!(first.entries[1].name, "f00000.txt");
+        let names = |l: &ProjectListing| l.entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&first), names(&second));
     }
 
     #[test]

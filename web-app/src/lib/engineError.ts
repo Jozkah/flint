@@ -17,6 +17,9 @@ export const ENGINE_ERROR_CODES = [
   'MODEL_QUANT_NOT_SUPPORTED',
   'ENGINE_STOPPED',
   'OUT_OF_MEMORY',
+  // MLX only (`tauri-plugin-mlx/src/error.rs`): a running server died of a GPU
+  // allocation failure on one prompt.
+  'PROMPT_OUT_OF_MEMORY',
   'INVALID_ARGUMENT',
   'IO_ERROR',
   'INTERNAL_ERROR',

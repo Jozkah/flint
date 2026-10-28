@@ -251,5 +251,9 @@
     "remove": "Elimina",
     "replace": "Desat. Escriu per substituir-lo.",
     "enter": "Sense definir"
-  }
+  },
+  "skippedLinkedTitle": "Models omesos: {{count}}",
+  "skippedLinkedBody": "Aquests models es desen a través d'un enllaç que apunta fora de la carpeta de dades de Flint, així que Flint no els ha carregat:",
+  "skippedLinkedHowTo": "Per fer-ne servir un, importa el fitxer GGUF per ruta (Flint el deixa on és) o torna a moure els fitxers a la carpeta de models.",
+  "skippedLinkedDismiss": "Descarta"
 }

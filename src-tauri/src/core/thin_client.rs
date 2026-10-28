@@ -390,12 +390,30 @@ fn parse_desktop(input: &str) -> Result<(String, u16), String> {
         .or_else(|| trimmed.strip_prefix("http://"))
         .unwrap_or(trimmed);
     let authority = rest.split(['/', '#', '?']).next().unwrap_or("");
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((h, p)) if !h.ends_with(']') || h.starts_with('[') => {
-            let port = p.parse::<u16>().map_err(|_| format!("bad port in {input}"))?;
-            (h.trim_matches(['[', ']']).to_string(), port)
+    let (host, port) = if let Some(after) = authority.strip_prefix('[') {
+        // Bracketed IPv6: `[addr]` or `[addr]:port`.
+        let (addr, tail) = after
+            .split_once(']')
+            .ok_or_else(|| format!("unclosed [ in {input}"))?;
+        let port = match tail {
+            "" => 443,
+            t => t
+                .strip_prefix(':')
+                .and_then(|p| p.parse::<u16>().ok())
+                .ok_or_else(|| format!("bad port in {input}"))?,
+        };
+        (addr.to_string(), port)
+    } else if authority.matches(':').count() > 1 {
+        // A bare IPv6 address cannot carry a port; require brackets for that.
+        (authority.to_string(), 443)
+    } else {
+        match authority.rsplit_once(':') {
+            Some((h, p)) => {
+                let port = p.parse::<u16>().map_err(|_| format!("bad port in {input}"))?;
+                (h.to_string(), port)
+            }
+            None => (authority.to_string(), 443),
         }
-        _ => (authority.trim_matches(['[', ']']).to_string(), 443),
     };
     if host.is_empty() {
         return Err("no host in the desktop address".into());
@@ -501,6 +519,11 @@ mod tests {
         assert_eq!(parse_desktop("pc.tail.ts.net:8443").unwrap(), ("pc.tail.ts.net".into(), 8443));
         assert_eq!(parse_desktop("https://pc.local").unwrap(), ("pc.local".into(), 443));
         assert_eq!(parse_desktop("https://[fd00::1]:1340/m/").unwrap(), ("fd00::1".into(), 1340));
+        assert_eq!(parse_desktop("https://[fd00::1]/").unwrap(), ("fd00::1".into(), 443));
+        assert_eq!(parse_desktop("https://[fd00::1]:8443").unwrap(), ("fd00::1".into(), 8443));
+        assert_eq!(parse_desktop("fd00::1").unwrap(), ("fd00::1".into(), 443));
+        assert!(parse_desktop("https://[fd00::1").is_err());
+        assert!(parse_desktop("https://[fd00::1]:x").is_err());
         assert!(parse_desktop("https://:1340").is_err());
         assert!(parse_desktop("host:notaport").is_err());
     }

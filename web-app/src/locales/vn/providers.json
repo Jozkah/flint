@@ -250,5 +250,9 @@
     "remove": "Xóa",
     "replace": "Đã lưu. Nhập để thay thế.",
     "enter": "Chưa đặt"
-  }
+  },
+  "skippedLinkedTitle": "Mô hình bị bỏ qua: {{count}}",
+  "skippedLinkedBody": "Các mô hình này được lưu qua một liên kết trỏ ra ngoài thư mục dữ liệu của Flint, nên Flint đã không tải chúng:",
+  "skippedLinkedHowTo": "Để dùng một mô hình, hãy nhập tệp GGUF theo đường dẫn (Flint giữ tệp ở nguyên chỗ) hoặc chuyển các tệp về lại thư mục mô hình.",
+  "skippedLinkedDismiss": "Đóng"
 }

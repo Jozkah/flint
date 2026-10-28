@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Bu model, GPU arka ucunun çalıştıramadığı bir nicemleme türü kullanıyor. Q4_K_M gibi farklı bir nicemleme indirin veya GPU yük aktarımını kapatın.",
     "ENGINE_STOPPED": "Motor beklenmedik şekilde durdu. Yeniden başlatmak için modeli tekrar yükleyin; sorun sürerse nedeni aşağıdaki son motor çıktısında yazar.",
     "OUT_OF_MEMORY": "Bu modeli çalıştırmak için yeterli bellek yok. Daha küçük bir model veya bağlam boyutu genellikle yardımcı olur.",
+    "PROMPT_OUT_OF_MEMORY": "Model bu istemde GPU belleğini tüketti, bu yüzden sunucusu durdu. Daha kısa bir bağlam veya daha küçük bir model deneyin; bir sonraki mesajınız sunucuyu yeniden başlatır.",
     "INVALID_ARGUMENT": "Model ayarlarından biri geçersiz.",
     "IO_ERROR": "Model başlatılırken bir dosya okunamadı veya dosyaya yazılamadı.",
     "INTERNAL_ERROR": "Model başlatılırken Flint içinde bir hata oluştu."
@@ -38,5 +39,8 @@
   "serverStartModelFailed": "Model başlatılamadı",
   "serverStartFailed": "Sunucu başlatılamadı",
   "azureEndpointMissing": "{{provider}} için yapılandırılmış bir uç nokta yok. Temel URL'yi Ayarlar > Model Sağlayıcıları bölümünde belirleyin.",
-  "emptyReply": "Model yanıt döndürmeden bitti. Yeniden oluşturmayı deneyin veya sağlayıcı ayarlarını kontrol edin."
+  "emptyReply": "Model yanıt döndürmeden bitti. Yeniden oluşturmayı deneyin veya sağlayıcı ayarlarını kontrol edin.",
+  "gpuCrashCpuFallbackTitle": "GPU sürücüsü çöktü",
+  "gpuCrashCpuFallbackQuestion": "Bu model yüklenirken GPU sürücüsü çöktü. Bunun yerine CPU'da yüklensin mi? Daha yavaş çalışır.",
+  "gpuCrashCpuFallbackConfirm": "CPU'da yükle"
 }

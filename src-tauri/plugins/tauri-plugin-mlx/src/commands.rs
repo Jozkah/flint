@@ -237,14 +237,17 @@ pub async fn load_mlx_model_impl(
     });
 
     // Spawn task to capture stderr and monitor for errors
+    // Last lines only: a long session would otherwise grow this without
+    // bound, and only the tail explains a crash. Shared with the session so a
+    // crash long after the load can still be explained.
+    const STDERR_TAIL_LINES: usize = 40;
+    let stderr_tail: crate::state::StderrTail = Arc::new(std::sync::Mutex::new(
+        std::collections::VecDeque::with_capacity(STDERR_TAIL_LINES),
+    ));
+    let task_tail = stderr_tail.clone();
     let stderr_task = tokio::spawn(async move {
         let mut reader = BufReader::new(stderr);
         let mut byte_buffer = Vec::new();
-        // Last lines only: a long session would otherwise grow this without
-        // bound, and only the tail explains a crash.
-        const STDERR_TAIL_LINES: usize = 40;
-        let mut tail: std::collections::VecDeque<String> =
-            std::collections::VecDeque::with_capacity(STDERR_TAIL_LINES);
 
         loop {
             byte_buffer.clear();
@@ -255,10 +258,12 @@ pub async fn load_mlx_model_impl(
                     let line = line.trim_end();
 
                     if !line.is_empty() {
-                        if tail.len() == STDERR_TAIL_LINES {
-                            tail.pop_front();
+                        if let Ok(mut tail) = task_tail.lock() {
+                            if tail.len() == STDERR_TAIL_LINES {
+                                tail.pop_front();
+                            }
+                            tail.push_back(line.to_string());
                         }
-                        tail.push_back(line.to_string());
                         log::info!("[mlx] {}", line);
 
                         let line_lower = line.to_lowercase();
@@ -281,12 +286,7 @@ pub async fn load_mlx_model_impl(
             }
         }
 
-        let mut out = String::new();
-        for line in tail {
-            out.push_str(&line);
-            out.push('\n');
-        }
-        out
+        crate::process::tail_text(&task_tail)
     });
 
     // Check if process exited early
@@ -367,6 +367,7 @@ pub async fn load_mlx_model_impl(
         MlxBackendSession {
             child,
             info: session_info.clone(),
+            stderr_tail,
         },
     );
 

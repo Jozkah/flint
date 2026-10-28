@@ -152,7 +152,10 @@ export function TaskRow({
   const [open, setOpen] = useState(false)
   const needsHelp = isNeedsHelp(task)
   // A task that needs help comes with the hint that gets it past the block.
-  const [hint, setHint] = useState(needsHelp ? NEEDS_HELP_HINT : '')
+  // Derived, not seeded once: a task that turns into one needing help later
+  // still gets the hint until the user types their own.
+  const [typedHint, setHint] = useState<string | null>(null)
+  const hint = typedHint ?? (needsHelp ? NEEDS_HELP_HINT : '')
   const [accepting, setAccepting] = useState(false)
   const [acceptReason, setAcceptReason] = useState('')
   const recovery = recoveryOf(task, all)

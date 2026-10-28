@@ -13,6 +13,8 @@ vi.mock('@/containers/rooms/roomsBindings', () => ({
 }))
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
+  // lib/remote/text.ts translates through the shared instance.
+  i18n: { t: (k: string) => k },
 }))
 
 import { HeaderLiveChips } from '../HeaderLiveChips'

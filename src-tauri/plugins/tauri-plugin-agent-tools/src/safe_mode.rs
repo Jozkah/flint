@@ -12,7 +12,15 @@ pub fn active() -> bool {
 
 fn truthy(v: &str) -> bool {
     let v = v.trim();
-    !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+    match v.to_ascii_lowercase().as_str() {
+        "" | "0" | "false" | "no" | "off" => false,
+        "1" | "true" | "yes" | "on" => true,
+        // An unknown value fails safe: the stricter mode.
+        _ => {
+            eprintln!("{ENV}={v:?} is not a recognised value; treating it as on");
+            true
+        }
+    }
 }
 
 /// Turn safe mode on for this process. Call before any thread is started.
@@ -33,5 +41,6 @@ mod tests {
     fn only_a_real_value_turns_safe_mode_on() {
         assert!(truthy("1") && truthy("true") && truthy("yes"));
         assert!(!truthy("") && !truthy(" ") && !truthy("0") && !truthy("False"));
+        assert!(!truthy("no") && !truthy("OFF") && truthy("on") && truthy("garbage"));
     }
 }

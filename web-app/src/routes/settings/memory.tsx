@@ -370,13 +370,19 @@ function MemorySettings() {
           undoLabel: t('common:undo'),
           onUndo: () => {
             void (async () => {
-              await memoryRecordRestore(
-                location,
-                drop.scope,
-                drop.id,
-                drop.content
-              )
-              await reload()
+              try {
+                await memoryRecordRestore(
+                  location,
+                  drop.scope,
+                  drop.id,
+                  drop.content
+                )
+                await reload()
+              } catch (error) {
+                toast.error(t('settings:memoryPage.toast.restoreFailed'), {
+                  description: errorText(error),
+                })
+              }
             })()
           },
         })
@@ -409,13 +415,19 @@ function MemorySettings() {
             // The offer is spent: drop it so it cannot sit under what follows.
             toast.dismiss(forgottenToast)
             void (async () => {
-              await memoryRecordRestore(
-                location,
-                scope,
-                memory.id,
-                memory.content
-              )
-              await reload()
+              try {
+                await memoryRecordRestore(
+                  location,
+                  scope,
+                  memory.id,
+                  memory.content
+                )
+                await reload()
+              } catch (error) {
+                toast.error(t('settings:memoryPage.toast.restoreFailed'), {
+                  description: errorText(error),
+                })
+              }
             })()
           },
         })

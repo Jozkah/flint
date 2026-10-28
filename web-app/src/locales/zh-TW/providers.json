@@ -250,5 +250,9 @@
     "remove": "移除",
     "replace": "已儲存。輸入內容即可取代。",
     "enter": "未設定"
-  }
+  },
+  "skippedLinkedTitle": "已略過的模型：{{count}}",
+  "skippedLinkedBody": "這些模型透過指向 Flint 資料夾以外的連結存放，因此 Flint 沒有載入它們：",
+  "skippedLinkedHowTo": "若要使用其中某個模型，請依路徑匯入它的 GGUF 檔案（Flint 會讓檔案留在原處），或將檔案移回模型資料夾。",
+  "skippedLinkedDismiss": "關閉"
 }

@@ -44,6 +44,9 @@
     "description": "Indeksowanie załączonych plików, aby można je było przeszukiwać i cytować. W przypadku dużych dokumentów może to chwilę potrwać."
   },
   "actions": {
+    "readAloud": "Czytaj na głos",
+    "stopReading": "Zatrzymaj czytanie",
+    "codeOmitted": "kod pominięty",
     "copy": "Kopiuj",
     "regenerate": "Wygeneruj odpowiedź ponownie",
     "continue": "Kontynuuj generowanie",
