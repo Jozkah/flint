@@ -442,14 +442,20 @@ mod tests {
         assert_eq!(err.kind, ExportErrorKind::Io);
         assert_eq!(std::fs::read_dir(exports_dir(&f.data)).unwrap().count(), 0, "a partial bundle was left");
 
-        std::fs::create_dir_all(exports_dir(&f.data).join("20260101T000000Z-dead.partial")).unwrap();
+        // A just-created unclaimed partial is younger than the sweep cutoff, so
+        // it is kept (it could belong to another process).
+        let fresh = exports_dir(&f.data).join("20260101T000000Z-dead.partial");
+        std::fs::create_dir_all(&fresh).unwrap();
         let report = export(&f.data, &f.roots, &f.record, &mut |_| Ok(())).unwrap();
-        let left: Vec<String> = std::fs::read_dir(exports_dir(&f.data))
+        let mut left: Vec<String> = std::fs::read_dir(exports_dir(&f.data))
             .unwrap()
             .flatten()
             .map(|e| e.path().to_string_lossy().to_string())
             .collect();
-        assert_eq!(left, vec![report.path]);
+        left.sort();
+        let mut want = vec![report.path, fresh.to_string_lossy().to_string()];
+        want.sort();
+        assert_eq!(left, want);
     }
 
     #[test]
