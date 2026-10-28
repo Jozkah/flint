@@ -2740,6 +2740,10 @@
     "truncatedOnAdd": "{{total}} içinden ilk {{shown}} gösteriliyor (ek, eklenirken kısaltıldı)"
   },
   "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
+  "chatPaneDrop": {
+    "overlay": "Eklemek için dosyaları bırakın",
+    "unsupported": "{{names}} eklenemiyor: bu dosya türü desteklenmiyor."
+  },
   "sampler": {
     "label": "Örnekleme parametreleri",
     "notSupported": "{{provider}} tarafından desteklenmiyor"

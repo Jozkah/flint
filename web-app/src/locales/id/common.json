@@ -2695,6 +2695,10 @@
     "truncatedOnAdd": "Menampilkan {{shown}} pertama dari {{total}} (lampiran dipotong saat ditambahkan)"
   },
   "dropAttachFailed": "Tidak dapat melampirkan file yang dijatuhkan",
+  "chatPaneDrop": {
+    "overlay": "Lepaskan file untuk melampirkan",
+    "unsupported": "Tidak dapat melampirkan {{names}}: jenis file ini tidak didukung."
+  },
   "sampler": {
     "label": "Parameter sampling",
     "notSupported": "Tidak didukung oleh {{provider}}"

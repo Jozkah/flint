@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { PenLine } from 'lucide-react'
+import { ChatPaneDropZone } from '@/components/ChatPaneDropZone'
 import ChatInput from '@/containers/ChatInput'
 import HeaderPage from '@/containers/HeaderPage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -82,7 +83,7 @@ function Index() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-1 pt-3.5 pb-4">
+    <ChatPaneDropZone className="flex h-full min-h-0 flex-col px-1 pt-3.5 pb-4">
       <HeaderPage>
         <PageHeaderRow>
           <div className="flex-1" />
@@ -172,6 +173,6 @@ function Index() {
           </div>
         </FrameBody>
       </Frame>
-    </div>
+    </ChatPaneDropZone>
   )
 }

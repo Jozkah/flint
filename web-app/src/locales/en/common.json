@@ -616,6 +616,10 @@
   "noResultsFoundDesc": "We couldn't find any chats matching your search. Try a different keyword.",
   "searchModels": "Search models...",
   "dropAttachFailed": "Couldn't attach the dropped files",
+  "chatPaneDrop": {
+    "overlay": "Drop files to attach",
+    "unsupported": "Can't attach {{names}}: this file type isn't supported."
+  },
   "sortModels": "Sort models",
   "filterModels": "Filter models",
   "hideUnavailableModels": "Hide unavailable models",

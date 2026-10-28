@@ -30,6 +30,7 @@ import { SaveChatPicturesItem } from '@/components/SaveChatPicturesItem'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { ChatPaneDropZone } from '@/components/ChatPaneDropZone'
 import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import { ChatTasks } from '@/containers/ChatTasks'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
@@ -3252,7 +3253,7 @@ export function ThreadConversation({
   return (
     <PathRootsContext.Provider value={chatPathRoots}>
     <WidgetHostContext.Provider value={widgetHost}>
-    <div
+    <ChatPaneDropZone
       className={cn(
         'flex h-full min-h-0 flex-col',
         // The page's own breathing room; a split pane sits flush in its half.
@@ -3710,7 +3711,7 @@ export function ThreadConversation({
         />
         </div>
       </div>
-    </div>
+    </ChatPaneDropZone>
     </WidgetHostContext.Provider>
     </PathRootsContext.Provider>
   )

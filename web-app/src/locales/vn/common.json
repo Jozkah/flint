@@ -2738,6 +2738,10 @@
     "truncatedOnAdd": "Đang hiển thị {{shown}} đầu tiên trong {{total}} (tệp đính kèm đã bị cắt khi được thêm)"
   },
   "dropAttachFailed": "Không thể đính kèm các tệp đã thả",
+  "chatPaneDrop": {
+    "overlay": "Thả tệp để đính kèm",
+    "unsupported": "Không thể đính kèm {{names}}: loại tệp này không được hỗ trợ."
+  },
   "sampler": {
     "label": "Tham số lấy mẫu",
     "notSupported": "{{provider}} không hỗ trợ"
