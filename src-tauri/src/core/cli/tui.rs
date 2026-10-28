@@ -171,6 +171,28 @@ fn release_terminal() -> bool {
     }
 }
 
+/// Undoes what `run` set up if it leaves early (a `?` on a setup step) or
+/// unwinds: raw mode and terminal modes (once `raw` is set), and the muted
+/// stderr sink (always). The normal exit path restores explicitly and clears
+/// `raw`; the repeated stderr write on drop is idempotent.
+struct TerminalGuard {
+    prev_stderr: bool,
+    raw: bool,
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if self.raw {
+            release_terminal();
+            let _ = disable_raw_mode();
+            let mut stdout = io::stdout();
+            let _ = stdout.write_all(panic_restore_sequence().as_bytes());
+            let _ = stdout.flush();
+        }
+        super::file_log::set_stderr_enabled(self.prev_stderr);
+    }
+}
+
 /// Install a hook that logs the panic and, when it lands on the render-loop
 /// thread, puts the terminal back before the previous hook prints its message,
 /// so the message is readable on a normal screen instead of lost in the
@@ -8777,8 +8799,13 @@ pub async fn run(
     // muted: the persistent log keeps recording, and an interactive session
     // that hangs is exactly what `jan bug-report` needs a trail for.
     let prev_stderr_log = super::file_log::set_stderr_enabled(false);
+    let mut guard = TerminalGuard {
+        prev_stderr: prev_stderr_log,
+        raw: false,
+    };
 
     enable_raw_mode().map_err(|e| e.to_string())?;
+    guard.raw = true;
     // From here a panic must not leave the shell in raw mode on the alternate
     // screen: install before anything that can panic runs.
     install_panic_hook();
@@ -8927,6 +8954,7 @@ pub async fn run(
     );
     let _ = terminal.show_cursor();
     super::file_log::set_stderr_enabled(prev_stderr_log);
+    guard.raw = false;
     // The session is closed: leave a copyable continuation command on the real
     // terminal, the same line the non-interactive path prints after a save.
     // Only a persisted thread can be resumed, so an empty session stays quiet.
@@ -22111,6 +22139,27 @@ mod tests {
         );
         assert_eq!(clipboard_path("/tmp/b.jpg").as_deref(), Some("/tmp/b.jpg"));
         assert_eq!(clipboard_path("   \n  "), None);
+    }
+
+    #[test]
+    fn terminal_guard_restores_stderr_on_drop() {
+        let before = super::super::file_log::set_stderr_enabled(true);
+        super::super::file_log::set_stderr_enabled(false);
+        drop(TerminalGuard {
+            prev_stderr: true,
+            raw: false,
+        });
+        assert!(
+            super::super::file_log::set_stderr_enabled(before),
+            "dropping the guard re-enables the stderr sink"
+        );
+    }
+
+    #[test]
+    fn restore_sequence_leaves_alt_screen_and_shows_cursor() {
+        let seq = panic_restore_sequence();
+        assert!(seq.contains("[?1049l"));
+        assert!(seq.ends_with("[?25h"));
     }
 
     #[test]
