@@ -561,6 +561,23 @@ pub struct WorkerHandle {
 }
 
 impl WorkerHandle {
+    /// A handle around any child process, for tests of code that only moves
+    /// handles around.
+    #[cfg(test)]
+    pub(crate) fn for_test(child: Child, port: u16) -> Self {
+        Self {
+            port,
+            pid: child.id().unwrap_or_default(),
+            api_key: format!("key-{port}"),
+            models: Vec::new(),
+            cuda_toolkit: None,
+            child,
+            stderr_tail: StderrTail::default(),
+            #[cfg(windows)]
+            _job: None,
+        }
+    }
+
     /// SIGTERM, then SIGKILL after a grace period, reusing the same helper the
     /// router path uses so there is one kill policy in the crate.
     /// Stops the worker, gracefully on every platform.
