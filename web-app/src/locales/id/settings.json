@@ -350,7 +350,11 @@
       "confirmBody": "Ini mengubah izin folder di bawah, tempat {{program}} terpasang, dan hanya folder itu serta isinya: menambahkan entri yang memungkinkan setiap aplikasi Windows ter-sandbox (ALL APPLICATION PACKAGES) membaca dan menjalankan file di dalamnya. Tidak ada hal lain di profil pengguna Anda yang dibuka. Anda dapat mencabutnya di sini kapan saja, yang menghapus persis entri itu.",
       "confirm": "Izinkan",
       "needsAdmin": "Terpasang di {{folder}}, yang hanya dapat diubah administrator. Perlu administrator: jalankan ini di terminal dengan hak tinggi:",
-      "copyCommand": "Salin perintah"
+      "copyCommand": "Salin perintah",
+      "loadError": "Gagal membaca toolchain sandbox.",
+      "retry": "Coba lagi",
+      "revokeTitle": "Berhenti mengizinkan sandbox memakai {{program}}?",
+      "revokeBody": "Ini menghapus entri izin yang ditambahkan ke folder di bawah. Perintah sandbox tidak lagi dapat menjalankan {{program}} dari sana."
     },
     "title": "Alat Agen",
     "description": "Beri model ruang kerja sementara pribadi untuk setiap percakapan, ditambah memori dan skill yang disimpan permanen di folder data Flint Anda.",
