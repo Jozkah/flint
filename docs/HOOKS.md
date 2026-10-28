@@ -4,7 +4,7 @@ Hooks are shell commands you ask Flint to run at defined points in an agent
 run: a linter before every write, a policy check that refuses a command the
 project does not allow, a notification after a tool runs. They are implemented
 in `src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs` and run from the
-tool dispatcher in `tools/handlers.rs`.
+tool dispatcher in `tools/handlers/`.
 
 ## Where hooks live
 
