@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { FolderLock, FileLock, PenLine } from 'lucide-react'
 import {
   Dialog,
@@ -10,6 +10,22 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useAccessRequests } from '@/lib/accessRequests'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+
+/** A stand-in for a styled node inside a translated sentence. */
+const SLOT = '\u0000'
+
+/** Puts `node` where the translation placed `{{slot}}`. */
+function withSlot(text: string, node: ReactNode): ReactNode {
+  const [before, after] = text.split(SLOT)
+  return (
+    <>
+      {before}
+      {after === undefined ? null : node}
+      {after}
+    </>
+  )
+}
 
 /**
  * The prompt for a `request_access` call.
@@ -24,6 +40,7 @@ import { useAccessRequests } from '@/lib/accessRequests'
  * than waiting on a prompt nobody will see.
  */
 export function AccessRequestDialog() {
+  const { t } = useTranslation()
   const head = useAccessRequests((s) => s.queue[0])
   const waiting = useAccessRequests((s) => s.queue.length)
   const answer = useAccessRequests((s) => s.answer)
@@ -71,23 +88,32 @@ export function AccessRequestDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon className="size-4 shrink-0" />
-            {write
-              ? `Allow the agent to change files in this ${prepared.isDir ? 'folder' : 'file'}?`
-              : `Allow the agent to read this ${prepared.isDir ? 'folder' : 'file'}?`}
+            {t(
+              `permissions:accessRequest.${write ? 'title.write' : 'title.read'}.${prepared.isDir ? 'folder' : 'file'}`
+            )}
           </DialogTitle>
           <DialogDescription>
-            {head.origin ? `${head.origin} in ` : ''}
-            <span className="font-medium text-foreground">
-              {head.taskLabel || 'this conversation'}
-            </span>{' '}
-            is asking for access outside its workspace.
+            {withSlot(
+              head.origin
+                ? t('permissions:accessRequest.askingFrom', {
+                    origin: head.origin,
+                    task: SLOT,
+                  })
+                : t('permissions:accessRequest.asking', { task: SLOT }),
+              <span className="font-medium text-foreground">
+                {head.taskLabel ||
+                  t('permissions:accessRequest.thisConversation')}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 text-sm">
           <div>
             <div className="text-xs text-muted-foreground">
-              {prepared.isDir ? 'Folder (and everything inside it)' : 'File'}
+              {prepared.isDir
+                ? t('permissions:accessRequest.folderLabel')
+                : t('permissions:accessRequest.fileLabel')}
             </div>
             <code
               className="mt-1 block break-all rounded bg-muted px-2 py-1.5 font-mono text-xs"
@@ -97,19 +123,27 @@ export function AccessRequestDialog() {
             </code>
             {prepared.resolvedDiffers && (
               <div className="mt-1 text-xs text-muted-foreground">
-                Requested as <code className="break-all">{prepared.requested}</code>,
-                which resolves to the path above.
+                {withSlot(
+                  t('permissions:accessRequest.requestedAs', {
+                    requested: SLOT,
+                  }),
+                  <code className="break-all">{prepared.requested}</code>
+                )}
               </div>
             )}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">Reason given</div>
+            <div className="text-xs text-muted-foreground">
+              {t('permissions:accessRequest.reason')}
+            </div>
             <div className="mt-1 whitespace-pre-wrap" data-testid="access-reason">
               {head.reason}
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Access:</span>
+            <span className="text-muted-foreground">
+              {t('permissions:accessRequest.access')}
+            </span>
             <span
               className={
                 write
@@ -118,17 +152,17 @@ export function AccessRequestDialog() {
               }
               data-testid="access-mode"
             >
-              {write ? 'Read and write' : 'Read only'}
+              {write
+                ? t('permissions:accessRequest.readWrite')
+                : t('permissions:accessRequest.readOnly')}
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            "Allow for this conversation" ends when the conversation does, or
-            after 8 hours. "Always allow" keeps it for every conversation until
-            you revoke it in Settings &gt; Permissions &gt; Folder access.
+            {t('permissions:accessRequest.grantNote')}
           </p>
           {waiting > 1 && (
             <p className="text-xs text-muted-foreground">
-              {waiting - 1} more request{waiting > 2 ? 's' : ''} waiting.
+              {t('permissions:accessRequest.moreWaiting', { count: waiting - 1 })}
             </p>
           )}
         </div>
@@ -139,7 +173,7 @@ export function AccessRequestDialog() {
             data-testid="access-deny"
             onClick={() => answer(head.id, 'deny')}
           >
-            Deny
+            {t('permissions:accessRequest.deny')}
           </Button>
           <Button
             variant="outline"
@@ -147,14 +181,14 @@ export function AccessRequestDialog() {
             disabled={!armed}
             onClick={() => answer(head.id, 'always')}
           >
-            Always allow
+            {t('permissions:accessRequest.always')}
           </Button>
           <Button
             data-testid="access-session"
             disabled={!armed}
             onClick={() => answer(head.id, 'session')}
           >
-            Allow for this conversation
+            {t('permissions:accessRequest.session')}
           </Button>
         </DialogFooter>
       </DialogContent>

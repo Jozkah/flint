@@ -50,6 +50,11 @@ function simulate(room: Room, n: number): string[] {
 }
 
 describe('speaking policy', () => {
+  it('an unknown stored mode degrades to none instead of throwing', () => {
+    const room = { ...three(), mode: 'foo' as never }
+    expect(nextSpeaker({ room, messages: [] }).kind).toBe('none')
+  })
+
   it('round-robin follows order and counts rounds', () => {
     let room = three()
     expect(simulate(room, 7)).toEqual(['a', 'b', 'c', 'a', 'b', 'c', 'a'])

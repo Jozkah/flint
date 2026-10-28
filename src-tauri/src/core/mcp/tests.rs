@@ -1128,6 +1128,7 @@ mod mcp_confinement_tests {
             read_roots: vec![],
             jan_data: Some(PathBuf::from("/home/dev/.jan")),
             allowed_env: vec!["API_TOKEN".to_string()],
+            allow_network: true,
         }
     }
 
@@ -1255,6 +1256,7 @@ mod mcp_confinement_tests {
                 read_roots: vec![],
                 jan_data: None,
                 allowed_env: vec!["API_TOKEN".to_string()],
+                allow_network: true,
             });
             let confinement = p.confinement.clone().expect("set above");
             let wrapped = confined_mcp_command(probe, &p, &confinement)
@@ -1300,6 +1302,7 @@ mod mcp_confinement_tests {
             read_roots: vec![],
             jan_data: None,
             allowed_env: vec!["API_TOKEN".to_string()],
+            allow_network: true,
         });
         let confinement = p.confinement.clone().expect("set above");
 
