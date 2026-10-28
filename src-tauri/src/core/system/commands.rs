@@ -1816,7 +1816,8 @@ mod tests {
 
     #[test]
     fn macos_clear_has_no_privileged_path() {
-        let src = include_str!("commands.rs");
+        // A Windows checkout may carry CRLF; the scan below looks for "\n}\n".
+        let src = include_str!("commands.rs").replace("\r\n", "\n");
         let at = src.find("pub fn clear_claude_code_env").unwrap();
         let body = &src[at..];
         let body = &body[..body.find("\n}\n").unwrap()];
@@ -2280,7 +2281,8 @@ mod tests {
     /// `block_on` froze the window for up to 30 s and its close never landed.
     #[test]
     fn factory_reset_is_async_and_never_blocks_on() {
-        let src = include_str!("commands.rs");
+        // A Windows checkout may carry CRLF; the scan below looks for "\n}\n".
+        let src = include_str!("commands.rs").replace("\r\n", "\n");
         let start = src
             .find("pub async fn factory_reset<")
             .expect("factory_reset must be an async command");
