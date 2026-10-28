@@ -369,5 +369,35 @@
     "none": "Tato složka nedeklaruje žádné hooky.",
     "error": "Soubor hooků nelze přečíst",
     "loadFailed": "Hooky nelze přečíst"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Povolit agentovi měnit soubory v této složce?",
+        "file": "Povolit agentovi změnit tento soubor?"
+      },
+      "read": {
+        "folder": "Povolit agentovi číst tuto složku?",
+        "file": "Povolit agentovi číst tento soubor?"
+      }
+    },
+    "asking": "{{task}} žádá o přístup mimo svůj pracovní prostor.",
+    "askingFrom": "{{origin}} v {{task}} žádá o přístup mimo svůj pracovní prostor.",
+    "thisConversation": "tato konverzace",
+    "folderLabel": "Složka (a vše v ní)",
+    "fileLabel": "Soubor",
+    "requestedAs": "Požadováno jako {{requested}}, což se přeloží na cestu výše.",
+    "reason": "Uvedený důvod",
+    "access": "Přístup:",
+    "readWrite": "Čtení a zápis",
+    "readOnly": "Pouze čtení",
+    "grantNote": "„Povolit pro tuto konverzaci“ skončí s konverzací nebo po 8 hodinách. „Povolit vždy“ platí pro každou konverzaci, dokud ho nezrušíte v Nastavení > Oprávnění > Přístup ke složkám.",
+    "moreWaiting_one": "Čeká ještě {{count}} žádost.",
+    "moreWaiting_few": "Čekají ještě {{count}} žádosti.",
+    "moreWaiting_many": "Čeká ještě {{count}} žádosti.",
+    "moreWaiting_other": "Čeká ještě {{count}} žádostí.",
+    "deny": "Zamítnout",
+    "always": "Povolit vždy",
+    "session": "Povolit pro tuto konverzaci"
   }
 }

@@ -4055,7 +4055,18 @@ impl App {
             let marker = "@";
             let path = &selected.path;
             let trailing = if selected.is_dir { "/" } else { "" };
-            let replacement = format!("{marker}{path}{trailing}");
+            // A path with whitespace or a character the unquoted form stops at
+            // would be cut short, so it goes in quotes. A directory keeps the
+            // quote open so the user can keep drilling in.
+            let needs_quotes = path
+                .chars()
+                .any(|c| c.is_whitespace() || ",;:!?'\"`[](){}<>".contains(c));
+            let replacement = if needs_quotes {
+                let close = if selected.is_dir { "" } else { "\"" };
+                format!("{marker}\"{path}{trailing}{close}")
+            } else {
+                format!("{marker}{path}{trailing}")
+            };
             let new_input = format!("{}{}{}", &self.input[..at_idx], replacement, after);
             self.input = new_input;
             self.cursor = at_idx + replacement.len();
@@ -11047,6 +11058,8 @@ async fn handle_key(
                     open_rewind_picker(app);
                 } else {
                     app.last_esc = Some(Instant::now());
+                    // Keep what was typed so Up brings it back.
+                    app.record_draft();
                     app.input_clear();
                 }
             }
@@ -18969,7 +18982,7 @@ mod tests {
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
         apply_repaint, apply_resume, assistant_is_awaiting_user_answer, assistant_runs,
-        autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
+        TerminalGuard, normalize_paste, panic_restore_sequence, autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
         estimate_token_count, finish_compaction, finish_context_report,
         finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
@@ -22871,6 +22884,16 @@ mod tests {
         assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('@'), both)));
         let accented = char::from_u32(0x105).unwrap();
         assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char(accented), both)));
+    }
+
+    #[tokio::test]
+    async fn esc_records_draft_for_recall() {
+        let mut app = test_app();
+        composer(&mut app, "half written|");
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.input.is_empty());
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "half written");
     }
 
     #[tokio::test]
@@ -34645,6 +34668,21 @@ mod tests {
         }];
         app.accept_path_hint();
         assert_eq!(app.input, r#"use @"notes/report.md""#);
+    }
+
+    #[test]
+    fn accept_completion_with_space_quotes() {
+        let mut app = test_app();
+        app.input = "use @rep".into();
+        app.cursor = app.input.len();
+        app.path_hints = vec![super::PathHintItem {
+            path: "my docs/report.md".into(),
+            name: "report.md".into(),
+            is_dir: false,
+        }];
+        app.accept_path_hint();
+        assert_eq!(app.input, "use @\"my docs/report.md\"");
+        assert_eq!(app.cursor, app.input.len());
     }
 
     #[test]
