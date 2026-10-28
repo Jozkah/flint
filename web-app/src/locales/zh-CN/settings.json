@@ -1392,6 +1392,7 @@
       "settleFailed": "无法解决该冲突",
       "forgotten": "已忘记记忆",
       "forgetFailed": "无法忘记该记忆",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "无法更改该记忆",
       "updated": "记忆已更新",
       "updateFailed": "无法更新该记忆",
@@ -1490,7 +1491,12 @@
     "composerGroup": "输入框",
     "repliesGroup": "回复",
     "linksGroup": "链接",
-    "artifactsGroup": "工件与小组件"
+    "artifactsGroup": "工件与小组件",
+    "reasoningDefault": "新聊天的推理",
+    "reasoningDefaultDesc": "新聊天中思考默认开启还是关闭。模型自身的推理设置和输入框中的开关仍然优先。无法切换思考的模型不受影响。",
+    "reasoningDefaultModel": "模型默认",
+    "reasoningDefaultOn": "开启",
+    "reasoningDefaultOff": "关闭"
   },
   "data": {
     "tabStorage": "存储",

@@ -1426,6 +1426,7 @@
       "settleFailed": "Не удалось разрешить конфликт",
       "forgotten": "Воспоминание забыто",
       "forgetFailed": "Не удалось забыть воспоминание",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Не удалось изменить воспоминание",
       "updated": "Воспоминание обновлено",
       "updateFailed": "Не удалось обновить воспоминание",
@@ -1539,7 +1540,12 @@
     "composerGroup": "Поле ввода",
     "repliesGroup": "Ответы",
     "linksGroup": "Ссылки",
-    "artifactsGroup": "Артефакты и виджеты"
+    "artifactsGroup": "Артефакты и виджеты",
+    "reasoningDefault": "Рассуждение в новых чатах",
+    "reasoningDefaultDesc": "Включено или выключено рассуждение в начале нового чата. Собственная настройка рассуждения модели и переключатель в поле ввода по-прежнему имеют приоритет. Модели, которые не могут переключать рассуждение, не затрагиваются.",
+    "reasoningDefaultModel": "По умолчанию модели",
+    "reasoningDefaultOn": "Вкл.",
+    "reasoningDefaultOff": "Выкл."
   },
   "data": {
     "tabStorage": "Хранилище",

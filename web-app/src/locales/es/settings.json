@@ -1568,6 +1568,7 @@
       "settleFailed": "No se pudo resolver ese conflicto",
       "forgotten": "Recuerdo olvidado",
       "forgetFailed": "No se pudo olvidar ese recuerdo",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "No se pudo cambiar ese recuerdo",
       "updated": "Recuerdo actualizado",
       "updateFailed": "No se pudo actualizar ese recuerdo",
@@ -1669,7 +1670,12 @@
     "composerGroup": "Compositor",
     "repliesGroup": "Respuestas",
     "linksGroup": "Enlaces",
-    "artifactsGroup": "Artefactos y widgets"
+    "artifactsGroup": "Artefactos y widgets",
+    "reasoningDefault": "Razonamiento en chats nuevos",
+    "reasoningDefaultDesc": "Si el razonamiento empieza activado o desactivado en un chat nuevo. El ajuste de razonamiento propio del modelo y el interruptor del editor siguen teniendo prioridad. Los modelos que no pueden cambiar el razonamiento no se modifican.",
+    "reasoningDefaultModel": "Predeterminado del modelo",
+    "reasoningDefaultOn": "Activado",
+    "reasoningDefaultOff": "Desactivado"
   },
   "data": {
     "tabStorage": "Almacenamiento",

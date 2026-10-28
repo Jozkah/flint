@@ -44,6 +44,9 @@
     "description": "Die angehängten Dateien werden indiziert, damit sie durchsucht und zitiert werden können. Bei großen Dokumenten kann das einen Moment dauern."
   },
   "actions": {
+    "readAloud": "Vorlesen",
+    "stopReading": "Vorlesen beenden",
+    "codeOmitted": "Code ausgelassen",
     "copy": "Kopieren",
     "regenerate": "Antwort neu generieren",
     "continue": "Weiter generieren",

@@ -44,6 +44,9 @@
     "description": "Indexing the attached files so they can be searched and cited. This may take a moment for large documents."
   },
   "actions": {
+    "readAloud": "Read aloud",
+    "stopReading": "Stop reading",
+    "codeOmitted": "code omitted",
     "copy": "Copy",
     "copied": "Copied",
     "regenerate": "Regenerate response",

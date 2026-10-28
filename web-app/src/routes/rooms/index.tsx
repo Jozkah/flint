@@ -1,7 +1,7 @@
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { ensureKnownWindows } from '@/lib/rooms/unknownWindows'
 import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import HeaderPage from '@/containers/HeaderPage'
@@ -84,6 +84,7 @@ function RoomsList() {
   const { t, i18n } = useTranslation()
   const lang = (i18n as { language?: string } | undefined)?.language || 'en'
   const api = useRoomsApi()
+  const createdRoomRef = useRef<Awaited<ReturnType<typeof api.createRoom>> | null>(null)
   const { summaries, listLoading, lastError } = useRoomsState()
   const navigate = useNavigate()
   const uid = useId()
@@ -132,6 +133,7 @@ function RoomsList() {
   }, [api, detailKey])
 
   const openCreate = (preset?: { title: string; objective: string }) => {
+    createdRoomRef.current = null
     setTitle(preset?.title ?? '')
     setObjective(preset?.objective ?? '')
     setTitleError(false)
@@ -158,9 +160,14 @@ function RoomsList() {
     setCreating(true)
     setError(null)
     try {
-      const room = await api.createRoom({ title: title.trim(), objective: objective.trim() })
+      // A retry after the group step failed reuses the room already made.
+      const room =
+        createdRoomRef.current ??
+        (await api.createRoom({ title: title.trim(), objective: objective.trim() }))
+      createdRoomRef.current = room
       if (createGroup)
         await addNewItemToGroup('rooms', room.id, createGroup, roomFolderAdapter(api))
+      createdRoomRef.current = null
       setCreateGroup(null)
       setCreateOpen(false)
       setTitle('')

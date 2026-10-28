@@ -415,7 +415,17 @@ pub fn scrub(text: &str) -> String {
             }
         }
         // A bare key, wherever it appears: providers put them in prose.
-        if i + 12 <= chars.len() && lower[i..].starts_with(&['s', 'k', '-']) {
+        // A word boundary before it and a key-shaped tail: `task-manager` or
+        // `sk-learn` in prose are not keys.
+        if i + 12 <= chars.len()
+            && (i == 0 || !chars[i - 1].is_alphanumeric())
+            && lower[i..].starts_with(&['s', 'k', '-'])
+            && chars[i + 3..]
+                .iter()
+                .take_while(|c| c.is_ascii_alphanumeric() || **c == '_' || **c == '-')
+                .count()
+                >= 16
+        {
             out.push_str("[redacted]");
             while i < chars.len() && !SEPARATORS.contains(&chars[i]) && chars[i] != ' ' {
                 i += 1;
@@ -938,12 +948,16 @@ pub fn classify_upstream_at(error: &str, stage: Stage) -> HarnessError {
 /// error text. Seconds only: the HTTP-date form is not worth guessing at.
 fn retry_after(lowered: &str) -> Option<std::time::Duration> {
     let at = lowered.find("retry-after")?;
-    let rest = &lowered[at + "retry-after".len()..];
-    let digits: String = rest
-        .chars()
-        .skip_while(|c| !c.is_ascii_digit())
-        .take_while(char::is_ascii_digit)
-        .collect();
+    let rest = lowered[at + "retry-after".len()..]
+        .trim_start_matches(|c: char| c == ':' || c == '=' || c == '"' || c.is_whitespace());
+    // Delta-seconds only: a date ("wed, 21 oct 2026") would otherwise parse as
+    // its day number.
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty()
+        || rest[digits.len()..].chars().next().is_some_and(|c| c.is_alphanumeric())
+    {
+        return None;
+    }
     let seconds: u64 = digits.parse().ok()?;
     (seconds > 0 && seconds <= 3600).then(|| Duration::from_secs(seconds))
 }
@@ -1043,6 +1057,19 @@ mod tests {
     /// authorization header, a key in prose, a query string -- the error that
     /// carries it does not, and it is gone before the value exists rather than
     /// only when it is displayed.
+    #[test]
+    fn sk_prose_is_kept_and_a_key_shaped_tail_is_redacted() {
+        assert_eq!(scrub("task-manager sk-learn failed"), "task-manager sk-learn failed");
+        assert!(!scrub("bad key sk-abcdefghijklmnopqrstuvwx here").contains("abcdefgh"));
+    }
+
+    #[test]
+    fn retry_after_takes_delta_seconds_only() {
+        assert_eq!(retry_after("retry-after: 12"), Some(Duration::from_secs(12)));
+        assert_eq!(retry_after("retry-after: wed, 21 oct 2026 07:28:00 gmt"), None);
+        assert_eq!(retry_after("retry-after: 30s"), None);
+    }
+
     #[test]
     fn a_failure_never_carries_a_credential() {
         let hostile = "401 from https://api.example.com/v1?api_key=sk-live-9f8a7b6c5d4e3f2a1b0c \

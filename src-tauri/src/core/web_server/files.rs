@@ -93,6 +93,13 @@ pub fn confine_write(data_folder: &Path, raw: &str) -> Result<PathBuf, String> {
     Err("path is not writable from the browser".into())
 }
 
+/// True when `path` is one of the writable top-level folders themselves
+/// (`threads`, `models`, ...). Files inside are fair game; the folder is not.
+fn is_writable_root(data_folder: &Path, path: &Path) -> bool {
+    let base = settle(data_folder);
+    path == base || WRITABLE.iter().any(|dir| path == base.join(dir))
+}
+
 fn first_arg(args: &Value) -> Result<&str, String> {
     args.get("args")
         .and_then(|a| a.as_array().and_then(|list| list.first()).or(Some(a)))
@@ -180,8 +187,8 @@ pub fn call(data_folder: &Path, command: &str, args: &Value) -> Result<Value, St
         }
         "rm" => {
             let path = confine_write(data_folder, first_arg(args)?)?;
-            if path == settle(data_folder) {
-                return Err("rm error: refusing to remove the data folder".into());
+            if is_writable_root(data_folder, &path) {
+                return Err("rm error: refusing to remove a data folder root".into());
             }
             if path.is_file() {
                 fs::remove_file(path).map_err(|e| e.to_string())?;
@@ -195,6 +202,9 @@ pub fn call(data_folder: &Path, command: &str, args: &Value) -> Result<Value, St
         "mv" => {
             let source = confine_write(data_folder, nth_arg(args, 0)?)?;
             let destination = confine_write(data_folder, nth_arg(args, 1)?)?;
+            if is_writable_root(data_folder, &source) {
+                return Err("mv error: refusing to move a data folder root".into());
+            }
             if !source.exists() {
                 return Err("mv error: Source path does not exist".into());
             }
@@ -229,6 +239,19 @@ mod tests {
 
     fn args(list: Value) -> Value {
         json!({ "args": list })
+    }
+
+    #[test]
+    fn rm_and_mv_refuse_writable_roots() {
+        let data = tempfile::tempdir().unwrap();
+        let threads = data.path().join("threads");
+        std::fs::create_dir_all(threads.join("x")).unwrap();
+        let root = threads.to_str().unwrap();
+        assert!(call(data.path(), "rm", &args(json!([root]))).is_err());
+        assert!(call(data.path(), "mv", &args(json!([root, data.path().join("models").to_str().unwrap()]))).is_err());
+        assert!(threads.exists());
+        let child = threads.join("x");
+        assert!(call(data.path(), "rm", &args(json!([child.to_str().unwrap()]))).is_ok());
     }
 
     #[test]

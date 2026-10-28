@@ -38,5 +38,8 @@
   "serverStartModelFailed": "मॉडल शुरू करने में विफल",
   "serverStartFailed": "सर्वर शुरू करने में विफल",
   "azureEndpointMissing": "{{provider}} के लिए कोई एंडपॉइंट कॉन्फ़िगर नहीं है। सेटिंग्स > मॉडल प्रदाता में बेस URL सेट करें।",
-  "emptyReply": "मॉडल ने कोई उत्तर दिए बिना समाप्त किया। उत्तर दोबारा बनाएँ या प्रदाता की सेटिंग जाँचें।"
+  "emptyReply": "मॉडल ने कोई उत्तर दिए बिना समाप्त किया। उत्तर दोबारा बनाएँ या प्रदाता की सेटिंग जाँचें।",
+  "gpuCrashCpuFallbackTitle": "GPU ड्राइवर क्रैश हो गया",
+  "gpuCrashCpuFallbackQuestion": "इस मॉडल को लोड करते समय GPU ड्राइवर क्रैश हो गया। क्या इसे CPU पर लोड करें? यह धीमा चलेगा।",
+  "gpuCrashCpuFallbackConfirm": "CPU पर लोड करें"
 }

@@ -1426,6 +1426,7 @@
       "settleFailed": "Tento rozpor se nepodařilo vyřešit",
       "forgotten": "Vzpomínka zapomenuta",
       "forgetFailed": "Tuto vzpomínku se nepodařilo zapomenout",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Tuto vzpomínku se nepodařilo změnit",
       "updated": "Vzpomínka aktualizována",
       "updateFailed": "Tuto vzpomínku se nepodařilo aktualizovat",
@@ -1539,7 +1540,12 @@
     "composerGroup": "Editor zpráv",
     "repliesGroup": "Odpovědi",
     "linksGroup": "Odkazy",
-    "artifactsGroup": "Artefakty a widgety"
+    "artifactsGroup": "Artefakty a widgety",
+    "reasoningDefault": "Uvažování pro nové chaty",
+    "reasoningDefaultDesc": "Zda je přemýšlení v novém chatu zapnuté, nebo vypnuté. Vlastní nastavení uvažování modelu a přepínač v editoru mají stále přednost. Modely, které přemýšlení přepnout nemohou, zůstanou beze změny.",
+    "reasoningDefaultModel": "Výchozí podle modelu",
+    "reasoningDefaultOn": "Zapnuto",
+    "reasoningDefaultOff": "Vypnuto"
   },
   "data": {
     "tabStorage": "Úložiště",

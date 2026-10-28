@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Falha ao iniciar o modelo",
   "serverStartFailed": "Falha ao iniciar o servidor",
   "azureEndpointMissing": "Nenhum endpoint configurado para {{provider}}. Defina a URL base em Configurações > Provedores de modelos.",
-  "emptyReply": "O modelo terminou sem retornar uma resposta. Tente gerar novamente ou verifique as configurações do provedor."
+  "emptyReply": "O modelo terminou sem retornar uma resposta. Tente gerar novamente ou verifique as configurações do provedor.",
+  "gpuCrashCpuFallbackTitle": "O driver da GPU travou",
+  "gpuCrashCpuFallbackQuestion": "O driver da GPU travou ao carregar este modelo. Carregar na CPU? Vai rodar mais devagar.",
+  "gpuCrashCpuFallbackConfirm": "Carregar na CPU"
 }

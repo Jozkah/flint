@@ -6,6 +6,8 @@ import {
   Copy,
   FileText,
   Folder,
+  Globe,
+  RefreshCw,
   Trash2,
   UploadIcon,
   AlertCircle,
@@ -48,6 +50,11 @@ import { namedFilePaths } from '@/lib/fileDrop'
 import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
+import { AddWebPageDialog, useRefreshWebPage } from '@/containers/AddWebPageDialog'
+import {
+  useProjectUrlSources,
+  type UrlSource,
+} from '@/stores/project-url-sources-store'
 
 type ProjectFilesProps = {
   projectId: string
@@ -331,9 +338,21 @@ type FileRowProps = {
   t: ReturnType<typeof useTranslation>['t']
   /** Folder depth, for the indent when files are shown as a tree. */
   depth?: number
+  /** Set when the file was added from a web page (a URL row). */
+  source?: UrlSource
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
-function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
+function FileRow({
+  file,
+  onDelete,
+  t,
+  depth = 0,
+  source,
+  onRefresh,
+  refreshing,
+}: FileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const openContextMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -360,7 +379,11 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
       onKeyDown={onRowKeyDown}
     >
       <div className="shrink-0">
-        <Paperclip className="size-4 text-muted-foreground" />
+        {source ? (
+          <Globe className="size-4 text-muted-foreground" />
+        ) : (
+          <Paperclip className="size-4 text-muted-foreground" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <Tooltip>
@@ -380,7 +403,35 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
           {file.chunk_count > 0 &&
             ` · ${t('common:files.chunksCount', { count: file.chunk_count })}`}
         </p>
+        {source && (
+          <p
+            className="text-xs text-muted-foreground truncate"
+            title={source.url}
+            data-testid="project-file-url"
+          >
+            {source.url}
+          </p>
+        )}
       </div>
+      {source && onRefresh && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label={`${t('common:projects.webPage.refresh')} ${file.name}`}
+          title={t('common:projects.webPage.refresh')}
+        >
+          <RefreshCw
+            className={cn(
+              'size-3.5 text-muted-foreground',
+              refreshing && 'animate-spin motion-reduce:animate-none'
+            )}
+            aria-hidden
+          />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -400,6 +451,12 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
             <Copy className="size-4 mr-2" />
             {t('common:copyFileName')}
           </DropdownMenuItem>
+          {source && onRefresh && (
+            <DropdownMenuItem onClick={onRefresh} disabled={refreshing}>
+              <RefreshCw className="size-4 mr-2" />
+              {t('common:projects.webPage.refresh')}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -445,6 +502,12 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             onDelete={requestDeleteFile}
             t={t}
             depth={depth}
+            source={node.file.path ? urlSources?.[node.file.path] : undefined}
+            onRefresh={() => {
+              const src = node.file.path ? urlSources?.[node.file.path] : undefined
+              if (src) void refreshWebPage(node.file.id, src)
+            }}
+            refreshing={refreshingId === node.file.id}
           />
         )
       }
@@ -520,6 +583,12 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
     loadProjectFiles()
   }, [loadProjectFiles, completedTick, projectId])
+
+  // Files added from a web page: their source URL, and the refresh action.
+  const urlSources = useProjectUrlSources((s) => s.sources[projectId])
+  const [addWebPageOpen, setAddWebPageOpen] = useState(false)
+  const { refresh: refreshWebPage, refreshing: refreshingId } =
+    useRefreshWebPage(projectId, loadProjectFiles)
 
   const processFilePaths = useCallback(
     async (paths: string[]) => {
@@ -772,6 +841,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     const file = pendingDelete
     setPendingDelete(null)
     if (file) void handleDeleteFile(file.id)
+    if (file?.path) useProjectUrlSources.getState().remove(projectId, file.path)
   }
 
   const handleDeleteFile = async (fileId: string) => {
@@ -806,6 +876,21 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     <div className="p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium">{t('common:projects.files')}</h3>
+        <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            if (!attachmentsEnabled) {
+              toast.info(t('common:toast.attachmentsDisabledInfo.title'))
+              return
+            }
+            setAddWebPageOpen(true)
+          }}
+        >
+          <Globe className="size-4" />
+          <span>{t('common:projects.webPage.open')}</span>
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -819,7 +904,14 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           )}
           <span>{t('common:projects.processButton')}</span>
         </Button>
+        </div>
       </div>
+      <AddWebPageDialog
+        projectId={projectId}
+        open={addWebPageOpen}
+        onOpenChange={setAddWebPageOpen}
+        onAdded={loadProjectFiles}
+      />
 
       {uploadProgress && uploadProgress.total > 0 && (
         <div className="mb-3 space-y-1.5">

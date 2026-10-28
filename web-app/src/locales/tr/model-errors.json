@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Model başlatılamadı",
   "serverStartFailed": "Sunucu başlatılamadı",
   "azureEndpointMissing": "{{provider}} için yapılandırılmış bir uç nokta yok. Temel URL'yi Ayarlar > Model Sağlayıcıları bölümünde belirleyin.",
-  "emptyReply": "Model yanıt döndürmeden bitti. Yeniden oluşturmayı deneyin veya sağlayıcı ayarlarını kontrol edin."
+  "emptyReply": "Model yanıt döndürmeden bitti. Yeniden oluşturmayı deneyin veya sağlayıcı ayarlarını kontrol edin.",
+  "gpuCrashCpuFallbackTitle": "GPU sürücüsü çöktü",
+  "gpuCrashCpuFallbackQuestion": "Bu model yüklenirken GPU sürücüsü çöktü. Bunun yerine CPU'da yüklensin mi? Daha yavaş çalışır.",
+  "gpuCrashCpuFallbackConfirm": "CPU'da yükle"
 }
