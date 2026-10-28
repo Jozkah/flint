@@ -184,6 +184,7 @@ import {
   type ModelCapabilities,
   type RejectionReason,
 } from '@/lib/attachmentSupport'
+import { safeSessionSet } from '@/lib/safeStorage'
 import {
   VIDEO_EXTS,
   mediaBatchErrors,
@@ -193,6 +194,7 @@ import {
   splitNewByName,
   splitNewImages,
   videoMimeForExt,
+  withoutSent,
 } from '@/lib/attachmentIntake'
 import {
   Attachment,
@@ -1173,9 +1175,6 @@ const ChatInput = memo(function ChatInput({
   const setAttachmentsForThread = useChatAttachments(
     (state) => state.setAttachments
   )
-  const clearAttachmentsForThread = useChatAttachments(
-    (state) => state.clearAttachments
-  )
   const transferAttachments = useChatAttachments(
     (state) => state.transferAttachments
   )
@@ -1317,6 +1316,9 @@ const ChatInput = memo(function ChatInput({
     // Tag characters and bidi controls pasted along with text are hidden
     // instructions the sender cannot see; they never reach the model.
     const typed = stripInvisible(unescapeComposerMarkdown(typedRaw)).text
+    // What the composer held when this send began; typing after that is not
+    // part of the message and must survive the clear.
+    const draftAtStart = latestPromptRef.current
     setWebOffPrompt(null)
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
       setWebOffPrompt(typed)
@@ -1464,10 +1466,16 @@ const ChatInput = memo(function ChatInput({
     })
     const effectivePrompt = withMentionBlocks(referencedPrompt, mentions)
 
-    if (!effectivePrompt.trim() && !hasSendableMedia) {
+    // Files can be attached, or finish ingesting, while @references and
+    // mentions resolve above; what is sent is what is attached now, not what
+    // the render that started the send saw.
+    const liveAttachments = useChatAttachments
+      .getState()
+      .getAttachments(attachmentsKey)
+    if (!effectivePrompt.trim() && !liveAttachments.some(isSendableAttachment)) {
       return
     }
-    if (ingestingAny) {
+    if (liveAttachments.some((a) => a.processing)) {
       toast.info(t('sweep:chat.waitAttachments'))
       return
     }
@@ -1495,21 +1503,21 @@ const ChatInput = memo(function ChatInput({
         return
       }
 
-      const imageFiles = attachments
+      const imageFiles = liveAttachments
         .filter((att) => att.type === 'image' && att.dataUrl)
         .map((att) => ({
           type: 'file',
           mediaType: att.mimeType ?? 'image/jpeg',
           url: att.dataUrl!,
         }))
-      const audioFiles = attachments
+      const audioFiles = liveAttachments
         .filter((att) => att.type === 'audio' && att.dataUrl)
         .map((att) => ({
           type: 'file',
           mediaType: att.audioFormat === 'mp3' ? 'audio/mpeg' : 'audio/wav',
           url: att.dataUrl!,
         }))
-      const videoFiles = attachments
+      const videoFiles = liveAttachments
         .filter((att) => att.type === 'video' && att.dataUrl)
         .map((att) => ({
           type: 'file',
@@ -1518,7 +1526,7 @@ const ChatInput = memo(function ChatInput({
         }))
       const files = [...imageFiles, ...audioFiles, ...videoFiles]
 
-      const sentAttachments = attachments
+      const sentAttachments = liveAttachments
       onSubmit(effectivePrompt, files.length > 0 ? files : undefined, () => {
         // After the clear below, which a synchronous refusal would precede.
         queueMicrotask(() => {
@@ -1539,8 +1547,12 @@ const ChatInput = memo(function ChatInput({
           }
         })
       })
-      setPrompt('')
-      clearAttachmentsForThread(attachmentsKey)
+      // Not over something typed while the send was resolving.
+      if (latestPromptRef.current === draftAtStart) setPrompt('')
+      // Only what was sent: a file attached after the list was read stays.
+      setAttachmentsForThread(attachmentsKey, (prev) =>
+        withoutSent(prev, sentAttachments)
+      )
     } else {
       // No onSubmit provided - create a new thread and navigate to it.
       // Media attachments (image/audio/video) are NOT serialized into
@@ -1559,11 +1571,11 @@ const ChatInput = memo(function ChatInput({
 
       if (isTemporaryChat) {
         // For temporary chat, store message and navigate to temporary thread
-        sessionStorage.setItem(
+        safeSessionSet(
           SESSION_STORAGE_KEY.INITIAL_MESSAGE_TEMPORARY,
           JSON.stringify(messagePayload)
         )
-        sessionStorage.setItem('temp-chat-nav', 'true')
+        safeSessionSet('temp-chat-nav', 'true')
         // Not taken by a temporary chat: forget it so it cannot leak into a later one.
         useDraftSampling.getState().clearAll()
         // Transfer agent mode from home screen to temporary thread
@@ -1665,7 +1677,7 @@ const ChatInput = memo(function ChatInput({
         }
 
         // Store the initial message for the new thread
-        sessionStorage.setItem(
+        safeSessionSet(
           `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${newThread.id}`,
           JSON.stringify(messagePayload)
         )
@@ -1676,7 +1688,7 @@ const ChatInput = memo(function ChatInput({
         })
       }
 
-      setPrompt('')
+      if (latestPromptRef.current === draftAtStart) setPrompt('')
       // Don't clear attachments here — document attachments stored under
       // NEW_THREAD_ATTACHMENT_KEY need to survive until the thread detail
       // page transfers and processes them.  The thread detail page's

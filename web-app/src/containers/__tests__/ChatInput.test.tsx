@@ -960,7 +960,53 @@ describe('ChatInput', () => {
         expect.any(Function)
       )
     )
-    expect(clearAttachmentsMock).toHaveBeenCalled()
+    // The sent attachments are removed from the store, by identity.
+    const removers = setAttachmentsMock.mock.calls
+      .map((c) => c[1])
+      .filter((u) => typeof u === 'function')
+    expect(removers.some((u) => u(attachmentsList).length === 0)).toBe(true)
+  })
+
+  it('sends a file attached while mentions were still resolving, and a draft typed meanwhile survives', async () => {
+    promptState = 'summarise this'
+    selectedModelOverride = {
+      id: 'model-a',
+      capabilities: ['tools', 'vision'],
+      provider: 'llamacpp',
+    }
+    attachmentsList = []
+    let release!: () => void
+    mentionSendHook.impl = () =>
+      new Promise((r) => (release = () => r({ blocks: [], notes: [] } as unknown)))
+    try {
+      const onSubmit = vi.fn()
+      const view = renderInput({ onSubmit })
+      fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+      await waitFor(() => expect(mentionSendHook.calls).toBeGreaterThan(0))
+      // Meanwhile the user attaches an image and keeps typing.
+      attachmentsList = [
+        {
+          type: 'image',
+          name: 'late.png',
+          dataUrl: 'data:image/png;base64,late',
+          mimeType: 'image/png',
+        },
+      ]
+      promptState = 'summarise this and also'
+      view.rerender(<ChatInput onSubmit={onSubmit} />)
+      setPromptMock.mockClear()
+      await act(async () => {
+        release()
+      })
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+      expect(onSubmit.mock.calls[0][1]).toEqual([
+        expect.objectContaining({ url: 'data:image/png;base64,late' }),
+      ])
+      // The draft changed after the send began: it is not cleared.
+      expect(setPromptMock).not.toHaveBeenCalledWith('')
+    } finally {
+      mentionSendHook.impl = null
+    }
   })
 
   it('holds a message with unsupported audio until user enables it', async () => {
