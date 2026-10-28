@@ -290,13 +290,23 @@ pub(crate) fn is_safe_memory_dir(candidate: &Path, root: &Path) -> bool {
     if !lexically_within(candidate, root) {
         return false;
     }
-    // Symlinked-out targets: if both resolve, the resolved candidate must stay
-    // within the resolved root. An unresolvable path (not yet created) falls
-    // back to the lexical check already passed.
-    match (candidate.canonicalize(), root.canonicalize()) {
-        (Ok(c), Ok(r)) => c == r || c.starts_with(&r),
-        _ => true,
-    }
+    // Symlinked-out targets: the resolved candidate must stay within the
+    // resolved root. A root that cannot be resolved fails closed; a candidate
+    // not yet created is judged by its deepest existing ancestor.
+    let Ok(r) = root.canonicalize() else {
+        return false;
+    };
+    let mut probe = candidate;
+    let resolved = loop {
+        if let Ok(c) = probe.canonicalize() {
+            break c;
+        }
+        match probe.parent() {
+            Some(p) if !p.as_os_str().is_empty() => probe = p,
+            _ => return false,
+        }
+    };
+    resolved == r || resolved.starts_with(&r)
 }
 
 /// Case-folded on Windows, where two spellings name one path.
@@ -949,6 +959,12 @@ mod tests {
     }
 
     // -- is_safe_memory_dir ------------------------------------------------
+
+    #[test]
+    fn unresolvable_root_is_refused() {
+        let root = std::env::temp_dir().join("flint-no-such-root-9f3a/inner");
+        assert!(!is_safe_memory_dir(&root.join("x.md"), &root));
+    }
 
     #[test]
     fn safe_dir_accepts_root_and_children() {

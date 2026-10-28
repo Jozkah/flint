@@ -106,6 +106,9 @@ export function useMcpElicitation() {
         unlisten = fn
         void invoke('mcp_elicitation_ready', { ready: true }).catch(() => {})
       })
+      .catch((error) => {
+        console.warn('[mcp-elicitation] listen failed:', error)
+      })
 
     return () => {
       cancelled = true

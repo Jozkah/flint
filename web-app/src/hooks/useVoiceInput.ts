@@ -82,18 +82,22 @@ export async function startDictation(composer: ComposerIo): Promise<void> {
       onState: (status) => {
         if (session === active) useVoiceInput.setState({ status })
       },
-      onPending: (pending) => useVoiceInput.setState({ pending }),
+      onPending: (pending) => {
+        if (session === active) useVoiceInput.setState({ pending })
+      },
       onTranscript: (committed) => {
-        if (!anchor || !io) return
+        if (session !== active || !anchor || !io) return
         const merged = mergeDictation(anchor, committed)
         insertedLength = merged.insertedLength
         io.apply(merged.value, merged.caret)
       },
-      onError: (error) =>
+      onError: (error) => {
+        if (session !== active) return
         useVoiceInput.setState({
           error,
           needsSetup: error.kind === 'model-missing',
-        }),
+        })
+      },
     }
   )
   session = active

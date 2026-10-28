@@ -144,7 +144,8 @@ const FORBIDDEN_HOSTS = [
   { pattern: 'favicone.com', why: 'remote favicon service' },
 ]
 
-const URL_LITERAL = /https?:\/\/[^\s"'`)\\<>]+/gi
+// Also protocol-relative literals ("//host/path"), which inherit the page scheme.
+const URL_LITERAL = /(?:https?:)?\/\/[a-z0-9][a-z0-9.-]*\.[a-z]{2,}[^\s"'`)\\<>]*/gi
 
 function* walk(dir) {
   if (fs.existsSync(dir) && fs.statSync(dir).isFile()) {
@@ -190,6 +191,24 @@ export function inspectSourceText(text, file = '<memory>') {
     }
   })
   return violations
+}
+
+/**
+ * Dependency names declared in one Cargo.toml: `name = ...` / `name.workspace`
+ * lines and `[dependencies.name]` table headers.
+ */
+export function cargoDependencyNames(text) {
+  const found = []
+  text.split(/\r?\n/).forEach((line, index) => {
+    const header = line.match(/^\s*\[(?:[^\]]*\.)?(?:dev-|build-)?dependencies\.([A-Za-z0-9_-]+)\]/)
+    if (header) {
+      found.push({ name: header[1], line: index + 1 })
+      return
+    }
+    const match = line.match(/^\s*([A-Za-z0-9_-]+)\s*(=|\.)/)
+    if (match) found.push({ name: match[1], line: index + 1 })
+  })
+  return found
 }
 
 /** Forbidden dependency names in one manifest's dependency list. */
@@ -272,11 +291,10 @@ function scanDependencies() {
   }
 
   for (const manifest of cargoManifests()) {
-    const lines = fs.readFileSync(manifest, 'utf8').split(/\r?\n/)
-    lines.forEach((line, index) => {
-      const match = line.match(/^\s*([A-Za-z0-9_-]+)\s*(=|\.)/)
-      if (!match) return
-      const name = match[1]
+    for (const { name, line: lineNumber } of cargoDependencyNames(
+      fs.readFileSync(manifest, 'utf8')
+    )) {
+      const index = lineNumber - 1
       for (const { pattern, why } of FORBIDDEN_DEPENDENCIES) {
         if (!pattern.test(name)) continue
         violations.push({
@@ -287,7 +305,7 @@ function scanDependencies() {
           why,
         })
       }
-    })
+    }
   }
 
   return violations
