@@ -27,6 +27,11 @@ import {
   type ReasoningDefault,
 } from '@/lib/reasoningDefault'
 import { toast } from 'sonner'
+import { Textarea } from '@/components/ui/textarea'
+import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { useTitleSettings } from '@/hooks/useTitleSettings'
+import { DEFAULT_TITLE_PROMPT } from '@/lib/thread-title-summarizer'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.chat as any)({
@@ -207,6 +212,7 @@ function RepliesCard() {
           />
         }
       />
+      {autoGenerateTitle && <TitleModelAndPrompt />}
       <CardItem
         anchor="settings-chat-strip-reasoning"
         title={t('provider:stripReasoning')}
@@ -260,6 +266,76 @@ function ReasoningDefaultPicker() {
         )
       })}
     </RadioGroup>
+  )
+}
+
+/** Which model writes automatic titles, and with what prompt (janhq/jan#8345). */
+function TitleModelAndPrompt() {
+  const { t } = useTranslation()
+  const providers = useModelProvider((s) => s.providers)
+  const titleModelProvider = useTitleSettings((s) => s.titleModelProvider)
+  const titleModelId = useTitleSettings((s) => s.titleModelId)
+  const titlePrompt = useTitleSettings((s) => s.titlePrompt)
+  const setTitleModel = useTitleSettings((s) => s.setTitleModel)
+  const setTitlePrompt = useTitleSettings((s) => s.setTitlePrompt)
+  const usesChatModel = !titleModelProvider || !titleModelId
+  return (
+    <>
+      <CardItem
+        anchor="settings-chat-title-model"
+        title={t('settings:interface.titleModel')}
+        description={t('settings:interface.titleModelDesc')}
+        actions={
+          <div className="flex items-center gap-2">
+            {!usesChatModel && (
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => setTitleModel('', '')}
+              >
+                {t('settings:interface.titleModelDefault')}
+              </Button>
+            )}
+            <McpRouterModelPicker
+              ariaLabel={t('settings:interface.titleModel')}
+              providers={providers}
+              selectedProvider={titleModelProvider}
+              selectedModelId={titleModelId}
+              onSelect={setTitleModel}
+              placeholder={t('settings:interface.titleModelDefault')}
+              searchPlaceholder={t('settings:interface.titleModelSearch')}
+              emptyListMessage={t('settings:interface.titleModelEmpty')}
+              formatEmptySearch={(q) =>
+                t('settings:interface.titleModelEmptySearch', { query: q })
+              }
+            />
+          </div>
+        }
+      />
+      <CardItem
+        anchor="settings-chat-title-prompt"
+        title={t('settings:interface.titlePrompt')}
+        description={t('settings:interface.titlePromptDesc')}
+        actions={
+          titlePrompt.trim() ? (
+            <Button variant="link" size="sm" onClick={() => setTitlePrompt('')}>
+              {t('settings:interface.titlePromptReset')}
+            </Button>
+          ) : undefined
+        }
+      />
+      <Textarea
+        aria-label={t('settings:interface.titlePrompt')}
+        value={titlePrompt || DEFAULT_TITLE_PROMPT}
+        onChange={(e) =>
+          setTitlePrompt(
+            e.target.value === DEFAULT_TITLE_PROMPT ? '' : e.target.value
+          )
+        }
+        rows={3}
+        className="mb-2 text-sm"
+      />
+    </>
   )
 }
 
