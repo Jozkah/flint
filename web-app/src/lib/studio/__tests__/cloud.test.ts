@@ -15,6 +15,7 @@ vi.mock('@/lib/providerFetch', () => ({ providerFetch: vi.fn() }))
 
 import {
   CLOUD_IMAGE_PROVIDERS,
+  MAX_PICTURE_BYTES,
   buildCloudBody,
   bytesToBase64,
   cloudKey,
@@ -180,6 +181,68 @@ describe('generateCloudImages', () => {
     expect(studioApi.saveExternalImages).toHaveBeenLastCalledWith(
       expect.objectContaining({ images: [expect.any(String)] })
     )
+  })
+
+  const redirect = (status: number, location: string): Response =>
+    ({
+      ok: false,
+      status,
+      headers: { get: (k: string) => (k === 'location' ? location : null) },
+    }) as unknown as Response
+  const urlAnswer = () => reply(200, { data: [{ url: 'https://cdn.example/x.png' }] })
+
+  it('refuses a picture link that redirects to a private address', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(urlAnswer())
+      .mockResolvedValueOnce(redirect(302, 'http://127.0.0.1/x'))
+    await expect(
+      generateCloudImages(target, settings, params, new AbortController().signal, fetchImpl as never)
+    ).rejects.toThrow('redirected')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    const init = fetchImpl.mock.calls[1][1] as RequestInit
+    expect(init.redirect).toBe('manual')
+  })
+
+  it('refuses a redirect to a metadata address', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(urlAnswer())
+      .mockResolvedValueOnce(redirect(301, 'http://169.254.169.254/latest'))
+    await expect(
+      generateCloudImages(target, settings, params, new AbortController().signal, fetchImpl as never)
+    ).rejects.toThrow('redirected')
+  })
+
+  it('follows one redirect to a public https link', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(urlAnswer())
+      .mockResolvedValueOnce(redirect(302, 'https://signed.example/x.png'))
+      .mockResolvedValueOnce(reply(200, {}))
+    await generateCloudImages(target, settings, params, new AbortController().signal, fetchImpl as never)
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+    expect(fetchImpl.mock.calls[2][0]).toBe('https://signed.example/x.png')
+  })
+
+  it('stops reading a body that passes the size cap without a content-length', async () => {
+    const cancel = vi.fn(async () => undefined)
+    const big = new Uint8Array(MAX_PICTURE_BYTES / 2 + 1)
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: big })
+      .mockResolvedValueOnce({ done: false, value: big })
+    const stream = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: { getReader: () => ({ read, cancel }) },
+    } as unknown as Response
+    const fetchImpl = vi.fn().mockResolvedValueOnce(urlAnswer()).mockResolvedValueOnce(stream)
+    await expect(
+      generateCloudImages(target, settings, params, new AbortController().signal, fetchImpl as never)
+    ).rejects.toThrow('too large')
+    expect(cancel).toHaveBeenCalled()
   })
 
   it('refuses without a key or an endpoint, and shows the provider reason on a failure', async () => {

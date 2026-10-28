@@ -289,6 +289,77 @@ export function bytesToBase64(bytes: Uint8Array): string {
 
 type Fetch = typeof globalThis.fetch
 
+const MAX_PICTURE_HOPS = 3
+
+/**
+ * One picture from a provider-supplied link. Redirects are followed by hand
+ * and every hop must be a public https URL (a redirect to a private address
+ * would be a way around the check on the first link); the body is read in
+ * chunks and abandoned once it passes the size cap.
+ */
+async function downloadPicture(
+  firstUrl: string,
+  label: string,
+  signal: AbortSignal,
+  fetchImpl: Fetch
+): Promise<Uint8Array> {
+  const failed = (why: string) => new Error(`${label}'s picture could not be downloaded (${why}).`)
+  let url = firstUrl
+  for (let hop = 0; ; hop++) {
+    const download = await fetchImpl(url, {
+      signal,
+      redirect: 'manual',
+      headers: { 'User-Agent': 'Flint' },
+    })
+    const redirected =
+      (download as { type?: string }).type === 'opaqueredirect' ||
+      (download.status >= 300 && download.status < 400)
+    if (redirected) {
+      const location = download.headers?.get?.('location')
+      if (!location || hop >= MAX_PICTURE_HOPS) throw failed('redirected')
+      let next: string
+      try {
+        next = new URL(location, url).toString()
+      } catch {
+        throw failed('redirected')
+      }
+      if (!isPublicHttpsUrl(next)) throw failed('redirected')
+      url = next
+      continue
+    }
+    if (!download.ok) throw failed(String(download.status))
+    if (download.url && !isPublicHttpsUrl(download.url)) throw failed('redirected')
+    const tooLarge = () => new Error(`${label}'s picture is too large to keep.`)
+    const declared = Number(download.headers?.get?.('content-length') ?? 0)
+    if (declared > MAX_PICTURE_BYTES) throw tooLarge()
+    const reader = download.body?.getReader?.()
+    if (!reader) {
+      const bytes = new Uint8Array(await download.arrayBuffer())
+      if (bytes.length > MAX_PICTURE_BYTES) throw tooLarge()
+      return bytes
+    }
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.length
+      if (total > MAX_PICTURE_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        throw tooLarge()
+      }
+      chunks.push(value)
+    }
+    const bytes = new Uint8Array(total)
+    let at = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, at)
+      at += chunk.length
+    }
+    return bytes
+  }
+}
+
 /**
  * Ask a hosted provider for pictures and keep them in the gallery. `provider`
  * is the provider as configured in settings (its endpoint and API key).
@@ -338,12 +409,7 @@ export async function generateCloudImages(
       continue
     }
     // A URL answer: fetched once, so the gallery does not depend on the link.
-    const download = await fetchImpl(picture.url as string, { signal, headers: { 'User-Agent': 'Flint' } })
-    if (!download.ok) throw new Error(`${target.provider.label}'s picture could not be downloaded (${download.status}).`)
-    const declared = Number(download.headers?.get?.('content-length') ?? 0)
-    if (declared > MAX_PICTURE_BYTES) throw new Error(`${target.provider.label}'s picture is too large to keep.`)
-    const bytes = new Uint8Array(await download.arrayBuffer())
-    if (bytes.length > MAX_PICTURE_BYTES) throw new Error(`${target.provider.label}'s picture is too large to keep.`)
+    const bytes = await downloadPicture(picture.url as string, target.provider.label, signal, fetchImpl)
     images.push(bytesToBase64(bytes))
   }
 
