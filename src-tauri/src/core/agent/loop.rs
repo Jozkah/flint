@@ -1126,6 +1126,10 @@ pub(crate) struct ProviderLane {
     pub model_id: String,
     pub upstream_url: String,
     pub api_keys: Vec<String>,
+    /// The wire API this provider speaks (`anthropic`, `google`, ...), `None`
+    /// for chat/completions. The converter is derived from it at send time, so
+    /// a fallback is not sent the primary's wire format.
+    pub api_type: Option<String>,
 }
 
 /// The chain to try after `primary`, in order, with what would be tried twice
@@ -1383,7 +1387,14 @@ impl ModelInvoker for HttpModelInvoker {
         }
 
         let mut out = self
-            .dispatch_to(&self.upstream_url, &self.api_keys, &normalized, events, &invocation)
+            .dispatch_to(
+                &self.upstream_url,
+                &self.api_keys,
+                self.converter.as_deref(),
+                &normalized,
+                events,
+                &invocation,
+            )
             .await;
 
         // AH-193: the configured chain, in order, and only for a failure that
@@ -1428,8 +1439,17 @@ impl ModelInvoker for HttpModelInvoker {
             );
             let mut next = normalized.clone();
             next["model"] = serde_json::json!(lane.model_id);
+            // The lane's own wire format, not the primary's.
+            let lane_converter = converter_for(lane.api_type.as_deref());
             out = self
-                .dispatch_to(&lane.upstream_url, &lane.api_keys, &next, events, &invocation)
+                .dispatch_to(
+                    &lane.upstream_url,
+                    &lane.api_keys,
+                    lane_converter.as_deref(),
+                    &next,
+                    events,
+                    &invocation,
+                )
                 .await;
             from = lane.model_id.clone();
             if out.is_ok() {
@@ -1570,6 +1590,7 @@ impl HttpModelInvoker {
         &self,
         upstream_url: &str,
         api_keys: &[String],
+        converter: Option<&dyn UpstreamConverter>,
         body: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
         invocation: &str,
@@ -1578,7 +1599,9 @@ impl HttpModelInvoker {
         // order, before the reply that closes it.
         let (tee, watching) =
             tee_stream(self.invocations.clone(), invocation.to_string(), events.clone());
-        let out = self.send_to(upstream_url, api_keys, body, &tee).await;
+        let out = self
+            .send_to(upstream_url, api_keys, converter, body, &tee)
+            .await;
         // The watcher ends when the last event is in, which is what puts the
         // stream's events in the log before the completion's.
         drop(tee);
@@ -1591,17 +1614,18 @@ impl HttpModelInvoker {
         &self,
         upstream_url: &str,
         api_keys: &[String],
+        converter: Option<&dyn UpstreamConverter>,
         body: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
     ) -> Result<serde_json::Value, HarnessError> {
-        if let Some(converter) = &self.converter {
+        if let Some(converter) = converter {
             // The streaming layer speaks prose; it is classified once, here,
             // and every decision after this reads the kind (AH-009).
             crate::core::agent::upstream::stream_converted_chat_completions(
                 &self.converter_client,
                 upstream_url,
                 api_keys,
-                converter.as_ref(),
+                converter,
                 body,
                 events,
                 self.client_request_id.as_deref(),
@@ -7927,11 +7951,17 @@ async fn orchestrate_inner(
         )
         .await
         {
-            Ok((url, keys)) => fallback_lanes.push(ProviderLane {
-                model_id: candidate.to_string(),
-                upstream_url: url,
-                api_keys: keys,
-            }),
+            Ok((url, keys)) => {
+                // Resolved per lane: a fallback on another wire API must not
+                // be sent the primary's converter.
+                let (_, api_type) = wire_for(candidate, provider_configs.clone()).await;
+                fallback_lanes.push(ProviderLane {
+                    model_id: candidate.to_string(),
+                    upstream_url: url,
+                    api_keys: keys,
+                    api_type,
+                })
+            }
             Err(e) => log::warn!("agent: fallback {candidate} is not configured ({e}); skipping it"),
         }
     }
@@ -15869,6 +15899,20 @@ mod tests {
             distinct_chain("a", &["b".into(), "c".into(), "d".into()]),
             vec!["b", "c", "d"]
         );
+    }
+
+    /// A lane's converter follows its own `api_type`, not the primary's.
+    #[test]
+    fn fallback_lane_uses_its_own_converter() {
+        let lane = ProviderLane {
+            model_id: "anthropic/claude".into(),
+            upstream_url: "https://example.invalid/v1/messages".into(),
+            api_keys: Vec::new(),
+            api_type: Some("anthropic".into()),
+        };
+        assert!(converter_for(lane.api_type.as_deref()).is_some());
+        let plain = ProviderLane { api_type: None, ..lane };
+        assert!(converter_for(plain.api_type.as_deref()).is_none());
     }
 
     /// AH-193/AH-009: what the chain does with each kind of failure. The
