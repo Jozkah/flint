@@ -97,7 +97,7 @@ export function parseFrontmatter(text: string): {
   data: Record<string, unknown> | null
   body: string
 } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text)
+  const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)
   if (!match) return { data: null, body: text }
 
   const data: Record<string, unknown> = {}

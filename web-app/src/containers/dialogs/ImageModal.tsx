@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,8 @@ interface ImageModalProps {
 
 const ImageModal = ({ image, onClose }: ImageModalProps) => {
   const { t } = useTranslation()
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const failed = !!image && failedUrl === image.url
 
   return (
     <Dialog open={!!image} onOpenChange={(open) => !open && onClose()}>
@@ -21,16 +24,19 @@ const ImageModal = ({ image, onClose }: ImageModalProps) => {
           <DialogTitle>{image?.alt || t('common:image')}</DialogTitle>
         </DialogHeader>
         <div className="flex justify-center items-center p-6 pt-2">
-          {image && (
-            <img
-              src={image.url}
-              alt={image.alt}
-              className="max-w-full max-h-[70vh] object-contain rounded-md"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-              }}
-            />
-          )}
+          {image &&
+            (failed ? (
+              <p role="alert" className="text-sm text-muted-foreground">
+                {t('common:imageLoadFailed')}
+              </p>
+            ) : (
+              <img
+                src={image.url}
+                alt={image.alt}
+                className="max-w-full max-h-[70vh] object-contain rounded-md"
+                onError={() => setFailedUrl(image.url)}
+              />
+            ))}
         </div>
       </DialogContent>
     </Dialog>

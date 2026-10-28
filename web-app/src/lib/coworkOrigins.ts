@@ -192,11 +192,10 @@ export function wasPreExisting(
   path: string
 ): boolean {
   if (!baseline) return false
-  return (
-    baseline.tracked.includes(path) ||
-    baseline.staged.includes(path) ||
-    baseline.untracked.includes(path)
-  )
+  const key = path.toLowerCase()
+  const has = (list: readonly string[]) =>
+    list.some((p) => p.toLowerCase() === key)
+  return has(baseline.tracked) || has(baseline.staged) || has(baseline.untracked)
 }
 
 /** Nothing can be known about differences without a usable Git baseline. */

@@ -77,7 +77,11 @@ pub(crate) fn evaluate(t: &Thresholds, r: &Reading) -> Verdict {
 /// Read the machine. Only what a threshold asks for is read.
 pub(crate) fn read(t: &Thresholds) -> Reading {
     Reading {
-        free_ram_mb: t.min_free_ram_mb.map(|_| tauri_plugin_hardware::available_memory_mb()),
+        // A 0 reading means the probe failed, not that the machine has no RAM.
+        free_ram_mb: t
+            .min_free_ram_mb
+            .map(|_| tauri_plugin_hardware::available_memory_mb())
+            .filter(|mb| *mb > 0),
         free_vram_mb: t.min_free_vram_mb.and_then(|_| tauri_plugin_hardware::free_vram_mb()),
     }
 }

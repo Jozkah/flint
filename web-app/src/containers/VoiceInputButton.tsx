@@ -55,11 +55,13 @@ export function VoiceInputButton({
   useEffect(() => {
     if (!error || error.kind === 'model-missing') return
     toast.error(
-      error.kind === 'recorder' ? 'Microphone' : 'Voice input stopped',
+      error.kind === 'recorder'
+        ? t('sweep:voice.microphone')
+        : t('sweep:voice.stopped'),
       { description: error.message }
     )
     useVoiceInput.getState().clearError()
-  }, [error])
+  }, [error, t])
 
   // Escape cancels a dictation in progress.
   useEffect(() => {

@@ -536,6 +536,7 @@
   "threadImage": "スレッド画像",
   "editMessage": "メッセージを編集",
   "deleteMessage": "メッセージを削除",
+  "deleteMessageDescription": "このメッセージを削除してもよろしいですか？この操作は元に戻せません。",
   "deleteThread": "スレッドを削除",
   "renameThread": "スレッド名を変更",
   "threadTitle": "スレッドのタイトル",

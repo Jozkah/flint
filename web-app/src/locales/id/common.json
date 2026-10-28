@@ -530,6 +530,7 @@
   "threadImage": "Gambar utas",
   "editMessage": "Edit Pesan",
   "deleteMessage": "Hapus Pesan",
+  "deleteMessageDescription": "Yakin ingin menghapus pesan ini? Tindakan ini tidak dapat dibatalkan.",
   "deleteThread": "Hapus Utas",
   "renameThread": "Ubah Nama Utas",
   "threadTitle": "Judul Utas",

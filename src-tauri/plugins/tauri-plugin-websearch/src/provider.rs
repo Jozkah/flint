@@ -2091,7 +2091,7 @@ fn bound_text(s: &str) -> (String, bool) {
 pub fn clamp_count(requested: Option<u64>) -> u32 {
     match requested {
         Some(0) | None => SEARCH_DEFAULT_COUNT,
-        Some(n) => (n as u32).min(SEARCH_MAX_COUNT),
+        Some(n) => n.min(SEARCH_MAX_COUNT as u64) as u32,
     }
 }
 
@@ -2323,6 +2323,8 @@ mod tests {
         assert_eq!(clamp_count(Some(0)), SEARCH_DEFAULT_COUNT);
         assert_eq!(clamp_count(Some(3)), 3);
         assert_eq!(clamp_count(Some(1000)), SEARCH_MAX_COUNT);
+        // Truncating to u32 would turn 2^32 into 0.
+        assert_eq!(clamp_count(Some(4_294_967_296)), SEARCH_MAX_COUNT);
     }
 
     #[test]

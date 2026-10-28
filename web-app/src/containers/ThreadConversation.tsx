@@ -556,6 +556,14 @@ export function ThreadConversation({
   const backendError = isLlamacppActive ? backendErrorRaw : undefined
 
   const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  const regenerateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A pending post-resize regenerate must not fire into another thread.
+  useEffect(
+    () => () => {
+      if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    },
+    [threadId]
+  )
   // Compacts and continues a reply that stopped because the window filled;
   // resolves false when it could not, and the banner is shown instead.
   const recoverContextLimitRef = useRef<
@@ -2689,7 +2697,9 @@ export function ThreadConversation({
       continueReplaceIdRef.current = pending.message.id
     }
 
-    setTimeout(() => {
+    if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    regenerateTimerRef.current = setTimeout(() => {
+      regenerateTimerRef.current = null
       handleRegenerate(pending?.message.id)
     }, 1000)
   }, [
@@ -3488,10 +3498,10 @@ export function ThreadConversation({
                       </div>
                       {oomError && (
                         <ul className="mt-2 list-disc pl-5 text-xs text-fg-2 space-y-0.5">
-                          <li>Reduce context size (ctx-size)</li>
-                          <li>Disable MTP (Multi-Token Prediction)</li>
-                          <li>Lower n-gpu-layers or switch to a CPU backend</li>
-                          <li>Use a smaller / more quantized model</li>
+                          <li>{t('chat:errorBanner.oomReduceContext')}</li>
+                          <li>{t('chat:errorBanner.oomDisableMtp')}</li>
+                          <li>{t('chat:errorBanner.oomLowerGpuLayers')}</li>
+                          <li>{t('chat:errorBanner.oomSmallerModel')}</li>
                         </ul>
                       )}
                       {((error ?? contextLimitError)?.message
@@ -3535,7 +3545,7 @@ export function ThreadConversation({
                               onClick={handleContextSizeIncrease}
                             >
                               <CircleAlert className="size-4" />
-                              Increase Context Size
+                              {t('common:outOfContextError.increaseContextSize')}
                             </Button>
                           ) : (
                             <div className="mt-3 space-y-2">
@@ -3543,9 +3553,7 @@ export function ThreadConversation({
                                 PREFLIGHT_CONTEXT_ERROR_PREFIX
                               ) && (
                                 <p className="text-sm text-fg-2">
-                                  This model's context window is set by its server,
-                                  so Flint cannot enlarge it. Start a new chat, shorten
-                                  the conversation, or raise the limit on the server.
+                                  {t('chat:errorBanner.serverContext')}
                                 </p>
                               )}
                               <Button
@@ -3555,7 +3563,7 @@ export function ThreadConversation({
                                 onClick={() => handleRegenerate()}
                               >
                                 <RefreshCw className="size-4" />
-                                Regenerate
+                                {t('chat:errorBanner.regenerate')}
                               </Button>
                             </div>
                           )}
@@ -3568,7 +3576,9 @@ export function ThreadConversation({
                           onClick={() => handleRegenerate()}
                         >
                           <RefreshCw className="size-4" />
-                          {oomError || backendError ? 'Reload' : 'Regenerate'}
+                          {oomError || backendError
+                            ? t('chat:errorBanner.reload')
+                            : t('chat:errorBanner.regenerate')}
                         </Button>
                       )}
                     </div>

@@ -1208,10 +1208,16 @@ pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
 /// through the UI, so it is re-validated here.
 fn safe_rel(path: &str) -> Result<(), String> {
     let p = Path::new(path);
+    // Only plain names (and `.`) pass: a Windows drive prefix or a rooted
+    // path is not "absolute" per `is_absolute` yet still escapes the join.
     if p.is_absolute()
         || path.is_empty()
-        || p.components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
+        || p.components().any(|c| {
+            !matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        })
     {
         return Err("invalid path".to_string());
     }
@@ -1631,6 +1637,12 @@ mod review_tests {
 
     #[test]
     fn safe_rel_rejects_traversal_and_absolute() {
+        #[cfg(windows)]
+        {
+            assert!(safe_rel("C:x").is_err());
+            assert!(safe_rel("C:\\x").is_err());
+            assert!(safe_rel("\\x").is_err());
+        }
         assert!(safe_rel("src/a.rs").is_ok());
         assert!(safe_rel("../etc/passwd").is_err());
         assert!(safe_rel("a/../../b").is_err());
