@@ -1,11 +1,11 @@
 // scripts/download.js
 import https from 'https'
-import fs, { copyFile, mkdirSync } from 'fs'
+import fs, { mkdirSync } from 'fs'
 import os from 'os'
 import path from 'path'
 import unzipper from 'unzipper'
 import tar from 'tar'
-import { copySync } from 'cpx'
+import { installSidecar } from './download-bin-install.mjs'
 import { assertSafeTarEntry, assertSafeZipEntry } from './archive-extract-guard.mjs'
 import { execFileSync } from 'child_process'
 import crypto from 'crypto'
@@ -211,11 +211,7 @@ async function main() {
   if (platform === 'win32') {
     uvPath = `${tempBinDir}/uv-${uvPlatform}.zip`
   }
-  try {
-    mkdirSync('scripts/dist')
-  } catch (err) {
-    // Expect EEXIST error if the directory already exists
-  }
+  mkdirSync(tempBinDir, { recursive: true })
 
   // bun and uv are pinned to a release with a sha256 per asset (sidecar-manifest.json).
   const sidecars = JSON.parse(
@@ -232,162 +228,51 @@ async function main() {
 
   console.log(`Downloading Bun for ${bunPlatform}...`)
   const bunSaveDir = path.join(tempBinDir, `bun-${bunPlatform}.zip`)
-  if (await fetchPinned(bunUrl, bunSaveDir, bunSha)) {
+  const bunExtractedDir = path.join(tempBinDir, `bun-${bunPlatform}`)
+  const bunExtracted = path.join(bunExtractedDir, platform === 'win32' ? 'bun.exe' : 'bun')
+  const bunFresh = await fetchPinned(bunUrl, bunSaveDir, bunSha)
+  // A cached archive may never have been extracted (or only half of it).
+  if (bunFresh || !fs.existsSync(bunExtracted)) {
+    fs.rmSync(bunExtractedDir, { recursive: true, force: true })
     await decompress(bunPath, tempBinDir)
   }
-  try {
-    copySync(
-      path.join(tempBinDir, `bun-${bunPlatform}`, 'bun'),
-      path.join(binDir)
-    )
-    // Windows has no execute bit, and the binary there is bun.exe.
-    if (platform !== 'win32')
-      fs.chmod(path.join(binDir, 'bun'), 0o755, (err) => {
-      if (err) {
-        console.log('Add execution permission failed!', err)
-      }
-    })
-    if (platform === 'darwin') {
-      copyFile(
-        path.join(binDir, 'bun'),
-        path.join(binDir, 'bun-x86_64-apple-darwin'),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-      copyFile(
-        path.join(binDir, 'bun'),
-        path.join(binDir, 'bun-aarch64-apple-darwin'),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-      copyFile(
-        path.join(binDir, 'bun'),
-        path.join(binDir, 'bun-universal-apple-darwin'),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-    } else if (platform === 'linux') {
-      copyFile(
-        path.join(binDir, 'bun'),
-        path.join(binDir, `bun-${rustPlatform}`),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-    }
-  } catch (err) {
-    // Expect EEXIST error
-  }
-  try {
-    copySync(
-      path.join(tempBinDir, `bun-${bunPlatform}`, 'bun.exe'),
-      path.join(binDir)
-    )
-    if (platform === 'win32') {
-      copyFile(
-        path.join(binDir, 'bun.exe'),
-        // uvPlatform, not bunPlatform: tauri resolves an externalBin by rust
-        // target triple, which is the spelling uv happens to use and bun does
-        // not (bun ships windows-aarch64, tauri wants aarch64-pc-windows-msvc).
-        path.join(binDir, `bun-${uvPlatform}.exe`),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-    }
-  } catch (err) {
-    // Expect EEXIST error
-  }
+  installSidecar({
+    name: 'bun',
+    extractedBinary: bunExtracted,
+    binDir,
+    platform,
+    rustPlatform,
+    uvPlatform,
+  })
   console.log('Bun downloaded.')
 
   console.log(`Downloading UV for ${uvPlatform}...`)
   const uvExt = platform === 'win32' ? `zip` : `tar.gz`
   const uvSaveDir = path.join(tempBinDir, `uv-${uvPlatform}.${uvExt}`)
-  if (await fetchPinned(uvUrl, uvSaveDir, uvSha)) {
+  // The windows zip is flat (uv.exe next to uvx.exe); the tarball nests uv
+  // under uv-<platform>/.
+  const uvExtractedDir = path.join(tempBinDir, `uv-${uvPlatform}`)
+  const uvExtracted =
+    platform === 'win32'
+      ? path.join(tempBinDir, 'uv.exe')
+      : path.join(uvExtractedDir, 'uv')
+  const uvFresh = await fetchPinned(uvUrl, uvSaveDir, uvSha)
+  if (uvFresh || !fs.existsSync(uvExtracted)) {
+    if (platform !== 'win32') {
+      fs.rmSync(uvExtractedDir, { recursive: true, force: true })
+    }
     await decompress(uvPath, tempBinDir)
   }
-  try {
-    copySync(path.join(tempBinDir, `uv-${uvPlatform}`, 'uv'), path.join(binDir))
-    // Windows has no execute bit, and the binary there is uv.exe.
-    if (platform !== 'win32')
-      fs.chmod(path.join(binDir, 'uv'), 0o755, (err) => {
-      if (err) {
-        console.log('Add execution permission failed!', err)
-      }
-    })
-    if (platform === 'darwin') {
-      copyFile(
-        path.join(binDir, 'uv'),
-        path.join(binDir, 'uv-x86_64-apple-darwin'),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-      copyFile(
-        path.join(binDir, 'uv'),
-        path.join(binDir, 'uv-aarch64-apple-darwin'),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-      copyFile(
-        path.join(binDir, 'uv'),
-        path.join(binDir, 'uv-universal-apple-darwin'),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-    } else if (platform === 'linux') {
-      copyFile(
-        path.join(binDir, 'uv'),
-        // Tauri resolves sidecars by the host triple (uv-aarch64-alpine-linux-musl
-        // on Alpine), not by the name of the uv release asset.
-        path.join(binDir, `uv-${rustPlatform}`),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-    }
-  } catch (err) {
-    // Expect EEXIST error
-  }
-  try {
-    copySync(path.join(tempBinDir, 'uv.exe'), path.join(binDir))
-    if (platform === 'win32') {
-      copyFile(
-        path.join(binDir, 'uv.exe'),
-        path.join(binDir, `uv-${uvPlatform}.exe`),
-        (err) => {
-          if (err) {
-            console.log('Error Found:', err)
-          }
-        }
-      )
-    }
-  } catch (err) {
-    // Expect EEXIST error
-  }
+  // Tauri resolves sidecars by the host triple (uv-aarch64-alpine-linux-musl
+  // on Alpine), not by the name of the uv release asset.
+  installSidecar({
+    name: 'uv',
+    extractedBinary: uvExtracted,
+    binDir,
+    platform,
+    rustPlatform,
+    uvPlatform,
+  })
   console.log('UV downloaded.')
 
   // ----- sqlite-vec (optional, ANN acceleration) -----
