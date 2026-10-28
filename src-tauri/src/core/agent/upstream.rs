@@ -43,9 +43,20 @@ pub(crate) fn load_assistant_config(
     jan_data_folder: &str,
     assistant_id: &str,
 ) -> Result<(Option<String>, Option<String>), String> {
+    // The id comes from a request body: it must name one directory entry, and
+    // the error must not reveal a path.
+    let id_ok = !assistant_id.is_empty()
+        && assistant_id.len() <= 128
+        && assistant_id != "."
+        && !assistant_id.contains("..")
+        && assistant_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if !id_ok {
+        return Err("unknown assistant".to_string());
+    }
     let assistant_path = assistant_json_path(jan_data_folder, assistant_id);
-    let raw = fs::read_to_string(&assistant_path)
-        .map_err(|e| format!("Failed to read assistant.json: {assistant_path:?}: {e}"))?;
+    let raw = fs::read_to_string(&assistant_path).map_err(|_| "unknown assistant".to_string())?;
 
     let parsed: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|e| format!("Invalid assistant.json ({assistant_id}): {e}"))?;
@@ -4465,6 +4476,16 @@ mod tests {
             })
             .collect();
         assert_eq!(started, vec![("call_1".to_string(), "write".to_string())]);
+    }
+
+    #[test]
+    fn assistant_id_traversal_rejected_without_path_in_error() {
+        for bad in ["..", "../x", "a/b", "a\\b", "", "C:\\x"] {
+            let err = load_assistant_config("some-data-folder", bad).unwrap_err();
+            assert_eq!(err, "unknown assistant", "{bad:?}");
+        }
+        let err = load_assistant_config("some-data-folder", "jan").unwrap_err();
+        assert!(!err.contains("some-data-folder"), "{err}");
     }
 
     #[test]
