@@ -7,6 +7,7 @@ pub mod auth;
 pub mod approvals_cmd;
 pub mod brand;
 pub mod color;
+pub(crate) mod display_safe;
 pub mod browser;
 #[cfg(test)]
 mod contract_conformance;
@@ -4132,6 +4133,11 @@ async fn prompt_permission(
     secret: bool,
 ) -> PermissionDecision {
     let request_id = request_id.to_string();
+    // What the human approves must be what runs: no escape or carriage return
+    // from the model may rewrite the prompt line.
+    let tool_name = display_safe::display_safe(&tool_name).into_owned();
+    let capability = display_safe::display_safe(&capability).into_owned();
+    let detail = display_safe::display_safe(&detail).into_owned();
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
         eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
