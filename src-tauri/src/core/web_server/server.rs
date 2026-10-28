@@ -736,12 +736,19 @@ async fn token_sign_in(state: &State, req: Request<Incoming>, client: std::net::
     let Some(credential) = credential else {
         return text(StatusCode::BAD_REQUEST, "Invalid credential format");
     };
+    let wait = state.limiter.delay(client);
+    if !wait.is_zero() {
+        tokio::time::sleep(wait).await;
+    }
     let result = state.auth.lock().unwrap_or_else(|p| p.into_inner()).sign_in(&credential);
     match result {
-        Ok(Some(session)) => json(&serde_json::json!({
+        Ok(Some(session)) => {
+            state.limiter.record_success(client);
+            json(&serde_json::json!({
             "token": session,
             "expiresIn": 43200,
-        })),
+            }))
+        }
         Ok(None) => {
             state.limiter.record_failure(client);
             text(StatusCode::UNAUTHORIZED, "Invalid credential")
@@ -1237,9 +1244,14 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         else {
             return refuse(StatusCode::BAD_REQUEST, "format", "Invalid credential format");
         };
+        let wait = state.limiter.delay(client);
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
         let result = state.auth.lock().unwrap_or_else(|p| p.into_inner()).sign_in(token);
         return match result {
             Ok(Some(session)) => {
+                state.limiter.record_success(client);
                 let mut response = reply(
                     StatusCode::SEE_OTHER,
                     "text/plain; charset=utf-8",
@@ -1282,6 +1294,20 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             return response;
         }
         return text(StatusCode::UNAUTHORIZED, "Sign in required");
+    }
+    if path == "/api/v1/sessions" && method == Method::DELETE {
+        // Sign every browser session out, this one included. The credential
+        // stays; `flint serve --rotate-credential` replaces that.
+        let revoked = state.auth.lock().unwrap_or_else(|p| p.into_inner()).revoke_all();
+        if revoked.is_err() {
+            return text(StatusCode::INTERNAL_SERVER_ERROR, "Could not end sessions");
+        }
+        let mut response = reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new());
+        response.headers_mut().insert(
+            header::SET_COOKIE,
+            HeaderValue::from_static("flint_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"),
+        );
+        return response;
     }
     if path == "/api/v1/session" {
         if method == Method::GET {
