@@ -846,7 +846,28 @@
     "openCodeFolder": "Mở thư mục mã",
     "openCodeFolderDescription": "Chọn một thư mục trên máy tính của bạn để Flint làm việc.",
     "deleteProjectConfirm": "Bạn có chắc chắn muốn xóa dự án này không? Hành động này không thể hoàn tác.",
-    "setUpEmbeddingModel": "Thiết lập mô hình embedding"
+    "setUpEmbeddingModel": "Thiết lập mô hình embedding",
+    "webPage": {
+      "open": "Thêm trang web",
+      "title": "Thêm một trang web",
+      "description": "Tải một trang và lưu phần văn bản đọc được thành tệp dự án. Chỉ dùng được địa chỉ http và https công khai.",
+      "urlLabel": "Địa chỉ trang",
+      "add": "Thêm trang",
+      "refresh": "Làm mới",
+      "added": "Đã thêm \"{{name}}\"",
+      "refreshed": "Đã làm mới \"{{name}}\"",
+      "truncated": "Trang vượt quá giới hạn kích thước nên chỉ lưu phần đầu.",
+      "refreshFailed": "Không thể làm mới trang",
+      "errors": {
+        "invalidUrl": "Nhập địa chỉ web đầy đủ bắt đầu bằng http:// hoặc https://.",
+        "blocked": "Địa chỉ này trỏ tới máy này hoặc mạng riêng nên không được tải.",
+        "timeout": "Trang phản hồi quá lâu. Hãy thử lại sau.",
+        "notHtml": "Địa chỉ này không phải trang web có văn bản đọc được (ví dụ PDF, hình ảnh hoặc tệp tải xuống).",
+        "tooLarge": "Trang quá lớn để tải.",
+        "httpError": "Trang web trả về lỗi: {{message}}",
+        "failed": "Không thể tải trang: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Chọn cách nạp tệp đính kèm",
