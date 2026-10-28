@@ -2371,7 +2371,10 @@ fn install_closed_pipe_hook() {
     }));
 }
 
-async fn run() {
+/// One-time process setup that has to happen before anything else reads the
+/// data folder: the sandbox-helper hook, the shared trust, toolchain-grant
+/// and exclusion stores, and the log file.
+fn init_runtime(verbose: bool) {
     // Exits early if invoked as the Windows sandbox helper for a `bash` tool
     // call: the helper's only job is to spawn the confined shell and wait, so it
     // must run before anything else -- starting the app first would run a second
@@ -2403,16 +2406,199 @@ async fn run() {
         ),
     );
 
+    app_lib::core::cli::file_log::init(
+        app_lib::core::app::commands::resolve_jan_data_folder(),
+        verbose,
+    );
+}
+
+/// The bare `flint` invocation: the interactive console.
+async fn launch_tui(cli: Cli) {
+    // No stderr notice on this path: the TUI's alternate screen would wipe
+    // it, and blocking on the check here would delay the first frame. The
+    // TUI runs the same check itself and notes it in the transcript.
+    // The usage ping is likewise deferred to the TUI's own background task.
+    let overrides = cli.providers.into_overrides();
+    let mode_switches =
+        match app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(2);
+            }
+        };
+    if let Err(e) = cli_agent_ui(
+        &cli.project,
+        cli.task,
+        cli.model,
+        cli.images,
+        overrides,
+        SessionFlags {
+            auto_approve: mode_switches.0,
+            bypass: app_lib::core::cli::PermissionMode::requests_bypass(cli.mode.as_deref()),
+            plan: mode_switches.1,
+            sandbox: cli.sandbox.into_flag(),
+            worktree: cli.worktree.into_flag(),
+            ..Default::default()
+        },
+        cli.resume.into_request(),
+    )
+    .await
+    {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+    return;
+}
+
+/// `flint serve`.
+#[allow(clippy::too_many_arguments)]
+async fn handle_serve(
+    listen: std::net::SocketAddr,
+    assets_dir: Option<std::path::PathBuf>,
+    data_dir: Option<std::path::PathBuf>,
+    public_host: Option<String>,
+    allow_mcp_stdio: bool,
+    agent_roots: Vec<std::path::PathBuf>,
+    agent_run: bool,
+    agent_max_sessions: u32,
+    agent_allow_bypass: bool,
+    agent_allow_always: bool,
+    agent_approval_timeout: u64,
+    agent_allow_checks: bool,
+    agent_require_sandbox: bool,
+    allowed_hosts: Vec<String>,
+    allowed_origins: Vec<String>,
+    llama_worker: Option<std::path::PathBuf>,
+    background: bool,
+    credential_file: Option<std::path::PathBuf>,
+    trust_proxy: bool,
+    rotate_credential: bool
+) {
+    // `--data-dir` was applied in `main`, before any thread started.
+    let _ = data_dir;
+    let assets = assets_dir.unwrap_or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
+            .unwrap_or_else(|| std::path::PathBuf::from("web"))
+    });
+    let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+    if rotate_credential {
+        if app_lib::core::web_server::control::running(&data_folder).is_some() {
+            eprintln!("Error: a Flint server is running on this data folder; stop it with `flint stop`, then rotate the credential.");
+            std::process::exit(1);
+        }
+        let auth_file = data_folder.join("web-server").join("auth.json");
+        let result = app_lib::core::web_server::auth::AuthStore::open(auth_file)
+            .and_then(|(mut store, created)| match created {
+                Some(credential) => Ok(credential),
+                None => store.rotate(),
+            });
+        match result {
+            Ok(credential) => {
+                println!("New administrator credential: {credential}");
+                println!("Store this credential securely; it is shown only once. Every browser session was signed out.");
+                return;
+            }
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
+    if background {
+        // The same command again, without the flag, detached.
+        let args: Vec<String> = std::env::args()
+            .skip(1)
+            .filter(|a| a != "--background" && a != "--detach")
+            .collect();
+        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("flint"));
+        match app_lib::core::web_server::control::start_background(
+            &exe,
+            &args,
+            &data_folder,
+            std::time::Duration::from_secs(30),
+        ) {
+            Ok(started) => {
+                println!("Flint server running in the background (pid {}) on http://{}", started.pid, started.listen);
+                println!("Log: {}", started.log.display());
+                println!("Stop it with: flint stop");
+                if let Some(credential) = started.credential {
+                    println!("First-run administrator credential: {credential}");
+                    println!("Store this credential securely; it is shown only once.");
+                }
+                return;
+            }
+            Err(message) => {
+                eprintln!("Error: {message}");
+                std::process::exit(1);
+            }
+        }
+    }
+    let auth_file = data_folder.join("web-server").join("auth.json");
+    if let Err(error) = app_lib::core::web_server::server::serve(
+        app_lib::core::web_server::server::Options {
+            bind: listen,
+            assets,
+            data_folder,
+            auth_file,
+            public_host,
+            allow_mcp_stdio,
+            agent_roots,
+            agent_run,
+            agent_runner: app_lib::core::web_server::runner::RunnerOptions {
+                max_sessions: agent_max_sessions.max(1),
+                allow_bypass: agent_allow_bypass,
+                allow_always: agent_allow_always,
+                approval_timeout: std::time::Duration::from_secs(agent_approval_timeout.max(1)),
+                require_sandbox: agent_require_sandbox,
+                allow_checks: agent_allow_checks,
+            },
+            allowed_hosts,
+            allowed_origins,
+            llama_worker,
+            credential_file,
+            trust_proxy,
+        },
+    ).await {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
+}
+
+/// `flint stop`.
+async fn handle_stop(data_dir: Option<std::path::PathBuf>) {
+    // `--data-dir` was applied in `main`, before any thread started.
+    let _ = data_dir;
+    let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+    match app_lib::core::web_server::control::stop(&data_folder, std::time::Duration::from_secs(20)) {
+        Ok(app_lib::core::web_server::control::Stopped::Clean) => println!("Flint server stopped."),
+        Ok(app_lib::core::web_server::control::Stopped::Forced) => {
+            println!("Flint server did not stop when asked, so its process was ended.")
+        }
+        Ok(app_lib::core::web_server::control::Stopped::NotRunning) => {
+            println!("No Flint server is running on {}.", data_folder.display())
+        }
+        Ok(app_lib::core::web_server::control::Stopped::Foreign) => {
+            eprintln!("Something else is using the recorded server address and did not accept the stop request; nothing was ended.");
+            std::process::exit(1);
+        }
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn run() {
     // Pre-scan raw args for --verbose / -v before full parse so we can set
     // the log level before any logging happens. stderr keeps its `warn`
     // default (`info` under -v); every info+ record also goes to a rotating
     // local file under the data folder, so a hung run leaves a trail without
     // the user having to rerun with -v (janhq/jan#8713).
     let verbose = std::env::args().any(|a| a == "--verbose" || a == "-v");
-    app_lib::core::cli::file_log::init(
-        app_lib::core::app::commands::resolve_jan_data_folder(),
-        verbose,
-    );
+    init_runtime(verbose);
 
     // Inject the logo at runtime so we can use ANSI styling.
     let logo = make_logo();
@@ -2421,161 +2607,16 @@ async fn run() {
         .before_help(logo.clone())
         .before_long_help(logo)
         .get_matches();
-    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
-    let Some(command) = cli.command else {
-        // No stderr notice on this path: the TUI's alternate screen would wipe
-        // it, and blocking on the check here would delay the first frame. The
-        // TUI runs the same check itself and notes it in the transcript.
-        // The usage ping is likewise deferred to the TUI's own background task.
-        let overrides = cli.providers.into_overrides();
-        let mode_switches =
-            match app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(2);
-                }
-            };
-        if let Err(e) = cli_agent_ui(
-            &cli.project,
-            cli.task,
-            cli.model,
-            cli.images,
-            overrides,
-            SessionFlags {
-                auto_approve: mode_switches.0,
-                bypass: app_lib::core::cli::PermissionMode::requests_bypass(cli.mode.as_deref()),
-                plan: mode_switches.1,
-                sandbox: cli.sandbox.into_flag(),
-                worktree: cli.worktree.into_flag(),
-                ..Default::default()
-            },
-            cli.resume.into_request(),
-        )
-        .await
-        {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
+    let Some(command) = cli.command.take() else {
+        launch_tui(cli).await;
         return;
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential } => {
-            // `--data-dir` was applied in `main`, before any thread started.
-            let _ = data_dir;
-            let assets = assets_dir.unwrap_or_else(|| {
-                std::env::current_exe()
-                    .ok()
-                    .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
-                    .unwrap_or_else(|| std::path::PathBuf::from("web"))
-            });
-            let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
-            if rotate_credential {
-                if app_lib::core::web_server::control::running(&data_folder).is_some() {
-                    eprintln!("Error: a Flint server is running on this data folder; stop it with `flint stop`, then rotate the credential.");
-                    std::process::exit(1);
-                }
-                let auth_file = data_folder.join("web-server").join("auth.json");
-                let result = app_lib::core::web_server::auth::AuthStore::open(auth_file)
-                    .and_then(|(mut store, created)| match created {
-                        Some(credential) => Ok(credential),
-                        None => store.rotate(),
-                    });
-                match result {
-                    Ok(credential) => {
-                        println!("New administrator credential: {credential}");
-                        println!("Store this credential securely; it is shown only once. Every browser session was signed out.");
-                        return;
-                    }
-                    Err(error) => {
-                        eprintln!("Error: {error}");
-                        std::process::exit(1);
-                    }
-                }
-            }
-            if background {
-                // The same command again, without the flag, detached.
-                let args: Vec<String> = std::env::args()
-                    .skip(1)
-                    .filter(|a| a != "--background" && a != "--detach")
-                    .collect();
-                let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("flint"));
-                match app_lib::core::web_server::control::start_background(
-                    &exe,
-                    &args,
-                    &data_folder,
-                    std::time::Duration::from_secs(30),
-                ) {
-                    Ok(started) => {
-                        println!("Flint server running in the background (pid {}) on http://{}", started.pid, started.listen);
-                        println!("Log: {}", started.log.display());
-                        println!("Stop it with: flint stop");
-                        if let Some(credential) = started.credential {
-                            println!("First-run administrator credential: {credential}");
-                            println!("Store this credential securely; it is shown only once.");
-                        }
-                        return;
-                    }
-                    Err(message) => {
-                        eprintln!("Error: {message}");
-                        std::process::exit(1);
-                    }
-                }
-            }
-            let auth_file = data_folder.join("web-server").join("auth.json");
-            if let Err(error) = app_lib::core::web_server::server::serve(
-                app_lib::core::web_server::server::Options {
-                    bind: listen,
-                    assets,
-                    data_folder,
-                    auth_file,
-                    public_host,
-                    allow_mcp_stdio,
-                    agent_roots,
-                    agent_run,
-                    agent_runner: app_lib::core::web_server::runner::RunnerOptions {
-                        max_sessions: agent_max_sessions.max(1),
-                        allow_bypass: agent_allow_bypass,
-                        allow_always: agent_allow_always,
-                        approval_timeout: std::time::Duration::from_secs(agent_approval_timeout.max(1)),
-                        require_sandbox: agent_require_sandbox,
-                        allow_checks: agent_allow_checks,
-                    },
-                    allowed_hosts,
-                    allowed_origins,
-                    llama_worker,
-                    credential_file,
-                    trust_proxy,
-                },
-            ).await {
-                eprintln!("Error: {error}");
-                std::process::exit(1);
-            }
-        }
-        Commands::Stop { data_dir } => {
-            // `--data-dir` was applied in `main`, before any thread started.
-            let _ = data_dir;
-            let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
-            match app_lib::core::web_server::control::stop(&data_folder, std::time::Duration::from_secs(20)) {
-                Ok(app_lib::core::web_server::control::Stopped::Clean) => println!("Flint server stopped."),
-                Ok(app_lib::core::web_server::control::Stopped::Forced) => {
-                    println!("Flint server did not stop when asked, so its process was ended.")
-                }
-                Ok(app_lib::core::web_server::control::Stopped::NotRunning) => {
-                    println!("No Flint server is running on {}.", data_folder.display())
-                }
-                Ok(app_lib::core::web_server::control::Stopped::Foreign) => {
-                    eprintln!("Something else is using the recorded server address and did not accept the stop request; nothing was ended.");
-                    std::process::exit(1);
-                }
-                Err(error) => {
-                    eprintln!("Error: {error}");
-                    std::process::exit(1);
-                }
-            }
-        }
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential } => handle_serve(listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential).await,
+        Commands::Stop { data_dir } => handle_stop(data_dir).await,
         Commands::Cli { cmd } => handle_cli(cmd).await,
         Commands::Launch { tool, model, base_url, api_key, dry_run, json, args } => {
             if let Err(e) = app_lib::core::cli::launch_cmd::run(
