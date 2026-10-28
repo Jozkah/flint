@@ -11058,6 +11058,8 @@ async fn handle_key(
                     open_rewind_picker(app);
                 } else {
                     app.last_esc = Some(Instant::now());
+                    // Keep what was typed so Up brings it back.
+                    app.record_draft();
                     app.input_clear();
                 }
             }
@@ -22882,6 +22884,16 @@ mod tests {
         assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('@'), both)));
         let accented = char::from_u32(0x105).unwrap();
         assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char(accented), both)));
+    }
+
+    #[tokio::test]
+    async fn esc_records_draft_for_recall() {
+        let mut app = test_app();
+        composer(&mut app, "half written|");
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.input.is_empty());
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "half written");
     }
 
     #[tokio::test]
