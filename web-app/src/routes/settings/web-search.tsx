@@ -32,8 +32,8 @@ import {
 } from '@/hooks/useWebSearchConfig'
 import { Icon } from '@/components/ui/icon'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.web_search as any)({
+ 
+export const Route = createFileRoute(route.settings.web_search)({
   component: WebSearchContent,
 })
 
