@@ -160,7 +160,7 @@ pub fn register_static_vec() -> bool {
             >(sqlite_vec::sqlite3_vec_init as *const ())))
         };
         if rc != rusqlite::ffi::SQLITE_OK {
-            eprintln!("[VectorDB] static sqlite-vec registration failed (sqlite rc {rc}); trying dynamic library paths");
+            log::warn!("[VectorDB] static sqlite-vec registration failed (sqlite rc {rc}); trying dynamic library paths");
         }
         rc == rusqlite::ffi::SQLITE_OK
     })
@@ -206,7 +206,7 @@ static VEC_PROBE: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::n
 fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
     if vec0_module_available(conn) {
         if verbose {
-            println!("[VectorDB] sqlite-vec already loaded");
+            log::debug!("[VectorDB] sqlite-vec already loaded");
         }
         return true;
     }
@@ -227,7 +227,7 @@ fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
     let ok = probe_sqlite_vec(conn, verbose, cached.flatten());
     let _ = conn.load_extension_disable();
     if !ok && first_probe {
-        eprintln!(
+        log::warn!(
             "[VectorDB] sqlite-vec (vec0) unavailable: static registration {} and no loadable library found in any search path; RAG falls back to slower linear search",
             if VEC_STATIC.get().copied().unwrap_or(false) { "succeeded but vec0 did not load" } else { "failed" }
         );
@@ -241,16 +241,16 @@ fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> 
         None => possible_sqlite_vec_paths(),
     };
     if verbose {
-        println!("[VectorDB] Trying {} sqlite-vec candidates...", paths.len());
+        log::debug!("[VectorDB] Trying {} sqlite-vec candidates...", paths.len());
     }
     for p in &paths {
         if verbose {
-            println!("[VectorDB]   Trying: {}", p);
+            log::debug!("[VectorDB]   Trying: {}", p);
         }
         let loaded = unsafe { conn.load_extension(p, Some("sqlite3_vec_init")).is_ok() };
         if loaded && vec0_module_available(conn) {
             if verbose {
-                println!("[VectorDB] sqlite-vec loaded from: {}", p);
+                log::debug!("[VectorDB] sqlite-vec loaded from: {}", p);
             }
             if let Ok(mut g) = VEC_PROBE.lock() {
                 *g = Some(Some(p.clone()));
@@ -263,13 +263,13 @@ fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> 
         *g = Some(None);
     }
     if !paths.is_empty() {
-        eprintln!(
+        log::warn!(
             "[VectorDB] sqlite-vec library not loadable from any of: {}",
             paths.join(", ")
         );
     }
     if verbose {
-        println!("[VectorDB] sqlite-vec unavailable; using linear search");
+        log::debug!("[VectorDB] sqlite-vec unavailable; using linear search");
     }
     false
 }
@@ -417,7 +417,7 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
         .is_some_and(|sql| !sql.contains(VEC_METRIC) || !sql.contains(&format!("float[{dimension}]")));
     if rebuild {
         if let Err(e) = conn.execute("DROP TABLE chunks_vec", []) {
-            println!("[VectorDB] ✗ Failed to drop stale chunks_vec: {}", e);
+            log::warn!("[VectorDB] ✗ Failed to drop stale chunks_vec: {}", e);
             return false;
         }
     }
@@ -425,7 +425,7 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
         "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{dimension}] {VEC_METRIC})"
     );
     if let Err(e) = conn.execute(&create, []) {
-        println!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
+        log::warn!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
         return false;
     }
     if rebuild {
@@ -435,7 +435,7 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
             params![(dimension * 4) as i64],
         );
         if let Err(e) = filled {
-            println!("[VectorDB] ✗ Failed to rebuild chunks_vec: {}", e);
+            log::warn!("[VectorDB] ✗ Failed to rebuild chunks_vec: {}", e);
             let _ = conn.execute("DROP TABLE IF EXISTS chunks_vec", []);
             return false;
         }
@@ -674,7 +674,7 @@ fn delete_vec_rows(conn: &Connection, chunk_filter: &str, param: &str) {
         "DELETE FROM chunks_vec WHERE rowid IN (SELECT rowid FROM chunks WHERE {chunk_filter})"
     );
     if let Err(e) = conn.execute(&sql, params![param]) {
-        println!("[VectorDB] ✗ Failed to delete chunks_vec rows: {}", e);
+        log::warn!("[VectorDB] ✗ Failed to delete chunks_vec rows: {}", e);
     }
 }
 
@@ -796,7 +796,7 @@ fn search_ann(
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
-            println!("[VectorDB] ✗ Failed to prepare ANN query: {}", e);
+            log::warn!("[VectorDB] ✗ Failed to prepare ANN query: {}", e);
             return Err(e.into());
         }
     };
@@ -813,7 +813,7 @@ fn search_ann(
         match stmt.query(&*param_refs) {
             Ok(r) => r,
             Err(e) => {
-                println!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
+                log::warn!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
                 return Err(e.into());
             }
         }
@@ -821,7 +821,7 @@ fn search_ann(
         match stmt.query(params![json_vec, limit as i64]) {
             Ok(r) => r,
             Err(e) => {
-                println!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
+                log::warn!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
                 return Err(e.into());
             }
         }
@@ -849,7 +849,7 @@ fn search_ann(
         });
     }
 
-    println!("[VectorDB] ANN search returned {} results", results.len());
+    log::debug!("[VectorDB] ANN search returned {} results", results.len());
     Ok(results)
 }
 
@@ -939,11 +939,11 @@ fn search_linear(
     });
     let take: Vec<SearchResult> = results.into_iter().take(limit).collect();
     if skipped > 0 {
-        println!(
+        log::debug!(
             "[VectorDB] Linear search skipped {skipped} chunk(s) stored at another dimension; re-index to include them"
         );
     }
-    println!("[VectorDB] Linear search returned {} results", take.len());
+    log::debug!("[VectorDB] Linear search returned {} results", take.len());
     Ok(take)
 }
 
