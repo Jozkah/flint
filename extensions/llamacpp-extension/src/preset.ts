@@ -519,6 +519,11 @@ function asFiniteNumber(v: unknown): number | undefined {
   return undefined
 }
 
+/** A model id is written as an INI `[section]`; these characters break it. */
+export function isSafePresetSectionId(id: string): boolean {
+  return !/[[\];#=\r\n]/.test(id)
+}
+
 function escapeIniValue(v: string): string {
   // INI values for llama-server are read as strings; trim surrounding whitespace
   // and strip stray newlines that would break parsing.
@@ -611,7 +616,13 @@ export async function generatePreset(
     if (await fs.existsSync(modelConfigPath)) {
       const modelId = toModelId(modelsDir, currentDir)
       if (modelId.length > 0) {
-        modelEntries.push({ modelId, configPath: modelConfigPath })
+        if (isSafePresetSectionId(modelId)) {
+          modelEntries.push({ modelId, configPath: modelConfigPath })
+        } else {
+          console.warn(
+            `[llamacpp] skipping model with unsafe id in preset: ${JSON.stringify(modelId)}`
+          )
+        }
       }
       continue
     }
