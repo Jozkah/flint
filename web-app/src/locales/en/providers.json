@@ -249,5 +249,9 @@
     "label": "Provider name",
     "cancel": "Cancel",
     "save": "Save"
-  }
+  },
+  "skippedLinkedTitle": "Models skipped: {{count}}",
+  "skippedLinkedBody": "These models are stored through a link that points outside Flint's data folder, so Flint did not load them:",
+  "skippedLinkedHowTo": "To use one, import its GGUF file by path (Flint keeps the file where it is), or move the files back into the models folder.",
+  "skippedLinkedDismiss": "Dismiss"
 }
