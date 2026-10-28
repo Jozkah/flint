@@ -1240,7 +1240,10 @@ describe('ThreadDetail route', () => {
       h.modelProviderState.selectedProvider = 'openai'
       const remote = renderComponent()
       expect(screen.queryByText('Increase Context Size')).toBeNull()
-      expect(screen.getByText(/set by its server/)).toBeInTheDocument()
+      // The banner text is translated; the test's t() may return the key.
+      expect(
+        screen.getByText(/set by its server|errorBanner\.serverContext/)
+      ).toBeInTheDocument()
       remote.unmount()
 
       h.modelProviderState.selectedProvider = 'llamacpp'
