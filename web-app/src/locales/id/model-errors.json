@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Model ini memakai tipe kuantisasi yang tidak dapat dijalankan backend GPU. Unduh kuantisasi lain seperti Q4_K_M, atau matikan GPU offload.",
     "ENGINE_STOPPED": "Engine berhenti secara tak terduga. Muat ulang model untuk memulai ulang; jika terus terjadi, output terakhir engine di bawah menjelaskan penyebabnya.",
     "OUT_OF_MEMORY": "Memori tidak cukup untuk menjalankan model ini. Model yang lebih kecil atau ukuran konteks yang lebih kecil biasanya membantu.",
+    "PROMPT_OUT_OF_MEMORY": "Model kehabisan memori GPU pada prompt ini, sehingga servernya berhenti. Coba konteks yang lebih pendek atau model yang lebih kecil; pesan berikutnya akan memulai server lagi.",
     "INVALID_ARGUMENT": "Salah satu pengaturan model tidak valid.",
     "IO_ERROR": "Sebuah file tidak dapat dibaca atau ditulis saat memulai model.",
     "INTERNAL_ERROR": "Terjadi kesalahan di dalam Flint saat memulai model."
@@ -38,5 +39,8 @@
   "serverStartModelFailed": "Gagal memulai model",
   "serverStartFailed": "Gagal memulai server",
   "azureEndpointMissing": "Tidak ada endpoint yang dikonfigurasi untuk {{provider}}. Atur Base URL di Pengaturan > Penyedia Model.",
-  "emptyReply": "Model selesai tanpa memberikan balasan. Coba buat ulang, atau periksa pengaturan penyedia."
+  "emptyReply": "Model selesai tanpa memberikan balasan. Coba buat ulang, atau periksa pengaturan penyedia.",
+  "gpuCrashCpuFallbackTitle": "Driver GPU mengalami crash",
+  "gpuCrashCpuFallbackQuestion": "Driver GPU crash saat memuat model ini. Muat di CPU saja? Akan berjalan lebih lambat.",
+  "gpuCrashCpuFallbackConfirm": "Muat di CPU"
 }

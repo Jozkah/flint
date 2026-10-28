@@ -847,7 +847,28 @@
     "openCodeFolderInCowork": "Kod klasörünü Cowork'te aç",
     "openCodeFolder": "Kod klasörünü aç",
     "openCodeFolderDescription": "Flint'in çalışacağı, bilgisayarınızdaki bir klasörü seçin.",
-    "setUpEmbeddingModel": "Gömme modeli kur"
+    "setUpEmbeddingModel": "Gömme modeli kur",
+    "webPage": {
+      "open": "Web sayfası ekle",
+      "title": "Web sayfası ekle",
+      "description": "Bir sayfayı getirir ve okunabilir metnini proje dosyası olarak saklar. Yalnızca herkese açık http ve https adresleri çalışır.",
+      "urlLabel": "Sayfa adresi",
+      "add": "Sayfayı ekle",
+      "refresh": "Yenile",
+      "added": "\"{{name}}\" eklendi",
+      "refreshed": "\"{{name}}\" yenilendi",
+      "truncated": "Sayfa boyut sınırını aştığı için yalnızca ilk kısmı saklandı.",
+      "refreshFailed": "Sayfa yenilenemedi",
+      "errors": {
+        "invalidUrl": "http:// veya https:// ile başlayan tam bir web adresi girin.",
+        "blocked": "Bu adres bu bilgisayarı veya özel bir ağı gösteriyor, bu yüzden getirilmedi.",
+        "timeout": "Sayfa yanıt vermekte çok gecikti. Daha sonra yeniden deneyin.",
+        "notHtml": "Bu adres okunabilir metin içeren bir web sayfası değil (örneğin PDF, görsel veya indirme).",
+        "tooLarge": "Sayfa getirilemeyecek kadar büyük.",
+        "httpError": "Site bir hata döndürdü: {{message}}",
+        "failed": "Sayfa getirilemedi: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Eklerin nasıl işleneceğini seçin",
@@ -2724,7 +2745,11 @@
     "noVision": "Bu model görselleri okuyamaz",
     "details": "{{name}} ayrıntıları",
     "previewLoading": "Önizleme yükleniyor…",
-    "previewNone": "Önizleme yok"
+    "previewNone": "Önizleme yok",
+    "pagesAsImages": "Sayfaları görsel olarak gönder",
+    "pagesAsImagesHint": "Modelin taramaları, grafikleri ve düzeni görebilmesi için bu PDF'nin sayfalarını görsel olarak gönderin",
+    "pdfPagesCut": "{{name}} dosyasının {{total}} sayfasından ilk {{sent}} tanesi görsel olarak gönderildi",
+    "pdfScannedAsImages": "{{name}} metin içermiyor, bu yüzden sayfaları görsel olarak gönderildi"
   },
   "fileViewer": {
     "openFull": "Tam önizlemeyi aç",
@@ -3083,5 +3108,10 @@
     "reject": "Reddet",
     "applying": "Uygulanıyor…",
     "applySelected": "Seçileni uygula"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

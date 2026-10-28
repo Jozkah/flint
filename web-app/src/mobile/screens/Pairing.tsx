@@ -46,7 +46,13 @@ export function Pairing({
     []
   )
 
+  const sendingRef = useRef(false)
+
   const start = async () => {
+    // Enter and the button can both fire before the 'sending' state renders.
+    if (sendingRef.current) return
+    sendingRef.current = true
+    if (pollRef.current) clearTimeout(pollRef.current)
     const deviceName = name.trim().slice(0, 64) || guessDeviceName()
     setPhase({ step: 'sending' })
     try {
@@ -79,13 +85,16 @@ export function Pairing({
         } else if (s.status === 'pending') {
           pollRef.current = setTimeout(poll, pollMs)
         } else if (s.status === 'rejected') {
+          sendingRef.current = false
           setPhase({ step: 'failed', message: t('pairing.declined', { who }) })
         } else {
+          sendingRef.current = false
           setPhase({ step: 'failed', message: t('pairing.expired') })
         }
       }
       pollRef.current = setTimeout(poll, pollMs)
     } catch (e) {
+      sendingRef.current = false
       setPhase({
         step: 'failed',
         message:

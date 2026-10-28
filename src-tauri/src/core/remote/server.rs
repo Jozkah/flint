@@ -974,6 +974,22 @@ enum ClientMessage {
     Ping,
 }
 
+const MAX_TOPICS_PER_SOCKET: usize = 256;
+const MAX_TOPIC_LEN: usize = 128;
+
+/// Adds subscribe topics, dropping over-long ones and anything past the per-socket cap.
+fn add_topics(set: &mut HashSet<String>, wanted: Vec<String>) {
+    for topic in wanted.into_iter().take(64) {
+        if topic.len() > MAX_TOPIC_LEN {
+            continue;
+        }
+        if set.len() >= MAX_TOPICS_PER_SOCKET && !set.contains(&topic) {
+            break;
+        }
+        set.insert(topic);
+    }
+}
+
 async fn run_socket<S>(
     hub: Arc<RemoteHub>,
     mut ws: WebSocketStream<S>,
@@ -1063,7 +1079,7 @@ async fn run_socket<S>(
                 }
                 match msg {
                 Some(Ok(Message::Text(t))) => match serde_json::from_str::<ClientMessage>(&t) {
-                    Ok(ClientMessage::Subscribe { topics: t }) => topics.extend(t.into_iter().take(64)),
+                    Ok(ClientMessage::Subscribe { topics: t }) => add_topics(&mut topics, t),
                     Ok(ClientMessage::Unsubscribe { topics: t }) => t.iter().for_each(|x| { topics.remove(x); }),
                     Ok(ClientMessage::Visibility { hidden }) => {
                         if hidden == shown {
@@ -1290,5 +1306,25 @@ mod conn_cap_tests {
         let mut buf = Vec::new();
         tokio::io::AsyncReadExt::read_to_end(&mut b, &mut buf).await.unwrap();
         assert!(!buf.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod topic_cap_tests {
+    use super::*;
+
+    #[test]
+    fn topics_are_capped_per_socket_and_by_length() {
+        let mut set = HashSet::new();
+        for batch in 0..5 {
+            add_topics(&mut set, (0..64).map(|i| format!("t{batch}-{i}")).collect());
+        }
+        assert_eq!(set.len(), MAX_TOPICS_PER_SOCKET);
+        add_topics(&mut set, vec!["one-more".into()]);
+        assert!(!set.contains("one-more"));
+        let mut fresh = HashSet::new();
+        add_topics(&mut fresh, vec!["x".repeat(MAX_TOPIC_LEN + 1), "ok".into()]);
+        assert_eq!(fresh.len(), 1);
+        assert!(fresh.contains("ok"));
     }
 }

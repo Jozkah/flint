@@ -37,6 +37,9 @@ pub fn check(path: &Path, text: &str) -> Option<String> {
         return None;
     }
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    if ext == "json" && is_jsonc_file(path) {
+        return None;
+    }
     let why = match ext.as_str() {
         "json" => serde_json::from_str::<serde::de::IgnoredAny>(text)
             .err()
@@ -55,6 +58,21 @@ pub fn check(path: &Path, text: &str) -> Option<String> {
         "WARNING: {name} does not parse after this change: {}. Fix it before moving on.",
         one_line(&why)
     ))
+}
+
+/// `.json` files that tools read as JSON-with-comments: strict parsing would
+/// call them broken.
+fn is_jsonc_file(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if name.starts_with("tsconfig") || name.starts_with("jsconfig") {
+        return true;
+    }
+    path.components().any(|c| {
+        matches!(c.as_os_str().to_str(), Some(".vscode") | Some(".devcontainer"))
+    })
 }
 
 /// [`check`] behind the `[tools] check_syntax` switch.
@@ -105,6 +123,15 @@ fn one_line(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jsonc_files_are_not_called_broken() {
+        let commented = "{\n // comment\n \"a\": 1,\n}";
+        for p in ["tsconfig.json", "tsconfig.base.json", "jsconfig.json", ".vscode/settings.json", "x/.devcontainer/devcontainer.json"] {
+            assert_eq!(check(Path::new(p), commented), None, "{p}");
+        }
+        assert!(check(Path::new("package.json"), commented).is_some());
+    }
 
     #[test]
     fn valid_files_say_nothing() {

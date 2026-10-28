@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Este modelo usa un tipo de cuantización que el backend de GPU no puede ejecutar. Descarga otra cuantización, como Q4_K_M, o desactiva la descarga a la GPU.",
     "ENGINE_STOPPED": "El motor se detuvo de forma inesperada. Carga el modelo de nuevo para reiniciarlo; si sigue ocurriendo, la última salida del motor que aparece abajo explica el motivo.",
     "OUT_OF_MEMORY": "No hay memoria suficiente para ejecutar este modelo. Un modelo más pequeño o un tamaño de contexto menor suele ayudar.",
+    "PROMPT_OUT_OF_MEMORY": "El modelo se quedó sin memoria de GPU con este mensaje y su servidor se detuvo. Prueba un contexto más corto o un modelo más pequeño; tu próximo mensaje vuelve a iniciar el servidor.",
     "INVALID_ARGUMENT": "Uno de los ajustes del modelo no es válido.",
     "IO_ERROR": "No se pudo leer o escribir un archivo al iniciar el modelo.",
     "INTERNAL_ERROR": "Algo salió mal dentro de Flint al iniciar el modelo."
@@ -38,5 +39,8 @@
   "serverStartModelFailed": "No se pudo iniciar el modelo",
   "serverStartFailed": "No se pudo iniciar el servidor",
   "azureEndpointMissing": "No hay ningún endpoint configurado para {{provider}}. Define la URL base en Ajustes > Proveedores de modelos.",
-  "emptyReply": "El modelo terminó sin devolver una respuesta. Prueba a regenerarla o revisa los ajustes del proveedor."
+  "emptyReply": "El modelo terminó sin devolver una respuesta. Prueba a regenerarla o revisa los ajustes del proveedor.",
+  "gpuCrashCpuFallbackTitle": "El controlador de la GPU falló",
+  "gpuCrashCpuFallbackQuestion": "El controlador de la GPU falló al cargar este modelo. ¿Cargarlo en la CPU? Irá más lento.",
+  "gpuCrashCpuFallbackConfirm": "Cargar en la CPU"
 }

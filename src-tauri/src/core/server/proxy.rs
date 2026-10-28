@@ -1259,7 +1259,7 @@ fn check_request(
             .headers
             .get(hyper::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .and_then(|auth_str| auth_str.strip_prefix("Bearer "))
+            .and_then(bearer_token)
             .map(|token| keys_equal(token, &config.proxy_api_key))
             .unwrap_or(false);
 
@@ -3097,6 +3097,12 @@ fn bind_addr(host: &str, port: u16) -> Result<SocketAddr, String> {
         .map_err(|e| format!("Invalid address: {e}"))
 }
 
+/// Token of an `Authorization: Bearer <token>` header; the scheme is case-insensitive (RFC 7235).
+fn bearer_token(header: &str) -> Option<&str> {
+    let (scheme, token) = header.split_once(' ')?;
+    scheme.eq_ignore_ascii_case("bearer").then(|| token.trim_start())
+}
+
 /// Constant-time comparison of a presented key against the configured one.
 fn keys_equal(presented: &str, expected: &str) -> bool {
     let (a, b) = (presented.as_bytes(), expected.as_bytes());
@@ -4070,6 +4076,15 @@ mod redirect_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bearer_scheme_is_case_insensitive() {
+        assert_eq!(super::bearer_token("Bearer k"), Some("k"));
+        assert_eq!(super::bearer_token("bearer k"), Some("k"));
+        assert_eq!(super::bearer_token("BEARER k"), Some("k"));
+        assert_eq!(super::bearer_token("Basic k"), None);
+        assert_eq!(super::bearer_token("Bearerk"), None);
+    }
+
     #[test]
     fn engine_responses_name_the_model_id_not_its_file_path() {
         use super::ModelFieldRewriter;

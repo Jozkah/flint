@@ -257,7 +257,7 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
         navigate({ to: route.rooms })
       }
     } catch (err) {
-      toast.error(normalizeError(err)?.message ?? 'Failed to delete room')
+      toast.error(normalizeError(err)?.message ?? t('rooms:deleteFailed'))
     }
     setPendingDelete(null)
   }

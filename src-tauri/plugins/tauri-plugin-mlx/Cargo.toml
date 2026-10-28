@@ -13,6 +13,7 @@ links = "tauri-plugin-mlx"
 [dependencies]
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 sysinfo = "0.34.2"
 tauri = { version = "2.5.0", default-features = false, features = [] }
 thiserror = "2.0.12"

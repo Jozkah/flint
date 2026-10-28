@@ -847,7 +847,28 @@
     "openCodeFolderInCowork": "कोड फ़ोल्डर Cowork में खोलें",
     "openCodeFolder": "कोड फ़ोल्डर खोलें",
     "openCodeFolderDescription": "अपने कंप्यूटर पर वह फ़ोल्डर चुनें जिसमें Flint काम करे।",
-    "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें"
+    "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें",
+    "webPage": {
+      "open": "वेब पेज जोड़ें",
+      "title": "वेब पेज जोड़ें",
+      "description": "पेज लाकर उसका पढ़ने योग्य टेक्स्ट प्रोजेक्ट फ़ाइल के रूप में रखें। केवल सार्वजनिक http और https पते काम करते हैं।",
+      "urlLabel": "पेज का पता",
+      "add": "पेज जोड़ें",
+      "refresh": "रीफ़्रेश करें",
+      "added": "\"{{name}}\" जोड़ा गया",
+      "refreshed": "\"{{name}}\" रीफ़्रेश किया गया",
+      "truncated": "पेज आकार सीमा से बड़ा था, इसलिए केवल पहला भाग रखा गया।",
+      "refreshFailed": "पेज रीफ़्रेश नहीं हो सका",
+      "errors": {
+        "invalidUrl": "http:// या https:// से शुरू होने वाला पूरा वेब पता दर्ज करें।",
+        "blocked": "यह पता इस कंप्यूटर या किसी निजी नेटवर्क की ओर जाता है, इसलिए इसे नहीं लाया गया।",
+        "timeout": "पेज ने जवाब देने में बहुत समय लिया। बाद में फिर कोशिश करें।",
+        "notHtml": "यह पता पढ़ने योग्य टेक्स्ट वाला वेब पेज नहीं है (जैसे PDF, चित्र या डाउनलोड)।",
+        "tooLarge": "पेज लाने के लिए बहुत बड़ा है।",
+        "httpError": "साइट ने त्रुटि लौटाई: {{message}}",
+        "failed": "पेज नहीं लाया जा सका: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "संलग्नकों को कैसे प्रोसेस करना है चुनें",
@@ -2726,7 +2747,11 @@
     "noVision": "यह मॉडल छवियाँ नहीं पढ़ सकता",
     "details": "{{name}} का विवरण",
     "previewLoading": "पूर्वावलोकन लोड हो रहा है…",
-    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं"
+    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं",
+    "pagesAsImages": "पेज इमेज के रूप में भेजें",
+    "pagesAsImagesHint": "इस PDF के पेज इमेज के रूप में भेजें, ताकि मॉडल स्कैन, चार्ट और लेआउट देख सके",
+    "pdfPagesCut": "{{name}} के {{total}} में से पहले {{sent}} पेज इमेज के रूप में भेजे गए",
+    "pdfScannedAsImages": "{{name}} में कोई टेक्स्ट नहीं है, इसलिए इसके पेज इमेज के रूप में भेजे गए"
   },
   "fileViewer": {
     "openFull": "पूरा पूर्वावलोकन खोलें",
@@ -3085,5 +3110,10 @@
     "reject": "अस्वीकार करें",
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }
