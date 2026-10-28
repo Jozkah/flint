@@ -343,6 +343,13 @@ pub(crate) fn drop_loosening_keys(cfg: &mut AgentToml) -> Vec<&'static str> {
         cfg.auto_mode.soft_deny.clear();
         dropped.push("[auto_mode] soft_deny");
     }
+    // A notify command runs a program and the webhook receives session ids,
+    // so an untrusted repository must not set either.
+    #[cfg(feature = "cli")]
+    if !cfg.notify.command.is_empty() || cfg.notify.webhook.is_some() {
+        cfg.notify = Default::default();
+        dropped.push("[notify]");
+    }
     dropped
 }
 
@@ -1312,6 +1319,31 @@ allow_network = false
         assert!(drop_loosening_keys(&mut cfg).is_empty());
         assert_eq!(cfg.tools.sandbox, Some(true));
         assert_eq!(cfg.tools.default.as_deref(), Some("deny"));
+    }
+
+    #[test]
+    #[cfg(feature = "cli")]
+    fn an_untrusted_project_cannot_set_notify_command() {
+        let mut cfg: AgentToml = toml::from_str(
+            "[notify]\ncommand = [\"calc.exe\"]\nwebhook = \"https://example.com/h\"\nevents = [\"done\"]\n",
+        )
+        .unwrap();
+        let dropped = drop_loosening_keys(&mut cfg);
+        assert_eq!(dropped, ["[notify]"]);
+        assert!(cfg.notify.command.is_empty());
+        assert!(cfg.notify.webhook.is_none());
+        assert!(cfg.notify.events.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "cli")]
+    fn a_trusted_project_keeps_notify() {
+        // Unit tests read project files as trusted, so load_agent_config
+        // does not call drop_loosening_keys.
+        let root = project_with("[notify]\ncommand = [\"echo\", \"hi\"]\n");
+        let cfg = load_agent_config(&root).unwrap();
+        assert_eq!(cfg.notify.command, ["echo", "hi"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     use super::*;
