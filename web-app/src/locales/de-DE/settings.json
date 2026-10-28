@@ -264,7 +264,13 @@
     "caBundleNone": "Es wird nur den Zertifizierungsstellen der Plattform vertraut.",
     "caBundleInUse": "Es wird {{count}} Zertifikat(en) aus diesem Bundle sowie denen der Plattform vertraut.",
     "caBundleBroken": "Dieses Bundle kann nicht verwendet werden ({{kind}}): Ausgehendes HTTPS vertraut nichts, bis es repariert oder entfernt wird.",
-    "ignoreSslScope": "Gilt für den gesamten Proxy-Verkehr. Ein einzelner Anbieter kann ungültige Zertifikate auch nur für seine eigene Adresse zulassen, auf seiner Seite unter Modellanbieter."
+    "ignoreSslScope": "Gilt für den gesamten Proxy-Verkehr. Ein einzelner Anbieter kann ungültige Zertifikate auch nur für seine eigene Adresse zulassen, auf seiner Seite unter Modellanbieter.",
+    "proxyUrlInvalid": "Das sieht nicht nach einer Proxy-Adresse aus. Verwende Host:Port oder http://Host:Port.",
+    "proxyUrlScheme": "Es werden nur http- und https-Proxys unterstützt.",
+    "ignoreSslConfirmTitle": "SSL-Zertifikate ignorieren?",
+    "ignoreSslConfirmBody": "Flint akzeptiert selbstsignierte, abgelaufene oder nicht passende Zertifikate für den gesamten Proxy-Verkehr, sodass jeder auf dem Weg ihn mitlesen oder verändern könnte. Fahre nur fort, wenn du dem Proxy und dem Netzwerk vertraust.",
+    "ignoreSslConfirm": "Zertifikate ignorieren",
+    "ignoreSslActiveWarning": "Die Zertifikatsprüfung ist für den gesamten Proxy-Verkehr deaktiviert."
   },
   "webSearch": {
     "showKey": "Schlüssel anzeigen",
@@ -432,6 +438,7 @@
     "serverHostDesc": "Netzwerkadresse für den Server.",
     "serverHostLanWarning": "0.0.0.0 macht den Server von anderen Geräten in deinem Netzwerk aus erreichbar. Lege einen API-Schlüssel fest und verwende vom anderen Gerät aus die LAN-Adresse des Rechners (nicht localhost).",
     "serverHostLanNoTrusted": "Vertrauenswürdige Hosts ist leer: Füge die Adresse hinzu, über die andere Geräte diesen Rechner erreichen, sonst werden deren Anfragen möglicherweise abgelehnt.",
+    "apiKeyRequiredLan": "Lege einen API-Schlüssel fest, bevor du den Server auf 0.0.0.0 freigibst, oder stelle den Host auf 127.0.0.1 um.",
     "serverPort": "Server Port",
     "serverPortDesc": "Portnummer für den API Server.",
     "apiPrefix": "API Prefix",

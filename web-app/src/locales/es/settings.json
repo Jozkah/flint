@@ -265,7 +265,13 @@
     "caBundleNone": "Solo se confía en las autoridades de certificación de la plataforma.",
     "caBundleInUse": "Se confía en {{count}} certificado(s) de este paquete además de los de la plataforma.",
     "caBundleBroken": "Este paquete no se puede usar ({{kind}}): el HTTPS saliente no confía en nada hasta que se corrija o se quite.",
-    "ignoreSslScope": "Se aplica a todo el tráfico por proxy. Un proveedor también puede permitir certificados no válidos solo para su propia dirección, en su página de Proveedores de modelos."
+    "ignoreSslScope": "Se aplica a todo el tráfico por proxy. Un proveedor también puede permitir certificados no válidos solo para su propia dirección, en su página de Proveedores de modelos.",
+    "proxyUrlInvalid": "Esto no parece una dirección de proxy. Usa host:puerto o http://host:puerto.",
+    "proxyUrlScheme": "Solo se admiten proxies http y https.",
+    "ignoreSslConfirmTitle": "¿Ignorar los certificados SSL?",
+    "ignoreSslConfirmBody": "Flint aceptará certificados autofirmados, caducados o que no coincidan para todo el tráfico del proxy, así que cualquiera en la ruta podría leerlo o alterarlo. Continúa solo si confías en el proxy y en la red.",
+    "ignoreSslConfirm": "Ignorar certificados",
+    "ignoreSslActiveWarning": "Las comprobaciones de certificados están desactivadas para todo el tráfico del proxy."
   },
   "webSearch": {
     "showKey": "Mostrar clave",
@@ -434,6 +440,7 @@
     "serverHostDesc": "Dirección de red para el servidor.",
     "serverHostLanWarning": "0.0.0.0 hace que el servidor sea accesible desde otros dispositivos de tu red. Define una clave de API y usa la dirección LAN del equipo (no localhost) desde el otro dispositivo.",
     "serverHostLanNoTrusted": "Hosts de confianza está vacío: añade la dirección que usarán otros dispositivos para llegar a este equipo, o sus solicitudes podrían ser rechazadas.",
+    "apiKeyRequiredLan": "Define una clave de API antes de exponer el servidor en 0.0.0.0, o cambia el host a 127.0.0.1.",
     "serverPort": "Puerto del servidor",
     "serverPortDesc": "Número de puerto para el servidor API.",
     "apiPrefix": "Prefijo de API",

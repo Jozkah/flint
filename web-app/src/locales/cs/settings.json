@@ -266,7 +266,13 @@
     "caBundleNone": "Důvěřuje se jen certifikačním autoritám platformy.",
     "caBundleInUse": "Důvěřuje se certifikátům z tohoto balíčku ({{count}}) i certifikátům platformy.",
     "caBundleBroken": "Tento balíček nelze použít ({{kind}}): odchozí HTTPS nedůvěřuje ničemu, dokud se to neopraví nebo balíček neodebere.",
-    "ignoreSslScope": "Platí pro veškerý provoz přes proxy. Jednotlivý poskytovatel může také povolit neplatné certifikáty pro svou vlastní adresu, na své stránce v části Poskytovatelé modelů."
+    "ignoreSslScope": "Platí pro veškerý provoz přes proxy. Jednotlivý poskytovatel může také povolit neplatné certifikáty pro svou vlastní adresu, na své stránce v části Poskytovatelé modelů.",
+    "proxyUrlInvalid": "Toto nevypadá jako adresa proxy. Použijte hostitel:port nebo http://hostitel:port.",
+    "proxyUrlScheme": "Podporovány jsou pouze proxy http a https.",
+    "ignoreSslConfirmTitle": "Ignorovat certifikáty SSL?",
+    "ignoreSslConfirmBody": "Flint bude přijímat certifikáty s vlastním podpisem, prošlé nebo neodpovídající pro veškerý provoz přes proxy, takže jej kdokoli na cestě může číst nebo měnit. Pokračujte, jen pokud proxy a síti důvěřujete.",
+    "ignoreSslConfirm": "Ignorovat certifikáty",
+    "ignoreSslActiveWarning": "Kontrola certifikátů je vypnutá pro veškerý provoz přes proxy."
   },
   "webSearch": {
     "showKey": "Zobrazit klíč",
@@ -436,6 +442,7 @@
     "serverHostDesc": "Síťová adresa pro server.",
     "serverHostLanWarning": "0.0.0.0 zpřístupní server ostatním zařízením ve vaší síti. Nastavte klíč API a z druhého zařízení použijte adresu počítače v místní síti (ne localhost).",
     "serverHostLanNoTrusted": "Důvěryhodní hostitelé jsou prázdní: přidejte adresu, přes kterou se ostatní zařízení připojí k tomuto počítači, jinak mohou být jejich požadavky odmítnuty.",
+    "apiKeyRequiredLan": "Před zpřístupněním serveru na 0.0.0.0 nastavte klíč API, nebo přepněte hostitele na 127.0.0.1.",
     "serverPort": "Port serveru",
     "serverPortDesc": "Číslo portu pro API server.",
     "apiPrefix": "API prefix",
