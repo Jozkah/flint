@@ -249,11 +249,12 @@ fn names_a_secret(key: &str) -> bool {
     let name_start = key
         .rfind(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
         .map_or(0, |i| i + 1);
-    let k = key[name_start..].trim_start_matches('-').to_ascii_lowercase();
+    let raw = key[name_start..].trim_start_matches('-');
+    let k = raw.to_ascii_lowercase();
     if k.is_empty() {
         return false;
     }
-    [
+    let by_substring = [
         "password",
         "passwd",
         "pass",
@@ -262,7 +263,6 @@ fn names_a_secret(key: &str) -> bool {
         "apikey",
         "api_key",
         "api-key",
-        "auth",
         "authorization",
         "credential",
         "private_key",
@@ -270,7 +270,37 @@ fn names_a_secret(key: &str) -> bool {
         "session_key",
     ]
     .iter()
-    .any(|needle| k.contains(needle))
+    .any(|needle| k.contains(needle));
+    // `auth` only as a whole word of the name (`auth_token`, `apiAuth`,
+    // `--api-auth`): `author`, `authority` and `oauth_scope` are not
+    // credentials. The renderer's `namesASecret` makes the same call.
+    by_substring || name_words(raw).iter().any(|w| w == "auth")
+}
+
+/// The lowercase words of a name: split at `_`, `-`, `.` and at a lower-to-upper
+/// case change, so `apiAuth` and `api_auth` read the same.
+fn name_words(name: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut previous_lower = false;
+    for c in name.chars() {
+        if matches!(c, '_' | '-' | '.') {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            previous_lower = false;
+            continue;
+        }
+        if c.is_ascii_uppercase() && previous_lower && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        previous_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+        current.push(c.to_ascii_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
 }
 
 fn looks_like_a_token(word: &str) -> bool {
@@ -441,6 +471,34 @@ pub fn export_json(data_folder: &Path, q: &Query) -> String {
 mod tests {
     use super::*;
     use crate::resource::Resource;
+
+    // The same cases as `web-app/src/lib/__tests__/fixtures/secretCorpus.json`
+    // for the auth-word and scheme rules, so the two redactors stay in step.
+    #[test]
+    fn auth_names_match_as_whole_words_only() {
+        for key in ["AUTH_TOKEN", "api_auth", "apiAuth", "--api-auth", "auth"] {
+            assert!(names_a_secret(key), "{key} names a secret");
+        }
+        for key in ["author", "authority", "oauth_scope", "authors"] {
+            assert!(!names_a_secret(key), "{key} does not");
+        }
+    }
+
+    #[test]
+    fn scheme_words_in_prose_are_left_alone() {
+        for text in [
+            "Basic setup is done",
+            "token expired yesterday",
+            "the bearer of this note",
+            "author=jane authority=local oauth_scope=read",
+        ] {
+            assert_eq!(redact(text), text);
+        }
+        let out = redact("Authorization: Bearer abc123def456");
+        assert!(!out.contains("abc123def456"), "{out}");
+        let out = redact("sent Bearer abcdefghijklmnop1234 upstream");
+        assert!(!out.contains("abcdefghijklmnop1234"), "{out}");
+    }
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

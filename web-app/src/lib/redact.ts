@@ -24,7 +24,6 @@ const SECRET_KEY_PARTS = [
   'apikey',
   'api_key',
   'authorization',
-  'auth',
   'credential',
   'private_key',
   'access_key',
@@ -57,7 +56,10 @@ export function namesASecret(key: string): boolean {
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/-/g, '_')
     .toLowerCase()
-  return SECRET_KEY_PARTS.some((needle) => k.includes(needle))
+  if (SECRET_KEY_PARTS.some((needle) => k.includes(needle))) return true
+  // `auth` only as a whole word of the name: `auth_token` and `api_auth`
+  // are credentials, `author`, `authority` and `oauth_scope` are not.
+  return k.split('_').includes('auth')
 }
 
 function looksLikeAToken(word: string): boolean {
@@ -117,8 +119,16 @@ export function redactSecrets(text: string): string {
       /([?&][^=&\s#]*(?:token|key|secret|password|auth|sig|signature)[^=&\s#]*=)[^&\s#]+/gi,
       `$1${REDACTED}`
     )
-    // `Authorization: Bearer <token>`: the secret is the word after the scheme.
-    .replace(/\b(Bearer|Basic|Token)\s+([^\s"']+)/gi, (_m, scheme: string) => {
+    // `Authorization: Bearer <token>`: the value of an authorization header is
+    // a credential whatever its length.
+    .replace(
+      /\b((?:Proxy-)?Authorization:\s*)(Bearer|Basic|Token)\s+([^\s"']+)/gi,
+      (_m, head: string, scheme: string) => `${head}${scheme} ${REDACTED}`
+    )
+    // `Bearer <token>` / `Basic <token>` anywhere else: only a word long
+    // enough to be a credential, so "Basic setup" and "bearer of this note"
+    // read as prose. The Rust redactor holds the same 16-character floor.
+    .replace(/\b(Bearer|Basic)\s+([^\s"']{16,})/gi, (_m, scheme: string) => {
       return `${scheme} ${REDACTED}`
     })
     // JWTs

@@ -2812,6 +2812,21 @@
     "load": "{{host}} から画像を読み込む"
   },
   "messageSaveFailed": "メッセージを保存できませんでした。再起動後に失われる可能性があります。",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "このスレッドの変更を保存できませんでした。元に戻しました。",
   "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした",
   "attachmentMissingFile": "添付ファイルが見つかりません。削除して添付し直してください。メッセージは入力欄に残っています。",

@@ -125,26 +125,33 @@ export abstract class BaseExtension implements ExtensionType {
       const oldSettingsJson = localStorage.getItem(this.name)
       // Persists new settings
       if (oldSettingsJson) {
-        const oldSettings = JSON.parse(oldSettingsJson)
+        // A corrupt or foreign blob is treated as "no saved settings" so the
+        // fresh list below overwrites it instead of throwing every time.
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(oldSettingsJson)
+        } catch {
+          parsed = []
+        }
+        const oldSettings: any[] = Array.isArray(parsed) ? parsed : []
         settings.forEach((setting) => {
+          const props = setting.controllerProps
+          if (!props) return
+          const old = oldSettings.find((e: any) => e?.key === setting.key)
           // Keep setting value
-          if (setting.controllerProps && Array.isArray(oldSettings))
-            setting.controllerProps.value =
-              oldSettings.find((e: any) => e.key === setting.key)?.controllerProps?.value ??
-              setting.controllerProps.value
-          if ('options' in setting.controllerProps) {
-            setting.controllerProps.options = setting.controllerProps.options?.length
-              ? setting.controllerProps.options
-              : oldSettings.find((e: any) => e.key === setting.key)?.controllerProps?.options
-            if(!setting.controllerProps.options?.some(e => e.value === setting.controllerProps.value)) {
-              setting.controllerProps.value = setting.controllerProps.options?.[0]?.value ?? setting.controllerProps.value
+          props.value = old?.controllerProps?.value ?? props.value
+          if ('options' in props) {
+            props.options = props.options?.length
+              ? props.options
+              : old?.controllerProps?.options
+            if (!props.options?.some((e) => e.value === props.value)) {
+              props.value = props.options?.[0]?.value ?? props.value
             }
           }
-          if ('recommended' in setting.controllerProps) {
-            const oldRecommended = oldSettings.find((e: any) => e.key === setting.key)
-              ?.controllerProps?.recommended
+          if ('recommended' in props) {
+            const oldRecommended = old?.controllerProps?.recommended
             if (oldRecommended !== undefined && oldRecommended !== '') {
-              setting.controllerProps.recommended = oldRecommended
+              props.recommended = oldRecommended
             }
           }
         })
@@ -207,23 +214,34 @@ export abstract class BaseExtension implements ExtensionType {
   async updateSettings(componentProps: Partial<SettingComponentProps>[]): Promise<void> {
     if (!this.name) return
 
-    const settings = await this.getSettings()
+    const settings = (await this.getSettings()).filter((s) => s && s.controllerProps)
+    const changed: SettingComponentProps[] = []
 
     let updatedSettings = settings.map((setting) => {
       const updatedSetting = componentProps.find(
         (componentProp) => componentProp.key === setting.key
       )
       if (updatedSetting && updatedSetting.controllerProps) {
+        if (setting.controllerProps.value !== updatedSetting.controllerProps.value) {
+          changed.push(setting)
+        }
         setting.controllerProps.value = updatedSetting.controllerProps.value
       }
       return setting
     })
 
-    if (!updatedSettings.length) updatedSettings = componentProps as SettingComponentProps[]
+    if (!updatedSettings.length) {
+      // Nothing saved yet: the patch itself is the list, minus entries that
+      // cannot be read back later.
+      updatedSettings = (componentProps as SettingComponentProps[]).filter(
+        (s) => s && s.controllerProps
+      )
+      changed.push(...updatedSettings)
+    }
 
     localStorage.setItem(this.name, JSON.stringify(updatedSettings))
 
-    updatedSettings.forEach((setting) => {
+    changed.forEach((setting) => {
       this.onSettingUpdate<typeof setting.controllerProps.value>(
         setting.key,
         setting.controllerProps.value

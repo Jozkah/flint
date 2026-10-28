@@ -25,15 +25,19 @@ const state = {
   apiKey: undefined as string | undefined,
 }
 vi.mock('../useModelProvider', () => ({
-  useModelProvider: () => ({
-    selectedModel: state.selectedModel,
-    selectedProvider: state.selectedProvider,
-    getProviderByName: () => ({
-      base_url: state.baseUrl,
-      api_key: state.apiKey,
-      settings: [],
-    }),
-  }),
+  useModelProvider: (sel?: (s: unknown) => unknown) => {
+    const s = {
+      selectedModel: state.selectedModel,
+      selectedProvider: state.selectedProvider,
+      providers: [],
+      getProviderByName: () => ({
+        base_url: state.baseUrl,
+        api_key: state.apiKey,
+        settings: [],
+      }),
+    }
+    return sel ? sel(s) : s
+  },
 }))
 
 const reply = {

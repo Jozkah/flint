@@ -48,6 +48,8 @@ export function persistedProxyConfigState(
   return rest
 }
 
+let passwordWriteChain: Promise<void> = Promise.resolve()
+
 export const useProxyConfig = create<ProxyConfigState>()(
   persist(
     (set) => ({
@@ -68,7 +70,10 @@ export const useProxyConfig = create<ProxyConfigState>()(
       setProxyPassword: (proxyPassword) => {
         set({ proxyPassword })
         // A secret: kept in the OS keyring, never in settings.json.
-        void persistStoreSecret(PROXY_PASSWORD_SECRET, proxyPassword)
+        // Chained so keystroke writes land in order and the last one wins.
+        passwordWriteChain = passwordWriteChain.then(async () => {
+          await persistStoreSecret(PROXY_PASSWORD_SECRET, proxyPassword)
+        })
       },
       setProxyIgnoreSSL: (proxyIgnoreSSL) => set({ proxyIgnoreSSL }),
       setVerifyProxySSL: (verifyProxySSL) => set({ verifyProxySSL }),

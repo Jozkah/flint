@@ -157,6 +157,14 @@ async function listOnce(): Promise<{ listed: unknown[]; skipped: SkippedRecord[]
   return { listed, skipped: Array.isArray(skipped) ? skipped : [] }
 }
 
+function sameJson(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
 // Which refresh is the newest; an older reply landing late must not win.
 let refreshSeq = 0
 
@@ -185,14 +193,26 @@ export const useCampaignStore = create<CampaignsState>()((set) => ({
       const { ok, bad } = splitCampaigns(got.listed)
       const campaigns = await settleProposals(ok)
       if (seq !== refreshSeq) return
-      set({
-        campaigns,
-        skipped: [...got.skipped, ...bad],
-        loaded: true,
-        error: null,
-        unavailable: null,
-        staleApp: false,
-      })
+      const skipped = [...got.skipped, ...bad]
+      // A poll that found nothing new keeps the same state object, so
+      // subscribers are not re-rendered every few seconds for no change.
+      set((s) =>
+        s.loaded &&
+        s.error === null &&
+        s.unavailable === null &&
+        !s.staleApp &&
+        sameJson(s.campaigns, campaigns) &&
+        sameJson(s.skipped, skipped)
+          ? s
+          : {
+              campaigns,
+              skipped,
+              loaded: true,
+              error: null,
+              unavailable: null,
+              staleApp: false,
+            }
+      )
     } catch (e) {
       if (seq !== refreshSeq) return
       console.error('[campaigns] could not load the list:', e)
@@ -248,6 +268,9 @@ export function useCampaigns() {
 }
 
 export function useCampaign(id: string): Campaign | undefined {
-  const { campaigns } = useCampaigns()
-  return campaigns.find((c) => c.id === id)
+  useEffect(() => {
+    start()
+    return stop
+  }, [])
+  return useCampaignStore((s) => s.campaigns.find((c) => c.id === id))
 }

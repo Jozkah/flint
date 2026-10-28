@@ -2819,6 +2819,21 @@
     "load": "{{host}} से छवि लोड करें"
   },
   "messageSaveFailed": "संदेश सहेजा नहीं जा सका। पुनः आरंभ के बाद यह खो सकता है।",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "इस थ्रेड का बदलाव सहेजा नहीं जा सका। उसे वापस कर दिया गया।",
   "attachmentsProcessFailed": "अटैचमेंट तैयार नहीं हो सके, इसलिए संदेश नहीं भेजा गया",
   "attachmentMissingFile": "एक अटैच की गई फ़ाइल अब उपलब्ध नहीं है। उसे हटाकर दोबारा अटैच करें; आपका संदेश बॉक्स में ही है।",

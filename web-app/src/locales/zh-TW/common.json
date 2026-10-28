@@ -2817,6 +2817,21 @@
     "load": "從 {{host}} 載入圖片"
   },
   "messageSaveFailed": "無法儲存訊息，重新啟動後可能遺失。",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "無法儲存對此對話的變更，已還原。",
   "attachmentsProcessFailed": "無法準備附件，因此訊息未傳送",
   "attachmentMissingFile": "某個附件已無法使用。請移除後重新附加；訊息仍保留在輸入框中。",

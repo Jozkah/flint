@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { toast } from 'sonner'
+import i18n from '@/i18n/setup'
 import { chatsUsingGalleryImage, markGalleryImageDeleted } from '@/lib/chatImages'
 import { listen } from '@tauri-apps/api/event'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -73,7 +74,7 @@ function listenOnce(): void {
   // A failed subscription (no Tauri bridge on a preview or web surface, a
   // transient error) must not leave the flag set, or the listeners are never
   // registered again and the rejection goes unhandled.
-  void Promise.all([
+  void Promise.allSettled([
   listen<{ job_id: string; phase: string; fraction: number }>('diffusion-progress', ({ payload }) => {
     const job = useStudio.getState().job
     if (job) {
@@ -102,7 +103,13 @@ function listenOnce(): void {
       },
     })
   }),
-  ]).catch(() => {
+  ]).then((results) => {
+    // One refused subscription must not leave the others registered while the
+    // flag is cleared, or a retry would register them twice.
+    if (results.every((r) => r.status === 'fulfilled')) return
+    for (const r of results) {
+      if (r.status === 'fulfilled') r.value()
+    }
     listening = false
   })
 }
@@ -152,7 +159,9 @@ export const useStudio = create<StudioState>((set, get) => ({
     set({ error: null, download: { modelId: model.id, bytes: 0, total: model.totalBytes } })
     try {
       await studioApi.downloadModel(model.id, useGeneralSetting.getState().huggingfaceToken)
-      notifyInBackground(`${model.display_name} is downloaded`)
+      notifyInBackground(
+        i18n.t('common:studioToast.modelDownloaded', { name: model.display_name })
+      )
     } catch (error) {
       set({ error: message(error) })
     } finally {
@@ -209,7 +218,10 @@ export const useStudio = create<StudioState>((set, get) => ({
       await run()
       await get().refreshGallery(kind)
       log('done')
-      notifyInBackground(kind === 'video' ? 'Your video is ready' : 'Your image is ready', prompt)
+      notifyInBackground(
+        i18n.t(kind === 'video' ? 'common:studioToast.videoReady' : 'common:studioToast.imageReady'),
+        prompt
+      )
       return true
     } catch (error) {
       const text = message(error)
@@ -233,7 +245,9 @@ export const useStudio = create<StudioState>((set, get) => ({
       // Stopping only ends the wait here. The provider keeps rendering, and
       // some refuse a second job for the same key until it is done.
       toast.info(
-        `Stopped waiting. ${remoteLabel || 'The provider'} may keep rendering, and a new request can be refused until it finishes.`
+        i18n.t('common:studioToast.stoppedWaiting', {
+          provider: remoteLabel || i18n.t('common:studioToast.providerFallback'),
+        })
       )
       return
     }
@@ -260,9 +274,7 @@ export const useStudio = create<StudioState>((set, get) => ({
       await studioApi.remove(kind, id)
       if (usedBy.length) {
         markGalleryImageDeleted(id)
-        toast.warning(
-          'That picture is used in a chat. The chat can no longer view or edit it.'
-        )
+        toast.warning(i18n.t('common:studioToast.pictureInChat'))
       }
       await get().refreshGallery(kind)
     } catch (error) {

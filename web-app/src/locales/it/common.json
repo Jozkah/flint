@@ -2865,6 +2865,21 @@
     "load": "Carica immagine da {{host}}"
   },
   "messageSaveFailed": "Impossibile salvare il messaggio. Potrebbe andare perso dopo un riavvio.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "Impossibile salvare la modifica a questa conversazione. È stata annullata.",
   "attachmentsProcessFailed": "Impossibile preparare gli allegati, quindi il messaggio non è stato inviato",
   "attachmentMissingFile": "Un file allegato non è più disponibile. Rimuovilo e allegalo di nuovo; il messaggio è ancora nella casella.",

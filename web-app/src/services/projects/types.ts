@@ -29,7 +29,9 @@ export interface ProjectsService {
   addProject(
     name: string,
     assistantId?: string,
-    model?: ProjectModel
+    model?: ProjectModel,
+    /** Use this id instead of generating one (the home group's id). */
+    id?: string
   ): Promise<ThreadFolder>
 
   /**
