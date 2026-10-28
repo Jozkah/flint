@@ -768,7 +768,59 @@ fn redact_one_line(line: &str) -> String {
     // another secret is still taken (the core pass keeps only one finding).
     let pre = redact_url_passwords(line);
     let base = redact_one_line_core(pre.as_deref().unwrap_or(line));
-    redact_assignment_patterns(&base).unwrap_or(base)
+    let base = redact_assignment_patterns(&base).unwrap_or(base);
+    redact_authorization_header(&base).unwrap_or(base)
+}
+
+/// `Authorization: Bearer <value>` (also `Proxy-Authorization`): the value of
+/// an authorization header is a credential whatever its length. The shape rules
+/// above need 8 or 16 characters, which lets a short token through; the
+/// renderer's `redactSecrets` redacts the header value at any length too.
+fn redact_authorization_header(line: &str) -> Option<String> {
+    const HEAD: &str = "authorization:";
+    let lower = line.to_ascii_lowercase();
+    let mut out = String::with_capacity(line.len());
+    let mut copied = 0;
+    let mut search = 0;
+    let mut changed = false;
+    while let Some(found) = lower[search..].find(HEAD) {
+        let after = search + found + HEAD.len();
+        search = after;
+        let rest = &line[after..];
+        let gap = rest.len() - rest.trim_start().len();
+        let rest = &rest[gap..];
+        let scheme_len = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        if !matches!(
+            rest[..scheme_len].to_ascii_lowercase().as_str(),
+            "bearer" | "basic" | "token"
+        ) {
+            continue;
+        }
+        let tail = &rest[scheme_len..];
+        let spaces = tail.len() - tail.trim_start().len();
+        if spaces == 0 {
+            continue;
+        }
+        let start = after + gap + scheme_len + spaces;
+        let value_rest = &line[start..];
+        let value_len = value_rest
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+            .unwrap_or(value_rest.len());
+        let value = &value_rest[..value_len];
+        if value.is_empty() || value.contains(REDACTED) {
+            continue;
+        }
+        out.push_str(&line[copied..start]);
+        out.push_str(REDACTED);
+        copied = start + value_len;
+        search = copied;
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    out.push_str(&line[copied..]);
+    Some(out)
 }
 
 fn redact_one_line_core(line: &str) -> String {
@@ -1175,6 +1227,23 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
         let out = redact_secrets("< Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345");
         assert!(!out.contains("abcdefghijklmnopqrstuvwxyz"), "{out}");
         assert!(out.contains("[redacted]"), "{out}");
+    }
+
+    #[test]
+    fn a_short_authorization_header_value_is_redacted() {
+        for (text, secret) in [
+            ("Authorization: Bearer abc123def456", "abc123def456"),
+            ("Proxy-Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"),
+            ("curl -H \"Authorization: Bearer abc.def.ghi\" x", "abc.def.ghi"),
+        ] {
+            let out = redact_secrets(text);
+            assert!(!out.contains(secret), "{out}");
+            assert!(out.contains("[redacted]"), "{out}");
+            // A second pass changes nothing.
+            assert_eq!(redact_secrets(&out), out);
+        }
+        // Prose that merely contains the words is left alone.
+        assert_eq!(redact_secrets("Basic setup is done"), "Basic setup is done");
     }
 
     #[test]
