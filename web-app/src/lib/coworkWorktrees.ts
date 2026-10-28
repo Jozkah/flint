@@ -172,7 +172,7 @@ export const recoveryHidden = (folder: string): boolean =>
 export function hideRecovery(folder: string): void {
   const hints = readHints()
   if (!hints.folders.includes(folder))
-    writeHints({ ...hints, folders: [...hints.folders, folder] })
+    writeHints({ ...hints, folders: [...hints.folders, folder].slice(-200) })
 }
 
 /** The "not carried over" line was dismissed for this session. */
@@ -182,5 +182,8 @@ export const notCarriedDismissed = (sessionId: string): boolean =>
 export function dismissNotCarried(sessionId: string): void {
   const hints = readHints()
   if (!hints.notCarried.includes(sessionId))
-    writeHints({ ...hints, notCarried: [...hints.notCarried, sessionId] })
+    writeHints({
+      ...hints,
+      notCarried: [...hints.notCarried, sessionId].slice(-200),
+    })
 }

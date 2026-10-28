@@ -536,6 +536,7 @@
   "threadImage": "스레드 이미지",
   "editMessage": "메시지 수정",
   "deleteMessage": "메시지 삭제",
+  "deleteMessageDescription": "이 메시지를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
   "deleteThread": "스레드 삭제",
   "renameThread": "스레드 이름 바꾸기",
   "threadTitle": "스레드 제목",
