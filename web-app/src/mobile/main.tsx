@@ -21,6 +21,7 @@ import { invalidate } from './state/rpc'
 import { readPairingFragment } from './state/router'
 import { apply as applyTheme, startTheme } from './theme'
 import { getLanguage, LANGUAGE_KEY, onLanguageChange } from './i18n'
+import { showFatal, markBooted } from './fatal'
 import { ConnectDesktop } from './screens/ConnectDesktop'
 import {
   clearDesktop,
@@ -39,17 +40,6 @@ applyTheme()
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme)
 const root = createRoot(document.getElementById('root')!)
 
-/** A thrown error at startup would otherwise leave a blank screen. */
-function showFatal(message: string) {
-  shellLog('error', message.slice(0, 2000))
-  const el = document.getElementById('root')
-  if (!el || el.querySelector('[data-testid="fatal"]')) return
-  const box = document.createElement('pre')
-  box.dataset.testid = 'fatal'
-  box.style.cssText = 'white-space:pre-wrap;padding:24px;font:13px ui-monospace,monospace;color:#c00'
-  box.textContent = `Flint could not start.${String.fromCharCode(10)}${message}`
-  el.replaceChildren(box)
-}
 window.addEventListener('error', (e) => showFatal(String(e.error?.stack ?? e.message)))
 window.addEventListener('unhandledrejection', (e) => showFatal(String(e.reason?.stack ?? e.reason)))
 
@@ -163,6 +153,7 @@ async function boot() {
       <App client={client} store={store} />
     </StrictMode>
   )
+  markBooted()
 }
 
 void boot().catch((e) => showFatal(String(e?.stack ?? e)))
