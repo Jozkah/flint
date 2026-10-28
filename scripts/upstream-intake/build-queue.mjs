@@ -11,6 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readConcatJson } from './parse-concat-json.mjs'
 import { classify, labelNames } from './classify.mjs'
+import { OWNED } from './owned.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -19,20 +20,6 @@ const queuePath = path.join(repoRoot, 'docs', 'upstream-issues-prs.json')
 
 const SCHEMA_VERSION = 1
 const SOURCE = 'janhq/jan'
-
-// Fields the triage owns. A rebuild never clobbers these.
-const OWNED = [
-  'forkReproduction',
-  'decision',
-  'decisionReason',
-  'implementationStatus',
-  'forkCommits',
-  'tests',
-  'verification',
-  'blockers',
-  'registryIds',
-  'notes',
-]
 
 function loadCache() {
   const files = fs.readdirSync(cacheDir).filter((f) => f.endsWith('.json'))
