@@ -41,8 +41,11 @@ const JWT_TTL_SECS: u64 = 12 * 3600;
 pub const VAPID_SUBJECT: &str = "https://github.com/Jozkah/flint";
 /// Push services phones subscribe through. Anything else is refused, so a
 /// paired phone cannot point this computer at an arbitrary URL.
+///
+/// FCM is one exact host: a wildcard on `googleapis.com` would also admit
+/// storage.googleapis.com and every other Google API a phone could name.
+const PUSH_HOSTS: &[&str] = &["fcm.googleapis.com"];
 const PUSH_HOST_SUFFIXES: &[&str] = &[
-    ".googleapis.com",
     ".push.services.mozilla.com",
     ".push.apple.com",
     ".notify.windows.com",
@@ -157,10 +160,12 @@ pub fn validate_subscription(sub: &Subscription) -> Result<(), &'static str> {
         return Err("Push endpoints must be HTTPS");
     }
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
-    if !PUSH_HOST_SUFFIXES
-        .iter()
-        .any(|s| host.ends_with(s) || host == s[1..])
+    if !PUSH_HOSTS.contains(&host.as_str())
+        && !PUSH_HOST_SUFFIXES
+            .iter()
+            .any(|s| host.ends_with(s) || host == s[1..])
     {
+        log::warn!("remote: push endpoint on {host} refused: not a known push service");
         return Err("Unknown push service");
     }
     let p = unb64(&sub.keys.p256dh).map_err(|_| "Invalid subscription key")?;
@@ -478,6 +483,16 @@ pub fn outcome_of(status: u16) -> SendOutcome {
     }
 }
 
+/// The client pushes go out on: never follows a redirect (an allowed host must
+/// not bounce the request somewhere else) and gives up on a stalled service.
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default()
+}
+
 pub async fn send(client: &reqwest::Client, req: PushRequest) -> SendOutcome {
     let mut b = client.post(&req.endpoint).body(req.body);
     for (k, v) in req.headers {
@@ -486,5 +501,67 @@ pub async fn send(client: &reqwest::Client, req: PushRequest) -> SendOutcome {
     match b.timeout(std::time::Duration::from_secs(20)).send().await {
         Ok(r) => outcome_of(r.status().as_u16()),
         Err(e) => SendOutcome::Failed(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+
+    fn sub(endpoint: &str) -> Subscription {
+        let mut p = vec![4u8];
+        p.extend_from_slice(&[7u8; 64]);
+        Subscription {
+            endpoint: endpoint.into(),
+            keys: SubscriptionKeys { p256dh: b64(&p), auth: b64(&[9u8; 16]) },
+        }
+    }
+
+    #[test]
+    fn push_endpoint_rejects_storage_googleapis() {
+        assert!(validate_subscription(&sub("https://storage.googleapis.com/bucket/x")).is_err());
+        assert!(validate_subscription(&sub("https://evil.googleapis.com/x")).is_err());
+    }
+
+    #[test]
+    fn push_endpoint_accepts_fcm() {
+        assert!(validate_subscription(&sub("https://fcm.googleapis.com/fcm/send/abc")).is_ok());
+        assert!(validate_subscription(&sub("https://updates.push.services.mozilla.com/wpush/v2/abc")).is_ok());
+        assert!(validate_subscription(&sub("https://web.push.apple.com/abc")).is_ok());
+    }
+
+    #[test]
+    fn push_endpoint_requires_https() {
+        assert!(validate_subscription(&sub("http://fcm.googleapis.com/fcm/send/abc")).is_err());
+    }
+
+    #[tokio::test]
+    async fn push_client_does_not_follow_redirects() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = tcp.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((mut s, _)) = tcp.accept().await {
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf).await;
+                let _ = s
+                    .write_all(
+                        b"HTTP/1.1 302 Found
+Location: http://127.0.0.1:1/x
+Content-Length: 0
+Connection: close
+
+",
+                    )
+                    .await;
+            }
+        });
+        let resp = client()
+            .post(format!("http://{addr}/"))
+            .body("x")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 302);
     }
 }

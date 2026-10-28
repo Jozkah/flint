@@ -223,7 +223,7 @@ impl RemoteHub {
             connected: Mutex::new(HashMap::new()),
             visible: Mutex::new(HashMap::new()),
             vapid: Mutex::new(None),
-            http: reqwest::Client::new(),
+            http: push::client(),
             local_http: reqwest::Client::builder()
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
