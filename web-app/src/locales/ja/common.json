@@ -2999,5 +2999,11 @@
         "confirm": "すべて停止"
       }
     }
+  },
+  "apiKey": {
+    "show": "API キーを表示",
+    "hide": "API キーを非表示",
+    "copy": "API キーをコピー",
+    "copied": "コピーしました"
   }
 }
