@@ -25,7 +25,14 @@ import {
 } from '@/hooks/useMCPServers'
 import { IdleShutdownInput } from '@/containers/IdleShutdownInput'
 import { ServerToolTimeoutInput } from '@/containers/ServerToolTimeoutInput'
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
@@ -342,7 +349,8 @@ function MCPServersDesktop() {
     setFingerprints(next)
     return next
   }, [])
-  const serversSignature = JSON.stringify(mcpServers)
+  // Serialized once per store update, not on every render.
+  const serversSignature = useMemo(() => JSON.stringify(mcpServers), [mcpServers])
   useEffect(() => {
     void refreshFingerprints()
   }, [serversSignature, refreshFingerprints])
@@ -944,22 +952,31 @@ function MCPServersDesktop() {
   }, [refreshConnectedServers])
 
   const serverEntries = Object.entries(mcpServers)
-  const snapshotFor = (key: string, config: MCPServerConfig) => {
-    const authStatus = authStatuses[key]
-    const profile = deriveMcpServerProfile(config, authStatus)
-    return {
-      authStatus,
-      profile,
-      snapshot: deriveConnectionState({
-        installed: true,
-        enabled: !!config.active,
-        connected: connectedServers.includes(key),
-        lifecycle: lifecycle[key],
-        runtime: runtime[key],
+  // One snapshot per server, computed once per change to its inputs rather
+  // than again for every card, filter and count that asks for it.
+  const snapshots = useMemo(() => {
+    const compute = (key: string, config: MCPServerConfig) => {
+      const authStatus = authStatuses[key]
+      const profile = deriveMcpServerProfile(config, authStatus)
+      return {
         authStatus,
-        transport: profile.transport,
-      }),
+        profile,
+        snapshot: deriveConnectionState({
+          installed: true,
+          enabled: !!config.active,
+          connected: connectedServers.includes(key),
+          lifecycle: lifecycle[key],
+          runtime: runtime[key],
+          authStatus,
+          transport: profile.transport,
+        }),
+      }
     }
+    return { compute, byKey: new Map(Object.entries(mcpServers).map(([key, config]) => [key, { config, value: compute(key, config) }])) }
+  }, [mcpServers, connectedServers, lifecycle, runtime, authStatuses])
+  const snapshotFor = (key: string, config: MCPServerConfig) => {
+    const hit = snapshots.byKey.get(key)
+    return hit && hit.config === config ? hit.value : snapshots.compute(key, config)
   }
   const states = serverEntries.map(([key, config]) => snapshotFor(key, config).snapshot.state)
   const connectedCount = states.filter((s) => s === 'connected').length
