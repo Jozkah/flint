@@ -76,6 +76,12 @@ describe('backendGpuFamily', () => {
     expect(backendGpuFamily('win-arm64')).toBe('cpu')
   })
 
+  // The backend observed from macOS device ids is `mtl` (from `MTL0`).
+  it('reads the observed Metal backend as metal', () => {
+    expect(backendGpuFamily('mtl')).toBe('metal')
+    expect(backendGpuFamily('metal')).toBe('metal')
+  })
+
   it('treats macOS builds as GPU-capable through Metal', () => {
     expect(backendGpuFamily('macos-arm64')).toBe('metal')
     expect(backendGpuFamily('macos-x64')).toBe('metal')

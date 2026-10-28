@@ -46,10 +46,16 @@ export interface EmbeddingVectorCheck {
  * configured `cuda` told us nothing about whether CUDA loaded.
  */
 export function backendFromDeviceIds(deviceIds: string[]): string {
-  const first = deviceIds.find((id) => id.trim() !== '')
-  if (!first) return ''
-  return first.trim().replace(/\d+$/, '').toLowerCase()
+  const backends = deviceIds
+    .map((id) => id.trim().replace(/\d+$/, '').toLowerCase())
+    .filter((b) => b !== '')
+  // Host-only entries (BLAS, CPU) are not accelerators. macOS lists `BLAS`
+  // before `MTL0`, and an OpenBLAS Linux build can do the same, so taking the
+  // first id read a Metal or Vulkan build as CPU-only.
+  return backends.find((b) => !HOST_ONLY_BACKENDS.has(b)) ?? backends[0] ?? ''
 }
+
+const HOST_ONLY_BACKENDS = new Set(['blas', 'cpu', 'accelerate'])
 
 /**
  * A GPU present in hardware but absent from the engine's device list means
