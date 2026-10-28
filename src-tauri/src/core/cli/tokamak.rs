@@ -422,9 +422,11 @@ pub async fn live_valid() -> Option<bool> {
     }
     match verify_key(&key, &stored_base_url()).await {
         // A 401/403 is an invalid key; a network blip should not read as one.
+        // Only a rejection says the key is bad; a 429, a 5xx or a body we
+        // cannot read says nothing about it.
         Ok(_) => Some(true),
-        Err(e) if e.contains("could not reach") => None,
-        Err(_) => Some(false),
+        Err(e) if e == describe_failure(401, "") => Some(false),
+        Err(_) => None,
     }
 }
 

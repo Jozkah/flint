@@ -237,11 +237,16 @@ pub fn resolve_references_with(
     let mut parts: Vec<String> = Vec::new();
     let mut unresolved = std::collections::HashSet::new();
     for raw in &refs {
-        let abs = if Path::new(raw).is_absolute() {
-            PathBuf::from(raw)
-        } else {
-            project_root.join(raw)
-        };
+        let to_abs = |r: &str| if Path::new(r).is_absolute() { PathBuf::from(r) } else { project_root.join(r) };
+        let mut abs = to_abs(raw);
+        // `see @src/main.rs.` ends a sentence: when the token as typed does
+        // not exist, retry without trailing sentence punctuation.
+        if !abs.exists() {
+            let trimmed = raw.trim_end_matches(['.', ':', ')']);
+            if !trimmed.is_empty() && trimmed != raw && to_abs(trimmed).exists() {
+                abs = to_abs(trimmed);
+            }
+        }
 
         if is_sensitive_name(&abs) {
             parts.push(format!("[{}: refused (sensitive file)]", raw));
@@ -517,6 +522,14 @@ mod tests {
         assert_eq!(clean, "read");
         assert!(block.contains("hello world"));
         assert!(block.contains("hello.txt"));
+    }
+
+    #[test]
+    fn a_reference_ending_a_sentence_still_resolves() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), b"hello world").unwrap();
+        let (_clean, block) = resolve_references("see @hello.txt.", dir.path());
+        assert!(block.contains("hello world"), "{block}");
     }
 
     #[test]

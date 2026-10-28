@@ -562,9 +562,8 @@ async fn connect_in(
                     let server = name.to_string();
                     let folder = data_folder.to_path_buf();
                     tokio::spawn(async move {
-                        use tokio::io::AsyncBufReadExt;
-                        let mut lines = tokio::io::BufReader::new(stderr).lines();
-                        while let Ok(Some(line)) = lines.next_line().await {
+                        let mut reader = tokio::io::BufReader::new(stderr);
+                        while let Some(line) = read_capped_line(&mut reader, STDERR_LINE_CAP).await {
                             crate::core::mcp::server_log::append(&folder, &server, &line);
                         }
                     });
@@ -934,9 +933,66 @@ pub async fn connect_active(servers: &SharedMcpServers) -> ConnectOutcome {
     out
 }
 
+/// Longest stderr line kept for a server's log; the rest of the line is read
+/// and dropped, so a server writing megabytes without a newline cannot grow
+/// the CLI's memory.
+const STDERR_LINE_CAP: usize = 8 * 1024;
+
+/// Next line (without the newline), cut to `cap` bytes; `None` at end of
+/// stream or on a read error.
+async fn read_capped_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, cap: usize) -> Option<String> {
+    use tokio::io::AsyncBufReadExt;
+    let mut kept: Vec<u8> = Vec::new();
+    let mut cut = false;
+    let mut read_any = false;
+    loop {
+        let buf = reader.fill_buf().await.ok()?;
+        if buf.is_empty() {
+            break;
+        }
+        read_any = true;
+        let (chunk, used, done) = match buf.iter().position(|&b| b == b'\n') {
+            Some(i) => (&buf[..i], i + 1, true),
+            None => (buf, buf.len(), false),
+        };
+        let room = cap.saturating_sub(kept.len());
+        if chunk.len() > room {
+            cut = true;
+        }
+        kept.extend_from_slice(&chunk[..chunk.len().min(room)]);
+        reader.consume(used);
+        if done {
+            break;
+        }
+    }
+    if !read_any {
+        return None;
+    }
+    if kept.last() == Some(&b'\r') {
+        kept.pop();
+    }
+    let mut line = String::from_utf8_lossy(&kept).into_owned();
+    if cut {
+        line.push_str(" ...(truncated)");
+    }
+    Some(line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stderr_lines_are_capped_without_buffering_the_whole_line() {
+        let mut data = vec![b'x'; 1 << 20];
+        data.extend_from_slice(b"\nnext\r\nlast");
+        let mut reader = tokio::io::BufReader::new(&data[..]);
+        let first = read_capped_line(&mut reader, 16).await.unwrap();
+        assert_eq!(first, format!("{} ...(truncated)", "x".repeat(16)));
+        assert_eq!(read_capped_line(&mut reader, 16).await.unwrap(), "next");
+        assert_eq!(read_capped_line(&mut reader, 16).await.unwrap(), "last");
+        assert!(read_capped_line(&mut reader, 16).await.is_none());
+    }
 
     /// A temporary data folder with a fresh config path, cleaned up on drop.
     fn temp_data() -> tempfile::TempDir {

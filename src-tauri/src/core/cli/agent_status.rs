@@ -22,6 +22,10 @@ const AGENT_TYPE: &str = "jan";
 const OSC_9999_PREFIX: &str = "\x1b]9999;";
 /// OSC 2 sets the window title.
 const OSC_TITLE_PREFIX: &str = "\x1b]2;";
+/// XTWINOPS: save the window title on the terminal's title stack, and restore
+/// it. Terminals without the stack ignore both.
+const TITLE_PUSH: &str = "\x1b[22;2t";
+const TITLE_POP: &str = "\x1b[23;2t";
 
 /// Agent states understood by the OSC 9999 protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,7 +145,22 @@ impl AgentStatusReporter {
     /// Start emitting to stdout. Called by the real TUI once the terminal is
     /// set up; unit tests construct `App` through paths that leave it off.
     pub fn enable(&mut self) {
+        if !self.enabled {
+            // Saved first, so leaving can hand the user back their own title
+            // instead of a stale "Jan ready".
+            write_raw(TITLE_PUSH);
+        }
         self.enabled = true;
+    }
+
+    /// Stop emitting and restore the title saved by [`Self::enable`]. Where
+    /// the title stack is unsupported, the title is cleared instead of left
+    /// on the last status.
+    pub fn disable(&mut self) {
+        if self.enabled {
+            write_raw(&restore_title_sequence());
+        }
+        self.enabled = false;
     }
 
     /// Compute the sequences for a state transition.
@@ -201,6 +220,12 @@ impl AgentStatusReporter {
     }
 }
 
+/// Sequence written on leaving: an empty title (the fallback a terminal
+/// without a title stack keeps), then the pop that restores the saved one.
+fn restore_title_sequence() -> String {
+    format!("{OSC_TITLE_PREFIX}\x07{TITLE_POP}")
+}
+
 /// Write a raw escape sequence to stdout and flush, ignoring errors the way
 /// the clipboard OSC 52 write does: a failed PTY write must never take down
 /// the TUI.
@@ -220,6 +245,12 @@ mod tests {
         seq.strip_prefix(OSC_9999_PREFIX)
             .and_then(|p| p.strip_suffix('\x07'))
             .expect("sequence must be framed by the OSC 9999 prefix and a trailing BEL")
+    }
+
+    #[test]
+    fn leaving_clears_then_restores_the_saved_title() {
+        assert_eq!(restore_title_sequence(), "\x1b]2;\x07\x1b[23;2t");
+        assert_eq!(TITLE_PUSH, "\x1b[22;2t");
     }
 
     /// Decode the extracted OSC 9999 payload as JSON.
