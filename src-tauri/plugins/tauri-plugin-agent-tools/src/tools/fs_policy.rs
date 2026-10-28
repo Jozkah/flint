@@ -191,7 +191,7 @@ pub fn resolve(input: &FsInput<'_>) -> FsRules {
     let user_deny_read = expand_all("deny_read", &input.config.deny_read, home, &mut notes);
     let allow_read_in = expand_all("allow_read", &input.config.allow_read, home, &mut notes);
     let allow_write_in = expand_all("allow_write", &input.config.allow_write, home, &mut notes);
-    let deny_write = expand_all("deny_write", &input.config.deny_write, home, &mut notes);
+    let deny_write_in = expand_all("deny_write", &input.config.deny_write, home, &mut notes);
 
     // The credential folders, minus any that `allow_read` names exactly.
     let creds: Vec<PathBuf> = match (&home_real, input.default_credentials) {
@@ -203,6 +203,26 @@ pub fn resolve(input: &FsInput<'_>) -> FsRules {
         .filter(|c| !allow_read_in.contains(*c))
         .cloned()
         .collect();
+
+    // Writes: the user's denies and every credential folder, whatever
+    // `allow_read` opened for reading. A deny over the workspace is dropped,
+    // as for reads: the run could not work at all.
+    let mut deny_write: Vec<PathBuf> = Vec::new();
+    // Only the credential folders `allow_read` opened: the others are already
+    // denied for reading, and a read-only bind over that deny would show them.
+    let opened_creds = creds.iter().filter(|c| !standing_creds.contains(*c));
+    for d in deny_write_in.iter().chain(opened_creds) {
+        if must.iter().any(|m| within(m, d)) {
+            notes.push(format!(
+                "[tools.fs]: not denying writes to {}: it contains the workspace",
+                d.display()
+            ));
+            continue;
+        }
+        if !deny_write.contains(d) {
+            deny_write.push(d.clone());
+        }
+    }
 
     let mut deny_read: Vec<PathBuf> = Vec::new();
     for d in user_deny_read.iter().chain(standing_creds.iter()) {
@@ -361,6 +381,8 @@ mod tests {
         let r = rules(&f, cfg, true);
         assert!(!r.read_denied(&f.home.join(".aws/credentials")));
         assert!(r.read_denied(&f.home.join(".ssh/id_rsa")));
+        // Opened for reading, still closed for writing.
+        assert!(r.write_denied(&f.home.join(".aws/credentials")));
     }
 
     #[test]

@@ -172,7 +172,8 @@ describe('TurnChangeCard', () => {
     fireEvent.click(screen.getByText('rooms:changes.openDiff'))
     expect(await screen.findByTestId('workspace-diff')).toBeTruthy()
     expect(screen.getByTestId('apply-file-diff')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'common:close' })).toBeTruthy()
+    // The dialog's corner X is also named "close"; the footer must say Close, not Cancel.
+    expect(screen.getAllByRole('button', { name: 'common:close' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'rooms:controls.cancel' })).toBeNull()
   })
 })

@@ -445,7 +445,7 @@ pub fn cost_stop(completion: &serde_json::Value, limit: Option<f64>) -> Option<S
 pub fn explain_setup_failure(error: &str, limit: Option<f64>) -> String {
     if limit.is_some() && error.contains("no price is declared") {
         format!(
-            "the task has a cost limit but its model has no price, so spend cannot be metered.              Set the model's price in prices.toml, or remove the limit. ({error})"
+            "the task has a cost limit but its model has no price, so spend cannot be metered. Set the model's price in prices.toml, or remove the limit. ({error})"
         )
     } else {
         error.to_string()

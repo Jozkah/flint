@@ -397,6 +397,18 @@ impl Agent {
     }
 
     /// A campaign this server drives; anything else is refused.
+    /// A campaign whose source folder sits under one of this server's roots.
+    /// One that does not is answered as missing: a client signed in to read
+    /// these folders gets nothing about work elsewhere on the machine.
+    fn visible_campaign(&self, id: &str) -> Result<campaign::Campaign, Fail> {
+        let c = campaign::get(&self.data_folder, id).map_err(|e| failure(e.message))?;
+        if agent_runs::inside(&self.roots, &c.source_root) {
+            Ok(c)
+        } else {
+            Err(fail(404, "that campaign does not exist on this server"))
+        }
+    }
+
     fn server_campaign(&self, id: &str) -> Result<campaign::Campaign, Fail> {
         let c = campaign::get(&self.data_folder, id).map_err(|e| failure(e.message))?;
         if c.driver != campaign::DRIVER_SERVER {
@@ -412,6 +424,7 @@ impl Agent {
         match command {
             "agent_campaign_cancel" => {
                 let id = text(args, "id")?.to_owned();
+                self.visible_campaign(&id)?;
                 let detail = args.get("detail").and_then(Value::as_str).unwrap_or_default().to_owned();
                 if let Some(driver) = self.driver.as_ref().filter(|_| self.runner.is_some()) {
                     let c = campaign::get(&self.data_folder, &id).map_err(|e| failure(e.message))?;
@@ -778,13 +791,20 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
                 }
                 self.folders(args)
             }
-            "agent_campaign_list" => to_json(campaign::list(&self.data_folder)),
+            "agent_campaign_list" => {
+                let visible: Vec<_> = campaign::list(&self.data_folder)
+                    .into_iter()
+                    .filter(|c| agent_runs::inside(&self.roots, &c.source_root))
+                    .collect();
+                to_json(visible)
+            }
             "agent_campaign_get" => {
                 let id = text(args, "id")?;
-                to_json(campaign::get(&self.data_folder, id).map_err(|e| failure(e.message))?)
+                to_json(self.visible_campaign(id)?)
             }
             "agent_campaign_context" => {
                 let id = text(args, "id")?;
+                self.visible_campaign(id)?;
                 let tasks: Vec<String> = field(args, "taskIds")?;
                 to_json(
                     campaign::context(&self.data_folder, id, &tasks)
@@ -793,11 +813,13 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
             }
             "agent_campaign_events" => {
                 let id = text(args, "id")?;
+                self.visible_campaign(id)?;
                 to_json(campaign::events(&self.data_folder, id).map_err(|e| failure(e.message))?)
             }
             "agent_campaign_transition" => {
                 let id = text(args, "id")?;
                 let input: campaign::TransitionInput = field(args, "input")?;
+                self.visible_campaign(id)?;
                 // Pause, resume and cancel only. A task move would skip the
                 // verification step, a plan approval would start work, and an
                 // integration record names a branch and worktree on this
@@ -825,6 +847,7 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
             }
             "agent_campaign_cancel" => {
                 let id = text(args, "id")?;
+                self.visible_campaign(id)?;
                 let detail = args.get("detail").and_then(Value::as_str).unwrap_or_default();
                 to_json(
                     campaign::cancel(&self.data_folder, id, detail)
@@ -833,6 +856,7 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
             }
             "agent_campaign_delete" => {
                 let id = text(args, "id")?;
+                self.visible_campaign(id)?;
                 campaign::delete(&self.data_folder, id).map_err(|e| failure(e.message))?;
                 Ok(Value::Null)
             }
@@ -846,6 +870,7 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
             "agent_campaign_claim_notice" => {
                 let id = text(args, "id")?;
                 let key = text(args, "key")?;
+                self.visible_campaign(id)?;
                 to_json(campaign::claim_notice(&self.data_folder, id, key).map_err(|e| failure(e.message))?)
             }
             "agent_campaign_diff" => {
@@ -880,6 +905,7 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
             }
             "agent_campaign_refresh" => {
                 let id = text(args, "id")?;
+                self.visible_campaign(id)?;
                 to_json(campaign_integration::refresh(&self.data_folder, id).map_err(|e| failure(e.message))?)
             }
             "agent_campaign_orphans" => {

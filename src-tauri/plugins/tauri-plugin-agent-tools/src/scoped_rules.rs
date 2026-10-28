@@ -252,12 +252,16 @@ const WRAPPERS: &[&str] = &[
     "command", "builtin", "start", "wsl", "runas", "busybox", "watch", "stdbuf", "setsid",
     // Package-runner and script-host launchers: they fetch or run whatever they are given.
     "uvx", "bunx", "pnpx", "cscript", "wscript", "mshta", "rundll32", "regsvr32", "msbuild", "ssh",
+    // PowerShell's own runners: they evaluate or start whatever they are given.
+    "iex", "invoke-expression", "invoke-command", "icm", "start-process", "saps", "invoke-item", "ii",
 ];
 
 /// Programs whose effect is deleting or reformatting; always asked for.
 const DANGEROUS: &[&str] = &[
     "rm", "rmdir", "del", "erase", "rd", "ri", "remove-item", "format", "diskpart", "dd", "mkfs",
     "shutdown", "reboot", "halt", "poweroff", "shred", "truncate",
+    "clear-content", "clc", "format-volume", "clear-disk", "remove-partition", "initialize-disk",
+    "remove-itemproperty", "rp",
 ];
 
 /// Interpreters: fine behind a script name, not bare (`python -c ...`).
@@ -314,8 +318,13 @@ fn prefix_remainder_blocked(token: &str) -> bool {
     if WINDOWS_SWITCHES.contains(&lower.as_str()) {
         return true;
     }
+    // `--eval=code`, `--exec=rm`: the flag is the part before `=`.
     let name = lower.split('=').next().unwrap_or(&lower);
-    if PREFIX_BLOCKED_FLAGS.contains(&name) || WINDOWS_SWITCHES.contains(&name) {
+    if PREFIX_BLOCKED_FLAGS.contains(&name)
+        || WINDOWS_SWITCHES.contains(&name)
+        || DESTRUCTIVE_FLAGS.contains(&name)
+        || (name != "-m" && EXEC_FLAGS.contains(&name))
+    {
         return true;
     }
     // `/c:cmd`, `-ofile`, `-ccode` forms: switch letters glued to a value.
@@ -334,11 +343,33 @@ fn prefix_remainder_blocked(token: &str) -> bool {
 
 fn program_of(token: &str) -> String {
     let base = token.rsplit(['/', '\\']).next().unwrap_or(token).to_lowercase();
-    base.strip_suffix(".exe")
+    let stem = base
+        .strip_suffix(".exe")
         .or_else(|| base.strip_suffix(".cmd"))
         .or_else(|| base.strip_suffix(".bat"))
-        .unwrap_or(&base)
-        .to_string()
+        .unwrap_or(&base);
+    canonical_program(stem)
+}
+
+/// One name per program: `python3.12`, `pythonw` and `python3` are `python3`
+/// or `python`, `nodejs` is `node`, so a version or windowless spelling does
+/// not slip past the interpreter and wrapper tables.
+fn canonical_program(stem: &str) -> String {
+    if stem == "nodejs" {
+        return "node".to_string();
+    }
+    // A trailing `.N` / `-N.N` version: `python3.12`, `ruby-3.2`.
+    let unversioned = match stem.find(|c: char| c == '.' || c == '-') {
+        Some(i) if stem[i + 1..].chars().all(|c| c.is_ascii_digit() || c == '.') && i > 0 => &stem[..i],
+        _ => stem,
+    };
+    // A windowless launcher: `pythonw`, `pyw`, `javaw`.
+    for (windowless, plain) in [("pythonw", "python"), ("pyw", "py"), ("javaw", "java")] {
+        if unversioned == windowless {
+            return plain.to_string();
+        }
+    }
+    unversioned.to_string()
 }
 
 /// Why `prefix` cannot be a standing command prefix, if it cannot.
@@ -368,10 +399,11 @@ pub fn prefix_problem(prefix: &str) -> Option<String> {
     if SUBCOMMAND_TOOLS.contains(&program.as_str()) && tokens.len() < 2 {
         return Some(format!("`{program}` alone covers every subcommand"));
     }
-    if tokens[1..]
-        .iter()
-        .any(|t| EXEC_FLAGS.contains(&t.to_lowercase().as_str()))
-    {
+    if tokens[1..].iter().any(|t| {
+        let lower = t.to_lowercase();
+        let name = lower.split('=').next().unwrap_or(&lower).to_string();
+        EXEC_FLAGS.contains(&lower.as_str()) || EXEC_FLAGS.contains(&name.as_str())
+    }) {
         return Some("the prefix has a flag that runs code".into());
     }
     None
@@ -626,6 +658,12 @@ fn read_rules(data_folder: &Path) -> Result<Vec<ScopedRule>, String> {
     }
 }
 
+/// The cross-process half of the store lock: the desktop app and the CLI
+/// both change this file, and each read-change-write must see the other's.
+fn hold_rules(data_folder: &Path) -> Result<crate::mailbox::Held, String> {
+    crate::mailbox::Held::take(&rules_file(data_folder))
+}
+
 fn write_rules(data_folder: &Path, rules: Vec<ScopedRule>) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(&RuleFile { rules }).map_err(|e| e.to_string())?;
     crate::atomic_file::write_atomic(&rules_file(data_folder), &json)
@@ -658,6 +696,7 @@ pub fn add(
     }
     let scope = validate_choice(scope, tool, kind, args, project_root)?;
     let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _file = hold_rules(data_folder)?;
     // Refuses rather than starting over: rewriting a file this cannot read
     // would silently drop the rules the user made.
     let mut rules = read_rules(data_folder)?;
@@ -686,6 +725,7 @@ pub fn add(
 /// Forget one rule. `Ok(false)` when there was none by that id.
 pub fn revoke(data_folder: &Path, id: &str) -> Result<bool, String> {
     let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _file = hold_rules(data_folder)?;
     let mut rules = read_rules(data_folder)?;
     let before = rules.len();
     rules.retain(|r| r.id != id);
@@ -1037,6 +1077,13 @@ mod tests {
     }
 
     #[test]
+    fn exec_flags_with_an_equals_value_are_not_covered() {
+        assert!(!exec_covered("find .", "find . --exec=rm"));
+        assert!(!exec_covered("find .", "find . --eval=1"));
+        assert!(exec_covered("find .", "find . -name x"));
+    }
+
+    #[test]
     fn prefix_rule_rejects_git_diff_output() {
         assert!(prefix_covers("git diff", "git diff HEAD"));
         assert!(!prefix_covers("git diff", "git diff --output=C:/x/evil.txt"));
@@ -1183,6 +1230,13 @@ mod tests {
             "python",
             "python -c",
             "node -e",
+            "python3.12",
+            "pythonw",
+            "nodejs",
+            "iex foo",
+            "invoke-expression foo",
+            "clear-content x",
+            "node --eval=1",
             "node",
             "rm",
             "rm -rf",

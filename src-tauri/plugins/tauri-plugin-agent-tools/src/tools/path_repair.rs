@@ -119,6 +119,25 @@ pub fn repair_args(
     Ok(())
 }
 
+/// Rewrite every path argument written as `/C:\...` or `file:///C:/...` to
+/// its plain drive form (Windows only; see
+/// [`crate::tools::sandbox::normalize_drive_path`]). Runs before relative-path
+/// rebasing and before the gate, so policy, hidden-path and containment
+/// checks all see the path the tool will actually open.
+pub fn normalize_drive_args(tool: &str, path_args: &[&'static str], args: &mut Value) {
+    let Some(obj) = args.as_object_mut() else {
+        return;
+    };
+    for key in path_keys(tool, path_args) {
+        let Some(raw) = obj.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        if let std::borrow::Cow::Owned(fixed) = crate::tools::sandbox::normalize_drive_path(raw) {
+            obj.insert(key.to_string(), Value::String(fixed));
+        }
+    }
+}
+
 /// [`repair_args`] against the real filesystem, relative paths resolved as
 /// the tools resolve them.
 pub fn repair_args_on_disk(

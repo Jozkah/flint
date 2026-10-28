@@ -41,7 +41,8 @@ describe('FolderTrustBanner', () => {
     const src = (p: string) => readFileSync(resolve(__dirname, p), 'utf8')
     const chat = src('../ThreadConversation.tsx')
     expect(chat.indexOf('<FolderTrustBanner')).toBeGreaterThan(chat.indexOf('Chat Input - Fixed at bottom'))
-    const cowork = src('../../routes/cowork.tsx')
+    // Cowork's composer area moved out of routes/cowork.tsx into its own container.
+    const cowork = src('../CoworkComposerArea.tsx')
     const at = cowork.indexOf('<FolderTrustBanner')
     const stack = cowork.indexOf('<CoworkBarStack')
     // Directly above the bar stack that sits over the composer.
