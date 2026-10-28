@@ -66,7 +66,7 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { basenameOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
+import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import { codePathExists } from '@/lib/codePathExists'
 import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
@@ -276,18 +276,16 @@ import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { configuredContextTokens } from '@/lib/coworkContextWindow'
 import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
+import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
-  applySandboxHunk,
   isFlintInternalPath,
   planSandboxApply,
-  sandboxCopyOfProjectFile,
-} from '@/lib/coworkSandboxApply'
+  } from '@/lib/coworkSandboxApply'
 import { probeSandboxFile } from '@/lib/coworkApplyAll'
 import { absoluteChangePath, shortToolPath } from '@/lib/codePathResolve'
 import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
-import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import {
   NO_USER_EDITS,
   useCoworkUserEdits,
@@ -7173,91 +7171,23 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'code' && session?.id && (
-          <CoworkCodePanel
-            onOfferFolder={() => void attachFolder()}
-            // The tree the run reads. Browsing the attached folder while the
-            // agent works in a worktree would show two different repositories
-            // under one name.
-            folder={treeRoot}
-            projectName={folder ? basenameOf(folder) : undefined}
-            workspacePath={workspacePath}
-            sessionKey={session.id}
-            state={session.codePanel}
+          <CoworkCodeRail
+            sessionId={session.id}
+            codePanel={session.codePanel}
             turns={displayedTurns}
-            onStateChange={(next) =>
-              useCoworkSessions.getState().setCodePanel(session.id, next)
-            }
-            onAddToChat={addCodeToChat}
-            onAttach={() => void attachFolder()}
-            onClose={closeRail}
-            // A Review only run's copy of a project file shows as markers on
-            // the real one, found the way Apply to folder maps it.
-            sandboxCopyFor={(projectPath) =>
-              sandboxApply
-                ? (sandboxCopyOfProjectFile(
-                    fileDiffs.map((f) => f.path),
-                    sandboxApply.planFor,
-                    folder,
-                    projectPath
-                  )?.plan.source ?? null)
-                : null
-            }
-            onApplySandboxHunk={
-              !sandboxApply
-                ? undefined
-                : async (projectPath, expected, content) => {
-              const copy =
-                sandboxApply && session?.id
-                  ? sandboxCopyOfProjectFile(
-                      fileDiffs.map((f) => f.path),
-                      sandboxApply.planFor,
-                      folder,
-                      projectPath
-                    )
-                  : null
-              if (!copy || !session?.id) throw new Error(`${projectPath} has no sandbox copy`)
-              const outcome = await applySandboxHunk({
-                session: session.id,
-                path: copy.plan.source,
-                project: copy.plan.folder,
-                destination: copy.plan.destination,
-                expected,
-                content,
-              })
-              if (outcome === 'applied') git.refresh()
-              return outcome
-                  }
-            }
-            onApplySandboxCopy={(projectPath) => {
-              if (!sandboxApply) return
-              const copy = sandboxCopyOfProjectFile(
-                fileDiffs.map((f) => f.path),
-                sandboxApply.planFor,
-                folder,
-                projectPath
-              )
-              if (!copy) return
-              // Confirmed in the peek ("Apply whole file…"), with the change in view.
-              void sandboxApply
-                .apply(copy.path, true)
-                .then(() => toast.success(t('common:changes.applyReplaced')))
-                .catch((e) =>
-                  toast.error(
-                    t('common:changes.applyFailed', { message: errorText(e) })
-                  )
-                )
-            }}
-            // Hand edits save where the agent's writes would, under the same
-            // grant; with no live grant a real-tree mode stays read-only.
-            editAccess={{
-              destination: effective.destination,
-              writeGrant: relativeIsProject
-                ? (liveGrant?.grantId ?? null)
-                : null,
-            }}
-            readRoot={treeRoot}
+            folder={folder}
+            treeRoot={treeRoot}
+            workspacePath={workspacePath}
             extraFolders={extraFolders}
-            onSaved={() => git.refresh()}
+            destination={effective.destination}
+            relativeIsProject={relativeIsProject}
+            writeGrant={liveGrant?.grantId}
+            sandboxApply={sandboxApply}
+            fileDiffs={fileDiffs}
+            git={git}
+            onAttachFolder={() => void attachFolder()}
+            onAddToChat={addCodeToChat}
+            onClose={closeRail}
           />
         )}
         {phone && !panelShown && (
