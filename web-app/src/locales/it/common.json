@@ -3064,5 +3064,11 @@
         "confirm": "Ferma tutto"
       }
     }
+  },
+  "apiKey": {
+    "show": "Mostra la chiave API",
+    "hide": "Nascondi la chiave API",
+    "copy": "Copia la chiave API",
+    "copied": "Copiato"
   }
 }

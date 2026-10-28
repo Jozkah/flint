@@ -3013,5 +3013,11 @@
         "confirm": "Stop everything"
       }
     }
+  },
+  "apiKey": {
+    "show": "Show API key",
+    "hide": "Hide API key",
+    "copy": "Copy API key",
+    "copied": "Copied"
   }
 }

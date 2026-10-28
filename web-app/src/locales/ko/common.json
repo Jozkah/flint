@@ -3001,5 +3001,11 @@
         "confirm": "모두 중지"
       }
     }
+  },
+  "apiKey": {
+    "show": "API 키 표시",
+    "hide": "API 키 숨기기",
+    "copy": "API 키 복사",
+    "copied": "복사됨"
   }
 }
