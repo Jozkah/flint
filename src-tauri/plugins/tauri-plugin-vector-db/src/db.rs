@@ -911,7 +911,8 @@ pub fn get_chunks(
     let mut stmt = conn.prepare(
         "SELECT id, text, chunk_file_order FROM chunks
          WHERE file_id = ?1 AND chunk_file_order >= ?2 AND chunk_file_order <= ?3
-         ORDER BY chunk_file_order"
+         ORDER BY chunk_file_order
+         LIMIT 200"
     )?;
     let mut rows = stmt.query(params![&file_id, start_order, end_order])?;
 
@@ -1206,6 +1207,19 @@ mod tests {
             .expect("one bad chunk must not fail the search");
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].text, "good");
+    }
+
+    #[test]
+    fn get_chunks_has_limit() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        let chunks: Vec<MinimalChunkInput> = (0..250)
+            .map(|i| MinimalChunkInput { text: format!("c{i}"), embedding: vec![0.1, 0.2, 0.3] })
+            .collect();
+        insert_chunks(&conn, "f1", chunks, false).unwrap();
+        let got = get_chunks(&conn, "f1".to_string(), 0, 1_000_000).unwrap();
+        assert_eq!(got.len(), 200);
     }
 
     #[test]
