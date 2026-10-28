@@ -557,6 +557,14 @@ export function ThreadConversation({
   const backendError = isLlamacppActive ? backendErrorRaw : undefined
 
   const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  const regenerateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A pending post-resize regenerate must not fire into another thread.
+  useEffect(
+    () => () => {
+      if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    },
+    [threadId]
+  )
   // Compacts and continues a reply that stopped because the window filled;
   // resolves false when it could not, and the banner is shown instead.
   const recoverContextLimitRef = useRef<
@@ -2691,7 +2699,9 @@ export function ThreadConversation({
       continueReplaceIdRef.current = pending.message.id
     }
 
-    setTimeout(() => {
+    if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    regenerateTimerRef.current = setTimeout(() => {
+      regenerateTimerRef.current = null
       handleRegenerate(pending?.message.id)
     }, 1000)
   }, [

@@ -552,6 +552,7 @@
   "threadImage": "Obrázek vlákna",
   "editMessage": "Upravit zprávu",
   "deleteMessage": "Smazat zprávu",
+  "deleteMessageDescription": "Opravdu chcete tuto zprávu smazat? Tuto akci nelze vrátit zpět.",
   "deleteThread": "Smazat vlákno",
   "renameThread": "Přejmenovat vlákno",
   "threadTitle": "Název vlákna",

@@ -541,6 +541,7 @@
   "threadImage": "Imagen del hilo",
   "editMessage": "Editar mensaje",
   "deleteMessage": "Eliminar mensaje",
+  "deleteMessageDescription": "¿Seguro que quieres eliminar este mensaje? Esta acción no se puede deshacer.",
   "deleteThread": "Eliminar hilo",
   "renameThread": "Renombrar hilo",
   "threadTitle": "Título del hilo",

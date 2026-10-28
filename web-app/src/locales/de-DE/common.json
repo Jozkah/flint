@@ -536,6 +536,7 @@
   "threadImage": "Thread Bild",
   "editMessage": "Nachricht bearbeiten",
   "deleteMessage": "Nachricht löschen",
+  "deleteMessageDescription": "Möchtest du diese Nachricht wirklich löschen? Dies kann nicht rückgängig gemacht werden.",
   "deleteThread": "Thread löschen",
   "renameThread": "Thread umbenennen",
   "threadTitle": "Thread Titel",

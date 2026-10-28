@@ -536,6 +536,7 @@
   "threadImage": "Konu görseli",
   "editMessage": "Mesajı düzenle",
   "deleteMessage": "Mesajı sil",
+  "deleteMessageDescription": "Bu mesajı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
   "deleteThread": "Konuyu sil",
   "renameThread": "Konuyu yeniden adlandır",
   "threadTitle": "Konu başlığı",

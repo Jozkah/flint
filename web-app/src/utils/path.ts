@@ -10,7 +10,7 @@
 export const isRootDir = (selectedNewPath: string) => {
   // Windows root: C:\, D:\, etc.
   if (IS_WINDOWS) {
-    return /^[a-zA-Z]:\\?$/.test(selectedNewPath)
+    return /^[a-zA-Z]:[\\/]?$/.test(selectedNewPath)
   }
   // Linux/Mac root: /, /mnt, /media, etc.
   const linuxRoots = [

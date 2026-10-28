@@ -11,6 +11,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { foreignKeys } from './owned.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const queuePath = path.resolve(here, '..', '..', 'docs', 'upstream-issues-prs.json')
@@ -27,6 +28,11 @@ const patch = JSON.parse(rawPatch)
 if (target === '--meta') {
   Object.assign(queue, patch)
 } else {
+  const foreign = foreignKeys(patch)
+  if (foreign.length) {
+    console.error(`refusing to write fields triage does not own: ${foreign.join(', ')}`)
+    process.exit(1)
+  }
   const numbers = target.split(',').map((n) => Number(n.trim()))
   for (const number of numbers) {
     const item = queue.items.find((i) => i.number === number)

@@ -536,6 +536,7 @@
   "threadImage": "会话图片",
   "editMessage": "编辑消息",
   "deleteMessage": "删除消息",
+  "deleteMessageDescription": "确定要删除这条消息吗？此操作无法撤销。",
   "deleteThread": "删除会话",
   "renameThread": "重命名会话",
   "threadTitle": "会话标题",
