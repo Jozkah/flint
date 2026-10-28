@@ -1150,6 +1150,23 @@ pub async fn start(
     let (tx, rx) = watch::channel(false);
     let mut stop = rx.clone();
     let limiter = ConnLimiter::new(MAX_CONNECTIONS, MAX_CONNECTIONS_PER_IP);
+    // Write-behind for `last_seen`: every minute, and once more on stop.
+    let flush_hub = hub.clone();
+    let mut flush_stop = rx.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            let stopping = tokio::select! {
+                _ = tick.tick() => false,
+                _ = flush_stop.changed() => true,
+            };
+            let h = flush_hub.clone();
+            let _ = tokio::task::spawn_blocking(move || h.flush_devices()).await;
+            if stopping {
+                break;
+            }
+        }
+    });
     tokio::spawn(async move {
         loop {
             let accepted = tokio::select! {

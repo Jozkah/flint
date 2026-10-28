@@ -971,3 +971,78 @@ fn concurrent_saves_of_one_file_all_succeed() {
         .collect();
     assert!(leftovers.is_empty(), "temp files left: {leftovers:?}");
 }
+
+
+// -- device expiry, cap, write-behind -----------------------------------------
+
+#[test]
+fn device_idle_expired_is_rejected() {
+    let mut store = DeviceStore::in_memory();
+    let (device, token) = store.add("Pixel");
+    store.touch(&device.id, 1_000);
+    assert!(store.verify_at(&token, 1_000 + DEVICE_IDLE_EXPIRY_MS).is_some());
+    assert!(store
+        .verify_at(&token, 1_000 + DEVICE_IDLE_EXPIRY_MS + 1)
+        .is_none());
+    // Seen again: the clock restarts.
+    store.touch(&device.id, 1_000 + DEVICE_IDLE_EXPIRY_MS);
+    assert!(store
+        .verify_at(&token, 1_000 + DEVICE_IDLE_EXPIRY_MS + 1)
+        .is_some());
+}
+
+#[test]
+fn device_cap_enforced_on_pair() {
+    let hub = RemoteHub::new(
+        Default::default(),
+        DeviceStore::in_memory(),
+        Arc::new(Recorder::default()),
+        None,
+    );
+    for i in 0..MAX_DEVICES {
+        let start = hub.start_pairing();
+        let claim = hub
+            .claim_pairing(
+                IpAddr::V4(Ipv4Addr::new(100, 64, 1, i as u8)),
+                &start.code,
+                &format!("p{i}"),
+            )
+            .unwrap();
+        assert!(hub.confirm_pairing(&claim.request_id, true).unwrap().is_some());
+    }
+    let start = hub.start_pairing();
+    let claim = hub.claim_pairing(IP, &start.code, "one too many").unwrap();
+    assert_eq!(
+        hub.confirm_pairing(&claim.request_id, true),
+        Err(PairError::TooManyDevices)
+    );
+    assert_eq!(hub.list_devices().len(), MAX_DEVICES);
+}
+
+#[test]
+fn touch_does_not_write_under_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("devices.json");
+    let mut store = DeviceStore::load(path.clone());
+    let (device, _) = store.add("Phone");
+    let before = std::fs::read_to_string(&path).unwrap();
+    store.touch(&device.id, now_ms() + 120_000);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+    assert!(store.take_dirty_snapshot().is_some());
+    assert!(store.take_dirty_snapshot().is_none());
+}
+
+#[test]
+fn devices_json_survives_flush_roundtrip() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("devices.json");
+    let mut store = DeviceStore::load(path.clone());
+    let (device, token) = store.add("Phone");
+    let seen = now_ms() + 120_000;
+    store.touch(&device.id, seen);
+    let (p, bytes) = store.take_dirty_snapshot().unwrap();
+    write_private(&p, &bytes).unwrap();
+    let loaded = DeviceStore::load(path);
+    assert_eq!(loaded.get(&device.id).unwrap().last_seen, Some(seen));
+    assert!(loaded.verify(&token).is_some());
+}

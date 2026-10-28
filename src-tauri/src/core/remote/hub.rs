@@ -300,6 +300,17 @@ impl RemoteHub {
         device
     }
 
+    /// Writes `last_seen` changes to disk. The snapshot is taken under the
+    /// lock; the write (with its fsync) happens after it is released.
+    pub fn flush_devices(&self) {
+        let snapshot = lock(&self.devices).take_dirty_snapshot();
+        if let Some((path, bytes)) = snapshot {
+            if let Err(e) = super::auth::write_private(&path, &bytes) {
+                log::warn!("remote: could not save paired devices: {e}");
+            }
+        }
+    }
+
     pub fn list_devices(&self) -> Vec<DeviceInfo> {
         let connected = lock(&self.connected);
         lock(&self.devices)
@@ -417,6 +428,9 @@ impl RemoteHub {
         request_id: &str,
         approve: bool,
     ) -> Result<Option<DeviceInfo>, PairError> {
+        if approve && lock(&self.devices).list().len() >= super::auth::MAX_DEVICES {
+            return Err(PairError::TooManyDevices);
+        }
         let devices = &self.devices;
         let result = lock(&self.pairing).confirm(request_id, approve, Instant::now(), |name| {
             lock(devices).add(name)
