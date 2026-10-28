@@ -695,7 +695,7 @@
       "owner": "lane-02-execution-runtime",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs"
       ],
       "securityImpact": "medium",
@@ -709,9 +709,9 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::bash_exceeding_its_timeout_is_terminated_not_backgrounded",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_timeout_keeps_whatever_the_command_printed_first",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::backgrounding_is_available_when_it_is_asked_for"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::bash_exceeding_its_timeout_is_terminated_not_backgrounded",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_timeout_keeps_whatever_the_command_printed_first",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::backgrounding_is_available_when_it_is_asked_for"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -795,7 +795,7 @@
       "owner": "lane-02-execution-runtime",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/subagent.rs",
         "src-tauri/src/core/agent/genai_bridge.rs"
@@ -813,7 +813,7 @@
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::ambient_tests",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it",
         "src-tauri/src/core/agent/loop.rs::tests::cancelling_a_runs_scope_stops_its_tool_calls",
         "src-tauri/src/core/agent/loop.rs::tests::stopping_one_run_leaves_another_runs_calls_alone"
       ],
@@ -1386,7 +1386,7 @@
       "owner": "lane-03-permission-security",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
         "src-tauri/src/core/agent/loop.rs"
       ],
@@ -1401,8 +1401,8 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_skill_that_needs_a_denied_tool_is_withheld_and_says_why",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_skill_that_declares_nothing_is_not_withheld"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_skill_that_needs_a_denied_tool_is_withheld_and_says_why",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_skill_that_declares_nothing_is_not_withheld"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -3766,7 +3766,7 @@
       "owner": "lane-06-agents-worktrees",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs",
         "src-tauri/src/core/agent/durable_subagent.rs",
         "src-tauri/src/core/agent/loop.rs",
@@ -3788,7 +3788,7 @@
         "src-tauri/examples/cowork_smoke/main.rs::background-job-record",
         "src-tauri/examples/cowork_smoke/main.rs::background-job-record-restart",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs::a_restart_never_adopts_a_process_it_cannot_identify",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs::a_job_is_only_ours_when_all_three_agree",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs::an_argv_job_runs_this_program_with_its_arguments_and_no_shell",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs::reconciling_leaves_a_live_job_alone",
@@ -3817,7 +3817,7 @@
       "owner": "lane-06-agents-worktrees",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/mailbox.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/schema.rs",
         "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/subagent.rs",
@@ -3834,8 +3834,8 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/mailbox.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_run_writes_to_another_run_and_cannot_pretend_to_be_someone_else",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_message_to_another_conversation_is_refused_at_the_tool"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_run_writes_to_another_run_and_cannot_pretend_to_be_someone_else",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_message_to_another_conversation_is_refused_at_the_tool"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -4454,7 +4454,7 @@
         "src-tauri/src/core/agent/loop.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -4467,7 +4467,7 @@
       ],
       "tests": [
         "src-tauri/src/core/agent/skills.rs::user_skills_apply_in_every_project_and_a_project_skill_shadows_them",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::skill_tools_reach_user_skills_and_the_project_shadows_them",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::skill_tools_reach_user_skills_and_the_project_shadows_them",
         "src-tauri/src/core/agent/loop.rs::the_loop_reads_a_user_skill_from_any_project"
       ],
       "platformRequirements": [],
@@ -4518,7 +4518,7 @@
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
         "src-tauri/src/core/agent/skills.rs",
         "src-tauri/src/core/agent/context.rs",
@@ -4535,7 +4535,7 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/src/core/agent/skills.rs"
       ],
       "platformRequirements": [],
@@ -4556,7 +4556,7 @@
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
         "src-tauri/src/core/agent/skills.rs",
         "src-tauri/src/core/agent/context.rs",
@@ -4573,7 +4573,7 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/src/core/agent/skills.rs"
       ],
       "platformRequirements": [],
@@ -4653,7 +4653,7 @@
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -4667,9 +4667,9 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -4689,7 +4689,7 @@
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -4703,9 +4703,9 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
       ],
       "platformRequirements": [
         "per-OS validation on macOS, Windows and Linux"
@@ -4727,7 +4727,7 @@
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -4741,9 +4741,9 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/tests.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -5309,7 +5309,7 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/proposals.rs",
@@ -5407,7 +5407,7 @@
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/proposals.rs",
@@ -5454,7 +5454,7 @@
       "owner": "lane-08-git-pr-workflows",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
         "src-tauri/src/core/agent/project.rs",
         "src-tauri/src/core/agent/loop.rs"
@@ -5469,7 +5469,7 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -5489,7 +5489,7 @@
       "owner": "lane-08-git-pr-workflows",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
         "src-tauri/src/core/agent/project.rs",
         "src-tauri/src/core/agent/loop.rs"
@@ -5504,7 +5504,7 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -5748,7 +5748,7 @@
       "owner": "lane-08-git-pr-workflows",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/secrets.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -6370,7 +6370,7 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/resources.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers/mod.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/src/core/agent/loop.rs",
