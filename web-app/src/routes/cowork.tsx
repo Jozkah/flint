@@ -145,6 +145,7 @@ import {
 import { createStreamSink } from '@/lib/cowork/run/streamSink'
 import { createLiveLane } from '@/lib/cowork/run/liveLane'
 import { createStepHandlers } from '@/lib/cowork/run/stepHandlers'
+import { createToolHandlers } from '@/lib/cowork/run/toolHandlers'
 import { withToolTiming } from '@/hooks/useToolCallRuntime'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
@@ -208,7 +209,6 @@ import {
   type SubmittedFile,
 } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
-import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
   useCoworkView,
@@ -301,7 +301,7 @@ import {
 import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
-import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
+import { groupsToOffer } from '@/lib/coworkToolGroups'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import {
   createMailLedger,
@@ -355,11 +355,7 @@ import {
   } from '@/lib/coworkReadiness'
 import { notifyToolBatch, } from '@/lib/agentTools'
 import {
-  CONTINUE_QUESTION_ID,
   decideOpening,
-  acceptsProposal,
-  continuationInstruction,
-  PROPOSAL_ACCEPTED_RESULT,
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
@@ -407,14 +403,6 @@ import {
   planDestinations,
 } from '@/lib/coworkTeamDestinations'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
-import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
-import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
-import {
-  planReviewDecision,
-  renderPlanReviewResult,
-  planExecuteNotice,
-  PLAN_EXECUTE_INSTRUCTION,
-} from '@/lib/coworkPlanReview'
 import {
   getSandboxStatus,
   getSandboxToolchains,
@@ -441,7 +429,6 @@ import {
   runTurn,
   untilStopped,
   type RunOutcome,
-  type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import {
@@ -3635,6 +3622,18 @@ export function CoworkPage() {
       // way every other ending is: the user's own message is committed, the
       // run is closed and nothing is left running.
       if (overflow) throw overflow
+      const toolHandlers = createToolHandlers({
+        rs,
+        sid,
+        folder: current?.folder,
+        access: effective.access,
+        inspecting,
+        planAnchor,
+        handle,
+        transport,
+        mutateLive,
+        t,
+      })
       const stepHandlers = createStepHandlers({
         rs,
         sid,
@@ -3868,140 +3867,9 @@ export function CoworkPage() {
                           createToolDeps(getCampaignRunner())
                         )
                     : undefined,
-                onEnableTools: (input) => {
-                  const parsed = parseEnableRequest(
-                    input,
-                    transport.heldGroups,
-                    transport.openedGroups,
-                    transport.advertisedGroups
-                  )
-                  if (typeof parsed === 'string') {
-                    return { output: `ERROR: ${parsed}`, isError: true }
-                  }
-                  const added = transport.openGroupsNow(parsed.groups)
-                  return {
-                    output:
-                      added.length > 0
-                        ? `Loaded ${added.length} tools: ${added.join(', ')}. Use them from your next step.`
-                        : 'Those tools are already loaded.',
-                  }
-                },
-                onTodo: async (input) => {
-                  const result = applyTodoOp(
-                    useCoworkSessions
-                      .getState()
-                      .sessions.find((s) => s.id === sid)?.todos,
-                    input
-                  )
-                  if (result.error) {
-                    return { output: `ERROR: ${result.error}`, isError: true }
-                  }
-                  // Snapshot anchored at this run's prompt, so the transcript
-                  // keeps one record of the plan per run.
-                  useCoworkSessions
-                    .getState()
-                    .setTodos(sid, result.list, planAnchor)
-                  return { output: renderTodoResult(result.list) }
-                },
-                onAsk: (callId, input) =>
-                  new Promise<ToolOutcome>((resolve) => {
-                    const parsed = parseAskRequest(input)
-                    if (typeof parsed === 'string') {
-                      resolve({ output: `ERROR: ${parsed}`, isError: true })
-                      return
-                    }
-                    // In the transcript, at the point the run asked -- not in a
-                    // slot above the composer. It stays there once answered.
-                    const askRecord = {
-                      requestId: callId,
-                      request: parsed,
-                      sessionId: sid,
-                      callId,
-                      at: new Date().toISOString(),
-                      state: 'pending' as const,
-                    }
-                    // Into this run's own lane, whichever session is in view:
-                    // that lane is what renders for this session.
-                    mutateLive((turns) => attachAskToTurns(turns, askRecord))
-                    // The opening turn ends on a named question. Recording the
-                    // wait is what makes a session reopened at this point restore
-                    // an unanswered proposal rather than resume into work.
-                    const proposal = parsed.questions.find(
-                      (one) => one.id === CONTINUE_QUESTION_ID
-                    )
-                    if (proposal && current?.folder) {
-                      useCoworkSessions.getState().setContinuity(sid, {
-                        state: 'awaiting-continuation',
-                        folder: current.folder,
-                        proposal: proposal.question,
-                      })
-                    }
-                    // Held by this run's handle: answered only through this
-                    // session, and settled by stopping this session alone.
-                    handle.pendingAsks.set(callId, (answers) => {
-                      const state = answers ? 'answered' : 'cancelled'
-                      mutateLive((turns) =>
-                        settleAskInTurns(turns, callId, state, answers ?? undefined)
-                      )
-                      // An answered proposal is no longer outstanding. Declining
-                      // is recorded as a decision, not as work to pick up later.
-                      if (proposal && current?.folder) {
-                        useCoworkSessions.getState().setContinuity(sid, {
-                          state: answers ? 'executing' : 'cancelled',
-                          folder: current.folder,
-                          proposal: proposal.question,
-                        })
-                      }
-                      // An accepted opening proposal ends this read-only run
-                      // and continues in a new one that can write (#296).
-                      if (
-                        inspecting &&
-                        proposal &&
-                        answers &&
-                        acceptsProposal(parsed, answers)
-                      ) {
-                        rs.continueWith = continuationInstruction(
-                          proposal.question,
-                          answers
-                        )
-                        resolve({
-                          output: PROPOSAL_ACCEPTED_RESULT,
-                          endsTurn: true,
-                        })
-                        return
-                      }
-                      // A plan review changes the session's mode, from the next
-                      // message: this run's tools are frozen. Only ever towards
-                      // Ask, where each change still waits for the user.
-                      const review = planReviewDecision(parsed, answers)
-                      if (review === 'execute' || review === 'exit') {
-                        useCoworkSessions.getState().setMode(sid, 'ask')
-                      }
-                      // "Execute plan" leaves plan mode and carries on: this
-                      // run's tools are frozen read-only, so it ends and the
-                      // plan continues in a new run that can make changes.
-                      // When those changes cannot reach the user's files, the
-                      // user is told what to change rather than left to find
-                      // "Attach a folder first" in the access menu.
-                      if (review === 'execute') {
-                        const notice = planExecuteNotice({
-                          folder: current?.folder,
-                          access: effective.access,
-                        })
-                        if (notice) {
-                          toast.info(t(`common:coworkPlanExecute.${notice}`), {
-                            duration: 12000,
-                          })
-                        }
-                        rs.continueWith = PLAN_EXECUTE_INSTRUCTION
-                      }
-                      resolve(
-                        review === 'none'
-                          ? renderAskResult(answers, parsed)
-                          : renderPlanReviewResult(review, answers)
-                      )
-                    })
-                  }),
+                onEnableTools: toolHandlers.onEnableTools,
+                onTodo: toolHandlers.onTodo,
+                onAsk: toolHandlers.onAsk,
                 nudge: delegationNudge,
                 onTask: async (callId, input) => {
                   const req = parseSubagentRequest(input)
