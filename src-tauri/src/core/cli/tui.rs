@@ -978,110 +978,115 @@ pub async fn run(
     res
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn chat_loop<B: Backend>(
-    terminal: &mut Terminal<B>,
-    args: &Arc<OrchestrationArgs>,
-    registry: &PermissionRegistry,
-    ask_requests: &crate::core::agent::interaction::AskRegistry,
-    app: &mut App,
-    initial_task: Option<String>,
-    mut mcp_task: Option<tokio::task::JoinHandle<crate::core::cli::mcp::ConnectOutcome>>,
-    mcp_servers: &crate::core::state::SharedMcpServers,
-) -> Result<(), String> {
-    let mut current: Option<CurrentRun> = None;
-    let mut ticker = tokio::time::interval(Duration::from_millis(50));
-    // Active MCP servers connect in the background; gate the first run on them
-    // so the model's tools (collected once per run) are ready.
-    let mut mcp_ready = mcp_task.is_none();
-    let mut loading_noted = false;
-
-    // Off-loop git snapshotting: one job at a time (checkpoints must stay
-    // ordered), driven from the queue `App` fills in submit_user/on_done.
-    let mut snap_task: Option<tokio::task::JoinHandle<Result<String, String>>> = None;
-    let mut snap_inflight: Option<SnapshotJob> = None;
-
-    // `/login` key verification: an HTTP round trip, so it runs off the render
-    // loop and the prompt keeps repainting ("verifying...") while it's in flight.
-    let mut login_task: Option<
+/// The off-loop work `chat_loop` owns: the run in flight and every background
+/// job the interface waits on, one slot each. Grouped so the loop's steps can be
+/// separate functions instead of one body closing over twenty locals.
+struct LoopTasks {
+    current: Option<CurrentRun>,
+    /// Active MCP servers connect in the background; the first run is gated on
+    /// them so the model's tools (collected once per run) are ready.
+    mcp_task: Option<tokio::task::JoinHandle<crate::core::cli::mcp::ConnectOutcome>>,
+    mcp_ready: bool,
+    loading_noted: bool,
+    /// Off-loop git snapshotting: one job at a time (checkpoints must stay
+    /// ordered), driven from the queue `App` fills in submit_user/on_done.
+    snap_task: Option<tokio::task::JoinHandle<Result<String, String>>>,
+    snap_inflight: Option<SnapshotJob>,
+    /// `/login` key verification: an HTTP round trip, so it runs off the render
+    /// loop and the prompt keeps repainting ("verifying...") while it's in flight.
+    login_task: Option<
         tokio::task::JoinHandle<
             Result<crate::core::cli::auth::LoginResult, crate::core::cli::auth::LoginError>,
         >,
-    > = None;
-
-    // The browser-approval sign-in, in two off-loop halves: `begin` creates the
-    // session (one round trip), then the claim polls until the user approves --
-    // which can take minutes, so it must never touch the render loop.
-    let mut login_begin_task: Option<
+    >,
+    /// The browser-approval sign-in, in two off-loop halves: `begin` creates the
+    /// session (one round trip), then the claim polls until the user approves --
+    /// which can take minutes, so it must never touch the render loop.
+    login_begin_task: Option<
         tokio::task::JoinHandle<
             Result<super::device_auth::PendingAuth, super::device_auth::BeginError>,
         >,
-    > = None;
-    let mut login_claim_task: Option<
-        tokio::task::JoinHandle<Result<super::tokamak::Login, String>>,
-    > = None;
-    // `/mcp` work that must not run on the render loop: a tool listing is a
-    // round trip to the peer, and an authorization waits on a browser for up to
-    // five minutes. One at a time -- the detail screen only ever asks for one.
-    let mut mcp_job: Option<tokio::task::JoinHandle<McpJobDone>> = None;
-    // `/context` computing the report: takes the MCP server lock (a turn
-    // executing an MCP tool call holds it for up to the tool-call timeout), so
-    // it must never run on the render loop. One at a time.
-    let mut context_task: Option<tokio::task::JoinHandle<ContextReport>> = None;
-    // `/usage <view>`: a round trip to the provider's usage API, so it runs off
-    // the render loop too. One at a time.
-    let mut usage_task: Option<tokio::task::JoinHandle<UsageDone>> = None;
-    // `/plugin install` clones a git repo, so it runs off the render loop via
-    // the installer's internal `spawn_blocking`; one at a time. A collection
-    // source resolves in two steps (list -> picker -> install the chosen set),
-    // and `plugin_install_url` remembers the source across them.
-    let mut plugin_install_task: Option<
-        tokio::task::JoinHandle<Result<crate::core::agent::plugins::GitInstall, String>>,
-    > = None;
-    let mut plugin_install_url: Option<String> = None;
+    >,
+    login_claim_task: Option<tokio::task::JoinHandle<Result<super::tokamak::Login, String>>>,
+    /// `/mcp` work that must not run on the render loop: a tool listing is a
+    /// round trip to the peer, and an authorization waits on a browser for up to
+    /// five minutes. One at a time -- the detail screen only ever asks for one.
+    mcp_job: Option<tokio::task::JoinHandle<McpJobDone>>,
+    /// `/context` computing the report: takes the MCP server lock (a turn
+    /// executing an MCP tool call holds it for up to the tool-call timeout), so
+    /// it must never run on the render loop. One at a time.
+    context_task: Option<tokio::task::JoinHandle<ContextReport>>,
+    /// `/usage <view>`: a round trip to the provider's usage API, so it runs off
+    /// the render loop too. One at a time.
+    usage_task: Option<tokio::task::JoinHandle<UsageDone>>,
+    /// `/plugin install` clones a git repo, so it runs off the render loop via
+    /// the installer's internal `spawn_blocking`; one at a time. A collection
+    /// source resolves in two steps (list -> picker -> install the chosen set),
+    /// and `plugin_install_url` remembers the source across them.
+    plugin_install_task:
+        Option<tokio::task::JoinHandle<Result<crate::core::agent::plugins::GitInstall, String>>>,
+    plugin_install_url: Option<String>,
+    /// Compaction is a summarizing model call, so it runs off the render loop
+    /// too; `compact_base` is the history length it was computed from.
+    compact_task: Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>>>,
+    compact_base: usize,
+    /// `/goal` evaluation: one stateless model call, off the render loop.
+    goal_task: Option<GoalEvalTask>,
+    /// `/model`'s probe of providers with no model list: network, so off-loop.
+    model_fetch_task: Option<tokio::task::JoinHandle<ModelFetchDone>>,
+    /// The dock's branch indicator is captured once at startup; re-read it on a
+    /// slow timer so a checkout made outside the TUI (another terminal, an
+    /// editor) is reflected without a restart. `None` once the project proves
+    /// not to be a git repo, so a plain directory never shells out every tick.
+    branch_task: Option<tokio::task::JoinHandle<Option<String>>>,
+    /// `@path` hints: edits mark them dirty, the 50 ms tick starts one search.
+    hint_task: Option<PathHintTask>,
+}
 
-    // Compaction is a summarizing model call, so it runs off the render loop
-    // too; `compact_base` is the history length it was computed from.
-    let mut compact_task: Option<
-        tokio::task::JoinHandle<
-            Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
-        >,
-    > =
-        None;
-    let mut compact_base = 0usize;
-    // `/goal` evaluation: one stateless model call, off the render loop.
-    let mut goal_task: Option<GoalEvalTask> = None;
-    // `/model`'s probe of providers with no model list: network, so off-loop.
-    let mut model_fetch_task: Option<tokio::task::JoinHandle<ModelFetchDone>> = None;
-
-    // The dock's branch indicator is captured once at startup; re-read it on a
-    // slow timer so a checkout made outside the TUI (another terminal, an
-    // editor) is reflected without a restart. `None` once the project proves
-    // not to be a git repo, so a plain directory never shells out every tick.
-    let mut branch_task: Option<tokio::task::JoinHandle<Option<String>>> = None;
-    let mut branch_poll = tokio::time::interval(BRANCH_POLL_INTERVAL);
-    branch_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    // `@path` hints: edits mark them dirty, the 50 ms tick starts one search.
-    let mut hint_task: Option<PathHintTask> = None;
-
-    // Nothing to say when there is no seed message: the splash already invites
-    // the first one (`Banner::awaiting_first_message`).
-    if let Some(task) = initial_task.filter(|t| !t.trim().is_empty()) {
-        app.submit_user(task.trim().to_string());
+impl LoopTasks {
+    fn new(mcp_task: Option<tokio::task::JoinHandle<crate::core::cli::mcp::ConnectOutcome>>) -> Self {
+        LoopTasks {
+            current: None,
+            mcp_ready: mcp_task.is_none(),
+            mcp_task,
+            loading_noted: false,
+            snap_task: None,
+            snap_inflight: None,
+            login_task: None,
+            login_begin_task: None,
+            login_claim_task: None,
+            mcp_job: None,
+            context_task: None,
+            usage_task: None,
+            plugin_install_task: None,
+            plugin_install_url: None,
+            compact_task: None,
+            compact_base: 0,
+            goal_task: None,
+            model_fetch_task: None,
+            branch_task: None,
+            hint_task: None,
+        }
     }
 
-    // kitty drops the resize repaint behind a held synchronized frame, so it is
-    // gated off there; see `use_synchronized_output`.
-    let sync_output = use_synchronized_output();
 
-    while !app.should_quit {
+    /// Start every background job the interface asked for since the last frame:
+    /// snapshots, sign-in, `/mcp`, `/context`, `/usage`, plugin install,
+    /// compaction, model probing and goal evaluation. Each slot runs one job at
+    /// a time.
+    fn start_requested_jobs(
+        &mut self,
+        app: &mut App,
+        args: &Arc<OrchestrationArgs>,
+        mcp_servers: &crate::core::state::SharedMcpServers,
+    ) {
         // Drive the snapshot queue: run one job off-loop at a time. A job whose
         // inputs no longer resolve (snapshots disabled) is dropped.
-        if snap_task.is_none() {
+        if self.snap_task.is_none() {
             while let Some(job) = app.snap_queue.pop_front() {
                 if let Some((repo, parent, msg, id, changed)) = app.resolve_snapshot(&job) {
-                    snap_task = Some(spawn_snapshot(repo, parent, msg, id, changed));
-                    snap_inflight = Some(job);
+                    self.snap_task = Some(spawn_snapshot(repo, parent, msg, id, changed));
+                    self.snap_inflight = Some(job);
                     break;
                 }
             }
@@ -1091,13 +1096,13 @@ async fn chat_loop<B: Backend>(
         // so a late reply can't report a sign-in the user walked away from. The
         // dock stays open for the whole flow, so this is the one cancel path.
         if app.login.is_none() {
-            if let Some(task) = login_task.take() {
+            if let Some(task) = self.login_task.take() {
                 task.abort();
             }
-            if let Some(task) = login_claim_task.take() {
+            if let Some(task) = self.login_claim_task.take() {
                 task.abort();
             }
-            if let Some(task) = login_begin_task.take() {
+            if let Some(task) = self.login_begin_task.take() {
                 task.abort();
             }
             app.login_device_request = false;
@@ -1115,7 +1120,7 @@ async fn chat_loop<B: Backend>(
         // instead of running out its `CALLBACK_TIMEOUT`.
         if app.mcp_auth_cancel {
             app.mcp_auth_cancel = false;
-            if let Some(job) = mcp_job.take() {
+            if let Some(job) = self.mcp_job.take() {
                 job.abort();
             }
             app.browser_confirm = None;
@@ -1123,24 +1128,24 @@ async fn chat_loop<B: Backend>(
                 app.note(&format!("sign-in for '{}' cancelled", flow.server));
             }
         }
-        if mcp_job.is_none() {
+        if self.mcp_job.is_none() {
             if let Some(job) = app.mcp_job_request.take() {
                 let servers = mcp_servers.clone();
-                mcp_job = Some(tokio::spawn(run_mcp_job(job, servers)));
+                self.mcp_job = Some(tokio::spawn(run_mcp_job(job, servers)));
             }
         }
         // `/context` asked for a report. Compute it off the render loop (it
         // takes the MCP server lock), one at a time. The snapshot carries the
         // state the computation needs, so nothing borrows `App` across the
         // spawn.
-        if context_task.is_none() && app.context_request {
+        if self.context_task.is_none() && app.context_request {
             app.context_request = false;
             let snapshot = app.context_snapshot();
-            context_task = Some(tokio::spawn(compute_context_report(snapshot)));
+            self.context_task = Some(tokio::spawn(compute_context_report(snapshot)));
         }
-        if usage_task.is_none() {
+        if self.usage_task.is_none() {
             if let Some(query) = app.usage_request.take() {
-                usage_task = Some(tokio::spawn(async move {
+                self.usage_task = Some(tokio::spawn(async move {
                     let result = crate::core::cli::tokamak::usage::fetch(&query).await;
                     (query, result)
                 }));
@@ -1148,9 +1153,9 @@ async fn chat_loop<B: Backend>(
         }
         // A key was submitted at the `/login` prompt: verify it off-loop. One at
         // a time - the prompt is read-only while `verifying`.
-        if login_task.is_none() {
+        if self.login_task.is_none() {
             if let Some((provider, key)) = app.login_submit.take() {
-                login_task = Some(tokio::spawn(async move {
+                self.login_task = Some(tokio::spawn(async move {
                     let definition =
                         crate::core::cli::auth::provider_by_id(&provider).ok_or_else(|| {
                             crate::core::cli::auth::LoginError::InvalidKey(
@@ -1166,12 +1171,12 @@ async fn chat_loop<B: Backend>(
         // when nothing else sign-in shaped is already running, so a repeated
         // `/login` cannot open two sessions.
         if app.login_device_request
-            && login_begin_task.is_none()
-            && login_claim_task.is_none()
-            && login_task.is_none()
+            && self.login_begin_task.is_none()
+            && self.login_claim_task.is_none()
+            && self.login_task.is_none()
         {
             app.login_device_request = false;
-            login_begin_task = Some(tokio::spawn(async move {
+            self.login_begin_task = Some(tokio::spawn(async move {
                 super::device_auth::begin(&super::tokamak::base_url()).await
             }));
         }
@@ -1181,20 +1186,20 @@ async fn chat_loop<B: Backend>(
         // second while one is in flight. `list_collection` installs a plain
         // source outright and only *lists* an ambiguous collection, which
         // `finish_plugin_install` turns into the picker.
-        if plugin_install_task.is_none() {
+        if self.plugin_install_task.is_none() {
             if let Some(spec) = app.plugin_install_request.take() {
                 app.plugin_installing = true;
                 let root = app.project_root.clone();
-                plugin_install_url = Some(spec.clone());
-                plugin_install_task = Some(tokio::spawn(async move {
+                self.plugin_install_url = Some(spec.clone());
+                self.plugin_install_task = Some(tokio::spawn(async move {
                     crate::core::agent::plugins::list_collection(&root, &spec).await
                 }));
             } else if let Some((spec, paths)) = app.plugin_select_request.take() {
                 // Second step: the picker's chosen subset of a collection.
                 app.plugin_installing = true;
                 let root = app.project_root.clone();
-                plugin_install_url = Some(spec.clone());
-                plugin_install_task = Some(tokio::spawn(async move {
+                self.plugin_install_url = Some(spec.clone());
+                self.plugin_install_task = Some(tokio::spawn(async move {
                     crate::core::agent::plugins::install_selected(&root, &spec, paths)
                         .await
                         .map(crate::core::agent::plugins::GitInstall::Installed)
@@ -1214,17 +1219,17 @@ async fn chat_loop<B: Backend>(
                 }
             }
         }
-        if compact_task.is_none() {
+        if self.compact_task.is_none() {
             if let Some(kind) = app.compact_request.take() {
                 let args = args.clone();
                 let model = app.model.clone();
                 let history = app.history.clone();
                 let keep = kind.keep_recent(app.compaction_keep_recent);
                 let focus = app.compact_focus.take();
-                compact_base = history.len();
+                self.compact_base = history.len();
                 app.compacting = Some(kind);
                 app.compact_started = Some(Instant::now());
-                compact_task = Some(tokio::spawn(async move {
+                self.compact_task = Some(tokio::spawn(async move {
                     crate::core::agent::r#loop::compact_history(
                         &args,
                         &model,
@@ -1241,34 +1246,38 @@ async fn chat_loop<B: Backend>(
         // before anything else. It either auto-submits the next turn (setting
         // want_start) or hands control back. Gated on an idle, run-free state so
         // it never races an in-flight turn.
-        if model_fetch_task.is_none() && std::mem::take(&mut app.model_fetch_request) {
+        if self.model_fetch_task.is_none() && std::mem::take(&mut app.model_fetch_request) {
             app.model_fetch_running = true;
-            model_fetch_task = Some(tokio::spawn(fetch_models_job(
+            self.model_fetch_task = Some(tokio::spawn(fetch_models_job(
                 app.project_root.clone(),
                 app.probed_models.clone(),
             )));
         }
-        if goal_task.is_none() && app.goal_eval_pending && current.is_none() && !app.want_start {
-            goal_task = app.begin_goal_evaluation();
+        if self.goal_task.is_none() && app.goal_eval_pending && self.current.is_none() && !app.want_start {
+            self.goal_task = app.begin_goal_evaluation();
         }
         // Esc, or the user submitting a message themselves, stops the
         // evaluation: its verdict would otherwise start a second turn.
         if app.goal_evaluating && (app.goal_eval_cancel || app.want_start) {
-            if let Some(task) = goal_task.take() {
+            if let Some(task) = self.goal_task.take() {
                 task.abort();
             }
             app.stop_goal_evaluation();
         }
+    }
 
+    /// Kick off a queued run once the previous one has cleared, the MCP servers
+    /// (if any) are connected, and the base snapshot (if any) is captured.
+    async fn start_queued_run(&mut self, app: &mut App, args: &Arc<OrchestrationArgs>) {
         // Kick off a queued run once the previous one has cleared, the MCP
         // servers (if any) are connected, and the base snapshot (if any) is
         // captured. `submit_user` already flipped status to Running and reset
         // the counter.
         // A compaction in flight is also a gate: it replaces `history`, so a run
         // started against the pre-compaction copy would be clobbered.
-        if app.want_start && current.is_none() && compact_task.is_none() {
+        if app.want_start && self.current.is_none() && self.compact_task.is_none() {
             let base_ready = app.repo_root.is_none() || app.base_snapshot.is_some();
-            if mcp_ready && base_ready {
+            if self.mcp_ready && base_ready {
                 app.want_start = false;
                 // The submission itself is one human turn toward the aging
                 // grace period; model roundtrips count via `Step` events.
@@ -1277,13 +1286,179 @@ async fn chat_loop<B: Backend>(
                 if let Some(command) = app.scripted_command.take() {
                     body["jan_scripted_command"] = serde_json::json!(command);
                 }
-                current = Some(spawn_run(&run_args(app, args), body));
-            } else if !loading_noted && !mcp_ready {
+                self.current = Some(spawn_run(&run_args(app, args), body));
+            } else if !self.loading_noted && !self.mcp_ready {
                 // The base snapshot gates silently; only the MCP connect notes.
-                loading_noted = true;
+                self.loading_noted = true;
                 app.note("connecting MCP servers...");
             }
         }
+    }
+
+    /// The 50 ms tick: start a queued path-hint search, advance the animations
+    /// and handle every terminal event queued since the last tick.
+    async fn on_tick(
+        &mut self,
+        app: &mut App,
+        ask_requests: &crate::core::agent::interaction::AskRegistry,
+        registry: &PermissionRegistry,
+        mcp_servers: &crate::core::state::SharedMcpServers,
+    ) {
+        if let Some((generation, root, query)) = app.take_path_hint_request() {
+            self.hint_task = Some(spawn_path_hint_search(generation, root, query));
+        }
+        // Advance the throbber at its own fixed cadence, catching up
+        // whole frames if a tick stalled (a burst of deltas / slow term).
+        app.advance_spinner(Instant::now());
+        // Animate the working-title spinner on the same cadence; the
+        // OSC 9999 payload is not re-sent, only the title frame.
+        app.agent_status.animate();
+        let mut queued = Vec::new();
+        while event::poll(Duration::ZERO).unwrap_or(false) {
+            match event::read() {
+                Ok(event) => queued.push(event),
+                Err(_) => break,
+            }
+        }
+        // The legacy Windows console has no bracketed paste: a paste
+        // arrives as one key event per character. Everything queued
+        // since the last tick that reads as one paste is handed over as
+        // one, so its newlines are text and not a submit per line.
+        let queued = if cfg!(windows) { coalesce_burst(queued) } else { queued };
+        for event in queued {
+            match Ok::<Event, ()>(event) {
+                Ok(Event::Key(key)) => {
+                    // Typing moves the content under a highlight, and the
+                    // copy already happened on release.
+                    app.clear_selection();
+                    if !handle_ask_key(app, key, ask_requests).await {
+                        handle_key(app, key, registry, &mut self.current, mcp_servers).await;
+                    }
+                }
+                Ok(event @ Event::Paste(_)) => route_paste_event(app, event),
+                Ok(event @ Event::Resize(_, _)) => route_resize_event(app, event),
+                // `handle_ask_mouse` mutates app state, so it stays in the
+                // arm body rather than a match guard that hides the effect.
+                #[allow(clippy::collapsible_match)]
+                Ok(Event::Mouse(mouse)) => {
+                    if !handle_ask_mouse(app, mouse, ask_requests).await {
+                        handle_mouse(app, mouse);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// The background MCP connect finished: open the gate on the first run and
+    /// say how it went.
+    fn on_mcp_connected(&mut self, app: &mut App, outcome: crate::core::cli::mcp::ConnectOutcome) {
+        self.mcp_ready = true;
+        if !outcome.connected.is_empty() {
+            app.note(&format!("MCP ready: {}", outcome.connected.join(", ")));
+        }
+        // Right after the ready line, so a server that didn't come up
+        // is visible at start/resume instead of being lost to a log
+        // line painted over the frame.
+        for failure in &outcome.failed {
+            app.note(&format!("MCP: {failure}"));
+        }
+        // A server that only needs signing in is separated from a
+        // broken one: the fix is a keypress away, so name it.
+        if !outcome.needs_auth.is_empty() {
+            app.note(&format!(
+                "MCP: {} need authentication - open /mcp to sign in",
+                outcome.needs_auth.join(", ")
+            ));
+        }
+    }
+
+    /// The browser sign-in session was created (or could not be).
+    fn on_login_begun(
+        &mut self,
+        app: &mut App,
+        begun: Result<super::device_auth::PendingAuth, super::device_auth::BeginError>,
+    ) {
+        match begun {
+            Ok(pending) => {
+                show_login_approval(app, pending.session());
+                self.login_claim_task =
+                    Some(tokio::spawn(super::tokamak::device_login(pending)));
+            }
+            // Not a failure, but say it: an unexplained paste field
+            // reads as the browser sign-in having silently broken.
+            Err(super::device_auth::BeginError::Unsupported) => {
+                app.note("this Tokamak deployment does not support browser sign-in yet");
+                open_login_prompt(app, "tokamak");
+            }
+            Err(e) => {
+                app.note(&format!(
+                    "browser sign-in unavailable: {}",
+                    e.message(&super::tokamak::base_url())
+                ));
+                open_login_prompt(app, "tokamak");
+            }
+        }
+    }
+
+    /// A snapshot job finished: record the base or checkpoint, or disable
+    /// snapshots when the base cannot be taken.
+    fn on_snapshot_done(&mut self, app: &mut App, snap_res: Result<String, String>) {
+        match (self.snap_inflight.take(), snap_res) {
+            (Some(SnapshotJob::Base), Ok(sha)) => {
+                app.base_snapshot = Some(sha);
+                app.persist();
+            }
+            (Some(SnapshotJob::Checkpoint { user_index, preview, .. }), Ok(sha)) => {
+                app.checkpoints.push(Checkpoint { user_index, preview, sha });
+                app.persist();
+            }
+            (Some(SnapshotJob::Base), Err(e)) => {
+                // Base failed: disable snapshots for the session and drop
+                // any queued checkpoints (they have no base to parent).
+                app.note(&format!("workspace snapshots disabled: {e}"));
+                app.repo_root = None;
+                app.snap_queue.clear();
+            }
+            (Some(SnapshotJob::Checkpoint { .. }), Err(e)) => {
+                app.detail = format!("checkpoint failed: {e}");
+            }
+            (None, _) => {}
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn chat_loop<B: Backend>(
+    terminal: &mut Terminal<B>,
+    args: &Arc<OrchestrationArgs>,
+    registry: &PermissionRegistry,
+    ask_requests: &crate::core::agent::interaction::AskRegistry,
+    app: &mut App,
+    initial_task: Option<String>,
+    mcp_task: Option<tokio::task::JoinHandle<crate::core::cli::mcp::ConnectOutcome>>,
+    mcp_servers: &crate::core::state::SharedMcpServers,
+) -> Result<(), String> {
+    let mut tasks = LoopTasks::new(mcp_task);
+    let mut ticker = tokio::time::interval(Duration::from_millis(50));
+    let mut branch_poll = tokio::time::interval(BRANCH_POLL_INTERVAL);
+    branch_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    // Nothing to say when there is no seed message: the splash already invites
+    // the first one (`Banner::awaiting_first_message`).
+    if let Some(task) = initial_task.filter(|t| !t.trim().is_empty()) {
+        app.submit_user(task.trim().to_string());
+    }
+
+    // kitty drops the resize repaint behind a held synchronized frame, so it is
+    // gated off there; see `use_synchronized_output`.
+    let sync_output = use_synchronized_output();
+
+    while !app.should_quit {
+        // Drive the background jobs the last frame asked for, then start a queued
+        // run if everything it waits on is ready.
+        tasks.start_requested_jobs(app, args, mcp_servers);
+        tasks.start_queued_run(app, args).await;
 
         // Wrap the repaint in synchronized-output (`\x1b[?2026h/l`) so the
         // terminal buffers the whole frame and flips it atomically, eliminating
@@ -1314,141 +1489,63 @@ async fn chat_loop<B: Backend>(
             copy_to_clipboard(&text);
         }
 
+
         tokio::select! {
             _ = ticker.tick() => {
-                if let Some((generation, root, query)) = app.take_path_hint_request() {
-                    hint_task = Some(spawn_path_hint_search(generation, root, query));
-                }
-                // Advance the throbber at its own fixed cadence, catching up
-                // whole frames if a tick stalled (a burst of deltas / slow term).
-                app.advance_spinner(Instant::now());
-                // Animate the working-title spinner on the same cadence; the
-                // OSC 9999 payload is not re-sent, only the title frame.
-                app.agent_status.animate();
-                let mut queued = Vec::new();
-                while event::poll(Duration::ZERO).unwrap_or(false) {
-                    match event::read() {
-                        Ok(event) => queued.push(event),
-                        Err(_) => break,
-                    }
-                }
-                // The legacy Windows console has no bracketed paste: a paste
-                // arrives as one key event per character. Everything queued
-                // since the last tick that reads as one paste is handed over as
-                // one, so its newlines are text and not a submit per line.
-                let queued = if cfg!(windows) { coalesce_burst(queued) } else { queued };
-                for event in queued {
-                    match Ok::<Event, ()>(event) {
-                        Ok(Event::Key(key)) => {
-                            // Typing moves the content under a highlight, and the
-                            // copy already happened on release.
-                            app.clear_selection();
-                            if !handle_ask_key(app, key, ask_requests).await {
-                                handle_key(app, key, registry, &mut current, mcp_servers).await;
-                            }
-                        }
-                        Ok(event @ Event::Paste(_)) => route_paste_event(app, event),
-                        Ok(event @ Event::Resize(_, _)) => route_resize_event(app, event),
-                        // `handle_ask_mouse` mutates app state, so it stays in the
-                        // arm body rather than a match guard that hides the effect.
-                        #[allow(clippy::collapsible_match)]
-                        Ok(Event::Mouse(mouse)) => {
-                            if !handle_ask_mouse(app, mouse, ask_requests).await {
-                                handle_mouse(app, mouse);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
+                tasks.on_tick(app, ask_requests, registry, mcp_servers).await;
             }
             _ = branch_poll.tick() => {
-                if branch_task.is_none() {
-                    branch_task = Some(spawn_branch_poll(&app.project_root));
+                if tasks.branch_task.is_none() {
+                    tasks.branch_task = Some(spawn_branch_poll(&app.project_root));
                 }
             }
-            branch = await_branch_poll(&mut branch_task) => {
+            branch = await_branch_poll(&mut tasks.branch_task) => {
                 app.git_branch = branch;
             }
-            found = await_path_hints(&mut hint_task) => {
+            found = await_path_hints(&mut tasks.hint_task) => {
                 if let Some((generation, items)) = found {
                     app.apply_path_hints(generation, items);
                 }
             }
-            outcome = await_mcp(&mut mcp_task) => {
-                mcp_ready = true;
-                if !outcome.connected.is_empty() {
-                    app.note(&format!("MCP ready: {}", outcome.connected.join(", ")));
-                }
-                // Right after the ready line, so a server that didn't come up
-                // is visible at start/resume instead of being lost to a log
-                // line painted over the frame.
-                for failure in &outcome.failed {
-                    app.note(&format!("MCP: {failure}"));
-                }
-                // A server that only needs signing in is separated from a
-                // broken one: the fix is a keypress away, so name it.
-                if !outcome.needs_auth.is_empty() {
-                    app.note(&format!(
-                        "MCP: {} need authentication - open /mcp to sign in",
-                        outcome.needs_auth.join(", ")
-                    ));
-                }
+            outcome = await_mcp(&mut tasks.mcp_task) => {
+                tasks.on_mcp_connected(app, outcome);
             }
-            Some(done) = await_mcp_job(&mut mcp_job) => {
-                finish_mcp_job(app, done, mcp_servers, &mut mcp_job).await;
+            Some(done) = await_mcp_job(&mut tasks.mcp_job) => {
+                finish_mcp_job(app, done, mcp_servers, &mut tasks.mcp_job).await;
             }
-            Some(done) = await_usage(&mut usage_task) => {
+            Some(done) = await_usage(&mut tasks.usage_task) => {
                 finish_usage(app, done);
             }
-            Some(report) = await_context(&mut context_task) => {
+            Some(report) = await_context(&mut tasks.context_task) => {
                 // Only apply a report the user is still looking at: a result
                 // landing after the overlay was closed must not reopen it.
                 finish_context_report(app, report);
             }
-            login_res = await_login(&mut login_task) => {
+            login_res = await_login(&mut tasks.login_task) => {
                 let login_ok = login_res.is_ok();
                 finish_login(app, login_res);
                 if login_ok {
                     reload_provider_configs(app).await;
                 }
             }
-            begun = await_login_begin(&mut login_begin_task) => {
-                match begun {
-                    Ok(pending) => {
-                        show_login_approval(app, pending.session());
-                        login_claim_task =
-                            Some(tokio::spawn(super::tokamak::device_login(pending)));
-                    }
-                    // Not a failure, but say it: an unexplained paste field
-                    // reads as the browser sign-in having silently broken.
-                    Err(super::device_auth::BeginError::Unsupported) => {
-                        app.note("this Tokamak deployment does not support browser sign-in yet");
-                        open_login_prompt(app, "tokamak");
-                    }
-                    Err(e) => {
-                        app.note(&format!(
-                            "browser sign-in unavailable: {}",
-                            e.message(&super::tokamak::base_url())
-                        ));
-                        open_login_prompt(app, "tokamak");
-                    }
-                }
+            begun = await_login_begin(&mut tasks.login_begin_task) => {
+                tasks.on_login_begun(app, begun);
             }
-            claimed = await_tokamak_login(&mut login_claim_task) => {
+            claimed = await_tokamak_login(&mut tasks.login_claim_task) => {
                 if finish_tokamak_login(app, claimed) {
                     reload_provider_configs(app).await;
                 }
             }
-            plugin_res = await_plugin_install(&mut plugin_install_task) => {
-                finish_plugin_install(app, plugin_install_url.take(), plugin_res);
+            plugin_res = await_plugin_install(&mut tasks.plugin_install_task) => {
+                finish_plugin_install(app, tasks.plugin_install_url.take(), plugin_res);
             }
-            compacted = await_compaction(&mut compact_task) => {
-                finish_compaction(app, compacted, compact_base);
+            compacted = await_compaction(&mut tasks.compact_task) => {
+                finish_compaction(app, compacted, tasks.compact_base);
             }
-            Some(done) = await_model_fetch(&mut model_fetch_task) => {
+            Some(done) = await_model_fetch(&mut tasks.model_fetch_task) => {
                 finish_model_fetch(app, done).await;
             }
-            evaluated = await_goal_eval(&mut goal_task) => {
+            evaluated = await_goal_eval(&mut tasks.goal_task) => {
                 match evaluated {
                     Some((goal, verdict)) => app.finish_goal_evaluation(goal, verdict),
                     None => {
@@ -1457,40 +1554,20 @@ async fn chat_loop<B: Backend>(
                     }
                 }
             }
-            snap_res = await_snapshot(&mut snap_task) => {
-                match (snap_inflight.take(), snap_res) {
-                    (Some(SnapshotJob::Base), Ok(sha)) => {
-                        app.base_snapshot = Some(sha);
-                        app.persist();
-                    }
-                    (Some(SnapshotJob::Checkpoint { user_index, preview, .. }), Ok(sha)) => {
-                        app.checkpoints.push(Checkpoint { user_index, preview, sha });
-                        app.persist();
-                    }
-                    (Some(SnapshotJob::Base), Err(e)) => {
-                        // Base failed: disable snapshots for the session and drop
-                        // any queued checkpoints (they have no base to parent).
-                        app.note(&format!("workspace snapshots disabled: {e}"));
-                        app.repo_root = None;
-                        app.snap_queue.clear();
-                    }
-                    (Some(SnapshotJob::Checkpoint { .. }), Err(e)) => {
-                        app.detail = format!("checkpoint failed: {e}");
-                    }
-                    (None, _) => {}
-                }
+            snap_res = await_snapshot(&mut tasks.snap_task) => {
+                tasks.on_snapshot_done(app, snap_res);
             }
-            ev = next_event(&mut current) => {
+            ev = next_event(&mut tasks.current) => {
                 match ev {
-                    RunEvent::Stream(ev) => apply_stream_event(app, ev, &mut current).await,
+                    RunEvent::Stream(ev) => apply_stream_event(app, ev, &mut tasks.current).await,
                     RunEvent::Steering(request) => app.steer_run(request),
                 }
-                drain_stream_events(app, &mut current).await;
+                drain_stream_events(app, &mut tasks.current).await;
             }
         }
     }
 
-    if let Some(c) = current {
+    if let Some(c) = tasks.current {
         c.handle.abort();
     }
     crate::core::agent::interaction::cancel_all(ask_requests).await;
