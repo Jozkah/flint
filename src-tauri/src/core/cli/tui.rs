@@ -16053,6 +16053,18 @@ fn load_image_file(path: &str) -> Result<PendingImage, String> {
 /// strips a `file://[host]` scheme; decodes `%XX` byte escapes.
 fn clipboard_path(text: &str) -> Option<String> {
     let line = text.lines().find(|l| !l.trim().is_empty())?.trim();
+    let lb = line.as_bytes();
+    let pathlike = line.starts_with("file://")
+        || line.starts_with('/')
+        || line.starts_with('~')
+        || line.starts_with("\\\\")
+        || (lb.len() >= 3
+            && lb[0].is_ascii_alphabetic()
+            && lb[1] == b':'
+            && (lb[2] == b'\\' || lb[2] == b'/'));
+    if !pathlike {
+        return None;
+    }
     let raw = line
         .strip_prefix("file://localhost")
         .or_else(|| line.strip_prefix("file://"))
@@ -16062,7 +16074,11 @@ fn clipboard_path(text: &str) -> Option<String> {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&raw[i + 1..i + 3], 16) {
+            let hex = bytes
+                .get(i + 1..i + 3)
+                .and_then(|h| std::str::from_utf8(h).ok())
+                .and_then(|h| u8::from_str_radix(h, 16).ok());
+            if let Some(b) = hex {
                 out.push(b);
                 i += 3;
                 continue;
@@ -22062,6 +22078,18 @@ mod tests {
         );
         assert_eq!(clipboard_path("/tmp/b.jpg").as_deref(), Some("/tmp/b.jpg"));
         assert_eq!(clipboard_path("   \n  "), None);
+    }
+
+    #[test]
+    fn clipboard_path_does_not_panic_on_percent_cjk() {
+        assert_eq!(clipboard_path("50%的人"), None);
+        assert_eq!(clipboard_path("%a\u{e9}"), None);
+        // Path-like text with a stray `%` before a multibyte char is kept as-is.
+        assert_eq!(
+            clipboard_path("/tmp/50%\u{7684}.png").as_deref(),
+            Some("/tmp/50%\u{7684}.png")
+        );
+        assert_eq!(clipboard_path("C:\\a\\b.png").as_deref(), Some("C:\\a\\b.png"));
     }
 
     /// A typed message shaped like a reminder still counts as a user turn and
