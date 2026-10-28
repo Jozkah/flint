@@ -298,9 +298,16 @@ pub fn forge_api() -> Result<Option<String>, String> {
 /// Name, or with `None` forget, the CA bundle in `~/.jan/config.toml`.
 /// Returns the path of the file written.
 pub fn set_ca_bundle(path: Option<&str>) -> Result<PathBuf, String> {
-    let mut config = load_raw()?;
-    config.ca_bundle = path.map(str::to_string);
-    write_raw(&config)
+    edit_doc(|doc| {
+        match path {
+            Some(p) => doc["ca_bundle"] = toml_edit::value(p),
+            None => {
+                doc.remove("ca_bundle");
+            }
+        }
+        Ok(())
+    })
+    .map(|(path, ())| path)
 }
 
 /// `hide_secrets` in `~/.jan/config.toml`; `None` when unset. Fails open to
@@ -509,22 +516,68 @@ fn load_raw() -> Result<GlobalConfigToml, String> {
     toml::from_str(&raw).map_err(|e| parse_error(&path, &e, e.message()))
 }
 
-/// Serialize the config back to `~/.jan/config.toml`, creating `~/.jan` if
-/// needed. The directory is user-scoped; the file is world-unreadable on Unix
-/// since it holds API keys.
-fn write_raw(config: &GlobalConfigToml) -> Result<PathBuf, String> {
+/// Edit `~/.jan/config.toml` in place, creating `~/.jan` if needed. The file is
+/// parsed as a format-preserving document and `f` touches only the keys it
+/// names, so comments and keys this build does not know about survive (a typed
+/// round trip drops both). A file that does not parse is an error and is left
+/// exactly as it is: nothing is written over it. The file is world-unreadable
+/// on Unix since it holds API keys.
+fn edit_doc<R>(
+    f: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<R, String>,
+) -> Result<(PathBuf, R), String> {
     let dir = global_jan_dir()?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create {}: {e}", dir.display()))?;
     let path = dir.join("config.toml");
-    let body =
-        toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {e}"))?;
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("Failed to read {}: {e}", path.display())),
+    };
+    let mut doc = raw
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| parse_error(&path, &e, e.message()))?;
+    let out = f(&mut doc)?;
     // Temp file plus rename (Jozkah/jan#36): a crash mid-write must not leave
     // a truncated file that then fails to parse and blocks every later write.
-    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, body.as_bytes())
+    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     restrict_permissions(&path);
-    Ok(path)
+    Ok((path, out))
+}
+
+/// The `[providers.<name>]` table, created when absent.
+fn provider_table<'a>(
+    doc: &'a mut toml_edit::DocumentMut,
+    name: &str,
+) -> Result<&'a mut dyn toml_edit::TableLike, String> {
+    if doc.get("providers").is_none() {
+        let mut providers = toml_edit::Table::new();
+        providers.set_implicit(true);
+        doc.insert("providers", toml_edit::Item::Table(providers));
+    }
+    let providers = doc
+        .get_mut("providers")
+        .and_then(|i| i.as_table_like_mut())
+        .ok_or_else(|| "`providers` in config.toml is not a table".to_string())?;
+    if providers.get(name).is_none() {
+        providers.insert(name, toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+    providers
+        .get_mut(name)
+        .and_then(|i| i.as_table_like_mut())
+        .ok_or_else(|| format!("`providers.{name}` in config.toml is not a table"))
+}
+
+fn put_or_remove(table: &mut dyn toml_edit::TableLike, key: &str, value: Option<toml_edit::Item>) {
+    match value {
+        Some(v) => {
+            table.insert(key, v);
+        }
+        None => {
+            table.remove(key);
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -544,34 +597,46 @@ pub(crate) fn set_provider(name: &str, update: ProviderUpdate) -> Result<PathBuf
     if name.trim().is_empty() {
         return Err("provider name must not be empty".to_string());
     }
-    let mut config = load_raw()?;
-    let entry = config.providers.entry(name.to_string()).or_default();
-    if let Some(api_key) = update.api_key {
-        // An explicit empty key clears the stored one; `None` leaves it as is.
-        entry.api_key = (!api_key.is_empty()).then_some(api_key);
-    }
-    if update.clear_api_key {
-        entry.api_key = None;
-    }
-    if let Some(base_url) = update.base_url {
-        entry.base_url = Some(base_url);
-    }
-    if let Some(models) = update.models {
-        entry.models = models;
-    }
-    if let Some(api_type) = update.api_type {
-        entry.api_type = Some(api_type);
-    }
-    if let Some(key_id) = update.key_id {
-        entry.key_id = key_id.filter(|k| !k.is_empty());
-    }
-    if let Some(key_expires_at) = update.key_expires_at {
-        entry.key_expires_at = key_expires_at;
-    }
-    if let Some(account) = update.account {
-        entry.account = account.filter(|a| !a.is_empty());
-    }
-    write_raw(&config)
+    edit_doc(|doc| {
+        let entry = provider_table(doc, name)?;
+        if let Some(api_key) = update.api_key {
+            // An explicit empty key clears the stored one; `None` leaves it as is.
+            put_or_remove(entry, "api_key", (!api_key.is_empty()).then(|| toml_edit::value(api_key)));
+        }
+        if update.clear_api_key {
+            entry.remove("api_key");
+        }
+        if let Some(base_url) = update.base_url {
+            entry.insert("base_url", toml_edit::value(base_url));
+        }
+        if let Some(models) = update.models {
+            put_or_remove(
+                entry,
+                "models",
+                (!models.is_empty()).then(|| toml_edit::value(models.into_iter().collect::<toml_edit::Array>())),
+            );
+        }
+        if let Some(api_type) = update.api_type {
+            entry.insert("api_type", toml_edit::value(api_type));
+        }
+        if let Some(key_id) = update.key_id {
+            put_or_remove(entry, "key_id", key_id.filter(|k| !k.is_empty()).map(toml_edit::value));
+        }
+        if let Some(key_expires_at) = update.key_expires_at {
+            let item = match key_expires_at {
+                Some(v) => Some(toml_edit::value(
+                    i64::try_from(v).map_err(|_| "key_expires_at is out of range".to_string())?,
+                )),
+                None => None,
+            };
+            put_or_remove(entry, "key_expires_at", item);
+        }
+        if let Some(account) = update.account {
+            put_or_remove(entry, "account", account.filter(|a| !a.is_empty()).map(toml_edit::value));
+        }
+        Ok(())
+    })
+    .map(|(path, ())| path)
 }
 
 /// Point `default_model` at `model` unless the user already chose one. Returns
@@ -582,7 +647,7 @@ pub(crate) fn set_default_model_if_unset(model: &str) -> Result<bool, String> {
     if model.trim().is_empty() {
         return Ok(false);
     }
-    let mut config = load_raw()?;
+    let config = load_raw()?;
     if config
         .default_model
         .as_deref()
@@ -590,8 +655,10 @@ pub(crate) fn set_default_model_if_unset(model: &str) -> Result<bool, String> {
     {
         return Ok(false);
     }
-    config.default_model = Some(model.to_string());
-    write_raw(&config)?;
+    edit_doc(|doc| {
+        doc["default_model"] = toml_edit::value(model);
+        Ok(())
+    })?;
     Ok(true)
 }
 
@@ -620,7 +687,7 @@ pub(crate) fn adopt_default_model(model: &str) -> Result<Option<DefaultModelChan
     if model.is_empty() {
         return Ok(None);
     }
-    let mut config = load_raw()?;
+    let config = load_raw()?;
     let current = config
         .default_model
         .as_deref()
@@ -634,8 +701,10 @@ pub(crate) fn adopt_default_model(model: &str) -> Result<Option<DefaultModelChan
         }
         Some(_) => DefaultModelChange::Repointed,
     };
-    config.default_model = Some(model.to_string());
-    write_raw(&config)?;
+    edit_doc(|doc| {
+        doc["default_model"] = toml_edit::value(model);
+        Ok(())
+    })?;
     Ok(Some(change))
 }
 
@@ -666,11 +735,15 @@ pub(crate) fn provider_key_meta(name: &str) -> Result<StoredKeyMeta, String> {
 /// Remove a provider entry from `~/.jan/config.toml`. Returns `true` if the
 /// provider existed and was removed, `false` if it was already absent.
 pub(crate) fn remove_provider(name: &str) -> Result<bool, String> {
-    let mut config = load_raw()?;
-    if config.providers.remove(name).is_none() {
+    if !load_raw()?.providers.contains_key(name) {
         return Ok(false);
     }
-    write_raw(&config)?;
+    edit_doc(|doc| {
+        if let Some(providers) = doc.get_mut("providers").and_then(|i| i.as_table_like_mut()) {
+            providers.remove(name);
+        }
+        Ok(())
+    })?;
     Ok(true)
 }
 
@@ -1119,8 +1192,8 @@ mod tests {
     }
 
     /// The `/settings` write path. Two properties matter and neither is
-    /// obvious: the commented template survives a write (the typed round-trip
-    /// `write_raw` does would throw every example line away), and a key added
+    /// obvious: the commented template survives a write (a typed round-trip
+    /// would throw every example line away), and a key added
     /// to a file that already holds `[providers.*]` tables reads back as a
     /// document key rather than as a member of the last table.
     #[test]
@@ -1560,13 +1633,23 @@ models = ["gpt-4o"]
     }
 
     #[test]
-    fn set_provider_preserves_commented_scaffold_is_lost_but_data_kept() {
-        // A hand-edited file with real entries roundtrips through set (comments in
-        // the scaffold are not preserved, but no provider data is lost).
+    fn set_provider_keeps_unknown_top_level_and_provider_keys() {
         with_temp_home(|_| {
             let path = global_config_path().unwrap();
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(&path, "[providers.groq]\napi_key = \"gk\"\n").unwrap();
+            std::fs::write(
+                &path,
+                "future_flag = true\ndefault_model = \"m1\"\n\n[providers.groq]\napi_key = \"gk\"\nfuture_field = \"x\"\n",
+            )
+            .unwrap();
+            set_provider(
+                "groq",
+                ProviderUpdate {
+                    base_url: Some("https://groq".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             set_provider(
                 "openai",
                 ProviderUpdate {
@@ -1575,12 +1658,75 @@ models = ["gpt-4o"]
                 },
             )
             .unwrap();
+            let body = std::fs::read_to_string(&path).unwrap();
+            let doc = body.parse::<toml_edit::DocumentMut>().unwrap();
+            assert_eq!(doc["future_flag"].as_bool(), Some(true));
+            assert_eq!(doc["default_model"].as_str(), Some("m1"));
+            assert_eq!(doc["providers"]["groq"]["future_field"].as_str(), Some("x"));
+            assert_eq!(doc["providers"]["groq"]["api_key"].as_str(), Some("gk"));
+            assert_eq!(doc["providers"]["groq"]["base_url"].as_str(), Some("https://groq"));
+            assert_eq!(doc["providers"]["openai"]["api_key"].as_str(), Some("sk"));
+        });
+    }
+
+    #[test]
+    fn set_provider_keeps_comments() {
+        with_temp_home(|_| {
+            let path = ensure_global_config().unwrap();
+            set_provider(
+                "openai",
+                ProviderUpdate {
+                    api_key: Some("sk".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert!(set_default_model_if_unset("m1").unwrap());
+            let body = std::fs::read_to_string(&path).unwrap();
+            assert!(body.contains("# advisor_model"), "scaffold comments were dropped: {body}");
+            assert!(body.contains("# [providers.my-provider]"), "{body}");
+            assert!(load_global_config().unwrap().contains_key("openai"));
+        });
+    }
+
+    #[test]
+    fn remove_provider_preserves_others() {
+        with_temp_home(|_| {
+            let path = global_config_path().unwrap();
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(
+                &path,
+                "# keep me\nfuture_flag = 1\n\n[providers.a]\napi_key = \"ka\"\n\n[providers.b]\napi_key = \"kb\"\nextra = \"e\"\n",
+            )
+            .unwrap();
+            assert!(remove_provider("a").unwrap());
+            let body = std::fs::read_to_string(&path).unwrap();
+            assert!(body.contains("# keep me") && body.contains("future_flag"), "{body}");
             let configs = load_global_config().unwrap();
-            assert_eq!(configs.get("groq").unwrap().api_key.as_deref(), Some("gk"));
-            assert_eq!(
-                configs.get("openai").unwrap().api_key.as_deref(),
-                Some("sk")
-            );
+            assert!(!configs.contains_key("a"));
+            assert_eq!(configs.get("b").unwrap().api_key.as_deref(), Some("kb"));
+            assert!(body.contains("extra"), "{body}");
+        });
+    }
+
+    #[test]
+    fn corrupt_file_is_backed_up_not_overwritten() {
+        with_temp_home(|_| {
+            let path = global_config_path().unwrap();
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let junk = "[providers.groq\napi_key = \"gk\" [[[";
+            std::fs::write(&path, junk).unwrap();
+            let err = set_provider(
+                "openai",
+                ProviderUpdate {
+                    api_key: Some("sk".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+            assert!(err.contains("Failed to parse"), "{err}");
+            assert!(set_default_model_if_unset("m1").is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), junk, "the unparseable file was overwritten");
         });
     }
 }
