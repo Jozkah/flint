@@ -464,6 +464,7 @@ export function RoomEditor({ room }: { room: Room }) {
   // A room without enough participants opens straight onto the add form.
   const [addOpen, setAddOpen] = useState(() => activeParticipants(room).length < 2)
   const dirty = useRef(false)
+  const draftRoomId = useRef(room.id)
   // Every edit bumps this; a save clears `dirty` only when nothing changed
   // while it was in flight.
   const editGen = useRef(0)
@@ -480,6 +481,12 @@ export function RoomEditor({ room }: { room: Room }) {
   // otherwise only pick up added and removed participants.
   useEffect(() => {
     const fresh = activeParticipants(room).map(toDraftParticipant)
+    // A different room: the draft belongs to the previous one, drop it.
+    const switched = draftRoomId.current !== room.id
+    if (switched) {
+      draftRoomId.current = room.id
+      dirty.current = false
+    }
     if (!dirty.current) {
       setTitle(room.title)
       setObjective(room.objective)
@@ -545,6 +552,8 @@ export function RoomEditor({ room }: { room: Room }) {
   }
 
   const save = async (auto = false) => {
+    // Never write one room's draft onto another room.
+    if (room.id !== draftRoomId.current) return
     if (auto && (!dirty.current || locked)) return
     setShowErrors(true)
     const keys = Object.keys(errors)
