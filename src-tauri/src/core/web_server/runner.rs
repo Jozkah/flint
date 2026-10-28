@@ -1596,483 +1596,588 @@ fn remove_own_live(runner: &Runner, id: &str, shared: &Arc<Shared>) {
     }
 }
 
+/// What the actor loop does after one message.
+enum Flow {
+    /// Wait for the next message.
+    Continue,
+    /// Leave the loop and run the closing events (`session.closed`).
+    Stop,
+    /// Leave at once: the session is gone and has said so itself.
+    Gone,
+}
+
+/// Whether a new turn may start now.
+///
+/// Pure over its inputs so the rate limit can be tested with a made-up clock:
+/// the caller passes the time, so the check never reads a clock itself. Refuses
+/// while a turn runs (409), while the worktree is not ready (409) and past
+/// `TURNS_PER_MINUTE` in the last minute (429); records `now` when it admits.
+fn admit_turn(
+    turn_times: &mut VecDeque<Instant>,
+    turn_active: bool,
+    broken_worktree: Option<&str>,
+    now: Instant,
+) -> Result<(), Fail> {
+    while turn_times.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
+        turn_times.pop_front();
+    }
+    if turn_active {
+        Err(fail(409, "this session has an active turn; steer it or wait for it to finish"))
+    } else if let Some(state) = broken_worktree {
+        Err(fail(
+            409,
+            format!("this session's worktree is {state}; discard it or start a new session"),
+        ))
+    } else if turn_times.len() >= TURNS_PER_MINUTE {
+        Err(fail(429, "too many turns on this session; wait a minute"))
+    } else {
+        turn_times.push_back(now);
+        Ok(())
+    }
+}
+
+/// One session's state and the handlers for what can happen to it. The actor
+/// loop owns it and awaits one message at a time, so a handler has the session
+/// to itself.
+struct SessionActor {
+    runner: Arc<Runner>,
+    session: Session,
+    shared: Arc<Shared>,
+    self_tx: mpsc::Sender<Cmd>,
+    active: Option<Active>,
+    /// request id -> tool name, for the audit record and the ownership check.
+    approvals: HashMap<String, String>,
+    ask_requests: HashMap<String, crate::core::agent::interaction::AskRequest>,
+    turn_times: VecDeque<Instant>,
+}
+
+impl SessionActor {
+    fn ping(&self, status: &str) {
+        self.runner
+            .bus
+            .publish("agent-session-changed", &json!({ "id": self.session.id, "status": status }));
+    }
+
+    async fn on_start(&mut self, input: Value, caller: Caller, reply: Reply) -> Flow {
+        let now = Instant::now();
+        let broken = match &self.session.worktree {
+            Some(record) if self.active.is_none() => {
+                let record = record.clone();
+                match tokio::task::spawn_blocking(move || worktree::state(&record)).await {
+                    Ok(WorktreeState::Ready) | Err(_) => None,
+                    Ok(other) => Some(wt::state_word(&other)),
+                }
+            }
+            _ => None,
+        };
+        let answer = match admit_turn(&mut self.turn_times, self.active.is_some(), broken, now) {
+            Err(refused) => Err(refused),
+            Ok(()) => {
+                if self.session.title.is_empty() {
+                    if let Some(first) = input.as_str() {
+                        self.session.title = first.chars().filter(|c| !c.is_control()).take(MAX_TITLE).collect();
+                    }
+                }
+                self.session.metadata["lastClient"] = json!(caller.client);
+                let body = begin_turn(&self.session.agent, &mut self.session.history, input, true);
+                let task = spawn_turn(self.session.agent.args.clone(), body);
+                let turn_id = uuid::Uuid::new_v4().to_string();
+                // What a client subscribes after to see this turn
+                // from its first event.
+                let before = self.shared.with(|f| {
+                    f.turn_after = f.seq;
+                    f.seq
+                });
+                // The words, so a page that comes back mid-turn can
+                // draw the message the turn is answering.
+                let preview = match &self.session.history.last().map(|m| &m["content"]) {
+                    Some(Value::String(text)) => text.chars().take(8000).collect::<String>(),
+                    _ => "[message with attachments]".to_owned(),
+                };
+                self.shared.publish("turn.started", json!({ "turnId": turn_id, "input": preview }));
+                self.shared.with(|f| f.status = "running");
+                self.active = Some(Active { turn_id: turn_id.clone(), task, updated_history: None, started: now });
+                self.ping("running");
+                Ok(json!({ "turnId": turn_id, "after": before }))
+            }
+        };
+        let _ = reply.send(answer);
+        Flow::Continue
+    }
+
+    async fn on_command(&mut self, command: Cmd) -> Flow {
+        match command {
+            Cmd::Start { input, caller, reply } => self.on_start(input, caller, reply).await,
+            Cmd::Steer { text, reply } => self.on_steer(text, reply).await,
+            Cmd::Interrupt { reply } => self.on_interrupt(reply).await,
+            Cmd::Approve { request_id, decision, reason, scope, defer, by, ip_hash, reply } => {
+                self.on_approve(request_id, decision, reason, scope, defer, by, ip_hash, reply).await
+            }
+            Cmd::AnswerAsk { request_id, results, reply } => {
+                self.on_answer_ask(request_id, results, reply).await
+            }
+            Cmd::SetModel { model, reply } => self.on_set_model(model, reply).await,
+            Cmd::SetAccess { mode, reply } => self.on_set_access(mode, reply).await,
+            Cmd::Rename { title, reply } => self.on_rename(title, reply).await,
+            Cmd::Worktree { op, caller, reply } => self.on_worktree(op, caller, reply).await,
+            Cmd::Close { reply } => self.on_close(reply).await,
+            Cmd::Delete { force, reply } => self.on_delete(force, reply).await,
+        }
+    }
+
+    async fn on_steer(&mut self, text: String, reply: Reply) -> Flow {
+        let answer = match self.active.as_ref() {
+            Some(turn) if !text.trim().is_empty() => {
+                turn.task.pending.lock().await.push(json!({"role":"user","content":text}));
+                self.shared.publish("steer.queued", json!({ "bytes": text.len() }));
+                Ok(json!({}))
+            }
+            Some(_) => Err(fail(400, "text must not be empty")),
+            None => Err(fail(409, "this session has no active turn")),
+        };
+        let _ = reply.send(answer);
+        Flow::Continue
+    }
+
+    async fn on_interrupt(&mut self, reply: Reply) -> Flow {
+        let Some(turn) = self.active.take() else {
+            let _ = reply.send(Err(fail(409, "this session has no active turn")));
+            return Flow::Continue;
+        };
+        turn.task.runner.abort();
+        turn.task.steerer.abort();
+        self.session.agent.permission_requests.lock().await.clear();
+        cancel_asks(&self.session).await;
+        self.approvals.clear();
+        self.ask_requests.clear();
+        self.shared.with(|f| { f.pending.clear(); f.asks.clear(); });
+        for event in release_requests(&self.session.agent.args, "interrupted").await {
+            publish_stream(&self.shared, &event, &self.runner.options);
+        }
+        propose(&self.runner, &mut self.session, &self.shared).await;
+        // Persist what the turn had so far, then read it back
+        // the way a resume does: that repairs a tool call the
+        // abort left without its result.
+        let settled = settle_turn(
+            &mut self.session.history,
+            turn.updated_history,
+            &Ok(Value::Null),
+            true,
+            Some(Persist {
+                base: &self.runner.data_folder,
+                session_id: &self.session.id,
+                model: &self.session.agent.model,
+                metadata: Some(self.session.metadata.clone()),
+            }),
+        );
+        if let Ok((messages, _)) = cli_read_messages_lenient(&self.runner.data_folder, &self.session.id) {
+            let rebuilt = rebuild_wire_history(&messages);
+            if !rebuilt.is_empty() {
+                self.session.history = rebuilt;
+            }
+        }
+        self.session.turns += 1;
+        self.shared.publish("stream", json!({"type":"done","stop_reason":"cancelled","usage":null}));
+        self.shared.publish(
+            "turn.completed",
+            json!({ "turnId": turn.turn_id, "stopReason": settled.stop_reason, "error": settled.error }),
+        );
+        let reply_text = last_assistant_text(&self.session.history);
+        self.shared.with(|f| {
+            f.status = "idle";
+            f.turns = self.session.turns;
+            f.last_reply = reply_text;
+            f.last_turn = Some(TurnEnd {
+                turn_id: turn.turn_id.clone(),
+                stop_reason: "interrupted".to_owned(),
+                error: None,
+            });
+        });
+        self.ping("idle");
+        let _ = reply.send(Ok(json!({})));
+        Flow::Continue
+    }
+
+    async fn on_approve(&mut self, request_id: String, decision: PermissionDecision, reason: Option<String>, scope: Option<tauri_plugin_agent_tools::scoped_rules::ApprovalScope>, defer: bool, by: String, ip_hash: String, reply: Option<Reply>) -> Flow {
+        let answer = match self.approvals.remove(&request_id) {
+            None => Err(fail(404, "no permission request with that id is pending on this session")),
+            Some(tool) => {
+                let sender = self.session.agent.permission_requests.lock().await.remove(&request_id);
+                match sender {
+                    None => Err(fail(404, "that permission request was already answered")),
+                    Some(sender) => {
+                        if let Some(reason) = reason.as_deref() {
+                            crate::core::agent::r#loop::record_deny_reason(&request_id, reason);
+                        }
+                        if let Some(scope) = scope {
+                            crate::core::agent::approval_flow::record_scope_choice(&request_id, scope);
+                        }
+                        if defer {
+                            crate::core::agent::approval_flow::mark_defer(&request_id);
+                        }
+                        let _ = sender.send(decision);
+                        let word = match decision {
+                            PermissionDecision::AllowOnce => "allow_once",
+                            PermissionDecision::AllowAlways => "allow_always",
+                            _ => "deny",
+                        };
+                        audit(&self.runner.data_folder, &self.session.id, &request_id, &tool, word, &by, &ip_hash);
+                        self.shared.publish(
+                            "approval.resolved",
+                            json!({ "requestId": request_id, "decision": word, "by": by }),
+                        );
+                        let waiting = self.shared.with(|f| {
+                            f.pending.retain(|p| p["request_id"] != json!(request_id));
+                            f.pending.len()
+                        });
+                        if waiting == 0 && self.active.is_some() {
+                            self.shared.with(|f| f.status = "running");
+                            self.ping("running");
+                        }
+                        Ok(json!({}))
+                    }
+                }
+            }
+        };
+        if let Some(reply) = reply {
+            let _ = reply.send(answer);
+        }
+        Flow::Continue
+    }
+
+    async fn on_answer_ask(&mut self, request_id: String, results: Vec<crate::core::agent::interaction::QuestionResult>, reply: Reply) -> Flow {
+        let answer = match self.ask_requests.get(&request_id) {
+            None => Err(fail(404, "no question with that id is pending on this session")),
+            Some(request) => match request.validate_results(&results) {
+                Err(message) => Err(fail(400, message)),
+                Ok(()) => match self.session.asks.lock().await.remove(&request_id) {
+                    None => Err(fail(404, "that question was already answered")),
+                    Some(sender) => {
+                        let _ = sender.send(Ok(results));
+                        self.ask_requests.remove(&request_id);
+                        self.shared.with(|f| f.asks.retain(|a| a["request_id"] != json!(request_id)));
+                        self.shared.publish("ask.answered", json!({ "requestId": request_id }));
+                        Ok(json!({}))
+                    }
+                },
+            },
+        };
+        let _ = reply.send(answer);
+        Flow::Continue
+    }
+
+    async fn on_set_model(&mut self, model: String, reply: Reply) -> Flow {
+        let answer = if self.active.is_some() {
+            Err(fail(409, "this session has an active turn; retry after it finishes"))
+        } else {
+            let configs = self.session.agent.args.provider_configs.clone();
+            match crate::core::agent::upstream::resolve_upstream_for_model(&model, configs).await {
+                Err(message) => Err(fail(422, message)),
+                Ok(_) => match prepare_agent_session(
+                    &match &self.session.worktree {
+                        Some(record) => wt::tool_dir(record, &self.session.folder),
+                        None => self.session.folder.clone(),
+                    }
+                    .to_string_lossy(),
+                    Some(model),
+                    ProviderOverrides::default(),
+                    self.session.flags.clone(),
+                    None,
+                ) {
+                    Err(message) => Err(fail(422, message)),
+                    Ok(mut agent) => {
+                        configure(&mut agent, &self.session.id, &self.session.asks, self.session.coordinator);
+                        self.session.agent = agent;
+                        let name = self.session.agent.model.clone();
+                        self.shared.with(|f| f.model = name.clone());
+                        let _ = self.runner.write_thread(&self.session);
+                        self.shared.publish("session.model", json!({ "model": name }));
+                        Ok(json!({ "model": name }))
+                    }
+                },
+            }
+        };
+        let _ = reply.send(answer);
+        Flow::Continue
+    }
+
+    async fn on_set_access(&mut self, mode: PermissionMode, reply: Reply) -> Flow {
+        let answer = if self.active.is_some() {
+            Err(fail(409, "this session has an active turn; retry after it finishes"))
+        } else {
+            self.session.mode = mode;
+            self.session.flags.auto_approve = mode.auto_approve();
+            self.session.flags.bypass = mode.bypass();
+            self.session.flags.plan = mode.plan();
+            self.session.agent.args.auto_approve = mode.auto_approve();
+            self.session.agent.args.bypass = mode.bypass();
+            self.session.agent.args.run_mode = if mode.plan() {
+                crate::core::agent::plan::RunMode::Plan
+            } else {
+                crate::core::agent::plan::RunMode::Normal
+            };
+            self.session.metadata["access"] = json!(access_name(mode));
+            self.shared.with(|f| f.access = access_name(mode));
+            let _ = self.runner.write_thread(&self.session);
+            self.shared.publish("session.access", json!({ "access": access_name(mode) }));
+            Ok(json!({ "access": access_name(mode) }))
+        };
+        let _ = reply.send(answer);
+        Flow::Continue
+    }
+
+    async fn on_rename(&mut self, title: String, reply: Reply) -> Flow {
+        self.session.title = title.clone();
+        self.session.metadata["titled"] = json!(true);
+        let _ = self.runner.write_thread(&self.session);
+        self.shared.publish("session.title", json!({ "title": title }));
+        let status = self.shared.with(|f| f.status);
+        self.ping(status);
+        let _ = reply.send(Ok(json!({ "title": title })));
+        Flow::Continue
+    }
+
+    async fn on_worktree(&mut self, op: super::session_worktree::Op, caller: Caller, reply: Reply) -> Flow {
+        if self.active.is_some() && op.mutates() {
+            let _ = reply.send(Err(fail(
+                409,
+                "this session has an active turn; retry after it finishes",
+            )));
+            return Flow::Continue;
+        }
+        let discarding = matches!(op, wt::Op::Discard { .. });
+        let (data, roots, sid) = (self.runner.data_folder.clone(), self.runner.roots.clone(), self.session.id.clone());
+        let (by, ip) = (caller.client, caller.ip_hash);
+        let outcome = tokio::task::spawn_blocking(move || wt::execute(&data, &roots, &sid, op, &by, &ip))
+            .await
+            .unwrap_or_else(|_| Err(fail(500, "the worktree operation did not finish")));
+        if let Some((meta, record)) = wt::reload(&self.runner.data_folder, &self.session.id) {
+            self.session.metadata = meta;
+            self.session.worktree = record;
+        }
+        let done = outcome.is_ok();
+        if done && discarding {
+            // Its checkout is gone: the session ends with it
+            // (the thread stays, marked, as a record).
+            self.session.agent.permission_requests.lock().await.clear();
+            cancel_asks(&self.session).await;
+            self.shared.publish("worktree.discarded", json!({}));
+            self.ping("closed");
+            let _ = reply.send(outcome);
+            return Flow::Stop;
+        }
+        if done {
+            self.shared.publish("worktree.changed", json!({ "worktree": self.session.worktree.as_ref().map(wt::record_json) }));
+        }
+        let _ = reply.send(outcome);
+        Flow::Continue
+    }
+
+    async fn on_close(&mut self, reply: Reply) -> Flow {
+        if self.active.is_some() {
+            let _ = reply.send(Err(fail(409, "this session has an active turn")));
+            return Flow::Continue;
+        }
+        self.session.agent.permission_requests.lock().await.clear();
+        cancel_asks(&self.session).await;
+        let _ = reply.send(Ok(json!({})));
+        return Flow::Stop;
+        Flow::Continue
+    }
+
+    async fn on_delete(&mut self, force: bool, reply: Reply) -> Flow {
+        // The worktree first: a refusal leaves the session, and
+        // its running turn, exactly as they were.
+        if let Err(refused) =
+            wt::release_for_delete(&self.runner.data_folder, &self.runner.roots, &self.session.id, force)
+        {
+            let _ = reply.send(Err(refused));
+            return Flow::Continue;
+        }
+        if let Some(turn) = self.active.take() {
+            turn.task.runner.abort();
+            turn.task.steerer.abort();
+        }
+        self.session.agent.permission_requests.lock().await.clear();
+        cancel_asks(&self.session).await;
+        remove_own_live(&self.runner, &self.session.id, &self.shared);
+        let outcome = crate::core::cli::delete_thread_at(&self.runner.data_folder, &self.session.id)
+            .map(|_| json!({ "deleted": true }))
+            .map_err(|m| fail(500, format!("could not delete the session: {m}")));
+        self.shared.publish("session.deleted", json!({}));
+        self.ping("deleted");
+        let _ = reply.send(outcome);
+        return Flow::Gone;
+        Flow::Continue
+    }
+
+    async fn on_turn_message(&mut self, message: Option<TurnMessage>) -> Flow {
+        let Some(message) = message else {
+            // The run's task is gone without an outcome.
+            let turn = self.active.take().expect("active");
+            propose(&self.runner, &mut self.session, &self.shared).await;
+            finish(&self.runner, &mut self.session, &self.shared, turn, Err("the run ended without an outcome".to_owned()));
+            self.approvals.clear();
+            self.ask_requests.clear();
+            self.ping("idle");
+            return Flow::Continue;
+        };
+        match message {
+            TurnMessage::Event(event) => {
+                let event = *event;
+                let turn = self.active.as_mut().expect("active");
+                match &event {
+                    StreamEvent::MessagesUpdated { messages } => {
+                        turn.updated_history = Some(messages.clone());
+                        // The whole history is not a client event.
+                        return Flow::Continue;
+                    }
+                    StreamEvent::ToolRequest { request_id, tool_name, args, run_id } => {
+                        // A campaign tool of a coordinator session: the
+                        // answer is made in this process and never
+                        // offered to a client. Anyone else's request
+                        // is refused the same way, so a turn is never
+                        // parked on a reply nobody can give.
+                        let registry = self.session.agent.args.host_tool_requests.clone();
+                        let backend = self.runner.coordinator_backend.get().cloned();
+                        let allowed = self.session.coordinator && run_id.is_none();
+                        let ctx = CoordinatorCall {
+                            session_id: self.session.id.clone(),
+                            source_root: self.session.folder.clone(),
+                            model: Some(self.session.agent.model.clone()).filter(|m| !m.is_empty()),
+                            read_only: self.session.mode.plan(),
+                        };
+                        let (rid, name, input) = (request_id.clone(), tool_name.clone(), args.clone());
+                        tokio::spawn(async move {
+                            let outcome = match (allowed, backend) {
+                                (false, _) => Err(
+                                    "campaign tools belong to the coordinator session only".to_owned(),
+                                ),
+                                (true, None) => Err("this server does not run campaigns".to_owned()),
+                                (true, Some(backend)) => backend.call(ctx, &name, input).await,
+                            };
+                            let (content, is_error) = match outcome {
+                                Ok(text) => (text, false),
+                                Err(message) => (message, true),
+                            };
+                            let result = crate::core::agent::host_tools::HostToolResult {
+                                content,
+                                parts: None,
+                                details: None,
+                                is_error,
+                            };
+                            let _ = crate::core::agent::host_tools::respond(&registry, &rid, Ok(result)).await;
+                        });
+                        return Flow::Continue;
+                    }
+                    StreamEvent::PermissionRequest { request_id, tool_name, .. } => {
+                        self.approvals.insert(request_id.clone(), tool_name.clone());
+                        let mut wire = serde_json::to_value(&event).unwrap_or(Value::Null);
+                        if !self.runner.options.allow_always {
+                            wire["offers_always"] = json!(false);
+                        }
+                        self.shared.with(|f| {
+                            f.pending.push(scrub(wire));
+                            f.status = "awaiting_approval";
+                        });
+                        self.runner.bus.publish(
+                            "agent-approval-pending",
+                            &json!({ "id": self.session.id, "requestId": request_id, "tool": tool_name }),
+                        );
+                        self.ping("awaiting_approval");
+                        // Nobody answered: deny, and say who did.
+                        let timeout = self.runner.options.approval_timeout;
+                        let (tx, request) = (self.self_tx.clone(), request_id.clone());
+                        tokio::spawn(async move {
+                            tokio::time::sleep(timeout).await;
+                            let _ = tx
+                                .send(Cmd::Approve {
+                                    request_id: request,
+                                    decision: PermissionDecision::Deny,
+                                    reason: None,
+                                    scope: None,
+                                    defer: false,
+                                    by: "timeout".to_owned(),
+                                    ip_hash: String::new(),
+                                    reply: None,
+                                })
+                                .await;
+                        });
+                    }
+                    StreamEvent::AskRequest { request_id, request, .. } => {
+                        self.ask_requests.insert(request_id.clone(), request.clone());
+                        let wire = serde_json::to_value(&event).unwrap_or(Value::Null);
+                        self.shared.with(|f| f.asks.push(scrub(wire)));
+                        self.ping("awaiting_answer");
+                    }
+                    StreamEvent::AskResolved { request_id } => {
+                        self.ask_requests.remove(request_id);
+                        self.shared.with(|f| f.asks.retain(|a| a["request_id"] != json!(request_id)));
+                    }
+                    StreamEvent::TurnUsage { usage, .. } => {
+                        let used = usage
+                            .total_tokens
+                            .unwrap_or_else(|| usage.prompt_tokens.unwrap_or(0) + usage.completion_tokens.unwrap_or(0));
+                        self.shared.with(|f| f.tokens = f.tokens.saturating_add(used));
+                    }
+                    StreamEvent::ToolCall { .. } => {
+                        self.shared.with(|f| f.steps = f.steps.saturating_add(1));
+                    }
+                    _ => {}
+                }
+                publish_stream(&self.shared, &event, &self.runner.options);
+            }
+            TurnMessage::Finished(result) => {
+                let turn = self.active.take().expect("active");
+                propose(&self.runner, &mut self.session, &self.shared).await;
+                finish(&self.runner, &mut self.session, &self.shared, turn, result);
+                self.approvals.clear();
+                self.ask_requests.clear();
+                self.ping("idle");
+            }
+        }
+        Flow::Continue
+    }
+}
+
 async fn actor(
     runner: Arc<Runner>,
-    mut session: Session,
+    session: Session,
     shared: Arc<Shared>,
     mut commands: mpsc::Receiver<Cmd>,
     self_tx: mpsc::Sender<Cmd>,
 ) {
-    let mut active: Option<Active> = None;
-    // request id -> tool name, for the audit record and the ownership check.
-    let mut approvals: HashMap<String, String> = HashMap::new();
-    let mut ask_requests: HashMap<String, crate::core::agent::interaction::AskRequest> = HashMap::new();
-    let mut turn_times: VecDeque<Instant> = VecDeque::new();
     let id = session.id.clone();
-    let ping = |status: &str| {
-        runner.bus.publish("agent-session-changed", &json!({ "id": id, "status": status }));
+    let mut me = SessionActor {
+        runner,
+        session,
+        shared,
+        self_tx,
+        active: None,
+        approvals: HashMap::new(),
+        ask_requests: HashMap::new(),
+        turn_times: VecDeque::new(),
     };
     loop {
         tokio::select! {
             command = commands.recv() => {
                 let Some(command) = command else { break };
-                match command {
-                    Cmd::Start { input, caller, reply } => {
-                        let now = Instant::now();
-                        while turn_times.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
-                            turn_times.pop_front();
-                        }
-                        let broken = match &session.worktree {
-                            Some(record) if active.is_none() => {
-                                let record = record.clone();
-                                match tokio::task::spawn_blocking(move || worktree::state(&record)).await {
-                                    Ok(WorktreeState::Ready) | Err(_) => None,
-                                    Ok(other) => Some(wt::state_word(&other)),
-                                }
-                            }
-                            _ => None,
-                        };
-                        let answer = if active.is_some() {
-                            Err(fail(409, "this session has an active turn; steer it or wait for it to finish"))
-                        } else if let Some(state) = broken {
-                            Err(fail(
-                                409,
-                                format!("this session's worktree is {state}; discard it or start a new session"),
-                            ))
-                        } else if turn_times.len() >= TURNS_PER_MINUTE {
-                            Err(fail(429, "too many turns on this session; wait a minute"))
-                        } else {
-                            turn_times.push_back(now);
-                            if session.title.is_empty() {
-                                if let Some(first) = input.as_str() {
-                                    session.title = first.chars().filter(|c| !c.is_control()).take(MAX_TITLE).collect();
-                                }
-                            }
-                            session.metadata["lastClient"] = json!(caller.client);
-                            let body = begin_turn(&session.agent, &mut session.history, input, true);
-                            let task = spawn_turn(session.agent.args.clone(), body);
-                            let turn_id = uuid::Uuid::new_v4().to_string();
-                            // What a client subscribes after to see this turn
-                            // from its first event.
-                            let before = shared.with(|f| {
-                                f.turn_after = f.seq;
-                                f.seq
-                            });
-                            // The words, so a page that comes back mid-turn can
-                            // draw the message the turn is answering.
-                            let preview = match &session.history.last().map(|m| &m["content"]) {
-                                Some(Value::String(text)) => text.chars().take(8000).collect::<String>(),
-                                _ => "[message with attachments]".to_owned(),
-                            };
-                            shared.publish("turn.started", json!({ "turnId": turn_id, "input": preview }));
-                            shared.with(|f| f.status = "running");
-                            active = Some(Active { turn_id: turn_id.clone(), task, updated_history: None, started: now });
-                            ping("running");
-                            Ok(json!({ "turnId": turn_id, "after": before }))
-                        };
-                        let _ = reply.send(answer);
-                    }
-                    Cmd::Steer { text, reply } => {
-                        let answer = match active.as_ref() {
-                            Some(turn) if !text.trim().is_empty() => {
-                                turn.task.pending.lock().await.push(json!({"role":"user","content":text}));
-                                shared.publish("steer.queued", json!({ "bytes": text.len() }));
-                                Ok(json!({}))
-                            }
-                            Some(_) => Err(fail(400, "text must not be empty")),
-                            None => Err(fail(409, "this session has no active turn")),
-                        };
-                        let _ = reply.send(answer);
-                    }
-                    Cmd::Interrupt { reply } => {
-                        let Some(turn) = active.take() else {
-                            let _ = reply.send(Err(fail(409, "this session has no active turn")));
-                            continue;
-                        };
-                        turn.task.runner.abort();
-                        turn.task.steerer.abort();
-                        session.agent.permission_requests.lock().await.clear();
-                        cancel_asks(&session).await;
-                        approvals.clear();
-                        ask_requests.clear();
-                        shared.with(|f| { f.pending.clear(); f.asks.clear(); });
-                        for event in release_requests(&session.agent.args, "interrupted").await {
-                            publish_stream(&shared, &event, &runner.options);
-                        }
-                        propose(&runner, &mut session, &shared).await;
-                        // Persist what the turn had so far, then read it back
-                        // the way a resume does: that repairs a tool call the
-                        // abort left without its result.
-                        let settled = settle_turn(
-                            &mut session.history,
-                            turn.updated_history,
-                            &Ok(Value::Null),
-                            true,
-                            Some(Persist {
-                                base: &runner.data_folder,
-                                session_id: &session.id,
-                                model: &session.agent.model,
-                                metadata: Some(session.metadata.clone()),
-                            }),
-                        );
-                        if let Ok((messages, _)) = cli_read_messages_lenient(&runner.data_folder, &session.id) {
-                            let rebuilt = rebuild_wire_history(&messages);
-                            if !rebuilt.is_empty() {
-                                session.history = rebuilt;
-                            }
-                        }
-                        session.turns += 1;
-                        shared.publish("stream", json!({"type":"done","stop_reason":"cancelled","usage":null}));
-                        shared.publish(
-                            "turn.completed",
-                            json!({ "turnId": turn.turn_id, "stopReason": settled.stop_reason, "error": settled.error }),
-                        );
-                        let reply_text = last_assistant_text(&session.history);
-                        shared.with(|f| {
-                            f.status = "idle";
-                            f.turns = session.turns;
-                            f.last_reply = reply_text;
-                            f.last_turn = Some(TurnEnd {
-                                turn_id: turn.turn_id.clone(),
-                                stop_reason: "interrupted".to_owned(),
-                                error: None,
-                            });
-                        });
-                        ping("idle");
-                        let _ = reply.send(Ok(json!({})));
-                    }
-                    Cmd::Approve { request_id, decision, reason, scope, defer, by, ip_hash, reply } => {
-                        let answer = match approvals.remove(&request_id) {
-                            None => Err(fail(404, "no permission request with that id is pending on this session")),
-                            Some(tool) => {
-                                let sender = session.agent.permission_requests.lock().await.remove(&request_id);
-                                match sender {
-                                    None => Err(fail(404, "that permission request was already answered")),
-                                    Some(sender) => {
-                                        if let Some(reason) = reason.as_deref() {
-                                            crate::core::agent::r#loop::record_deny_reason(&request_id, reason);
-                                        }
-                                        if let Some(scope) = scope {
-                                            crate::core::agent::approval_flow::record_scope_choice(&request_id, scope);
-                                        }
-                                        if defer {
-                                            crate::core::agent::approval_flow::mark_defer(&request_id);
-                                        }
-                                        let _ = sender.send(decision);
-                                        let word = match decision {
-                                            PermissionDecision::AllowOnce => "allow_once",
-                                            PermissionDecision::AllowAlways => "allow_always",
-                                            _ => "deny",
-                                        };
-                                        audit(&runner.data_folder, &session.id, &request_id, &tool, word, &by, &ip_hash);
-                                        shared.publish(
-                                            "approval.resolved",
-                                            json!({ "requestId": request_id, "decision": word, "by": by }),
-                                        );
-                                        let waiting = shared.with(|f| {
-                                            f.pending.retain(|p| p["request_id"] != json!(request_id));
-                                            f.pending.len()
-                                        });
-                                        if waiting == 0 && active.is_some() {
-                                            shared.with(|f| f.status = "running");
-                                            ping("running");
-                                        }
-                                        Ok(json!({}))
-                                    }
-                                }
-                            }
-                        };
-                        if let Some(reply) = reply {
-                            let _ = reply.send(answer);
-                        }
-                    }
-                    Cmd::AnswerAsk { request_id, results, reply } => {
-                        let answer = match ask_requests.get(&request_id) {
-                            None => Err(fail(404, "no question with that id is pending on this session")),
-                            Some(request) => match request.validate_results(&results) {
-                                Err(message) => Err(fail(400, message)),
-                                Ok(()) => match session.asks.lock().await.remove(&request_id) {
-                                    None => Err(fail(404, "that question was already answered")),
-                                    Some(sender) => {
-                                        let _ = sender.send(Ok(results));
-                                        ask_requests.remove(&request_id);
-                                        shared.with(|f| f.asks.retain(|a| a["request_id"] != json!(request_id)));
-                                        shared.publish("ask.answered", json!({ "requestId": request_id }));
-                                        Ok(json!({}))
-                                    }
-                                },
-                            },
-                        };
-                        let _ = reply.send(answer);
-                    }
-                    Cmd::SetModel { model, reply } => {
-                        let answer = if active.is_some() {
-                            Err(fail(409, "this session has an active turn; retry after it finishes"))
-                        } else {
-                            let configs = session.agent.args.provider_configs.clone();
-                            match crate::core::agent::upstream::resolve_upstream_for_model(&model, configs).await {
-                                Err(message) => Err(fail(422, message)),
-                                Ok(_) => match prepare_agent_session(
-                                    &match &session.worktree {
-                                        Some(record) => wt::tool_dir(record, &session.folder),
-                                        None => session.folder.clone(),
-                                    }
-                                    .to_string_lossy(),
-                                    Some(model),
-                                    ProviderOverrides::default(),
-                                    session.flags.clone(),
-                                    None,
-                                ) {
-                                    Err(message) => Err(fail(422, message)),
-                                    Ok(mut agent) => {
-                                        configure(&mut agent, &session.id, &session.asks, session.coordinator);
-                                        session.agent = agent;
-                                        let name = session.agent.model.clone();
-                                        shared.with(|f| f.model = name.clone());
-                                        let _ = runner.write_thread(&session);
-                                        shared.publish("session.model", json!({ "model": name }));
-                                        Ok(json!({ "model": name }))
-                                    }
-                                },
-                            }
-                        };
-                        let _ = reply.send(answer);
-                    }
-                    Cmd::SetAccess { mode, reply } => {
-                        let answer = if active.is_some() {
-                            Err(fail(409, "this session has an active turn; retry after it finishes"))
-                        } else {
-                            session.mode = mode;
-                            session.flags.auto_approve = mode.auto_approve();
-                            session.flags.bypass = mode.bypass();
-                            session.flags.plan = mode.plan();
-                            session.agent.args.auto_approve = mode.auto_approve();
-                            session.agent.args.bypass = mode.bypass();
-                            session.agent.args.run_mode = if mode.plan() {
-                                crate::core::agent::plan::RunMode::Plan
-                            } else {
-                                crate::core::agent::plan::RunMode::Normal
-                            };
-                            session.metadata["access"] = json!(access_name(mode));
-                            shared.with(|f| f.access = access_name(mode));
-                            let _ = runner.write_thread(&session);
-                            shared.publish("session.access", json!({ "access": access_name(mode) }));
-                            Ok(json!({ "access": access_name(mode) }))
-                        };
-                        let _ = reply.send(answer);
-                    }
-                    Cmd::Rename { title, reply } => {
-                        session.title = title.clone();
-                        session.metadata["titled"] = json!(true);
-                        let _ = runner.write_thread(&session);
-                        shared.publish("session.title", json!({ "title": title }));
-                        let status = shared.with(|f| f.status);
-                        ping(status);
-                        let _ = reply.send(Ok(json!({ "title": title })));
-                    }
-                    Cmd::Worktree { op, caller, reply } => {
-                        if active.is_some() && op.mutates() {
-                            let _ = reply.send(Err(fail(
-                                409,
-                                "this session has an active turn; retry after it finishes",
-                            )));
-                            continue;
-                        }
-                        let discarding = matches!(op, wt::Op::Discard { .. });
-                        let (data, roots, sid) = (runner.data_folder.clone(), runner.roots.clone(), session.id.clone());
-                        let (by, ip) = (caller.client, caller.ip_hash);
-                        let outcome = tokio::task::spawn_blocking(move || wt::execute(&data, &roots, &sid, op, &by, &ip))
-                            .await
-                            .unwrap_or_else(|_| Err(fail(500, "the worktree operation did not finish")));
-                        if let Some((meta, record)) = wt::reload(&runner.data_folder, &session.id) {
-                            session.metadata = meta;
-                            session.worktree = record;
-                        }
-                        let done = outcome.is_ok();
-                        if done && discarding {
-                            // Its checkout is gone: the session ends with it
-                            // (the thread stays, marked, as a record).
-                            session.agent.permission_requests.lock().await.clear();
-                            cancel_asks(&session).await;
-                            shared.publish("worktree.discarded", json!({}));
-                            ping("closed");
-                            let _ = reply.send(outcome);
-                            break;
-                        }
-                        if done {
-                            shared.publish("worktree.changed", json!({ "worktree": session.worktree.as_ref().map(wt::record_json) }));
-                        }
-                        let _ = reply.send(outcome);
-                    }
-                    Cmd::Close { reply } => {
-                        if active.is_some() {
-                            let _ = reply.send(Err(fail(409, "this session has an active turn")));
-                            continue;
-                        }
-                        session.agent.permission_requests.lock().await.clear();
-                        cancel_asks(&session).await;
-                        let _ = reply.send(Ok(json!({})));
-                        break;
-                    }
-                    Cmd::Delete { force, reply } => {
-                        // The worktree first: a refusal leaves the session, and
-                        // its running turn, exactly as they were.
-                        if let Err(refused) =
-                            wt::release_for_delete(&runner.data_folder, &runner.roots, &session.id, force)
-                        {
-                            let _ = reply.send(Err(refused));
-                            continue;
-                        }
-                        if let Some(turn) = active.take() {
-                            turn.task.runner.abort();
-                            turn.task.steerer.abort();
-                        }
-                        session.agent.permission_requests.lock().await.clear();
-                        cancel_asks(&session).await;
-                        remove_own_live(&runner, &session.id, &shared);
-                        let outcome = crate::core::cli::delete_thread_at(&runner.data_folder, &session.id)
-                            .map(|_| json!({ "deleted": true }))
-                            .map_err(|m| fail(500, format!("could not delete the session: {m}")));
-                        shared.publish("session.deleted", json!({}));
-                        ping("deleted");
-                        let _ = reply.send(outcome);
-                        return;
-                    }
+                match me.on_command(command).await {
+                    Flow::Continue => {}
+                    Flow::Stop => break,
+                    Flow::Gone => return,
                 }
             }
-            message = async { active.as_mut().expect("active").task.events.recv().await }, if active.is_some() => {
-                let Some(message) = message else {
-                    // The run's task is gone without an outcome.
-                    let turn = active.take().expect("active");
-                    propose(&runner, &mut session, &shared).await;
-                    finish(&runner, &mut session, &shared, turn, Err("the run ended without an outcome".to_owned()));
-                    approvals.clear();
-                    ask_requests.clear();
-                    ping("idle");
-                    continue;
-                };
-                match message {
-                    TurnMessage::Event(event) => {
-                        let event = *event;
-                        let turn = active.as_mut().expect("active");
-                        match &event {
-                            StreamEvent::MessagesUpdated { messages } => {
-                                turn.updated_history = Some(messages.clone());
-                                // The whole history is not a client event.
-                                continue;
-                            }
-                            StreamEvent::ToolRequest { request_id, tool_name, args, run_id } => {
-                                // A campaign tool of a coordinator session: the
-                                // answer is made in this process and never
-                                // offered to a client. Anyone else's request
-                                // is refused the same way, so a turn is never
-                                // parked on a reply nobody can give.
-                                let registry = session.agent.args.host_tool_requests.clone();
-                                let backend = runner.coordinator_backend.get().cloned();
-                                let allowed = session.coordinator && run_id.is_none();
-                                let ctx = CoordinatorCall {
-                                    session_id: session.id.clone(),
-                                    source_root: session.folder.clone(),
-                                    model: Some(session.agent.model.clone()).filter(|m| !m.is_empty()),
-                                    read_only: session.mode.plan(),
-                                };
-                                let (rid, name, input) = (request_id.clone(), tool_name.clone(), args.clone());
-                                tokio::spawn(async move {
-                                    let outcome = match (allowed, backend) {
-                                        (false, _) => Err(
-                                            "campaign tools belong to the coordinator session only".to_owned(),
-                                        ),
-                                        (true, None) => Err("this server does not run campaigns".to_owned()),
-                                        (true, Some(backend)) => backend.call(ctx, &name, input).await,
-                                    };
-                                    let (content, is_error) = match outcome {
-                                        Ok(text) => (text, false),
-                                        Err(message) => (message, true),
-                                    };
-                                    let result = crate::core::agent::host_tools::HostToolResult {
-                                        content,
-                                        parts: None,
-                                        details: None,
-                                        is_error,
-                                    };
-                                    let _ = crate::core::agent::host_tools::respond(&registry, &rid, Ok(result)).await;
-                                });
-                                continue;
-                            }
-                            StreamEvent::PermissionRequest { request_id, tool_name, .. } => {
-                                approvals.insert(request_id.clone(), tool_name.clone());
-                                let mut wire = serde_json::to_value(&event).unwrap_or(Value::Null);
-                                if !runner.options.allow_always {
-                                    wire["offers_always"] = json!(false);
-                                }
-                                shared.with(|f| {
-                                    f.pending.push(scrub(wire));
-                                    f.status = "awaiting_approval";
-                                });
-                                runner.bus.publish(
-                                    "agent-approval-pending",
-                                    &json!({ "id": session.id, "requestId": request_id, "tool": tool_name }),
-                                );
-                                ping("awaiting_approval");
-                                // Nobody answered: deny, and say who did.
-                                let timeout = runner.options.approval_timeout;
-                                let (tx, request) = (self_tx.clone(), request_id.clone());
-                                tokio::spawn(async move {
-                                    tokio::time::sleep(timeout).await;
-                                    let _ = tx
-                                        .send(Cmd::Approve {
-                                            request_id: request,
-                                            decision: PermissionDecision::Deny,
-                                            reason: None,
-                                            scope: None,
-                                            defer: false,
-                                            by: "timeout".to_owned(),
-                                            ip_hash: String::new(),
-                                            reply: None,
-                                        })
-                                        .await;
-                                });
-                            }
-                            StreamEvent::AskRequest { request_id, request, .. } => {
-                                ask_requests.insert(request_id.clone(), request.clone());
-                                let wire = serde_json::to_value(&event).unwrap_or(Value::Null);
-                                shared.with(|f| f.asks.push(scrub(wire)));
-                                ping("awaiting_answer");
-                            }
-                            StreamEvent::AskResolved { request_id } => {
-                                ask_requests.remove(request_id);
-                                shared.with(|f| f.asks.retain(|a| a["request_id"] != json!(request_id)));
-                            }
-                            StreamEvent::TurnUsage { usage, .. } => {
-                                let used = usage
-                                    .total_tokens
-                                    .unwrap_or_else(|| usage.prompt_tokens.unwrap_or(0) + usage.completion_tokens.unwrap_or(0));
-                                shared.with(|f| f.tokens = f.tokens.saturating_add(used));
-                            }
-                            StreamEvent::ToolCall { .. } => {
-                                shared.with(|f| f.steps = f.steps.saturating_add(1));
-                            }
-                            _ => {}
-                        }
-                        publish_stream(&shared, &event, &runner.options);
-                    }
-                    TurnMessage::Finished(result) => {
-                        let turn = active.take().expect("active");
-                        propose(&runner, &mut session, &shared).await;
-                        finish(&runner, &mut session, &shared, turn, result);
-                        approvals.clear();
-                        ask_requests.clear();
-                        ping("idle");
-                    }
-                }
+            message = async { me.active.as_mut().expect("active").task.events.recv().await }, if me.active.is_some() => {
+                me.on_turn_message(message).await;
             }
-            _ = tokio::time::sleep(IDLE_EVICT), if active.is_none() => {
+            _ = tokio::time::sleep(IDLE_EVICT), if me.active.is_none() => {
                 break;
             }
         }
     }
-    remove_own_live(&runner, &id, &shared);
-    shared.publish("session.closed", json!({}));
+    remove_own_live(&me.runner, &id, &me.shared);
+    me.shared.publish("session.closed", json!({}));
 }
 
 /// When the session works in a worktree and the turn changed something new,
@@ -2385,5 +2490,36 @@ fn x() {}
         // The read views stay with agent.rs; nothing that spawns is here.
         assert!(!handles("agent_run_list"));
         assert!(!handles("agent_campaign_cancel"));
+    }
+}
+
+#[cfg(test)]
+mod admit_turn_tests {
+    use super::*;
+
+    #[test]
+    fn admit_turn_rate_limits() {
+        let mut times = VecDeque::new();
+        let t0 = Instant::now();
+        for i in 0..TURNS_PER_MINUTE {
+            let now = t0 + Duration::from_millis(i as u64);
+            assert!(admit_turn(&mut times, false, None, now).is_ok(), "turn {i}");
+        }
+        let refused = admit_turn(&mut times, false, None, t0 + Duration::from_secs(30)).unwrap_err();
+        assert_eq!(refused.status, 429);
+        // A minute later the window has emptied.
+        assert!(admit_turn(&mut times, false, None, t0 + Duration::from_secs(61)).is_ok());
+        assert_eq!(times.len(), 1);
+    }
+
+    #[test]
+    fn an_active_turn_or_broken_worktree_refuses_without_counting() {
+        let mut times = VecDeque::new();
+        let now = Instant::now();
+        assert_eq!(admit_turn(&mut times, true, None, now).unwrap_err().status, 409);
+        let broken = admit_turn(&mut times, false, Some("missing"), now).unwrap_err();
+        assert_eq!(broken.status, 409);
+        assert!(broken.body.as_str().unwrap().contains("missing"));
+        assert!(times.is_empty(), "a refused turn used up the allowance");
     }
 }
