@@ -41,6 +41,12 @@ const MAX_JSON_BODY: usize = 1024 * 1024;
 /// A body that may carry pictures: a chat message with attachments, or the
 /// provider request that sends them.
 pub(super) const MAX_LARGE_JSON_BODY: usize = 64 * 1024 * 1024;
+/// Time a client gets to deliver a whole sign-in body.
+const LOGIN_BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+/// Time a client gets to deliver a whole JSON body.
+const JSON_BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+/// Time a client gets to deliver a whole upload (up to 100 MiB, so generous).
+const UPLOAD_BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(600);
 /// Open connections the headless server serves at once.
 const MAX_CONNECTIONS: usize = 256;
 const COOKIE_NAME: &str = "flint_session";
@@ -151,6 +157,25 @@ fn json_created(value: &impl serde::Serialize) -> Resp {
     response
 }
 
+/// The whole body, or the status to refuse with: 413 over `max` bytes, 408 when
+/// the client has not finished sending within `deadline` (a trickling client
+/// would otherwise hold the connection and its buffer open).
+async fn collect_limited<B>(
+    body: B,
+    max: usize,
+    deadline: std::time::Duration,
+) -> Result<Bytes, StatusCode>
+where
+    B: hyper::body::Body<Data = Bytes>,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    match tokio::time::timeout(deadline, Limited::new(body, max).collect()).await {
+        Ok(Ok(collected)) => Ok(collected.to_bytes()),
+        Ok(Err(_)) => Err(StatusCode::PAYLOAD_TOO_LARGE),
+        Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
+    }
+}
+
 #[allow(clippy::result_large_err)]
 async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     read_json_max(req, MAX_JSON_BODY).await
@@ -183,8 +208,8 @@ pub(super) async fn read_json_value_max(
     if !is_json {
         return Err(text(StatusCode::UNSUPPORTED_MEDIA_TYPE, "Expected application/json"));
     }
-    let body = Limited::new(req.into_body(), max).collect().await
-        .map_err(|_| text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"))?.to_bytes();
+    let body = collect_limited(req.into_body(), max, JSON_BODY_DEADLINE).await
+        .map_err(|status| text(status, "Request too large or too slow"))?;
     let value: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|_| text(StatusCode::BAD_REQUEST, "Invalid JSON"))?;
     Ok(value)
@@ -700,9 +725,9 @@ async fn token_sign_in(state: &State, req: Request<Incoming>, client: std::net::
     if state.limiter.blocked(client) {
         return text(StatusCode::TOO_MANY_REQUESTS, "Too many sign-in attempts");
     }
-    let body = match Limited::new(req.into_body(), MAX_LOGIN_BODY).collect().await {
-        Ok(body) => body.to_bytes(),
-        Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"),
+    let body = match collect_limited(req.into_body(), MAX_LOGIN_BODY, LOGIN_BODY_DEADLINE).await {
+        Ok(body) => body,
+        Err(status) => return text(status, "Request too large or too slow"),
     };
     let credential = serde_json::from_slice::<serde_json::Value>(&body)
         .ok()
@@ -1201,12 +1226,9 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             return refuse(StatusCode::TOO_MANY_REQUESTS, "rate", "Too many sign-in attempts");
         }
         let secure = cookie_secure(&state, req.headers());
-        let body = match Limited::new(req.into_body(), MAX_LOGIN_BODY)
-            .collect()
-            .await
-        {
-            Ok(body) => body.to_bytes(),
-            Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"),
+        let body = match collect_limited(req.into_body(), MAX_LOGIN_BODY, LOGIN_BODY_DEADLINE).await {
+            Ok(body) => body,
+            Err(status) => return text(status, "Request too large or too slow"),
         };
         let Some(token) = std::str::from_utf8(&body)
             .ok()
@@ -1402,13 +1424,16 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     }
     if path == "/api/v1/uploads" && method == Method::POST {
         let name = query_param(req.uri().query(), "name").unwrap_or_default();
-        let body = match Limited::new(req.into_body(), uploads::MAX_UPLOAD_BYTES).collect().await {
-            Ok(body) => body.to_bytes(),
-            Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "File too large"),
+        let body = match collect_limited(req.into_body(), uploads::MAX_UPLOAD_BYTES, UPLOAD_BODY_DEADLINE).await {
+            Ok(body) => body,
+            Err(status) => return text(status, "File too large or too slow"),
         };
         let root = state.data_folder.clone();
         return match tokio::task::spawn_blocking(move || uploads::store(&root, &name, &body)).await {
             Ok(Ok(stored)) => json_created(&stored),
+            Ok(Err(uploads::StoreError::OverQuota)) => {
+                text(StatusCode::INSUFFICIENT_STORAGE, "Upload storage is full")
+            }
             _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not store upload"),
         };
     }
@@ -1738,6 +1763,36 @@ pub async fn serve(options: Options) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A body that never delivers a byte, like a client that trickles.
+    struct Stalled;
+
+    impl hyper::body::Body for Stalled {
+        type Data = Bytes;
+        type Error = std::convert::Infallible;
+
+        fn poll_frame(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, Self::Error>>> {
+            std::task::Poll::Pending
+        }
+    }
+
+    #[tokio::test]
+    async fn login_body_trickle_times_out() {
+        let result = collect_limited(Stalled, MAX_LOGIN_BODY, std::time::Duration::from_millis(50)).await;
+        assert_eq!(result, Err(StatusCode::REQUEST_TIMEOUT));
+    }
+
+    #[tokio::test]
+    async fn collect_limited_enforces_size() {
+        let deadline = std::time::Duration::from_secs(5);
+        let ok = collect_limited(Full::new(Bytes::from_static(b"abcd")), 4, deadline).await;
+        assert_eq!(ok, Ok(Bytes::from_static(b"abcd")));
+        let big = collect_limited(Full::new(Bytes::from_static(b"abcde")), 4, deadline).await;
+        assert_eq!(big, Err(StatusCode::PAYLOAD_TOO_LARGE));
+    }
 
     #[test]
     fn cookie_parser_requires_exact_hex_session() {
