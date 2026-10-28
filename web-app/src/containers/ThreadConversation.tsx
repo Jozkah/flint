@@ -56,6 +56,13 @@ import {
 } from '@/lib/perfMode'
 
 import { useMessages } from '@/hooks/useMessages'
+import {
+  isAutoAllowedTool,
+  readDetailsOpen,
+  serverForTool,
+  stampContextErrorOnThread,
+  writeDetailsOpen,
+} from '@/lib/chat/threadHelpers'
 import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { BRANCH_CHANGED_EVENT, repairActiveRoot, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
 import { useMessageErrors } from '@/stores/message-errors'
@@ -294,51 +301,6 @@ const CHAT_STATUS = {
   SUBMITTED: 'submitted',
 } as const
 
-// The MCP server a tool belongs to, so an approval prompt can offer to trust
-// the whole server rather than this one tool.
-function serverForTool(toolName: string): string | undefined {
-  return useAppState.getState().tools.find((tool) => tool.name === toolName)
-    ?.server
-}
-
-// Internal tools never prompt: RAG and the native web tools are Flint's own, and
-// the built-in agent tools are gated in Rust (execute_tool refuses anything
-// needing approval), so only workspace-confined calls ever reach here.
-function isAutoAllowedTool(toolName: string): boolean {
-  return (
-    useAppState.getState().ragToolNames.has(toolName) ||
-    isNativeWebTool(toolName) ||
-    isVisualizeTool(toolName) ||
-    // Reads only conversations the user mentioned, from local stores.
-    isChatReadTool(toolName) ||
-    isImageTool(toolName) ||
-    AGENT_TOOL_NAMES.has(toolName) ||
-    // Handing a job to a subagent asks for nothing itself; what the child then
-    // does is gated call by call, in Ask mode.
-    CHAT_DELEGATION_TOOL_NAMES.has(toolName)
-  )
-}
-
-// Persist the out-of-context error onto the latest user message so the banner
-// survives thread switches, mirroring how LlamacppOomListener stamps oom/backend.
-function stampContextErrorOnThread(
-  threadId: string,
-  message: string = OUT_OF_CONTEXT_SIZE
-) {
-  const messages = useMessages.getState().getMessages(threadId)
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m.role !== 'user') continue
-    const meta = (m.metadata as Record<string, unknown> | undefined) ?? {}
-    if (typeof meta.contextError === 'string') return
-    useMessages.getState().updateMessage({
-      ...m,
-      metadata: { ...meta, contextError: message },
-    })
-    return
-  }
-}
-
 type ThreadModel = {
   id: string
   provider: string
@@ -361,32 +323,6 @@ export type ThreadConversationProps = {
  * conversation is split -- which is why it takes its thread id as a prop and
  * never reads the route.
  */
-/** Where the Details inspector's open state is remembered. */
-const DETAILS_OPEN_KEY = 'flint.chat.detailsOpen'
-
-function readDetailsOpen(isSplit: boolean): boolean {
-  if (isSplit) return false
-  try {
-    const saved = localStorage.getItem(DETAILS_OPEN_KEY)
-    if (saved !== null) return saved === 'true'
-  } catch {
-    // Storage unavailable: fall back to the window size.
-  }
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(min-width: 1280px)').matches
-  )
-}
-
-function writeDetailsOpen(open: boolean) {
-  try {
-    localStorage.setItem(DETAILS_OPEN_KEY, String(open))
-  } catch {
-    // Not remembered; the default applies next time.
-  }
-}
-
 export function ThreadConversation({
   threadId,
   searchThreadModel,
