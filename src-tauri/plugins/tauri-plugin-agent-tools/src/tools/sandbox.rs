@@ -713,9 +713,13 @@ pub fn symlink_escapes_any_root(
         roots.push(r.as_path());
     }
     let normalized = lexical_normalize(target);
+    // Compared by a spelling-insensitive key: a canonical root carries `\\?\`
+    // on Windows while the model writes `C:\...`, and case may differ, so the
+    // plain comparison would call an inside path "not ours" and skip the check.
+    let claimed = claim_key(&normalized);
     if !roots
         .iter()
-        .any(|r| normalized.starts_with(lexical_normalize(r)))
+        .any(|r| claimed.starts_with(claim_key(&lexical_normalize(r))))
     {
         return false;
     }
@@ -726,6 +730,21 @@ pub fn symlink_escapes_any_root(
         .iter()
         .filter_map(|r| r.canonicalize().ok())
         .any(|r| resolved.starts_with(r))
+}
+
+/// A path spelled for the "is it under this root" test: a `\\?\C:\` verbatim
+/// prefix removed, and lower-cased on Windows where names ignore case.
+fn claim_key(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy().into_owned();
+    let plain = match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest.to_string(),
+        _ => text,
+    };
+    if cfg!(windows) {
+        PathBuf::from(plain.to_ascii_lowercase())
+    } else {
+        PathBuf::from(plain)
+    }
 }
 
 /// How many symlinks one resolution may follow before it is taken to be a
@@ -857,6 +876,19 @@ mod windows_name_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn symlink_recheck_handles_verbatim_prefix() {
+        let verbatim = claim_key(Path::new(r"\\?\C:\repo\sub"));
+        let plain = claim_key(Path::new(r"C:\repo"));
+        // Only Windows reads backslashes as separators; compare the text there.
+        if cfg!(windows) {
+            assert!(verbatim.starts_with(&plain), "{verbatim:?} vs {plain:?}");
+            assert!(claim_key(Path::new(r"c:\REPO\x")).starts_with(&plain));
+        } else {
+            assert_eq!(claim_key(Path::new("/a/b")), PathBuf::from("/a/b"));
+        }
+    }
 
     #[test]
     fn git_tilde1_flagged() {
