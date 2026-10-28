@@ -28,6 +28,7 @@ pub mod migrate_cmd;
 pub mod mcp_serve;
 pub(crate) mod model_capabilities;
 mod path_refs;
+pub(crate) mod pathnorm;
 /// `jan cli agent schema`: the protocol's JSON Schema, generated from the types.
 pub mod protocol_schema;
 /// `jan cli agent rpc`: persistent, session-scoped JSON-RPC transport.
