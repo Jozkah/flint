@@ -5,6 +5,21 @@ use std::path::Path;
 /// server's name, path and flags can all belong to one someone runs themselves.
 pub const MLX_OWNER_ENV: &str = "JAN_MLX_OWNER";
 
+/// Runs a blocking probe (a disk-space query, which can hang on a dead network
+/// mount) on the blocking pool and waits at most `limit` for it. `None` when
+/// it timed out or panicked, so the caller skips the check rather than stall;
+/// the stuck thread is left to finish on its own.
+pub async fn run_bounded<T, F>(limit: std::time::Duration, f: F) -> Option<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    tokio::time::timeout(limit, tokio::task::spawn_blocking(f))
+        .await
+        .ok()?
+        .ok()
+}
+
 /// Returns true when the current process is running inside a Flatpak sandbox
 pub fn is_flatpak() -> bool {
     Path::new("/.flatpak-info").exists()
@@ -852,5 +867,34 @@ mod bun_cpu_tests {
     #[test]
     fn a_non_x86_cpu_is_unaffected() {
         assert!(bun_runs_on_cpu(false, false));
+    }
+}
+
+#[cfg(test)]
+mod run_bounded_tests {
+    use super::run_bounded;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn returns_the_value_of_a_fast_probe() {
+        assert_eq!(run_bounded(Duration::from_secs(2), || 7u64).await, Some(7));
+    }
+
+    #[tokio::test]
+    async fn free_space_check_timeout_skips() {
+        let started = std::time::Instant::now();
+        let out = run_bounded(Duration::from_millis(100), || {
+            std::thread::sleep(Duration::from_millis(1500));
+            Some(1u64)
+        })
+        .await;
+        assert_eq!(out, None);
+        assert!(started.elapsed() < Duration::from_millis(1200), "waited for the slow probe");
+    }
+
+    #[tokio::test]
+    async fn a_panicking_probe_is_skipped() {
+        let out: Option<u64> = run_bounded(Duration::from_secs(2), || panic!("probe")).await;
+        assert_eq!(out, None);
     }
 }

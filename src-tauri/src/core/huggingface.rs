@@ -830,6 +830,9 @@ fn free_space_for_path(path: &std::path::Path) -> Option<u64> {
     free_space_on(path, &mounts)
 }
 
+/// How long the free-space query may take before the check is skipped.
+const FREE_SPACE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 enum Attempt {
     Finished,
     Paused,
@@ -1005,20 +1008,25 @@ async fn download_attempt<R: Runtime>(
 /// Limits how often a download reports progress. A fast link delivers
 /// thousands of chunks a second; each event crosses the IPC bridge and
 /// re-renders the downloads list.
-struct ProgressThrottle {
+pub(crate) struct ProgressThrottle {
     last: Option<std::time::Instant>,
 }
 
 impl ProgressThrottle {
     const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(150);
 
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { last: None }
     }
 
     /// Whether to emit now: the first chunk, the one that completes the file,
     /// and otherwise at most once per interval.
-    fn should_emit(&mut self, now: std::time::Instant, downloaded: u64, total: Option<u64>) -> bool {
+    pub(crate) fn should_emit(
+        &mut self,
+        now: std::time::Instant,
+        downloaded: u64,
+        total: Option<u64>,
+    ) -> bool {
         let due = match self.last {
             None => true,
             Some(last) => now.saturating_duration_since(last) >= Self::MIN_INTERVAL || total == Some(downloaded),
@@ -1094,7 +1102,15 @@ pub async fn huggingface_download_model<R: Runtime>(
             .await
             .map(|meta| meta.len())
             .unwrap_or(0);
-        if let Some(free) = free_space_for_path(&part_path) {
+        // On the blocking pool with a bound: the disk list can hang on a dead
+        // network mount, and this runs before every file of a download.
+        let probe_path = part_path.clone();
+        if let Some(free) = jan_utils::system::run_bounded(FREE_SPACE_TIMEOUT, move || {
+            free_space_for_path(&probe_path)
+        })
+        .await
+        .flatten()
+        {
             // The whole rest of the bundle must fit, not only this file: its
             // files download one after another and each would otherwise see
             // the same free space.
