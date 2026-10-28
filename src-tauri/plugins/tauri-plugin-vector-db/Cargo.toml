@@ -28,6 +28,7 @@ rusqlite = { version = "0.32", features = ["bundled", "load_extension"] }
 sqlite-vec = "=0.1.9"
 uuid = { version = "1.7", features = ["v4", "serde"] }
 dirs = "6.0.0"
+jan-process = { path = "../../process" }
 
 [build-dependencies]
 tauri-plugin = { version = "2.3.1", features = ["build"] }
