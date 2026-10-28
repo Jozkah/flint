@@ -3,6 +3,8 @@ import type { SpecDraftKind } from '@janhq/core'
  * Default Models Service - Web implementation
  */
 
+import { warnIfOverMetalBudget } from '@/lib/metalBudgetWarning'
+import { useHardware } from '@/hooks/useHardware'
 import {
   AIEngine,
   EngineManager,
@@ -147,6 +149,16 @@ export class DefaultModelsService implements ModelsService {
           ])
         )
       : undefined
+
+    if (provider.provider === 'llamacpp') {
+      // Not awaited: the warning shows while the load runs, never delays it.
+      void warnIfOverMetalBudget({
+        modelId: model,
+        hardware: useHardware.getState().hardwareData,
+        settings,
+        fetchModels: () => this.fetchModels(),
+      })
+    }
 
     return engine
       .load(model, settings, false, bypassAutoUnload)
