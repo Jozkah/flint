@@ -32,6 +32,11 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// Files larger than this are proposed whole: no hunks, approve or reject.
 pub const OVERSIZED_BYTES: usize = 1024 * 1024;
 
+/// The largest file side (base or proposed) a proposal stores. Checked for
+/// every file before any blob is written, so a refused change leaves nothing
+/// on disk.
+pub const MAX_FILE_BYTES: usize = 100 * 1024 * 1024;
+
 // ---------------------------------------------------------------------------
 // The record
 // ---------------------------------------------------------------------------
@@ -211,6 +216,8 @@ pub enum ProposalError {
     DuplicateSelection(String),
     WholeFileOnly(String),
     Sensitive(String),
+    /// A file side larger than `MAX_FILE_BYTES`; nothing was stored.
+    TooLarge(String),
     /// A path at the destination that passes through a symlink, junction or
     /// other reparse point, so writing it would land somewhere else.
     LinkedDestination(String),
@@ -260,6 +267,10 @@ impl ProposalError {
             ProposalError::Sensitive(p) => {
                 format!("{p} looks like it holds a credential, so it is never applied")
             }
+            ProposalError::TooLarge(p) => format!(
+                "{p} is larger than {} MB, too large to propose; nothing was stored",
+                MAX_FILE_BYTES / (1024 * 1024)
+            ),
             ProposalError::LinkedDestination(p) => format!(
                 "{p} passes through a link in your folder, so writing it would land elsewhere; nothing was written"
             ),
@@ -797,6 +808,10 @@ pub fn create(
         }
         if input.base == input.proposed {
             continue;
+        }
+        let side = |b: &Option<Vec<u8>>| b.as_ref().map_or(0, Vec::len);
+        if side(&input.base).max(side(&input.proposed)) > MAX_FILE_BYTES {
+            return Err(ProposalError::TooLarge(path));
         }
         normalized.push((path, input));
     }
@@ -2003,6 +2018,31 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, ProposalError::DuplicatePath(_)));
+    }
+
+    #[test]
+    fn an_oversized_file_is_refused_before_anything_is_stored() {
+        let (data, dest) = dirs("too-large");
+        let err = create(
+            &data,
+            scope(&dest),
+            "",
+            vec![
+                FileInput {
+                    path: "a.txt".into(),
+                    base: None,
+                    proposed: Some(b"small\n".to_vec()),
+                },
+                FileInput {
+                    path: "big.bin".into(),
+                    base: None,
+                    proposed: Some(vec![0u8; MAX_FILE_BYTES + 1]),
+                },
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(err, ProposalError::TooLarge("big.bin".into()));
+        assert!(!blob_path(&data, "x").parent().unwrap().exists());
     }
 
     #[test]
