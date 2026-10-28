@@ -42,10 +42,18 @@ export function SandboxToolchainGrants() {
     program: string
     folder: string
   } | null>(null)
+  const [revoking, setRevoking] = useState<ToolchainGrant | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Never throws: a failed read keeps the last good report and shows a retry.
   const refresh = useCallback(async () => {
-    setReport(await getSandboxToolchains())
+    try {
+      setReport(await getSandboxToolchains())
+      setLoadError(null)
+    } catch (e) {
+      setLoadError(errorText(e))
+    }
     try {
       setGrants(await sandboxToolchainGrants())
     } catch {
@@ -68,24 +76,28 @@ export function SandboxToolchainGrants() {
         })
       )
       setConfirming(null)
-      await refresh()
     } catch (e) {
       toast.error(errorText(e))
-    } finally {
       setBusy(false)
+      return
     }
+    setBusy(false)
+    void refresh()
   }
 
-  const revoke = async (folder: string) => {
+  const revoke = async () => {
+    if (!revoking) return
     setBusy(true)
     try {
-      await sandboxToolchainRevoke(folder)
-      await refresh()
+      await sandboxToolchainRevoke(revoking.folder)
+      setRevoking(null)
     } catch (e) {
       toast.error(errorText(e))
-    } finally {
       setBusy(false)
+      return
     }
+    setBusy(false)
+    void refresh()
   }
 
   const copyCommand = async (command: string) => {
@@ -99,7 +111,7 @@ export function SandboxToolchainGrants() {
 
   // Only the Windows sandbox reports toolchains; elsewhere there is nothing
   // to grant, and no grant to revoke either.
-  if (!report && grants.length === 0) return null
+  if (!report && grants.length === 0 && !loadError) return null
   const unavailable = report?.unavailable ?? []
   const grantable = report?.grantable ?? []
   const blockedKind = (program: string) =>
@@ -119,6 +131,22 @@ export function SandboxToolchainGrants() {
             : t('settings:agentTools.toolchains.description')
         }
       />
+      {loadError && (
+        <CardItem
+          title={t('settings:agentTools.toolchains.loadError')}
+          description={loadError}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="toolchain-retry"
+              onClick={() => void refresh()}
+            >
+              {t('settings:agentTools.toolchains.retry')}
+            </Button>
+          }
+        />
+      )}
       {unavailable.map((program) => {
         const offer = candidate(program)
         return (
@@ -191,7 +219,7 @@ export function SandboxToolchainGrants() {
               size="sm"
               disabled={busy}
               data-testid={`toolchain-revoke-${g.program}`}
-              onClick={() => void revoke(g.folder)}
+              onClick={() => setRevoking(g)}
             >
               {t('settings:agentTools.toolchains.revoke')}
             </Button>
@@ -236,6 +264,45 @@ export function SandboxToolchainGrants() {
               onClick={() => void grant()}
             >
               {t('settings:agentTools.toolchains.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={revoking !== null}
+        onOpenChange={(open) => !open && !busy && setRevoking(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t('settings:agentTools.toolchains.revokeTitle', {
+                program: revoking?.program ?? '',
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings:agentTools.toolchains.revokeBody', {
+                program: revoking?.program ?? '',
+              })}
+            </DialogDescription>
+            <code className="block break-all rounded bg-muted px-2 py-1 text-xs">
+              {revoking?.folder}
+            </code>
+          </DialogHeader>
+          <DialogFooter className={STICKY_DIALOG_FOOTER}>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setRevoking(null)}
+            >
+              {t('common:cancel')}
+            </Button>
+            <Button
+              disabled={busy}
+              data-testid="toolchain-revoke-confirm"
+              onClick={() => void revoke()}
+            >
+              {t('settings:agentTools.toolchains.revoke')}
             </Button>
           </DialogFooter>
         </DialogContent>

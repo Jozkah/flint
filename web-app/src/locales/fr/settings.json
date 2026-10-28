@@ -354,7 +354,11 @@
       "confirmBody": "Cela modifie les permissions du dossier ci-dessous, où {{program}} est installé, et uniquement ce dossier et son contenu : une entrée est ajoutée pour que toutes les applications Windows en bac à sable (ALL APPLICATION PACKAGES) puissent lire et exécuter les fichiers qu'il contient. Rien d'autre dans votre profil utilisateur n'est ouvert. Vous pouvez la révoquer ici à tout moment, ce qui supprime exactement cette entrée.",
       "confirm": "Autoriser",
       "needsAdmin": "Installé dans {{folder}}, que seul un administrateur peut modifier. Droits d'administrateur requis : exécutez ceci dans un terminal avec élévation de privilèges :",
-      "copyCommand": "Copier la commande"
+      "copyCommand": "Copier la commande",
+      "loadError": "Impossible de lire les chaînes d'outils du bac à sable.",
+      "retry": "Réessayer",
+      "revokeTitle": "Retirer au bac à sable l'accès à {{program}} ?",
+      "revokeBody": "Cela supprime l'entrée d'autorisation ajoutée au dossier ci-dessous. Les commandes du bac à sable ne pourront plus y exécuter {{program}}."
     },
     "title": "Outils d'agent",
     "description": "Donnez aux modèles un espace de travail privé pour chaque conversation, ainsi que des mémoires et des skills conservés durablement dans votre dossier de données Flint.",

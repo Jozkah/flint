@@ -356,7 +356,11 @@
       "confirmBody": "To zmienia uprawnienia folderu poniżej, w którym zainstalowano {{program}}, i tylko tego folderu oraz jego zawartości: dodaje wpis, który pozwala każdej aplikacji Windows w piaskownicy (ALL APPLICATION PACKAGES) czytać i uruchamiać znajdujące się w nim pliki. Nic innego w Twoim profilu użytkownika nie jest otwierane. Możesz to w każdej chwili cofnąć tutaj, co usuwa dokładnie ten wpis.",
       "confirm": "Zezwól",
       "needsAdmin": "Zainstalowany w {{folder}}, który może zmienić tylko administrator. Wymaga administratora: uruchom to w terminalu z podwyższonymi uprawnieniami:",
-      "copyCommand": "Kopiuj polecenie"
+      "copyCommand": "Kopiuj polecenie",
+      "loadError": "Nie udało się odczytać zestawów narzędzi piaskownicy.",
+      "retry": "Spróbuj ponownie",
+      "revokeTitle": "Przestać zezwalać piaskownicy na użycie {{program}}?",
+      "revokeBody": "Usuwa wpis uprawnień dodany do poniższego folderu. Polecenia w piaskownicy nie będą już mogły uruchamiać z niego {{program}}."
     },
     "title": "Narzędzia agenta",
     "description": "Daj modelom prywatną przestrzeń roboczą na każdą rozmowę oraz wspomnienia i umiejętności przechowywane na stałe w folderze danych Flint.",
