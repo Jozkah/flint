@@ -573,6 +573,11 @@ pub async fn memory_proposal_resolve(
         let Some(index) = records.iter().position(|r| r.id == id) else {
             return Err("that proposal is no longer there".to_string());
         };
+        // Another chat's or project's proposal is answered from that chat or
+        // project, not by guessing its id.
+        if !access.may_see(&records[index]) {
+            return Err("that proposal is no longer there".to_string());
+        }
         let Some(reason) = inferred::pending_reason(&records[index]) else {
             return Err("that memory is not awaiting an answer".to_string());
         };

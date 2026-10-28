@@ -595,7 +595,19 @@
     "keepAwake": "Keep the computer awake during runs",
     "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
     "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "hfToken": {
+      "empty": "Please enter a Hugging Face token to validate",
+      "valid": "Token is valid",
+      "signedInAs": "Signed in as {{name}}",
+      "validDesc": "Your Hugging Face token is valid.",
+      "invalid": "Token invalid",
+      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
+      "timedOut": "Validation timed out",
+      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
+      "failed": "Validation failed",
+      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+    }
   },
   "extensions": {
     "title": "拡張機能"

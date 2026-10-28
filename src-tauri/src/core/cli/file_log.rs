@@ -130,7 +130,7 @@ impl FileLog {
     }
 }
 
-/// One line per record, plain ASCII, timestamped, never coloured.
+/// One line per record, timestamped, never coloured.
 ///
 /// The message is scrubbed on the way in. The text reaching the file is not
 /// all ours: an upstream error can echo the request's `Authorization` header,
@@ -145,8 +145,24 @@ fn format_line(record: &Record) -> String {
         "{ts} {:<5} [{}] {}\n",
         record.level().as_str(),
         record.target(),
-        crate::core::cli::secrets::SHARED.scrub(&message)
+        one_line(&crate::core::cli::secrets::SHARED.scrub(&message))
     )
+}
+
+/// Control characters (a newline above all) written as escapes, so one record
+/// is always one line and a message cannot forge a following record.
+fn one_line(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{{{:04x}}}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Routes every record to stderr through `env_logger` (unchanged behaviour)
@@ -204,6 +220,13 @@ pub fn init(data_folder: PathBuf, verbose: bool) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_newline_in_a_message_stays_on_one_line() {
+        let line = super::one_line("a\nb\r\x1b[31mc");
+        assert!(!line.contains('\n') && !line.contains('\r') && !line.contains('\x1b'));
+        assert!(line.starts_with(r"a\nb\r"));
+    }
+
     use super::*;
     use std::sync::atomic::AtomicUsize;
 
