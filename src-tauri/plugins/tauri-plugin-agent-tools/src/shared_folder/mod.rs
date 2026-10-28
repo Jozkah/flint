@@ -94,7 +94,9 @@ pub fn announce(folder_key: Option<String>, session_id: &str, reason: &'static s
 /// A run began or ended for `session_id`: its claims, holds and branch
 /// baseline go (recent edits stay).
 pub fn on_run_boundary(session_id: &str) {
-    table().release_session(session_id);
+    let mut table = table();
+    table.release_session(session_id);
+    table.sweep(now_ms());
 }
 
 /// The session was deleted or archived.

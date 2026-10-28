@@ -345,9 +345,28 @@ fn remote_file_url_on(
     Ok(url)
 }
 
+/// Error pages are only quoted briefly; never buffer more than this.
+const MAX_ERROR_BODY_BYTES: u64 = 4 * 1024;
+
+/// Reads a body in chunks, stopping with `None` once it passes `cap` bytes, so a
+/// response without a `content-length` cannot be buffered whole.
+async fn read_capped(mut response: reqwest::Response, cap: u64) -> Result<Option<Vec<u8>>, reqwest::Error> {
+    let mut out = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if out.len() as u64 + chunk.len() as u64 > cap {
+            return Ok(None);
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(Some(out))
+}
+
 async fn response_error(response: reqwest::Response) -> String {
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = match read_capped(response, MAX_ERROR_BODY_BYTES).await {
+        Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+        _ => String::new(),
+    };
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
         return "Hugging Face denied access. If the model is gated or private, accept its license on Hugging Face and add a token in Flint Settings.".to_string();
     }
@@ -594,14 +613,11 @@ pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<S
     if response.content_length().unwrap_or(0) > MAX_README_BYTES {
         return Err("Hugging Face README is too large to display".to_string());
     }
-    let bytes = response
-        .bytes()
+    let bytes = read_capped(response, MAX_README_BYTES)
         .await
-        .map_err(|e| format!("Could not read Hugging Face README: {e}"))?;
-    if bytes.len() as u64 > MAX_README_BYTES {
-        return Err("Hugging Face README is too large to display".to_string());
-    }
-    String::from_utf8(bytes.to_vec()).map_err(|_| "Hugging Face README is not UTF-8".to_string())
+        .map_err(|e| format!("Could not read Hugging Face README: {e}"))?
+        .ok_or_else(|| "Hugging Face README is too large to display".to_string())?;
+    String::from_utf8(bytes).map_err(|_| "Hugging Face README is not UTF-8".to_string())
 }
 
 /// The first `GGUF_HEADER_BYTES` of a `.gguf` file, base64-encoded, so the UI
