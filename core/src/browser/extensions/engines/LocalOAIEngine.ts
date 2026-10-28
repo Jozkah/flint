@@ -18,11 +18,23 @@ export abstract class LocalOAIEngine extends OAIEngine {
    * The loadModel function subscribes to the ModelEvent.OnModelInit event, loading models when initiated.
    * The unloadModel function subscribes to the ModelEvent.OnModelStop event, unloading models when stopped.
    */
+  // Kept as fields so onUnload can remove exactly what onLoad added.
+  private readonly onModelInit = (model: Model) => this.loadModel(model)
+  private readonly onModelStop = (model: Model) => this.unloadModel(model)
+
   override onLoad() {
     super.onLoad()
     // These events are applicable to local inference providers
-    events.on(ModelEvent.OnModelInit, (model: Model) => this.loadModel(model))
-    events.on(ModelEvent.OnModelStop, (model: Model) => this.unloadModel(model))
+    events.off(ModelEvent.OnModelInit, this.onModelInit)
+    events.off(ModelEvent.OnModelStop, this.onModelStop)
+    events.on(ModelEvent.OnModelInit, this.onModelInit)
+    events.on(ModelEvent.OnModelStop, this.onModelStop)
+  }
+
+  override onUnload(): void {
+    super.onUnload()
+    events.off(ModelEvent.OnModelInit, this.onModelInit)
+    events.off(ModelEvent.OnModelStop, this.onModelStop)
   }
 
   /**
