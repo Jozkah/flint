@@ -658,5 +658,6 @@
     "ranTools": "Prima, in questo turno, hai già eseguito degli strumenti ({{ran}}); {{reason}} Non ripetere nulla che abbia modificato file o stato; rileggi solo ciò che ti serve ancora.",
     "ranToolsDropped": "il loro output è stato scartato per rientrare nella finestra di contesto.",
     "ranToolsRetry": "il provider è poi andato in errore e la richiesta viene ritentata."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

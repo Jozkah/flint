@@ -646,5 +646,6 @@
     "ranTools": "Sebelumnya dalam giliran ini Anda sudah menjalankan alat ({{ran}}); {{reason}} Jangan ulangi apa pun yang mengubah file atau status; baca ulang hanya yang masih Anda perlukan.",
     "ranToolsDropped": "keluarannya dibuang agar muat di jendela konteks.",
     "ranToolsRetry": "penyedia kemudian gagal dan permintaan sedang dicoba ulang."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

@@ -1,10 +1,18 @@
 import { ServiceHub } from '@/services'
 import { Attachment } from '@/types/attachment'
+import type { UploadResult } from '@/services/uploads/types'
 import { toast } from 'sonner'
 import { embedImageDescriptions } from '@/lib/imageDescription'
 import { estimateTokens } from '@/lib/context-manager'
 import { knownContextWindow } from '@/lib/knownContextWindow'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
+import { i18n } from '@/i18n/react-i18next-compat'
+import {
+  isPdfAttachment,
+  isScannedPdfError,
+  renderPdfPages as renderPdfPagesDefault,
+  type PdfPageRender,
+} from '@/lib/pdfPageImages'
 
 type AttachmentProcessingStatus = 'processing' | 'done' | 'error' | 'clear_all'
 
@@ -25,6 +33,13 @@ type AttachmentProcessingOptions = {
    * document in its prompt instead (janhq/jan#9388).
    */
   modelSupportsTools?: boolean
+  /**
+   * Whether the selected model can see images. A PDF can then go as page
+   * images: when the user asks for it, or when it has no text to extract.
+   */
+  modelSupportsVision?: boolean
+  /** Test seam for the PDF page renderer. */
+  renderPdfPages?: (doc: Attachment) => Promise<PdfPageRender>
   contextThreshold?: number
   estimateTokens?: (text: string) => Promise<number | undefined>
   parsePreference: 'auto' | 'inline' | 'embeddings' | 'prompt'
@@ -283,6 +298,38 @@ export const processAttachmentsForSend = async (
     notifyUpdate(att.name, 'done', patch)
   }
 
+  const visionModel = options.modelSupportsVision === true
+  const renderPages = options.renderPdfPages ?? renderPdfPagesDefault
+  /** Whether a PDF that has no text to extract can go as page images instead. */
+  const canFallBackToImages = (doc: Attachment) => visionModel && isPdfAttachment(doc)
+  /**
+   * Sends a PDF as page images through the image ingest, in place of the
+   * document. Says so when pages were left out, or when it happened because
+   * the PDF had no text.
+   */
+  const sendPdfAsImages = async (doc: Attachment, scanned: boolean) => {
+    const { images, totalPages } = await renderPages(doc)
+    if (images.length === 0) throw new Error(`Couldn't render the pages of ${doc.name}`)
+    for (const img of images) {
+      const res = await serviceHub.uploads().ingestImage(threadId, img)
+      processedAttachments.push({ ...img, id: res.id, processed: true, processing: false })
+    }
+    notifyUpdate(doc.name, 'done', { processing: false, processed: true })
+    if (scanned) {
+      toast.info(i18n.t('common:composerChip.pdfScannedAsImages', { name: doc.name }))
+    }
+    if (images.length < totalPages) {
+      toast.warning(
+        i18n.t('common:composerChip.pdfPagesCut', {
+          name: doc.name,
+          sent: images.length,
+          total: totalPages,
+        })
+      )
+    }
+    bumpIngest()
+  }
+
   // Images: ingest before sending
   const images = attachments.filter((a) => a.type === 'image')
   if (images.length > 0) {
@@ -376,6 +423,11 @@ export const processAttachmentsForSend = async (
 
       notifyUpdate(doc.name, 'processing')
 
+      if (doc.sendAsImages && canFallBackToImages(doc)) {
+        await sendPdfAsImages(doc, false)
+        continue
+      }
+
       const targetPreference = doc.parseMode ?? parsePreference
       let parsedContent: string | undefined
 
@@ -394,6 +446,12 @@ export const processAttachmentsForSend = async (
         } catch (err) {
           console.warn(`Failed to parse ${doc.name} for inline use`, err)
         }
+      }
+
+      if (needsInline && !parsedContent && canFallBackToImages(doc)) {
+        // A scanned PDF: no text, but a vision model can read its pages.
+        await sendPdfAsImages(doc, true)
+        continue
       }
 
       if (needsInline && !parsedContent) {
@@ -463,9 +521,16 @@ export const processAttachmentsForSend = async (
       // (i.e. parsing failed above) — intentional: embeddings is the safe fallback.
       notifyUpdate(doc.name, 'processing')
 
-      const res = projectId
-        ? await serviceHub.uploads().ingestFileAttachmentForProject(projectId, doc)
-        : await serviceHub.uploads().ingestFileAttachment(threadId, doc)
+      let res: UploadResult
+      try {
+        res = projectId
+          ? await serviceHub.uploads().ingestFileAttachmentForProject(projectId, doc)
+          : await serviceHub.uploads().ingestFileAttachment(threadId, doc)
+      } catch (err) {
+        if (!isScannedPdfError(err) || !canFallBackToImages(doc)) throw err
+        await sendPdfAsImages(doc, true)
+        continue
+      }
 
       completeAttachment(doc, {
         id: res.id,

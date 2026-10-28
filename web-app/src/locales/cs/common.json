@@ -872,7 +872,28 @@
     "openCodeFolderInCowork": "Otevřít složku s kódem v Cowork",
     "openCodeFolder": "Otevřít složku s kódem",
     "openCodeFolderDescription": "Vyberte složku ve svém počítači, ve které má Flint pracovat.",
-    "setUpEmbeddingModel": "Nastavit embedding model"
+    "setUpEmbeddingModel": "Nastavit embedding model",
+    "webPage": {
+      "open": "Přidat webovou stránku",
+      "title": "Přidat webovou stránku",
+      "description": "Stáhne stránku a uloží její čitelný text jako soubor projektu. Fungují jen veřejné adresy http a https.",
+      "urlLabel": "Adresa stránky",
+      "add": "Přidat stránku",
+      "refresh": "Obnovit",
+      "added": "Přidáno „{{name}}“",
+      "refreshed": "Obnoveno „{{name}}“",
+      "truncated": "Stránka překročila limit velikosti, uložena byla jen její první část.",
+      "refreshFailed": "Stránku se nepodařilo obnovit",
+      "errors": {
+        "invalidUrl": "Zadejte úplnou webovou adresu začínající http:// nebo https://.",
+        "blocked": "Tato adresa vede na tento počítač nebo do soukromé sítě, proto nebyla stažena.",
+        "timeout": "Stránka odpovídala příliš dlouho. Zkuste to později.",
+        "notHtml": "Tato adresa není webová stránka s čitelným textem (například PDF, obrázek nebo soubor ke stažení).",
+        "tooLarge": "Stránka je příliš velká.",
+        "httpError": "Web vrátil chybu: {{message}}",
+        "failed": "Stránku se nepodařilo stáhnout: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Zvolte, jak zpracovat přílohy",
@@ -2835,7 +2856,11 @@
     "noVision": "Tento model neumí číst obrázky",
     "details": "Podrobnosti o {{name}}",
     "previewLoading": "Načítání náhledu…",
-    "previewNone": "Náhled není k dispozici"
+    "previewNone": "Náhled není k dispozici",
+    "pagesAsImages": "Odeslat stránky jako obrázky",
+    "pagesAsImagesHint": "Odeslat stránky tohoto PDF jako obrázky, aby model viděl skeny, grafy a rozvržení",
+    "pdfPagesCut": "Jako obrázky bylo odesláno prvních {{sent}} z {{total}} stránek souboru {{name}}",
+    "pdfScannedAsImages": "{{name}} neobsahuje text, proto byly jeho stránky odeslány jako obrázky"
   },
   "fileViewer": {
     "openFull": "Otevřít celý náhled",
@@ -3224,5 +3249,10 @@
     "reject": "Zamítnout",
     "applying": "Uplatňuji…",
     "applySelected": "Uplatnit výběr"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

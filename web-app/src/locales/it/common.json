@@ -860,7 +860,28 @@
     "openCodeFolderInCowork": "Apri la cartella del codice in Cowork",
     "openCodeFolder": "Apri la cartella del codice",
     "openCodeFolderDescription": "Scegli una cartella del tuo computer in cui Flint possa lavorare.",
-    "setUpEmbeddingModel": "Configura un modello di embedding"
+    "setUpEmbeddingModel": "Configura un modello di embedding",
+    "webPage": {
+      "open": "Aggiungi pagina web",
+      "title": "Aggiungi una pagina web",
+      "description": "Scarica una pagina e ne conserva il testo leggibile come file del progetto. Funzionano solo indirizzi pubblici http e https.",
+      "urlLabel": "Indirizzo della pagina",
+      "add": "Aggiungi pagina",
+      "refresh": "Aggiorna",
+      "added": "\"{{name}}\" aggiunto",
+      "refreshed": "\"{{name}}\" aggiornato",
+      "truncated": "La pagina superava il limite di dimensione, quindi è stata conservata solo la prima parte.",
+      "refreshFailed": "Impossibile aggiornare la pagina",
+      "errors": {
+        "invalidUrl": "Inserisci un indirizzo web completo che inizi con http:// o https://.",
+        "blocked": "Questo indirizzo punta a questo computer o a una rete privata, quindi non è stato scaricato.",
+        "timeout": "La pagina ha impiegato troppo a rispondere. Riprova più tardi.",
+        "notHtml": "Questo indirizzo non è una pagina web con testo leggibile (ad esempio un PDF, un'immagine o un download).",
+        "tooLarge": "La pagina è troppo grande.",
+        "httpError": "Il sito ha restituito un errore: {{message}}",
+        "failed": "Impossibile scaricare la pagina: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Scegli come elaborare gli allegati",
@@ -2779,7 +2800,11 @@
     "noVision": "Questo modello non può leggere le immagini",
     "details": "Dettagli di {{name}}",
     "previewLoading": "Caricamento anteprima…",
-    "previewNone": "Nessuna anteprima disponibile"
+    "previewNone": "Nessuna anteprima disponibile",
+    "pagesAsImages": "Invia le pagine come immagini",
+    "pagesAsImagesHint": "Invia le pagine di questo PDF come immagini, così il modello vede scansioni, grafici e impaginazione",
+    "pdfPagesCut": "Sono state inviate come immagini le prime {{sent}} pagine su {{total}} di {{name}}",
+    "pdfScannedAsImages": "{{name}} non contiene testo, quindi le sue pagine sono state inviate come immagini"
   },
   "fileViewer": {
     "openFull": "Apri anteprima completa",
@@ -3142,5 +3167,10 @@
     "reject": "Rifiuta",
     "applying": "Applicazione…",
     "applySelected": "Applica selezione"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

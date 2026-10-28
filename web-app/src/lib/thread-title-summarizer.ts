@@ -7,16 +7,22 @@ import { BACKGROUND_SLOT_ID } from '@/constants/models'
 import { isEngineProviderName } from '@/lib/engineModels'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { resolveFallbackChain, shouldFallback } from '@/lib/fallbackChain'
+import { useTitleSettings } from '@/hooks/useTitleSettings'
 
 const MAX_TITLE_WORDS = 10
 const MAX_PROMPT_LENGTH = 1500
+
+/** The instruction automatic titles use unless the user wrote their own. */
+export const DEFAULT_TITLE_PROMPT = `Summarize the following conversation into a concise title of at most ${MAX_TITLE_WORDS} words. Capture the overall topic, not just the latest turn. Output the title only, no quotes, no explanation.`
 
 function buildSummarizePrompt(transcript: string): string {
   const truncated =
     transcript.length > MAX_PROMPT_LENGTH
       ? transcript.slice(0, MAX_PROMPT_LENGTH) + '...'
       : transcript
-  return `Summarize the following conversation into a concise title of at most ${MAX_TITLE_WORDS} words. Capture the overall topic, not just the latest turn. Output the title only, no quotes, no explanation.\n\nConversation:\n${truncated}`
+  const instruction =
+    useTitleSettings.getState().titlePrompt.trim() || DEFAULT_TITLE_PROMPT
+  return `${instruction}\n\nConversation:\n${truncated}`
 }
 
 /**
@@ -244,6 +250,58 @@ const UTILITY_MAX_FALLBACKS = 2
 
 type Candidate = { selectedProvider: string; selectedModel: { id: string } }
 
+/** The model chosen in Settings for titles, if it is still configured. */
+function resolveTitleModel(providers: ModelProvider[]): Candidate | null {
+  const { titleModelProvider, titleModelId } = useTitleSettings.getState()
+  if (!titleModelProvider || !titleModelId) return null
+  const provider = providers.find(
+    (p) => p.provider === titleModelProvider && p.active !== false
+  )
+  const model = provider?.models.find((m) => m.id === titleModelId)
+  if (!model || titleModelProvider === 'mlx') {
+    console.warn('[ThreadTitle] Title model unavailable, using the chat model')
+    return null
+  }
+  return { selectedProvider: titleModelProvider, selectedModel: model }
+}
+
+/** The chat's own model and its fallback chain; empty when it cannot title. */
+function chatModelCandidates(
+  kind: 'title' | 'summary',
+  selectedProvider: string | undefined | null,
+  selectedModel: Model | undefined | null,
+  getProviderByName: (name: string) => ModelProvider | undefined,
+  providers: ModelProvider[]
+): Candidate[] {
+  if (!selectedModel || !selectedProvider) {
+    console.warn('[ThreadTitle] No model/provider selected')
+    return []
+  }
+  // MLX models often emit reasoning that can't be reliably suppressed; fall back to default title.
+  if (selectedProvider === 'mlx') return []
+  if (!getProviderByName(selectedProvider)) {
+    console.warn('[ThreadTitle] Provider not found:', selectedProvider)
+    return []
+  }
+  // A raw-completion model continues text instead of following a prompt.
+  if (selectedModel.capabilities?.includes('raw_completion')) return []
+  // The chosen model first, then the user's fallback chain, as chat does
+  // (`shouldFallback`: only a failure another model could fix). A hover
+  // summary never leaves the machine, so its chain is local engines only.
+  const chain = resolveFallbackChain(
+    useGeneralSetting.getState().fallbackModels,
+    { provider: selectedProvider, modelId: selectedModel.id },
+    providers
+  )
+    .filter(
+      (c) =>
+        c.selectedProvider !== 'mlx' &&
+        (kind !== 'summary' || isEngineProviderName(c.selectedProvider))
+    )
+    .slice(0, UTILITY_MAX_FALLBACKS)
+  return [{ selectedProvider, selectedModel }, ...chain]
+}
+
 async function runUtilityText(
   kind: 'title' | 'summary',
   prompt: string,
@@ -261,40 +319,28 @@ async function runUtilityText(
       : useModelProvider.getState()
     const { selectedModel, selectedProvider } = selection
     const { getProviderByName, providers } = useModelProvider.getState()
-    if (!selectedModel || !selectedProvider) {
-      console.warn('[ThreadTitle] No model/provider selected')
-      return null
-    }
-
-    // MLX models often emit reasoning that can't be reliably suppressed; fall back to default title.
-    if (selectedProvider === 'mlx') return null
-
-    if (!getProviderByName(selectedProvider)) {
-      console.warn('[ThreadTitle] Provider not found:', selectedProvider)
-      return null
-    }
-
-    // A raw-completion model continues text instead of following a prompt.
-    if (selectedModel.capabilities?.includes('raw_completion')) return null
-
-    // The chosen model first, then the user's fallback chain, as chat does
-    // (`shouldFallback`: only a failure another model could fix). A hover
-    // summary never leaves the machine, so its chain is local engines only.
-    const chain = resolveFallbackChain(
-      useGeneralSetting.getState().fallbackModels,
-      { provider: selectedProvider, modelId: selectedModel.id },
+    // The model the user picked for titles goes first; any failure of it
+    // falls back to the chat's own model, silently (janhq/jan#8345).
+    const titleModel =
+      kind === 'title' ? resolveTitleModel(providers ?? []) : null
+    const chatCandidates = chatModelCandidates(
+      kind,
+      selectedProvider,
+      selectedModel,
+      getProviderByName,
       providers ?? []
     )
-      .filter(
-        (c) =>
-          c.selectedProvider !== 'mlx' &&
-          (kind !== 'summary' || isEngineProviderName(c.selectedProvider))
-      )
-      .slice(0, UTILITY_MAX_FALLBACKS)
     const candidates: Candidate[] = [
-      { selectedProvider, selectedModel },
-      ...chain,
+      ...(titleModel ? [titleModel] : []),
+      ...chatCandidates.filter(
+        (c) =>
+          !titleModel ||
+          c.selectedProvider !== titleModel.selectedProvider ||
+          c.selectedModel.id !== titleModel.selectedModel.id
+      ),
     ]
+    if (!candidates.length) return null
+    const titleModelFirst = !!titleModel && candidates.length > 1
 
     // Never held open by a model that does not answer.
     // AbortSignal.any() is missing on older WebKit (Safari < 17.4), so combine
@@ -357,6 +403,13 @@ async function runUtilityText(
         })
       } catch (error) {
         if (abortSignal.aborted) return ABORTED
+        if (titleModelFirst && i === 0 && !signal.aborted) {
+          console.warn(
+            '[ThreadTitle] Title model failed, using the chat model:',
+            (error as Error).name
+          )
+          continue
+        }
         const last = i === candidates.length - 1
         if (
           last ||

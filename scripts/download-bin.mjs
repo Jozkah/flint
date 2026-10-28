@@ -71,6 +71,8 @@ function download(url, dest, redirectsLeft = MAX_REDIRECTS) {
       return
     }
     req.on('error', (err) => fs.unlink(dest, () => reject(err)))
+    // A stalled connection would otherwise hang the build forever.
+    req.setTimeout(60_000, () => req.destroy(new Error(`Timed out fetching '${url}'`)))
   })
 }
 
@@ -152,11 +154,18 @@ function resolveSqliteVec(platform, arch) {
 }
 
 function getPlatformArch() {
-  const rustPlatform = execFileSync('rustc', ['-vV'], { encoding: 'utf8' })
-    .split('\n')
-    .find((line) => line.startsWith('host:'))
-    .slice('host:'.length)
-    .trim()
+  let hostLine
+  try {
+    hostLine = execFileSync('rustc', ['-vV'], { encoding: 'utf8' })
+      .split('\n')
+      .find((line) => line.startsWith('host:'))
+  } catch {
+    hostLine = undefined
+  }
+  if (!hostLine) {
+    throw new Error('rustc not found (or reported no host triple); install Rust (rustup) first')
+  }
+  const rustPlatform = hostLine.slice('host:'.length).trim()
   const [arch, vendor, os, abi] = rustPlatform.split('-')
   // handle cases without abi
   const abiSuffix = abi ? `-${abi}` : ''

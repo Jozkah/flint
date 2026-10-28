@@ -44,6 +44,9 @@
     "description": "正在為附加的檔案建立索引，以便可以搜尋和引用。對於大型文件可能需要一些時間。"
   },
   "actions": {
+    "readAloud": "朗讀",
+    "stopReading": "停止朗讀",
+    "codeOmitted": "已省略程式碼",
     "copy": "複製",
     "regenerate": "重新生成回覆",
     "continue": "繼續生成",

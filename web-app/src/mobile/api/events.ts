@@ -164,6 +164,12 @@ export class EventSocket {
 
   private deadTimer: unknown = null
 
+  /** A pending pong deadline belongs to the socket it was set for. */
+  private clearDead() {
+    if (this.deadTimer !== null) this.o.clearTimer(this.deadTimer)
+    this.deadTimer = null
+  }
+
   /** Ping now and replace the socket when no pong comes back in time. */
   private verify() {
     if (this.deadTimer !== null) return
@@ -178,6 +184,7 @@ export class EventSocket {
     const ws = this.ws
     this.ws = null
     this.stopPing()
+    this.clearDead()
     if (ws) {
       ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null
       try {
@@ -193,6 +200,7 @@ export class EventSocket {
   }
 
   private open() {
+    this.clearDead()
     const token = this.o.token()
     if (!token) {
       this.stopped = true
@@ -237,6 +245,7 @@ export class EventSocket {
       if (this.ws !== ws) return
       this.ws = null
       this.stopPing()
+      this.clearDead()
       if (this.stopped) return
       if (e.code === CLOSE_POLICY && /unpaired|unauthorized/.test(e.reason)) {
         this.stopped = true
