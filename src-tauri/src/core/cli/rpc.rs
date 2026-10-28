@@ -16,7 +16,7 @@ use super::rpc_schema::{
 };
 use super::stream_input::{parse_input_line, MAX_LINE_BYTES};
 use super::turn_host::{
-    begin_turn, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
+    begin_turn, neutralize_user_content, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
 };
 use super::{agent_dir_for, prepare_agent_session, AgentSession, SessionFlags};
 use crate::core::agent::events::{StreamEvent, PROTOCOL_VERSION};
@@ -681,7 +681,7 @@ pub async fn serve() -> Result<(), String> {
                         Err(_) => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
                         Ok(TurnSteerParams { session_id: sid, input: text }) => match active.as_ref() {
                             Some(turn) if turn.session_id == sid && !text.trim().is_empty() => {
-                                turn.pending.lock().await.push(json!({"role":"user","content":text}));
+                                turn.pending.lock().await.push(json!({"role":"user","content":neutralize_user_content(json!(text))}));
                                 response(&id, json!({}))
                             }
                             _ => error(&id, -32602, "turn/steer requires an active session and nonempty input"),

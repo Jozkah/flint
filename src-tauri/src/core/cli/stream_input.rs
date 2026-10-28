@@ -392,7 +392,7 @@ pub(crate) struct StreamInput {
 impl StreamInput {
     pub(crate) fn queue_user(&self, text: String) {
         self.lock()
-            .push_back(serde_json::json!({ "role": "user", "content": text }));
+            .push_back(serde_json::json!({ "role": "user", "content": super::turn_host::neutralize_user_content(serde_json::Value::String(text)) }));
     }
 
     /// Queue a follow-up whose content is a content-part array, as the client
@@ -400,7 +400,7 @@ impl StreamInput {
     /// not a re-encoding of them.
     pub(crate) fn queue_user_parts(&self, parts: Vec<serde_json::Value>) {
         self.lock()
-            .push_back(serde_json::json!({ "role": "user", "content": parts }));
+            .push_back(serde_json::json!({ "role": "user", "content": super::turn_host::neutralize_user_content(serde_json::Value::Array(parts)) }));
     }
 
     /// Hand the queue to a steering handshake. Empty is the normal answer: the
