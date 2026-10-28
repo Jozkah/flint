@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Model se nepodařilo spustit",
   "serverStartFailed": "Server se nepodařilo spustit",
   "azureEndpointMissing": "Pro {{provider}} není nastaven žádný endpoint. Nastavte základní URL v Nastavení > Poskytovatelé modelů.",
-  "emptyReply": "Model skončil bez odpovědi. Zkuste ji vygenerovat znovu nebo zkontrolujte nastavení poskytovatele."
+  "emptyReply": "Model skončil bez odpovědi. Zkuste ji vygenerovat znovu nebo zkontrolujte nastavení poskytovatele.",
+  "gpuCrashCpuFallbackTitle": "Ovladač GPU spadl",
+  "gpuCrashCpuFallbackQuestion": "Ovladač GPU spadl při načítání tohoto modelu. Načíst ho místo toho na CPU? Poběží pomaleji.",
+  "gpuCrashCpuFallbackConfirm": "Načíst na CPU"
 }

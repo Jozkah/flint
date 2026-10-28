@@ -1395,6 +1395,7 @@
       "settleFailed": "Impossible de résoudre ce conflit",
       "forgotten": "Souvenir oublié",
       "forgetFailed": "Impossible d'oublier ce souvenir",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Impossible de modifier ce souvenir",
       "updated": "Souvenir mis à jour",
       "updateFailed": "Impossible de mettre à jour ce souvenir",
@@ -1496,7 +1497,12 @@
     "composerGroup": "Zone de saisie",
     "repliesGroup": "Réponses",
     "linksGroup": "Liens",
-    "artifactsGroup": "Artefacts et widgets"
+    "artifactsGroup": "Artefacts et widgets",
+    "reasoningDefault": "Raisonnement pour les nouvelles discussions",
+    "reasoningDefaultDesc": "Indique si la réflexion démarre activée ou désactivée dans une nouvelle discussion. Le réglage de raisonnement propre au modèle et le bouton du champ de saisie restent prioritaires. Les modèles qui ne peuvent pas changer la réflexion ne sont pas modifiés.",
+    "reasoningDefaultModel": "Par défaut du modèle",
+    "reasoningDefaultOn": "Activé",
+    "reasoningDefaultOff": "Désactivé"
   },
   "data": {
     "tabStorage": "Stockage",

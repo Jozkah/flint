@@ -152,6 +152,10 @@ const maskSensitiveUrl = (url: string) => {
       }
     })
 
+    // Credentials embedded as user:pass@host are secrets too.
+    if (urlObj.username) urlObj.username = '******'
+    if (urlObj.password) urlObj.password = '******'
+
     // Reconstruct URL with masked parameters
     urlObj.search = params.toString()
     return urlObj.toString()

@@ -865,7 +865,28 @@
     "openCodeFolderInCowork": "Otwórz folder z kodem w Cowork",
     "openCodeFolder": "Otwórz folder z kodem",
     "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować.",
-    "setUpEmbeddingModel": "Skonfiguruj model embeddingów"
+    "setUpEmbeddingModel": "Skonfiguruj model embeddingów",
+    "webPage": {
+      "open": "Dodaj stronę internetową",
+      "title": "Dodaj stronę internetową",
+      "description": "Pobiera stronę i zapisuje jej czytelny tekst jako plik projektu. Działają tylko publiczne adresy http i https.",
+      "urlLabel": "Adres strony",
+      "add": "Dodaj stronę",
+      "refresh": "Odśwież",
+      "added": "Dodano „{{name}}”",
+      "refreshed": "Odświeżono „{{name}}”",
+      "truncated": "Strona przekraczała limit rozmiaru, więc zapisano tylko jej pierwszą część.",
+      "refreshFailed": "Nie udało się odświeżyć strony",
+      "errors": {
+        "invalidUrl": "Wpisz pełny adres zaczynający się od http:// lub https://.",
+        "blocked": "Ten adres wskazuje na ten komputer lub sieć prywatną, więc nie został pobrany.",
+        "timeout": "Strona odpowiadała zbyt długo. Spróbuj ponownie później.",
+        "notHtml": "Ten adres nie jest stroną internetową z czytelnym tekstem (np. PDF, obraz lub plik do pobrania).",
+        "tooLarge": "Strona jest zbyt duża.",
+        "httpError": "Witryna zwróciła błąd: {{message}}",
+        "failed": "Nie udało się pobrać strony: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Wybierz sposób wczytania załączników",

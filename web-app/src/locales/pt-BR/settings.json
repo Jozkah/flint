@@ -1424,6 +1424,7 @@
       "settleFailed": "Não foi possível resolver esse conflito",
       "forgotten": "Memória esquecida",
       "forgetFailed": "Não foi possível esquecer essa memória",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Não foi possível alterar essa memória",
       "updated": "Memória atualizada",
       "updateFailed": "Não foi possível atualizar essa memória",
@@ -1525,7 +1526,12 @@
     "composerGroup": "Compositor",
     "repliesGroup": "Respostas",
     "linksGroup": "Links",
-    "artifactsGroup": "Artefatos e widgets"
+    "artifactsGroup": "Artefatos e widgets",
+    "reasoningDefault": "Raciocínio em novos chats",
+    "reasoningDefaultDesc": "Se o raciocínio começa ativado ou desativado em um novo chat. A configuração de raciocínio do próprio modelo e o botão do editor continuam tendo prioridade. Modelos que não podem alternar o raciocínio não são alterados.",
+    "reasoningDefaultModel": "Padrão do modelo",
+    "reasoningDefaultOn": "Ativado",
+    "reasoningDefaultOff": "Desativado"
   },
   "data": {
     "tabStorage": "Armazenamento",

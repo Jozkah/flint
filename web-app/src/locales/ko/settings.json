@@ -1565,6 +1565,7 @@
       "settleFailed": "충돌을 해결할 수 없습니다",
       "forgotten": "메모리를 삭제했습니다",
       "forgetFailed": "메모리를 삭제할 수 없습니다",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "메모리를 변경할 수 없습니다",
       "updated": "메모리를 업데이트했습니다",
       "updateFailed": "메모리를 업데이트할 수 없습니다",
@@ -1663,7 +1664,12 @@
     "composerGroup": "입력창",
     "repliesGroup": "답변",
     "linksGroup": "링크",
-    "artifactsGroup": "아티팩트 및 위젯"
+    "artifactsGroup": "아티팩트 및 위젯",
+    "reasoningDefault": "새 채팅의 추론",
+    "reasoningDefaultDesc": "새 채팅에서 사고를 켠 상태로 시작할지 끈 상태로 시작할지 정합니다. 모델 자체의 추론 설정과 입력창 토글이 계속 우선합니다. 사고를 전환할 수 없는 모델은 그대로 둡니다.",
+    "reasoningDefaultModel": "모델 기본값",
+    "reasoningDefaultOn": "켜기",
+    "reasoningDefaultOff": "끄기"
   },
   "data": {
     "tabStorage": "저장소",

@@ -1392,6 +1392,7 @@
       "settleFailed": "無法解決該衝突",
       "forgotten": "已忘記記憶",
       "forgetFailed": "無法忘記該記憶",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "無法變更該記憶",
       "updated": "記憶已更新",
       "updateFailed": "無法更新該記憶",
@@ -1490,7 +1491,12 @@
     "composerGroup": "輸入框",
     "repliesGroup": "回覆",
     "linksGroup": "連結",
-    "artifactsGroup": "成品與小工具"
+    "artifactsGroup": "成品與小工具",
+    "reasoningDefault": "新聊天的推理",
+    "reasoningDefaultDesc": "新聊天中思考預設開啟還是關閉。模型自身的推理設定和輸入框中的開關仍然優先。無法切換思考的模型不受影響。",
+    "reasoningDefaultModel": "模型預設",
+    "reasoningDefaultOn": "開啟",
+    "reasoningDefaultOff": "關閉"
   },
   "data": {
     "tabStorage": "儲存空間",

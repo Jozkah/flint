@@ -116,6 +116,7 @@ import {
   mergeProviderOptions,
 } from '@/lib/reasoningProviderOptions'
 import { resolveModel } from '@/lib/modelOverrides'
+import { withReasoningDefault } from '@/lib/reasoningDefault'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { threadToolsGranted } from '@/hooks/useThreadToolGrants'
 import { type MCPTool } from '@janhq/core'
@@ -1102,7 +1103,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       selectedProvider,
       resolveModel(
         selectedModel,
-        useModelOverrides.getState().forThread(threadId)
+        withReasoningDefault(
+          useModelOverrides.getState().forThread(threadId),
+          selectedProvider,
+          selectedModel,
+          useGeneralSetting.getState().reasoningDefault
+        )
       )
     )
   }
@@ -2096,7 +2102,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // the composer shows as set would never reach the request.
       const selectedModel = resolveModel(
         selection.selectedModel,
-        useModelOverrides.getState().forThread(threadId)
+        withReasoningDefault(
+          useModelOverrides.getState().forThread(threadId),
+          providerId,
+          selection.selectedModel,
+          useGeneralSetting.getState().reasoningDefault
+        )
       )
       const reasoningParams = buildLlamacppReasoningParams(
         effectiveProviderName,

@@ -891,7 +891,28 @@
     "openCodeFolderInCowork": "Open code folder in Cowork",
     "openCodeFolder": "Open code folder",
     "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in.",
-    "setUpEmbeddingModel": "Set up an embedding model"
+    "setUpEmbeddingModel": "Set up an embedding model",
+    "webPage": {
+      "open": "Add web page",
+      "title": "Add a web page",
+      "description": "Fetch a page and keep its readable text as a project file. Only public http and https addresses work.",
+      "urlLabel": "Page address",
+      "add": "Add page",
+      "refresh": "Refresh",
+      "added": "Added \"{{name}}\"",
+      "refreshed": "Refreshed \"{{name}}\"",
+      "truncated": "The page was longer than the size limit, so only the first part was kept.",
+      "refreshFailed": "Could not refresh the page",
+      "errors": {
+        "invalidUrl": "Enter a full web address that starts with http:// or https://.",
+        "blocked": "That address points to this computer or a private network, so it was not fetched.",
+        "timeout": "The page took too long to respond. Try again later.",
+        "notHtml": "That address is not a web page with readable text (for example a PDF, image or download).",
+        "tooLarge": "The page is too large to fetch.",
+        "httpError": "The site returned an error: {{message}}",
+        "failed": "Could not fetch the page: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Choose how to ingest attachments",

@@ -27,6 +27,7 @@ import {
 } from './tokenCountToolContext'
 import { releaseImageModelForChat } from '@/lib/studio/arbiter'
 import { useAppState } from '@/hooks/useAppState'
+import { askCpuFallback, isCpuFallbackOffered } from '@/lib/gpuCrashCpuFallback'
 
 // TODO: Replace this with the actual provider later
 const defaultProvider = 'llamacpp'
@@ -149,6 +150,16 @@ export class DefaultModelsService implements ModelsService {
 
     return engine
       .load(model, settings, false, bypassAutoUnload)
+      .catch(async (error) => {
+        // The GPU driver crashed the engine while this model was loading.
+        // Ask once whether to run it on the CPU rather than switch silently.
+        const loadOnCpu = (engine as { loadOnCpu?: (id: string) => Promise<SessionInfo> })
+          .loadOnCpu
+        if (isCpuFallbackOffered(error) && loadOnCpu && (await askCpuFallback(model))) {
+          return loadOnCpu.call(engine, model)
+        }
+        throw error
+      })
       .then(async (session) => {
         await this.syncLoadedModels(engine, provider, model)
         return session
