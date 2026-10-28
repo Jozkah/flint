@@ -20,6 +20,7 @@
   "auto": "Obre a l'inici",
   "autoDesc": "Obre el servidor quan s'inicia l'aplicació, després d'uns segons en què pots triar aquest dispositiu.",
   "opening": "Obrint {{host}} d'aquí a {{seconds}} s",
+  "openingNotice": "S'obrirà {{host}} aviat. Premeu Esc per quedar-vos en aquest dispositiu.",
   "useDevice": "Fes servir aquest dispositiu",
   "limitsTitle": "Què s'executa on",
   "limits": "El xat, les sales, els models i les eines s'executen al servidor. Les sessions de Cowork i les campanyes necessiten un agent que s'executi en un ordinador amb Flint obert: arriba a aquest ordinador amb l'accés remot i l'aplicació del mòbil. Un servidor sense pantalla pot llistar campanyes i revisar propostes, però no executa sessions."

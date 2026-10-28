@@ -20,6 +20,7 @@
   "auto": "Otwieraj przy starcie",
   "autoDesc": "Otwórz serwer przy starcie aplikacji, po kilku sekundach, w których możesz wybrać to urządzenie.",
   "opening": "Otwieranie {{host}} za {{seconds}} s",
+  "openingNotice": "Za chwilę otworzy się {{host}}. Naciśnij Esc, aby zostać na tym urządzeniu.",
   "useDevice": "Użyj tego urządzenia",
   "limitsTitle": "Co gdzie działa",
   "limits": "Czat, pokoje, modele i narzędzia działają na serwerze. Sesje Cowork i kampanie potrzebują agenta działającego na komputerze z otwartym Flint: połącz się z tym komputerem przez dostęp zdalny i aplikację na telefon. Serwer bez interfejsu może wyświetlać kampanie i przeglądać propozycje, ale nie uruchamia sesji."

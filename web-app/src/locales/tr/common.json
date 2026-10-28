@@ -1625,7 +1625,8 @@
       "empty": "Bu dosya boş",
       "needs-file-dialog": "Belgeler için \"Dosya ekle\"yi kullanın — bırakılan bir kopyanın okuyucu için yolu yok",
       "sensitive": "Kimlik bilgilerine veya bir anahtara benziyor, bu nedenle okunmadı",
-      "binary": "Bu bir metin dosyası değil, uzantısı ne derse desin"
+      "binary": "Bu bir metin dosyası değil, uzantısı ne derse desin",
+      "unreadable": "Bu dosya okunamadı"
     },
     "addFiles": "Dosya ekle",
     "addFilesOrImages": "Dosya veya görsel ekle",

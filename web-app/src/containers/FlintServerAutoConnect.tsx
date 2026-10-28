@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { isPlatformAndroid, isPlatformIOS } from '@/lib/platform/utils'
@@ -26,6 +26,23 @@ export function FlintServerAutoConnect() {
   const [left, setLeft] = useState(SECONDS)
   const [cancelled, setCancelled] = useState(false)
   const { t } = useTranslation()
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const cancel = () => {
+    skipAutoConnect()
+    setCancelled(true)
+  }
+
+  // Escape stays on this device; the button gets focus so the way out is
+  // one keypress away for keyboard and screen reader users.
+  useEffect(() => {
+    if (!target || cancelled) return
+    cancelRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancel()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [target, cancelled])
 
   useEffect(() => {
     if (!target || cancelled) return
@@ -46,22 +63,16 @@ export function FlintServerAutoConnect() {
   }
   return (
     <div
-      role="alertdialog"
-      aria-live="polite"
+      role="status"
       data-testid="flint-server-autoconnect"
       className="fixed inset-x-3 bottom-3 z-50 flex items-center gap-3 rounded-xl border bg-card p-3 text-sm shadow-lg"
     >
-      <span className="min-w-0 flex-1 truncate">
+      {/* Announced once; the ticking number below is visual only. */}
+      <span className="sr-only">{t('server:openingNotice', { host })}</span>
+      <span className="min-w-0 flex-1 truncate" aria-hidden="true">
         {t('server:opening', { host, seconds: left })}
       </span>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          skipAutoConnect()
-          setCancelled(true)
-        }}
-      >
+      <Button ref={cancelRef} variant="outline" size="sm" onClick={cancel}>
         {t('server:useDevice')}
       </Button>
     </div>

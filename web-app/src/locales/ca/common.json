@@ -1651,7 +1651,8 @@
       "empty": "Aquest fitxer és buit",
       "needs-file-dialog": "Utilitza «Adjunta un fitxer» per als documents: una còpia arrossegada no té ruta per al lector",
       "sensitive": "Sembla contenir credencials o una clau, així que no s'ha llegit",
-      "binary": "Aquest no és un fitxer de text, digui el que digui l'extensió"
+      "binary": "Aquest no és un fitxer de text, digui el que digui l'extensió",
+      "unreadable": "No s'ha pogut llegir aquest fitxer"
     },
     "addFiles": "Afegeix fitxers",
     "addFilesOrImages": "Afegeix fitxers o imatges",
