@@ -52,6 +52,15 @@ export function isValidModelId(id: string): boolean {
   return parts.every((s) => s !== '' && s !== '.' && s !== '..')
 }
 
+// Loose rule for ids already on disk (delete, abort, rename source): old odd
+// names stay manageable but the id can never leave the models folder.
+export function isSafeModelRef(id: unknown): id is string {
+  if (typeof id !== 'string' || id === '' || id.includes('\0')) return false
+  if (id.startsWith('/') || id.startsWith('\\')) return false
+  if (/^[a-zA-Z]:/.test(id)) return false
+  return id.split(/[\\/]/).every((s) => s !== '' && s !== '.' && s !== '..')
+}
+
 export default class mlx_extension extends AIEngine {
   provider: string = 'mlx'
   autoUnload: boolean = true
@@ -567,6 +576,7 @@ export default class mlx_extension extends AIEngine {
   }
 
   override async delete(modelId: string): Promise<void> {
+    if (!isSafeModelRef(modelId)) throw new Error(`Invalid modelId: ${modelId}`)
     const modelDir = await joinPath([
       await this.getProviderPath(),
       'models',
@@ -606,6 +616,13 @@ export default class mlx_extension extends AIEngine {
     modelId: string,
     model: Partial<modelInfo>
   ): Promise<void> {
+    if (!isSafeModelRef(modelId)) throw new Error(`Invalid modelId: ${modelId}`)
+    // Nothing to rename; without this the folder became "undefined".
+    if (model.id === undefined) return
+    if (!isValidModelId(model.id))
+      throw new Error(
+        `Invalid modelId: ${model.id}. Only alphanumeric and / _ - . characters are allowed.`
+      )
     // Delegate to the same logic as llamacpp since they share the model dir
     const modelFolderPath = await joinPath([
       await this.getProviderPath(),
@@ -624,8 +641,9 @@ export default class mlx_extension extends AIEngine {
       throw new Error(`Model with ID ${model.id} already exists`)
     }
     const newModelConfigPath = await joinPath([newFolderPath, 'model.yml'])
-    await fs.mv(modelFolderPath, newFolderPath).then(() =>
-      invoke('write_yaml', {
+    await fs.mv(modelFolderPath, newFolderPath)
+    try {
+      await invoke('write_yaml', {
         data: {
           ...modelConfig,
           model_path: modelConfig?.model_path?.replace(
@@ -635,7 +653,18 @@ export default class mlx_extension extends AIEngine {
         },
         savePath: newModelConfigPath,
       })
-    )
+    } catch (e) {
+      // Put the folder back so the model is not left half-renamed.
+      try {
+        await fs.mv(newFolderPath, modelFolderPath)
+      } catch (rollbackError) {
+        logger.error(
+          `Rename rollback failed (${newFolderPath} -> ${modelFolderPath})`,
+          rollbackError
+        )
+      }
+      throw e
+    }
   }
 
   override async import(modelId: string, opts: ImportOptions): Promise<void> {
@@ -731,6 +760,10 @@ export default class mlx_extension extends AIEngine {
    * @param modelId The model ID to delete
    */
   private async deleteModelFolder(modelId: string): Promise<void> {
+    if (!isSafeModelRef(modelId)) {
+      logger.warn(`Refusing to delete model folder for unsafe id: ${modelId}`)
+      return
+    }
     try {
       const modelDir = await joinPath([
         await this.getProviderPath(),
