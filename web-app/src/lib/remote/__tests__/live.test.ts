@@ -97,6 +97,28 @@ describe('diffLiveReply', () => {
       'stream.delta',
     ])
   })
+
+  it('sends a shrink to empty text or reasoning', () => {
+    expect(diffLiveReply('chat', 't', reply({ text: 'Hello' }), reply({ text: '' }))).toEqual([
+      { type: 'stream.delta', kind: 'chat', id: 't', messageId: 'm1', offset: 0, text: '' },
+    ])
+    expect(
+      diffLiveReply('chat', 't', reply({ text: 'a', reasoning: 'think' }), reply({ text: 'a', reasoning: '' }))
+    ).toEqual([
+      {
+        type: 'stream.delta',
+        kind: 'chat',
+        id: 't',
+        messageId: 'm1',
+        offset: 1,
+        text: '',
+        reasoningOffset: 0,
+        reasoning: '',
+      },
+    ])
+    // Unchanged text and reasoning send nothing.
+    expect(diffLiveReply('chat', 't', reply({ text: 'a', reasoning: 'r' }), reply({ text: 'a', reasoning: 'r' }))).toEqual([])
+  })
 })
 
 describe('reportLiveReply', () => {
