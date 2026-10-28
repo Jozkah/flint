@@ -103,7 +103,7 @@ fn short_date(stamp: &str) -> String {
     match rest.split_once(':') {
         // Midnight is a daily bucket's marker, not a time: show the date alone.
         Some((hour, tail)) if hour == "00" && tail.starts_with("00") => date.to_string(),
-        Some((hour, tail)) => format!("{date} {hour}:{}", &tail[..2.min(tail.len())]),
+        Some((hour, tail)) => format!("{date} {hour}:{}", tail.get(..2).unwrap_or(tail)),
         None => date.to_string(),
     }
 }

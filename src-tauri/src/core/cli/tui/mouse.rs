@@ -190,7 +190,9 @@ pub(super) fn set_system_clipboard(text: String) {
 pub(super) fn copy_to_clipboard(text: &str) {
     let owned = text.to_string();
     std::thread::spawn(move || set_system_clipboard(owned));
-    if text.len() <= OSC52_MAX_BYTES {
+    // The cap is on what the terminal receives, which is the base64 text:
+    // 4 bytes for every 3 of the selection.
+    if text.len() <= OSC52_MAX_BYTES / 4 * 3 {
         use base64::Engine;
         let payload = base64::engine::general_purpose::STANDARD.encode(text);
         let mut out = io::stdout();

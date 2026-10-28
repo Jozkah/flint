@@ -73,9 +73,7 @@ fn resolve_thread_id(base: &Path, explicit: Option<&str>) -> Result<String, Stri
         if id.is_empty() {
             return Err("empty thread id".to_string());
         }
-        if id.contains('/') || id.contains('\\') || id.contains("..") {
-            return Err(format!("invalid thread id '{id}'"));
-        }
+        crate::core::threads::utils::validate_thread_id(id)?;
         if !get_thread_dir(base, id).is_dir() {
             return Err(format!(
                 "thread '{id}' not found under {} - run `flint cli threads list` to see ids",

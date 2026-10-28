@@ -61,7 +61,9 @@ static POSIX_ABS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("posix path")
 });
 static AT_REF: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"@([A-Za-z0-9_./\\-]+[A-Za-z0-9_])(?::\d+(?:-\d+)?)?"#).expect("at reference")
+    // The first group keeps an `@` inside a word (`foo@bar.com`) from being
+    // read as a reference; it is put back by the replacement.
+    Regex::new(r#"(^|[^A-Za-z0-9_])@([A-Za-z0-9_./\\-]+[A-Za-z0-9_])(?::\d+(?:-\d+)?)?"#).expect("at reference")
 });
 
 fn base_name(path: &str) -> String {
@@ -178,7 +180,7 @@ fn render_turn(t: &Turn, verbose: bool, obsidian: bool) -> String {
     if !text.is_empty() {
         let mut text = if verbose { text.to_string() } else { strip_absolute_paths(text) };
         if obsidian {
-            text = AT_REF.replace_all(&text, "[[$1]]").to_string();
+            text = AT_REF.replace_all(&text, "${1}[[$2]]").to_string();
         }
         parts.push(text);
     }
@@ -381,6 +383,10 @@ mod tests {
         assert!(o.starts_with("---\ntitle: \"Notes\""));
         assert!(o.contains("  - flint/chat"));
         assert!(o.contains("[[src/a.ts]]"));
+        let mail = vec![message("user", "mail foo@bar.com or (@src/b.ts)")];
+        let o = render(&thread, &mail, Format::Obsidian, false, "2026-10-09T00:00:00Z");
+        assert!(o.contains("foo@bar.com"), "an address is not a reference");
+        assert!(o.contains("([[src/b.ts]])"));
         let j: Value = serde_json::from_str(&render(&thread, &msgs, Format::Json, false, "x")).unwrap();
         assert_eq!(j["messages"].as_array().unwrap().len(), 1);
         let empty = render(&thread, &[], Format::Markdown, false, "2026-10-09T00:00:00Z");

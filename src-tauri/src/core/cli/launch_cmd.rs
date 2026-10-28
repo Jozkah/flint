@@ -86,7 +86,13 @@ pub fn target_from_url(url: &str, api_key: &str) -> Result<Target, String> {
     if u.scheme() != "http" && u.scheme() != "https" {
         return Err("the base URL must be http:// or https://".into());
     }
-    let host = u.host_str().ok_or("the base URL has no host")?.to_string();
+    // Without the brackets of an IPv6 literal: `to_socket_addrs` cannot resolve
+    // `[::1]`, and the URL builder above adds them back.
+    let host = u
+        .host_str()
+        .ok_or("the base URL has no host")?
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_string();
     let port = u.port_or_known_default().unwrap_or(DEFAULT_PORT);
     let path = clean_prefix(u.path());
     Ok(Target {
@@ -280,6 +286,8 @@ mod tests {
     fn a_base_url_overrides_the_settings() {
         let t = target_from_url("http://localhost:9000/v1/", "").unwrap();
         assert_eq!((t.host.as_str(), t.port, t.prefix.as_str()), ("localhost", 9000, "/v1"));
+        let v6 = target_from_url("http://[::1]:1337", "").unwrap();
+        assert_eq!(v6.host, "::1");
         assert!(target_from_url("ftp://x", "").is_err() && target_from_url("nope", "").is_err());
     }
 

@@ -329,9 +329,23 @@ fn add_vscode_binding(current: &str) -> Result<Option<String>, String> {
 /// True when `key` is set in a line-oriented config. A commented-out setting is
 /// not a setting, which is exactly how a user parks one they are not using.
 fn setting_present(current: &str, key: &str) -> bool {
-    current
-        .lines()
-        .any(|l| !l.trim_start().starts_with('#') && l.contains(key))
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    current.lines().any(|line| {
+        // A `#` that starts the line or follows whitespace begins a comment.
+        let mut code = line;
+        if let Some(at) = line.char_indices().find_map(|(i, c)| {
+            (c == '#' && line[..i].chars().last().is_none_or(char::is_whitespace)).then_some(i)
+        }) {
+            code = &line[..at];
+        }
+        // The key as a whole token, so `terminal-features-x` or a longer name
+        // that merely contains it does not count as the setting being present.
+        code.match_indices(key).any(|(i, _)| {
+            let before = code[..i].chars().last();
+            let after = code[i + key.len()..].chars().next();
+            !before.is_some_and(word) && !after.is_some_and(word)
+        })
+    })
 }
 
 /// Append the line for each `(key, line)` whose key is not already set, under
@@ -376,9 +390,20 @@ fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    let tmp = path.with_extension("jan-tmp");
+    // The whole name plus a suffix: `with_extension` would turn `.tmux.conf`
+    // and `tmux.conf` into the same staging file.
+    let mut staging = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    staging.push(".jan-tmp");
+    let tmp = path.with_file_name(staging);
     std::fs::write(&tmp, contents).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+    // The user's mode (a 0600 config, say) survives the replacement.
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("{}: {e}", path.display())
+    })
 }
 
 /// Read a config file; a missing file is empty, any other error is reported so
@@ -759,6 +784,14 @@ mod tests {
             "macos_option_as_alt yes",
             "macos_option_as_alt"
         ));
+    }
+
+    #[test]
+    fn a_setting_is_matched_as_a_whole_token() {
+        assert!(!setting_present("set -g terminal-features-x on", "terminal-features"));
+        assert!(!setting_present("macos_option_as_alt_extra yes", "macos_option_as_alt"));
+        assert!(setting_present("set -s extended-keys on # keep", "extended-keys"));
+        assert!(!setting_present("set -s mouse on # extended-keys", "extended-keys"));
     }
 
     #[test]

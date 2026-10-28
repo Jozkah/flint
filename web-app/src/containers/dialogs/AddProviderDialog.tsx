@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   Dialog,
@@ -45,6 +45,10 @@ export function AddProviderDialog({
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const uid = useId()
+  const apiTypeId = `${uid}-api-type`
+  const baseUrlId = `${uid}-base-url`
+  const apiKeyId = `${uid}-api-key`
   const configured = useModelProvider((s) => s.providers)
   const [detected, setDetected] = useState<LocalProviderCandidate[]>([])
 
@@ -59,9 +63,14 @@ export function AddProviderDialog({
     void probeLocalProviders(
       runtimeProviderFetch(),
       configured.map((p) => p.base_url ?? '').filter(Boolean)
-    ).then((found) => {
-      if (!cancelled) setDetected(found)
-    })
+    )
+      .then((found) => {
+        if (!cancelled) setDetected(found)
+      })
+      .catch(() => {
+        // A failed probe only means nothing was detected.
+        if (!cancelled) setDetected([])
+      })
     return () => {
       cancelled = true
     }
@@ -169,10 +178,11 @@ export function AddProviderDialog({
           />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-fg-2">
+            <label id={apiTypeId} className="text-xs font-medium text-fg-2">
               {t('provider:apiTypeLabel')}
             </label>
             <RadioGroup
+              aria-labelledby={apiTypeId}
               value={apiType}
               onValueChange={(v) => setApiType(v as ProviderApiType)}
               className="flex flex-col gap-1"
@@ -188,10 +198,12 @@ export function AddProviderDialog({
             </RadioGroup>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-fg-2">
+            <label htmlFor={baseUrlId} className="text-xs font-medium text-fg-2">
               {t('provider:baseUrlLabel')}
             </label>
             <Input
+              id={baseUrlId}
+              aria-invalid={error ? true : undefined}
               className="font-mono"
               value={baseUrl}
               onChange={(e) => {
@@ -203,10 +215,11 @@ export function AddProviderDialog({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-fg-2">
+            <label htmlFor={apiKeyId} className="text-xs font-medium text-fg-2">
               {t('provider:apiKeyLabel')}
             </label>
             <Input
+              id={apiKeyId}
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}

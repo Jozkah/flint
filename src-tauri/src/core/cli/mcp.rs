@@ -631,11 +631,17 @@ fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest13::Cl
     let mut map = reqwest13::header::HeaderMap::new();
     for (key, value) in headers.iter() {
         if let Some(v) = value.as_str() {
-            if let (Ok(name), Ok(val)) = (
+            // Trimmed: a trailing newline from a pasted token is invalid in a
+            // header value and would drop the header (and the credential) silently.
+            match (
                 reqwest13::header::HeaderName::from_bytes(key.as_bytes()),
-                reqwest13::header::HeaderValue::from_str(v),
+                reqwest13::header::HeaderValue::from_str(v.trim()),
             ) {
-                map.insert(name, val);
+                (Ok(name), Ok(val)) => {
+                    map.insert(name, val);
+                }
+                // Named, never valued: the value may be a secret.
+                _ => log::warn!("MCP header '{key}' is not valid and was skipped"),
             }
         }
     }
