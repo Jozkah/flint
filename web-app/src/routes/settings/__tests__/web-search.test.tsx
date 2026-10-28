@@ -6,6 +6,7 @@ import {
   SETTINGS_ITEMS,
   WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
 } from '@/lib/settingsSearch'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { Route as WebSearchRoute } from '../web-search'
 
 vi.mock('@/containers/SettingsMenu', () => ({
@@ -143,5 +144,14 @@ describe('Web Search settings route', () => {
   it('still reveals the enable toggle by its own anchor', () => {
     render(<Page />)
     expect(anchorEl('settings-web-search-enable')).toBeInTheDocument()
+  })
+
+  it('contacts no search vendor for a favicon when site icons are off', () => {
+    useGeneralSetting.setState({ loadSiteIcons: false })
+    const { container } = render(<Page />)
+    expect(container.querySelector('img[src*="favicon"]')).toBeNull()
+    useGeneralSetting.setState({ loadSiteIcons: true })
+    const on = render(<Page />)
+    expect(on.container.querySelector('img[src*="favicon"]')).not.toBeNull()
   })
 })

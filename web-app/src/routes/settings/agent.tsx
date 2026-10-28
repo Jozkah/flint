@@ -615,6 +615,7 @@ function AgentToolsContent() {
           <div className="space-y-3">
             <Input
               type="text"
+              aria-label={t('settings:agentTools.namePlaceholder')}
               placeholder={t('settings:agentTools.namePlaceholder')}
               value={editor?.name ?? ''}
               // Locked once the entry exists: a new name would create a second
@@ -628,6 +629,7 @@ function AgentToolsContent() {
             />
             <Textarea
               className="min-h-64 font-mono text-base md:text-xs"
+              aria-label={t('settings:agentTools.contentPlaceholder')}
               placeholder={t('settings:agentTools.contentPlaceholder')}
               value={editor?.content ?? ''}
               onChange={(e) =>

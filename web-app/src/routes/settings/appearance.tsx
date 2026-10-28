@@ -390,7 +390,7 @@ export function PerformanceModeSetting() {
 }
 
 /** Settings › Appearance › Sounds: when a finished answer plays a sound. */
-function CompletionSoundSettings() {
+export function CompletionSoundSettings() {
   const { t } = useTranslation()
   const mode = useInterfaceSettings((s) => s.completionSound)
   const volume = useInterfaceSettings((s) => s.completionSoundVolume)
@@ -409,6 +409,14 @@ function CompletionSoundSettings() {
             role="radiogroup"
             aria-label={t('settings:appearance.completionSound')}
             data-testid="completion-sound-mode"
+            onKeyDown={(e) => {
+              // Roving tabindex: arrows / Home / End pick and focus the next radio.
+              const next = stepRadio(COMPLETION_SOUNDS, mode, e.key)
+              if (next === undefined) return
+              e.preventDefault()
+              if (next !== mode) setMode(next)
+              e.currentTarget.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus()
+            }}
             // Two even columns: four options never leave one alone on a
             // ragged second line.
             className="grid w-full max-w-md grid-cols-2 gap-0.5 rounded-md border border-border p-0.5"
@@ -419,6 +427,7 @@ function CompletionSoundSettings() {
                 type="button"
                 role="radio"
                 aria-checked={mode === m}
+                tabIndex={mode === m ? 0 : -1}
                 data-mode={m}
                 onClick={() => setMode(m)}
                 className={cn(

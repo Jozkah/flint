@@ -143,7 +143,6 @@ export function TopHeader() {
   // Mail from other sessions that waits for the user (wake-ups off, chain
   // limit): announced here as well as on the session's row.
   const heldMail = useHeldMailSummary()
-  const sessionTitles = useCoworkSessions((s) => s.sessions)
   const navigate = useNavigate()
   const activity = useUsageStats((s) => s.activity)
   const recent = activity.slice(0, 4)
@@ -306,7 +305,9 @@ export function TopHeader() {
                     detail={t('messaging:waitingIn', {
                       count: h.count,
                       session:
-                        sessionTitles.find((s) => s.id === h.sessionId)?.title ?? '',
+                        useCoworkSessions
+                          .getState()
+                          .sessions.find((s) => s.id === h.sessionId)?.title ?? '',
                     })}
                     onSelect={() => {
                       useCoworkSessions.getState().selectSession(h.sessionId)
