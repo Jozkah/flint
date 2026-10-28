@@ -5,6 +5,14 @@ import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ignoreToastPresses } from "@/lib/toastInteractOutside"
 import { Button } from "@/components/ui/button"
+import { useTranslation } from "@/i18n/react-i18next-compat"
+
+/**
+ * Lets a rendered DialogDescription tell its DialogContent it exists. Radix
+ * warns when a dialog has no description, so the content opts out of the
+ * description link until one mounts, and then lets Radix link it.
+ */
+const DescriptionPresence = React.createContext<(() => void) | null>(null)
 
 function Dialog({
   ...props
@@ -61,12 +69,15 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const { t } = useTranslation()
+  const [hasDescription, setHasDescription] = React.useState(false)
+  const markDescription = React.useCallback(() => setHasDescription(true), [])
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        aria-describedby={undefined}
+        {...(hasDescription ? {} : { "aria-describedby": undefined })}
         onInteractOutside={ignoreToastPresses(onInteractOutside)}
         className={cn(
           // Phone: a bottom sheet within the visual viewport, so the primary
@@ -78,14 +89,16 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
+        <DescriptionPresence.Provider value={markDescription}>
+          {children}
+        </DescriptionPresence.Provider>
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
             className="text-muted-foreground hover:text-foreground hover:bg-accent absolute top-3 right-3 grid size-8 place-items-center rounded-md focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 pointer-coarse:size-11"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("common:close")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
@@ -111,6 +124,7 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <div
       data-slot="dialog-footer"
@@ -123,7 +137,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">{t("common:close")}</Button>
         </DialogPrimitive.Close>
       )}
     </div>
@@ -147,6 +161,8 @@ function DialogDescription({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  const markDescription = React.useContext(DescriptionPresence)
+  React.useEffect(() => markDescription?.(), [markDescription])
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"

@@ -2963,11 +2963,11 @@ export function CoworkPage() {
             sessionId: sid,
             serviceHub: serviceHub,
           })
-          for (const f of prepared.failed) toast.error(`Could not read ${f.name}: ${f.error}`)
+          for (const f of prepared.failed) toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
           outgoing = text + prepared.modelSuffix
           const media = submittedToRunAttachments(prepared.parts)
           if (media.unsupported > 0) {
-            return refused('Only images can be sent to a server session; remove the other media files.')
+            return refused(t('common:coworkRun.remoteImagesOnly'))
           }
           if (media.attachments.length > MAX_RUN_ATTACHMENTS) {
             return refused(`A message can carry at most ${MAX_RUN_ATTACHMENTS} files.`)
@@ -3013,10 +3013,10 @@ export function CoworkPage() {
         : null
     if (attached) {
       for (const f of attached.failed) {
-        toast.error(`Could not read ${f.name}: ${f.error}`)
+        toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
       }
       if (attached.truncated.length > 0) {
-        toast.info(`Only part of ${attached.truncated.join(', ')} fits in one message.`)
+        toast.info(t('common:coworkRun.partFits', { files: attached.truncated.join(', ') }))
       }
     }
     const store = useCoworkSessions.getState()
@@ -3121,7 +3121,7 @@ export function CoworkPage() {
       return
     }
     // Another session's message is not what this session is about.
-    if (text && !from && !hidden && current?.title === 'New session') {
+    if (text && !from && !hidden && current?.title === DEFAULT_SESSION_TITLE) {
       // The prompt, cut short, until the model's own title arrives.
       const placeholder = slashTitle(text).slice(0, 40)
       store.setTitle(sid, placeholder)

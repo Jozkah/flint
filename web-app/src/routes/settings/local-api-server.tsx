@@ -527,8 +527,8 @@ function LocalAPIServerContent() {
           <Card title={t('settings:agentTools.tabBehaviour')}>
             <CardItem
               anchor="settings-local-api-server-server-tools"
-              title="Execute tools on server"
-              description="Run tools server-side for chat endpoints."
+              title={t('settings:localApiServer.serverTools')}
+              description={t('settings:localApiServer.serverToolsDesc')}
               actions={
                 <Switch
                   checked={enableServerToolExecution}

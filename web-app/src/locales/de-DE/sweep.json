@@ -97,7 +97,10 @@
     "variant": "Variante",
     "whatToLookFor": "Wonach suchst du?",
     "searchPlaceholderShort": "Suchen oder URL einfügen…",
-    "resultLimit": "Anzeigen"
+    "resultLimit": "Anzeigen",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Importiere eine GGUF-Modelldatei, um sie deiner Sammlung hinzuzufügen. Aktiviere die multimodale Unterstützung, um ein mmproj für Bild- oder Audioeingaben anzuhängen, oder die Unterstützung für Entwurfsmodelle für spekulatives Decoding. Embedding-Modelle werden automatisch erkannt.",
