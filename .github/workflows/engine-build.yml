@@ -9,6 +9,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   # rust-check.yml compiles this plugin with default features, which leave the
   # engine OFF -- so nothing there links llama.cpp, and a broken shim or build.rs
