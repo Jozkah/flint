@@ -62,7 +62,7 @@ fn the_opt_ins_default_to_off_and_unreadable_settings_are_off() {
 #[tokio::test]
 async fn off_means_no_typesafe_request_for_either_feature() {
     let (post, calls, _) = fake(Ok(choice("s0", 0.99)));
-    let deps = Deps { modes: Modes::default(), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: Modes::default(), key: Some("ts-key".into()), post: &post };
     let d = suggest_skill(&deps, PRIVATE, &skills()).await;
     assert_eq!(d.skill, None);
     assert_eq!(d.fallback, Some(Fallback::Disabled));
@@ -79,7 +79,7 @@ async fn off_means_no_typesafe_request_for_either_feature() {
 #[tokio::test]
 async fn one_feature_on_does_not_turn_the_other_on() {
     let (post, calls, _) = fake(Ok(choice("s0", 0.99)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("k".into()), post: &post };
     let cands = vec![
         Candidate { id: "a".into(), text: "x".into() },
         Candidate { id: "b".into(), text: "y".into() },
@@ -91,9 +91,9 @@ async fn one_feature_on_does_not_turn_the_other_on() {
 #[tokio::test]
 async fn no_key_and_user_invoked_skills_ask_nothing() {
     let (post, calls, _) = fake(Ok(choice("s0", 0.99)));
-    let deps = Deps { modes: modes(Mode::On, Mode::On), key: None, post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::On), key: None, post: &post };
     assert_eq!(suggest_skill(&deps, PRIVATE, &skills()).await.fallback, Some(Fallback::NoKey));
-    let deps = Deps { modes: modes(Mode::On, Mode::On), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::On), key: Some("k".into()), post: &post };
     let d = suggest_skill(&deps, "/skill:release-notes for v2", &skills()).await;
     assert_eq!(d.fallback, Some(Fallback::UserInvokedSkill));
     assert_eq!(d.skill, None);
@@ -104,7 +104,7 @@ async fn no_key_and_user_invoked_skills_ask_nothing() {
 #[tokio::test]
 async fn suggests_one_eligible_skill_when_confident() {
     let (post, calls, seen) = fake(Ok(choice("s0", 0.93)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
     let d = suggest_skill(&deps, PRIVATE, &skills()).await;
     assert_eq!(d.skill.as_deref(), Some("pdf-forms"));
     assert_eq!(d.fallback, None);
@@ -124,7 +124,7 @@ async fn suggests_one_eligible_skill_when_confident() {
 async fn abstains_below_the_threshold_or_on_none() {
     for reply in [choice("s1", 0.55), choice("none", 0.9)] {
         let (post, _, _) = fake(Ok(reply));
-        let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("k".into()), post: &post };
+        let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("k".into()), post: &post };
         let d = suggest_skill(&deps, "write something", &skills()).await;
         assert_eq!(d.skill, None);
         assert_eq!(d.fallback, Some(Fallback::Abstained));
@@ -134,7 +134,7 @@ async fn abstains_below_the_threshold_or_on_none() {
 #[tokio::test]
 async fn an_answer_outside_the_given_skills_is_refused() {
     let (post, _, _) = fake(Ok(choice("s7", 0.99)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("k".into()), post: &post };
     let d = suggest_skill(&deps, "x", &skills()).await;
     assert_eq!(d.skill, None);
     assert_eq!(d.fallback, Some(Fallback::BadResponse));
@@ -143,7 +143,7 @@ async fn an_answer_outside_the_given_skills_is_refused() {
 #[tokio::test]
 async fn shadow_asks_and_records_but_changes_nothing() {
     let (post, calls, _) = fake(Ok(choice("s0", 0.95)));
-    let deps = Deps { modes: modes(Mode::Shadow, Mode::Off), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::Shadow, Mode::Off), key: Some("k".into()), post: &post };
     let d = suggest_skill(&deps, "shadow-probe-7a", &skills()).await;
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(d.skill, None);
@@ -162,7 +162,7 @@ async fn every_failure_falls_back_with_its_reason() {
         (Ok(json!({"model":"jev-1.13.0","answers":{}})), Fallback::BadResponse),
     ] {
         let (post, _, _) = fake(reply);
-        let deps = Deps { modes: modes(Mode::On, Mode::On), key: Some("k".into()), post: &post };
+        let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::On), key: Some("k".into()), post: &post };
         let d = suggest_skill(&deps, "x", &skills()).await;
         assert_eq!((d.skill, d.fallback), (None, Some(why)));
         let cands = vec![
@@ -194,7 +194,7 @@ fn citations() -> Vec<Candidate> {
 #[tokio::test]
 async fn reranking_returns_exactly_the_given_ids_reordered() {
     let (post, _, seen) = fake(Ok(nouls(&[0.2, 0.9, 0.9, 0.05])));
-    let deps = Deps { modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
     let r = rerank(&deps, "how do refunds work", &citations(), 2).await;
     // Highest first; the tie (0.9, 0.9) keeps retrieval order.
     assert_eq!(r.order.unwrap(), ["chunk-001", "chunk-a77", "chunk-9f3", "chunk-4c2"]);
@@ -208,7 +208,7 @@ async fn reranking_returns_exactly_the_given_ids_reordered() {
 #[tokio::test]
 async fn reranking_abstains_when_nothing_is_relevant() {
     let (post, _, _) = fake(Ok(nouls(&[0.01, 0.02, 0.0, 0.05])));
-    let deps = Deps { modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
     let r = rerank(&deps, "q", &citations(), 2).await;
     assert_eq!((r.order, r.fallback), (None, Some(Fallback::Abstained)));
 }
@@ -216,7 +216,7 @@ async fn reranking_abstains_when_nothing_is_relevant() {
 #[tokio::test]
 async fn a_missing_answer_or_duplicate_ids_keep_retrieval_order() {
     let (post, calls, _) = fake(Ok(nouls(&[0.9, 0.8])));
-    let deps = Deps { modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
     assert_eq!(rerank(&deps, "q", &citations(), 2).await.fallback, Some(Fallback::BadResponse));
     let dup = vec![
         Candidate { id: "a".into(), text: "x".into() },
@@ -232,7 +232,7 @@ async fn the_shortlist_and_the_text_sent_are_bounded() {
         .map(|i| Candidate { id: format!("c{i}"), text: "w".repeat(5_000) })
         .collect();
     let (post, _, seen) = fake(Ok(nouls(&[0.5; MAX_CANDIDATES])));
-    let deps = Deps { modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::Off, Mode::On), key: Some("k".into()), post: &post };
     let r = rerank(&deps, &"q".repeat(5_000), &many, 5).await;
     let order = r.order.unwrap();
     assert_eq!(order.len(), 30, "past the shortlist, candidates keep their place");
@@ -249,10 +249,10 @@ async fn the_shortlist_and_the_text_sent_are_bounded() {
 #[tokio::test]
 async fn receipts_never_hold_the_key_or_the_private_text() {
     let (post, _, _) = fake(Ok(choice("s0", 0.95)));
-    let deps = Deps { modes: modes(Mode::On, Mode::On), key: Some("ts-live-SECRETKEY-123".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::On), key: Some("ts-live-SECRETKEY-123".into()), post: &post };
     suggest_skill(&deps, PRIVATE, &skills()).await;
     let (post, _, _) = fake(Ok(nouls(&[0.1, 0.9, 0.3, 0.2])));
-    let deps = Deps { modes: modes(Mode::On, Mode::On), key: Some("ts-live-SECRETKEY-123".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::On), key: Some("ts-live-SECRETKEY-123".into()), post: &post };
     rerank(&deps, "ACME-SECRET-7731 refunds", &citations(), 2).await;
     let all = serde_json::to_string(&receipts()).unwrap();
     assert!(!all.contains("SECRETKEY"));
@@ -420,33 +420,33 @@ fn a_model_request_names_models_by_position_and_always_offers_keeping_the_curren
 #[tokio::test]
 async fn a_clearly_better_model_is_named_and_a_weak_answer_keeps_the_current_one() {
     let (post, _, _) = fake(Ok(model_choice("m0", 0.93)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
     let d = suggest_model(&deps, "refactor this module", &current(), &models()).await;
     assert_eq!(d.skill.as_deref(), Some("anthropic/claude-sonnet-5-5"));
     assert_eq!(d.fallback, None);
 
     let (post, _, _) = fake(Ok(model_choice("m0", 0.4)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
     let d = suggest_model(&deps, "refactor this module", &current(), &models()).await;
     assert_eq!(d.skill, None, "under the probability bar the current model stays");
     assert_eq!(d.fallback, Some(Fallback::Abstained));
 
     let (post, _, _) = fake(Ok(model_choice("none", 0.95)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
     assert_eq!(suggest_model(&deps, "hi there friend", &current(), &models()).await.skill, None);
 }
 
 #[tokio::test]
 async fn model_routing_asks_nothing_when_off_or_without_a_list_and_rejects_a_bad_answer() {
     let (post, calls, _) = fake(Ok(model_choice("m0", 0.99)));
-    let off = Deps { modes: Modes::default(), key: Some("ts-key".into()), post: &post };
+    let off = Deps { backend: Backend::Jev, modes: Modes::default(), key: Some("ts-key".into()), post: &post };
     assert_eq!(suggest_model(&off, "write the tests", &current(), &models()).await.fallback, Some(Fallback::Disabled));
-    let on = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let on = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
     assert_eq!(suggest_model(&on, "write the tests", &current(), &[]).await.fallback, Some(Fallback::NothingToDecide));
     assert_eq!(calls.load(Ordering::SeqCst), 0, "no request is made in either case");
 
     let (post, _, _) = fake(Ok(model_choice("m9", 0.99)));
-    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
     let d = suggest_model(&deps, "write the tests", &current(), &models()).await;
     assert_eq!(d.skill, None);
     assert_eq!(d.fallback, Some(Fallback::BadResponse));
@@ -470,7 +470,7 @@ fn pending() -> JudgeInput {
 #[tokio::test]
 async fn a_confident_refusal_denies_with_its_reason() {
     let (post, calls, seen) = fake(Ok(review("deny_off_task", 0.95)));
-    let deps = Deps { modes: Modes::default(), key: Some("ts-key".into()), post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: Modes::default(), key: Some("ts-key".into()), post: &post };
     match review_call(&deps, &pending()).await {
         Ok(Verdict::Deny { reason }) => assert!(reason.contains("did not ask for"), "{reason}"),
         other => panic!("expected a deny, got {other:?}"),
@@ -490,12 +490,12 @@ async fn a_confident_refusal_denies_with_its_reason() {
 async fn ask_an_unsure_refusal_and_a_bad_answer_never_deny() {
     for reply in [review("ask", 0.99), review("deny_destructive", 0.6)] {
         let (post, _, _) = fake(Ok(reply));
-        let deps = Deps { modes: Modes::default(), key: Some("k".into()), post: &post };
+        let deps = Deps { backend: Backend::Jev, modes: Modes::default(), key: Some("k".into()), post: &post };
         assert_eq!(review_call(&deps, &pending()).await, Ok(Verdict::Ask));
     }
     for reply in [Ok(review("approve", 0.99)), Ok(choice("s0", 0.99)), Err(CallError::Timeout), Err(CallError::Http("HTTP 500".into()))] {
         let (post, _, _) = fake(reply);
-        let deps = Deps { modes: Modes::default(), key: Some("k".into()), post: &post };
+        let deps = Deps { backend: Backend::Jev, modes: Modes::default(), key: Some("k".into()), post: &post };
         assert!(review_call(&deps, &pending()).await.is_err());
     }
 }
@@ -503,7 +503,80 @@ async fn ask_an_unsure_refusal_and_a_bad_answer_never_deny() {
 #[tokio::test]
 async fn no_key_makes_no_review_request() {
     let (post, calls, _) = fake(Ok(review("deny_off_task", 0.99)));
-    let deps = Deps { modes: Modes::default(), key: None, post: &post };
+    let deps = Deps { backend: Backend::Jev, modes: Modes::default(), key: None, post: &post };
     assert_eq!(review_call(&deps, &pending()).await, Err(Fallback::NoKey));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+/// An open model behind the same seam: the System One body is turned into a
+/// chat request and the completion read back, exactly as `open_post` does.
+fn open_fake(content: &'static str, label: &'static str) -> (Post, Arc<AtomicUsize>) {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let c = calls.clone();
+    let post: Post = Box::new(move |body, _key, _timeout| {
+        c.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            backend::chat_request("tiny-4b", &body)?;
+            let completion = json!({ "choices": [{ "message": { "content": content } }],
+                                     "usage": { "prompt_tokens": 210, "completion_tokens": 12 } });
+            backend::parse_chat_answer(&body, &completion, label)
+        })
+    });
+    (post, calls)
+}
+
+#[tokio::test]
+async fn an_open_model_answers_through_the_same_guarantees() {
+    let open = Backend::OpenModel { provider: "llamacpp".into(), model: "tiny-4b".into() };
+    let (post, calls) = open_fake(r#"{"skill":{"choice":"s0","confidence":0.95}}"#, "open:llamacpp/tiny-4b");
+    // Off: no request, even for an open model.
+    let off = Deps { backend: open.clone(), modes: Modes::default(), key: Some(String::new()), post: &post };
+    assert_eq!(suggest_skill(&off, PRIVATE, &skills()).await.fallback, Some(Fallback::Disabled));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    // Shadow: asked, recorded, not used.
+    let shadow = Deps { backend: open.clone(), modes: modes(Mode::Shadow, Mode::Off), key: Some(String::new()), post: &post };
+    let d = suggest_skill(&shadow, PRIVATE, &skills()).await;
+    assert_eq!((d.skill, d.fallback), (None, Some(Fallback::Shadow)));
+    // On: used, with the backend and model on the receipt and no cost or text.
+    let on = Deps { backend: open.clone(), modes: modes(Mode::On, Mode::Off), key: Some(String::new()), post: &post };
+    let d = suggest_skill(&on, PRIVATE, &skills()).await;
+    assert_eq!(d.skill.as_deref(), Some("pdf-forms"));
+    assert_eq!(d.model.as_deref(), Some("open:llamacpp/tiny-4b"));
+    let r = receipts()
+        .into_iter()
+        .find(|r| r.model.as_deref() == Some("open:llamacpp/tiny-4b") && r.mode == Mode::On)
+        .unwrap();
+    assert_eq!(r.backend, "open_model");
+    assert_eq!(r.cost_usd, 0.0);
+    assert_eq!(r.input_tokens, 210);
+    assert!(!serde_json::to_string(&receipts()).unwrap().contains("ACME-SECRET-7731"));
+}
+
+#[tokio::test]
+async fn an_open_model_that_answers_badly_falls_back_to_flint() {
+    let open = Backend::OpenModel { provider: "p".into(), model: "m".into() };
+    let (post, _) = open_fake("Sure, I'd pick pdf-forms!", "open:p/m-bad");
+    let deps = Deps { backend: open, modes: modes(Mode::On, Mode::On), key: Some(String::new()), post: &post };
+    let d = suggest_skill(&deps, PRIVATE, &skills()).await;
+    assert_eq!((d.skill, d.fallback), (None, Some(Fallback::BadResponse)));
+    let cands = vec![
+        Candidate { id: "a".into(), text: "x".into() },
+        Candidate { id: "b".into(), text: "y".into() },
+    ];
+    let r = rerank(&deps, "q", &cands, 1).await;
+    assert_eq!((r.order, r.fallback), (None, Some(Fallback::BadResponse)));
+}
+
+#[tokio::test]
+async fn an_open_model_review_can_refuse_but_never_approve() {
+    let open = Backend::OpenModel { provider: "p".into(), model: "m".into() };
+    let (post, _) = open_fake(r#"{"review":{"choice":"deny_exfiltration","confidence":0.97}}"#, "open:p/m");
+    let deps = Deps { backend: open.clone(), modes: Modes::default(), key: Some(String::new()), post: &post };
+    match review_call(&deps, &pending()).await {
+        Ok(Verdict::Deny { reason }) => assert!(reason.contains("(p/m)"), "{reason}"),
+        other => panic!("{other:?}"),
+    }
+    let (post, _) = open_fake(r#"{"review":{"choice":"approve","confidence":1}}"#, "open:p/m");
+    let deps = Deps { backend: open, modes: Modes::default(), key: Some(String::new()), post: &post };
+    assert_eq!(review_call(&deps, &pending()).await, Err(Fallback::BadResponse));
 }

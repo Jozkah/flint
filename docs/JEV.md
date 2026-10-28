@@ -2,7 +2,9 @@
 
 Flint can ask TypeSafe's **Jev** model (`jev-1.13.0`, pinned) for bounded
 decisions. They are **optional and off by default** (Settings → General →
-*Jev decision support*). Flint stays authoritative:
+*Jev decision support*). The same decisions can be answered by an **open
+model** instead -- a local llama.cpp / MLX model or any OpenAI-compatible
+provider: see [DECISION-MODELS.md](DECISION-MODELS.md). Flint stays authoritative:
 
 - Jev never approves, denies or gates a tool, and is not a security control.
 - **Prompt routing** reuses the Skill suggestion opt-in and the same bounded
@@ -24,7 +26,12 @@ decisions. They are **optional and off by default** (Settings → General →
 
 ## What leaves the device
 
-| Opt-in | Sent to `api.typesafe.ai` | Not sent |
+With the default backend (Jev) the text below goes to `api.typesafe.ai`.
+With a local open model (llama.cpp / MLX in Flint) **nothing leaves the
+device**. With a remote OpenAI-compatible provider the same text goes to **that
+provider** instead ([DECISION-MODELS.md](DECISION-MODELS.md#what-leaves-the-device)).
+
+| Opt-in | Sent to the decision backend | Not sent |
 | --- | --- | --- |
 | Skill suggestion / prompt routing | for skill chips: the message you are typing in Cowork (first 2,000 chars, after a 1.2 s pause) plus skill names/descriptions. For routing: the submitted prompt (first 2,000 chars) plus the bounded 5-assistant × 3-advisory-mode catalog (15 choices) | file contents, paths, history, custom assistant prompts, tool grants, permission state, anything once a message starts with `/` |
 | Reranking | the retrieval query (first 1,000 chars) and up to 20 shortlisted passages (1,200 chars each) | file names, paths, citation ids (positions are sent instead) |
