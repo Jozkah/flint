@@ -15,6 +15,10 @@ use crate::core::state::AppState;
 /// How long MCP servers get to stop before we move on to the engine.
 const MCP_CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// How long the image engine gets to stop.
+#[cfg(not(feature = "cli"))]
+const DIFFUSION_CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Stops everything the app started and flushes pending writes.
 ///
 /// Safe to run more than once: each step is a no-op when there is nothing left
@@ -39,6 +43,16 @@ pub async fn shutdown_cleanup<R: Runtime>(app: &AppHandle<R>) {
             "MCP cleanup timed out after {} seconds",
             MCP_CLEANUP_TIMEOUT.as_secs()
         ),
+    }
+
+    // The image engine is a child process too; unloading it kills it, or it
+    // would keep the GPU after the app is gone.
+    #[cfg(not(feature = "cli"))]
+    if tokio::time::timeout(DIFFUSION_CLEANUP_TIMEOUT, crate::core::diffusion::runtime::unload(app))
+        .await
+        .is_err()
+    {
+        log::warn!("Image engine did not stop within {} seconds", DIFFUSION_CLEANUP_TIMEOUT.as_secs());
     }
 
     if let Err(e) = tauri_plugin_llamacpp::cleanup_llama_processes(app.clone()).await {
