@@ -836,266 +836,23 @@ impl App {
             self.retrying = None;
         }
         match ev {
-            StreamEvent::Token { text } => {
-                self.assistant_buf.push_str(&text);
-                // Track the live thinking state so the header can fold reasoning
-                // to `[thinking]` / `[thought for Ns]`. Start the timer when
-                // reasoning is open; close it (stashing the duration) once the
-                // block ends. `reasoning_open` covers both inline ` think>` tags
-                // and native reasoning_buf, so a content token after reasoning
-                // closes the window (and prose arriving with no reasoning leaves
-                // it closed).
-                let open = self.reasoning_open();
-                if open && self.thinking_since.is_none() {
-                    self.thinking_since = Some(Instant::now());
-                } else if !open {
-                    if let Some(started) = self.thinking_since.take() {
-                        self.thought_for = Some(started.elapsed());
-                        self.thought_for_since = Some(Instant::now());
-                    }
-                }
-                // Commit the tool group as `✓` once real answer prose begins, so
-                // it lands above the streaming response. Reasoning tokens must
-                // not trigger this, or every call by a reasoning model splits
-                // into its own row.
-                if self.tool_group.is_some() && self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
-                    self.finalize_tool_group();
-                }
-            }
-            StreamEvent::Reasoning { text } => {
-                // Native reasoning stays out of the answer buffer entirely; it is
-                // folded into the display log on the next flush. Deltas that
-                // arrive with no prose in between extend the open segment;
-                // reasoning after prose starts a new one, so the timeline keeps
-                // emission order instead of hoisting every thought to the top.
-                if !text.is_empty() {
-                    let at = self.assistant_buf.len();
-                    match self.reasoning_segs.last_mut() {
-                        Some(seg) if seg.at == at => seg.text.push_str(&text),
-                        _ => self.reasoning_segs.push(ReasoningSeg { at, text }),
-                    }
-                    if self.thinking_since.is_none() {
-                        self.thinking_since = Some(Instant::now());
-                    }
-                }
-            }
-            StreamEvent::Step { index, max } => {
-                // Only flush (and thereby close the tool group) once the model
-                // has produced answer prose; a turn that only reasoned or only
-                // called tools keeps the group open so the next turn's calls
-                // keep folding into one summary row instead of a row per turn.
-                if self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
-                    self.flush_assistant();
-                }
-                self.starting.clear();
-                self.turn = (index, max);
-            }
-            StreamEvent::ToolCallStarted { id, name } => {
-                // Commit buffered prose/reasoning so it renders above the
-                // in-progress throbber, matching the grouped-call ordering.
-                self.flush_assistant();
-                if !self.starting.iter().any(|c| c.id == id) {
-                    self.starting.push(StartingCall::new(id, name));
-                }
-            }
+            StreamEvent::Token { text } => self.on_token(text),
+            StreamEvent::Reasoning { text } => self.on_reasoning(text),
+            StreamEvent::Step { index, max } => self.on_step(index, max),
+            StreamEvent::ToolCallStarted { id, name } => self.on_tool_call_started(id, name),
             StreamEvent::ToolCallArgsDelta { id, delta } => {
                 if let Some(call) = self.starting.iter_mut().find(|c| c.id == id) {
                     call.args.push_str(&delta);
                 }
             }
-            StreamEvent::ToolOutputDelta { id, delta } => {
-                // Bounded from the end: a runaway command must not be able to
-                // grow the TUI's memory. The tool keeps the authoritative full
-                // output (spilling to disk past its own cap) and hands it over
-                // with the result; this buffer only has to feed the live view.
-                let buf = self.live_output.entry(id).or_default();
-                buf.push_str(&delta);
-                if buf.len() > LIVE_OUTPUT_MAX_BYTES {
-                    // Trim on a char boundary so the buffer stays valid UTF-8.
-                    let cut = buf.len() - LIVE_OUTPUT_MAX_BYTES;
-                    let at = (cut..buf.len())
-                        .find(|i| buf.is_char_boundary(*i))
-                        .unwrap_or(buf.len());
-                    buf.drain(..at);
-                }
-            }
-            StreamEvent::ToolCall { id, name, args } => {
-                // The full call supersedes its in-progress throbber. Clearing the
-                // whole set, not just this id: `ToolCall` events are emitted only
-                // once the model's stream is fully assembled (see `loop.rs`), so
-                // by the time any arrives no arguments are still streaming and
-                // every "Preparing" throbber is stale. An id-only clear left a
-                // throbber whose id did not line up (or a duplicate) lingering on
-                // screen through the whole command.
-                self.starting.clear();
-                // Commit buffered prose/reasoning before anything else: every
-                // branch below does it anyway (so the timeline stays in emission
-                // order), and doing it here keeps the journal in that order too
-                // -- text that preceded the call, then the call. `flush_assistant`
-                // no-ops on an empty buffer, so silent consecutive calls still
-                // fold into one group row.
-                self.flush_assistant();
-                // `await_subagent` renders a live throbber that its result
-                // clears, so journaling the call would replay a spinner nothing
-                // ever stops; its result row is journaled below either way.
-                if name != "await_subagent" {
-                    self.display_log.push(DisplayEntry::ToolCall {
-                        id: id.clone(),
-                        name: name.clone(),
-                        args: args.clone(),
-                    });
-                }
-                // Track todo activity this turn so the reminder policy can tell
-                // an engaged turn (mutated todos) from a stalled one.
-                if name == "todo" {
-                    self.todo_call_this_turn = true;
-                }
-                // Awaiting a subagent is a long block: show a live throbber row
-                // (advanced each render tick) instead of a static grouped row,
-                // cleared when its result arrives.
-                if name == "await_subagent" {
-                    let run_id = args.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
-                    let sub = subagent_name_from_run_id(run_id).to_string();
-                    self.awaiting.push((id, run_id.to_string(), sub));
-                    return;
-                }
-                let args = self.track_bash_job(&id, &name, args);
-                // Untruncated: every row that shows these clamps to the width it
-                // is drawn at, so they survive a resize either way.
-                let label = tool_activity(&name, &args);
-                let done = tool_finished(&name, &args);
-                if matches!(name.as_str(), "edit" | "write") {
-                    // Record the touched path so the next checkpoint snapshots
-                    // exactly this file instead of scanning the whole repo.
-                    if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
-                        self.turn_touched.push(self.work_root().join(p));
-                        self.diff_paths.insert(id.clone(), p.to_string());
-                    }
-                    // Diff-producing tools render standalone (call row & panel).
-                    self.finalize_tool_group();
-                    self.gap(Kind::Tool);
-                    self.push_row(RowKind::Tool {
-                        tag: "▸".to_string(),
-                        tag_style: Style::new().cyan(),
-                        label: label.clone(),
-                        label_style: Style::new().cyan().dim(),
-                        reserve: TOOL_ROW_RESERVE,
-                    });
-                    self.pending_rows.push(PendingToolRow {
-                        id: id.clone(),
-                        idx: self.transcript.len() - 1,
-                        label,
-                        done,
-                    });
-                } else {
-                    self.push_grouped_call(&id, &name, label, done);
-                }
-            }
+            StreamEvent::ToolOutputDelta { id, delta } => self.on_tool_output_delta(id, delta),
+            StreamEvent::ToolCall { id, name, args } => self.on_tool_call(id, name, args),
             StreamEvent::ToolResult {
                 id,
                 content,
                 is_error,
                 diff,
-            } => {
-                // Clear the throbber for an awaited subagent once its result lands.
-                self.awaiting.retain(|(await_id, ..)| await_id != &id);
-                self.display_log.push(DisplayEntry::ToolResult {
-                    id: id.clone(),
-                    content: content.clone(),
-                    is_error,
-                    diff: diff.clone(),
-                });
-                // Before the grouped-call early return: a backgrounded command
-                // is reported by its result, and the call that later collects it
-                // needs the pairing whichever way this row renders.
-                if let Some(cmd) = self.bash_commands.remove(&id) {
-                    if let Some(job) = backgrounded_job_id(&content) {
-                        self.bash_jobs.insert(job.to_string(), cmd);
-                        self.job_origin.insert(job.to_string(), id.clone());
-                        self.active_bg_jobs.insert(job.to_string());
-                    }
-                }
-                // The command is over, so its live buffer is dead weight: the
-                // authoritative output is in this result. A call that backgrounded
-                // itself keeps its buffer -- the detached job is still writing to
-                // it, under this same id.
-                if backgrounded_job_id(&content).is_none() {
-                    let key = self.live_alias.remove(&id).unwrap_or_else(|| id.clone());
-                    self.live_output.remove(&key);
-                }
-                let resolved = self.resolve_pending_row(&id, is_error);
-                // Any tool result means the model took some action since the last
-                // reminder fired; let a later stop remind again if work is still
-                // open. Set unconditionally, before the grouped-call early return
-                // below, so it applies no matter how the result renders.
-                self.reminder_awaiting_progress = false;
-                // Grouped calls are already represented by the group row; retain
-                // their result on the group so an expand can show it later.
-                if self.grouped_ids.contains(&id) {
-                    // A group can be finalized (closed) before a folded call's
-                    // result lands - committing reasoning above a later call
-                    // closes the open group, then a new one opens. The result
-                    // must reach whichever group owns the id; routing it only
-                    // into the open group would drop it (and leave a stale
-                    // `✓` on the closed group).
-                    let open_owns = self
-                        .tool_group
-                        .as_ref()
-                        .is_some_and(|g| g.calls.iter().any(|c| c.id == id));
-                    if open_owns {
-                        let group = self.tool_group.as_mut().expect("checked above");
-                        if let Some(call) = group.calls.iter_mut().find(|c| c.id == id) {
-                            call.is_error = is_error;
-                            call.diff = diff;
-                            call.content = Some(content);
-                            group.last_result_error = Some(is_error);
-                            self.refresh_group_row();
-                            return;
-                        }
-                    }
-                    // A standalone edit/write or intervening display block can
-                    // close a group before its batch's results arrive.
-                    // Owned by a group already closed (e.g. by the reasoning
-                    // flush above): update its retained call and rewrite the
-                    // row so a late error reads as `✗`, not `✓`.
-                    for group in self.groups.iter_mut() {
-                        if let Some(call) = group.calls.iter_mut().find(|c| c.id == id) {
-                            call.is_error = is_error;
-                            call.diff = diff;
-                            call.content = Some(content);
-                            group.last_result_error = Some(is_error);
-                            let idx = group.idx;
-                            let row = group.row(GroupRow::Closed);
-                            self.transcript[idx] = row;
-                            break;
-                        }
-                    }
-                    return;
-                }
-                self.flush_assistant();
-                let (tag, tag_style) = if is_error {
-                    ("✗", Style::new().red())
-                } else {
-                    ("✓", Style::new().green())
-                };
-                let lang = diff
-                    .is_some()
-                    .then(|| self.diff_paths.remove(&id))
-                    .flatten();
-                // The resolved call row above already names the tool and file in
-                // past tense, so a successful "Applied N edit(s) to X" only
-                // repeats it; the diff is the informative part. Errors keep their
-                // text -- the row says nothing about why the call failed.
-                let content = (!(resolved && !is_error && diff.is_some())).then_some(content);
-                self.gap(Kind::Tool);
-                self.push_row(RowKind::Result {
-                    tag,
-                    tag_style,
-                    content,
-                    diff,
-                    lang,
-                });
-            }
+            } => self.on_tool_result(id, content, is_error, diff),
             StreamEvent::PermissionRequest {
                 request_id,
                 tool_name,
@@ -1107,41 +864,23 @@ impl App {
                 offers_always,
                 reason,
                 ..
-            } => {
-                // Don't close the tool group here: the prompt renders docked
-                // above the input, and finalizing would break the running row
-                // for every gated call (i.e. every exec) into its own line.
-                self.pending_queue.push_back(Pending {
-                    request_id,
-                    tool_name,
-                    capability,
-                    path,
-                    command,
-                    diff,
-                    offers_always: offers_always && prompt_kind != "secret",
-                    reason,
-                    prompt_kind,
-                    selected: 0,
-                    subagent: None,
-                    shown_at: Instant::now(),
-                });
-                self.yield_screen_to_prompt();
-                self.publish_agent_status();
-            }
+            } => self.on_permission_request(
+                request_id,
+                tool_name,
+                capability,
+                path,
+                command,
+                diff,
+                prompt_kind,
+                offers_always,
+                reason,
+            ),
             StreamEvent::AskRequest {
                 request_id,
                 request,
                 timeout_secs,
                 ..
-            } => {
-                self.ask_queue.push_back(PendingAsk::new(
-                    request_id,
-                    request,
-                    timeout_secs.map(std::time::Duration::from_secs),
-                ));
-                self.yield_screen_to_prompt();
-                self.publish_agent_status();
-            }
+            } => self.on_ask_request(request_id, request, timeout_secs),
             // Host tools belong to a headless run driven by a host process.
             // The TUI is that host's opposite number -- there is no peer on
             // stdin to execute a callback -- so it never declares them and
@@ -1156,92 +895,23 @@ impl App {
                 self.ask_queue.retain(|ask| ask.request_id != request_id);
                 self.publish_agent_status();
             }
-            StreamEvent::SubagentStart { run_id, name, task } => {
-                // A queued dispatch already opened a panel for this run; promote
-                // it to running instead of pushing a duplicate. Otherwise open a
-                // fresh live panel (several may be active).
-                if let Some(panel) = self.subagents.iter_mut().find(|p| p.run_id == run_id) {
-                    panel.queued = false;
-                } else {
-                    self.finalize_tool_group();
-                    self.flush_assistant();
-                    self.subagents.push(SubagentPanel {
-                        run_id,
-                        name,
-                        task: task.unwrap_or_default(),
-                        calls: Vec::new(),
-                        requests: 0,
-                        prompt_tokens: 0,
-                        active: None,
-                        queued: false,
-                        waiting: 0,
-                    });
-                }
-            }
+            StreamEvent::SubagentStart { run_id, name, task } => self.on_subagent_start(run_id, name, task),
             StreamEvent::SubagentQueued {
                 run_id,
                 name,
                 task,
                 waiting,
-            } => {
-                // The cap is exhausted; this dispatch will start when a running
-                // child finishes. Open its panel now, marked queued, so the
-                // fan-out shows the queue instead of hiding dispatches.
-                self.finalize_tool_group();
-                self.flush_assistant();
-                self.subagents.push(SubagentPanel {
-                    run_id,
-                    name,
-                    task: task.unwrap_or_default(),
-                    calls: Vec::new(),
-                    requests: 0,
-                    prompt_tokens: 0,
-                    active: None,
-                    queued: true,
-                    waiting,
-                });
-            }
+            } => self.on_subagent_queued(run_id, name, task, waiting),
             StreamEvent::SubagentTitle { run_id, title, .. } => {
                 self.subagent_titles.insert(run_id, title);
             }
-            StreamEvent::SubagentEnd { run_id, name } => {
-                // "explorer: Map the lexer" when the dispatch named the errand.
-                let name = match self.subagent_titles.remove(&run_id) {
-                    Some(title) => format!("{name}: {title}"),
-                    None => name,
-                };
-                let calls = self
-                    .subagents
-                    .iter()
-                    .find(|p| p.run_id == run_id)
-                    .map(|p| p.calls.clone())
-                    .unwrap_or_default();
-                self.subagents.retain(|p| p.run_id != run_id);
-                self.awaiting.retain(|(_, r, _)| r != &run_id);
-                let extra = self.subagent_finish.remove(&run_id);
-                self.push_subagent_summary_with(&name, calls, true, extra);
-            }
+            StreamEvent::SubagentEnd { run_id, name } => self.on_subagent_end(run_id, name),
             StreamEvent::SubagentFinished {
                 run_id,
                 status,
                 usage,
                 ..
-            } => {
-                let tokens = usage
-                    .as_ref()
-                    .and_then(|u| u.get("total_tokens"))
-                    .and_then(|t| t.as_u64())
-                    .filter(|t| *t > 0)
-                    .map(|t| format!("{} tokens", format_tokens(t)));
-                let note = match (status.as_str(), tokens) {
-                    ("turn_limit", _) => Some("stopped at its turn limit".to_string()),
-                    ("error", _) => Some("failed".to_string()),
-                    (_, tokens) => tokens,
-                };
-                if let Some(note) = note {
-                    self.subagent_finish.insert(run_id, note);
-                }
-            }
+            } => self.on_subagent_finished(run_id, status, usage),
             StreamEvent::Subagent {
                 run_id,
                 name,
@@ -1250,23 +920,7 @@ impl App {
             StreamEvent::TurnUsage {
                 usage,
                 execution_id,
-            } => {
-                if let Some(id) = execution_id {
-                    self.last_execution_id = Some(id);
-                }
-                self.turn_output_tokens += usage.completion_tokens.unwrap_or(0);
-                // Latest request's context, not a sum: each request resends the
-                // whole conversation, so adding them would be meaningless.
-                if let Some(prompt) = usage.prompt_tokens {
-                    self.turn_prompt_tokens = prompt;
-                    // Keep the header's context gauge live during the turn
-                    // instead of jumping only when the run ends.
-                    self.tokens = prompt + usage.completion_tokens.unwrap_or(0);
-                    // A fresh measurement of the *current* history supersedes
-                    // any post-compaction estimate.
-                    self.tokens_estimated = false;
-                }
-            }
+            } => self.on_turn_usage(usage, execution_id),
             // AH-078. The record is written by the dispatcher and is already
             // redacted; the TUI holds the identity so the run can be pointed at
             // it, and never the payload. Matched explicitly, not through a
@@ -1287,39 +941,7 @@ impl App {
             // blocked on, which nothing else on screen would explain. The
             // header and input row carry the throbber while it runs; the
             // outcome is one transcript line saying why.
-            StreamEvent::Compaction { phase, reason, messages } => {
-                use crate::core::agent::events::{CompactionPhase, CompactionReason};
-                match phase {
-                    CompactionPhase::Started => self.run_compacting = Some(Instant::now()),
-                    CompactionPhase::Finished => {
-                        self.run_compacting = None;
-                        let why = match reason {
-                            CompactionReason::Preflight => "the prompt neared the context window",
-                            CompactionReason::ContextOverflow => {
-                                "the provider rejected the prompt as too long"
-                            }
-                            CompactionReason::SessionBudget => {
-                                "the session token budget was used up"
-                            }
-                        };
-                        self.finalize_tool_group();
-                        self.flush_assistant();
-                        match messages {
-                            Some(n) => self.note(&format!(
-                                "compacted {n} messages into a summary: {why}"
-                            )),
-                            None => self.note(&format!("compacted the conversation: {why}")),
-                        }
-                        // The next `MessagesUpdated` carries the shorter
-                        // history; the gauge is re-estimated against it.
-                        self.tokens_estimated = true;
-                    }
-                    CompactionPhase::Failed => {
-                        self.run_compacting = None;
-                        self.note("compaction did not shrink the conversation");
-                    }
-                }
-            }
+            StreamEvent::Compaction { phase, reason, messages } => self.on_compaction(phase, reason, messages),
             // The live countdown carries every attempt; the transcript notes
             // only the first, so a flaky link leaves one line, not ten.
             StreamEvent::Retry {
@@ -1327,19 +949,7 @@ impl App {
                 max_attempts,
                 delay_ms,
                 reason,
-            } => {
-                if attempt == 2 {
-                    self.finalize_tool_group();
-                    self.flush_assistant();
-                    self.note(&format!("{reason}; retrying"));
-                }
-                self.retrying = Some(RetryWait {
-                    attempt,
-                    max_attempts,
-                    at: Instant::now() + Duration::from_millis(delay_ms),
-                    reason,
-                });
-            }
+            } => self.on_retry(attempt, max_attempts, delay_ms, reason),
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
                 self.persist_in_background();
@@ -1351,6 +961,466 @@ impl App {
                 self.todo_ok_this_turn = true;
             }
         }
+    }
+
+    /// Append a content token and track the live thinking state.
+    pub(super) fn on_token(&mut self, text: String) {
+        self.assistant_buf.push_str(&text);
+        // Track the live thinking state so the header can fold reasoning
+        // to `[thinking]` / `[thought for Ns]`. Start the timer when
+        // reasoning is open; close it (stashing the duration) once the
+        // block ends. `reasoning_open` covers both inline ` think>` tags
+        // and native reasoning_buf, so a content token after reasoning
+        // closes the window (and prose arriving with no reasoning leaves
+        // it closed).
+        let open = self.reasoning_open();
+        if open && self.thinking_since.is_none() {
+            self.thinking_since = Some(Instant::now());
+        } else if !open {
+            if let Some(started) = self.thinking_since.take() {
+                self.thought_for = Some(started.elapsed());
+                self.thought_for_since = Some(Instant::now());
+            }
+        }
+        // Commit the tool group as `✓` once real answer prose begins, so
+        // it lands above the streaming response. Reasoning tokens must
+        // not trigger this, or every call by a reasoning model splits
+        // into its own row.
+        if self.tool_group.is_some() && self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
+            self.finalize_tool_group();
+        }
+    }
+
+    /// Fold a native reasoning delta into the open segment.
+    pub(super) fn on_reasoning(&mut self, text: String) {
+        // Native reasoning stays out of the answer buffer entirely; it is
+        // folded into the display log on the next flush. Deltas that
+        // arrive with no prose in between extend the open segment;
+        // reasoning after prose starts a new one, so the timeline keeps
+        // emission order instead of hoisting every thought to the top.
+        if !text.is_empty() {
+            let at = self.assistant_buf.len();
+            match self.reasoning_segs.last_mut() {
+                Some(seg) if seg.at == at => seg.text.push_str(&text),
+                _ => self.reasoning_segs.push(ReasoningSeg { at, text }),
+            }
+            if self.thinking_since.is_none() {
+                self.thinking_since = Some(Instant::now());
+            }
+        }
+    }
+
+    /// A new agent step began.
+    pub(super) fn on_step(&mut self, index: u32, max: u32) {
+        // Only flush (and thereby close the tool group) once the model
+        // has produced answer prose; a turn that only reasoned or only
+        // called tools keeps the group open so the next turn's calls
+        // keep folding into one summary row instead of a row per turn.
+        if self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
+            self.flush_assistant();
+        }
+        self.starting.clear();
+        self.turn = (index, max);
+    }
+
+    /// The model began streaming a tool call.
+    pub(super) fn on_tool_call_started(&mut self, id: String, name: String) {
+        // Commit buffered prose/reasoning so it renders above the
+        // in-progress throbber, matching the grouped-call ordering.
+        self.flush_assistant();
+        if !self.starting.iter().any(|c| c.id == id) {
+            self.starting.push(StartingCall::new(id, name));
+        }
+    }
+
+    /// Live output from a running tool, bounded from the end.
+    pub(super) fn on_tool_output_delta(&mut self, id: String, delta: String) {
+        // Bounded from the end: a runaway command must not be able to
+        // grow the TUI's memory. The tool keeps the authoritative full
+        // output (spilling to disk past its own cap) and hands it over
+        // with the result; this buffer only has to feed the live view.
+        let buf = self.live_output.entry(id).or_default();
+        buf.push_str(&delta);
+        if buf.len() > LIVE_OUTPUT_MAX_BYTES {
+            // Trim on a char boundary so the buffer stays valid UTF-8.
+            let cut = buf.len() - LIVE_OUTPUT_MAX_BYTES;
+            let at = (cut..buf.len())
+                .find(|i| buf.is_char_boundary(*i))
+                .unwrap_or(buf.len());
+            buf.drain(..at);
+        }
+    }
+
+    /// A complete tool call: group it or render it standalone.
+    pub(super) fn on_tool_call(&mut self, id: String, name: String, args: serde_json::Value) {
+        // The full call supersedes its in-progress throbber. Clearing the
+        // whole set, not just this id: `ToolCall` events are emitted only
+        // once the model's stream is fully assembled (see `loop.rs`), so
+        // by the time any arrives no arguments are still streaming and
+        // every "Preparing" throbber is stale. An id-only clear left a
+        // throbber whose id did not line up (or a duplicate) lingering on
+        // screen through the whole command.
+        self.starting.clear();
+        // Commit buffered prose/reasoning before anything else: every
+        // branch below does it anyway (so the timeline stays in emission
+        // order), and doing it here keeps the journal in that order too
+        // -- text that preceded the call, then the call. `flush_assistant`
+        // no-ops on an empty buffer, so silent consecutive calls still
+        // fold into one group row.
+        self.flush_assistant();
+        // `await_subagent` renders a live throbber that its result
+        // clears, so journaling the call would replay a spinner nothing
+        // ever stops; its result row is journaled below either way.
+        if name != "await_subagent" {
+            self.display_log.push(DisplayEntry::ToolCall {
+                id: id.clone(),
+                name: name.clone(),
+                args: args.clone(),
+            });
+        }
+        // Track todo activity this turn so the reminder policy can tell
+        // an engaged turn (mutated todos) from a stalled one.
+        if name == "todo" {
+            self.todo_call_this_turn = true;
+        }
+        // Awaiting a subagent is a long block: show a live throbber row
+        // (advanced each render tick) instead of a static grouped row,
+        // cleared when its result arrives.
+        if name == "await_subagent" {
+            let run_id = args.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
+            let sub = subagent_name_from_run_id(run_id).to_string();
+            self.awaiting.push((id, run_id.to_string(), sub));
+            return;
+        }
+        let args = self.track_bash_job(&id, &name, args);
+        // Untruncated: every row that shows these clamps to the width it
+        // is drawn at, so they survive a resize either way.
+        let label = tool_activity(&name, &args);
+        let done = tool_finished(&name, &args);
+        if matches!(name.as_str(), "edit" | "write") {
+            // Record the touched path so the next checkpoint snapshots
+            // exactly this file instead of scanning the whole repo.
+            if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
+                self.turn_touched.push(self.work_root().join(p));
+                self.diff_paths.insert(id.clone(), p.to_string());
+            }
+            // Diff-producing tools render standalone (call row & panel).
+            self.finalize_tool_group();
+            self.gap(Kind::Tool);
+            self.push_row(RowKind::Tool {
+                tag: "▸".to_string(),
+                tag_style: Style::new().cyan(),
+                label: label.clone(),
+                label_style: Style::new().cyan().dim(),
+                reserve: TOOL_ROW_RESERVE,
+            });
+            self.pending_rows.push(PendingToolRow {
+                id: id.clone(),
+                idx: self.transcript.len() - 1,
+                label,
+                done,
+            });
+        } else {
+            self.push_grouped_call(&id, &name, label, done);
+        }
+    }
+
+    /// A tool finished: route its result to its group or render it.
+    pub(super) fn on_tool_result(&mut self, id: String, content: String, is_error: bool, diff: Option<String>) {
+        // Clear the throbber for an awaited subagent once its result lands.
+        self.awaiting.retain(|(await_id, ..)| await_id != &id);
+        self.display_log.push(DisplayEntry::ToolResult {
+            id: id.clone(),
+            content: content.clone(),
+            is_error,
+            diff: diff.clone(),
+        });
+        // Before the grouped-call early return: a backgrounded command
+        // is reported by its result, and the call that later collects it
+        // needs the pairing whichever way this row renders.
+        if let Some(cmd) = self.bash_commands.remove(&id) {
+            if let Some(job) = backgrounded_job_id(&content) {
+                self.bash_jobs.insert(job.to_string(), cmd);
+                self.job_origin.insert(job.to_string(), id.clone());
+                self.active_bg_jobs.insert(job.to_string());
+            }
+        }
+        // The command is over, so its live buffer is dead weight: the
+        // authoritative output is in this result. A call that backgrounded
+        // itself keeps its buffer -- the detached job is still writing to
+        // it, under this same id.
+        if backgrounded_job_id(&content).is_none() {
+            let key = self.live_alias.remove(&id).unwrap_or_else(|| id.clone());
+            self.live_output.remove(&key);
+        }
+        let resolved = self.resolve_pending_row(&id, is_error);
+        // Any tool result means the model took some action since the last
+        // reminder fired; let a later stop remind again if work is still
+        // open. Set unconditionally, before the grouped-call early return
+        // below, so it applies no matter how the result renders.
+        self.reminder_awaiting_progress = false;
+        // Grouped calls are already represented by the group row; retain
+        // their result on the group so an expand can show it later.
+        if self.grouped_ids.contains(&id) {
+            // A group can be finalized (closed) before a folded call's
+            // result lands - committing reasoning above a later call
+            // closes the open group, then a new one opens. The result
+            // must reach whichever group owns the id; routing it only
+            // into the open group would drop it (and leave a stale
+            // `✓` on the closed group).
+            let open_owns = self
+                .tool_group
+                .as_ref()
+                .is_some_and(|g| g.calls.iter().any(|c| c.id == id));
+            if open_owns {
+                let group = self.tool_group.as_mut().expect("checked above");
+                if let Some(call) = group.calls.iter_mut().find(|c| c.id == id) {
+                    call.is_error = is_error;
+                    call.diff = diff;
+                    call.content = Some(content);
+                    group.last_result_error = Some(is_error);
+                    self.refresh_group_row();
+                    return;
+                }
+            }
+            // A standalone edit/write or intervening display block can
+            // close a group before its batch's results arrive.
+            // Owned by a group already closed (e.g. by the reasoning
+            // flush above): update its retained call and rewrite the
+            // row so a late error reads as `✗`, not `✓`.
+            for group in self.groups.iter_mut() {
+                if let Some(call) = group.calls.iter_mut().find(|c| c.id == id) {
+                    call.is_error = is_error;
+                    call.diff = diff;
+                    call.content = Some(content);
+                    group.last_result_error = Some(is_error);
+                    let idx = group.idx;
+                    let row = group.row(GroupRow::Closed);
+                    self.transcript[idx] = row;
+                    break;
+                }
+            }
+            return;
+        }
+        self.flush_assistant();
+        let (tag, tag_style) = if is_error {
+            ("✗", Style::new().red())
+        } else {
+            ("✓", Style::new().green())
+        };
+        let lang = diff
+            .is_some()
+            .then(|| self.diff_paths.remove(&id))
+            .flatten();
+        // The resolved call row above already names the tool and file in
+        // past tense, so a successful "Applied N edit(s) to X" only
+        // repeats it; the diff is the informative part. Errors keep their
+        // text -- the row says nothing about why the call failed.
+        let content = (!(resolved && !is_error && diff.is_some())).then_some(content);
+        self.gap(Kind::Tool);
+        self.push_row(RowKind::Result {
+            tag,
+            tag_style,
+            content,
+            diff,
+            lang,
+        });
+    }
+
+    /// Queue a permission prompt.
+    pub(super) fn on_permission_request(&mut self, request_id: String,
+        tool_name: String,
+        capability: String,
+        path: Option<String>,
+        command: Option<String>,
+        diff: Option<String>,
+        prompt_kind: String,
+        offers_always: bool,
+        reason: Option<String>) {
+        // Don't close the tool group here: the prompt renders docked
+        // above the input, and finalizing would break the running row
+        // for every gated call (i.e. every exec) into its own line.
+        self.pending_queue.push_back(Pending {
+            request_id,
+            tool_name,
+            capability,
+            path,
+            command,
+            diff,
+            offers_always: offers_always && prompt_kind != "secret",
+            reason,
+            prompt_kind,
+            selected: 0,
+            subagent: None,
+            shown_at: Instant::now(),
+        });
+        self.yield_screen_to_prompt();
+        self.publish_agent_status();
+    }
+
+    /// Queue an ask-the-user prompt.
+    pub(super) fn on_ask_request(&mut self, request_id: String,
+        request: crate::core::agent::interaction::AskRequest,
+        timeout_secs: Option<u64>) {
+        self.ask_queue.push_back(PendingAsk::new(
+            request_id,
+            request,
+            timeout_secs.map(std::time::Duration::from_secs),
+        ));
+        self.yield_screen_to_prompt();
+        self.publish_agent_status();
+    }
+
+    /// A subagent started: promote its queued panel or open a live one.
+    pub(super) fn on_subagent_start(&mut self, run_id: String, name: String, task: Option<String>) {
+        // A queued dispatch already opened a panel for this run; promote
+        // it to running instead of pushing a duplicate. Otherwise open a
+        // fresh live panel (several may be active).
+        if let Some(panel) = self.subagents.iter_mut().find(|p| p.run_id == run_id) {
+            panel.queued = false;
+        } else {
+            self.finalize_tool_group();
+            self.flush_assistant();
+            self.subagents.push(SubagentPanel {
+                run_id,
+                name,
+                task: task.unwrap_or_default(),
+                calls: Vec::new(),
+                requests: 0,
+                prompt_tokens: 0,
+                active: None,
+                queued: false,
+                waiting: 0,
+            });
+        }
+    }
+
+    /// A subagent dispatch is waiting for a free slot.
+    pub(super) fn on_subagent_queued(&mut self, run_id: String, name: String, task: Option<String>, waiting: u32) {
+        // The cap is exhausted; this dispatch will start when a running
+        // child finishes. Open its panel now, marked queued, so the
+        // fan-out shows the queue instead of hiding dispatches.
+        self.finalize_tool_group();
+        self.flush_assistant();
+        self.subagents.push(SubagentPanel {
+            run_id,
+            name,
+            task: task.unwrap_or_default(),
+            calls: Vec::new(),
+            requests: 0,
+            prompt_tokens: 0,
+            active: None,
+            queued: true,
+            waiting,
+        });
+    }
+
+    /// A subagent ended: replace its panel with a summary row.
+    pub(super) fn on_subagent_end(&mut self, run_id: String, name: String) {
+        // "explorer: Map the lexer" when the dispatch named the errand.
+        let name = match self.subagent_titles.remove(&run_id) {
+            Some(title) => format!("{name}: {title}"),
+            None => name,
+        };
+        let calls = self
+            .subagents
+            .iter()
+            .find(|p| p.run_id == run_id)
+            .map(|p| p.calls.clone())
+            .unwrap_or_default();
+        self.subagents.retain(|p| p.run_id != run_id);
+        self.awaiting.retain(|(_, r, _)| r != &run_id);
+        let extra = self.subagent_finish.remove(&run_id);
+        self.push_subagent_summary_with(&name, calls, true, extra);
+    }
+
+    /// Remember how a subagent finished, for its summary row.
+    pub(super) fn on_subagent_finished(&mut self, run_id: String, status: String, usage: Option<serde_json::Value>) {
+        let tokens = usage
+            .as_ref()
+            .and_then(|u| u.get("total_tokens"))
+            .and_then(|t| t.as_u64())
+            .filter(|t| *t > 0)
+            .map(|t| format!("{} tokens", format_tokens(t)));
+        let note = match (status.as_str(), tokens) {
+            ("turn_limit", _) => Some("stopped at its turn limit".to_string()),
+            ("error", _) => Some("failed".to_string()),
+            (_, tokens) => tokens,
+        };
+        if let Some(note) = note {
+            self.subagent_finish.insert(run_id, note);
+        }
+    }
+
+    /// Per-request usage: keep the context gauge live.
+    pub(super) fn on_turn_usage(&mut self, usage: Usage, execution_id: Option<String>) {
+        if let Some(id) = execution_id {
+            self.last_execution_id = Some(id);
+        }
+        self.turn_output_tokens += usage.completion_tokens.unwrap_or(0);
+        // Latest request's context, not a sum: each request resends the
+        // whole conversation, so adding them would be meaningless.
+        if let Some(prompt) = usage.prompt_tokens {
+            self.turn_prompt_tokens = prompt;
+            // Keep the header's context gauge live during the turn
+            // instead of jumping only when the run ends.
+            self.tokens = prompt + usage.completion_tokens.unwrap_or(0);
+            // A fresh measurement of the *current* history supersedes
+            // any post-compaction estimate.
+            self.tokens_estimated = false;
+        }
+    }
+
+    /// The loop's own compaction started, finished or failed.
+    pub(super) fn on_compaction(&mut self, phase: crate::core::agent::events::CompactionPhase,
+        reason: crate::core::agent::events::CompactionReason,
+        messages: Option<usize>) {
+        use crate::core::agent::events::{CompactionPhase, CompactionReason};
+        match phase {
+            CompactionPhase::Started => self.run_compacting = Some(Instant::now()),
+            CompactionPhase::Finished => {
+                self.run_compacting = None;
+                let why = match reason {
+                    CompactionReason::Preflight => "the prompt neared the context window",
+                    CompactionReason::ContextOverflow => {
+                        "the provider rejected the prompt as too long"
+                    }
+                    CompactionReason::SessionBudget => {
+                        "the session token budget was used up"
+                    }
+                };
+                self.finalize_tool_group();
+                self.flush_assistant();
+                match messages {
+                    Some(n) => self.note(&format!(
+                        "compacted {n} messages into a summary: {why}"
+                    )),
+                    None => self.note(&format!("compacted the conversation: {why}")),
+                }
+                // The next `MessagesUpdated` carries the shorter
+                // history; the gauge is re-estimated against it.
+                self.tokens_estimated = true;
+            }
+            CompactionPhase::Failed => {
+                self.run_compacting = None;
+                self.note("compaction did not shrink the conversation");
+            }
+        }
+    }
+
+    /// The provider request is being retried.
+    pub(super) fn on_retry(&mut self, attempt: u32, max_attempts: u32, delay_ms: u64, reason: String) {
+        if attempt == 2 {
+            self.finalize_tool_group();
+            self.flush_assistant();
+            self.note(&format!("{reason}; retrying"));
+        }
+        self.retrying = Some(RetryWait {
+            attempt,
+            max_attempts,
+            at: Instant::now() + Duration::from_millis(delay_ms),
+            reason,
+        });
     }
 
     /// Route one backgrounded subagent's internal event to its run's live panel.

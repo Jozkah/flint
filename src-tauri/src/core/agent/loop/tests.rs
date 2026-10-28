@@ -9028,3 +9028,82 @@ async fn mail_sent_during_a_tool_call_reaches_the_next_turn_once() {
     assert!(all.iter().all(|m| m.delivered_at.is_some()), "every message marked read");
     let _ = std::fs::remove_dir_all(&data);
 }
+
+/// The local tools `advertise_local_tools` offers across {Normal, Plan} x
+/// {project, none} x {subagents on, off} x {MCP connected or not} x {allowlist,
+/// none}, compared with a checked-in snapshot. It pins the advertised set and
+/// its order so refactoring the gates cannot silently add or drop a tool.
+/// Regenerate on purpose with `UPDATE_OFFERED_SNAPSHOT=1`.
+#[cfg(feature = "cli")]
+#[test]
+fn advertised_tool_names_match_the_snapshot() {
+    use crate::core::agent::plan::RunMode;
+    use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
+    use tauri_plugin_agent_tools::subject::Subject;
+
+    let dir = tempfile::tempdir().unwrap();
+    let permissions = ToolPermissions::new(PermissionDefault::Allow, &[], &[], &[]);
+    let subject = Subject::MainAgent;
+    let allowlist: std::collections::HashSet<String> = ["lsp", "symbol_find", "commit_message", "read", "ask"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+    let mut lines = Vec::new();
+    for (mode_name, mode) in [("normal", RunMode::Normal), ("plan", RunMode::Plan)] {
+        for with_project in [false, true] {
+            for subagents in [false, true] {
+                for mcp in [false, true] {
+                    for with_allowlist in [false, true] {
+                        let allowed = with_allowlist.then_some(&allowlist);
+                        let root = with_project.then(|| dir.path());
+                        let mut out: Vec<serde_json::Value> = Vec::new();
+                        let host = crate::core::agent::host_tools::HostToolSet::new();
+                        advertise_local_tools(
+                            &mut out, allowed, &permissions, &subject, root, mode, subagents, 2, true, true, mcp, false,
+                            &host,
+                        );
+                        let names: Vec<&str> = out
+                            .iter()
+                            .filter_map(|t| t["function"]["name"].as_str())
+                            .collect();
+                        lines.push(format!(
+                            "{mode_name} project={with_project} subagents={subagents} mcp={mcp} allow={with_allowlist} => {}",
+                            names.join(",")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    let got = lines.join("\n") + "\n";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/agent/loop/offered_tools.snap");
+    if std::env::var_os("UPDATE_OFFERED_SNAPSHOT").is_some() {
+        std::fs::write(&path, &got).unwrap();
+        return;
+    }
+    let want = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
+    assert_eq!(got, want, "the advertised tool set changed; if on purpose, rerun with UPDATE_OFFERED_SNAPSHOT=1");
+}
+
+#[test]
+fn thresholds_for_prefers_configured_then_learned_then_the_default_window() {
+    let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(None, None, None).unwrap();
+    let big = thresholds_for(&policy, Some(200_000), None).unwrap().unwrap();
+    let default = thresholds_for(&policy, None, None).unwrap().unwrap();
+    assert!(big.effective_window > default.effective_window);
+    let learned = thresholds_for(&policy, None, Some(32_000)).unwrap().unwrap();
+    assert!(learned.effective_window < default.effective_window);
+    // A configured window beats a learned one.
+    let both = thresholds_for(&policy, Some(200_000), Some(32_000)).unwrap().unwrap();
+    assert_eq!(both.effective_window, big.effective_window);
+}
+
+#[test]
+fn a_window_too_small_to_compact_refuses_when_configured_and_is_forgiven_when_learned() {
+    let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(None, None, None).unwrap();
+    assert!(thresholds_for(&policy, Some(0), None).is_err());
+    assert!(thresholds_for(&policy, None, Some(0)).unwrap().is_none());
+}

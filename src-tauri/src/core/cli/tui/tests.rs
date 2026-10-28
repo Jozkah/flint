@@ -17750,3 +17750,38 @@ fn a_configured_wave_replaces_the_throbber() {
         "throbber still present in {row:?}"
     );
 }
+
+#[test]
+fn readline_keys_map_to_their_edit_actions() {
+    use super::{readline_action, EditAction};
+    use ratatui::crossterm::event::KeyCode;
+    // (code, ctrl, alt, sup) -> action
+    let cases = [
+        (KeyCode::Char('a'), true, false, false, Some(EditAction::CursorLineStart)),
+        (KeyCode::Char('e'), true, false, false, Some(EditAction::CursorLineEnd)),
+        (KeyCode::Char('w'), true, false, false, Some(EditAction::DeleteUnixWordLeft)),
+        (KeyCode::Char('p'), true, false, false, Some(EditAction::RecallPrev)),
+        (KeyCode::Char('n'), true, false, false, Some(EditAction::RecallNext)),
+        (KeyCode::Char('b'), false, true, false, Some(EditAction::CursorWordLeft)),
+        (KeyCode::Char('d'), false, true, false, Some(EditAction::DeleteWordRight)),
+        // Ctrl wins over Alt for the same letter, as the arms were ordered.
+        (KeyCode::Char('b'), true, true, false, Some(EditAction::CursorLeft)),
+        (KeyCode::Backspace, false, false, true, Some(EditAction::DeleteToLineStart)),
+        (KeyCode::Backspace, true, false, false, Some(EditAction::DeleteWordLeft)),
+        (KeyCode::Backspace, false, false, false, Some(EditAction::Backspace)),
+        (KeyCode::Delete, false, true, false, Some(EditAction::DeleteWordRight)),
+        (KeyCode::Left, false, false, true, Some(EditAction::CursorLineStart)),
+        (KeyCode::Right, true, false, false, Some(EditAction::CursorWordRight)),
+        (KeyCode::Home, false, false, false, Some(EditAction::CursorLineStart)),
+        (KeyCode::End, false, false, false, Some(EditAction::CursorLineEnd)),
+        // Plain text, session keys and scroll keys are not editing actions.
+        (KeyCode::Char('a'), false, false, false, None),
+        (KeyCode::Char('j'), true, false, false, None),
+        (KeyCode::Enter, false, false, false, None),
+        (KeyCode::Up, false, false, false, None),
+        (KeyCode::Tab, false, false, false, None),
+    ];
+    for (code, ctrl, alt, sup, want) in cases {
+        assert_eq!(readline_action(code, ctrl, alt, sup), want, "{code:?} ctrl={ctrl} alt={alt} sup={sup}");
+    }
+}
