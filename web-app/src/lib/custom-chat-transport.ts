@@ -126,16 +126,7 @@ import {
   contextSafetyMargin,
   type ContextManagerConfig,
 } from './context-manager'
-import {
-  estimateHistoryTokens,
-  resolveAutoCompact,
-  isContextLengthError,
-  ASSUMED_WINDOW_TOKENS,
-  DEFAULT_KEEP_RECENT,
-  type CompactionRecord,
-} from '@/lib/compaction'
-import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
-import { isContextOverflowMessage } from '@/utils/error'
+import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, type CompactionRecord } from '@/lib/compaction'
 import {
   resetCompactionBreaker,
 } from '@/lib/compactionGuard'
@@ -188,6 +179,7 @@ import { OPENROUTER_PARAM_KEYS, paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { recordGeneration } from '@/stores/engine-activity-store'
+import { sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
 import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
 import { BUILTIN_WEB_TOOLS, recordMcpSet, refreshTools, type ToolRefreshHost } from '@/lib/chat/transport/toolRefresh'
 export { isValidToolName, normalizeToolInputSchema }
@@ -1851,143 +1843,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     )
   }
 
-  private async sendMessagesCore(
+  private sendMessagesCore(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
-    // Cowork compacts and retries in its own run loop.
-    if (!this.compactsAtThreshold) return this.sendWithFallback(options)
-
-    // The provider refusing a request for its length is not the end of a run
-    // the window could still hold: compact, harder than the estimate asked
-    // for, and send it once more. Only before any reply content, so nothing
-    // the chat already showed is taken back.
-    const refusedForLength = async (failure: unknown): Promise<boolean> => {
-      const message =
-        failure instanceof Error ? failure.message : String(failure ?? '')
-      return (
-        !options.abortSignal?.aborted &&
-        (isContextLengthError(failure) || isContextOverflowMessage(message)) &&
-        (await this.canRecoverFromOverflow())
-      )
-    }
-    const resend = async (
-      failure: unknown
-    ): Promise<ReadableStream<UIMessageChunk>> => {
-      const message =
-        failure instanceof Error ? failure.message : String(failure ?? '')
-      const learned = parseServerContextLimit(
-        (failure as { data?: unknown } | null)?.data ?? null,
-        message
-      )
-      this.overflowRetry = { learnedWindow: learned?.contextTokens ?? null }
-      try {
-        return await this.sendWithFallback(options)
-      } finally {
-        this.overflowRetry = null
-      }
-    }
-
-    let first: ReadableStream<UIMessageChunk>
-    try {
-      first = await this.sendWithFallback(options)
-    } catch (error) {
-      if (!(await refusedForLength(error))) throw error
-      first = await resend(error)
-      return first
-    }
-
-    let source = first.getReader()
-    let retried = false
-    // Chunks pass straight through. An error before any reply content that is
-    // a length refusal is swallowed instead, and the resent request's stream
-    // continues in its place (its opening chunks were already delivered).
-    let sawContent = false
-    let sentStart = false
-    let sentStep = false
-    return new ReadableStream<UIMessageChunk>({
-      async pull(controller) {
-        for (;;) {
-          let next: ReadableStreamReadResult<UIMessageChunk>
-          try {
-            next = await source.read()
-          } catch (error) {
-            // Some providers reject the reader instead of emitting an error
-            // chunk. Use the same one-time recovery for either representation.
-            if (sawContent || retried || !(await refusedForLength(error))) {
-              controller.error(error)
-              return
-            }
-            retried = true
-            try {
-              source = (await resend(error)).getReader()
-            } catch (retryError) {
-              controller.error(retryError)
-              return
-            }
-            continue
-          }
-          const { done, value } = next
-          if (done) {
-            controller.close()
-            return
-          }
-          if (
-            !sawContent &&
-            !retried &&
-            value.type === 'error' &&
-            (await refusedForLength(value.errorText))
-          ) {
-            retried = true
-            void source.cancel().catch(() => {})
-            try {
-              source = (await resend(value.errorText)).getReader()
-            } catch (error) {
-              controller.error(error)
-              return
-            }
-            continue
-          }
-          if (retried && value.type === 'start' && sentStart) {
-            // Already delivered; its metadata (a compaction the resend made)
-            // still has to reach the message.
-            const metadata = (value as { messageMetadata?: unknown })
-              .messageMetadata
-            if (metadata === undefined) continue
-            controller.enqueue({
-              type: 'message-metadata',
-              messageMetadata: metadata,
-            } as UIMessageChunk)
-            return
-          }
-          if (retried && value.type === 'start-step' && sentStep) continue
-          if (value.type === 'start') sentStart = true
-          if (value.type === 'start-step') sentStep = true
-          if (!/^(start|start-step|message-metadata)$/.test(value.type)) {
-            sawContent = true
-          }
-          controller.enqueue(value)
-          return
-        }
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
+    return sendMessagesCore<SendOptions>(
+      {
+        get compactsAtThreshold() { return self.compactsAtThreshold },
+        get overflowRetry() { return self.overflowRetry },
+        set overflowRetry(v) { self.overflowRetry = v },
+        sendWithFallback: (o) => self.sendWithFallback(o),
+        getActiveInferenceParams: () => self.getActiveInferenceParams(),
       },
-      cancel: (reason) => source.cancel(reason),
-    })
-  }
-
-  /**
-   * Whether a request the provider refused for its length can be compacted
-   * and sent again: automatic compaction is on, by summary, and the model does
-   * not shift its own context.
-   */
-  private async canRecoverFromOverflow(): Promise<boolean> {
-    try {
-      const params = this.getActiveInferenceParams()
-      const policy = await getCompactionPolicy()
-      return (
-        resolveAutoCompact(params, policy.auto) && policy.strategy === 'summarize'
-      )
-    } catch {
-      return false
-    }
+      options
+    )
   }
 
   private async sendWithFallback(
