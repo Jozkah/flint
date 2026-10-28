@@ -18,6 +18,7 @@ import {
   type SurfaceGroups,
   type SurfaceLayout,
 } from './types'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 export type GroupErrorCode = 'nameEmpty' | 'notFound' | 'tooDeep' | 'intoItself'
 
@@ -461,7 +462,7 @@ export function sanitizeSurface(surface: GroupSurface, raw: unknown): SurfaceGro
   rawGroups.forEach((g, i) => {
     if (!isObj(g) || typeof g.id !== 'string' || !g.id || seen.has(g.id)) return
     seen.add(g.id)
-    const name = typeof g.name === 'string' && g.name.trim() ? g.name.trim() : 'Untitled group'
+    const name = typeof g.name === 'string' && g.name.trim() ? g.name.trim() : i18n.t('common:groups.untitled')
     groups.push({
       id: g.id,
       surface,

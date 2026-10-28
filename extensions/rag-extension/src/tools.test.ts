@@ -28,6 +28,14 @@ describe('getRAGTools', () => {
     }
   })
 
+  it('declares the scope argument every description tells the model to pass', () => {
+    for (const t of getRAGTools(3)) {
+      const scope = t.inputSchema.properties!.scope as Record<string, any>
+      expect(scope.enum).toEqual(['thread', 'project'])
+      expect(scope.default).toBe('thread')
+    }
+  })
+
   it('sets retrieve top_k maximum to the retrieval limit and default', () => {
     const [, retrieve] = getRAGTools(7)
     const topK = retrieve.inputSchema.properties!.top_k as Record<string, any>

@@ -89,7 +89,9 @@
       "ctxReplaced": "{{base}}. Il contesto delle cartelle è stato sostituito dalle cartelle del gruppo; l'accesso richiede ancora approvazione",
       "ctxMerged": "{{base}}. Le cartelle del gruppo sono state aggiunte al contesto delle cartelle; l'accesso richiede ancora approvazione",
       "foldersAdded": "{{base}}. Le cartelle dell'elemento sono state aggiunte al gruppo"
-    }
+    },
+    "untitled": "Untitled group",
+    "folderNotInspected": "Folder could not be inspected"
   },
   "htmlArtifact": {
     "code": "Codice",
@@ -2180,6 +2182,35 @@
       "refused": "Rifiutata",
       "cancelled": "Annullata",
       "interrupted": "Interrotta"
+    },
+    "row": {
+      "steering": "Steering",
+      "compaction": "Context compaction",
+      "subagent": "Subagent",
+      "backgroundJob": "Background job",
+      "tokenUsage": "Token usage",
+      "fellBack": "Provider fell back",
+      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
+      "theModel": "the model",
+      "nextProvider": "the next provider",
+      "requestFailed": "Request failed",
+      "characters_one": "{{count}} character",
+      "characters_other": "{{count}} characters",
+      "characters_many": "{{count}} characters",
+      "reasoningCharacters_one": "{{count}} character of reasoning",
+      "reasoningCharacters_other": "{{count}} characters of reasoning",
+      "reasoningCharacters_many": "{{count}} characters of reasoning",
+      "toolCalls_one": "{{count}} tool call",
+      "toolCalls_other": "{{count}} tool calls",
+      "toolCalls_many": "{{count}} tool calls",
+      "response": "Response",
+      "runStarted": "Run started",
+      "runEnded": "Run ended",
+      "dispatched": "Dispatched {{agent}}",
+      "anAgent": "an agent",
+      "agentEnded": "Agent ended",
+      "jobStarted": "Background job started",
+      "jobEnded": "Background job ended"
     }
   },
   "appRail": {
@@ -3361,5 +3392,70 @@
     "partFits": "Only part of {{files}} fits in one message.",
     "readFailed": "Could not read {{name}}: {{error}}",
     "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+  },
+  "eta": {
+    "seconds": "{{n}} s",
+    "minutes": "{{n}} min",
+    "hours": "{{n}} h",
+    "hoursMinutes": "{{hours}} h {{minutes}} min"
+  },
+  "coworkHelpers": {
+    "filesChanged_one": "{{count}} file changed",
+    "filesChanged_other": "{{count}} files changed",
+    "filesChanged_many": "{{count}} files changed",
+    "mediaFiles_one": "{{count}} media file",
+    "mediaFiles_other": "{{count}} media files",
+    "mediaFiles_many": "{{count}} media files",
+    "attached": "Attached: {{names}}"
+  },
+  "coworkReadiness": {
+    "noModel": "No model is selected for this session.",
+    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
+    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
+    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
+    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
+    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
+    "contextWindow": "Context window: {{tokens}} tokens.",
+    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
+    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
+    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
+    "mcpOffered_many": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
+    "mcpNone": "No MCP servers are configured.",
+    "localReady": "The local runtime is started when a run needs the model.",
+    "localAbsent": "The selected model is not run locally."
+  },
+  "activity": {
+    "savingMemory": "Saving memory",
+    "readingMemory": "Reading memory",
+    "readingSkill": "Reading skill",
+    "readingSkillNamed": "Reading {{name}}",
+    "usedSkill": "Used skill",
+    "usedSkillNamed": "Used {{name}}",
+    "working": "working",
+    "subagentsWorking_one": "{{count}} subagent working",
+    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_many": "{{count}} subagents working",
+    "verb": {
+      "write": "Writing",
+      "edit": "Editing",
+      "bash": "Running",
+      "read": "Reading",
+      "ls": "Listing",
+      "find": "Finding",
+      "grep": "Searching"
+    },
+    "verbTarget": {
+      "write": "Writing {{target}}",
+      "edit": "Editing {{target}}",
+      "bash": "Running {{target}}",
+      "read": "Reading {{target}}",
+      "ls": "Listing {{target}}",
+      "find": "Finding {{target}}",
+      "grep": "Searching {{target}}"
+    }
+  },
+  "archiveRestore": {
+    "sessionExists": "A session with this id already exists",
+    "assistantExists": "An assistant with this id already exists"
   }
 }

@@ -15,6 +15,11 @@ use super::utils::{
 };
 
 pub fn create_thread_in(root: &Path, mut thread: Value) -> Result<Value, String> {
+    // Indexing a non-object `Value` by key panics; a body of `"x"` or `[1]`
+    // is a bad request, not a crash.
+    if !thread.is_object() {
+        return Err("a thread must be a JSON object".to_string());
+    }
     ensure_data_dirs(root)?;
     let id = Uuid::new_v4().to_string();
     thread["id"] = Value::String(id.clone());
@@ -196,4 +201,19 @@ pub async fn delete_message_in(root: &Path, thread_id: &str, message_id: &str) -
     }
     let messages = super::branching::remove_message(messages, message_id);
     write_messages_to_file(&messages, &get_messages_path(root, thread_id))
+}
+
+#[cfg(test)]
+mod create_tests {
+    use super::*;
+
+    #[test]
+    fn a_thread_that_is_not_an_object_is_refused_not_a_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        for body in [serde_json::json!("x"), serde_json::json!([1]), Value::Null] {
+            assert!(create_thread_in(dir.path(), body).is_err());
+        }
+        let made = create_thread_in(dir.path(), serde_json::json!({"title": "t"})).unwrap();
+        assert!(made["id"].is_string());
+    }
 }

@@ -21,6 +21,7 @@ import {
 // The page renderers pull in react-dom/server (about 4 MB unminified in the dev
 // server), so they load when a PDF or image export is asked for, not at start-up.
 import type { PdfStrategy } from '@/lib/exportRender'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** The backend refuses more than this; refuse here first, with a reason. */
 export const MAX_EXPORT_BYTES = 50 * 1024 * 1024
@@ -29,7 +30,7 @@ export const MAX_EXPORT_BYTES = 50 * 1024 * 1024
 export function sizeProblem(bytes: number): string | null {
   if (bytes <= MAX_EXPORT_BYTES) return null
   const mb = (bytes / (1024 * 1024)).toFixed(0)
-  return `this export is ${mb} MB and the limit is 50 MB; export a single message or branch, or leave out tool details`
+  return i18n.t('chat:export.tooLarge', { mb })
 }
 
 const textBytes = (text: string) => new TextEncoder().encode(text).length

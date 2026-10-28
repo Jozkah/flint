@@ -533,7 +533,11 @@ pub async fn serve() -> Result<(), String> {
                     continue;
                 }
                 if !initialized {
-                    send_reply(&out, error(&id, -32002, "Server not initialized")).await?;
+                    // A notification has no id to answer; replying would send the
+                    // client a response it never asked for.
+                    if has_id {
+                        send_reply(&out, error(&id, -32002, "Server not initialized")).await?;
+                    }
                     continue;
                 }
                 let reply = match method {

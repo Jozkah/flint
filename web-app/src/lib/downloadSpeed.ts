@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n/react-i18next-compat'
+
 /**
  * Download speed and time remaining for a progress readout.
  *
@@ -52,10 +54,12 @@ export function secondsRemaining(
 
 /** `45 s`, `12 min`, `1 h 20 min`: coarse, because the estimate is. */
 export function formatEta(seconds: number): string {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`
+  if (seconds < 60) return i18n.t('common:eta.seconds', { n: Math.max(1, Math.round(seconds)) })
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} min`
+  if (minutes < 60) return i18n.t('common:eta.minutes', { n: minutes })
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
+  return rest === 0
+    ? i18n.t('common:eta.hours', { n: hours })
+    : i18n.t('common:eta.hoursMinutes', { hours, minutes: rest })
 }

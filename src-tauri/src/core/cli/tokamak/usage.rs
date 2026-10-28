@@ -153,7 +153,7 @@ impl BillingStatus {
             "pending" => Self::Pending,
             "not_billed" => Self::NotBilled,
             "cancelled" => Self::Cancelled,
-            other => Self::Other(other.to_string()),
+            other => Self::Other(clean(other.to_string())),
         }
     }
 
@@ -227,12 +227,23 @@ struct GenerationWire {
     authorized_amount: Option<Box<RawValue>>,
 }
 
+/// Text from the server that is about to be printed on the user's terminal:
+/// control characters (an ESC above all) are dropped so a hostile or broken
+/// response cannot move the cursor, retitle the window or forge output.
+fn clean(text: String) -> String {
+    if text.chars().any(char::is_control) {
+        text.chars().filter(|c| !c.is_control()).collect()
+    } else {
+        text
+    }
+}
+
 impl From<GenerationWire> for Generation {
     fn from(wire: GenerationWire) -> Self {
         let money = |raw: Option<Box<RawValue>>| raw.as_deref().and_then(Money::parse);
         Self {
-            id: wire.id,
-            model: wire.model,
+            id: clean(wire.id),
+            model: wire.model.map(clean),
             streamed: wire.streamed,
             native_tokens_prompt: wire.native_tokens_prompt,
             native_tokens_completion: wire.native_tokens_completion,
@@ -404,7 +415,12 @@ pub async fn fetch(query: &Query) -> Result<Payload, UsageError> {
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
     if status.as_u16() == 404 {
-        return Err(UsageError::NotFound);
+        // "Not found" means a missing execution only for the by-id lookups; a
+        // 404 on the account views means this deployment does not serve them.
+        return Err(match query {
+            Query::Generation(_) | Query::Correlated(_) => UsageError::NotFound,
+            _ => UsageError::Failed(format!("{root} does not offer this usage view")),
+        });
     }
     if !status.is_success() {
         return Err(UsageError::Failed(super::describe_failure(
@@ -519,11 +535,12 @@ impl From<AggregateWire> for Aggregate {
         Self {
             // A daily row is named by its date and a model row by its model;
             // the account total carries neither and is labelled by context.
-            label: wire
-                .model
-                .filter(|m| !m.is_empty())
-                .or(wire.date)
-                .unwrap_or_default(),
+            label: clean(
+                wire.model
+                    .filter(|m| !m.is_empty())
+                    .or(wire.date)
+                    .unwrap_or_default(),
+            ),
             prompt_tokens: wire.total_prompt_tokens,
             completion_tokens: wire.total_completion_tokens,
             cache_read_tokens: wire.cache_read_tokens,
@@ -625,8 +642,8 @@ pub fn parse_requests(payload: &Payload) -> Option<Vec<RequestRecord>> {
             .data
             .into_iter()
             .map(|wire| RequestRecord {
-                execution_id: wire.execution_id,
-                model: wire.model,
+                execution_id: wire.execution_id.map(clean),
+                model: wire.model.map(clean),
                 billing_status: wire.billing_status.as_deref().map(BillingStatus::from_str),
                 prompt_tokens: wire.prompt_tokens,
                 completion_tokens: wire.completion_tokens,

@@ -11,6 +11,16 @@ export function getRAGTools(retrievalLimit: number): MCPTool[] {
   const parsedLimit = Number(retrievalLimit ?? 3)
   const safeLimit = Number.isFinite(parsedLimit) ? parsedLimit : 3
   const maxTopK = Math.max(1, safeLimit)
+  // Every tool's description tells the model to pass `scope`; without it in
+  // the schema, strict providers drop the argument and project files are
+  // never reached.
+  const scopeProp = {
+    type: 'string',
+    enum: ['thread', 'project'],
+    default: 'thread',
+    description:
+      'Where to look: "thread" for files attached to this thread (default), "project" for files shared across the project.',
+  }
 
   return [
     {
@@ -20,6 +30,7 @@ export function getRAGTools(retrievalLimit: number): MCPTool[] {
       inputSchema: {
         type: 'object',
         properties: {
+          scope: scopeProp,
           project_id: {
             type: 'string',
             description:
@@ -38,6 +49,7 @@ export function getRAGTools(retrievalLimit: number): MCPTool[] {
         type: 'object',
         properties: {
           query: { type: 'string', description: 'User query to search for' },
+          scope: scopeProp,
           top_k: {
             type: 'number',
             description: 'Optional: Max citations to return. Adjust as needed.',
@@ -63,6 +75,7 @@ export function getRAGTools(retrievalLimit: number): MCPTool[] {
       inputSchema: {
         type: 'object',
         properties: {
+          scope: scopeProp,
           project_id: {
             type: 'string',
             description:

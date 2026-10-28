@@ -121,7 +121,7 @@ fn extract_pdf_text(bytes: &[u8]) -> Result<String, RagError> {
     match extract_pdf_text_lenient(bytes) {
         Ok(t) => Ok(t),
         Err(fallback_err) => Err(RagError::ParseError(format!(
-            "Could not read this PDF. It may be corrupted, password protected or use unsupported encryption.              (primary parser: {primary_err}; fallback parser: {fallback_err})"
+            "Could not read this PDF. It may be corrupted, password protected or use unsupported encryption. (primary parser: {primary_err}; fallback parser: {fallback_err})"
         ))),
     }
 }

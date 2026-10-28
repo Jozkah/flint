@@ -1197,6 +1197,11 @@ async fn execute_tool_inner(
     // `write check.py` lands in the workspace and `python check.py` looks for
     // it in the worktree.
     let mut args = args;
+    let tool = lookup(&name)
+        .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
+    // `/C:\x` and `file:///C:/x` are drive paths on Windows: rewrite them
+    // before rebasing (which would treat them as relative) and before the gate.
+    crate::tools::path_repair::normalize_drive_args(&name, tool.path_args, &mut args);
     // A run with direct edit access to a folder resolves them there as well:
     // "create some files" with no absolute path belongs in the folder the user
     // attached for editing, not the scratch workspace.
@@ -1204,9 +1209,6 @@ async fn execute_tool_inner(
     if let Some(base) = rebase_base {
         handlers::rebase_relative_paths(&name, &mut args, &base);
     }
-
-    let tool = lookup(&name)
-        .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
     // Transcript audit #5: `"C:	mp"` in JSON arrives as `C:<TAB>mp`. Put the
     // backslash back when that names something real, before the gate judges
@@ -1777,6 +1779,7 @@ fn normalise_preview_args(
             write_roots.push(r);
         }
     }
+    crate::tools::path_repair::normalize_drive_args(name, path_args, &mut args);
     if let Some(base) = rebase_base_for(Path::new(data_folder), &write_roots, edit_folder) {
         handlers::rebase_relative_paths(name, &mut args, &base);
     }

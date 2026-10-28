@@ -15,10 +15,9 @@ import {
 import { extractFilesFromPrompt } from '@/lib/fileMetadata'
 import type { CoworkTurn } from '@/types/coworkSession'
 import type { ExportDoc, ExportMessage, ExportTool } from '@/lib/exportMarkdown'
+import { i18n } from '@/i18n/react-i18next-compat'
 
-const UNTITLED = 'New conversation'
-
-const titleOf = (title: string | undefined) => title?.trim() || UNTITLED
+const titleOf = (title: string | undefined) => title?.trim() || i18n.t('chat:export.untitled')
 
 /** The stored thread, kept to the fields an export needs. */
 export type ExportThread = {

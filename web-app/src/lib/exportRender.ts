@@ -13,6 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { renderMarkdown, type ExportDoc, type RenderOptions } from '@/lib/exportMarkdown'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** Browsers refuse canvases past about 16k pixels on a side. */
 export const MAX_CANVAS_PX = 16000
@@ -205,7 +206,7 @@ export async function renderPng(
       // Not tiled: a webview canvas tops out near 16k px on a side, so
       // stitching tiles could not make a taller PNG, only several files and
       // a save dialog for each. Point at the formats that paginate instead.
-      message: `the conversation is too tall for one image (about ${Math.ceil(height / 1000)}k px, the limit is ${MAX_CANVAS_PX / 1000}k); export it as PDF or Markdown, or export a single message`,
+      message: i18n.t('chat:export.tooTall', { height: Math.ceil(height / 1000), limit: MAX_CANVAS_PX / 1000 }),
     }
   }
   const inner = xhtml
@@ -219,7 +220,7 @@ export async function renderPng(
     img.decoding = 'sync'
     const loaded = new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()
-      img.onerror = () => reject(new Error('the page could not be drawn'))
+      img.onerror = () => reject(new Error(i18n.t('chat:export.pageNotDrawn')))
     })
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
     await loaded
@@ -227,7 +228,7 @@ export async function renderPng(
     canvas.width = IMAGE_WIDTH * scale
     canvas.height = height * scale
     const ctx = canvas.getContext('2d')
-    if (!ctx) return { ok: false, message: 'no canvas is available to draw the image' }
+    if (!ctx) return { ok: false, message: i18n.t('chat:export.noCanvas') }
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.scale(scale, scale)
@@ -235,7 +236,7 @@ export async function renderPng(
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, 'image/png')
     )
-    if (!blob) return { ok: false, message: 'the image could not be encoded' }
+    if (!blob) return { ok: false, message: i18n.t('chat:export.imageNotEncoded') }
     const bytes = new Uint8Array(await blob.arrayBuffer())
     return { ok: true, base64: toBase64(bytes), width: canvas.width, height: canvas.height }
   } catch (e) {

@@ -273,11 +273,16 @@ pub fn resolve_references_with(
                 }
             };
             let mut listing = String::new();
+            // Stops as soon as the cap is passed, so a directory of millions of
+            // entries is not walked to build text that is cut anyway.
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 listing.push_str("  ");
                 listing.push_str(&name);
                 listing.push('\n');
+                if listing.len() > MAX_DIR_CHARS {
+                    break;
+                }
             }
             if listing.len() > MAX_DIR_CHARS {
                 listing.truncate(floor_char_boundary(&listing, MAX_DIR_CHARS));
@@ -288,6 +293,12 @@ pub fn resolve_references_with(
                 abs.display(),
                 listing
             ));
+            continue;
+        }
+
+        // A pipe, socket or device would block the read or never end.
+        if !metadata.is_file() {
+            parts.push(format!("[{}: not a regular file]", raw));
             continue;
         }
 
@@ -311,7 +322,13 @@ pub fn resolve_references_with(
             continue;
         }
 
-        match std::fs::read_to_string(&abs) {
+        // Bounded read: the file may grow between the size check and here.
+        let read = std::fs::File::open(&abs).and_then(|f| {
+            use std::io::Read;
+            let mut s = String::new();
+            f.take(MAX_FILE_BYTES + 1).read_to_string(&mut s).map(|_| s)
+        });
+        match read {
             Ok(s) => {
                 let content = if s.len() > MAX_FILE_BYTES as usize {
                     let mut t = s[..floor_char_boundary(&s, MAX_FILE_BYTES as usize)].to_string();
@@ -366,7 +383,7 @@ pub fn search_files_sync(
 
     // If the query contains slashes, use the last segment as the name filter
     // and the prefix as the subdirectory to search.
-    let (search_dir, name_filter) = if let Some(last_slash) = query.rfind('/') {
+    let (search_dir, name_filter) = if let Some(last_slash) = query.rfind(['/', '\\']) {
         let dir_part = &query[..last_slash];
         let name_part = &query[last_slash + 1..];
         let subdir = root_dir.join(dir_part);
@@ -381,10 +398,11 @@ pub fn search_files_sync(
         Err(_) => return results,
     };
 
-    for entry in entries.flatten() {
-        if results.len() >= max_results {
-            break;
-        }
+    // Every match is collected (bounded by SCAN_CAP entries) before sorting, so
+    // the cut below drops the alphabetically last entries, not whichever the
+    // filesystem listed late.
+    const SCAN_CAP: usize = 10_000;
+    for entry in entries.flatten().take(SCAN_CAP) {
         let name = entry.file_name().to_string_lossy().into_owned();
         let name_lower = name.to_lowercase();
         if !name_lower.contains(&name_filter) {

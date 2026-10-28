@@ -186,7 +186,8 @@
   "fork": {
     "chat": "चैट फ़ोर्क करें",
     "done": "नई चैट में फ़ोर्क किया गया।",
-    "failed": "यह चैट फ़ोर्क नहीं की जा सकी।"
+    "failed": "यह चैट फ़ोर्क नहीं की जा सकी।",
+    "titleSuffix": " (fork)"
   },
   "version": {
     "group": "संदेश के संस्करण",
@@ -278,5 +279,27 @@
     "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
     "regenerate": "Regenerate",
     "reload": "Reload"
+  },
+  "emptyRun": {
+    "emptyReply": "The model returned an empty reply. Try again or switch model.",
+    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
+    "noReply": "The run ended without a reply.",
+    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+  },
+  "continuedTitleSuffix": " (continued)",
+  "importedChatTitle": "Imported chat",
+  "export": {
+    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "saved": "Saved {{path}}",
+    "savedPictures_one": "Saved {{count}} picture",
+    "savedPictures_other": "Saved {{count}} pictures",
+    "picturesMissing": "; {{count}} no longer in the gallery",
+    "picturesGone": "The pictures are no longer in the Studio gallery.",
+    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
+    "untitled": "New conversation",
+    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
+    "pageNotDrawn": "the page could not be drawn",
+    "noCanvas": "no canvas is available to draw the image",
+    "imageNotEncoded": "the image could not be encoded"
   }
 }

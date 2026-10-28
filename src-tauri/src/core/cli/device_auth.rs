@@ -231,11 +231,27 @@ fn clamp_interval(seconds: Option<u64>) -> u64 {
         .clamp(MIN_INTERVAL, MAX_INTERVAL)
 }
 
+/// A sign-in sends the PKCE challenge and later receives the API key, so a
+/// plain-http deployment is refused unless it is this machine (a local dev
+/// server). The error names the setting to correct.
+fn require_secure_base(base_url: &str) -> Result<(), String> {
+    let url = url::Url::parse(base_url)
+        .map_err(|e| format!("TOKAMAK_BASE_URL '{base_url}' is not a URL: {e}"))?;
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) => Ok(()),
+        _ => Err(format!(
+            "TOKAMAK_BASE_URL '{base_url}' must be https (http is allowed only for localhost)"
+        )),
+    }
+}
+
 /// Start a sign-in: create a session on the server (PKCE S256 challenge,
 /// unauthenticated) for the deployment `base_url` points at. `base_url` is the
 /// OpenAI-compatible base (e.g. `https://api.tokamak.sh/v1`); both the API
 /// origin and the authorize page host are derived from it.
 pub(crate) async fn begin(base_url: &str) -> Result<PendingAuth, BeginError> {
+    require_secure_base(base_url).map_err(BeginError::Failed)?;
     let verifier = random_verifier();
     let challenge = pkce_code_challenge(&verifier);
     let api_root = api_root(base_url);
