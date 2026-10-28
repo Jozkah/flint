@@ -375,6 +375,28 @@ describe('RoomEditor', () => {
     expect(api.updateRoomSettings.mock.calls[0][1].participants[0].toolAccess).toBe('read')
   })
 
+  it('does not carry a draft into another room or write it there', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    const a = makeRoom({ id: 'ra', title: 'Alpha' })
+    const b = makeRoom({ id: 'rb', title: 'Bravo' })
+    const { rerender } = renderWithApi(<RoomEditor room={a} />, api)
+    const title = screen.getByLabelText('Title')
+    await user.clear(title)
+    await user.type(title, 'Draft of A')
+    rerender(
+      <RoomsApiProvider api={api}>
+        <RoomEditor room={b} />
+      </RoomsApiProvider>
+    )
+    expect(screen.getByLabelText('Title')).toHaveValue('Bravo')
+    await new Promise((r) => setTimeout(r, 1200))
+    for (const call of api.updateRoomSettings.mock.calls) {
+      expect(call[0].id).not.toBe('rb')
+      expect(call[1].title).not.toBe('Draft of A')
+    }
+  })
+
   it('warns under tool access when a writer cannot edit an untrusted folder, and trusts it (R-040)', async () => {
     trust.status.mockResolvedValue({ folder: 'C:/p', trusted: false, carries: { hooks: false, subagents: false } })
     const user = userEvent.setup()
