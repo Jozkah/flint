@@ -57,6 +57,16 @@ describe('cleanTitle', () => {
     expect(cleanTitle('snake_case vs camelCase.')).toBe('snake_case vs camelCase')
   })
 
+  it('keeps combining marks in non-Latin scripts and decomposed accents', () => {
+    expect(cleanTitle('हिन्दी भाषा')).toBe('हिन्दी भाषा')
+    expect(cleanTitle('สวัสดี')).toBe('สวัสดี')
+    expect(cleanTitle('école')).toBe('école')
+    expect(cleanTitle('كَتَبَ')).toBe(
+      'كَتَبَ'
+    )
+    expect(cleanTitle('Hello <> * World')).toBe('Hello World')
+  })
+
   it('returns a clean title from normal text', () => {
     expect(cleanTitle('Hello World')).toBe('Hello World')
   })
