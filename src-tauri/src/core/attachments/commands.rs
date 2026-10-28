@@ -73,14 +73,19 @@ pub fn attachment_file_name(raw: &str) -> Result<String, String> {
 /// attachments folder and returns the saved file's path. Async, with the
 /// decode and write on a blocking thread: a sync command runs on the main
 /// thread, and decoding a 200MB payload there froze the window.
+///
+/// With `thread_id` the file is saved under `attachments/<thread id>/<random
+/// id>/` so deleting that thread can remove it; without one it keeps the
+/// legacy `attachments/<random id>/` location.
 #[tauri::command]
 pub async fn save_attachment_file<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     file_name: String,
     data_base64: String,
+    thread_id: Option<String>,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        save_attachment_file_blocking(app_handle, file_name, data_base64)
+        save_attachment_in(app_handle, file_name, data_base64, thread_id)
     })
     .await
     .map_err(|e| format!("save_attachment_file error: {e}"))?
@@ -90,6 +95,15 @@ pub(crate) fn save_attachment_file_blocking<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     file_name: String,
     data_base64: String,
+) -> Result<String, String> {
+    save_attachment_in(app_handle, file_name, data_base64, None)
+}
+
+pub(crate) fn save_attachment_in<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    file_name: String,
+    data_base64: String,
+    thread_id: Option<String>,
 ) -> Result<String, String> {
     let name = attachment_file_name(&file_name)?;
     // Reject on the encoded length first so an oversized payload is never decoded.
@@ -103,9 +117,13 @@ pub(crate) fn save_attachment_file_blocking<R: Runtime>(
         return Err("save_attachment_file error: file too large (max 200MB)".to_string());
     }
 
-    let folder = get_jan_data_folder_path(app_handle)
-        .join(ATTACHMENTS_DIR)
-        .join(uuid::Uuid::new_v4().to_string());
+    let mut base = get_jan_data_folder_path(app_handle).join(ATTACHMENTS_DIR);
+    if let Some(thread_id) = thread_id.as_deref() {
+        crate::core::threads::utils::validate_thread_id(thread_id)
+            .map_err(|e| format!("save_attachment_file error: {e}"))?;
+        base = base.join(thread_id);
+    }
+    let folder = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&folder).map_err(|e| format!("save_attachment_file error: {e}"))?;
 
     let path = folder.join(name);

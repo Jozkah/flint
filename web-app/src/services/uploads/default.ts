@@ -29,9 +29,13 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 export class DefaultUploadsService implements UploadsService {
-  async saveDroppedFile(file: File): Promise<string> {
+  async saveDroppedFile(file: File, threadId?: string): Promise<string> {
     const dataBase64 = toBase64(new Uint8Array(await readFileBytes(file)))
-    return invoke<string>('save_attachment_file', { fileName: file.name, dataBase64 })
+    return invoke<string>('save_attachment_file', {
+      fileName: file.name,
+      dataBase64,
+      ...(threadId ? { threadId } : {}),
+    })
   }
 
   async ingestImage(_threadId: string, attachment: Attachment): Promise<UploadResult> {

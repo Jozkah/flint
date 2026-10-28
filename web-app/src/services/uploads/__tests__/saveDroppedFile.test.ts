@@ -33,6 +33,18 @@ describe('DefaultUploadsService.saveDroppedFile', () => {
     })
   })
 
+  it('passes the thread id so the backend can remove the file with the thread', async () => {
+    vi.mocked(invoke).mockResolvedValue('saved')
+
+    await new DefaultUploadsService().saveDroppedFile(new File(['x'], 'a.txt'), 'thread-1')
+
+    expect(invoke).toHaveBeenCalledWith('save_attachment_file', {
+      fileName: 'a.txt',
+      dataBase64: Buffer.from('x').toString('base64'),
+      threadId: 'thread-1',
+    })
+  })
+
   it('encodes files larger than one conversion chunk intact', async () => {
     vi.mocked(invoke).mockResolvedValue('saved')
     const bytes = new Uint8Array(200_000).map((_, i) => i % 256)
