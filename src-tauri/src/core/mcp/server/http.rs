@@ -146,13 +146,21 @@ async fn bind_with_limits(
     let connections = Arc::new(Semaphore::new(max_connections));
 
     let serve = async move {
+        let mut backoff = Duration::from_millis(100);
         loop {
             let (stream, _) = match listener.accept().await {
-                Ok(c) => c,
+                Ok(c) => {
+                    backoff = Duration::from_millis(100);
+                    c
+                }
                 Err(e) => {
-                    log::error!("MCP server accept error: {e}");
-                    // EMFILE and friends repeat at once; do not spin a core.
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    // EMFILE and friends repeat at once; back off to 5 s and
+                    // log only while the delay is still short, then once a cycle.
+                    if backoff <= Duration::from_millis(400) || backoff >= Duration::from_secs(5) {
+                        log::error!("MCP server accept error: {e}");
+                    }
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(Duration::from_secs(5));
                     continue;
                 }
             };

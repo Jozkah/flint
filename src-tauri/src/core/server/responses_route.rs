@@ -109,8 +109,12 @@ pub fn request_to_chat(req: &Value) -> Result<Value, Unsupported> {
                             }
                         });
                         // Consecutive calls from one turn share an assistant message.
+                        // They also join an assistant text message just before them.
                         match messages.last_mut() {
-                            Some(last) if last["role"] == "assistant" && last.get("tool_calls").is_some() => {
+                            Some(last) if last["role"] == "assistant" => {
+                                if last.get("tool_calls").is_none() {
+                                    last["tool_calls"] = json!([]);
+                                }
                                 if let Some(a) = last["tool_calls"].as_array_mut() {
                                     a.push(call);
                                 }
@@ -121,6 +125,15 @@ pub fn request_to_chat(req: &Value) -> Result<Value, Unsupported> {
                     "function_call_output" => {
                         let output = match item.get("output") {
                             Some(Value::String(s)) => s.clone(),
+                            // The item-list form: keep its text parts as plain text.
+                            Some(Value::Array(parts)) => {
+                                let text: Vec<&str> = parts
+                                    .iter()
+                                    .filter_map(|p| p.get("text").and_then(Value::as_str))
+                                    .collect();
+                                if text.is_empty() { Value::Array(parts.clone()).to_string() } else { text.join("
+") }
+                            }
                             Some(other) => other.to_string(),
                             None => String::new(),
                         };
@@ -651,6 +664,21 @@ fn event_end(buf: &[u8]) -> Option<(usize, usize)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn assistant_text_and_calls_merge_and_array_output_is_text() {
+        let req = json!({"model": "m", "input": [
+            {"type": "message", "role": "user", "content": "hi"},
+            {"type": "message", "role": "assistant", "content": "checking"},
+            {"type": "function_call", "call_id": "c1", "name": "f", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "c1", "output": [{"type": "output_text", "text": "done"}]},
+        ]});
+        let chat = request_to_chat(&req).unwrap();
+        let msgs = chat["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[1]["tool_calls"].as_array().unwrap().len(), 1);
+        assert_eq!(msgs[2]["content"], "done");
+    }
+
     use super::*;
 
     fn events(raw: &[String]) -> Vec<(String, Value)> {

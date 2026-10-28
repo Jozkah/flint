@@ -49,7 +49,8 @@
     "retention_one": "已归档的项目将在 {{count}} 天后被永久删除。",
     "retention_other": "已归档的项目将在 {{count}} 天后被永久删除。",
     "retentionForever": "已归档的项目会保留到你删除为止。",
-    "emptyAction": "清空归档"
+    "emptyAction": "清空归档",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "操作未成功",
@@ -1360,5 +1361,13 @@
       "tickFirst": "请先勾选你已查看过的被标记文件。",
       "missing": "提议的更改已不存在。请在电脑上打开该战役。"
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

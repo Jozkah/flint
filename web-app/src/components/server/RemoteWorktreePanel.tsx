@@ -14,13 +14,14 @@ import {
   type RemoteWorktreeState,
 } from '@/lib/remoteRunner'
 import { useRemoteWorktrees } from '@/lib/remoteWorktree'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
-const STATE_TEXT: Record<RemoteWorktreeState['state'], string> = {
-  ready: 'ready',
-  missing: 'folder missing',
-  corrupt: 'not a worktree any more',
-  'branch-moved': 'branch moved',
-  'identity-changed': 'repository changed',
+const STATE_KEY: Record<RemoteWorktreeState['state'], string> = {
+  ready: 'server:worktree.state.ready',
+  missing: 'server:worktree.state.missing',
+  corrupt: 'server:worktree.state.corrupt',
+  'branch-moved': 'server:worktree.state.branchMoved',
+  'identity-changed': 'server:worktree.state.identityChanged',
 }
 
 type View = {
@@ -37,6 +38,7 @@ type View = {
  * nothing for a session without a worktree.
  */
 export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation()
   const tick = useRemoteWorktrees((s) => s.ticks[sessionId] ?? 0)
   const streamError = useRemoteWorktrees((s) => s.errors[sessionId])
   const running = useCoworkRun((s) => !!s.runs[sessionId])
@@ -87,11 +89,15 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
       if (pending.length > 0) await commitWorktree(sessionId, 'Work from a Flint session')
       const out = await mergeWorktree(sessionId)
       if (out.conflicts.length > 0) {
-        setError('Not merged: conflicts in ' + out.conflicts.join(', ') + '. Nothing was changed.')
+        setError(t('server:worktree.conflicts', { files: out.conflicts.join(', ') }))
       } else if (out.alreadyMerged) {
-        setMessage('Already in ' + out.target + '.')
+        setMessage(t('server:worktree.alreadyIn', { target: out.target }))
       } else {
-        setMessage('Merged into ' + out.target + (out.fastForward ? ' (fast-forward).' : '.'))
+        setMessage(
+          t(out.fastForward ? 'server:worktree.mergedFast' : 'server:worktree.merged', {
+            target: out.target,
+          })
+        )
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -107,7 +113,7 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
     setMessage(null)
     try {
       await discardWorktree(sessionId, true)
-      setMessage('Discarded. This session cannot continue without its worktree.')
+      setMessage(t('server:worktree.discarded'))
       setConfirmDiscard(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -131,10 +137,10 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
           className={ready ? 'text-muted-foreground' : 'text-destructive'}
           data-testid="remote-worktree-state"
         >
-          {STATE_TEXT[state.state]}
+          {t(STATE_KEY[state.state])}
         </span>
         <span className="text-muted-foreground" data-testid="remote-worktree-counts">
-          {pending.length} uncommitted, {unmerged.length} to merge
+          {t('server:worktree.counts', { pending: pending.length, unmerged: unmerged.length })}
         </span>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -144,7 +150,9 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
           onClick={() => void merge()}
           data-testid="remote-worktree-merge"
         >
-          {busy === 'merge' ? 'Merging...' : 'Merge into ' + (base ?? 'base')}
+          {busy === 'merge'
+            ? t('server:worktree.merging')
+            : t('server:worktree.mergeInto', { base: base ?? t('server:worktree.baseFallback') })}
         </Button>
         {!confirmDiscard ? (
           <Button
@@ -154,13 +162,12 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
             onClick={() => setConfirmDiscard(true)}
             data-testid="remote-worktree-discard"
           >
-            Discard
+            {t('server:worktree.discard')}
           </Button>
         ) : (
           <>
             <span className="text-destructive">
-              Removes the checkout and its branch, with {pending.length} uncommitted file(s) and{' '}
-              {unmerged.length} unmerged commit(s).
+              {t('server:worktree.discardWarning', { pending: pending.length, unmerged: unmerged.length })}
             </span>
             <Button
               size="sm"
@@ -169,17 +176,17 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
               onClick={() => void discard()}
               data-testid="remote-worktree-discard-confirm"
             >
-              Discard anyway
+              {t('server:worktree.discardAnyway')}
             </Button>
             <Button size="sm" variant="surface" onClick={() => setConfirmDiscard(false)}>
-              Keep
+              {t('server:worktree.keep')}
             </Button>
           </>
         )}
       </div>
       {streamError ? (
         <p className="mt-1 text-xs text-destructive" role="alert">
-          Changes were not proposed: {streamError}
+          {t('server:worktree.notProposed', { error: streamError })}
         </p>
       ) : null}
       {error ? (
@@ -195,12 +202,14 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
       {proposal ? (
         <div className="mt-2" data-testid="remote-worktree-proposal">
           <p className="text-xs text-muted-foreground">
-            {proposal.files.length} file(s) changed:{' '}
-            {proposal.files
-              .slice(0, 6)
-              .map((f) => f.path)
-              .join(', ')}
-            {proposal.files.length > 6 ? ', ...' : ''}
+            {t('server:worktree.filesChanged', {
+              count: proposal.files.length,
+              files: proposal.files
+                .slice(0, 6)
+                .map((f) => f.path)
+                .join(', '),
+              more: proposal.files.length > 6 ? ', ...' : '',
+            })}
           </p>
           {ready ? (
             <CoworkProposalReview

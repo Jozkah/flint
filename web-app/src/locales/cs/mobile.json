@@ -51,7 +51,8 @@
     "retention_many": "Archivované položky se natrvalo smažou po {{count}} dne.",
     "retention_other": "Archivované položky se natrvalo smažou po {{count}} dnech.",
     "retentionForever": "Archivované položky zůstanou, dokud je nesmažete.",
-    "emptyAction": "Vyprázdnit archiv"
+    "emptyAction": "Vyprázdnit archiv",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "To se nepodařilo",
@@ -1398,5 +1399,13 @@
       "tickFirst": "Nejdřív zaškrtněte označené soubory, které jste si prohlédli.",
       "missing": "Navržené změny už neexistují. Otevřete kampaň v počítači."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

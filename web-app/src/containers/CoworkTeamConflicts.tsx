@@ -14,10 +14,10 @@
 import { useMemo, useState } from 'react'
 import { GitFork } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   conflictKey,
   type ConflictDecision,
-  type OverlapKind,
   type PairConflict,
   type TeamTask,
 } from '@/lib/coworkTeam'
@@ -26,13 +26,6 @@ import {
   type ConflictRequest,
 } from '@/hooks/useTeamConflictRequests'
 
-const KIND: Record<OverlapKind, string> = {
-  'same-file': 'same file',
-  nested: 'a folder and something inside it',
-  rename: 'a move',
-  delete: 'a delete',
-  generated: 'a regenerated file',
-}
 
 type Choice =
   | 'serialize-ab'
@@ -81,6 +74,7 @@ function ConflictRow({
   scopes: Record<string, string>
   onScope: (task: string, text: string) => void
 }) {
+  const { t } = useTranslation()
   const [a, b] = conflict.tasks
   const describe = (id: string) =>
     tasks.find((t) => t.id === id)?.description ?? ''
@@ -101,7 +95,7 @@ function ConflictRow({
   const reviseField = (id: string, value: Choice) =>
     choice === value ? (
       <label className="ml-5 flex flex-col gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-fg-2">
-        What {id} may change (comma-separated)
+        {t('common:teamConflicts.scopeLabel', { id })}
         <input
           className="h-8 rounded-lg border-[0.8px] border-input bg-card px-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
           value={scopes[id] ?? ''}
@@ -119,8 +113,7 @@ function ConflictRow({
       data-tasks={conflict.tasks.join(',')}
     >
       <p className="text-xs font-medium">
-        <span className="font-mono">{a}</span> and{' '}
-        <span className="font-mono">{b}</span> would both change:
+        {t('common:teamConflicts.bothChange', { a, b })}
       </p>
       <ul className="mt-1 flex flex-col gap-0.5">
         {conflict.overlaps.map((o) => (
@@ -130,7 +123,7 @@ function ConflictRow({
             data-testid="team-conflict-path"
             data-kind={o.kind}
           >
-            {o.note} <span className="text-muted-foreground">({KIND[o.kind]})</span>
+            {o.note} <span className="text-muted-foreground">({t(`common:teamConflicts.kind.${o.kind}`)})</span>
           </li>
         ))}
       </ul>
@@ -141,18 +134,15 @@ function ConflictRow({
       </p>
       <fieldset className="mt-2 flex flex-col gap-1">
         <legend className="sr-only">
-          What to do about {a} and {b}
+          {t('common:teamConflicts.legend', { a, b })}
         </legend>
-        {option('serialize-ab', `Run ${a} first, then ${b}`)}
-        {option('serialize-ba', `Run ${b} first, then ${a}`)}
-        {option('revise-a', `Change what ${a} may change`)}
+        {option('serialize-ab', t('common:teamConflicts.serializeAb', { a, b }))}
+        {option('serialize-ba', t('common:teamConflicts.serializeBa', { a, b }))}
+        {option('revise-a', t('common:teamConflicts.revise', { id: a }))}
         {reviseField(a, 'revise-a')}
-        {option('revise-b', `Change what ${b} may change`)}
+        {option('revise-b', t('common:teamConflicts.revise', { id: b }))}
         {reviseField(b, 'revise-b')}
-        {option(
-          'parallel',
-          'Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)'
-        )}
+        {option('parallel', t('common:teamConflicts.parallel'))}
       </fieldset>
     </li>
   )
@@ -176,6 +166,7 @@ const requestKey = (r: ConflictRequest) =>
   `${r.callId}:${r.conflicts.map(conflictKey).join(';')}`
 
 function ConflictForm({ request }: { request: ConflictRequest }) {
+  const { t } = useTranslation()
   const [choices, setChoices] = useState<Record<string, Choice>>({})
   const [scopes, setScopes] = useState<Record<string, string>>(() =>
     Object.fromEntries(request.tasks.map((t) => [t.id, t.writes.join(', ')]))
@@ -201,19 +192,17 @@ function ConflictForm({ request }: { request: ConflictRequest }) {
     <section
       className="my-2 rounded-xl bg-warning-tint p-3 shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--warning)_30%,transparent)] motion-safe:animate-rise-in"
       role="region"
-      aria-label="Overlapping team tasks"
+      aria-label={t('common:teamConflicts.region')}
       data-testid="team-conflicts"
     >
       <div className="flex items-center gap-2">
         <GitFork size={14} className="text-warning" />
         <p className="text-xs font-medium">
-          These tasks would change the same paths with nothing ordering them.
-          Nothing has run yet.
+          {t('common:teamConflicts.headline')}
         </p>
       </div>
       <p className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
-        Compared by the paths each task declared, not by reading the code: no
-        overlap here does not mean the changes fit together.
+        {t('common:teamConflicts.caveat')}
       </p>
       <ul className="mt-2 flex flex-col gap-2">
         {request.conflicts.map((c) => {
@@ -242,7 +231,7 @@ function ConflictForm({ request }: { request: ConflictRequest }) {
           onClick={submit}
           data-testid="team-conflicts-continue"
         >
-          Continue
+          {t('common:teamConflicts.continue')}
         </Button>
         <Button
           size="sm"
@@ -250,7 +239,7 @@ function ConflictForm({ request }: { request: ConflictRequest }) {
           onClick={() => answer(request.sessionId, { kind: 'cancel' })}
           data-testid="team-conflicts-cancel"
         >
-          Don’t run these tasks
+          {t('common:teamConflicts.cancel')}
         </Button>
       </div>
     </section>

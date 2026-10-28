@@ -23,5 +23,42 @@
   "openingNotice": "即將開啟 {{host}}。按 Esc 可留在此裝置上。",
   "useDevice": "使用此裝置",
   "limitsTitle": "什麼在哪裡執行",
-  "limits": "聊天、房間、模型和工具在伺服器上執行。Cowork 工作階段與戰役需要一個在已開啟 Flint 的電腦上執行的智能體：請透過遠端存取與手機應用程式連線到那台電腦。無頭伺服器可以列出戰役並檢視提案，但不會執行工作階段。"
+  "limits": "聊天、房間、模型和工具在伺服器上執行。Cowork 工作階段與戰役需要一個在已開啟 Flint 的電腦上執行的智能體：請透過遠端存取與手機應用程式連線到那台電腦。無頭伺服器可以列出戰役並檢視提案，但不會執行工作階段。",
+  "planApproval": {
+    "title": "Approve this plan to start it",
+    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "after": "after {{deps}}",
+    "accessLabel": "How tasks work",
+    "accessWorktree": "Work on their own inside their own folder",
+    "accessAsk": "Ask for each action",
+    "approve": "Approve and start",
+    "reject": "Reject",
+    "rejectReason": "the plan was not approved"
+  },
+  "worktree": {
+    "state": {
+      "ready": "ready",
+      "missing": "folder missing",
+      "corrupt": "not a worktree any more",
+      "branchMoved": "branch moved",
+      "identityChanged": "repository changed"
+    },
+    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "alreadyIn": "Already in {{target}}.",
+    "mergedFast": "Merged into {{target}} (fast-forward).",
+    "merged": "Merged into {{target}}.",
+    "discarded": "Discarded. This session cannot continue without its worktree.",
+    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "merging": "Merging...",
+    "mergeInto": "Merge into {{base}}",
+    "baseFallback": "base",
+    "discard": "Discard",
+    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
+    "discardAnyway": "Discard anyway",
+    "keep": "Keep",
+    "notProposed": "Changes were not proposed: {{error}}",
+    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+  }
 }
