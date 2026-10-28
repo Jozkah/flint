@@ -462,31 +462,13 @@ pub fn load_provider_configs(
     }
 
     apply_overrides(&mut configs, overrides)?;
-    seed_from_credential_store(&mut configs);
+    // Keys held in the secret store are NOT read here. Loading the config runs
+    // on startup, on every `/model` open and on every status call; reading each
+    // provider's item would cost one macOS keychain prompt per provider for
+    // providers the run never selects. `hydrate_provider_keys` reads the one
+    // provider that is actually used, and `has_credential` answers "is there
+    // one" from the presence index without reading anything.
     Ok(configs)
-}
-
-/// Fill a login-created provider's key chain from the auth credential store
-/// when neither persisted configuration nor CLI/env overrides supplied a key.
-/// The login flow writes only non-secret metadata to config, so without this
-/// seeding a signed-in provider would resolve keyless at runtime and every
-/// request would 401. OAuth credentials are resolved by the transport layer
-/// and deliberately not seeded here.
-fn seed_from_credential_store(configs: &mut HashMap<String, ProviderConfig>) {
-    use crate::core::cli::auth::CredentialStore;
-    for (name, cfg) in configs.iter_mut() {
-        if !cfg.bearer_key_chain().is_empty() || !cfg.may_use_stored_credentials() {
-            continue;
-        }
-        let Ok(Some(credential)) = CredentialStore::load(name) else {
-            continue;
-        };
-        let Some(key) = credential.as_api_key() else {
-            continue;
-        };
-        cfg.api_key = Some(key.to_string());
-        cfg.api_keys = vec![key.to_string()];
-    }
 }
 
 /// Layer in providers from Desktop's `settings.json` that Global doesn't
@@ -769,7 +751,17 @@ fn provider_config_from_section(section: ProviderSection) -> ProviderConfig {
 /// prompt.
 pub fn hydrate_provider_keys(config: &mut ProviderConfig) {
     hydrate_with(config, |p| {
-        crate::core::server::provider_secrets::load_provider_keys(p)
+        let keys = crate::core::server::provider_secrets::load_provider_keys(p);
+        if !keys.is_empty() {
+            return keys;
+        }
+        // A `/login`-created provider keeps its key as a credential record
+        // rather than in config. Only a plain API key counts: a removed account
+        // login cannot authenticate anything.
+        match crate::core::cli::auth::CredentialStore::load(p) {
+            Ok(Some(credential)) => credential.as_api_key().map(|k| vec![k.to_string()]).unwrap_or_default(),
+            _ => Vec::new(),
+        }
     })
 }
 
@@ -789,7 +781,8 @@ fn hydrate_with(config: &mut ProviderConfig, mut load: impl FnMut(&str) -> Vec<S
 pub fn has_credential(config: &ProviderConfig) -> bool {
     !config.bearer_key_chain().is_empty()
         || (config.may_use_stored_credentials()
-            && crate::core::server::provider_secrets::has_stored_key(&config.provider))
+            && (crate::core::server::provider_secrets::has_stored_key(&config.provider)
+                || crate::core::cli::auth::CredentialStore::has(&config.provider)))
 }
 
 /// Whether a credential is stored under `provider`'s name anywhere a request
@@ -950,12 +943,34 @@ fn apply_overrides(
             set_key(cfg, api_key);
         }
         None => {
+            // No provider was named, so this key is a guess about where it goes.
+            // It fills providers that have no credential of their own and never
+            // replaces one the user stored on purpose.
+            let mut ignored = false;
             for cfg in configs.values_mut().filter(|c| c.may_use_stored_credentials()) {
-                set_key(cfg, api_key);
+                if has_credential(cfg) {
+                    ignored = true;
+                } else {
+                    set_key(cfg, api_key);
+                }
+            }
+            if ignored {
+                warn_blanket_key_ignored();
             }
         }
     }
     Ok(())
+}
+
+/// Said once per process: configs load many times (status, `/model`, sign-in).
+fn warn_blanket_key_ignored() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        eprintln!(
+            "note: --api-key / JAN_API_KEY without --provider only fills providers that have no key of their own; \
+             providers with a stored key keep it. Add --provider <name> to send it to one."
+        );
+    });
 }
 
 fn set_key(cfg: &mut ProviderConfig, api_key: &str) {
@@ -1216,17 +1231,33 @@ mod tests {
     }
 
     #[test]
-    fn override_without_provider_sets_all() {
+    fn override_without_provider_fills_only_keyless_providers() {
         let mut configs = parse_provider_store(STORE);
+        let keyed: Vec<String> = configs.iter().filter(|(_, c)| !c.bearer_key_chain().is_empty()).map(|(n, _)| n.clone()).collect();
+        let before: HashMap<String, Vec<String>> = configs.iter().map(|(n, c)| (n.clone(), c.bearer_key_chain())).collect();
         let ov = ProviderOverrides {
             provider: None,
             api_key: Some("shared".to_string()),
             pin: false,
         };
         apply_overrides(&mut configs, &ov).unwrap();
-        assert!(configs
-            .values()
-            .all(|c| c.api_key.as_deref() == Some("shared")));
+        for (name, cfg) in &configs {
+            if keyed.contains(name) {
+                assert_eq!(cfg.bearer_key_chain(), before[name], "{name} lost its own key");
+            } else if cfg.may_use_stored_credentials() {
+                assert_eq!(cfg.api_key.as_deref(), Some("shared"), "{name} stayed keyless");
+            }
+        }
+    }
+
+    #[test]
+    fn blanket_key_does_not_override_a_provider_key() {
+        let mut configs = parse_provider_store(STORE);
+        configs.get_mut("openai").unwrap().api_key = Some("sk-own".into());
+        configs.get_mut("openai").unwrap().api_keys = vec!["sk-own".into()];
+        let ov = ProviderOverrides { provider: None, api_key: Some("blanket".into()), pin: false };
+        apply_overrides(&mut configs, &ov).unwrap();
+        assert_eq!(configs["openai"].bearer_key_chain(), vec!["sk-own".to_string()]);
     }
 
     #[test]
@@ -1985,10 +2016,14 @@ mod tests {
                 CredentialStore::store("deepseek", &Credential::ApiKey("sk-live".into())).unwrap();
 
                 let configs = load_provider_configs(None, &ProviderOverrides::default()).unwrap();
-                assert_eq!(
-                    configs.get("deepseek").unwrap().bearer_key_chain(),
-                    vec!["sk-live".to_string()]
-                );
+                // Loading never reads the secret store (no keychain prompt for
+                // providers a run will not use); presence is answered by the
+                // index, and the key arrives when the provider is hydrated.
+                let mut deepseek = configs.get("deepseek").unwrap().clone();
+                assert!(deepseek.bearer_key_chain().is_empty(), "load_provider_configs read the secret store");
+                assert!(has_credential(&deepseek));
+                hydrate_provider_keys(&mut deepseek);
+                assert_eq!(deepseek.bearer_key_chain(), vec!["sk-live".to_string()]);
             });
         });
     }
@@ -2111,10 +2146,13 @@ mod credential_origin_tests {
             trust("deepseek", TRUSTED, &["deepseek-chat"]);
             CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into())).unwrap();
             let root = project("deepseek", base_url, None, &["deepseek-chat"]);
-            load(&root, &ProviderOverrides::default())
+            // The key is read when the provider is used, not when config loads.
+            let mut cfg = load(&root, &ProviderOverrides::default())
                 .get("deepseek")
                 .unwrap()
-                .bearer_key_chain()
+                .clone();
+            hydrate_provider_keys(&mut cfg);
+            cfg.bearer_key_chain()
         })
     }
 

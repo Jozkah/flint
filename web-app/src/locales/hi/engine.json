@@ -182,7 +182,7 @@
     "kpiArtifacts": "आर्टिफ़ैक्ट",
     "kpiArtifactsSub": "इस हफ़्ते {{count}} नए",
     "kpiSessions": "Cowork से",
-    "kpiSessionsSub": "{{count}} सेशन में",
+    "kpiSessionsSub": "सहेजे गए आर्टिफ़ैक्ट के साथ",
     "kpiDisk": "डिस्क पर",
     "kpiDiskSub": "सेशन सैंडबॉक्स में",
     "kindCode": "कोड",

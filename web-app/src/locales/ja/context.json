@@ -170,5 +170,76 @@
     "toolOk": "成功",
     "toolFailed": "失敗",
     "chatStarted": "チャットを開始"
+  },
+  "promptSnapshot": {
+    "summary": "モデルが受け取った内容",
+    "loading": "読み込み中…",
+    "gone": "そのスナップショットはディスク上にありません。",
+    "unavailable": "ペイロードは保存されませんでした。{{reason}}",
+    "reason": {
+      "not-serializable": "リクエストをシリアライズできなかったため、何も保存されませんでした。",
+      "disabled": "この実行ではスナップショットがオフです。",
+      "too-large": "リクエストが大きすぎて、全体を保存できませんでした。"
+    },
+    "meta": {
+      "provider": "プロバイダー",
+      "model": "モデル",
+      "reasoning": "推論",
+      "session": "セッション",
+      "run": "実行",
+      "agent": "エージェント",
+      "sent": "送信",
+      "hash": "ハッシュ",
+      "redacted": "墨消し",
+      "nothing": "なし",
+      "redactedList_one": "{{count}} フィールド: {{list}}",
+      "redactedList_other": "{{count}} フィールド: {{list}}"
+    },
+    "view": {
+      "label": "表示形式",
+      "tree": "ツリー",
+      "json": "JSON"
+    },
+    "copy": "墨消し済みペイロードをコピー",
+    "copied": "コピーしました",
+    "diff": {
+      "run": "前のリクエストと比較",
+      "loading": "比較中…",
+      "first": "これはセッションで最初に保存されたリクエストです。比較できる前のものはありません。",
+      "summary": "{{id}} との比較: {{details}}。",
+      "separator": "、",
+      "entered": "{{count}} 件が追加",
+      "left": "{{count}} 件が除外",
+      "keptMessages_one": "メッセージ {{count}} 件を保持",
+      "keptMessages_other": "メッセージ {{count}} 件を保持",
+      "keptTools_one": "ツール {{count}} 件を保持",
+      "keptTools_other": "ツール {{count}} 件を保持",
+      "systemChanged": "システムプロンプトが変更",
+      "enteredHeading": "追加",
+      "leftHeading": "除外",
+      "nothingNew": "新しいものはありません。",
+      "nothingLeft": "ウィンドウから外れたものはありません。"
+    },
+    "replay": {
+      "label": "このコンテキストのリプレイ",
+      "run": "このコンテキストをリプレイ",
+      "hint": "このリクエストをそのまま再送します。モデルが求めたツールは実行されません。",
+      "needsSession": "リプレイには、このターンが属するセッションが必要です。",
+      "redactedBlock_one": "リプレイできません: {{count}} 個のフィールドが保存前に墨消しされており、モデルが当時受け取った内容と同じにならないためです。",
+      "redactedBlock_other": "リプレイできません: {{count}} 個のフィールドが保存前に墨消しされており、モデルが当時受け取った内容と同じにならないためです。",
+      "state": {
+        "running": "リプレイ中…",
+        "interrupted": "中断: 実行中に Flint が停止しました",
+        "completed": "完了",
+        "failed": "失敗",
+        "cancelled": "停止",
+        "refused": "拒否"
+      },
+      "matched": "ターンと同じコンテキスト (ハッシュが一致)",
+      "differed": "送信されたリクエストはターンのものと異なっていました",
+      "finish": "終了: {{reason}}",
+      "stop": "停止",
+      "asked": "{{tools}} を要求 (未実行)"
+    }
   }
 }

@@ -170,5 +170,76 @@
     "toolOk": "tamam",
     "toolFailed": "başarısız",
     "chatStarted": "Sohbet başladı"
+  },
+  "promptSnapshot": {
+    "summary": "Modelin aldıkları",
+    "loading": "Yükleniyor…",
+    "gone": "Bu anlık görüntü artık diskte yok.",
+    "unavailable": "Hiçbir yük depolanmadı. {{reason}}",
+    "reason": {
+      "not-serializable": "İstek serileştirilemedi, bu yüzden hiçbir şey depolanmadı.",
+      "disabled": "Anlık görüntüler bu çalıştırma için kapalı.",
+      "too-large": "İstek bütün olarak depolanamayacak kadar büyüktü."
+    },
+    "meta": {
+      "provider": "Sağlayıcı",
+      "model": "Model",
+      "reasoning": "Muhakeme",
+      "session": "Oturum",
+      "run": "Çalıştırma",
+      "agent": "Ajan",
+      "sent": "Gönderildi",
+      "hash": "Karma",
+      "redacted": "Gizlendi",
+      "nothing": "hiçbir şey",
+      "redactedList_one": "{{count}} alan: {{list}}",
+      "redactedList_other": "{{count}} alan: {{list}}"
+    },
+    "view": {
+      "label": "Görünüm",
+      "tree": "Ağaç",
+      "json": "JSON"
+    },
+    "copy": "Gizlenmiş yükü kopyala",
+    "copied": "Kopyalandı",
+    "diff": {
+      "run": "Önceki istekle karşılaştır",
+      "loading": "Karşılaştırılıyor…",
+      "first": "Bu, oturumun ilk depolanan isteği; karşılaştırılacak daha eski bir şey yok.",
+      "summary": "{{id}} ile karşılaştırma: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} girdi",
+      "left": "{{count}} çıktı",
+      "keptMessages_one": "{{count}} ileti korundu",
+      "keptMessages_other": "{{count}} ileti korundu",
+      "keptTools_one": "{{count}} araç korundu",
+      "keptTools_other": "{{count}} araç korundu",
+      "systemChanged": "sistem istemi değişti",
+      "enteredHeading": "Girenler",
+      "leftHeading": "Çıkanlar",
+      "nothingNew": "Yeni bir şey yok.",
+      "nothingLeft": "Pencereden hiçbir şey çıkmadı."
+    },
+    "replay": {
+      "label": "Bu bağlamın yeniden oynatmaları",
+      "run": "Bu bağlamı yeniden oynat",
+      "hint": "Tam olarak bu isteği yeniden gönderir. Modelin istediği araçlar çalıştırılmaz.",
+      "needsSession": "Yeniden oynatma için bu turun ait olduğu oturum gerekir.",
+      "redactedBlock_one": "Yeniden oynatılamaz: {{count}} alan depolanmadan önce gizlendi, bu yüzden model o zaman aldığını almazdı.",
+      "redactedBlock_other": "Yeniden oynatılamaz: {{count}} alan depolanmadan önce gizlendi, bu yüzden model o zaman aldığını almazdı.",
+      "state": {
+        "running": "Yeniden oynatılıyor…",
+        "interrupted": "Kesildi: Flint çalışırken durdu",
+        "completed": "Tamamlandı",
+        "failed": "Başarısız",
+        "cancelled": "Durduruldu",
+        "refused": "Reddedildi"
+      },
+      "matched": "Turla aynı bağlam (karmalar eşleşiyor)",
+      "differed": "Gönderilen istek turunkinden farklıydı",
+      "finish": "bitiş: {{reason}}",
+      "stop": "Durdur",
+      "asked": "{{tools}} istedi (çalıştırılmadı)"
+    }
   }
 }
