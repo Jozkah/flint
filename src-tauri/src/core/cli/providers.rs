@@ -2146,10 +2146,13 @@ mod credential_origin_tests {
             trust("deepseek", TRUSTED, &["deepseek-chat"]);
             CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into())).unwrap();
             let root = project("deepseek", base_url, None, &["deepseek-chat"]);
-            load(&root, &ProviderOverrides::default())
+            // The key is read when the provider is used, not when config loads.
+            let mut cfg = load(&root, &ProviderOverrides::default())
                 .get("deepseek")
                 .unwrap()
-                .bearer_key_chain()
+                .clone();
+            hydrate_provider_keys(&mut cfg);
+            cfg.bearer_key_chain()
         })
     }
 
