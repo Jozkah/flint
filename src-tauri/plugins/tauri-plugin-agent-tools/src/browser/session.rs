@@ -471,11 +471,15 @@ fn now_ms() -> u64 {
 }
 
 fn idle_secs() -> u64 {
-    std::env::var("FLINT_BROWSER_IDLE_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|s| *s > 0)
-        .unwrap_or(IDLE_SECS)
+    // Read once: the reaper asks for every session on every tick.
+    static IDLE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *IDLE.get_or_init(|| {
+        std::env::var("FLINT_BROWSER_IDLE_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|s| *s > 0)
+            .unwrap_or(IDLE_SECS)
+    })
 }
 
 impl Control {
