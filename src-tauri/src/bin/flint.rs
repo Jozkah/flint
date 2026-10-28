@@ -23,6 +23,8 @@ macro_rules! println {
 
 #[path = "flint/agent_cmd.rs"]
 mod agent_cmd;
+#[path = "flint/data.rs"]
+mod data;
 #[path = "flint/inspect.rs"]
 mod inspect;
 #[path = "flint/run_cmd.rs"]

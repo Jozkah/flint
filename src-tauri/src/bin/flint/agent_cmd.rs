@@ -300,62 +300,13 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
             project,
             json,
         } => inspect::impact(changed, project, json),
-        AgentCommands::EventsExport { session, run, include_content } => {
-            app_lib::core::cli::run_data_cmd::events_export(
-                &app_lib::core::app::commands::resolve_jan_data_folder(),
-                &session,
-                run.as_deref(),
-                include_content,
-            )
-            .map_err(HarnessError::legacy)
-        }
-        AgentCommands::EventsInspect { file } => {
-            app_lib::core::cli::run_data_cmd::events_inspect(&file).map_err(HarnessError::legacy)
-        }
-        AgentCommands::Replays { session } => app_lib::core::cli::run_data_cmd::replays(
-            &app_lib::core::app::commands::resolve_jan_data_folder(),
-            &session,
-        )
-        .map_err(HarnessError::legacy),
-        AgentCommands::Replay { session, run } => app_lib::core::cli::run_data_cmd::replay(
-            &app_lib::core::app::commands::resolve_jan_data_folder(),
-            &session,
-            &run,
-        )
-        .map_err(HarnessError::legacy),
-        AgentCommands::Audit { session, run, agent, tool, decision, limit } => {
-            app_lib::core::cli::run_data_cmd::audit_cmd(
-                &app_lib::core::app::commands::resolve_jan_data_folder(),
-                session,
-                run,
-                agent,
-                tool,
-                decision,
-                limit,
-            )
-            .map_err(HarnessError::legacy)
-        }
-        AgentCommands::Prompts { session, show } => agent_prompts_text(
-            &app_lib::core::app::commands::resolve_jan_data_folder(),
-            &session,
-            show.as_deref(),
-        )
-        .map(|text| print!("{text}"))
-        .map_err(HarnessError::legacy),
-        AgentCommands::Ledger { run, json } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            match app_lib::core::agent::ledger::read(&data, &run) {
-                Ok(entries) if json => {
-                    println!("{}", serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string()));
-                    Ok(())
-                }
-                Ok(entries) => {
-                    print!("{}", app_lib::core::agent::ledger::render_text(&entries));
-                    Ok(())
-                }
-                Err(e) => Err(HarnessError::legacy(e)),
-            }
-        }
+        AgentCommands::EventsExport { session, run, include_content } => data::events_export(session, run, include_content),
+        AgentCommands::EventsInspect { file } => data::events_inspect(file),
+        AgentCommands::Replays { session } => data::replays(session),
+        AgentCommands::Replay { session, run } => data::replay(session, run),
+        AgentCommands::Audit { session, run, agent, tool, decision, limit } => data::audit(session, run, agent, tool, decision, limit),
+        AgentCommands::Prompts { session, show } => data::prompts(session, show),
+        AgentCommands::Ledger { run, json } => data::ledger(run, json),
         AgentCommands::Status { project, providers } => run_cmd::status(project, providers),
         AgentCommands::Schema { out } => run_cmd::schema(out),
         AgentCommands::Rpc => run_cmd::rpc().await,
