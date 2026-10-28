@@ -7,7 +7,6 @@ import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
-import { ModelDoctor } from '@/containers/ModelDoctor'
 import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
 import {
   useBrowserToolMirror,
@@ -49,7 +48,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   finishRunResources,
-  projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
@@ -212,7 +210,6 @@ import {
   useShowPromptSnapshot,
 } from '@/hooks/useCoworkDisplay'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
-import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
 import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
@@ -250,6 +247,7 @@ import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
 import { CoworkTranscript } from '@/containers/CoworkTranscript'
 import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
 import { CoworkComposerArea } from '@/containers/CoworkComposerArea'
+import { CoworkDetailsBody } from '@/containers/CoworkDetailsBody'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
@@ -327,11 +325,8 @@ import {
 import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
-import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
-import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
-import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
 import {
   answerMail,
   createMailLedger,
@@ -349,8 +344,6 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   recoveryHidden,
   } from '@/lib/coworkWorktrees'
-import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
-import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCompatManifest } from '@/hooks/useCompatManifest'
 import { useImportedMcp } from '@/hooks/useImportedMcp'
@@ -424,7 +417,6 @@ import { openRunLog, withRunLog } from '@/lib/workflowRuns'
 import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
-import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
 import {
   beginTeamChild,
@@ -5973,75 +5965,24 @@ export function CoworkPage() {
   // Everything about the session that is reference material rather than
   // conversation: behind a dialog on wide screens, a view of its own on phones.
   const detailsBody = (
-    <>
-      <CoworkReadinessCard
-        manifest={readiness}
-        settingsMcpServers={settingsMcpServers}
-        modelTest={
-          <ModelDoctor
-            provider={selectedProvider ? getProviderByName(selectedProvider) : undefined}
-            model={selectedModel ?? undefined}
-          />
-        }
-      />
-      {/* Whether other sessions may write to this one, and whether it answers
-          them on its own. Here, not only on a held message, so it can be
-          decided before anyone writes. */}
-      {session?.id && <SessionMessagingToggle sessionId={session.id} />}
-      {/* AH-177: this session's canonical events, written to a file. */}
-      <CoworkEventExport
-        sessionId={session?.id}
-        pickFolder={async () => {
-          const picked = await serviceHub.dialog().open({ directory: true })
-          return typeof picked === 'string' ? picked : null
-        }}
-      />
-      {/* Collapsed, and inside session details rather than above the
-          composer: someone whose session works should never read it. */}
-      <CoworkEnvironmentReadiness
-        projectRoot={folder ?? undefined}
-        reported={rendererReports}
-        collapsible
-      />
-      {runContext && <CoworkContextBreakdown context={runContext} />}
-      <CoworkCompatSection
-        manifest={compat}
-        hasFolder={Boolean(folder)}
-        onToggle={(on) =>
-          folder && useClaudeCompat.getState().setEnabled(folder, on)
-        }
-        // Drives Flint's own MCP subsystem, against the definition as it
-        // stands on disk: consent is permission to run *this* server,
-        // not whatever the file says later.
-        onMcpConsent={(server, allowed) => {
-          const probe = mcpProbes.find((one) => one.name === server)
-          if (probe) void setMcpConsent(probe, allowed)
-        }}
-      />
-      <ClaudeSkillRootsSettings
-        collapsible
-        roots={skillRoots}
-        onChange={(next) => useClaudeCompat.getState().setSkillRoots(next)}
-        janData={janDataFolder}
-        onRescan={rescanCompat}
-        pickFolder={async () => {
-          const picked = await serviceHub.dialog().open({ directory: true })
-          return typeof picked === 'string' ? picked : null
-        }}
-        // The backend is the only thing that can tell a directory from a
-        // file, or from a path that has since gone.
-        confirmDirectory={async (path) => {
-          const dataFolder = janDataFolder
-          if (!dataFolder) return false
-          try {
-            await projectListDir(dataFolder, path, '.')
-            return true
-          } catch {
-            return false
-          }
-        }}
-      />
-    </>
+    <CoworkDetailsBody
+  readiness={readiness}
+  settingsMcpServers={settingsMcpServers}
+  selectedProvider={selectedProvider}
+  getProviderByName={getProviderByName}
+  selectedModel={selectedModel}
+  session={session}
+  serviceHub={serviceHub}
+  folder={folder}
+  rendererReports={rendererReports}
+  runContext={runContext}
+  compat={compat}
+  mcpProbes={mcpProbes}
+  setMcpConsent={setMcpConsent}
+  skillRoots={skillRoots}
+  janDataFolder={janDataFolder}
+  rescanCompat={rescanCompat}
+/>
   )
 
   const runningChip = running ? (
