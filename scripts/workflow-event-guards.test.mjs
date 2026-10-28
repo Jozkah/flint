@@ -56,3 +56,19 @@ test('release-please dispatches cli release and website', () => {
   assert.match(text, /gh workflow run website\.yml/)
   assert.match(text, /^ {6}HAS_PAT: /m)
 })
+
+// RTE-022: without a permissions block these inherit the repo default token
+// scope. They only check out code and move artifacts, so read-only is enough.
+for (const name of [
+  'jan-linter-and-test.yml',
+  'agent-sdk.yml',
+  'engine-build.yml',
+  'rust-check.yml',
+  'headless-server.yml',
+  'cowork-sandbox-runtime.yml',
+  'installer-ui.yml',
+]) {
+  test(`${name}: declares least-privilege permissions`, () => {
+    assert.match(read(name), /^permissions:\n {2}contents: read$/m)
+  })
+}

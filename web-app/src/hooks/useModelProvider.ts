@@ -70,7 +70,7 @@ type ModelProviderState = {
   selectedProvider: string
   selectedModel: Model | null
   deletedModels: DeletedModel[]
-  getModelBy: (modelId: string) => Model | undefined
+  getModelBy: (modelId: string, providerName?: string) => Model | undefined
   setProviders: (providers: ModelProvider[]) => void
   getProviderByName: (providerName: string) => ModelProvider | undefined
   updateProvider: (providerName: string, data: Partial<ModelProvider>) => void
@@ -98,9 +98,10 @@ export const useModelProvider = create<ModelProviderState>()(
       selectedProvider: 'llamacpp',
       selectedModel: null,
       deletedModels: [],
-      getModelBy: (modelId: string) => {
+      getModelBy: (modelId: string, providerName?: string) => {
+        const wanted = providerName ?? get().selectedProvider
         const provider = get().providers.find(
-          (provider) => provider.provider === get().selectedProvider
+          (provider) => provider.provider === wanted
         )
         if (!provider) return undefined
         return provider.models.find((model) => model.id === modelId)

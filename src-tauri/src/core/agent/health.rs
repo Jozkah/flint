@@ -34,6 +34,10 @@ use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 pub const CHECK_DEADLINE: Duration = Duration::from_secs(600);
 /// How much of a failing command's output is quoted back.
 pub const QUOTED_LINES: usize = 12;
+/// How much of each output stream is kept in memory.
+const OUTPUT_KEPT: usize = 64 * 1024;
+/// How long to wait for an output reader once the command has ended.
+const DRAIN_WAIT: Duration = Duration::from_secs(2);
 
 /// What a check is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -304,15 +308,30 @@ fn run_within(check: &Check, project_root: &Path, deadline: Duration) -> Result_
     };
     // Drained while it runs: a compiler is perfectly capable of filling a pipe
     // and stopping, which would show up as a timeout nobody could explain.
+    // Only the first `OUTPUT_KEPT` bytes are kept (the rest is read and
+    // dropped), so a command that prints without end cannot fill memory. The
+    // result comes back over a channel so a stray grandchild that keeps the
+    // pipe open cannot block the join forever.
     let drain = |handle: Option<Box<dyn std::io::Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         std::thread::spawn(move || {
-            let mut buffer = Vec::new();
+            let mut kept = Vec::new();
             if let Some(mut handle) = handle {
                 use std::io::Read;
-                let _ = handle.read_to_end(&mut buffer);
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match handle.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            let room = OUTPUT_KEPT.saturating_sub(kept.len());
+                            kept.extend_from_slice(&chunk[..n.min(room)]);
+                        }
+                    }
+                }
             }
-            buffer
-        })
+            let _ = tx.send(kept);
+        });
+        rx
     };
     let stdout = drain(child.stdout.take().map(|h| Box::new(h) as Box<dyn std::io::Read + Send>));
     let stderr = drain(child.stderr.take().map(|h| Box::new(h) as Box<dyn std::io::Read + Send>));
@@ -338,8 +357,14 @@ fn run_within(check: &Check, project_root: &Path, deadline: Duration) -> Result_
             }
         }
     };
-    let out = String::from_utf8_lossy(&stdout.join().unwrap_or_default()).to_string();
-    let err = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).to_string();
+    let collect = |rx: std::sync::mpsc::Receiver<Vec<u8>>| {
+        rx.recv_timeout(DRAIN_WAIT).unwrap_or_else(|_| {
+            log::warn!("health: an output reader did not finish; its output is dropped");
+            Vec::new()
+        })
+    };
+    let out = String::from_utf8_lossy(&collect(stdout)).to_string();
+    let err = String::from_utf8_lossy(&collect(stderr)).to_string();
     let outcome = match status {
         None => Outcome::TimedOut,
         Some(status) if status.success() => Outcome::Passed,
@@ -590,6 +615,52 @@ mod tests {
             Outcome::Unavailable(why) => assert!(why.contains("could not be started"), "{why}"),
             other => panic!("expected unavailable, got {other:?}"),
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Output past the cap is read and dropped, not held in memory.
+    #[test]
+    fn huge_output_keeps_only_a_bounded_head() {
+        let root = temp_project("huge");
+        let command = if cfg!(windows) {
+            vec![
+                "python".to_string(),
+                "-c".to_string(),
+                "import sys\nfor i in range(300000): print('line', i)\nsys.exit(3)".to_string(),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "i=0; while [ $i -lt 100000 ]; do echo line $i; i=$((i+1)); done; exit 3".to_string(),
+            ]
+        };
+        let check = Check { kind: Kind::Test, command, evidence: "test".into() };
+        match run(&check, &root).outcome {
+            Outcome::Failed(quoted) => {
+                assert!(quoted.contains("line 0"), "{quoted}");
+                assert!(quoted.lines().count() <= QUOTED_LINES);
+            }
+            other => panic!("expected a failure, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A grandchild that outlives a finished command and keeps the pipe open
+    /// must not hang the check.
+    #[cfg(unix)]
+    #[test]
+    fn surviving_grandchild_does_not_hang_join() {
+        let root = temp_project("survivor");
+        let check = Check {
+            kind: Kind::Test,
+            command: vec!["sh".into(), "-c".into(), "sleep 30 & exit 0".into()],
+            evidence: "test".into(),
+        };
+        let started = Instant::now();
+        let result = run(&check, &root);
+        assert!(matches!(result.outcome, Outcome::Passed), "{:?}", result.outcome);
+        assert!(started.elapsed() < Duration::from_secs(20));
         let _ = std::fs::remove_dir_all(&root);
     }
 

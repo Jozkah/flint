@@ -1200,8 +1200,7 @@ async fn execute_tool_inner(
     // A run with direct edit access to a folder resolves them there as well:
     // "create some files" with no absolute path belongs in the folder the user
     // attached for editing, not the scratch workspace.
-    let rebase_base = handlers::working_folder(&write_roots, Path::new(&data_folder))
-        .or_else(|| edit_folder.filter(|f| f.is_dir()));
+    let rebase_base = rebase_base_for(Path::new(&data_folder), &write_roots, edit_folder);
     if let Some(base) = rebase_base {
         handlers::rebase_relative_paths(&name, &mut args, &base);
     }
@@ -1734,6 +1733,57 @@ pub struct UndoChangeSummary {
     pub actor: Option<crate::undo::Actor>,
 }
 
+/// The folder a relative file-tool path resolves against: the managed
+/// worktree the shell works in, else the attached folder the run may edit.
+/// Shared by the executed call and the previews so all three agree.
+fn rebase_base_for(
+    data_folder: &Path,
+    write_roots: &[PathBuf],
+    edit_folder: Option<PathBuf>,
+) -> Option<PathBuf> {
+    handlers::working_folder(write_roots, data_folder)
+        .or_else(|| edit_folder.filter(|f| f.is_dir()))
+}
+
+/// Rewrite `args` of a previewed `write`/`edit` the way [`execute_tool`] does
+/// before it judges the call: relative `path` rebased onto the worktree or
+/// edit folder the grant gives, then on-disk path repair. None when repair
+/// refuses the path (the call will be refused anyway).
+fn normalise_preview_args(
+    data_folder: &str,
+    session_id: &str,
+    write_grant: Option<&str>,
+    name: &str,
+    path_args: &[&'static str],
+    root: &Path,
+    scratch: &Path,
+    args: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let mut args = args.clone();
+    let grant_roots: Vec<PathBuf> = write_grant
+        .map(|id| crate::grants::resolve_all(id, session_id))
+        .unwrap_or_default();
+    let edit_folder = write_grant
+        .filter(|id| crate::grants::main_writable(id, session_id))
+        .and_then(|_| grant_roots.first().cloned());
+    let mut write_roots = grant_roots;
+    let (_, access_write) = crate::access::active_roots(
+        Path::new(data_folder),
+        session_id,
+        crate::access::now_secs(),
+    );
+    for r in access_write {
+        if !write_roots.contains(&r) {
+            write_roots.push(r);
+        }
+    }
+    if let Some(base) = rebase_base_for(Path::new(data_folder), &write_roots, edit_folder) {
+        handlers::rebase_relative_paths(name, &mut args, &base);
+    }
+    crate::tools::path_repair::repair_args_on_disk(name, path_args, &mut args, root, Some(scratch)).ok()?;
+    Some(args)
+}
+
 /// The roots this session may write *now*: its own workspace, its scratch,
 /// and whatever a live grant resolves to. Undo and redo are held to these, so
 /// a grant withdrawn since the turn ran withdraws its undo too.
@@ -1833,13 +1883,30 @@ pub async fn preview_change(
     let Some(tool) = lookup(&name) else {
         return Ok(None);
     };
-    let Some(raw) = args.get("path").and_then(|v| v.as_str()) else {
+    if args.get("path").and_then(|v| v.as_str()).is_none() {
         return Ok(None);
-    };
+    }
     let roots =
         writable_roots_now(&data_folder, &session_id, write_grant.as_deref(), scope).await?;
     let root = roots[0].clone();
     let scratch = workspace::ensure_scratch_dir(&session_id).await?;
+    // Same rebase and repair the executed call gets, so a relative path lands
+    // in the granted folder the call will really write to.
+    let Some(args) = normalise_preview_args(
+        &data_folder,
+        &session_id,
+        write_grant.as_deref(),
+        &name,
+        tool.path_args,
+        &root,
+        &scratch,
+        &args,
+    ) else {
+        return Ok(None);
+    };
+    let Some(raw) = args.get("path").and_then(|v| v.as_str()) else {
+        return Ok(None);
+    };
     let target = crate::tools::sandbox::resolve_path(&root, Some(&scratch), raw);
     // Canonical when it exists, so a link is judged by where it leads.
     let judged = crate::tools::sandbox::canonicalize_lenient(&target).unwrap_or_else(|_| target.clone());
@@ -1882,13 +1949,30 @@ pub async fn check_write_secrets(
     let Some(tool) = lookup(&name) else {
         return Ok(Vec::new());
     };
-    let Some(raw) = args.get("path").and_then(|v| v.as_str()) else {
+    if args.get("path").and_then(|v| v.as_str()).is_none() {
         return Ok(Vec::new());
-    };
+    }
     let roots =
         writable_roots_now(&data_folder, &session_id, write_grant.as_deref(), scope).await?;
     let root = roots[0].clone();
     let scratch = workspace::ensure_scratch_dir(&session_id).await?;
+    // Same rebase and repair the executed call gets, so a relative path lands
+    // in the granted folder the call will really write to.
+    let Some(args) = normalise_preview_args(
+        &data_folder,
+        &session_id,
+        write_grant.as_deref(),
+        &name,
+        tool.path_args,
+        &root,
+        &scratch,
+        &args,
+    ) else {
+        return Ok(Vec::new());
+    };
+    let Some(raw) = args.get("path").and_then(|v| v.as_str()) else {
+        return Ok(Vec::new());
+    };
     let target = crate::tools::sandbox::resolve_path(&root, Some(&scratch), raw);
     let judged = crate::tools::sandbox::canonicalize_lenient(&target).unwrap_or_else(|_| target.clone());
     if !crate::undo::within(&judged, &roots) {
@@ -2747,6 +2831,20 @@ mod tests {
         assert!(!batch_hook_network(Some(&root), Some(true)));
         assert!(!batch_hook_network(None, Some(false)));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn preview_relative_write_with_direct_edit_grant_diffs_granted_folder() {
+        let dir = std::env::temp_dir().join(format!("flint-rebase-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = rebase_base_for(Path::new("C:/data"), &[], Some(dir.clone()));
+        assert_eq!(base.as_deref(), Some(dir.as_path()));
+        let mut args = json!({ "path": "note.txt", "content": "x" });
+        handlers::rebase_relative_paths("write", &mut args, &dir);
+        let rebased = args["path"].as_str().unwrap().replace('\\', "/");
+        assert!(rebased.ends_with("note.txt") && Path::new(&rebased).is_absolute(), "{rebased}");
+        assert_eq!(rebase_base_for(Path::new("C:/data"), &[], None), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

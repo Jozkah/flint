@@ -2320,6 +2320,34 @@ mod liveness_tests {
         assert!(matches!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Unresponsive(_)));
     }
 
+    /// W31: the probe runs on a cloned peer, so the servers map stays free
+    /// while a stalled server is being probed (monitor and start verification).
+    #[tokio::test]
+    async fn monitor_probe_does_not_hold_servers_lock() {
+        let (client, _) = connect(Ping::IgnoreEverything).await;
+        let servers = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        servers.lock().await.insert("stalled".to_string(), client);
+        let peer = servers.lock().await.get("stalled").map(|s| s.peer().clone()).unwrap();
+        let probe = tokio::spawn(async move { probe_liveness(&peer, QUICK, QUICK).await });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(servers.try_lock().is_ok(), "servers lock held during probe");
+        assert!(matches!(probe.await.unwrap(), Liveness::Unresponsive(_)));
+    }
+
+    #[tokio::test]
+    async fn start_verification_does_not_hold_servers_lock() {
+        let (client, _) = connect(Ping::IgnoreEverything).await;
+        let servers = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        servers.lock().await.insert("stalled".to_string(), client);
+        let peer = servers.lock().await.get("stalled").map(|s| s.peer().clone()).unwrap();
+        let list = tokio::spawn(async move {
+            tokio::time::timeout(Duration::from_millis(400), peer.list_all_tools()).await
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(servers.try_lock().is_ok(), "servers lock held during verification");
+        assert!(list.await.unwrap().is_err(), "stalled list should time out");
+    }
+
     #[tokio::test]
     async fn a_server_that_hung_up_is_gone_or_unresponsive_never_alive() {
         let (client, _) = connect(Ping::HangUp).await;

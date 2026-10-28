@@ -255,11 +255,18 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
             }
         }
 
-        let health_check_result = {
+        // Clone the peer in a short scope so the servers lock is not held
+        // across the probe (a stalled server must not block every other MCP
+        // command for the probe timeout).
+        let peer = {
             let servers = servers_state.lock().await;
-            if let Some(service) = servers.get(&name) {
+            servers.get(&name).map(|service| service.peer().clone())
+        };
+
+        let health_check_result = {
+            if let Some(peer) = peer {
                 let live =
-                    probe_liveness(service, Duration::from_secs(5), Duration::from_secs(2)).await;
+                    probe_liveness(&peer, Duration::from_secs(5), Duration::from_secs(2)).await;
                 match &live {
                     Liveness::Alive => {}
                     Liveness::AliveWithoutPing => {
@@ -270,7 +277,9 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
                     }
                     Liveness::Gone(why) => log::warn!("MCP server {name} health check failed: {why}"),
                 }
-                live.is_alive()
+                // The server may have been stopped while it was probed: only
+                // count a failure if it is still registered.
+                live.is_alive() || !servers_state.lock().await.contains_key(&name)
             } else {
                 // Entry was removed (e.g., by get_tools cleanup or deactivate).
                 // Only stop monitoring if the server was deliberately deactivated.
@@ -853,13 +862,17 @@ async fn schedule_mcp_start_task<R: Runtime>(
         const TOOL_VERIFY_BACKOFF_MS: u64 = 1000;
 
         for attempt in 1..=MAX_TOOL_VERIFY_ATTEMPTS {
-            let verify_result = {
+            // Clone the peer under a short lock; the list call runs unlocked.
+            let verify_peer = {
                 let servers_map = servers.lock().await;
-                if let Some(service) = servers_map.get(&name) {
+                servers_map.get(&name).map(|service| service.peer().clone())
+            };
+            let verify_result = {
+                if let Some(peer) = verify_peer {
                     Some(
                         timeout(
                             Duration::from_secs(TOOL_VERIFY_TIMEOUT_SECS),
-                            service.list_all_tools(),
+                            peer.list_all_tools(),
                         )
                         .await,
                     )
@@ -1187,21 +1200,49 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
     }
 }
 
+/// What to signal for a pid on Unix.
+#[cfg(unix)]
+#[derive(Debug, PartialEq, Eq)]
+enum KillTarget {
+    /// The whole process group, whose id is given.
+    Group(i32),
+    /// Only the one pid.
+    Single,
+}
+
+/// Signal the group only when `pid` leads its own group and that group is not
+/// Flint's own (or init's); anything else gets the single pid, so a process
+/// that merely shares a group with something else never takes it along.
+#[cfg(unix)]
+fn kill_target(pid: i32, pgid: Option<i32>, own_pgid: i32) -> KillTarget {
+    match pgid {
+        Some(g) if g == pid && g > 1 && g != own_pgid => KillTarget::Group(g),
+        _ => KillTarget::Single,
+    }
+}
+
+/// May a process found holding the Browser MCP port be killed? Only when it
+/// looks like Flint's own bridge: the port may belong to another application.
+fn straggler_may_be_killed(info: &jan_utils::network::ProcessUsingPort) -> bool {
+    jan_utils::network::is_orphaned_mcp_process(info)
+}
+
 #[cfg(unix)]
 async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     use nix::sys::signal::{kill, killpg, Signal};
-    use nix::unistd::{getpgid, Pid};
+    use nix::unistd::{getpgid, getpgrp, Pid};
 
     let nix_pid = Pid::from_raw(pid as i32);
 
     // Signal the whole process group so forked grandchildren (which may hold the
     // port) die with the parent. We spawn MCP children as group leaders, so this
-    // targets only our subtree. Fall back to the single PID if the group can't be
-    // resolved (e.g. an orphan found by port scan) or resolves to init.
-    let pgid = getpgid(Some(nix_pid)).ok().filter(|g| g.as_raw() > 1);
-    let send = |sig: Signal| match pgid {
-        Some(g) => killpg(g, sig),
-        None => kill(nix_pid, sig),
+    // targets only our subtree. A pid that is not its own group leader, or whose
+    // group is Flint's, is signalled alone.
+    let pgid = getpgid(Some(nix_pid)).ok().map(|g| g.as_raw());
+    let target = kill_target(pid as i32, pgid, getpgrp().as_raw());
+    let send = |sig: Signal| match target {
+        KillTarget::Group(g) => killpg(Pid::from_raw(g), sig),
+        KillTarget::Single => kill(nix_pid, sig),
     };
 
     send(Signal::SIGTERM).map_err(|e| format!("Failed to send SIGTERM to PID {}: {}", pid, e))?;
@@ -1263,6 +1304,15 @@ pub async fn terminate_browser_mcp(pid: Option<u32>, port: u16) {
     }
 
     if let Some(info) = jan_utils::network::find_process_using_port(port) {
+        if !straggler_may_be_killed(&info) {
+            log::warn!(
+                "Port {} is held by '{}' (PID {}), which is not a Flint Browser MCP process; leaving it alone",
+                port,
+                info.name,
+                info.pid
+            );
+            return;
+        }
         log::info!(
             "Port {} still held after teardown; killing straggler PID {}",
             port,
@@ -2081,5 +2131,37 @@ mod header_map_tests {
         let map = header_map("srv", &h).unwrap();
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("x-token").unwrap(), "abc");
+    }
+}
+
+#[cfg(test)]
+mod kill_guard_tests {
+    use super::*;
+
+    fn holder(name: &str, cmd: &[&str]) -> jan_utils::network::ProcessUsingPort {
+        jan_utils::network::ProcessUsingPort {
+            pid: 4242,
+            name: name.to_string(),
+            cmd: cmd.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn terminate_browser_mcp_refuses_foreign_port_holder() {
+        assert!(!straggler_may_be_killed(&holder("postgres", &["postgres", "-p", "5432"])));
+        assert!(!straggler_may_be_killed(&holder("bun", &["bun", "run", "dev"])));
+        assert!(straggler_may_be_killed(&holder("node", &["node", "search-mcp-server.js"])));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kill_target_uses_single_pid_when_not_group_leader() {
+        assert_eq!(kill_target(500, Some(500), 100), KillTarget::Group(500));
+        // Member of someone else's group: do not take the group down.
+        assert_eq!(kill_target(500, Some(400), 100), KillTarget::Single);
+        // Flint's own group, init's group, or an unresolved group.
+        assert_eq!(kill_target(100, Some(100), 100), KillTarget::Single);
+        assert_eq!(kill_target(1, Some(1), 100), KillTarget::Single);
+        assert_eq!(kill_target(500, None, 100), KillTarget::Single);
     }
 }

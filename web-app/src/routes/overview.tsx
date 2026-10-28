@@ -177,14 +177,15 @@ function Throughput({
   const ticks = [1, 0.75, 0.5, 0.25, 0].map((f) => top * f)
   const today = values.length - 1
   const [hover, setHover] = useState<number | null>(null)
-  const active = hover ?? today
+  // `hover` outlives a range change, so it can point past a shorter series.
+  const active = Math.max(0, Math.min(hover ?? today, values.length - 1))
   const delta = change(summary.tokens, previous.tokens)
   const showLabel = (i: number) => values.length <= 7 || i % 5 === 0 || i === values.length - 1
   const dayLabel = (d: Date) =>
     values.length <= 7
       ? d.toLocaleDateString(i18n.language, { weekday: 'short' })
       : d.toLocaleDateString(i18n.language, { month: 'short', day: 'numeric' })
-  const activeH = (values[active] / top) * 100
+  const activeH = ((values[active] ?? 0) / top) * 100
 
   return (
     <Frame className="min-w-0 motion-safe:animate-rise-in" style={{ animationDelay: '260ms' }}>
@@ -255,7 +256,7 @@ function Throughput({
                 }}
                 role="status"
               >
-                {dayLabel(summary.series[active].date)} : {compact(values[active])}
+                {summary.series[active] && `${dayLabel(summary.series[active].date)} : ${compact(values[active])}`}
               </div>
             </div>
             <div className="flex w-full gap-1.5" aria-hidden>

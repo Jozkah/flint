@@ -23,6 +23,9 @@ concurrency:
   group: linter-test-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test-on-macos:
     runs-on: 'macos-latest'

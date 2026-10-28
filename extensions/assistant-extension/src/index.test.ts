@@ -307,3 +307,55 @@ describe('migrations', () => {
     expect(getVersion()).toBe('5')
   })
 })
+
+describe('corrupt assistant.json', () => {
+  const corruptPath = `${ROOT}/jan/assistant.json`
+
+  function seedCorrupt() {
+    dirs.add(ROOT)
+    dirs.add(`${ROOT}/jan`)
+    files.set(corruptPath, '{ "id": "jan", "name": "My Flint", ')
+  }
+
+  function corruptCopies(): string[] {
+    return Array.from(files.keys()).filter((k) =>
+      k.startsWith(`${corruptPath}.corrupt-`)
+    )
+  }
+
+  it('copies it to .corrupt-<ts> and does not delete it', async () => {
+    seedCorrupt()
+    await makeExt().getAssistants()
+    expect(files.get(corruptPath)).toBe('{ "id": "jan", "name": "My Flint", ')
+    const copies = corruptCopies()
+    expect(copies).toHaveLength(1)
+    expect(files.get(copies[0])).toBe('{ "id": "jan", "name": "My Flint", ')
+  })
+
+  it('keeps a single copy across repeated loads', async () => {
+    seedCorrupt()
+    await makeExt().getAssistants()
+    await makeExt().getAssistants()
+    expect(corruptCopies()).toHaveLength(1)
+  })
+
+  it('onLoad does not overwrite a corrupt jan assistant with the default', async () => {
+    seedCorrupt()
+    await makeExt().onLoad()
+    expect(files.get(corruptPath)).toBe('{ "id": "jan", "name": "My Flint", ')
+  })
+
+  it('getAssistants falls back to the default when only corrupt files exist', async () => {
+    seedCorrupt()
+    const result = await makeExt().getAssistants()
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('jan')
+  })
+
+  it('explicit createAssistant still overwrites', async () => {
+    seedCorrupt()
+    const ext = makeExt()
+    await ext.createAssistant({ id: 'jan', name: 'Saved' } as any)
+    expect(readAssistant('jan').name).toBe('Saved')
+  })
+})

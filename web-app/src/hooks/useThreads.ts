@@ -474,6 +474,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     set((state) => {
       if (!state.currentThreadId) return { ...state }
       const currentThread = state.getCurrentThread()
+      if (!currentThread) return state
       // A pick by the user means the assistant is no longer Jev's to change.
       const rest = { ...(currentThread?.metadata ?? {}) }
       delete rest.jevRoutedAssistantId
@@ -502,21 +503,25 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     get().updateThreadModel(currentThreadId, model)
   },
   updateThreadModel: (threadId, model) => {
+    // An unknown id must not create a ghost thread or touch the overrides.
+    if (!get().threads[threadId]) return
+    // The new model may not define every setting this chat had overridden.
+    // Such an override is already inert — `resolveModel` ignores a key the
+    // model does not have — but leaving it in the record would let it come
+    // back to life if the old model were ever selected again. Look the model
+    // up under its own provider: the selected one may differ (split panes).
+    useModelOverrides
+      .getState()
+      .pruneForThread(
+        threadId,
+        model.provider,
+        useModelProvider.getState().getModelBy(model.id, model.provider)
+      )
     set((state) => {
-      // The new model may not define every setting this chat had overridden.
-      // Such an override is already inert — `resolveModel` ignores a key the
-      // model does not have — but leaving it in the record would let it come
-      // back to life if the old model were ever selected again.
-      useModelOverrides
-        .getState()
-        .pruneForThread(
-          threadId,
-          model.provider,
-          useModelProvider.getState().getModelBy(model.id)
-        )
       const thread = state.threads[threadId]
-      const updatedThread = { ...state.threads[threadId], model } as Thread
-      if (thread) persistThread(updatedThread, thread)
+      if (!thread) return state
+      const updatedThread = { ...thread, model } as Thread
+      persistThread(updatedThread, thread)
       return {
         threads: {
           ...state.threads,

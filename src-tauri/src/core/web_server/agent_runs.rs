@@ -272,7 +272,7 @@ pub fn get(data_folder: &Path, roots: &[PathBuf], id: &str) -> Result<Value, Fai
         .map_err(|_| fail(500, "that session's messages cannot be read"))?;
     let active = branching::active_path(&messages, branching::thread_active_root(&thread).as_deref());
     let mut row = found.row;
-    row["turns"] = Value::Array(turns(&active));
+    row["turns"] = Value::Array(turns(&active).into_iter().map(super::runner::scrub).collect());
     row["messageCount"] = json!(active.len());
     row["notMapped"] = json!(NOT_MAPPED);
     Ok(row)
@@ -315,12 +315,12 @@ pub fn replay(data_folder: &Path, roots: &[PathBuf], id: &str, after: u64) -> Re
                         "source": "transcript",
                         "kind": "message",
                         "at": m.get("created_at"),
-                        "payload": {
+                        "payload": super::runner::scrub(json!({
                             "role": m.get("role"),
                             "content": message_text(m.get("content")),
                             "toolCalls": m.get("tool_calls"),
                             "callId": m.get("tool_call_id"),
-                        },
+                        })),
                     }),
                 )
             })
@@ -338,7 +338,7 @@ pub fn replay(data_folder: &Path, roots: &[PathBuf], id: &str, after: u64) -> Re
                         "at": e.at,
                         "run": e.run,
                         "invocation": e.invocation,
-                        "payload": e.payload,
+                        "payload": super::runner::scrub(e.payload),
                     }),
                 )
             })
@@ -443,5 +443,29 @@ mod tests {
         assert!(none.contains("\"more\":false"));
         assert_eq!(resume_point(Some("2"), Some("5")), 5);
         assert_eq!(resume_point(None, Some("junk")), 0);
+    }
+
+    const LEAK: &str = "sk-live-11112222333344445555";
+
+    #[test]
+    fn agent_run_get_redacts_secret_in_tool_result() {
+        let (data, _work, root) = fixture();
+        let mut m = msgs();
+        m[2] = json!({ "role": "tool", "tool_call_id": "c1",
+            "content": [{ "type": "text", "text": { "value": format!("authorization: Bearer {LEAK}") } }] });
+        write_thread(data.path(), "in", Some(&root.join("app")), &m);
+        let got = get(data.path(), std::slice::from_ref(&root), "in").unwrap();
+        assert!(!got.to_string().contains(LEAK), "leaked: {got}");
+    }
+
+    #[test]
+    fn agent_run_replay_redacts_payload() {
+        let (data, _work, root) = fixture();
+        let mut m = msgs();
+        m[2] = json!({ "role": "tool", "tool_call_id": "c1",
+            "content": [{ "type": "text", "text": { "value": format!("authorization: Bearer {LEAK}") } }] });
+        write_thread(data.path(), "in", Some(&root.join("app")), &m);
+        let body = replay(data.path(), std::slice::from_ref(&root), "in", 0).unwrap();
+        assert!(!body.contains(LEAK), "leaked: {body}");
     }
 }

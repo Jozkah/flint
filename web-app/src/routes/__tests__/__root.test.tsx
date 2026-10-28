@@ -247,6 +247,15 @@ describe('__root route', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument()
   })
 
+  it('stays in AppLayout when pathname changes to /system-monitor after mount', () => {
+    const view = renderComponent()
+    expect(screen.getByTestId('left-sidebar')).toBeInTheDocument()
+    window.history.pushState({}, '', '/system-monitor')
+    view.rerender(<MainRoot />)
+    expect(screen.getByTestId('left-sidebar')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument()
+  })
+
   it('uses LogsLayout on /local-api-server/logs path', () => {
     window.history.pushState({}, '', '/local-api-server/logs')
     renderComponent()

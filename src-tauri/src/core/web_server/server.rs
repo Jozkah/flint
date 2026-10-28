@@ -868,9 +868,11 @@ async fn rpc_route(
         };
     }
     if settings::handles(command) {
-        return match settings::call(&state.settings, command, &args) {
-            Ok(value) => json(&value),
-            Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+        let (store, command) = (state.settings.clone(), command.to_owned());
+        return match tokio::task::spawn_blocking(move || settings::call(&store, &command, &args)).await {
+            Ok(Ok(value)) => json(&value),
+            Ok(Err(message)) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
         };
     }
     if agent::handles(command) {
