@@ -1190,6 +1190,7 @@
       "updated": "Mise à jour {{when}}",
       "loading": "Chargement des campagnes",
       "loadFailed": "Impossible de charger les campagnes.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} fiche de campagne illisible ignorée. Les fichiers sont restés en place.",
       "skipped_other": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",
       "skipped_many": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",

@@ -1190,6 +1190,7 @@
       "updated": "Aggiornata {{when}}",
       "loading": "Caricamento delle campagne",
       "loadFailed": "Impossibile caricare le campagne.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} record di campagna illeggibile saltato. I file sono rimasti dove erano.",
       "skipped_other": "{{count}} record di campagna illeggibili saltati. I file sono rimasti dove erano.",
       "skipped_many": "{{count}} record di campagna illeggibili saltati. I file sono rimasti dove erano.",
