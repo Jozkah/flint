@@ -120,7 +120,7 @@ export class DefaultMCPService implements MCPService {
     arguments: object
     maxOutputChars?: number
   }): Promise<MCPToolCallResult> {
-    console.log('callTool called with args:', args)
+    console.log('callTool called:', args.toolName)
     return {
       error: '',
       content: []
@@ -132,7 +132,7 @@ export class DefaultMCPService implements MCPService {
     arguments: object
     cancellationToken?: string
   }): ToolCallWithCancellationResult {
-    console.log('callToolWithCancellation called with args:', args)
+    console.log('callToolWithCancellation called:', args.toolName)
     return {
       promise: Promise.resolve({
         error: '',

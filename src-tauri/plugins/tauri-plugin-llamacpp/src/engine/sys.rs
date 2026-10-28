@@ -166,10 +166,12 @@ mod imp {
         /// Starts from llama-server's own flag set, so callers reuse the
         /// upstream arg table instead of mirroring `common_params`.
         pub fn start(args: &[String], on_state: Option<StateCallback>) -> Result<Self, EngineError> {
+            // A NUL inside an arg would silently become an empty one and change
+            // what llama-server is asked to do; refuse it like the preset path.
             let owned: Vec<CString> = args
                 .iter()
-                .map(|a| CString::new(a.as_str()).unwrap_or_default())
-                .collect();
+                .map(|a| CString::new(a.as_str()).map_err(|e| EngineError::Start(e.to_string())))
+                .collect::<Result<_, _>>()?;
             let argv: Vec<*const c_char> = owned.iter().map(|c| c.as_ptr()).collect();
             let mut err = vec![0u8; ERR_BUF_LEN];
             let state_cb = leak_state_cb(on_state);

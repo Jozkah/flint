@@ -6,7 +6,8 @@ import path from 'path'
 import unzipper from 'unzipper'
 import tar from 'tar'
 import { installSidecar, pickSqliteVecLibrary, sqliteVecLibName } from './download-bin-install.mjs'
-import { assertSafeTarEntry, assertSafeZipEntry } from './archive-extract-guard.mjs'
+import { assertSafeTarEntry } from './archive-extract-guard.mjs'
+import { extractZipArchive } from './zip-extract.mjs'
 import { execFileSync } from 'child_process'
 import crypto from 'crypto'
 import { readFileSync } from 'fs'
@@ -104,21 +105,10 @@ async function fetchPinned(url, dest, expected) {
   return true
 }
 
-async function validateZipArchive(filePath, targetDir) {
-  const archive = await unzipper.Open.file(filePath)
-  for (const entry of archive.files) {
-    assertSafeZipEntry(entry, targetDir)
-  }
-}
-
 async function decompress(filePath, targetDir) {
   console.log(`Decompressing ${filePath} to ${targetDir}`)
   if (filePath.endsWith('.zip')) {
-    await validateZipArchive(filePath, targetDir)
-    await fs
-      .createReadStream(filePath)
-      .pipe(unzipper.Extract({ path: targetDir }))
-      .promise()
+    await extractZipArchive(filePath, targetDir)
   } else if (filePath.endsWith('.tar.gz')) {
     await tar.x({
       file: filePath,

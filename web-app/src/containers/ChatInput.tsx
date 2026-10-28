@@ -131,7 +131,6 @@ import {
 import {
   TEMPORARY_CHAT_ID,
   TEMPORARY_CHAT_QUERY_ID,
-  SESSION_STORAGE_KEY,
   SESSION_STORAGE_PREFIX,
 } from '@/constants/chat'
 import { resolveThreadModelId } from '@/lib/models'

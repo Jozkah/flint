@@ -1,5 +1,6 @@
 import { createFileRoute, useParams } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useThreads } from '@/hooks/useThreads'
@@ -73,8 +74,16 @@ function ProjectPageContent() {
     model?: ProjectModel
   ) => {
     if (project) {
-      await updateFolder(project.id, name, assistantId, model)
-      setEditDialogOpen(false)
+      try {
+        await updateFolder(project.id, name, assistantId, model)
+        setEditDialogOpen(false)
+      } catch (error) {
+        toast.error(
+          t('common:codePanel.saveFailed', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        )
+      }
     }
   }
 
@@ -117,7 +126,7 @@ function ProjectPageContent() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-foreground pointer-coarse:size-11">
                     <MoreHorizontal className="size-4" />
-                    <span className="sr-only">More options</span>
+                    <span className="sr-only">{t('common:more')}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
