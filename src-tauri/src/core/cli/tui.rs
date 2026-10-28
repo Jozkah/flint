@@ -12608,7 +12608,7 @@ impl McpPrompt {
     fn paste(&mut self, text: &str) {
         let text = super::secret_input::pasted(text);
         match self.field {
-            McpField::Name => self.name.push_str(text),
+            McpField::Name if self.editing.is_none() => self.name.push_str(text),
             McpField::Command => self.command.push_str(text),
             McpField::Args => self.args.push_str(text),
             McpField::Env => self.env.push_str(text),
@@ -13258,7 +13258,9 @@ async fn handle_mcp_prompt_key(
             }
         }
         KeyCode::Backspace => match prompt.field {
-            McpField::Name => {
+            // Renaming an entry on edit would leave the old one behind, so the
+            // name is fixed while editing.
+            McpField::Name if prompt.editing.is_none() => {
                 prompt.name.pop();
             }
             McpField::Command => {
@@ -13279,7 +13281,7 @@ async fn handle_mcp_prompt_key(
             _ => {}
         },
         KeyCode::Char(ch) if !ctrl => match prompt.field {
-            McpField::Name => prompt.name.push(ch),
+            McpField::Name if prompt.editing.is_none() => prompt.name.push(ch),
             McpField::Command => prompt.command.push(ch),
             McpField::Args => prompt.args.push(ch),
             McpField::Env => prompt.env.push(ch),
@@ -25123,6 +25125,34 @@ mod tests {
         assert_eq!(p.field, McpField::Name);
         p.prev_field();
         assert_eq!(p.field, McpField::Active);
+    }
+
+    #[test]
+    fn edit_cannot_change_name() {
+        let mut app = test_app();
+        app.mcp_prompt = Some(McpPrompt {
+            editing: Some("old".to_string()),
+            field: McpField::Name,
+            name: "old".to_string(),
+            transport: "stdio".to_string(),
+            command: String::new(),
+            args: String::new(),
+            env: String::new(),
+            url: String::new(),
+            headers: String::new(),
+            active: false,
+            error: None,
+        });
+        let servers: crate::core::state::SharedMcpServers =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            super::handle_mcp_prompt_key(&mut app, key(KeyCode::Char('x')), false, &servers).await;
+            super::handle_mcp_prompt_key(&mut app, key(KeyCode::Backspace), false, &servers).await;
+        });
+        app.mcp_prompt.as_mut().unwrap().paste("zzz");
+        assert_eq!(app.mcp_prompt.as_ref().unwrap().name, "old");
     }
 
     /// `k`/`j` are ordinary characters in MCP text fields (URLs, paths), so
