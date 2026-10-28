@@ -852,7 +852,28 @@
     "openCodeFolderInCowork": "Abrir pasta de código no Cowork",
     "openCodeFolder": "Abrir pasta de código",
     "openCodeFolderDescription": "Escolha uma pasta no seu computador para o Flint trabalhar.",
-    "setUpEmbeddingModel": "Configurar um modelo de embedding"
+    "setUpEmbeddingModel": "Configurar um modelo de embedding",
+    "webPage": {
+      "open": "Adicionar página web",
+      "title": "Adicionar uma página web",
+      "description": "Busca uma página e guarda o texto legível como arquivo do projeto. Só funcionam endereços públicos http e https.",
+      "urlLabel": "Endereço da página",
+      "add": "Adicionar página",
+      "refresh": "Atualizar",
+      "added": "\"{{name}}\" adicionado",
+      "refreshed": "\"{{name}}\" atualizado",
+      "truncated": "A página passou do limite de tamanho, então só a primeira parte foi guardada.",
+      "refreshFailed": "Não foi possível atualizar a página",
+      "errors": {
+        "invalidUrl": "Digite um endereço web completo que comece com http:// ou https://.",
+        "blocked": "Esse endereço aponta para este computador ou para uma rede privada, então não foi buscado.",
+        "timeout": "A página demorou demais para responder. Tente de novo mais tarde.",
+        "notHtml": "Esse endereço não é uma página web com texto legível (por exemplo, um PDF, imagem ou download).",
+        "tooLarge": "A página é grande demais.",
+        "httpError": "O site retornou um erro: {{message}}",
+        "failed": "Não foi possível buscar a página: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Escolha como ingerir os anexos",

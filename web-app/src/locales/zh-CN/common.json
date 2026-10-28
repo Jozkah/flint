@@ -849,7 +849,28 @@
     "openCodeFolder": "打开代码文件夹",
     "openCodeFolderDescription": "选择你电脑上供 Flint 工作的文件夹。",
     "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。",
-    "setUpEmbeddingModel": "设置嵌入模型"
+    "setUpEmbeddingModel": "设置嵌入模型",
+    "webPage": {
+      "open": "添加网页",
+      "title": "添加网页",
+      "description": "获取网页并将其可读文本保存为项目文件。仅支持公开的 http 和 https 地址。",
+      "urlLabel": "网页地址",
+      "add": "添加网页",
+      "refresh": "刷新",
+      "added": "已添加“{{name}}”",
+      "refreshed": "已刷新“{{name}}”",
+      "truncated": "网页超过大小限制，仅保存了前面部分。",
+      "refreshFailed": "无法刷新网页",
+      "errors": {
+        "invalidUrl": "请输入以 http:// 或 https:// 开头的完整网址。",
+        "blocked": "该地址指向本机或私有网络，因此未获取。",
+        "timeout": "网页响应超时，请稍后重试。",
+        "notHtml": "该地址不是包含可读文本的网页（例如 PDF、图片或下载文件）。",
+        "tooLarge": "网页过大，无法获取。",
+        "httpError": "网站返回错误：{{message}}",
+        "failed": "无法获取网页：{{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "选择附件的导入方式",
