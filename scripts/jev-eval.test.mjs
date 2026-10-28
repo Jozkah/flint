@@ -93,3 +93,43 @@ test('requests match the shared fixture the app is also tested against', async (
     fixture.expected.rerank
   )
 })
+
+test('an open model arm runs the same fixtures through chat/completions, read strictly', async () => {
+  const { openChatRequest, readOpenAnswer, OPEN_MODEL_PRESETS } = await import('./jev-eval/eval.mjs')
+  assert.deepEqual(Object.values(OPEN_MODEL_PRESETS), [
+    'Von', 'Laya', 'Kev-0.8B', 'Kev-4B', 'Rizzo Flow 4B', 'Rizzo Flow 1.7B', 'Our Qwen3-4B service',
+  ])
+  const body = skillRequest('fill the pdf', [{ name: 'pdf', description: 'forms' }])
+  const req = openChatRequest('kev-4b', body)
+  assert.deepEqual(req.response_format.json_schema.schema.required, ['skill'])
+  const ok = readOpenAnswer(body, { choices: [{ message: { content: '{"skill":{"choice":"s0","confidence":0.9}}' } }] }, 'l')
+  assert.equal(readSkill(ok, [{ name: 'pdf', description: '' }]).pred, 'pdf')
+  for (const bad of ['s0', '{"skill":{"choice":"pdf","confidence":0.9}}', 'ok {"skill":{"choice":"s0","confidence":0.9}}']) {
+    assert.equal(readOpenAnswer(body, { choices: [{ message: { content: bad } }] }, 'l'), null)
+  }
+
+  let calls = 0
+  const fetchImpl = async (url, init) => {
+    calls++
+    assert.equal(url, 'http://127.0.0.1:8080/v1/chat/completions')
+    assert.equal(init.headers.authorization, undefined)
+    const sent = JSON.parse(init.body)
+    assert.equal(sent.model, 'kev-4b')
+    const keys = sent.response_format.json_schema.schema.required
+    const ans = {}
+    for (const k of keys) ans[k] = k === 'skill' ? { choice: 'none', confidence: 1 } : 0.5
+    // The first answer is prose: a bad answer, which falls back.
+    const content = calls === 1 ? 'I would choose none.' : JSON.stringify(ans)
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }], usage: { prompt_tokens: 50, completion_tokens: 5 } }) }
+  }
+  const r = await evaluate({
+    split: 'holdout',
+    fetchImpl,
+    open: { url: 'http://127.0.0.1:8080/v1/', model: 'kev-4b', preset: 'kev-4b' },
+  })
+  assert.equal(r.arm, 'Open model')
+  assert.equal(r.model, 'open:Kev-4B/kev-4b')
+  assert.equal(r.jev.fallbacks.bad_response, 1)
+  assert.equal(r.jev.costUsd, 0)
+  assert.match(toMarkdown(r), /Open model rerank/)
+})
