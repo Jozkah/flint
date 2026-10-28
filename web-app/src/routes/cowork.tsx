@@ -20,7 +20,6 @@ import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import { type WidgetHost } from '@/lib/visualize/hostContext'
-import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
@@ -85,13 +84,11 @@ import {
   runTitle,
   recordAgentDispatch,
   recordJobCollected,
-  recordShellDispatch,
   recordShellOutcome,
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
 import {
   collectedJobId,
-  commandOf,
   finishedJobPatch,
 } from '@/lib/coworkTasks'
 import {
@@ -150,7 +147,8 @@ import {
   recordLifecycle,
   type ToolActivityItem,
 } from '@/lib/toolActivity'
-import { createFrameBatch } from '@/lib/frameBatch'
+import { createStreamSink } from '@/lib/cowork/run/streamSink'
+import { createLiveLane } from '@/lib/cowork/run/liveLane'
 import {
   useToolCallRuntime,
   withToolTiming,
@@ -219,7 +217,6 @@ import {
 } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { usageEventPayload } from '@/lib/executionTimeline'
-import { recordMemoryUses } from '@/lib/memoryUses'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -328,7 +325,6 @@ import {
   awaitingDecision,
 } from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
-import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { useShallow } from 'zustand/react/shallow'
 import {
   recoveryHidden,
@@ -457,7 +453,6 @@ import {
   runTurn,
   untilStopped,
   type RunOutcome,
-  type StreamSink,
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
@@ -2963,70 +2958,15 @@ export function CoworkPage() {
       }
       return undefined
     })()
-    // AH-026: the live lane is also kept with the session while the run goes,
-    // so a run the app is killed under comes back as an interrupted turn.
-    const runStartedAt = Date.now()
-    const runBaseCount = current?.messages?.length ?? 0
-    const saveInFlight = (step = false) => {
-      const at = Date.now()
-      if (!checkpointDue(rs.lastCheckpointAt, at, step)) return
-      rs.lastCheckpointAt = at
-      // Only while this run still owns the session's live lane.
-      if (useCoworkRun.getState().runs[sid]?.runId !== runId) return
-      useCoworkSessions
-        .getState()
-        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, rs.runTurns, at))
-    }
-    // Text deltas publish at most once per frame: a set per token woke every
-    // `useCoworkRun` subscriber and re-rendered this route per token, which is
-    // what made scrolling a streaming transcript lag. Any other write publishes
-    // at once and takes the queued text with it, so ordering is unchanged.
-    const textFrame = createFrameBatch(() => publish())
-    const publish = () => {
-      textFrame.cancel()
-      useCoworkRun.getState().setRunTurns(sid, runId, [...rs.runTurns])
-      saveInFlight()
-    }
-    const pushLive = (
-      turns: CoworkTurn[],
-      snapshot: PromptSnapshotRef | undefined = lastSnapshotRef.current[sid]
-    ) => {
-      // AH-078. Bind each assistant row to the dispatch that produced it,
-      // here, because here is where the row first exists: at dispatch the
-      // lane holds the user turn and nothing else, so a reference written
-      // then has nothing to land on. The snapshot is this session's latest,
-      // so a continuation, a retry and a compaction each carry their own --
-      // unless the caller names the step's own (see `stepSnapshot`).
-      const stamped = turns.map((turn) =>
-        turn.role === 'assistant' && !turn.promptSnapshot && snapshot
-          ? { ...turn, promptSnapshot: snapshot }
-          : turn
-      )
-      rs.runTurns = [...rs.runTurns, ...stamped]
-      publish()
-      // AH-083: the memories this row's request carried now know the turn and
-      // the exact snapshot they went out in. Here for the same reason as the
-      // stamp above: this is where the row, its memory and its snapshot meet.
-      // Named by this run's session, never the one in view.
-      for (const turn of stamped) {
-        if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
-        void recordMemoryUses({
-          sessionId: sid,
-          projectRoot: runAuthority.folder ?? undefined,
-          memory: turn.memory,
-          turnId: turn.promptSnapshot?.id
-            ? `turn-${turn.promptSnapshot.id}`
-            : undefined,
-          snapshotId: turn.promptSnapshot?.id,
-        })
-      }
-    }
-    const mutateLive = (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
-      const next = apply(rs.runTurns)
-      if (next === rs.runTurns) return
-      rs.runTurns = next
-      publish()
-    }
+    const { saveInFlight, textFrame, publish, pushLive, mutateLive } = createLiveLane({
+      rs,
+      sid,
+      runId,
+      runStartedAt: Date.now(),
+      runBaseCount: current?.messages?.length ?? 0,
+      latestSnapshot: () => lastSnapshotRef.current[sid],
+      projectRoot: () => runAuthority.folder ?? undefined,
+    })
     publish()
     /**
      * The authority this run holds, taken once and kept for its lifetime.
@@ -3479,73 +3419,16 @@ export function CoworkPage() {
       model: selectedModel.id,
     }
 
-    // Only rows streamed by the current model step may receive new deltas.
-    // A previous step can end with an assistant row, and the next model reply
-    // must not append to it before the settled row replaces the live one.
-    const streamedAssistantTurns = new Set<CoworkTurn>()
-    const clearStreamedTurns = () => {
-      if (streamedAssistantTurns.size === 0) return
-      rs.runTurns = rs.runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
-      streamedAssistantTurns.clear()
-      publish()
-    }
-    const sink: StreamSink = {
-      onOutput: (chars) => decodeClock.tick(chars),
-      onText: (delta) => {
-        const last = rs.runTurns[rs.runTurns.length - 1]
-        if (last && last.role === 'assistant' && streamedAssistantTurns.has(last)) {
-          last.content += delta
-          textFrame.schedule()
-        } else {
-          pushLive([{ role: 'assistant', content: delta }])
-          const added = rs.runTurns[rs.runTurns.length - 1]
-          if (added?.role === 'assistant') streamedAssistantTurns.add(added)
-        }
-      },
-      onToolStart: (callId, name) =>
-        pushLive([
-          { role: 'tool', content: '', callId, name, status: 'running' },
-        ]),
-      // Only a widget's arguments are kept as they stream: it is the one call
-      // whose card draws from them before the call is complete.
-      onToolArgsDelta: (callId, delta) => {
-        const row = rs.runTurns.find((turn) => turn.callId === callId)
-        if (row?.name !== SHOW_WIDGET_TOOL) return
-        row.argsLive = (row.argsLive ?? '') + delta
-        textFrame.schedule()
-      },
-      onToolCall: (call) => {
-        const row = rs.runTurns.find((turn) => turn.callId === call.toolCallId)
-        if (row) {
-          row.args = call.input
-          row.argsLive = undefined
-          publish()
-          // #321: checkpointed now, not at the next step or text delta. A
-          // crash between here and the step's end otherwise left the saved
-          // call without its arguments, and resuming replayed it without them.
-          saveInFlight(true)
-        }
-        // A shell command is background work the moment it starts, and its
-        // arguments are the only place the command line exists.
-        const command = commandOf(call.input)
-        if (command) {
-          recordShellDispatch(run, {
-            callId: call.toolCallId,
-            command,
-            anchorMessageId: anchorMessageId(),
-          })
-          recordEvents([
-            {
-              id: `job:${call.toolCallId}:started`,
-              session: run.sessionId,
-              run: run.runId,
-              kind: 'job.started',
-              payload: { tool: 'bash', command },
-            },
-          ])
-        }
-      },
-    }
+    const { sink, streamed: streamedAssistantTurns, clearStreamedTurns } = createStreamSink({
+      rs,
+      run,
+      decodeClock,
+      scheduleFrame: () => textFrame.schedule(),
+      publish,
+      pushLive,
+      saveInFlight,
+      anchorMessageId: () => anchorMessageId(),
+    })
 
     const baseMessages = current?.messages ?? []
     // The message this run's work is reported under, named by the same rule the
