@@ -53,7 +53,11 @@ pub fn is_clearly_not_chromium(path: &Path) -> bool {
 }
 
 /// Make `path` the browser for this process. Absolute, an existing file, and
-/// not obviously a non-Chromium browser.
+/// not obviously a non-Chromium browser. A path discovery would find itself is
+/// accepted as is; any other file must carry a Chromium-family executable name
+/// and answer `--version` like one, so an arbitrary program such as `cmd.exe`
+/// is refused without being run. (No native confirmation dialog exists in the
+/// app yet; add one here before widening this.)
 pub fn set_chosen_browser(path: &str) -> Result<PathBuf, String> {
     let path = path.trim();
     let p = PathBuf::from(path);
@@ -68,8 +72,92 @@ pub fn set_chosen_browser(path: &str) -> Result<PathBuf, String> {
             "{path} is not a Chromium-based browser; choose Chrome, Edge, Brave, Opera, Vivaldi, Arc or Chromium"
         ));
     }
+    if !is_discovery_candidate(&p) {
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        let stem = name.strip_suffix(".exe").unwrap_or(&name);
+        if !CHROMIUM_EXE_NAMES.contains(&stem) {
+            return Err(format!(
+                "{path} is not a recognised Chromium-based browser executable; choose Chrome, Edge, Brave, Opera, Vivaldi, Arc or Chromium"
+            ));
+        }
+        probe_chromium(&p)?;
+    }
     restore_chosen_browser(Some(path.to_string()));
     Ok(p)
+}
+
+/// Executable names (without `.exe`) that Chromium-family browsers ship as.
+const CHROMIUM_EXE_NAMES: &[&str] = &[
+    "chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "msedge",
+    "microsoft-edge", "microsoft-edge-stable", "brave", "brave-browser", "brave-browser-stable",
+    "opera", "opera-stable", "vivaldi", "vivaldi-stable", "arc", "google chrome",
+    "microsoft edge", "brave browser",
+];
+
+/// Words a Chromium-family browser prints for `--version`.
+const CHROMIUM_VERSION_WORDS: &[&str] =
+    &["chrome", "chromium", "edge", "brave", "opera", "vivaldi", "arc"];
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    if cfg!(windows) {
+        a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
+    } else {
+        a == b
+    }
+}
+
+/// Whether `path` is one of the locations discovery itself would pick: the
+/// default install locations or the `FLINT_BROWSER_PATH` / `CHROME_PATH`
+/// variables the user set.
+pub fn is_discovery_candidate(path: &Path) -> bool {
+    candidates().iter().any(|c| same_path(c, path))
+        || ["FLINT_BROWSER_PATH", "CHROME_PATH"]
+            .iter()
+            .filter_map(std::env::var_os)
+            .any(|v| same_path(Path::new(&v), path))
+}
+
+/// Run `path --version` (no shell, no stdin, 3 s limit) and check that the
+/// output names a Chromium-family browser. Windows GUI builds of Chrome print
+/// nothing, so empty output passes there (the file name was already checked).
+fn probe_chromium(path: &Path) -> Result<(), String> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new(path);
+    cmd.arg("--version").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("could not run {}: {e}", path.display()))?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{} did not answer --version", path.display()));
+            }
+        }
+    }
+    let mut out = String::new();
+    if let Some(so) = child.stdout.take() {
+        let _ = so.take(4096).read_to_string(&mut out);
+    }
+    let out = out.to_ascii_lowercase();
+    if CHROMIUM_VERSION_WORDS.iter().any(|w| out.contains(w)) || (out.trim().is_empty() && cfg!(windows)) {
+        Ok(())
+    } else {
+        Err(format!("{} does not identify itself as a Chromium-based browser", path.display()))
+    }
 }
 
 /// A display name for the browser at `path`. Matched on the executable's name
@@ -442,12 +530,61 @@ mod tests {
             assert!(err.contains("not a Chromium-based browser"), "{err}");
         }
         assert_eq!(chosen_browser(), before, "a refused choice must not be stored");
-        // The folder name does not matter, only the executable's.
-        let dir = tmp.path().join("firefox-folder");
-        std::fs::create_dir_all(&dir).unwrap();
-        let ok = dir.join("brave.exe");
-        std::fs::write(&ok, b"x").unwrap();
-        assert!(set_chosen_browser(ok.to_str().unwrap()).is_ok());
         restore_chosen_browser(before);
+    }
+
+    #[test]
+    fn unknown_executable_is_rejected_without_being_run() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = chosen_browser();
+        let tmp = TempDir::new("flint-unknown-exe-");
+        for name in ["my-browser", "cmd.exe"] {
+            let exe = tmp.path().join(name);
+            std::fs::write(&exe, b"x").unwrap();
+            let err = set_chosen_browser(exe.to_str().unwrap()).unwrap_err();
+            assert!(err.contains("not a recognised"), "{err}");
+        }
+        assert_eq!(chosen_browser(), before);
+    }
+
+    #[test]
+    fn browser_named_file_that_cannot_run_is_rejected() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = chosen_browser();
+        let tmp = TempDir::new("flint-dead-browser-");
+        let exe = tmp.path().join("brave.exe");
+        std::fs::write(&exe, b"x").unwrap();
+        assert!(set_chosen_browser(exe.to_str().unwrap()).is_err());
+        assert_eq!(chosen_browser(), before);
+    }
+
+    #[cfg(unix)]
+    fn fake_browser(dir: &Path, name: &str, out: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::create_dir_all(dir).unwrap();
+        let exe = dir.join(name);
+        std::fs::write(&exe, format!("#!/bin/sh\necho '{out}'\n")).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        exe
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_chromium_is_accepted_only_when_it_answers_like_one() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = chosen_browser();
+        let tmp = TempDir::new("flint-fake-chromium-");
+        let bad = fake_browser(&tmp.path().join("bad"), "chromium", "hello world");
+        assert!(set_chosen_browser(bad.to_str().unwrap()).is_err());
+        let good = fake_browser(&tmp.path().join("good"), "chromium", "Chromium 120.0");
+        assert!(set_chosen_browser(good.to_str().unwrap()).is_ok());
+        restore_chosen_browser(before);
+    }
+
+    #[test]
+    fn candidate_location_is_recognised_without_running_it() {
+        let c = candidates().into_iter().next().unwrap();
+        assert!(is_discovery_candidate(&c));
+        assert!(!is_discovery_candidate(Path::new("/nonexistent/not-a-candidate")));
     }
 }
