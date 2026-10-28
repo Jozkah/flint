@@ -20,6 +20,8 @@ describe('isReadOnlyCommand', () => {
     'echo hello',
     'Write-Output $env:PATH',
     'Get-ChildItem -Recurse | Measure-Object',
+    'cat README.md',
+    'Get-ChildItem src',
   ])('lets %s through', (cmd) => {
     expect(isReadOnlyCommand(cmd)).toBe(true)
   })
@@ -85,6 +87,18 @@ Write-Output hi
     'git diff HEAD~1',
     'git show HEAD',
     'git --no-pager log --oneline -5',
+    // Secret sources: reading them needs approval.
+    'cat ~/.ssh/id_rsa',
+    'cat .env',
+    'type .env.local',
+    'Get-Content .env',
+    'echo $env:OPENAI_API_KEY',
+    'echo $HOME',
+    'Get-ChildItem Env:',
+    'cat server.pem',
+    String.raw`cat C:\Users\me\.aws\credentials`,
+    'echo %OPENAI_API_KEY%',
+    'printenv',
   ])('asks about %s', (cmd) => {
     expect(isReadOnlyCommand(cmd)).toBe(false)
   })

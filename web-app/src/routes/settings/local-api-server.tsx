@@ -105,6 +105,11 @@ function LocalAPIServerContent() {
   const [showApiKeyError, setShowApiKeyError] = useState(false)
   const setActiveModels = useAppState((state) => state.setActiveModels)
 
+  // The error describes the host/key pair, so drop it once either changes.
+  useEffect(() => {
+    setShowApiKeyError(false)
+  }, [serverHost, apiKey])
+
   useEffect(() => {
     const checkServerStatus = async () => {
       try {
@@ -130,17 +135,25 @@ function LocalAPIServerContent() {
   const toggleAPIServer = async () => {
     // Validate API key before starting server
     if (serverStatus === 'stopped') {
+      // Reachable from the whole network with no key is an open proxy to the
+      // user's models and tools. Loopback without a key stays allowed.
+      if (serverHost === '0.0.0.0' && !String(apiKey ?? '').trim()) {
+        setShowApiKeyError(true)
+        toast.error(
+          t('settings:localApiServer.apiKeyRequiredLan', {
+            defaultValue:
+              'Set an API key before exposing the server on 0.0.0.0, or switch the host to 127.0.0.1.',
+          })
+        )
+        return
+      }
+
       console.log('Starting server with port:', serverPort)
       toast.info(t('uiLeftovers:localApi.starting'), {
         description: t('uiLeftovers:localApi.startingDesc', {
           port: serverPort,
         }),
       })
-
-      // if (!apiKey || apiKey.toString().trim().length === 0) {
-      //   setShowApiKeyError(true)
-      //   return
-      // }
 
       setShowApiKeyError(false)
 

@@ -1128,6 +1128,7 @@ mod mcp_confinement_tests {
             read_roots: vec![],
             jan_data: Some(PathBuf::from("/home/dev/.jan")),
             allowed_env: vec!["API_TOKEN".to_string()],
+            allow_network: true,
         }
     }
 
@@ -1255,6 +1256,7 @@ mod mcp_confinement_tests {
                 read_roots: vec![],
                 jan_data: None,
                 allowed_env: vec!["API_TOKEN".to_string()],
+                allow_network: true,
             });
             let confinement = p.confinement.clone().expect("set above");
             let wrapped = confined_mcp_command(probe, &p, &confinement)
@@ -1300,6 +1302,7 @@ mod mcp_confinement_tests {
             read_roots: vec![],
             jan_data: None,
             allowed_env: vec!["API_TOKEN".to_string()],
+            allow_network: true,
         });
         let confinement = p.confinement.clone().expect("set above");
 
@@ -2320,6 +2323,34 @@ mod liveness_tests {
         assert!(matches!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Unresponsive(_)));
     }
 
+    /// W31: the probe runs on a cloned peer, so the servers map stays free
+    /// while a stalled server is being probed (monitor and start verification).
+    #[tokio::test]
+    async fn monitor_probe_does_not_hold_servers_lock() {
+        let (client, _) = connect(Ping::IgnoreEverything).await;
+        let servers = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        servers.lock().await.insert("stalled".to_string(), client);
+        let peer = servers.lock().await.get("stalled").map(|s| s.peer().clone()).unwrap();
+        let probe = tokio::spawn(async move { probe_liveness(&peer, QUICK, QUICK).await });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(servers.try_lock().is_ok(), "servers lock held during probe");
+        assert!(matches!(probe.await.unwrap(), Liveness::Unresponsive(_)));
+    }
+
+    #[tokio::test]
+    async fn start_verification_does_not_hold_servers_lock() {
+        let (client, _) = connect(Ping::IgnoreEverything).await;
+        let servers = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        servers.lock().await.insert("stalled".to_string(), client);
+        let peer = servers.lock().await.get("stalled").map(|s| s.peer().clone()).unwrap();
+        let list = tokio::spawn(async move {
+            tokio::time::timeout(Duration::from_millis(400), peer.list_all_tools()).await
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(servers.try_lock().is_ok(), "servers lock held during verification");
+        assert!(list.await.unwrap().is_err(), "stalled list should time out");
+    }
+
     #[tokio::test]
     async fn a_server_that_hung_up_is_gone_or_unresponsive_never_alive() {
         let (client, _) = connect(Ping::HangUp).await;
@@ -2459,8 +2490,8 @@ mod manager_bookkeeping_tests {
             .await
             .insert("edited".to_string(), monitor);
 
-        // No running service is registered, so this reports "not found"; the
-        // monitor must be stopped regardless.
+        // No running service is registered: that is now a successful no-op,
+        // and the monitor must be stopped regardless.
         let _ = super::super::commands::deactivate_mcp_server(
             handle.clone(),
             handle.state::<AppState>(),
@@ -2473,6 +2504,46 @@ mod manager_bookkeeping_tests {
             .await
             .expect("the old monitor must be aborted, not detached")
             .unwrap_err();
+    }
+
+    #[tokio::test]
+    async fn deactivate_stopped_lazy_server_succeeds_and_emits_update() {
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let result = super::super::commands::deactivate_mcp_server(
+            handle.clone(),
+            handle.state::<AppState>(),
+            "lazy-never-started".to_string(),
+        )
+        .await;
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn call_tool_unknown_tool_one_failing_server_still_finds_owner() {
+        let names = vec!["bad".to_string(), "good".to_string()];
+        let started = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = started.clone();
+        let failures = super::super::commands::start_candidates(&names, move |n| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push(n.clone());
+                if n == "bad" { Err("boom".to_string()) } else { Ok(()) }
+            }
+        })
+        .await;
+        assert_eq!(failures, vec![("bad".to_string(), "boom".to_string())]);
+        assert_eq!(started.lock().unwrap().len(), 2, "good server still started");
+    }
+
+    #[tokio::test]
+    async fn call_tool_unknown_tool_all_fail_returns_error() {
+        let names: Vec<String> = (0..6).map(|i| format!("s{i}")).collect();
+        let failures = super::super::commands::start_candidates(&names, |_| async {
+            Err("down".to_string())
+        })
+        .await;
+        assert_eq!(failures.len(), 6);
     }
 
     #[tokio::test]

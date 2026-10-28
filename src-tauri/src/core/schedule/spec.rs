@@ -68,6 +68,15 @@ pub enum Schedule {
 }
 
 impl Schedule {
+    /// The instant a `Once` schedule fires at in `tz`; `None` for other kinds
+    /// or an unparsable time.
+    pub fn once_instant_in(&self, tz: chrono_tz::Tz) -> Option<DateTime<Utc>> {
+        use chrono::TimeZone;
+        let Schedule::Once { at } = self else { return None };
+        let naive = Schedule::parse_once(at).ok()?;
+        tz.from_local_datetime(&naive).earliest().map(|d| d.with_timezone(&Utc))
+    }
+
     /// The cron expressions that express this schedule. A preset with times on
     /// different minutes needs one expression per minute; their fires merge.
     pub fn to_cron(&self) -> Result<Vec<String>, ScheduleError> {
@@ -373,10 +382,7 @@ impl Task {
     /// compiles to has no year, so a one-time task never goes through cron
     /// enumeration, which would find the same date again a year later.
     pub fn once_instant(&self) -> Option<DateTime<Utc>> {
-        use chrono::TimeZone;
-        let Schedule::Once { at } = &self.schedule else { return None };
-        let naive = Schedule::parse_once(at).ok()?;
-        self.tz().ok()?.from_local_datetime(&naive).earliest().map(|d| d.with_timezone(&Utc))
+        self.schedule.once_instant_in(self.tz().ok()?)
     }
 
     /// The next `count` fire times after `after`, across all the schedule's

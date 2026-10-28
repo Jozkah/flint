@@ -327,6 +327,10 @@ pub(crate) fn drop_loosening_keys(cfg: &mut AgentToml) -> Vec<&'static str> {
         tools.allow_home_read = None;
         dropped.push("[tools] allow_home_read");
     }
+    if tools.diagnostics == Some(true) {
+        tools.diagnostics = None;
+        dropped.push("[tools] diagnostics");
+    }
     if !tools.fs.allow_read.is_empty() {
         tools.fs.allow_read.clear();
         dropped.push("[tools.fs] allow_read");
@@ -342,6 +346,13 @@ pub(crate) fn drop_loosening_keys(cfg: &mut AgentToml) -> Vec<&'static str> {
     if !cfg.auto_mode.soft_deny.is_empty() {
         cfg.auto_mode.soft_deny.clear();
         dropped.push("[auto_mode] soft_deny");
+    }
+    // A notify command runs a program and the webhook receives session ids,
+    // so an untrusted repository must not set either.
+    #[cfg(feature = "cli")]
+    if !cfg.notify.command.is_empty() || cfg.notify.webhook.is_some() {
+        cfg.notify = Default::default();
+        dropped.push("[notify]");
     }
     dropped
 }
@@ -643,6 +654,11 @@ pub(crate) struct ToolsSection {
     /// `$HOME` entirely. Writes are confined to the workspace either way.
     #[serde(default)]
     pub allow_home_read: Option<bool>,
+    /// Whether the project's own checker (`cargo check`, `tsc`) is run after
+    /// edits. It executes repository-controlled build code, so an untrusted
+    /// folder cannot turn it on (see [`drop_loosening_keys`]).
+    #[serde(default)]
+    pub diagnostics: Option<bool>,
     /// `[tools.fs]`: path allow/deny lists for the sandboxed shell.
     #[serde(default)]
     pub fs: FsSection,
@@ -1300,6 +1316,26 @@ soft_deny = ["git push"]
     }
 
     #[test]
+    fn untrusted_project_cannot_enable_diagnostics() {
+        let mut cfg: AgentToml = toml::from_str("[tools]
+diagnostics = true
+").unwrap();
+        let dropped = drop_loosening_keys(&mut cfg);
+        assert_eq!(dropped, ["[tools] diagnostics"]);
+        assert_eq!(cfg.tools.diagnostics, None);
+    }
+
+    #[test]
+    fn trusted_project_can_enable_diagnostics() {
+        // Unit tests read project files as trusted.
+        let root = project_with("[tools]
+diagnostics = true
+");
+        let cfg = load_agent_config(&root).unwrap();
+        assert_eq!(cfg.tools.diagnostics, Some(true));
+    }
+
+    #[test]
     fn tightening_values_of_loosening_keys_stay() {
         let mut cfg: AgentToml = toml::from_str(
             "[tools]
@@ -1312,6 +1348,31 @@ allow_network = false
         assert!(drop_loosening_keys(&mut cfg).is_empty());
         assert_eq!(cfg.tools.sandbox, Some(true));
         assert_eq!(cfg.tools.default.as_deref(), Some("deny"));
+    }
+
+    #[test]
+    #[cfg(feature = "cli")]
+    fn an_untrusted_project_cannot_set_notify_command() {
+        let mut cfg: AgentToml = toml::from_str(
+            "[notify]\ncommand = [\"calc.exe\"]\nwebhook = \"https://example.com/h\"\nevents = [\"done\"]\n",
+        )
+        .unwrap();
+        let dropped = drop_loosening_keys(&mut cfg);
+        assert_eq!(dropped, ["[notify]"]);
+        assert!(cfg.notify.command.is_empty());
+        assert!(cfg.notify.webhook.is_none());
+        assert!(cfg.notify.events.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "cli")]
+    fn a_trusted_project_keeps_notify() {
+        // Unit tests read project files as trusted, so load_agent_config
+        // does not call drop_loosening_keys.
+        let root = project_with("[notify]\ncommand = [\"echo\", \"hi\"]\n");
+        let cfg = load_agent_config(&root).unwrap();
+        assert_eq!(cfg.notify.command, ["echo", "hi"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     use super::*;

@@ -45,6 +45,19 @@ pub fn write_atomic_with_mode(
     bytes: &[u8],
     new_mode: Option<u32>,
 ) -> Result<(), String> {
+    // A symlink at `path` is written through: the link stays a link and the
+    // temp file lands beside the real file. A dangling link is an error
+    // rather than a silent replacement of the link by a plain file. Callers
+    // that confine writes to a root check the link target themselves.
+    let resolved;
+    let path = match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            resolved = std::fs::canonicalize(path)
+                .map_err(|e| format!("{} is a link that cannot be followed: {e}", path.display()))?;
+            resolved.as_path()
+        }
+        _ => path,
+    };
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -91,13 +104,59 @@ pub fn write_atomic_with_mode(
         }
         #[cfg(not(unix))]
         let _ = (&existing, new_mode);
-        std::fs::rename(&temp, path)
+        replace_file(&temp, path)?;
+        sync_parent(path);
+        Ok(())
     })();
     if let Err(e) = result {
         let _ = std::fs::remove_file(&temp);
         return Err(e.to_string());
     }
     Ok(())
+}
+
+/// Move `temp` over `path`. On Windows an existing target goes through
+/// `ReplaceFileW`, which keeps its ACL and attributes; if that is refused
+/// (some network shares) the plain rename is the fallback.
+fn replace_file(temp: &Path, path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        if path.exists() {
+            let wide = |p: &Path| -> Vec<u16> { p.as_os_str().encode_wide().chain(Some(0)).collect() };
+            let (to, from) = (wide(path), wide(temp));
+            // SAFETY: both buffers are NUL-terminated and outlive the call;
+            // the optional pointers are null.
+            let ok = unsafe {
+                windows_sys::Win32::Storage::FileSystem::ReplaceFileW(
+                    to.as_ptr(),
+                    from.as_ptr(),
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null(),
+                    std::ptr::null(),
+                )
+            };
+            if ok != 0 {
+                return Ok(());
+            }
+        }
+    }
+    std::fs::rename(temp, path)
+}
+
+/// Flush the directory entry so the rename survives a power cut (unix only;
+/// best effort).
+fn sync_parent(path: &Path) {
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        let parent = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 /// [`write_atomic`] for files holding secrets (API keys, tokens): on Unix the
@@ -204,6 +263,49 @@ mod tests {
             std::fs::metadata(&loose).unwrap().permissions().mode() & 0o777,
             0o600
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_follows_symlink_target() {
+        let dir = tempdir();
+        let real = dir.path().join("real.txt");
+        let link = dir.path().join("link.txt");
+        std::fs::write(&real, b"old").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        write_atomic(&link, b"new").unwrap();
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read(&real).unwrap(), b"new");
+        assert!(leftovers(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn write_atomic_keeps_mode() {
+        let dir = tempdir();
+        let target = dir.path().join("m.txt");
+        std::fs::write(&target, b"old").unwrap();
+        let mut perms = std::fs::metadata(&target).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o640);
+        }
+        #[cfg(not(unix))]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&target, perms.clone()).unwrap();
+        write_atomic(&target, b"new").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        let after = std::fs::metadata(&target).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            // `Permissions` equality compares the raw st_mode, which for a file
+            // read back includes the file-type bits (0o100000); only the
+            // permission bits are the point here.
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(after.mode() & 0o777, perms.mode() & 0o777);
+        }
+        #[cfg(not(unix))]
+        assert_eq!(after, perms);
     }
 
     #[test]

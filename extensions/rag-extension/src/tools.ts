@@ -19,7 +19,13 @@ export function getRAGTools(retrievalLimit: number): MCPTool[] {
         'List files attached to the current thread or project. Use scope to specify: "thread" for thread-level files (default), "project" for project-level files shared across all threads in the project.',
       inputSchema: {
         type: 'object',
-        properties: {},
+        properties: {
+          project_id: {
+            type: 'string',
+            description:
+              'Optional: Project id when scope is "project"; defaults to the current project.',
+          },
+        },
         required: [],
       },
       server: RAG_INTERNAL_SERVER,
@@ -57,6 +63,11 @@ export function getRAGTools(retrievalLimit: number): MCPTool[] {
       inputSchema: {
         type: 'object',
         properties: {
+          project_id: {
+            type: 'string',
+            description:
+              'Optional: Project id when scope is "project"; defaults to the current project.',
+          },
           file_id: {
             type: 'string',
             description: 'File ID from list_attachments',

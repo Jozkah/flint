@@ -448,6 +448,61 @@ describe('DataProvider', () => {
     warn.mockRestore()
   })
 
+  it('logs a failed providers read instead of leaving it unhandled', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    hubState.getProviders.mockRejectedValue(new Error('no providers'))
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(err).toHaveBeenCalledWith(
+        'Could not load providers:',
+        expect.any(Error),
+      )
+    })
+    err.mockRestore()
+  })
+
+  it('logs a failed MCP config read', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    hubState.getMCPConfig.mockRejectedValue(new Error('no mcp'))
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(err).toHaveBeenCalledWith(
+        'Could not load the MCP config:',
+        expect.any(Error),
+      )
+    })
+    err.mockRestore()
+  })
+
+  it('still registers providers when the secret header read fails', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetched = [
+      {
+        provider: 'openai',
+        active: true,
+        models: [{ id: 'gpt-4' }],
+        custom_header: [{ header: 'X-Key', value: '', secret: true }],
+        base_url: 'https://api',
+      },
+    ]
+    hubState.getProviders.mockResolvedValue(fetched)
+    h.providers = fetched
+    h.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_secret') throw new Error('keyring locked')
+      return undefined
+    })
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(h.invoke).toHaveBeenCalledWith(
+        'register_provider_config',
+        expect.objectContaining({
+          request: expect.objectContaining({ provider: 'openai' }),
+        }),
+      )
+    })
+    err.mockRestore()
+  })
+
   it('subscribes to deep link system events and cleans up on unmount', async () => {
     const { unmount } = render(<DataProvider />)
     await waitFor(() => {

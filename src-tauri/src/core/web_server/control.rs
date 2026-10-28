@@ -120,6 +120,18 @@ fn status_of(
     extra_headers: &[(&str, &str)],
     timeout: Duration,
 ) -> io::Result<u16> {
+    exchange(address, method, path, extra_headers, timeout).map(|(status, _)| status)
+}
+
+/// Like [`status_of`], also returning the lower-cased response head (status
+/// line and headers) so a caller can look for a header.
+fn exchange(
+    address: SocketAddr,
+    method: &str,
+    path: &str,
+    extra_headers: &[(&str, &str)],
+    timeout: Duration,
+) -> io::Result<(u16, String)> {
     use std::io::{Read, Write as _};
     let mut stream = std::net::TcpStream::connect_timeout(&address, timeout)?;
     stream.set_read_timeout(Some(timeout))?;
@@ -135,7 +147,8 @@ fn status_of(
     }
     let request = format!("{}{CRLF}{CRLF}", lines.join(CRLF));
     stream.write_all(request.as_bytes())?;
-    let mut head = [0u8; 64];
+    // The head only, capped: a foreign service must not make this read on.
+    let mut head = [0u8; 2048];
     let mut filled = 0;
     while filled < head.len() {
         let read = stream.read(&mut head[filled..])?;
@@ -143,23 +156,48 @@ fn status_of(
             break;
         }
         filled += read;
-        if head[..filled].contains(&LF) {
+        if head[..filled].windows(4).any(|w| w == b"\r\n\r\n") {
             break;
         }
     }
+    let text = String::from_utf8_lossy(&head[..filled]).to_ascii_lowercase();
     // "HTTP/1.1 200 OK"
-    std::str::from_utf8(&head[..filled])
-        .ok()
+    let status = text
+        .split(LF as char)
+        .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse().ok())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "not an HTTP answer"))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "not an HTTP answer"))?;
+    Ok((status, text))
 }
 
-/// Whether the server named by `run` answers. The Host header is the address it
-/// listens on, which every server accepts for itself.
+/// Header `/healthz` carries, so a Flint server can be told from any other
+/// program that answers `/healthz` on a reused port.
+pub const SERVER_MARKER_HEADER: &str = "x-flint-server";
+
+/// How `/healthz` at the recorded address answered.
+#[derive(Debug, PartialEq, Eq)]
+enum Health {
+    /// 200 with the Flint marker.
+    Flint,
+    /// 200 without it: a foreign service, or a Flint server older than the
+    /// marker.
+    Unmarked,
+    Down,
+}
+
+fn health(run: &RunFile) -> Health {
+    match exchange(local_address(run.listen), "GET", "/healthz", &[], Duration::from_secs(2)) {
+        Ok((200, head)) if head.contains(&format!("\r\n{SERVER_MARKER_HEADER}:")) => Health::Flint,
+        Ok((200, _)) => Health::Unmarked,
+        _ => Health::Down,
+    }
+}
+
+/// Whether the Flint server named by `run` answers. The Host header is the
+/// address it listens on, which every server accepts for itself.
 pub fn answers(run: &RunFile) -> bool {
-    status_of(local_address(run.listen), "GET", "/healthz", &[], Duration::from_secs(2))
-        .is_ok_and(|status| status == 200)
+    health(run) == Health::Flint
 }
 
 /// The server running on this data folder, if one answers.
@@ -175,6 +213,10 @@ pub enum Stopped {
     Forced,
     /// Nothing was running; a stale record was removed if there was one.
     NotRunning,
+    /// The recorded address is answered by something that is not a Flint
+    /// server (or one that refused the shutdown request). Nothing was killed;
+    /// only the stale record was removed.
+    Foreign,
 }
 
 fn end_process(pid: u32) {
@@ -191,13 +233,14 @@ fn end_process(pid: u32) {
 }
 
 /// Ask the server on `data_folder` to shut down and wait for it to go. If it
-/// does not answer the request or does not go within `wait`, its process is
-/// ended, so `flint stop` always leaves the machine without the server.
+/// accepted the request but does not go within `wait`, its process is ended.
+/// If the request is not accepted nothing is killed ([`Stopped::Foreign`]).
 pub fn stop(data_folder: &Path, wait: Duration) -> io::Result<Stopped> {
     let Some(run) = read_run_file(data_folder) else {
         return Ok(Stopped::NotRunning);
     };
-    if !answers(&run) {
+    let before = health(&run);
+    if before == Health::Down {
         // Nothing is listening: the file is left over from a crash. The process
         // may still exist (wedged), but a pid alone is not proof it is ours.
         let _ = fs::remove_file(run_file_path(data_folder));
@@ -212,14 +255,27 @@ pub fn stop(data_folder: &Path, wait: Duration) -> io::Result<Stopped> {
         Duration::from_secs(5),
     )
     .is_ok_and(|status| status == 204);
+    if !asked {
+        // Only the real server accepts the secret token. Anything else on
+        // this address is not ours, and its pid (possibly reused) must not be
+        // killed. A marked Flint server that refused keeps its record.
+        if before == Health::Unmarked {
+            let _ = fs::remove_file(run_file_path(data_folder));
+        }
+        return Ok(Stopped::Foreign);
+    }
     let deadline = Instant::now() + wait;
-    while asked && Instant::now() < deadline {
-        if !answers(&run) {
+    while Instant::now() < deadline {
+        // Gone when nothing answers `/healthz`, marker or not (a server older
+        // than the marker is accepted here because it took the token).
+        if health(&run) == Health::Down {
             let _ = fs::remove_file(run_file_path(data_folder));
             return Ok(Stopped::Clean);
         }
         std::thread::sleep(Duration::from_millis(150));
     }
+    // The shutdown request was accepted with this run file's secret, so the
+    // server is ours and only slow to leave.
     end_process(run.pid);
     let _ = fs::remove_file(run_file_path(data_folder));
     Ok(Stopped::Forced)
@@ -370,6 +426,64 @@ mod tests {
         assert_eq!(stop(dir.path(), Duration::from_secs(1)).unwrap(), Stopped::NotRunning);
         assert!(read_run_file(dir.path()).is_none());
         assert_eq!(stop(dir.path(), Duration::from_secs(1)).unwrap(), Stopped::NotRunning);
+    }
+
+    /// A stand-in for a foreign program on the recorded port: answers
+    /// `GET /healthz` with 200 (plus `extra` header lines) and everything else
+    /// with 404. Serves up to `max` connections, then its thread ends.
+    fn fake_server(extra: &'static str, max: usize) -> SocketAddr {
+        use std::io::{Read, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(max) {
+                let Ok(mut stream) = stream else { continue };
+                let mut buf = [0u8; 1024];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                let reply = if request.starts_with("GET /healthz") {
+                    format!("HTTP/1.1 200 OK\r\n{extra}Content-Length: 2\r\nConnection: close\r\n\r\nok")
+                } else {
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                };
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        addr
+    }
+
+    fn run_at(listen: SocketAddr) -> RunFile {
+        RunFile {
+            pid: std::process::id(),
+            listen,
+            shutdown_token: new_token(),
+        }
+    }
+
+    #[test]
+    fn answers_requires_flint_marker() {
+        let plain = run_at(fake_server("", 2));
+        assert!(!answers(&plain));
+        assert_eq!(health(&plain), Health::Unmarked);
+        let marked = run_at(fake_server("X-Flint-Server: 1\r\n", 2));
+        assert!(answers(&marked));
+    }
+
+    #[test]
+    fn stop_does_not_kill_when_shutdown_not_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        // The recorded pid is this test process: it would die if killed.
+        write_run_file(dir.path(), &run_at(fake_server("", 4))).unwrap();
+        assert_eq!(stop(dir.path(), Duration::from_secs(1)).unwrap(), Stopped::Foreign);
+    }
+
+    #[test]
+    fn stale_run_file_removed_on_foreign_listener() {
+        let dir = tempfile::tempdir().unwrap();
+        write_run_file(dir.path(), &run_at(fake_server("", 4))).unwrap();
+        assert!(running(dir.path()).is_none());
+        assert_eq!(stop(dir.path(), Duration::from_secs(1)).unwrap(), Stopped::Foreign);
+        assert!(read_run_file(dir.path()).is_none());
     }
 
     #[test]

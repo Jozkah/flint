@@ -436,6 +436,27 @@ pub fn resolve_all(grant_id: &str, session_id: &str) -> Vec<PathBuf> {
     }
 }
 
+/// Folders a run is known to have created itself, per session. Only these may
+/// join a grant as a sibling of its root: a sibling that already existed is
+/// someone else's folder and needs a prompt.
+#[cfg(any(feature = "tauri", test))]
+fn created_registry() -> &'static Mutex<std::collections::HashSet<(String, PathBuf)>> {
+    static REG: OnceLock<Mutex<std::collections::HashSet<(String, PathBuf)>>> = OnceLock::new();
+    REG.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+/// Record that `folder` did not exist before this session's tool call made it.
+#[cfg(any(feature = "tauri", test))]
+pub fn record_created(session_id: &str, folder: &Path) {
+    if session_id.is_empty() {
+        return;
+    }
+    let key = folder.canonicalize().unwrap_or_else(|_| folder.to_path_buf());
+    if let Ok(mut set) = created_registry().lock() {
+        set.insert((session_id.to_string(), key));
+    }
+}
+
 /// Cover a folder the run itself created, in the session's live grant.
 ///
 /// A worktree or clone the agent makes beside the project it was authorized to
@@ -469,8 +490,15 @@ pub fn extend_session(
     // Only inside or beside what the grant lets the run write: a read-only
     // primary does not vouch for folders made in or next to it.
     let primary = grant.root_writable.then_some(&grant.root);
+    let made_by_run = created_registry()
+        .lock()
+        .map(|set| set.contains(&(session_id.to_string(), folder.clone())))
+        .unwrap_or(false);
     let near = primary.into_iter().chain(grant.extra_roots.iter()).any(|root| {
-        folder.starts_with(root) || (folder.parent().is_some() && folder.parent() == root.parent())
+        folder.starts_with(root)
+            || (made_by_run
+                && folder.parent().is_some()
+                && folder.parent() == root.parent())
     });
     if !near {
         return Err(format!(
@@ -547,6 +575,7 @@ mod tests {
         let id = authorize(&session, &repo.to_string_lossy(), &ws, &data).unwrap();
         let sibling = repo.parent().unwrap().join("catalog-home-2");
         std::fs::create_dir_all(&sibling).unwrap();
+        record_created(&session, &sibling);
 
         assert_eq!(extend_session(&session, &sibling, &ws, &data), Ok(true));
         let roots = resolve_all(&id, &session);
@@ -562,6 +591,21 @@ mod tests {
         std::fs::create_dir_all(&inside).unwrap();
         assert_eq!(extend_session(&session, &inside, &ws, &data), Ok(true));
         assert_eq!(resolve_all(&id, &session).len(), 2);
+
+        revoke(&id);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn extend_session_rejects_preexisting_sibling() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let id = authorize(&session, &repo.to_string_lossy(), &ws, &data).unwrap();
+        let sibling = repo.parent().unwrap().join("someone-elses-folder");
+        std::fs::create_dir_all(&sibling).unwrap();
+
+        assert!(extend_session(&session, &sibling, &ws, &data).is_err());
+        assert_eq!(resolve_all(&id, &session), vec![repo.canonicalize().unwrap()]);
 
         revoke(&id);
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
@@ -923,6 +967,7 @@ mod tests {
             workspace: ws.clone(),
             repository: repo.canonicalize().unwrap(),
             read_roots: vec![],
+            allow_network: true,
         };
         let build = || confined_command(Path::new("node"), &[], None, &authority, None);
         let appcontainer = jail::backend() == jail::Backend::AppContainer;

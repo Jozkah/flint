@@ -145,6 +145,83 @@ fn parse_event(raw: &str) -> Option<SseEvent> {
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// Chat/completions parameters a converter may have to drop. Each converter
+/// lists the ones it maps; the rest are reported once per request at debug level.
+const CHAT_PARAMS: &[&str] = &[
+    "frequency_penalty",
+    "presence_penalty",
+    "logit_bias",
+    "logprobs",
+    "top_logprobs",
+    "n",
+    "seed",
+    "stop",
+    "user",
+    "response_format",
+    "parallel_tool_calls",
+    "top_k",
+];
+
+const RESPONSES_MAPPED: &[&str] = &["response_format", "parallel_tool_calls"];
+const GEMINI_MAPPED: &[&str] = &[
+    "stop",
+    "seed",
+    "presence_penalty",
+    "frequency_penalty",
+    "response_format",
+    "top_k",
+];
+const ANTHROPIC_MAPPED: &[&str] = &["stop", "parallel_tool_calls", "top_k"];
+
+/// Chat parameters present in `body` that the converter does not translate.
+fn unmapped_params(body: &Value, mapped: &[&str]) -> Vec<&'static str> {
+    CHAT_PARAMS
+        .iter()
+        .copied()
+        .filter(|k| !mapped.contains(k) && body.get(*k).is_some_and(|v| !v.is_null()))
+        .collect()
+}
+
+fn log_unmapped(converter: &str, body: &Value, mapped: &[&str]) {
+    let dropped = unmapped_params(body, mapped);
+    if !dropped.is_empty() {
+        log::debug!("{converter}: dropping unsupported request fields {dropped:?}");
+    }
+}
+
+/// `stop` is a string or an array of strings in chat/completions.
+fn stop_sequences(body: &Value) -> Option<Vec<String>> {
+    let list: Vec<String> = match body.get("stop")? {
+        Value::String(s) => vec![s.clone()],
+        Value::Array(a) => a
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => return None,
+    };
+    let list: Vec<String> = list.into_iter().filter(|s| !s.is_empty()).collect();
+    (!list.is_empty()).then_some(list)
+}
+
+/// Drop JSON-schema keywords Gemini's `responseSchema` rejects.
+fn gemini_schema(schema: &Value) -> Value {
+    match schema {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .filter(|(k, _)| {
+                    !matches!(
+                        k.as_str(),
+                        "$schema" | "additionalProperties" | "strict" | "$defs" | "definitions"
+                    )
+                })
+                .map(|(k, v)| (k.clone(), gemini_schema(v)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(gemini_schema).collect()),
+        other => other.clone(),
+    }
+}
+
 /// How a provider route reuses a request prefix it has already seen.
 ///
 /// Declared per route (`ProviderConfig.api_type`) instead of inferred from a
@@ -262,6 +339,8 @@ pub struct StreamState {
     /// native item/call id -> chat tool_calls array index.
     pub tool_index: HashMap<String, usize>,
     pub next_tool_index: usize,
+    /// Random per-stream prefix for invented Gemini call ids (Gemini sends none).
+    pub call_prefix: String,
     pub finished: bool,
     /// Prompt tokens captured early (Anthropic sends them in `message_start`).
     pub input_tokens: i64,
@@ -435,6 +514,28 @@ impl UpstreamConverter for OpenAIResponsesConverter {
         if let Some(effort) = body.get("reasoning_effort").and_then(|e| e.as_str()) {
             out["reasoning"] = json!({"effort": effort, "summary": "auto"});
         }
+        if let Some(format) = body.get("response_format").and_then(|f| f.as_object()) {
+            let mapped = match format.get("type").and_then(|t| t.as_str()) {
+                Some("json_object") => Some(json!({"type": "json_object"})),
+                Some("text") => Some(json!({"type": "text"})),
+                Some("json_schema") => format.get("json_schema").map(|js| {
+                    json!({
+                        "type": "json_schema",
+                        "name": js.get("name").cloned().unwrap_or(json!("response")),
+                        "schema": js.get("schema").cloned().unwrap_or(json!({})),
+                        "strict": js.get("strict").cloned().unwrap_or(json!(false)),
+                    })
+                }),
+                _ => None,
+            };
+            if let Some(f) = mapped {
+                out["text"] = json!({"format": f});
+            }
+        }
+        if let Some(v) = body.get("parallel_tool_calls").filter(|v| v.is_boolean()) {
+            out["parallel_tool_calls"] = v.clone();
+        }
+        log_unmapped("responses", body, RESPONSES_MAPPED);
 
         if let Some(tools) = body.get("tools").and_then(|t| t.as_array()) {
             let flattened: Vec<Value> = tools
@@ -452,7 +553,13 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             out["tools"] = json!(flattened);
         }
         if let Some(tc) = body.get("tool_choice") {
-            out["tool_choice"] = tc.clone();
+            // Chat nests the name under `function`; Responses wants it flat.
+            out["tool_choice"] = match tc.pointer("/function/name").and_then(|n| n.as_str()) {
+                Some(name) if tc.get("type").and_then(|t| t.as_str()) == Some("function") => {
+                    json!({"type": "function", "name": name})
+                }
+                _ => tc.clone(),
+            };
         }
 
         out
@@ -508,12 +615,11 @@ impl UpstreamConverter for OpenAIResponsesConverter {
         if !reasoning.is_empty() {
             message["reasoning_content"] = json!(reasoning);
         }
-        let finish_reason = if !tool_calls.is_empty() {
+        let saw_tool = !tool_calls.is_empty();
+        if saw_tool {
             message["tool_calls"] = json!(tool_calls);
-            "tool_calls"
-        } else {
-            "stop"
-        };
+        }
+        let finish_reason = responses_finish(upstream, saw_tool);
 
         json!({
             "id": upstream.get("id").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
@@ -619,10 +725,10 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                 }
             }
             "response.completed" | "response.incomplete" => {
-                let finish = if state.saw_tool_call {
-                    "tool_calls"
-                } else {
-                    "stop"
+                let finish = match data.get("response") {
+                    Some(resp) => responses_finish(resp, state.saw_tool_call),
+                    None if state.saw_tool_call => "tool_calls",
+                    None => "stop",
                 };
                 let usage = data
                     .get("response")
@@ -656,6 +762,24 @@ impl UpstreamConverter for OpenAIResponsesConverter {
     }
 }
 
+/// Chat `finish_reason` for a Responses object (or its stream `response`):
+/// an incomplete response reports why, and a cut-off or filtered turn beats a
+/// tool call because the call's arguments may be truncated.
+fn responses_finish(resp: &Value, saw_tool: bool) -> &'static str {
+    let reason = resp
+        .pointer("/incomplete_details/reason")
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
+    let incomplete = resp.get("status").and_then(|s| s.as_str()) == Some("incomplete");
+    match reason {
+        "max_output_tokens" => "length",
+        "content_filter" => "content_filter",
+        _ if incomplete && !saw_tool => "length",
+        _ if saw_tool => "tool_calls",
+        _ => "stop",
+    }
+}
+
 /// Fronts Google's Gemini `generateContent` API. The model and action are
 /// encoded in the URL and streaming uses `?alt=sse`; auth is `x-goog-api-key`.
 /// The registered provider `base_url` must include the API version, e.g.
@@ -671,6 +795,10 @@ impl GoogleGenerateContentConverter {
 
 /// Map a Gemini `finishReason` to a chat/completions `finish_reason`.
 fn map_gemini_finish(reason: &str, saw_tool: bool) -> &'static str {
+    // A cut-off turn beats a tool call: the call's arguments may be truncated.
+    if reason == "MAX_TOKENS" {
+        return "length";
+    }
     if saw_tool {
         return "tool_calls";
     }
@@ -756,33 +884,25 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
 
     fn convert_request(&self, body: &Value) -> Value {
         // tool_call_id -> function name, so tool results become functionResponse
-        // parts (Gemini keys them by name, not call id).
+        // parts (Gemini keys them by name, not call id). Rebuilt in message
+        // order and overwritten at each assistant turn: ids from older replies
+        // (`call_0` from a pre-fix history) must resolve to the nearest
+        // preceding call, not the last one in the whole history.
         let mut call_names: HashMap<String, String> = HashMap::new();
-        if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
-            for msg in messages {
-                if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
-                    for call in calls {
-                        if let (Some(id), Some(name)) = (
-                            call.get("id").and_then(|v| v.as_str()),
-                            call.get("function")
-                                .and_then(|f| f.get("name"))
-                                .and_then(|n| n.as_str()),
-                        ) {
-                            call_names.insert(id.to_string(), name.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
+        // True while the last pushed content is a run of tool results, so the
+        // next tool result joins it (Gemini wants all responses to one model
+        // turn's calls in a single user content).
+        let mut last_is_tool_results = false;
         let mut contents: Vec<Value> = Vec::new();
         let mut system_parts: Vec<Value> = Vec::new();
         if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
             for msg in messages {
                 let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
                 let content = msg.get("content").cloned().unwrap_or(Value::Null);
+                let was_tool_results = std::mem::take(&mut last_is_tool_results);
                 match role {
                     "system" | "developer" => {
+                        last_is_tool_results = was_tool_results;
                         system_parts.push(json!({"text": message_text(&content)}));
                     }
                     "assistant" => {
@@ -794,6 +914,12 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                         if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
                             for call in calls {
                                 let func = call.get("function");
+                                if let (Some(id), Some(n)) = (
+                                    call.get("id").and_then(|v| v.as_str()),
+                                    func.and_then(|f| f.get("name")).and_then(|n| n.as_str()),
+                                ) {
+                                    call_names.insert(id.to_string(), n.to_string());
+                                }
                                 let name = func
                                     .and_then(|f| f.get("name"))
                                     .cloned()
@@ -849,7 +975,30 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                         if !nested {
                             parts.extend(images);
                         }
-                        contents.push(json!({"role": "user", "parts": parts}));
+                        let joined = was_tool_results
+                            && contents.last_mut().is_some_and(|last| {
+                                let Some(existing) =
+                                    last.get_mut("parts").and_then(|p| p.as_array_mut())
+                                else {
+                                    return false;
+                                };
+                                // Keep every functionResponse ahead of the
+                                // sibling image parts of earlier results.
+                                let at = existing
+                                    .iter()
+                                    .rposition(|p| p.get("functionResponse").is_some())
+                                    .map_or(existing.len(), |i| i + 1);
+                                let mut tail = parts.clone().into_iter();
+                                if let Some(fr) = tail.next() {
+                                    existing.insert(at, fr);
+                                }
+                                existing.extend(tail);
+                                true
+                            });
+                        if !joined {
+                            contents.push(json!({"role": "user", "parts": parts}));
+                        }
+                        last_is_tool_results = true;
                     }
                     _ => {
                         let mut parts: Vec<Value> = Vec::new();
@@ -892,6 +1041,34 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
         {
             gen_config["maxOutputTokens"] = v.clone();
         }
+        if let Some(stops) = stop_sequences(body) {
+            gen_config["stopSequences"] = json!(stops);
+        }
+        for (src, dst) in [
+            ("seed", "seed"),
+            ("presence_penalty", "presencePenalty"),
+            ("frequency_penalty", "frequencyPenalty"),
+            ("top_k", "topK"),
+        ] {
+            if let Some(v) = body.get(src).filter(|v| v.is_number()) {
+                gen_config[dst] = v.clone();
+            }
+        }
+        if let Some(format) = body.get("response_format") {
+            match format.get("type").and_then(|t| t.as_str()) {
+                Some("json_object") => {
+                    gen_config["responseMimeType"] = json!("application/json");
+                }
+                Some("json_schema") => {
+                    gen_config["responseMimeType"] = json!("application/json");
+                    if let Some(schema) = format.get("json_schema").and_then(|j| j.get("schema")) {
+                        gen_config["responseSchema"] = gemini_schema(schema);
+                    }
+                }
+                _ => {}
+            }
+        }
+        log_unmapped("gemini", body, GEMINI_MAPPED);
         if body
             .get("reasoning_effort")
             .and_then(|e| e.as_str())
@@ -932,6 +1109,11 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
     }
 
     fn convert_response(&self, upstream: &Value) -> Value {
+        // Same conditions the stream path ends as an error (#184).
+        if let Some(message) = gemini_stream_error(upstream) {
+            return json!({"error": {"message": message, "type": "upstream_error"}});
+        }
+        let call_prefix = new_gemini_call_prefix();
         let candidate = upstream
             .get("candidates")
             .and_then(|c| c.as_array())
@@ -949,7 +1131,7 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                 if let Some(fc) = part.get("functionCall") {
                     let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
                     tool_calls.push(json!({
-                        "id": format!("call_{}", tool_calls.len()),
+                        "id": format!("call_{call_prefix}_{}", tool_calls.len()),
                         "type": "function",
                         "function": {
                             "name": fc.get("name").cloned().unwrap_or(Value::Null),
@@ -983,13 +1165,14 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
         if saw_tool {
             message["tool_calls"] = json!(tool_calls);
         }
-        let finish_reason = map_gemini_finish(
-            candidate
-                .and_then(|c| c.get("finishReason"))
-                .and_then(|r| r.as_str())
-                .unwrap_or("STOP"),
-            saw_tool,
-        );
+        let raw_finish = candidate
+            .and_then(|c| c.get("finishReason"))
+            .and_then(|r| r.as_str())
+            .unwrap_or("STOP");
+        let finish_reason = map_gemini_finish(raw_finish, saw_tool);
+        if raw_finish == "SAFETY" && content.is_empty() && !saw_tool {
+            message["content"] = json!("The response was blocked by the provider's safety filter.");
+        }
 
         json!({
             "id": upstream.get("responseId").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
@@ -1048,13 +1231,16 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                     let idx = state.next_tool_index;
                     state.next_tool_index += 1;
                     state.saw_tool_call = true;
+                    if state.call_prefix.is_empty() {
+                        state.call_prefix = new_gemini_call_prefix();
+                    }
                     push_role_chunk(state, &mut out);
                     let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
                     out.push(chunk_str(
                         state,
                         json!({"tool_calls": [{
                             "index": idx,
-                            "id": format!("call_{idx}"),
+                            "id": format!("call_{}_{idx}", state.call_prefix),
                             "type": "function",
                             "function": {
                                 "name": fc.get("name").cloned().unwrap_or(Value::Null),
@@ -1117,6 +1303,10 @@ impl AnthropicMessagesConverter {
 }
 
 fn map_anthropic_finish(reason: &str, saw_tool: bool) -> &'static str {
+    // A cut-off turn beats a tool call: the call's arguments may be truncated.
+    if reason == "max_tokens" {
+        return "length";
+    }
     if saw_tool {
         return "tool_calls";
     }
@@ -1277,17 +1467,32 @@ impl UpstreamConverter for AnthropicMessagesConverter {
         if let Some(model) = body.get("model") {
             out["model"] = model.clone();
         }
-        let max_tokens = body
+        let mut max_tokens = body
             .get("max_tokens")
             .or_else(|| body.get("max_completion_tokens"))
             .and_then(|v| v.as_i64())
             .unwrap_or(ANTHROPIC_DEFAULT_MAX_TOKENS);
+        // Extended thinking only on an explicit effort. Anthropic requires
+        // `max_tokens` above the budget and rejects sampling parameters with it.
+        let thinking_budget: Option<i64> =
+            match body.get("reasoning_effort").and_then(|e| e.as_str()) {
+                Some("low") => Some(1024),
+                Some("medium") => Some(4096),
+                Some("high") => Some(8192),
+                _ => None,
+            };
+        if let Some(budget) = thinking_budget {
+            if max_tokens <= budget {
+                max_tokens = budget + ANTHROPIC_DEFAULT_MAX_TOKENS;
+            }
+            out["thinking"] = json!({"type": "enabled", "budget_tokens": budget});
+        }
         out["max_tokens"] = json!(max_tokens);
         // Newer Claude models reject sampling parameters with a 400, so they are
         // forwarded only to models that still accept them.
         let model_id = body.get("model").and_then(|m| m.as_str()).unwrap_or("");
-        let sampling_ok = !anthropic_rejects_sampling(model_id);
-        for key in ["temperature", "top_p", "stream"] {
+        let sampling_ok = !anthropic_rejects_sampling(model_id) && thinking_budget.is_none();
+        for key in ["temperature", "top_p", "top_k", "stream"] {
             if key != "stream" && !sampling_ok {
                 continue;
             }
@@ -1295,6 +1500,11 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                 out[key] = v.clone();
             }
         }
+
+        if let Some(stops) = stop_sequences(body) {
+            out["stop_sequences"] = json!(stops);
+        }
+        log_unmapped("anthropic", body, ANTHROPIC_MAPPED);
 
         let mut system: Vec<String> = Vec::new();
         let mut messages: Vec<Value> = Vec::new();
@@ -1351,11 +1561,12 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                     }
                     _ => {
                         let images = message_images(&content);
-                        let blocks = if images.is_empty() {
-                            vec![json!({"type": "text", "text": message_text(&content)})]
-                        } else {
-                            anthropic_blocks(&content, images)
-                        };
+                        let mut blocks = anthropic_blocks(&content, images);
+                        if blocks.is_empty() {
+                            // Anthropic rejects empty text blocks; a placeholder
+                            // only when the whole message has nothing else.
+                            blocks.push(json!({"type": "text", "text": "(empty)"}));
+                        }
                         push_merged(&mut messages, "user", blocks);
                     }
                 }
@@ -1411,6 +1622,15 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                     }
                 }
             };
+        }
+        if body.get("parallel_tool_calls") == Some(&json!(false)) && out.get("tools").is_some() {
+            match out.get_mut("tool_choice") {
+                Some(t) if t.get("type").and_then(|x| x.as_str()) == Some("none") => {}
+                Some(t) => t["disable_parallel_tool_use"] = json!(true),
+                None => {
+                    out["tool_choice"] = json!({"type": "auto", "disable_parallel_tool_use": true});
+                }
+            }
         }
 
         out
@@ -1673,6 +1893,12 @@ fn stream_error(state: &mut StreamState, message: &str) -> Vec<String> {
 
 /// The error a Gemini stream chunk reports, if any: a top-level `error`
 /// object, or a prompt blocked before any candidate was produced.
+/// Gemini returns no call ids, so ids are invented. A random prefix per
+/// response keeps them unique across turns of one history.
+fn new_gemini_call_prefix() -> String {
+    uuid::Uuid::new_v4().simple().to_string()[..8].to_string()
+}
+
 fn gemini_stream_error(data: &Value) -> Option<String> {
     if let Some(error) = data.get("error") {
         let message = error
@@ -2154,6 +2380,42 @@ mod openai_responses_tests {
     }
 
     #[test]
+    fn responses_incomplete_max_tokens_is_length() {
+        let upstream = json!({
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output": [{"type": "function_call", "call_id": "c1", "name": "f", "arguments": "{\"a\""}]
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(out["choices"][0]["finish_reason"], json!("length"));
+    }
+
+    #[test]
+    fn responses_stream_incomplete_content_filter() {
+        let c = conv();
+        let mut state = StreamState::default();
+        let out = c.convert_stream_event(
+            &ev(
+                "response.incomplete",
+                json!({"response": {"status": "incomplete", "incomplete_details": {"reason": "content_filter"}}}),
+            ),
+            &mut state,
+        );
+        let finish: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(finish["choices"][0]["finish_reason"], json!("content_filter"));
+    }
+
+    #[test]
+    fn responses_tool_choice_flattened() {
+        let body = json!({
+            "model": "m", "messages": [],
+            "tool_choice": {"type": "function", "function": {"name": "pick"}}
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(out["tool_choice"], json!({"type": "function", "name": "pick"}));
+    }
+
+    #[test]
     fn stream_completed_emits_finish_usage_and_done() {
         let c = conv();
         let mut state = StreamState {
@@ -2441,6 +2703,104 @@ mod google_generate_content_tests {
     }
 
     #[test]
+    fn gemini_ids_unique_across_turns() {
+        let upstream = json!({"candidates": [{
+            "content": {"parts": [{"functionCall": {"name": "a", "args": {}}}]},
+            "finishReason": "STOP"
+        }]});
+        let c = conv();
+        let one = c.convert_response(&upstream);
+        let two = c.convert_response(&upstream);
+        assert_ne!(
+            one["choices"][0]["message"]["tool_calls"][0]["id"],
+            two["choices"][0]["message"]["tool_calls"][0]["id"]
+        );
+        let mut state = StreamState::default();
+        let event = ev(json!({"candidates": [{"content": {"parts": [
+            {"functionCall": {"name": "a", "args": {}}},
+            {"functionCall": {"name": "b", "args": {}}}
+        ]}}]}));
+        let out = c.convert_stream_event(&event, &mut state);
+        let ids: Vec<String> = out
+            .iter()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|v| {
+                v["choices"][0]["delta"]["tool_calls"][0]["id"]
+                    .as_str()
+                    .map(String::from)
+            })
+            .collect();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1]);
+        assert_eq!(ids[0].rsplit_once('_').unwrap().0, ids[1].rsplit_once('_').unwrap().0);
+    }
+
+    #[test]
+    fn gemini_two_turns_both_call_0_resolve_names_positionally() {
+        let body = json!({
+            "model": "g",
+            "messages": [
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "call_0", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "call_0", "content": "{\"a\":1}"},
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "call_0", "type": "function", "function": {"name": "bash", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "call_0", "content": "{\"b\":2}"}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        let c = out["contents"].as_array().unwrap();
+        assert_eq!(c[1]["parts"][0]["functionResponse"]["name"], json!("read_file"));
+        assert_eq!(c[3]["parts"][0]["functionResponse"]["name"], json!("bash"));
+    }
+
+    #[test]
+    fn gemini_parallel_tool_results_merge_into_one_user_content() {
+        let body = json!({
+            "model": "g",
+            "messages": [
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "x1", "type": "function", "function": {"name": "a", "arguments": "{}"}},
+                    {"id": "x2", "type": "function", "function": {"name": "b", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "x1", "content": "{}"},
+                {"role": "tool", "tool_call_id": "x2", "content": "{}"},
+                {"role": "user", "content": "thanks"}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        let c = out["contents"].as_array().unwrap();
+        assert_eq!(c.len(), 3, "{c:?}");
+        let parts = c[1]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["functionResponse"]["name"], json!("a"));
+        assert_eq!(parts[1]["functionResponse"]["name"], json!("b"));
+        // The plain-text user message stays its own content.
+        assert_eq!(c[2]["parts"][0]["text"], json!("thanks"));
+    }
+
+    #[test]
+    fn gemini_nonstream_blocked_prompt_returns_error() {
+        let out = conv().convert_response(&json!({"promptFeedback": {"blockReason": "SAFETY"}}));
+        assert!(out["error"]["message"].as_str().unwrap().contains("SAFETY"));
+        assert!(out.get("choices").is_none());
+        let safety = conv().convert_response(&json!({"candidates": [{"finishReason": "SAFETY"}]}));
+        assert_eq!(safety["choices"][0]["finish_reason"], json!("content_filter"));
+        assert!(!safety["choices"][0]["message"]["content"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gemini_max_tokens_with_tool_call_is_length() {
+        let upstream = json!({
+            "candidates": [{
+                "content": {"parts": [{"functionCall": {"name": "getw", "args": {}}}]},
+                "finishReason": "MAX_TOKENS"
+            }]
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(out["choices"][0]["finish_reason"], json!("length"));
+    }
+
+    #[test]
     fn response_maps_function_call() {
         let upstream = json!({
             "candidates": [{
@@ -2453,7 +2813,8 @@ mod google_generate_content_tests {
         assert_eq!(choice["finish_reason"], json!("tool_calls"));
         assert_eq!(choice["message"]["content"], Value::Null);
         let tc = &choice["message"]["tool_calls"][0];
-        assert_eq!(tc["id"], json!("call_0"));
+        assert!(tc["id"].as_str().unwrap().starts_with("call_"));
+        assert!(tc["id"].as_str().unwrap().ends_with("_0"));
         assert_eq!(tc["function"]["name"], json!("getw"));
         assert_eq!(tc["function"]["arguments"], json!("{\"city\":\"NYC\"}"));
     }
@@ -2554,7 +2915,8 @@ mod google_generate_content_tests {
         let tool: Value = serde_json::from_str(&out[1]).unwrap();
         let tc = &tool["choices"][0]["delta"]["tool_calls"][0];
         assert_eq!(tc["index"], json!(0));
-        assert_eq!(tc["id"], json!("call_0"));
+        assert!(tc["id"].as_str().unwrap().starts_with("call_"));
+        assert!(tc["id"].as_str().unwrap().ends_with("_0"));
         assert_eq!(tc["function"]["name"], json!("getw"));
         assert_eq!(tc["function"]["arguments"], json!("{\"x\":1}"));
         let finish: Value = serde_json::from_str(&out[2]).unwrap();
@@ -2942,6 +3304,19 @@ mod anthropic_messages_tests {
     }
 
     #[test]
+    fn anthropic_max_tokens_with_tool_use_is_length() {
+        let upstream = json!({
+            "id": "msg_1",
+            "model": "claude-sonnet-4",
+            "content": [{"type": "tool_use", "id": "tu_1", "name": "f", "input": {}}],
+            "stop_reason": "max_tokens",
+            "usage": {"input_tokens": 1, "output_tokens": 1}
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(out["choices"][0]["finish_reason"], json!("length"));
+    }
+
+    #[test]
     fn response_maps_text_thinking_tool_use_and_usage() {
         let upstream = json!({
             "id": "msg_1",
@@ -3081,5 +3456,122 @@ mod anthropic_messages_tests {
         let atc = &arg_chunk["choices"][0]["delta"]["tool_calls"][0];
         assert_eq!(atc["index"], json!(0));
         assert_eq!(atc["function"]["arguments"], json!("{\"a\""));
+    }
+
+    #[test]
+    fn anthropic_thinking_budget_and_sampling_removed() {
+        let body = json!({
+            "model": "claude-sonnet-4-6",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 2000,
+            "reasoning_effort": "high",
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "stop": "END",
+            "parallel_tool_calls": false,
+            "tools": [{"type": "function", "function": {"name": "f", "parameters": {}}}]
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(
+            out["thinking"],
+            json!({"type": "enabled", "budget_tokens": 8192})
+        );
+        assert!(out["max_tokens"].as_i64().unwrap() > 8192);
+        assert!(out.get("temperature").is_none());
+        assert!(out.get("top_p").is_none());
+        assert!(out.get("top_k").is_none());
+        assert_eq!(out["stop_sequences"], json!(["END"]));
+        assert_eq!(
+            out["tool_choice"],
+            json!({"type": "auto", "disable_parallel_tool_use": true})
+        );
+
+        let plain = json!({"model": "claude-sonnet-4-6", "messages": [], "top_k": 40});
+        let out = conv().convert_request(&plain);
+        assert!(out.get("thinking").is_none());
+        assert_eq!(out["top_k"], json!(40));
+        assert_eq!(out["max_tokens"], json!(ANTHROPIC_DEFAULT_MAX_TOKENS));
+    }
+
+    #[test]
+    fn anthropic_empty_user_message_has_no_empty_block() {
+        let with_image = json!({
+            "model": "claude-sonnet-4-6",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": ""},
+                {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}}
+            ]}]
+        });
+        let out = conv().convert_request(&with_image);
+        let blocks = out["messages"][0]["content"].as_array().unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], json!("image"));
+
+        let empty =
+            json!({"model": "claude-sonnet-4-6", "messages": [{"role": "user", "content": ""}]});
+        let out = conv().convert_request(&empty);
+        let blocks = out["messages"][0]["content"].as_array().unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_ne!(blocks[0]["text"], json!(""));
+    }
+
+    #[test]
+    fn responses_response_format_to_text_format() {
+        let body = json!({
+            "model": "gpt-5",
+            "messages": [],
+            "parallel_tool_calls": false,
+            "response_format": {"type": "json_schema", "json_schema": {
+                "name": "out", "schema": {"type": "object"}, "strict": true
+            }}
+        });
+        let out = OpenAIResponsesConverter::new().convert_request(&body);
+        assert_eq!(
+            out["text"],
+            json!({"format": {"type": "json_schema", "name": "out", "schema": {"type": "object"}, "strict": true}})
+        );
+        assert_eq!(out["parallel_tool_calls"], json!(false));
+    }
+
+    #[test]
+    fn gemini_stop_to_stop_sequences() {
+        let body = json!({
+            "model": "gemini-2.5-pro",
+            "messages": [],
+            "stop": ["a", "b"],
+            "seed": 7,
+            "presence_penalty": 0.5,
+            "response_format": {"type": "json_schema", "json_schema": {
+                "schema": {"type": "object", "additionalProperties": false,
+                           "properties": {"x": {"type": "string"}}}
+            }}
+        });
+        let out = GoogleGenerateContentConverter::new().convert_request(&body);
+        let cfg = &out["generationConfig"];
+        assert_eq!(cfg["stopSequences"], json!(["a", "b"]));
+        assert_eq!(cfg["seed"], json!(7));
+        assert_eq!(cfg["presencePenalty"], json!(0.5));
+        assert_eq!(cfg["responseMimeType"], json!("application/json"));
+        assert!(cfg["responseSchema"].get("additionalProperties").is_none());
+        assert_eq!(
+            cfg["responseSchema"]["properties"]["x"]["type"],
+            json!("string")
+        );
+    }
+
+    #[test]
+    fn unsupported_field_table_per_converter() {
+        let body =
+            json!({"stop": "x", "seed": 1, "n": 2, "response_format": {"type": "json_object"}});
+        assert_eq!(
+            unmapped_params(&body, RESPONSES_MAPPED),
+            vec!["n", "seed", "stop"]
+        );
+        assert_eq!(unmapped_params(&body, GEMINI_MAPPED), vec!["n"]);
+        assert_eq!(
+            unmapped_params(&body, ANTHROPIC_MAPPED),
+            vec!["n", "seed", "response_format"]
+        );
     }
 }

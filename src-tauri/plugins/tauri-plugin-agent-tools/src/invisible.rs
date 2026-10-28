@@ -8,7 +8,9 @@
 //! The same set and the same rule live in `web-app/src/lib/invisibleText.ts`;
 //! both are tested against `tests/fixtures/invisible-unicode.json`, so they
 //! cannot drift apart. A zero-width joiner is in the set, so emoji sequences
-//! joined with one lose the joiner and show as separate emoji.
+//! joined with one lose the joiner and show as separate emoji. Variation
+//! selectors are stripped too, except FE0E/FE0F (text/emoji presentation), so
+//! an emoji keeps its look while a hidden payload in selectors is removed.
 
 /// Whether `c` is stripped. A leading U+FEFF is handled by [`strip`].
 pub fn is_invisible(c: char) -> bool {
@@ -20,6 +22,15 @@ pub fn is_invisible(c: char) -> bool {
             | 0x200B..=0x200F
             | 0x2060..=0x2064
             | 0xFEFF
+            // Variation selectors carry a hidden payload one bit at a time.
+            // FE0E and FE0F are left alone: they pick text or emoji
+            // presentation and stripping them changes what an emoji looks like.
+            | 0xFE00..=0xFE0D
+            | 0xE0100..=0xE01EF
+            // Soft hyphen, Arabic letter mark, Mongolian vowel separator.
+            | 0x00AD
+            | 0x061C
+            | 0x180E
     )
 }
 

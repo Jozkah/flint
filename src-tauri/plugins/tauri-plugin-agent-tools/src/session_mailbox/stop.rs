@@ -495,7 +495,7 @@ pub(super) async fn run_stop_tool(
     };
     Ok(serde_json::json!({
         "request_id": outcome.id,
-        "target": { "session_id": outcome.to.session_id, "display_name": outcome.to.display_name },
+        "target": { "session_id": outcome.to.session_id, "display_name": crate::control_tags::neutralize(&outcome.to.display_name).0 },
         "status": outcome.status.as_str(),
         "note": note,
     }))

@@ -18,18 +18,6 @@
     "hardware:allow-get-system-usage",
     "hardware:allow-get-system-snapshot",
     "llamacpp:allow-read-gguf-metadata",
-    "deep-link:allow-get-current",
-    {
-      "identifier": "http:default",
-      "allow": [
-        {
-          "url": "https://*:*"
-        },
-        {
-          "url": "http://*:*"
-        }
-      ],
-      "deny": []
-    }
+    "deep-link:allow-get-current"
   ]
 }

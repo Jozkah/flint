@@ -206,6 +206,15 @@ impl RunningServiceEnum {
         }
     }
 
+    /// A cloneable handle to the connection, so a caller can drop the servers
+    /// lock before it talks to the server.
+    pub fn peer(&self) -> rmcp::Peer<rmcp::RoleClient> {
+        match self {
+            Self::NoInit(s) => s.peer().clone(),
+            Self::WithInit(s) => s.peer().clone(),
+        }
+    }
+
     /// The peer's handshake info: what the server said it implements. Read by
     /// the `/mcp` detail screen for its capabilities and version lines.
     pub fn peer_info(&self) -> Option<rmcp::model::ServerPeerInfo> {

@@ -322,6 +322,11 @@ enum Commands {
         /// rate-limiting sign-in. Off by default
         #[arg(long)]
         trust_proxy: bool,
+        /// Replace the administrator credential (ending every browser
+        /// session), print the new one and exit. Only while the server is
+        /// stopped
+        #[arg(long)]
+        rotate_credential: bool,
     },
     /// Stop the `flint serve` running on this data folder
     Stop {
@@ -1004,6 +1009,20 @@ struct ProviderArgs {
     /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY)
     #[arg(long)]
     api_key: Option<String>,
+    /// Read the API key from a file instead of the command line (trailing whitespace is dropped)
+    #[arg(long, value_name = "PATH", conflicts_with = "api_key")]
+    api_key_file: Option<std::path::PathBuf>,
+}
+
+/// The key stored in `path`, trimmed. An empty file is an error rather than an
+/// empty key.
+fn read_api_key_file(path: &std::path::Path) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("--api-key-file {}: {e}", path.display()))?;
+    let key = raw.trim();
+    if key.is_empty() {
+        return Err(format!("--api-key-file {} is empty", path.display()));
+    }
+    Ok(key.to_string())
 }
 
 impl ProviderArgs {
@@ -1014,9 +1033,23 @@ impl ProviderArgs {
         let provider = self
             .provider
             .or_else(|| app_lib::core::cli::providers::desktop_selection().provider);
+        let api_key = match (self.api_key, self.api_key_file) {
+            (Some(key), _) => {
+                eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file or JAN_API_KEY");
+                Some(key)
+            }
+            (None, Some(path)) => match read_api_key_file(&path) {
+                Ok(key) => Some(key),
+                Err(message) => {
+                    eprintln!("{message}");
+                    std::process::exit(2);
+                }
+            },
+            (None, None) => None,
+        };
         ProviderOverrides {
             provider,
-            api_key: self.api_key,
+            api_key,
             pin,
         }
         .with_env()
@@ -1579,8 +1612,10 @@ enum JobCommands {
         id: String,
         #[arg(long)]
         owner: String,
+        /// Normally absent: the token arrives on stdin so it is not on the
+        /// command line. Kept for callers that still pass it.
         #[arg(long)]
-        token: String,
+        token: Option<String>,
         /// A line the host shell runs
         #[arg(long, conflicts_with = "argv_json")]
         command: Option<String>,
@@ -2234,7 +2269,13 @@ fn resolve_json_schema(arg: &str) -> Result<serde_json::Value, String> {
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
 /// stopping at `--` so a task text can never be mistaken for it.
 fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
-    let mut args = args.take_while(|a| a != "--");
+    let args: Vec<String> = args.take_while(|a| a != "--").collect();
+    // Another command's own `--data-dir` (or a task text naming one) must not
+    // move the data folder, so only `serve` and `stop` are looked at.
+    if !matches!(args.iter().find(|a| !a.starts_with('-')).map(String::as_str), Some("serve" | "stop")) {
+        return None;
+    }
+    let mut args = args.into_iter();
     let mut found = None;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
@@ -2243,7 +2284,8 @@ fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
             found = Some(v.to_string());
         }
     }
-    found.filter(|v| !v.is_empty())
+    // A value shaped like a flag is the next option, not a directory.
+    found.filter(|v| !v.is_empty() && !v.starts_with('-'))
 }
 
 /// Whether a panic message is the standard library giving up on a write to
@@ -2364,7 +2406,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential } => {
             // `--data-dir` was applied in `main`, before any thread started.
             let _ = data_dir;
             let assets = assets_dir.unwrap_or_else(|| {
@@ -2374,6 +2416,29 @@ async fn run() {
                     .unwrap_or_else(|| std::path::PathBuf::from("web"))
             });
             let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+            if rotate_credential {
+                if app_lib::core::web_server::control::running(&data_folder).is_some() {
+                    eprintln!("Error: a Flint server is running on this data folder; stop it with `flint stop`, then rotate the credential.");
+                    std::process::exit(1);
+                }
+                let auth_file = data_folder.join("web-server").join("auth.json");
+                let result = app_lib::core::web_server::auth::AuthStore::open(auth_file)
+                    .and_then(|(mut store, created)| match created {
+                        Some(credential) => Ok(credential),
+                        None => store.rotate(),
+                    });
+                match result {
+                    Ok(credential) => {
+                        println!("New administrator credential: {credential}");
+                        println!("Store this credential securely; it is shown only once. Every browser session was signed out.");
+                        return;
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             if background {
                 // The same command again, without the flag, detached.
                 let args: Vec<String> = std::env::args()
@@ -2444,6 +2509,10 @@ async fn run() {
                 }
                 Ok(app_lib::core::web_server::control::Stopped::NotRunning) => {
                     println!("No Flint server is running on {}.", data_folder.display())
+                }
+                Ok(app_lib::core::web_server::control::Stopped::Foreign) => {
+                    eprintln!("Something else is using the recorded server address and did not accept the stop request; nothing was ended.");
+                    std::process::exit(1);
                 }
                 Err(error) => {
                     eprintln!("Error: {error}");
@@ -3126,19 +3195,29 @@ fn handle_job(cmd: JobCommands) {
             token,
             command,
             argv_json,
-        } => match (command, argv_json) {
+        } => {
+            let token = match token {
+                Some(t) => t,
+                None => {
+                    let mut line = String::new();
+                    let _ = std::io::stdin().read_line(&mut line);
+                    line.trim().to_string()
+                }
+            };
+            match (command, argv_json) {
             (_, Some(argv)) => worker::supervise_argv(std::path::Path::new(&data), &id, &owner, &token, &argv),
             (Some(command), None) => worker::supervise(std::path::Path::new(&data), &id, &owner, &token, &command),
             (None, None) => Err(HarnessError::new(
                 tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
                 "a job needs --command or --argv-json",
             )),
-        }
+            }
             .map(|state| {
                 // Nothing is printed on the happy path: the supervisor has no
                 // console, and what it has to say is in the record.
                 let _ = state;
-            }),
+            })
+        }
     };
     if let Err(e) = result {
         eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
@@ -5038,6 +5117,27 @@ mod tests {
         assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "D"])).as_deref(), Some("D"));
         assert_eq!(super::pre_parse_data_dir(args(&["stop", "--data-dir=E"])).as_deref(), Some("E"));
         assert_eq!(super::pre_parse_data_dir(args(&["x", "--", "--data-dir", "D"])), None);
+    }
+
+    #[test]
+    fn api_key_file_reads_trimmed() {
+        let path = std::env::temp_dir().join(format!("flint_key_{}.txt", std::process::id()));
+        std::fs::write(&path, "sk-test-123
+").unwrap();
+        assert_eq!(super::read_api_key_file(&path).as_deref(), Ok("sk-test-123"));
+        std::fs::write(&path, "  
+").unwrap();
+        assert!(super::read_api_key_file(&path).is_err());
+        let _ = std::fs::remove_file(&path);
+        assert!(super::read_api_key_file(&path).is_err());
+    }
+
+    #[test]
+    fn pre_parse_data_dir_only_for_serve_and_stop() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter();
+        assert_eq!(super::pre_parse_data_dir(args(&["mcp", "add", "--data-dir", "D"])), None);
+        assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "--listen"])), None);
+        assert_eq!(super::pre_parse_data_dir(args(&["--safe-mode", "serve", "--data-dir", "D"])).as_deref(), Some("D"));
     }
 
     /// A closed stdout/stderr pipe is recognised; nothing else is.

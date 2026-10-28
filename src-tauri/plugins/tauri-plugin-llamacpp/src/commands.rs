@@ -91,15 +91,98 @@ fn into_string_error(err: LlamacppError) -> String {
     serde_json::to_string(&err).unwrap_or(err.message)
 }
 
-async fn http_client() -> Result<reqwest::Client, String> {
-    // The engine is on loopback: a system or environment proxy (a VPN client,
-    // a corporate proxy) must never carry these requests. Never falls back to
-    // `reqwest::Client::new()`, which has no timeout and honours the proxy.
-    reqwest::Client::builder()
-        .timeout(MODEL_LOAD_TIMEOUT)
+/// Per-request limit for everything that is not the load itself: readiness
+/// and unload polls, listings, the unload POST. A busy worker may be slow on
+/// `/models` during a load, so this matches `BUSY_MODELS_TIMEOUT`.
+const POLL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Connect limit for the long-lived `/models/sse` stream, which has no total
+/// timeout because it is open for as long as the load runs.
+const SSE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Consecutive 5xx / stalled polls tolerated before a poll loop gives up.
+const MAX_TRANSIENT_POLL_FAILURES: u32 = 3;
+
+/// The engine is on loopback: a system or environment proxy (a VPN client,
+/// a corporate proxy) must never carry these requests. Never falls back to
+/// `reqwest::Client::new()`, which has no timeout and honours the proxy.
+fn build_client(builder: reqwest::ClientBuilder) -> Result<reqwest::Client, String> {
+    builder
         .no_proxy()
         .build()
         .map_err(|e| format!("could not build an HTTP client for the engine: {e}"))
+}
+
+/// Long client: only for `POST /models/load`, which the engine answers once
+/// the load has finished.
+async fn http_client() -> Result<reqwest::Client, String> {
+    build_client(reqwest::Client::builder().timeout(MODEL_LOAD_TIMEOUT))
+}
+
+/// Short client for polls, listings and the unload POST.
+async fn poll_client(timeout: Duration) -> Result<reqwest::Client, String> {
+    build_client(reqwest::Client::builder().timeout(timeout))
+}
+
+/// SSE client: connect timeout only, the stream itself is unbounded.
+async fn sse_client() -> Result<reqwest::Client, String> {
+    build_client(reqwest::Client::builder().connect_timeout(SSE_CONNECT_TIMEOUT))
+}
+
+/// How a `/models` poll response status should be treated.
+#[derive(Debug, PartialEq)]
+enum PollStatus {
+    Ok,
+    /// Worth another try (5xx and the like), up to `MAX_TRANSIENT_POLL_FAILURES`.
+    Transient,
+    /// Retrying cannot help (bad key, wrong endpoint).
+    Fatal,
+}
+
+fn classify_poll_status(status: u16) -> PollStatus {
+    match status {
+        200..=299 => PollStatus::Ok,
+        401 | 403 | 404 => PollStatus::Fatal,
+        _ => PollStatus::Transient,
+    }
+}
+
+/// Result of one `GET /models`.
+enum ModelsFetch {
+    /// A valid 2xx answer with a `data` array.
+    Models(Vec<serde_json::Value>),
+    Retry(String),
+    Fatal(String),
+    /// Could not reach the engine at all (maybe a dead worker).
+    Unreachable(String),
+}
+
+async fn fetch_models(client: &reqwest::Client, url: &str, api_key: &str) -> ModelsFetch {
+    let resp = match client.get(url).bearer_auth(api_key).send().await {
+        Ok(r) => r,
+        Err(e) if e.is_timeout() => return ModelsFetch::Retry(format!("request timed out: {e}")),
+        Err(e) => return ModelsFetch::Unreachable(e.to_string()),
+    };
+    let status = resp.status();
+    match classify_poll_status(status.as_u16()) {
+        PollStatus::Ok => {}
+        PollStatus::Transient => return ModelsFetch::Retry(format!("engine answered {status}")),
+        PollStatus::Fatal => return ModelsFetch::Fatal(format!("engine answered {status}")),
+    }
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(e) if e.is_timeout() => return ModelsFetch::Retry(format!("request timed out: {e}")),
+        Err(e) => return ModelsFetch::Fatal(format!("Invalid JSON from /models: {e}")),
+    };
+    match json.get("data").and_then(|d| d.as_array()) {
+        Some(arr) => ModelsFetch::Models(arr.clone()),
+        None => ModelsFetch::Fatal("/models answer has no `data` array".into()),
+    }
+}
+
+fn find_entry<'a>(list: &'a [serde_json::Value], model_id: &str) -> Option<&'a serde_json::Value> {
+    list.iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(model_id))
 }
 
 fn client_error(message: String) -> ServerError {
@@ -134,17 +217,23 @@ pub struct LoadProgressPayload {
 /// simply skip the block.
 fn parse_load_progress_event(block: &str, model_id: &str) -> Option<LoadProgressPayload> {
     for line in block.lines() {
-        let data = line
-            .strip_prefix("data: ")
-            .or_else(|| line.strip_prefix("data:"))?;
-        let json: serde_json::Value = serde_json::from_str(data).ok()?;
+        // Comments (`: keepalive`), blank lines and other fields are not data;
+        // skip them rather than ending the scan of the block.
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(data.trim_start()) else {
+            continue;
+        };
         if json.get("model").and_then(|v| v.as_str()) != Some(model_id) {
             continue;
         }
         if json.get("event").and_then(|v| v.as_str()) != Some("status_change") {
             continue;
         }
-        let progress = json.get("data").and_then(|d| d.get("progress"))?;
+        let Some(progress) = json.get("data").and_then(|d| d.get("progress")) else {
+            continue;
+        };
         if progress.is_null() {
             continue;
         }
@@ -188,20 +277,27 @@ enum LoadStatusChange {
 
 fn parse_load_status_change(block: &str, model_id: &str) -> Option<LoadStatusChange> {
     for line in block.lines() {
-        let data = line
-            .strip_prefix("data: ")
-            .or_else(|| line.strip_prefix("data:"))?;
-        let json: serde_json::Value = serde_json::from_str(data).ok()?;
+        // Comments (`: keepalive`), blank lines and other fields are not data;
+        // skip them rather than ending the scan of the block.
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(data.trim_start()) else {
+            continue;
+        };
         if json.get("model").and_then(|v| v.as_str()) != Some(model_id) {
             continue;
         }
         if json.get("event").and_then(|v| v.as_str()) != Some("status_change") {
             continue;
         }
-        let status = json
+        let Some(status) = json
             .get("data")
             .and_then(|d| d.get("status"))
-            .and_then(|v| v.as_str())?;
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
         return match status {
             "loading" => Some(LoadStatusChange::Loading),
             "loaded" => Some(LoadStatusChange::Loaded),
@@ -252,7 +348,7 @@ fn spawn_load_progress_listener<S: ProgressSink>(
             }
         };
 
-        let client = match http_client().await {
+        let client = match sse_client().await {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("model load progress: {e}");
@@ -528,75 +624,99 @@ async fn wait_until_loaded(
     model_id: &str,
     timeout: Duration,
 ) -> ServerResult<()> {
-    let client = http_client().await.map_err(client_error)?;
+    wait_until_loaded_with(state, port, api_key, model_id, timeout, POLL_TIMEOUT).await
+}
+
+fn load_timed_out(model_id: &str, timeout: Duration) -> ServerError {
+    ServerError::Llamacpp(LlamacppError::new(
+        ErrorCode::ModelLoadTimedOut,
+        format!("Timed out waiting for model {} to load", model_id),
+        Some(format!("waited {:?}", timeout)),
+    ))
+}
+
+async fn wait_until_loaded_with(
+    state: &LlamacppState,
+    port: u16,
+    api_key: &str,
+    model_id: &str,
+    timeout: Duration,
+    poll_timeout: Duration,
+) -> ServerResult<()> {
+    let client = poll_client(poll_timeout).await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models", port);
     let start = std::time::Instant::now();
     let poll_interval = Duration::from_millis(250);
     let mut saw_loading = false;
+    let mut transient = 0u32;
 
     loop {
-        // A worker that dies mid-load (a GPU init crash, antivirus) surfaces
-        // here, as the next poll failing to connect.
-        let resp = match client.get(&url).bearer_auth(api_key).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                let err = match dead_worker_error(state, port).await {
-                    Some(err) => err,
-                    None => LlamacppError::new(
-                        ErrorCode::InternalError,
-                        "Failed to poll router /models".into(),
-                        Some(e.to_string()),
-                    ),
-                };
-                return Err(ServerError::Llamacpp(err));
-            }
+        // The overall deadline holds even if a request stalls.
+        let remaining = timeout.saturating_sub(start.elapsed());
+        let fetched = match tokio::time::timeout(
+            remaining.max(Duration::from_millis(1)),
+            fetch_models(&client, &url, api_key),
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(_) => return Err(load_timed_out(model_id, timeout)),
         };
 
-        let json: serde_json::Value = resp.json().await.map_err(|e| {
-            ServerError::Llamacpp(LlamacppError::new(
-                ErrorCode::InternalError,
-                "Invalid JSON from /models".into(),
-                Some(e.to_string()),
-            ))
-        })?;
-
-        let entry = json
-            .get("data")
-            .and_then(|d| d.as_array())
-            .and_then(|arr| {
-                arr.iter()
-                    .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(model_id))
-            });
-
-        match evaluate_load_poll(
-            entry,
-            &mut saw_loading,
-            start.elapsed() >= STALE_FAILURE_GRACE,
-        ) {
-            LoadPoll::Loaded => return Ok(()),
-            LoadPoll::Pending => {}
-            LoadPoll::Failed { exit_code } => {
-                return Err(ServerError::Llamacpp(LlamacppError::new(
-                    ErrorCode::ModelLoadFailed,
-                    format!("Model {} failed to load", model_id),
-                    Some(format!("exit_code={:?}", exit_code)),
-                )));
+        match fetched {
+            ModelsFetch::Models(list) => {
+                transient = 0;
+                match evaluate_load_poll(
+                    find_entry(&list, model_id),
+                    &mut saw_loading,
+                    start.elapsed() >= STALE_FAILURE_GRACE,
+                ) {
+                    LoadPoll::Loaded => return Ok(()),
+                    LoadPoll::Pending => {}
+                    LoadPoll::Failed { exit_code } => {
+                        return Err(ServerError::Llamacpp(LlamacppError::new(
+                            ErrorCode::ModelLoadFailed,
+                            format!("Model {} failed to load", model_id),
+                            Some(format!("exit_code={:?}", exit_code)),
+                        )));
+                    }
+                }
+            }
+            ModelsFetch::Retry(msg) => {
+                transient += 1;
+                if transient > MAX_TRANSIENT_POLL_FAILURES {
+                    return Err(poll_failure(state, port, msg).await);
+                }
+            }
+            // A worker that dies mid-load (a GPU init crash, antivirus)
+            // surfaces here, as the next poll failing to connect.
+            ModelsFetch::Unreachable(msg) | ModelsFetch::Fatal(msg) => {
+                return Err(poll_failure(state, port, msg).await);
             }
         }
 
         if start.elapsed() >= timeout {
-            return Err(ServerError::Llamacpp(LlamacppError::new(
-                ErrorCode::ModelLoadTimedOut,
-                format!("Timed out waiting for model {} to load", model_id),
-                Some(format!("waited {:?}", timeout)),
-            )));
+            return Err(load_timed_out(model_id, timeout));
         }
         tokio::time::sleep(poll_interval).await;
     }
 }
 
+/// The error for a poll that cannot continue: the dead worker's own account
+/// when it exited, else the poll failure.
+async fn poll_failure(state: &LlamacppState, port: u16, msg: String) -> ServerError {
+    ServerError::Llamacpp(match dead_worker_error(state, port).await {
+        Some(err) => err,
+        None => LlamacppError::new(
+            ErrorCode::InternalError,
+            "Failed to poll router /models".into(),
+            Some(msg),
+        ),
+    })
+}
+
 async fn post_unload(port: u16, api_key: &str, model_id: &str) -> Result<(), String> {
-    let client = http_client().await?;
+    let client = poll_client(POLL_TIMEOUT).await?;
     let url = format!("http://127.0.0.1:{}/models/unload", port);
     let resp = client
         .post(&url)
@@ -625,60 +745,81 @@ async fn wait_until_unloaded(
     model_id: &str,
     timeout: Duration,
 ) -> ServerResult<()> {
-    let client = http_client().await.map_err(client_error)?;
+    wait_until_unloaded_with(port, api_key, model_id, timeout, POLL_TIMEOUT).await
+}
+
+fn unload_timed_out(model_id: &str, timeout: Duration) -> ServerError {
+    ServerError::Llamacpp(LlamacppError::new(
+        ErrorCode::InternalError,
+        format!("Timed out waiting for model {} to unload", model_id),
+        Some(format!("waited {:?}", timeout)),
+    ))
+}
+
+async fn wait_until_unloaded_with(
+    port: u16,
+    api_key: &str,
+    model_id: &str,
+    timeout: Duration,
+    poll_timeout: Duration,
+) -> ServerResult<()> {
+    let client = poll_client(poll_timeout).await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models", port);
     let start = std::time::Instant::now();
     let poll_interval = Duration::from_millis(250);
+    let mut transient = 0u32;
 
     loop {
-        let resp = client
-            .get(&url)
-            .bearer_auth(api_key)
-            .send()
-            .await
-            .map_err(|e| {
-                ServerError::Llamacpp(LlamacppError::new(
-                    ErrorCode::InternalError,
-                    "Failed to poll router /models".into(),
-                    Some(e.to_string()),
-                ))
-            })?;
-        let json: serde_json::Value = resp.json().await.map_err(|e| {
-            ServerError::Llamacpp(LlamacppError::new(
-                ErrorCode::InternalError,
-                "Invalid JSON from /models".into(),
-                Some(e.to_string()),
-            ))
-        })?;
+        let remaining = timeout.saturating_sub(start.elapsed());
+        let fetched = match tokio::time::timeout(
+            remaining.max(Duration::from_millis(1)),
+            fetch_models(&client, &url, api_key),
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(_) => return Err(unload_timed_out(model_id, timeout)),
+        };
 
-        let entry = json
-            .get("data")
-            .and_then(|d| d.as_array())
-            .and_then(|arr| {
-                arr.iter()
-                    .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(model_id))
-            });
-
-        // No entry at all → treat as unloaded.
-        let still_loaded = entry
-            .and_then(|e| e.get("status"))
-            .and_then(|s| s.get("value"))
-            .and_then(|v| v.as_str())
-            .map(|v| matches!(v, "loaded" | "loading"))
-            .unwrap_or(false);
-        if !still_loaded {
-            return Ok(());
+        match fetched {
+            ModelsFetch::Models(list) => {
+                transient = 0;
+                // Absent from a valid 2xx list counts as unloaded; nothing
+                // else does.
+                let still_loaded = find_entry(&list, model_id)
+                    .and_then(|e| e.get("status"))
+                    .and_then(|s| s.get("value"))
+                    .and_then(|v| v.as_str())
+                    .map(|v| matches!(v, "loaded" | "loading"))
+                    .unwrap_or(false);
+                if !still_loaded {
+                    return Ok(());
+                }
+            }
+            ModelsFetch::Retry(msg) => {
+                transient += 1;
+                if transient > MAX_TRANSIENT_POLL_FAILURES {
+                    return Err(unload_poll_error(msg));
+                }
+            }
+            ModelsFetch::Unreachable(msg) | ModelsFetch::Fatal(msg) => {
+                return Err(unload_poll_error(msg));
+            }
         }
 
         if start.elapsed() >= timeout {
-            return Err(ServerError::Llamacpp(LlamacppError::new(
-                ErrorCode::InternalError,
-                format!("Timed out waiting for model {} to unload", model_id),
-                Some(format!("waited {:?}", timeout)),
-            )));
+            return Err(unload_timed_out(model_id, timeout));
         }
         tokio::time::sleep(poll_interval).await;
     }
+}
+
+fn unload_poll_error(msg: String) -> ServerError {
+    ServerError::Llamacpp(LlamacppError::new(
+        ErrorCode::InternalError,
+        "Failed to poll router /models".into(),
+        Some(msg),
+    ))
 }
 
 async fn engine_loaded_model_ids(
@@ -689,7 +830,7 @@ async fn engine_loaded_model_ids(
     // Router-aware listing: `/models` (not `/v1/models`, which is OAI-compat
     // and returns a single element). Each entry has a `status` object whose
     // `value` is one of "loaded" / "loading" / "unloaded" / "sleeping".
-    let client = http_client().await?;
+    let client = poll_client(POLL_TIMEOUT).await?;
     let url = format!("http://127.0.0.1:{}/models", port);
     // The first request of every model start (the frontend asks what is loaded
     // before loading), so a dead worker is reported from here more often than
@@ -714,7 +855,7 @@ async fn engine_loaded_model_ids(
         .get("data")
         .and_then(|d| d.as_array())
         .cloned()
-        .unwrap_or_default();
+        .ok_or_else(|| "/models answer has no `data` array".to_string())?;
     let mut ids = Vec::new();
     for m in &data {
         let Some(id) = m.get("id").and_then(|v| v.as_str()) else {
@@ -1371,5 +1512,130 @@ mod sse_contract_tests {
     fn a_progress_transition_for_another_model_is_ignored() {
         let status = Transition::LoadProgress(serde_json::json!({ "value": 0.5 }));
         assert!(parse_load_progress_event(&frame("other", status), "m").is_none());
+    }
+}
+
+#[cfg(test)]
+mod poll_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Stub engine: answers every request with `response`, or never when it is
+    /// `None` (reads the request, then stalls).
+    async fn stub(response: Option<&'static str>) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else { return };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = sock.read(&mut buf).await;
+                    match response {
+                        Some(r) => {
+                            let _ = sock.write_all(r.as_bytes()).await;
+                            let _ = sock.shutdown().await;
+                        }
+                        None => tokio::time::sleep(Duration::from_secs(60)).await,
+                    }
+                });
+            }
+        });
+        port
+    }
+
+    const R401: &str =
+        "HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+    const R503: &str =
+        "HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+    const R500_LIST: &str =
+        "HTTP/1.1 500 Internal Server Error\r\ncontent-length: 11\r\nconnection: close\r\n\r\n{\"data\":[]}";
+
+    #[test]
+    fn poll_status_classes() {
+        assert_eq!(classify_poll_status(200), PollStatus::Ok);
+        assert_eq!(classify_poll_status(401), PollStatus::Fatal);
+        assert_eq!(classify_poll_status(403), PollStatus::Fatal);
+        assert_eq!(classify_poll_status(404), PollStatus::Fatal);
+        assert_eq!(classify_poll_status(503), PollStatus::Transient);
+    }
+
+    #[tokio::test]
+    async fn load_poll_fails_fast_on_401() {
+        let port = stub(Some(R401)).await;
+        let state = LlamacppState::default();
+        let start = std::time::Instant::now();
+        let r = wait_until_loaded_with(
+            &state, port, "k", "m", Duration::from_secs(30), Duration::from_secs(2),
+        )
+        .await;
+        assert!(r.is_err());
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn load_poll_gives_up_after_repeated_5xx() {
+        let port = stub(Some(R503)).await;
+        let state = LlamacppState::default();
+        let start = std::time::Instant::now();
+        let r = wait_until_loaded_with(
+            &state, port, "k", "m", Duration::from_secs(30), Duration::from_secs(2),
+        )
+        .await;
+        assert!(r.is_err());
+        assert!(start.elapsed() < Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn unload_poll_error_status_not_treated_as_unloaded() {
+        // A 500 whose body parses as an empty list must not count as unloaded.
+        let port = stub(Some(R500_LIST)).await;
+        let r = wait_until_unloaded_with(
+            port, "k", "m", Duration::from_secs(30), Duration::from_secs(2),
+        )
+        .await;
+        assert!(r.is_err());
+        let port = stub(Some(R401)).await;
+        let r = wait_until_unloaded_with(
+            port, "k", "m", Duration::from_secs(30), Duration::from_secs(2),
+        )
+        .await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn poll_times_out_when_server_stalls() {
+        let port = stub(None).await;
+        let state = LlamacppState::default();
+        let start = std::time::Instant::now();
+        let r = wait_until_loaded_with(
+            &state, port, "k", "m", Duration::from_millis(600), Duration::from_millis(200),
+        )
+        .await;
+        assert!(r.is_err());
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+}
+
+#[cfg(test)]
+mod sse_skip_tests {
+    use super::*;
+
+    #[test]
+    fn status_change_skips_comment_and_blank_lines() {
+        let b = "\n: keepalive\nevent: x\ndata: {\"model\":\"m\",\"event\":\"status_change\",\"data\":{\"status\":\"loaded\"}}\n\n";
+        assert_eq!(parse_load_status_change(b, "m"), Some(LoadStatusChange::Loaded));
+    }
+
+    #[test]
+    fn status_change_skips_malformed_data_line() {
+        let b = "data: nope\ndata:{\"model\":\"m\",\"event\":\"status_change\",\"data\":{\"status\":\"loading\"}}\n\n";
+        assert_eq!(parse_load_status_change(b, "m"), Some(LoadStatusChange::Loading));
+    }
+
+    #[test]
+    fn progress_skips_comment_lines() {
+        let b = ": ping\ndata: {\"model\":\"m\",\"event\":\"status_change\",\"data\":{\"progress\":{\"value\":0.5}}}\n\n";
+        assert!(parse_load_progress_event(b, "m").is_some());
     }
 }

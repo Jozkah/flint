@@ -10,6 +10,7 @@
  * Nothing here invents intent. A reason is shown only when the caller has one
  * (`taskContext`); otherwise the prompt says what the call does, not why.
  */
+import { REDACTED, namesASecret, redactSecrets } from '@/lib/redact'
 import { isPlainObject, parseToolInput } from '@/lib/toolInputSummary'
 import {
   ALWAYS_ASK_TOOLS,
@@ -174,85 +175,11 @@ export const MAX_RESOURCE_LENGTH = 160
 const MAX_ARG_STRING_LENGTH = 500
 const MAX_ARGUMENTS_JSON_LENGTH = 4000
 const MAX_RESOURCES = 20
-export const REDACTED = '[redacted]'
+export { REDACTED, namesASecret, redactSecrets }
 
 // ---------------------------------------------------------------------------
 // Sanitizing
 // ---------------------------------------------------------------------------
-
-/** Key names that mark a value as a credential. Mirrors `audit.rs`. */
-const SECRET_KEY_PARTS = [
-  'password',
-  'passwd',
-  'secret',
-  'token',
-  'apikey',
-  'api_key',
-  'api-key',
-  'authorization',
-  'auth',
-  'credential',
-  'private_key',
-  'access_key',
-  'session_key',
-  'cookie',
-]
-
-export function namesASecret(key: string): boolean {
-  const k = key.replace(/^-+/, '').toLowerCase()
-  return SECRET_KEY_PARTS.some((part) => k.includes(part))
-}
-
-const TOKEN_PREFIXES = ['sk-', 'sk_live_', 'pk_live_', 'ghp_', 'gho_', 'github_pat_', 'xoxb-', 'xoxp-', 'AKIA']
-
-function looksLikeToken(word: string): boolean {
-  if (TOKEN_PREFIXES.some((p) => word.startsWith(p)) && word.length >= 8) {
-    return true
-  }
-  if (word.length < 32) return false
-  if (/[/\\\s]/.test(word)) return false
-  return /[A-Z]/.test(word) && /[a-z]/.test(word) && /\d/.test(word)
-}
-
-/** Redact credential-shaped text: `KEY=value`, bearer tokens, URL secrets. */
-export function redactSecrets(text: string): string {
-  let out = text
-    // user:password@ in a URL
-    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi, `$1${REDACTED}@`)
-    // secret-named query parameters
-    .replace(
-      /([?&][^=&\s#]*(?:token|key|secret|password|auth|sig|signature)[^=&\s#]*=)[^&\s#]+/gi,
-      `$1${REDACTED}`
-    )
-    // Authorization: Bearer xyz / Basic xyz
-    .replace(/\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]+/g, `$1 ${REDACTED}`)
-  out = out
-    .split(/(\s+)/)
-    .map((word) => {
-      if (/^\s+$/.test(word) || word === '') return word
-      const eq = word.indexOf('=')
-      // A URL was handled above, parameter by parameter; treating the whole of
-      // it as one KEY=value would swallow everything after the first secret.
-      if (eq > 0 && !word.includes('://')) {
-        const key = word.slice(0, eq)
-        const value = word.slice(eq + 1)
-        if (
-          value &&
-          !value.startsWith(REDACTED) &&
-          namesASecret(key.replace(/^["']/, ''))
-        ) {
-          return `${key}=${REDACTED}`
-        }
-      }
-      const bare = word.replace(/^["'(]+|["'),;]+$/g, '')
-      if (bare && bare !== REDACTED && looksLikeToken(bare)) {
-        return word.replace(bare, REDACTED)
-      }
-      return word
-    })
-    .join('')
-  return out
-}
 
 export function truncate(text: string, max = MAX_RESOURCE_LENGTH): string {
   if (text.length <= max) return text

@@ -255,14 +255,16 @@ fn reg_read_string(root: &str, subkey: &str, value: &str) -> Option<String> {
 /// Run native Git with the given args against `repo_dir`, direct (no shell),
 /// window hidden, and return trimmed stdout on success.
 fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> Option<String> {
-    let mut cmd = Command::new(git);
-    cmd.arg("-C").arg(repo_dir).args(args);
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd.output().ok()?;
-    if !out.status.success() {
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .program(git)
+        .dir(repo_dir)
+        .args(args)
+        .run()
+        .ok()?;
+    if !out.success {
         return None;
     }
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    Some(out.stdout_lossy().trim().to_string())
 }
 
 /// Every remote URL configured in `repo_dir`, via native Git.
@@ -445,17 +447,36 @@ pub fn looks_like_private_access_failure(err: &str) -> bool {
     let e = err.to_ascii_lowercase();
     e.contains("crawl_not_found")
         || e.contains("not found")
-        || e.contains("404")
-        || e.contains("403")
+        || has_word(&e, "404")
+        || has_word(&e, "403")
         || e.contains("unauthorized")
         || e.contains("forbidden")
         || e.contains("authentication")
+}
+
+/// Whether `needle` appears in `hay` not touching another digit or letter, so
+/// a port, id or byte count that merely contains "404" is not an HTTP status.
+fn has_word(hay: &str, needle: &str) -> bool {
+    hay.match_indices(needle).any(|(i, _)| {
+        let before = hay[..i].chars().next_back();
+        let after = hay[i + needle.len()..].chars().next();
+        !before.is_some_and(|c| c.is_ascii_alphanumeric())
+            && !after.is_some_and(|c| c.is_ascii_alphanumeric())
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::process::Command;
+
+    #[test]
+    fn status_match_respects_word_boundaries() {
+        assert!(looks_like_private_access_failure("HTTP 404 Not Found"));
+        assert!(looks_like_private_access_failure("status:403"));
+        assert!(!looks_like_private_access_failure("connect to 10.0.0.4040 failed"));
+        assert!(!looks_like_private_access_failure("read 14035 bytes"));
+    }
 
     #[test]
     fn parses_every_github_remote_spelling_to_the_same_repo() {

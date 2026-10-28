@@ -216,35 +216,32 @@ async function assignToSpare(
   let unlisten: UnlistenFn | undefined
   let unlistenFailed: UnlistenFn | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
+  let settle: (ok: boolean) => void = () => {}
   const shown = new Promise<boolean>((resolve) => {
-    void listen<SoloShown>(SOLO_EVENT.shown, (e) => {
-      if (e.payload?.label === label) resolve(true)
-    }).then((u) => {
-      unlisten = u
+    settle = resolve
+  })
+  try {
+    // Both listeners are registered before the spare is asked to answer, and
+    // before any unlisten can be needed, so none is left behind.
+    unlisten = await listen<SoloShown>(SOLO_EVENT.shown, (e) => {
+      if (e.payload?.label === label) settle(true)
     })
     // A spare that cannot show itself says so, and the open falls back at
     // once instead of waiting out the timeout.
-    void listen<string>(SOLO_EVENT.failed, (e) => {
-      if (e.payload === label) resolve(false)
-    }).then((u) => {
-      unlistenFailed = u
+    unlistenFailed = await listen<string>(SOLO_EVENT.failed, (e) => {
+      if (e.payload === label) settle(false)
     })
-    timer = setTimeout(() => resolve(false), ASSIGN_TIMEOUT_MS)
-  })
-  try {
+    timer = setTimeout(() => settle(false), ASSIGN_TIMEOUT_MS)
     const payload: SoloAssignment = { target, label, t0 }
     await emitTo(label, SOLO_EVENT.assign, payload)
+    return await shown
   } catch {
+    return false
+  } finally {
     clearTimeout(timer)
     unlisten?.()
     unlistenFailed?.()
-    return false
   }
-  const ok = await shown
-  clearTimeout(timer)
-  unlisten?.()
-  unlistenFailed?.()
-  return ok
 }
 
 async function coldOpen(target: SplitTarget): Promise<void> {

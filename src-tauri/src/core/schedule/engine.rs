@@ -79,7 +79,13 @@ pub struct Due {
     pub skipped: Vec<Skipped>,
     /// New watermarks, to merge over the stored ones.
     pub watermarks: BTreeMap<String, DateTime<Utc>>,
+    /// Tasks whose stored watermark was far in the future (a clock that was
+    /// wrong when it was written); each was reset to `now`.
+    pub clock_notices: Vec<String>,
 }
+
+/// A watermark further ahead than this is not a small clock skew.
+pub const MAX_FUTURE_SKEW_SECS: i64 = 3600;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -113,7 +119,12 @@ pub fn due(
             continue;
         };
         if mark > now {
-            // The clock went back. Wait it out rather than fire twice.
+            if (mark - now).num_seconds() > MAX_FUTURE_SKEW_SECS {
+                // A mark this far ahead would silence the task for good; reset it.
+                out.watermarks.insert(task.id.clone(), now);
+                out.clock_notices.push(task.id.clone());
+            }
+            // A small skew: wait it out rather than fire twice.
             continue;
         }
         let start = mark.max(now - Duration::days(LOOKBACK_DAYS));
@@ -363,6 +374,22 @@ mod tests {
         let d = run("2026-05-02T08:59:00Z", &t, &marks(&[("a", "2026-05-02T09:05:00Z")]));
         assert!(d.fires.is_empty());
         assert!(d.watermarks.is_empty(), "the watermark is left alone");
+    }
+
+    #[test]
+    fn a_watermark_far_in_the_future_is_reset() {
+        let t = [daily("a", 9, 0)];
+        let d = run("2026-05-02T08:59:00Z", &t, &marks(&[("a", "2027-05-02T09:05:00Z")]));
+        assert!(d.fires.is_empty());
+        assert_eq!(d.watermarks["a"], utc("2026-05-02T08:59:00Z"));
+        assert_eq!(d.clock_notices, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn a_small_skew_still_waits() {
+        let t = [daily("a", 9, 0)];
+        let d = run("2026-05-02T08:59:00Z", &t, &marks(&[("a", "2026-05-02T09:30:00Z")]));
+        assert!(d.fires.is_empty() && d.watermarks.is_empty() && d.clock_notices.is_empty());
     }
 
     #[test]

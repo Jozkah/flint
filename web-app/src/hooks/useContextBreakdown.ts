@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
+import { deferredPersistStorage } from '@/lib/deferredPersistStorage'
 import type { ContextBreakdown } from '@/lib/contextBreakdown'
 
 /**
@@ -96,7 +97,11 @@ export const useContextBreakdown = create<ContextBreakdownState>()(
     }),
     {
       name: localStorageKey.contextBreakdown,
-      storage: createJSONStorage(() => backendStorage),
+      // Written off the click path: see deferredPersistStorage.
+      storage: deferredPersistStorage(
+        createJSONStorage(() => backendStorage)!,
+        1500
+      ),
       skipHydration: true,
       version: 1,
       partialize: (state) => ({

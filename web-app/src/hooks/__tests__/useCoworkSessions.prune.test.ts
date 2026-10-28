@@ -10,6 +10,7 @@ vi.mock('@/lib/backendStorage', () => ({
   },
 }))
 
+import { flushDeferredStores } from '@/lib/deferredPersistStorage'
 import { ensureCurrentSession, useCoworkSessions } from '../useCoworkSessions'
 import type { CoworkSession } from '../useCoworkSessions'
 
@@ -29,9 +30,12 @@ const used = (id: string): CoworkSession => ({
 })
 
 describe('empty Cowork sessions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     stored.value = null
     useCoworkSessions.setState({ sessions: [], currentId: null })
+    // A restart loses memory: land the deferred write of that reset so the
+    // rehydrate below reads what the test put in storage, not a pending value.
+    await flushDeferredStores()
   })
 
   it('drops blank sessions on load, keeping the current one and any with content', async () => {

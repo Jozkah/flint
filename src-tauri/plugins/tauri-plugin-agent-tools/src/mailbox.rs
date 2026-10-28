@@ -20,7 +20,7 @@
 //! * **Delivery is recorded, and reading does not destroy.** A read marks what
 //!   was delivered and leaves the message where it is, because "what did they
 //!   tell each other" has to be answerable after the fact.
-//! * **Bounded, and the bound is said.** Sixty-four messages per mailbox, 16 KB
+//! * **Bounded, and the bound is said.** Sixty-four unread messages per mailbox, 16 KB
 //!   each. Past that, sending is refused rather than the oldest message being
 //!   dropped: a queue that silently forgets is worse than one that says it is
 //!   full, because the sender can react to a refusal.
@@ -131,71 +131,176 @@ pub fn path_for(data_folder: &Path, run: &RunId) -> PathBuf {
     data_folder.join("mail").join(format!("{}.jsonl", &digest[..24]))
 }
 
-/// Hold the mailbox while it is read and rewritten.
+/// A lock file older than this is stale whatever its owner says.
+const STALE_LOCK: std::time::Duration = std::time::Duration::from_secs(30);
+/// How long `take` waits for a live owner before giving up.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Most messages a mailbox file keeps, delivered ones included.
+const HARD_CAP: usize = 512;
+
+/// Hold a store file while it is read and rewritten.
 ///
 /// Every write here is read-modify-write over the whole file, and the case
-/// this feature exists for is two runs going at once: without a lock, a second
-/// send between the first's read and its write silently disappears, and two
-/// messages can be given the same seq. The lock is a file created
-/// exclusively, so it works across processes -- a run and a `jan cli agent
-/// mail` in another terminal are the same race.
+/// this feature exists for is two runs, or the CLI and the desktop, going at
+/// once. The lock is a file created exclusively, so it works across
+/// processes. It holds `pid:nonce`: a lock is stolen only when that pid no
+/// longer exists or the file is older than [`STALE_LOCK`], and dropping a
+/// `Held` removes the file only while it still carries this holder's nonce.
 pub(crate) struct Held {
     path: PathBuf,
+    token: String,
+}
+
+fn process_alive(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        // SAFETY: plain handle query; the handle is closed before returning.
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            // Access denied still means the process exists.
+            return std::io::Error::last_os_error().raw_os_error() == Some(5);
+        }
+        let mut code = 0u32;
+        let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        unsafe { CloseHandle(handle) };
+        ok && code == 259
+    }
+    #[cfg(unix)]
+    {
+        // SAFETY: signal 0 only checks that the process exists.
+        let r = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
 }
 
 impl Held {
-    /// Wait briefly for the mailbox, then take it anyway.
-    ///
-    /// A stale lock (a process killed mid-write) must not wedge a mailbox
-    /// forever, and the window it guards is a few milliseconds of file IO, so
-    /// a bounded wait followed by taking it is the behaviour that fails least
-    /// badly.
-    pub(crate) fn take(mailbox: &Path) -> Held {
+    /// Take the lock for `mailbox`'s file, waiting for a live owner.
+    pub(crate) fn take(mailbox: &Path) -> Result<Held, String> {
+        Self::take_within(mailbox, LOCK_WAIT, STALE_LOCK)
+    }
+
+    fn take_within(
+        mailbox: &Path,
+        wait: std::time::Duration,
+        stale: std::time::Duration,
+    ) -> Result<Held, String> {
+        use std::io::Write;
         let path = mailbox.with_extension("lock");
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        for _ in 0..200 {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nonce = format!(
+            "{}:{:x}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let started = std::time::Instant::now();
+        loop {
             match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-                Ok(_) => return Held { path },
-                Err(_) => std::thread::sleep(std::time::Duration::from_millis(5)),
+                Ok(mut f) => {
+                    let _ = f.write_all(nonce.as_bytes());
+                    return Ok(Held { path, token: nonce });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let seen = std::fs::read_to_string(&path).unwrap_or_default();
+                    let age = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .unwrap_or_default();
+                    // An empty file is a holder between create and write: live.
+                    let owner_dead = seen
+                        .split(':')
+                        .next()
+                        .and_then(|p| p.parse::<u32>().ok())
+                        .is_some_and(|pid| !process_alive(pid));
+                    if owner_dead || age > stale {
+                        // Break it only if it is still the lock we judged;
+                        // then loop back to `create_new`, which must succeed.
+                        if std::fs::read_to_string(&path).unwrap_or_default() == seen {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                        continue;
+                    }
+                }
+                Err(e) => return Err(format!("lock {}: {e}", path.display())),
             }
+            if started.elapsed() > wait {
+                return Err(format!("{} is locked by another process", path.display()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::OpenOptions::new().write(true).create_new(true).open(&path);
-        Held { path }
     }
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        if std::fs::read_to_string(&self.path).is_ok_and(|c| c == self.token) {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
-fn read_all(path: &Path) -> Result<Vec<Message>, MailError> {
+fn io_err(e: impl std::fmt::Display) -> MailError {
+    MailError::new(MailErrorKind::Io, format!("mailbox: {e}"))
+}
+
+/// Messages, plus lines that did not parse.
+fn read_split(path: &Path) -> Result<(Vec<Message>, Vec<String>), MailError> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(MailError::new(MailErrorKind::Io, format!("mailbox: {e}"))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((Vec::new(), Vec::new())),
+        Err(e) => return Err(io_err(e)),
     };
-    // A line that will not parse was written by an older build or a partial
-    // write; it is skipped rather than failing the read, so one bad line does
-    // not cost every message.
-    Ok(raw.lines().filter_map(|line| serde_json::from_str(line).ok()).collect())
+    let (mut good, mut bad) = (Vec::new(), Vec::new());
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str(line) {
+            Ok(m) => good.push(m),
+            Err(_) => bad.push(line.to_string()),
+        }
+    }
+    Ok((good, bad))
 }
 
-fn write_all(path: &Path, messages: &[Message]) -> Result<(), MailError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| MailError::new(MailErrorKind::Io, format!("mailbox: {e}")))?;
-    }
+/// Rewrite the mailbox atomically; lines that would not parse are kept in a
+/// `.bad` file beside it rather than silently lost.
+fn write_all(path: &Path, messages: &[Message], bad: &[String]) -> Result<(), MailError> {
     let mut out = String::new();
     for message in messages {
         out.push_str(&serde_json::to_string(message).unwrap_or_default());
         out.push('\n');
     }
-    std::fs::write(path, out).map_err(|e| MailError::new(MailErrorKind::Io, format!("mailbox: {e}")))
+    crate::atomic_file::write_atomic(path, out.as_bytes()).map_err(io_err)?;
+    if !bad.is_empty() {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path.with_extension("bad"))
+        {
+            for line in bad {
+                let _ = writeln!(f, "{line}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn lock(path: &Path) -> Result<Held, MailError> {
+    Held::take(path).map_err(io_err)
+}
+
+fn seq_file(path: &Path) -> PathBuf {
+    path.with_extension("seq")
 }
 
 /// Where a closed mailbox is recorded.
@@ -265,9 +370,9 @@ pub fn send(
     }
 
     let path = path_for(data_folder, to);
-    let _held = Held::take(&path);
-    let mut messages = read_all(&path)?;
-    if messages.len() >= MAX_MESSAGES {
+    let _held = lock(&path)?;
+    let (mut messages, bad) = read_split(&path)?;
+    if messages.iter().filter(|m| m.delivered_at.is_none()).count() >= MAX_MESSAGES {
         // Deliberately a refusal rather than dropping the oldest: a queue that
         // silently forgets leaves the sender believing something was said.
         return Err(MailError::new(
@@ -276,18 +381,33 @@ pub fn send(
         ));
     }
     let subject: String = subject.chars().take(MAX_SUBJECT).collect();
+    // Delivered mail is the first thing a full file gives up.
+    while messages.len() >= HARD_CAP {
+        match messages.iter().position(|m| m.delivered_at.is_some()) {
+            Some(i) => {
+                messages.remove(i);
+            }
+            None => break,
+        }
+    }
+    let stored: u64 = std::fs::read_to_string(seq_file(&path))
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let seq = stored.max(messages.iter().map(|m| m.seq).max().unwrap_or(0)) + 1;
     let message = Message {
-        seq: messages.last().map(|m| m.seq + 1).unwrap_or(1),
+        seq,
         from: from.to_string(),
         to: to.to_string(),
         session: session.to_string(),
         at: crate::audit::now(),
-        subject: crate::harness_error::scrub(&subject),
-        body: crate::harness_error::scrub(body),
+        subject: crate::secrets::redact_secrets(&subject),
+        body: crate::secrets::redact_secrets(body),
         delivered_at: None,
     };
     messages.push(message.clone());
-    write_all(&path, &messages)?;
+    write_all(&path, &messages, &bad)?;
+    let _ = crate::atomic_file::write_atomic(&seq_file(&path), seq.to_string().as_bytes());
     Ok(message)
 }
 
@@ -299,14 +419,14 @@ pub fn read(data_folder: &Path, run: &RunId, mark: bool) -> Result<Vec<Message>,
     let path = path_for(data_folder, run);
     // Held across the read *and* the marking, so a message that arrives
     // between the two is not stamped delivered without ever being shown.
-    let _held = mark.then(|| Held::take(&path));
-    let mut messages = read_all(&path)?;
+    let _held = if mark { Some(lock(&path)?) } else { None };
+    let (mut messages, bad) = read_split(&path)?;
     if mark && messages.iter().any(|m| m.delivered_at.is_none()) {
         let now = crate::audit::now();
         for message in messages.iter_mut().filter(|m| m.delivered_at.is_none()) {
             message.delivered_at = Some(now.clone());
         }
-        write_all(&path, &messages)?;
+        write_all(&path, &messages, &bad)?;
     }
     Ok(messages)
 }
@@ -327,8 +447,8 @@ pub fn unread(data_folder: &Path, run: &RunId) -> Result<Vec<Message>, MailError
 /// and returns exactly what it marked.
 pub fn collect(data_folder: &Path, run: &RunId) -> Result<Vec<Message>, MailError> {
     let path = path_for(data_folder, run);
-    let _held = Held::take(&path);
-    let mut messages = read_all(&path)?;
+    let _held = lock(&path)?;
+    let (mut messages, bad) = read_split(&path)?;
     let now = crate::audit::now();
     let mut fresh = Vec::new();
     for message in messages.iter_mut().filter(|m| m.delivered_at.is_none()) {
@@ -336,7 +456,7 @@ pub fn collect(data_folder: &Path, run: &RunId) -> Result<Vec<Message>, MailErro
         fresh.push(message.clone());
     }
     if !fresh.is_empty() {
-        write_all(&path, &messages)?;
+        write_all(&path, &messages, &bad)?;
     }
     Ok(fresh)
 }
@@ -574,5 +694,92 @@ mod tests {
                 "{hostile:?} must not parse as a run id"
             );
         }
+    }
+
+    fn lock_file(mailbox: &Path) -> PathBuf {
+        mailbox.with_extension("lock")
+    }
+
+    #[test]
+    fn held_not_stolen_from_live_owner() {
+        let d = data("live-lock");
+        let mailbox = d.join("box.jsonl");
+        // A fresh lock owned by this (live) process under someone else's token.
+        std::fs::write(lock_file(&mailbox), format!("{}:other-token", std::process::id())).unwrap();
+        let wait = std::time::Duration::from_millis(150);
+        let taken = Held::take_within(&mailbox, wait, std::time::Duration::from_secs(60));
+        assert!(taken.is_err(), "a live owner's lock was stolen");
+        assert!(lock_file(&mailbox).exists());
+
+        // A dead owner's lock is taken over.
+        std::fs::write(lock_file(&mailbox), "2147483000:ghost").unwrap();
+        let held = Held::take_within(&mailbox, wait, std::time::Duration::from_secs(60)).unwrap();
+        drop(held);
+        assert!(!lock_file(&mailbox).exists());
+
+        // So is a lock that is simply too old.
+        std::fs::write(lock_file(&mailbox), format!("{}:old", std::process::id())).unwrap();
+        let held = Held::take_within(&mailbox, wait, std::time::Duration::ZERO);
+        assert!(held.is_ok(), "a stale lock must be breakable");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn drop_does_not_remove_foreign_lock() {
+        let d = data("foreign-lock");
+        let mailbox = d.join("box.jsonl");
+        let held = Held::take(&mailbox).unwrap();
+        // Someone broke our lock and took it.
+        std::fs::write(lock_file(&mailbox), "1:someone-else").unwrap();
+        drop(held);
+        assert_eq!(std::fs::read_to_string(lock_file(&mailbox)).unwrap(), "1:someone-else");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn mailbox_send_64_collect_send_ok() {
+        let d = data("cycle");
+        let (session, parent, child) = ids("s-cycle");
+        for n in 0..MAX_MESSAGES {
+            send(&d, &session, &child, &parent, "n", &format!("m{n}")).unwrap();
+        }
+        assert_eq!(send(&d, &session, &child, &parent, "n", "x").unwrap_err().kind, MailErrorKind::Full);
+        assert_eq!(collect(&d, &parent).unwrap().len(), MAX_MESSAGES);
+        let again = send(&d, &session, &child, &parent, "n", "after").unwrap();
+        assert_eq!(again.seq, MAX_MESSAGES as u64 + 1, "seq keeps counting");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn mailbox_10kb_body_roundtrips() {
+        let d = data("tenkb");
+        let (session, parent, child) = ids("s-tenkb");
+        let body = "word ".repeat(2048);
+        send(&d, &session, &child, &parent, "big", &body).unwrap();
+        assert_eq!(read(&d, &parent, false).unwrap()[0].body, body);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn mailbox_interrupted_write_keeps_old() {
+        let d = data("interrupt");
+        let (session, parent, child) = ids("s-interrupt");
+        send(&d, &session, &child, &parent, "one", "kept").unwrap();
+        let path = path_for(&d, &parent);
+        let before = std::fs::read_to_string(&path).unwrap();
+        // A write that cannot finish (the target is a non-empty directory):
+        // it must fail without touching the real mailbox or leaving a temp.
+        let blocked = d.join("blocked.jsonl");
+        std::fs::create_dir_all(blocked.join("inner")).unwrap();
+        let m = read(&d, &parent, false).unwrap();
+        assert!(write_all(&blocked, &m, &[]).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        let strays = std::fs::read_dir(&d)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp-"))
+            .count();
+        assert_eq!(strays, 0, "a failed write left its temp file");
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

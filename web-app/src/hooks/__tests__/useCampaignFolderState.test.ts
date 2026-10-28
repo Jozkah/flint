@@ -43,4 +43,16 @@ describe('useCampaignFolderState', () => {
     const second = renderHook(() => useCampaignFolderState())
     expect(second.result.current).toEqual({ folder: '/plain', isRepo: false })
   })
+
+  it('a null answer is neither cached nor shown', async () => {
+    isGitRepo.mockResolvedValue(null)
+    open('/flaky')
+    const first = renderHook(() => useCampaignFolderState())
+    await waitFor(() => expect(isGitRepo).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(first.result.current).toEqual({ folder: '/flaky', isRepo: null })
+    isGitRepo.mockReturnValue(new Promise(() => undefined))
+    const second = renderHook(() => useCampaignFolderState())
+    expect(second.result.current).toEqual({ folder: '/flaky', isRepo: null })
+  })
 })

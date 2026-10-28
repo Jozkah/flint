@@ -171,6 +171,28 @@ fn release_terminal() -> bool {
     }
 }
 
+/// Undoes what `run` set up if it leaves early (a `?` on a setup step) or
+/// unwinds: raw mode and terminal modes (once `raw` is set), and the muted
+/// stderr sink (always). The normal exit path restores explicitly and clears
+/// `raw`; the repeated stderr write on drop is idempotent.
+struct TerminalGuard {
+    prev_stderr: bool,
+    raw: bool,
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if self.raw {
+            release_terminal();
+            let _ = disable_raw_mode();
+            let mut stdout = io::stdout();
+            let _ = stdout.write_all(panic_restore_sequence().as_bytes());
+            let _ = stdout.flush();
+        }
+        super::file_log::set_stderr_enabled(self.prev_stderr);
+    }
+}
+
 /// Install a hook that logs the panic and, when it lands on the render-loop
 /// thread, puts the terminal back before the previous hook prints its message,
 /// so the message is readable on a normal screen instead of lost in the
@@ -363,9 +385,20 @@ struct Pending {
     /// Name of the subagent that requested this, when the call originated inside
     /// a nested subagent run; `None` for the parent agent's own calls.
     subagent: Option<String>,
+    /// When the prompt arrived. Decision keys are ignored for a short settle
+    /// window so a key typed for something else cannot answer it.
+    shown_at: Instant,
 }
 
+/// How long a new permission prompt ignores decision keys (y/a/n/Enter).
+const PERMISSION_SETTLE: Duration = Duration::from_millis(400);
+
 impl Pending {
+    /// True once the prompt has been on screen long enough to take a decision.
+    fn settled(&self) -> bool {
+        self.shown_at.elapsed() >= PERMISSION_SETTLE
+    }
+
     /// One-line summary for the transcript decision record.
     fn summary(&self) -> String {
         let target = self
@@ -3442,6 +3475,20 @@ impl App {
     /// Must mirror the guard list at the top of `handle_key`: a dock that takes
     /// every keystroke but leaves a cursor blinking in the composer promises a
     /// field that is not there.
+    /// True while a permission or ask prompt is queued: it is the single owner
+    /// of the screen and keyboard, ahead of any picker.
+    fn prompt_owns_screen(&self) -> bool {
+        !self.pending_queue.is_empty() || !self.ask_queue.is_empty()
+    }
+
+    /// Close any open picker when a prompt arrives, so `draw` and `handle_key`
+    /// agree on who owns the screen. Live inspectors reopen from their command.
+    fn yield_screen_to_prompt(&mut self) {
+        self.model_picker = None;
+        self.picker = None;
+        self.agent_detail = None;
+    }
+
     fn blocking_dock(&self) -> Option<&'static str> {
         if self.login.is_some() {
             Some("sign in in the dock above")
@@ -3659,6 +3706,19 @@ impl App {
         drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
         self.reset_slash_hint();
         // Refresh path hints on any character edit
+        self.refresh_path_hints();
+    }
+
+    /// Insert `text` at the caret in one edit (pasted text): one string insert
+    /// and one hint refresh instead of one per character.
+    fn input_insert_str(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.input.insert_str(self.cursor, text);
+        self.cursor += text.len();
+        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
+        self.reset_slash_hint();
         self.refresh_path_hints();
     }
 
@@ -3995,7 +4055,18 @@ impl App {
             let marker = "@";
             let path = &selected.path;
             let trailing = if selected.is_dir { "/" } else { "" };
-            let replacement = format!("{marker}{path}{trailing}");
+            // A path with whitespace or a character the unquoted form stops at
+            // would be cut short, so it goes in quotes. A directory keeps the
+            // quote open so the user can keep drilling in.
+            let needs_quotes = path
+                .chars()
+                .any(|c| c.is_whitespace() || ",;:!?'\"`[](){}<>".contains(c));
+            let replacement = if needs_quotes {
+                let close = if selected.is_dir { "" } else { "\"" };
+                format!("{marker}\"{path}{trailing}{close}")
+            } else {
+                format!("{marker}{path}{trailing}")
+            };
             let new_input = format!("{}{}{}", &self.input[..at_idx], replacement, after);
             self.input = new_input;
             self.cursor = at_idx + replacement.len();
@@ -4842,13 +4913,20 @@ impl App {
         self.journal_writer = None;
     }
 
+    /// Take `model` as the active one and re-resolve its context window, without
+    /// persisting it or compacting. For paths that adopt a model the user did
+    /// not just pick (resuming a thread, a fresh sign-in).
+    fn adopt_model(&mut self, model: String) {
+        self.model = model;
+        self.refresh_context_window();
+    }
+
     /// Switch the active model and remember it in the project's agent.toml so it
     /// persists across sessions. The context window is re-resolved for the new
     /// model immediately, and if the target window shrinks below the current
     /// usage a target-model compaction is queued before the next ordinary request.
     fn set_model(&mut self, model: String) {
-        self.model = model;
-        self.refresh_context_window();
+        self.adopt_model(model);
         // Persistence warning preserved verbatim from the prior behaviour.
         let persistence = match super::cli_set_project_model(&self.agent_dir, &self.model) {
             Ok(()) => String::new(),
@@ -5485,7 +5563,9 @@ impl App {
                     prompt_kind,
                     selected: 0,
                     subagent: None,
+                    shown_at: Instant::now(),
                 });
+                self.yield_screen_to_prompt();
                 self.publish_agent_status();
             }
             StreamEvent::AskRequest {
@@ -5499,6 +5579,7 @@ impl App {
                     request,
                     timeout_secs.map(std::time::Duration::from_secs),
                 ));
+                self.yield_screen_to_prompt();
                 self.publish_agent_status();
             }
             // Host tools belong to a headless run driven by a host process.
@@ -5775,7 +5856,9 @@ impl App {
                     prompt_kind,
                     selected: 0,
                     subagent: Some(name.to_string()),
+                    shown_at: Instant::now(),
                 });
+                self.yield_screen_to_prompt();
                 self.publish_agent_status();
             }
             // Each child request bumps its counter, so the panel shows work
@@ -8734,8 +8817,13 @@ pub async fn run(
     // muted: the persistent log keeps recording, and an interactive session
     // that hangs is exactly what `jan bug-report` needs a trail for.
     let prev_stderr_log = super::file_log::set_stderr_enabled(false);
+    let mut guard = TerminalGuard {
+        prev_stderr: prev_stderr_log,
+        raw: false,
+    };
 
     enable_raw_mode().map_err(|e| e.to_string())?;
+    guard.raw = true;
     // From here a panic must not leave the shell in raw mode on the alternate
     // screen: install before anything that can panic runs.
     install_panic_hook();
@@ -8884,6 +8972,7 @@ pub async fn run(
     );
     let _ = terminal.show_cursor();
     super::file_log::set_stderr_enabled(prev_stderr_log);
+    guard.raw = false;
     // The session is closed: leave a copyable continuation command on the real
     // terminal, the same line the non-interactive path prints after a save.
     // Only a persisted thread can be resumed, so an empty session stays quiet.
@@ -9805,7 +9894,7 @@ async fn handle_ask_key(
     if key.kind == KeyEventKind::Release {
         return true;
     }
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = key_is_ctrl(&key);
     // A docked ask runs before `handle_key`, so the repaint key is honoured
     // here too -- otherwise a broadcast landing during a question stays on
     // screen until it is answered. Consumed, never typed into the answer.
@@ -10083,10 +10172,30 @@ fn route_paste_event(app: &mut App, event: Event) {
     }
     // Bracketed paste of a split SGR report is the same leak as typing it
     // a character at a time; strip before the composer sees it.
-    let text = strip_sgr_mouse_reports(&text);
-    for c in text.chars() {
-        app.input_insert(c);
+    let text = normalize_paste(&strip_sgr_mouse_reports(&text));
+    app.input_insert_str(&text);
+}
+
+/// Clean pasted text for the composer: `\r\n` and lone `\r` become `\n`, tabs
+/// and newlines are kept, every other control character (ESC, BEL, ...) is
+/// dropped.
+fn normalize_paste(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\n' | '\t' => out.push(c),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
     }
+    out
 }
 
 /// Append bracketed paste to the active custom answer only.
@@ -10286,6 +10395,20 @@ fn resume_hint(thread_id: &str) -> String {
     let id: String = thread_id.chars().take(8).collect();
     format!("\x1b[2m[session {id} - resume with `flint --resume={id}`]\x1b[0m")
 }
+/// True when the key is a Ctrl chord. On Windows, AltGr arrives as Ctrl+Alt, so
+/// Ctrl+Alt with a character that is not an ASCII letter or digit is text
+/// (`@`, `{`, a non-ASCII letter), not a chord.
+fn key_is_ctrl(key: &KeyEvent) -> bool {
+    let mods = key.modifiers;
+    if !mods.contains(KeyModifiers::CONTROL) {
+        return false;
+    }
+    let altgr_text = cfg!(windows)
+        && mods.contains(KeyModifiers::ALT)
+        && matches!(key.code, KeyCode::Char(c) if !c.is_ascii_alphanumeric() && !c.is_ascii_control());
+    !altgr_text
+}
+
 async fn handle_key(
     app: &mut App,
     key: KeyEvent,
@@ -10297,7 +10420,7 @@ async fn handle_key(
         return;
     }
 
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = key_is_ctrl(&key);
     // Ctrl-L is the readline/less spelling of "redraw". It sits ahead of every
     // mode guard below because the screen can be damaged at any moment,
     // including while a prompt or picker owns the keyboard. It changes only
@@ -10393,6 +10516,10 @@ async fn handle_key(
             .pending_queue
             .front_mut()
             .expect("checked non-empty above");
+        // Decision keys are plain keystrokes (Ctrl-A / Alt-N / Ctrl-Y are not
+        // answers) and wait out the settle window; arrows and Esc stay live.
+        let plain = !ctrl && !alt && !sup;
+        let settled = pending.settled();
         let decision = match key.code {
             KeyCode::Up => {
                 pending.move_selection(-1);
@@ -10402,14 +10529,19 @@ async fn handle_key(
                 pending.move_selection(1);
                 None
             }
-            KeyCode::Enter => Some(pending.options()[pending.selected].0),
-            KeyCode::Char('y') | KeyCode::Char('Y') => Some(PermissionDecision::AllowOnce),
-            KeyCode::Char('a') | KeyCode::Char('A') if pending.offers_always => {
+            KeyCode::Enter if !newline && settled => Some(pending.options()[pending.selected].0),
+            KeyCode::Char('y') | KeyCode::Char('Y') if plain && settled => {
+                Some(PermissionDecision::AllowOnce)
+            }
+            KeyCode::Char('a') | KeyCode::Char('A')
+                if plain && settled && pending.offers_always =>
+            {
                 Some(PermissionDecision::AllowAlways)
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            KeyCode::Char('n') | KeyCode::Char('N') if plain && settled => {
                 Some(PermissionDecision::Deny)
             }
+            KeyCode::Esc => Some(PermissionDecision::Deny),
             _ => None,
         };
         if let Some(d) = decision {
@@ -10926,6 +11058,8 @@ async fn handle_key(
                     open_rewind_picker(app);
                 } else {
                     app.last_esc = Some(Instant::now());
+                    // Keep what was typed so Up brings it back.
+                    app.record_draft();
                     app.input_clear();
                 }
             }
@@ -12501,7 +12635,7 @@ impl McpPrompt {
     fn paste(&mut self, text: &str) {
         let text = super::secret_input::pasted(text);
         match self.field {
-            McpField::Name => self.name.push_str(text),
+            McpField::Name if self.editing.is_none() => self.name.push_str(text),
             McpField::Command => self.command.push_str(text),
             McpField::Args => self.args.push_str(text),
             McpField::Env => self.env.push_str(text),
@@ -13151,7 +13285,9 @@ async fn handle_mcp_prompt_key(
             }
         }
         KeyCode::Backspace => match prompt.field {
-            McpField::Name => {
+            // Renaming an entry on edit would leave the old one behind, so the
+            // name is fixed while editing.
+            McpField::Name if prompt.editing.is_none() => {
                 prompt.name.pop();
             }
             McpField::Command => {
@@ -13172,7 +13308,7 @@ async fn handle_mcp_prompt_key(
             _ => {}
         },
         KeyCode::Char(ch) if !ctrl => match prompt.field {
-            McpField::Name => prompt.name.push(ch),
+            McpField::Name if prompt.editing.is_none() => prompt.name.push(ch),
             McpField::Command => prompt.command.push(ch),
             McpField::Args => prompt.args.push(ch),
             McpField::Env => prompt.env.push(ch),
@@ -14895,7 +15031,7 @@ fn adopt_login_model(app: &mut App, login: &crate::core::cli::auth::LoginResult)
         return;
     }
     if let Some(model) = login.models.first() {
-        app.model = model.clone();
+        app.adopt_model(model.clone());
         let _ = super::cli_set_project_model(&app.agent_dir, &app.model);
     }
 }
@@ -15935,7 +16071,7 @@ async fn load_thread(app: &mut App, thread: &serde_json::Value, verb: &str) {
         .and_then(|m| m.get("id"))
         .and_then(|v| v.as_str())
     {
-        app.model = model.to_string();
+        app.adopt_model(model.to_string());
     }
 
     // The journal holds what was rendered (reasoning, tool rows, diffs); the
@@ -16014,6 +16150,18 @@ fn load_image_file(path: &str) -> Result<PendingImage, String> {
 /// strips a `file://[host]` scheme; decodes `%XX` byte escapes.
 fn clipboard_path(text: &str) -> Option<String> {
     let line = text.lines().find(|l| !l.trim().is_empty())?.trim();
+    let lb = line.as_bytes();
+    let pathlike = line.starts_with("file://")
+        || line.starts_with('/')
+        || line.starts_with('~')
+        || line.starts_with("\\\\")
+        || (lb.len() >= 3
+            && lb[0].is_ascii_alphabetic()
+            && lb[1] == b':'
+            && (lb[2] == b'\\' || lb[2] == b'/'));
+    if !pathlike {
+        return None;
+    }
     let raw = line
         .strip_prefix("file://localhost")
         .or_else(|| line.strip_prefix("file://"))
@@ -16023,7 +16171,11 @@ fn clipboard_path(text: &str) -> Option<String> {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&raw[i + 1..i + 3], 16) {
+            let hex = bytes
+                .get(i + 1..i + 3)
+                .and_then(|h| std::str::from_utf8(h).ok())
+                .and_then(|h| u8::from_str_radix(h, 16).ok());
+            if let Some(b) = hex {
                 out.push(b);
                 i += 3;
                 continue;
@@ -16193,7 +16345,8 @@ fn draw(f: &mut Frame, app: &mut App) {
     // stale width would mis-size the frame a resize lands on. The body spans
     // the full frame width (its border is top-only).
     app.view_width = f.area().width.max(1);
-    if let Some(picker) = app.model_picker.as_ref() {
+    let prompt_owns = app.prompt_owns_screen();
+    if let Some(picker) = app.model_picker.as_ref().filter(|_| !prompt_owns) {
         draw_model_picker(f, f.area(), picker, &app.model);
         return;
     }
@@ -16272,7 +16425,7 @@ fn draw(f: &mut Frame, app: &mut App) {
         }
     }
 
-    if let Some(picker) = &app.picker {
+    if let Some(picker) = app.picker.as_ref().filter(|_| !prompt_owns) {
         app.row_index.clear();
         let toml_path = app.agent_dir.join("agent.toml");
         draw_picker(
@@ -18829,7 +18982,7 @@ mod tests {
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
         apply_repaint, apply_resume, assistant_is_awaiting_user_answer, assistant_runs,
-        autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
+        TerminalGuard, normalize_paste, panic_restore_sequence, autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
         estimate_token_count, finish_compaction, finish_context_report,
         finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
@@ -19313,6 +19466,10 @@ mod tests {
             prompt_kind: "exec".into(),
             selected: 0,
             subagent: None,
+            // Backdated past the settle window so key tests answer at once.
+            shown_at: Instant::now()
+                .checked_sub(Duration::from_secs(5))
+                .unwrap_or_else(Instant::now),
         }
     }
 
@@ -20055,6 +20212,89 @@ mod tests {
         assert_eq!(p.selected, 0);
         p.move_selection(1);
         assert_eq!(p.selected, 1);
+    }
+
+    async fn prompt_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        let registry: PermissionRegistry = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let mut current: Option<CurrentRun> = None;
+        handle_key(app, KeyEvent::new(code, mods), &registry, &mut current, &no_mcp()).await;
+    }
+
+    #[tokio::test]
+    async fn ctrl_a_does_not_allow_always() {
+        let mut app = test_app();
+        app.pending_queue.push_back(pending(true));
+        prompt_key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL).await;
+        assert_eq!(app.pending_queue.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn ctrl_y_alt_n_leave_request_queued() {
+        let mut app = test_app();
+        app.pending_queue.push_back(pending(true));
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL).await;
+        prompt_key(&mut app, KeyCode::Char('n'), KeyModifiers::ALT).await;
+        assert_eq!(app.pending_queue.len(), 1);
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE).await;
+        assert!(app.pending_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn decision_keys_ignored_within_settle_window() {
+        let mut app = test_app();
+        let mut p = pending(true);
+        p.shown_at = Instant::now();
+        app.pending_queue.push_back(p);
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE).await;
+        prompt_key(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
+        assert_eq!(app.pending_queue.len(), 1, "decision inside the window");
+        app.pending_queue.front_mut().unwrap().shown_at =
+            Instant::now().checked_sub(Duration::from_millis(500)).unwrap();
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE).await;
+        assert!(app.pending_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn esc_denies_inside_settle_window() {
+        let mut app = test_app();
+        let mut p = pending(true);
+        p.shown_at = Instant::now();
+        app.pending_queue.push_back(p);
+        prompt_key(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.pending_queue.is_empty());
+    }
+
+    #[test]
+    fn permission_closes_open_picker() {
+        let mut app = test_app();
+        open_config_screen(&mut app);
+        assert!(app.picker.is_some());
+        app.apply(StreamEvent::PermissionRequest {
+            request_id: "p1".into(),
+            tool_name: "bash".into(),
+            capability: "exec".into(),
+            path: None,
+            command: Some("ls".into()),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".into(),
+            offers_always: true,
+            reason: None,
+            args_digest: None,
+            call_id: None,
+        });
+        assert!(app.picker.is_none());
+        assert!(app.prompt_owns_screen());
+    }
+
+    #[test]
+    fn draw_renders_permission_over_picker() {
+        let mut app = test_app();
+        open_config_screen(&mut app);
+        assert!(app.picker.is_some());
+        app.pending_queue.push_back(pending(true));
+        let rows = render_rows(&mut app, 100, 30).join("\n");
+        assert!(rows.contains("Deny"), "{rows}");
     }
 
     // ---- full repaint (janhq/jan#8804, #8780, adapted from #8806) ----------
@@ -21937,6 +22177,68 @@ mod tests {
         assert_eq!(clipboard_path("   \n  "), None);
     }
 
+    #[test]
+    fn terminal_guard_restores_stderr_on_drop() {
+        let before = super::super::file_log::set_stderr_enabled(true);
+        super::super::file_log::set_stderr_enabled(false);
+        drop(TerminalGuard {
+            prev_stderr: true,
+            raw: false,
+        });
+        assert!(
+            super::super::file_log::set_stderr_enabled(before),
+            "dropping the guard re-enables the stderr sink"
+        );
+    }
+
+    #[test]
+    fn restore_sequence_leaves_alt_screen_and_shows_cursor() {
+        let seq = panic_restore_sequence();
+        assert!(seq.contains("[?1049l"));
+        assert!(seq.ends_with("[?25h"));
+    }
+
+    #[test]
+    fn resume_adopts_thread_model_window() {
+        let mut app = test_app();
+        let model = "claude-sonnet-4-6";
+        let want = crate::core::cli::model_capabilities::resolve_context_window(
+            model,
+            app.configured_context_window,
+        )
+        .tokens;
+        app.context_window = 1;
+        app.adopt_model(model.to_string());
+        assert_eq!(app.model, model);
+        assert_eq!(app.context_window, want);
+    }
+
+    #[test]
+    fn paste_keeps_tabs_and_normalizes_cr() {
+        assert_eq!(normalize_paste("a\tb\r\nc\rd\n"), "a\tb\nc\nd\n");
+        let mut app = test_app();
+        route_paste_event(&mut app, Event::Paste("fn x() {\r\n\treturn 1;\r\n}".into()));
+        assert_eq!(app.input, "fn x() {\n\treturn 1;\n}");
+        assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn paste_strips_esc_and_bel() {
+        assert_eq!(normalize_paste("a\x1b[31mb\x07c"), "a[31mbc");
+    }
+
+    #[test]
+    fn clipboard_path_does_not_panic_on_percent_cjk() {
+        assert_eq!(clipboard_path("50%的人"), None);
+        assert_eq!(clipboard_path("%a\u{e9}"), None);
+        // Path-like text with a stray `%` before a multibyte char is kept as-is.
+        assert_eq!(
+            clipboard_path("/tmp/50%\u{7684}.png").as_deref(),
+            Some("/tmp/50%\u{7684}.png")
+        );
+        assert_eq!(clipboard_path("C:\\a\\b.png").as_deref(), Some("C:\\a\\b.png"));
+    }
+
     /// A typed message shaped like a reminder still counts as a user turn and
     /// still shows its text (#279).
     #[test]
@@ -22563,6 +22865,35 @@ mod tests {
         let mut s = app.input.clone();
         s.insert(app.cursor, '|');
         s
+    }
+
+    #[test]
+    fn ctrl_a_still_command() {
+        assert!(super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)));
+        assert!(super::key_is_ctrl(&KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT
+        )));
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn altgr_at_sign_inserted_on_windows_style_event() {
+        let both = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('@'), both)));
+        let accented = char::from_u32(0x105).unwrap();
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char(accented), both)));
+    }
+
+    #[tokio::test]
+    async fn esc_records_draft_for_recall() {
+        let mut app = test_app();
+        composer(&mut app, "half written|");
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.input.is_empty());
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "half written");
     }
 
     #[tokio::test]
@@ -24850,6 +25181,34 @@ mod tests {
         assert_eq!(p.field, McpField::Name);
         p.prev_field();
         assert_eq!(p.field, McpField::Active);
+    }
+
+    #[test]
+    fn edit_cannot_change_name() {
+        let mut app = test_app();
+        app.mcp_prompt = Some(McpPrompt {
+            editing: Some("old".to_string()),
+            field: McpField::Name,
+            name: "old".to_string(),
+            transport: "stdio".to_string(),
+            command: String::new(),
+            args: String::new(),
+            env: String::new(),
+            url: String::new(),
+            headers: String::new(),
+            active: false,
+            error: None,
+        });
+        let servers: crate::core::state::SharedMcpServers =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            super::handle_mcp_prompt_key(&mut app, key(KeyCode::Char('x')), false, &servers).await;
+            super::handle_mcp_prompt_key(&mut app, key(KeyCode::Backspace), false, &servers).await;
+        });
+        app.mcp_prompt.as_mut().unwrap().paste("zzz");
+        assert_eq!(app.mcp_prompt.as_ref().unwrap().name, "old");
     }
 
     /// `k`/`j` are ordinary characters in MCP text fields (URLs, paths), so
@@ -34312,6 +34671,21 @@ mod tests {
     }
 
     #[test]
+    fn accept_completion_with_space_quotes() {
+        let mut app = test_app();
+        app.input = "use @rep".into();
+        app.cursor = app.input.len();
+        app.path_hints = vec![super::PathHintItem {
+            path: "my docs/report.md".into(),
+            name: "report.md".into(),
+            is_dir: false,
+        }];
+        app.accept_path_hint();
+        assert_eq!(app.input, "use @\"my docs/report.md\"");
+        assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
     fn accept_directory_path_hint_keeps_at_and_slash() {
         let mut app = test_app();
         app.input = "use @docs".into();
@@ -34995,6 +35369,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("jan_init_invite_{}", std::process::id()));
         let nested = root.join("pkg");
         std::fs::create_dir_all(&nested).unwrap();
+        // The ancestor walk stops at the repository root.
+        std::fs::create_dir_all(root.join(".git")).unwrap();
         assert!(!crate::core::agent::context::has_context_file(&nested));
         std::fs::write(root.join("JAN.md"), "ROOT_RULES").unwrap();
         assert!(

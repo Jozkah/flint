@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  isGitRepo,
   autoIsolateAction,
   copyAsWorktree,
   isPlaceholderTitle,
@@ -109,5 +110,22 @@ describe('copies', () => {
     ])
     expect(lineDiff(null, 'x')).toEqual([{ kind: 'add', text: 'x' }])
     expect(lineDiff('x', null)).toEqual([{ kind: 'del', text: 'x' }])
+  })
+})
+
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+
+describe('isGitRepo', () => {
+  it('passes true and false through', async () => {
+    invoke.mockResolvedValueOnce(true)
+    expect(await isGitRepo('/a')).toBe(true)
+    invoke.mockResolvedValueOnce(false)
+    expect(await isGitRepo('/a')).toBe(false)
+  })
+
+  it('returns null, not false, when the check fails', async () => {
+    invoke.mockRejectedValueOnce(new Error('busy'))
+    expect(await isGitRepo('/a')).toBeNull()
   })
 })

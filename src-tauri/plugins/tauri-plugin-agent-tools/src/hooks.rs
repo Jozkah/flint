@@ -776,6 +776,16 @@ impl HookInput {
         if let Some(map) = value.as_object_mut() {
             map.insert("hook_event_name".into(), event.as_str().into());
             map.insert("cwd".into(), cwd.to_string_lossy().into_owned().into());
+            if let Some(input) = map.get_mut("tool_input") {
+                let text = input.to_string();
+                if text.len() > MAX_STDIN_INPUT {
+                    let mut cut = MAX_STDIN_INPUT;
+                    while !text.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    *input = format!("{}\n[tool_input truncated]", &text[..cut]).into();
+                }
+            }
             if let Some(resp) = map.get_mut("tool_response") {
                 if let Some(text) = resp.as_str() {
                     *resp = bound(&crate::harness_error::scrub(text)).into();
@@ -1033,29 +1043,45 @@ async fn execute(
                 )
             }
         };
-        // The tool call goes in on stdin, then stdin closes. A hook that never
-        // reads it is fine: a broken pipe is ignored.
-        if let (Some(payload), Some(mut stdin)) = (stdin_payload, child.stdin.take()) {
-            use tokio::io::AsyncWriteExt;
-            let _ = stdin.write_all(payload.as_bytes()).await;
-            drop(stdin);
-        }
-        // Registered so shutdown reaps it like any other child the harness
-        // started; a hook must not outlive the app that ran it.
-        if let Some(pid) = child.id() {
+        // Registered first, before a byte of stdin is written, so shutdown
+        // reaps it and a deadline can kill its tree however the I/O below
+        // stalls; a hook must not outlive the app that ran it.
+        let pid = child.id();
+        if let Some(pid) = pid {
             proc::register(pid);
             if let Ok(mut slot) = spawned.lock() {
                 *slot = Some(pid);
             }
         }
-        let pid = child.id();
-        let out = child.wait_with_output().await;
+        // The tool call goes in on stdin on its own task, then stdin closes.
+        // A hook that never reads it is fine (a broken pipe is ignored) and
+        // cannot stall the wait; stdout and stderr are drained meanwhile, so
+        // a hook that talks while it is being written to cannot deadlock.
+        if let (Some(payload), Some(mut stdin)) = (stdin_payload, child.stdin.take()) {
+            tokio::spawn(async move {
+                use tokio::io::AsyncWriteExt;
+                let _ = stdin.write_all(payload.as_bytes()).await;
+                drop(stdin);
+            });
+        }
+        let stdout_task = child.stdout.take().map(|r| tokio::spawn(read_capped(r)));
+        let stderr_task = child.stderr.take().map(|r| tokio::spawn(read_capped(r)));
+        let status = child.wait().await;
+        let stdout = match stdout_task {
+            Some(t) => t.await.unwrap_or_default(),
+            None => Vec::new(),
+        };
+        let stderr = match stderr_task {
+            Some(t) => t.await.unwrap_or_default(),
+            None => Vec::new(),
+        };
         if let Some(pid) = pid {
             proc::unregister(pid);
         }
         if let Ok(mut slot) = spawned.lock() {
             *slot = None;
         }
+        let out = status.map(|status| std::process::Output { status, stdout, stderr });
         match out {
             Ok(out) => {
                 let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -1097,7 +1123,10 @@ async fn execute(
         }
     };
 
-    let token = ctx.cancel.clone().unwrap_or_else(crate::lifecycle::Token::detached);
+    // The hook's own timeout stops this child token only; a parent stop
+    // (user cancel, run stop) still reaches the hook through it.
+    let parent = ctx.cancel.clone().unwrap_or_else(crate::lifecycle::Token::detached);
+    let token = crate::lifecycle::Token::child(&parent);
     let limit = Duration::from_secs(hook.timeout_secs.min(MAX_TIMEOUT_SECS));
     match crate::lifecycle::run_with_deadline(&token, limit, work).await {
         Ok(result) => result,
@@ -1330,6 +1359,29 @@ pub fn fire_compaction(
             eprintln!("{name} hook failed (ignored): {}", failure.message);
         }
     }))
+}
+
+/// The most bytes read back from one of a hook's output streams. The rest is
+/// still read, so the hook never blocks on a full pipe, but it is dropped.
+const MAX_STREAM_BYTES: usize = 256 * 1024;
+
+/// The most bytes of `tool_input` JSON a hook is sent on stdin.
+const MAX_STDIN_INPUT: usize = 512 * 1024;
+
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(mut reader: R) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let mut kept = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                let room = MAX_STREAM_BYTES.saturating_sub(kept.len());
+                kept.extend_from_slice(&buf[..n.min(room)]);
+            }
+        }
+    }
+    kept
 }
 
 fn bound(text: &str) -> String {
@@ -1925,6 +1977,57 @@ json_output = true
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    fn big_input() -> HookInput {
+        HookInput {
+            tool_name: "write".into(),
+            tool_input: serde_json::json!({ "content": "x".repeat(4 * 1024 * 1024) }),
+            tool_response: None,
+            session_id: None,
+            run_id: None,
+            last_assistant_message: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn hook_ignoring_large_stdin_killed_on_timeout() {
+        let root = dir("big-stdin-ignored");
+        write_config(
+            &root,
+            "[[hook]]\nevent = \"pre-tool\"\ncommand = \"sleep 30\"\non_failure = \"block\"\ntimeout_secs = 1\nstdin_json = true\n",
+        );
+        let hooks = load(&root).unwrap();
+        let started = std::time::Instant::now();
+        let decision =
+            run_with_input(&hooks, Event::PreTool, Some("write"), &ctx(&root), &big_input()).await;
+        assert!(started.elapsed() < Duration::from_secs(20), "it hung on the unread payload");
+        assert_eq!(decision.blocked.expect("timed out").kind, HookErrorKind::TimedOut);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn chatty_hook_no_deadlock() {
+        let root = dir("chatty");
+        // Writes a lot to stdout before it reads any of its stdin.
+        write_config(
+            &root,
+            "[[hook]]\nevent = \"pre-tool\"\ncommand = \"head -c 3000000 /dev/zero | tr '\\\\0' a; cat > /dev/null\"\non_failure = \"block\"\ntimeout_secs = 30\nstdin_json = true\n",
+        );
+        let hooks = load(&root).unwrap();
+        let started = std::time::Instant::now();
+        let decision =
+            run_with_input(&hooks, Event::PreTool, Some("write"), &ctx(&root), &big_input()).await;
+        assert!(decision.blocked.is_none(), "{:?}", decision.blocked);
+        assert!(started.elapsed() < Duration::from_secs(25), "it ran to the timeout");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hook_output_capped() {
+        let input = big_input().to_stdin(Event::PreTool, Path::new("."));
+        assert!(input.len() < MAX_STDIN_INPUT + 4096, "tool_input is bounded");
+        assert!(input.contains("[tool_input truncated]"));
+    }
+
     #[tokio::test]
     async fn a_cancelled_run_cancels_its_hooks() {
         use crate::lifecycle::{Scope, StopReason, Token};
@@ -1963,6 +2066,60 @@ json_output = true
         let blocked = decision.blocked.expect("a cancelled block hook blocks");
         assert_eq!(blocked.kind, HookErrorKind::Cancelled);
         assert_ne!(blocked.kind, HookErrorKind::TimedOut, "a person stopping it is not a timeout");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn hook_timeout_does_not_cancel_tool_token() {
+        use crate::lifecycle::{Scope, Token};
+        let root = dir("timeout-parent");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"sleep 30\"
+on_failure = \"warn\"
+timeout_secs = 1
+",
+        );
+        let hooks = load(&root).unwrap();
+        let token = Token::new(Scope::new("s", "r", "c"));
+        let decision = run(
+            &hooks,
+            Event::PreTool,
+            Some("write"),
+            &Context {
+                project_root: &root,
+                allow_network: false,
+                home_readonly: true,
+                sandbox: false,
+                mask_root: None,
+                cancel: Some(token.clone()),
+            },
+        )
+        .await;
+        assert!(!token.is_stopped(), "a hook timeout must not stop the tool token");
+        assert!(decision.allowed());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn warn_hook_timeout_lets_tool_run() {
+        let root = dir("warn-timeout");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"sleep 30\"
+on_failure = \"warn\"
+timeout_secs = 1
+",
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("write"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        assert_eq!(decision.warnings.len(), 1);
+        assert_eq!(decision.warnings[0].kind, HookErrorKind::TimedOut);
         let _ = std::fs::remove_dir_all(&root);
     }
 

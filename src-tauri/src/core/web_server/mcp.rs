@@ -18,6 +18,8 @@ use tokio::sync::{oneshot, Mutex};
 
 use crate::core::cli::mcp as client;
 use crate::core::mcp::models::McpSettings;
+use crate::core::mcp::redact;
+use crate::core::mcp::stall;
 use crate::core::state::SharedMcpServers;
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,12 +34,82 @@ pub enum Status {
 pub struct Host {
     servers: SharedMcpServers,
     failures: Mutex<HashMap<String, String>>,
-    starting: Mutex<HashSet<String>>,
-    cancellations: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    // std mutexes, held only for a map edit and never across an await, so the
+    // guards below can release their entry from `Drop`.
+    starting: std::sync::Mutex<HashSet<String>>,
+    cancellations: std::sync::Mutex<HashMap<String, oneshot::Sender<()>>>,
     allow_stdio: bool,
     /// One writer at a time for `mcp_config.json`: every change reads the
     /// document, edits it and writes it back.
     config_lock: Mutex<()>,
+}
+
+/// Marks a server as starting; clears the mark on drop, so a connect that is
+/// cancelled mid-await (client disconnect) cannot leave it stuck on "starting".
+struct StartingGuard<'a> {
+    set: &'a std::sync::Mutex<HashSet<String>>,
+    name: String,
+}
+
+impl<'a> StartingGuard<'a> {
+    fn begin(set: &'a std::sync::Mutex<HashSet<String>>, name: &str) -> Option<Self> {
+        let fresh = set
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(name.to_string());
+        fresh.then(|| Self { set, name: name.to_string() })
+    }
+}
+
+impl Drop for StartingGuard<'_> {
+    fn drop(&mut self) {
+        self.set
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&self.name);
+    }
+}
+
+/// Registers a call's cancel sender; removes it on drop, finished or abandoned.
+struct CancellationGuard<'a> {
+    map: &'a std::sync::Mutex<HashMap<String, oneshot::Sender<()>>>,
+    token: String,
+}
+
+impl<'a> CancellationGuard<'a> {
+    fn register(
+        map: &'a std::sync::Mutex<HashMap<String, oneshot::Sender<()>>>,
+        token: &str,
+        sender: oneshot::Sender<()>,
+    ) -> Self {
+        map.lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(token.to_string(), sender);
+        Self { map, token: token.to_string() }
+    }
+}
+
+impl Drop for CancellationGuard<'_> {
+    fn drop(&mut self) {
+        self.map
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&self.token);
+    }
+}
+
+type Peer = rmcp::Peer<rmcp::RoleClient>;
+
+/// Peers of the matching servers. The `servers` lock is held only for this
+/// copy, never across a round trip to a server.
+async fn peers_of(host: &Host, wanted: impl Fn(&str) -> bool) -> Vec<(String, Peer)> {
+    host.servers
+        .lock()
+        .await
+        .iter()
+        .filter(|(name, _)| wanted(name))
+        .map(|(name, service)| (name.clone(), service.peer()))
+        .collect()
 }
 
 impl Host {
@@ -45,8 +117,8 @@ impl Host {
         Self {
             servers: Arc::new(Mutex::new(HashMap::new())),
             failures: Mutex::new(HashMap::new()),
-            starting: Mutex::new(HashSet::new()),
-            cancellations: Mutex::new(HashMap::new()),
+            starting: std::sync::Mutex::new(HashSet::new()),
+            cancellations: std::sync::Mutex::new(HashMap::new()),
             allow_stdio,
             config_lock: Mutex::new(()),
         }
@@ -103,11 +175,25 @@ fn refuse_stdio(host: &Host) -> String {
         .to_string()
 }
 
-/// Raw `mcp_config.json`, for the settings page to parse as it does on desktop.
+/// `mcp_config.json` with env values and headers masked, for the settings page
+/// to parse as it does on desktop. The real secrets never leave the host.
 pub fn config_text() -> String {
-    match client::read_config_document() {
+    redacted_text(&client::read_config_document())
+}
+
+fn redacted_text(document: &Value) -> String {
+    match document {
         Value::Null => "{}".to_string(),
-        document => document.to_string(),
+        document => redact::redact_mcp_config(document).to_string(),
+    }
+}
+
+/// Put stored secrets back where the browser sent the mask, and drop any mask
+/// with nothing to restore, as the desktop save does.
+fn unmask(document: &mut Value, stored: &Map<String, Value>) {
+    redact::restore_masked_secrets(document, stored);
+    for entry in redact::strip_unrestored_masks(document) {
+        log::warn!("web save mcp config: dropped hidden value with no stored secret: {entry}");
     }
 }
 
@@ -117,12 +203,13 @@ pub fn config_text() -> String {
 /// definition.
 pub async fn save_config(host: &Host, text: &str) -> Result<(), String> {
     let _writer = host.config_lock.lock().await;
-    let document: Value = serde_json::from_str(text).map_err(|e| format!("invalid JSON: {e}"))?;
+    let mut document: Value = serde_json::from_str(text).map_err(|e| format!("invalid JSON: {e}"))?;
     if !document.is_object() {
         return Err("configuration must be a JSON object".into());
     }
-    let incoming = servers_of(&document);
     let before = saved_servers();
+    unmask(&mut document, &before);
+    let incoming = servers_of(&document);
     for (name, config) in &incoming {
         client::validate_server_name(name)?;
         client::validate_config(config)?;
@@ -167,11 +254,11 @@ async fn connect(host: &Host, name: &str) -> Result<(), String> {
     if host.servers.lock().await.contains_key(name) {
         return Ok(());
     }
-    if !host.starting.lock().await.insert(name.to_string()) {
+    let Some(starting) = StartingGuard::begin(&host.starting, name) else {
         return Err(format!("server '{name}' is already starting"));
-    }
+    };
     let result = client::connect(name, &config, &host.servers).await;
-    host.starting.lock().await.remove(name);
+    drop(starting);
     match result {
         Ok(()) => {
             host.failures.lock().await.remove(name);
@@ -238,7 +325,7 @@ pub async fn restart_all(host: &Host) {
 
 pub async fn statuses(host: &Host) -> HashMap<String, Status> {
     let running: HashSet<String> = host.servers.lock().await.keys().cloned().collect();
-    let starting = host.starting.lock().await.clone();
+    let starting = host.starting.lock().unwrap_or_else(|p| p.into_inner()).clone();
     let failures = host.failures.lock().await.clone();
     saved_servers()
         .into_iter()
@@ -280,12 +367,12 @@ pub async fn tools(host: &Host, names: Option<Vec<String>>, start: bool) -> Vec<
         }
     }
     let timeout = settings().tool_call_timeout_duration();
-    let guard = host.servers.lock().await;
+    let peers = peers_of(host, |name| {
+        names.as_ref().is_none_or(|list| list.iter().any(|n| n == name))
+    })
+    .await;
     let mut out = Vec::new();
-    for (name, service) in guard.iter() {
-        if names.as_ref().is_some_and(|list| !list.contains(name)) {
-            continue;
-        }
+    for (name, service) in peers {
         let Ok(Ok(listed)) = tokio::time::timeout(timeout, service.list_all_tools()).await else {
             continue;
         };
@@ -423,7 +510,12 @@ pub fn auth_status(name: &str) -> Value {
 }
 
 pub async fn cancel(host: &Host, token: &str) {
-    if let Some(sender) = host.cancellations.lock().await.remove(token) {
+    let sender = host
+        .cancellations
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(token);
+    if let Some(sender) = sender {
         let _ = sender.send(());
     }
 }
@@ -478,14 +570,11 @@ pub async fn call(host: &Host, request: Call<'_>) -> Result<Value, String> {
     }
 
     let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-    if let Some(token) = &request.cancellation_token {
-        host.cancellations.lock().await.insert(token.clone(), cancel_tx);
-    }
-    let outcome = call_inner(host, &request, timeout, output_cap, cancel_rx).await;
-    if let Some(token) = &request.cancellation_token {
-        host.cancellations.lock().await.remove(token);
-    }
-    outcome
+    let _registered = request
+        .cancellation_token
+        .as_deref()
+        .map(|token| CancellationGuard::register(&host.cancellations, token, cancel_tx));
+    call_inner(host, &request, timeout, output_cap, cancel_rx).await
 }
 
 async fn call_inner(
@@ -497,18 +586,14 @@ async fn call_inner(
 ) -> Result<Value, String> {
     let folder = data_folder();
     let saved = saved_servers();
-    let guard = host.servers.lock().await;
-    let candidates: Vec<_> = guard
-        .iter()
-        .filter(|(name, _)| request.server.is_none_or(|wanted| wanted == name.as_str()))
-        .collect();
+    let candidates = peers_of(host, |name| request.server.is_none_or(|wanted| wanted == name)).await;
     if candidates.is_empty() {
         return Err(match request.server {
             Some(server) => format!("Server '{server}' not found"),
             None => format!("Tool {} not found - no MCP servers connected", request.tool),
         });
     }
-    for (name, service) in candidates {
+    for (name, service) in &candidates {
         let Ok(Ok(listed)) = tokio::time::timeout(timeout, service.list_all_tools()).await else {
             continue;
         };
@@ -535,18 +620,28 @@ async fn call_inner(
         if let Some(arguments) = request.arguments.clone() {
             params = params.with_arguments(arguments);
         }
-        let call = service.call_tool(params);
-        let result = tokio::select! {
-            result = tokio::time::timeout(timeout, call) => match result {
-                Ok(done) => done.map_err(|e| e.to_string()),
-                Err(_) => Err(format!(
-                    "Tool call '{}' timed out after {} seconds",
-                    request.tool,
-                    timeout.as_secs()
-                )),
-            },
-            _ = cancel_rx => Err(format!("Tool call '{}' was cancelled", request.tool)),
-        }?;
+        let outcome = stall::call_tool_until(service, params, timeout, async {
+            // A dropped sender is not a cancel: wait forever instead.
+            if cancel_rx.await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        })
+        .await;
+        if stall::note_outcome(name, &outcome) {
+            // No `servers` lock is held here; lazy start brings it back.
+            client::disconnect(name, &host.servers).await;
+        }
+        let result = outcome.map_err(|failure| match failure {
+            stall::CallFailure::TimedOut => format!(
+                "Tool call '{}' timed out after {} seconds",
+                request.tool,
+                timeout.as_secs()
+            ),
+            stall::CallFailure::Cancelled => {
+                format!("Tool call '{}' was cancelled", request.tool)
+            }
+            stall::CallFailure::Other(message) => message,
+        })?;
         let capped = crate::core::mcp::truncate::truncate_tool_result(&result, cap);
         crate::core::mcp::budget::charge(name, crate::core::mcp::budget::result_chars(&capped));
         return Ok(flatten(&capped));
@@ -557,6 +652,123 @@ async fn call_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample() -> Value {
+        json!({"mcpServers": {"s": {
+            "type": "http", "url": "https://x.test/mcp", "active": true,
+            "headers": {"Authorization": "Bearer real-secret"}
+        }}})
+    }
+
+    #[test]
+    fn web_mcp_config_get_masks_env_and_headers() {
+        let text = redacted_text(&sample());
+        assert!(!text.contains("real-secret"));
+        assert!(text.contains(redact::MASK));
+        assert_eq!(redacted_text(&Value::Null), "{}");
+    }
+
+    #[test]
+    fn web_mcp_config_put_roundtrip_keeps_secrets() {
+        let stored = sample();
+        let mut sent: Value = serde_json::from_str(&redacted_text(&stored)).unwrap();
+        unmask(&mut sent, &servers_of(&stored));
+        assert_eq!(
+            sent["mcpServers"]["s"]["headers"]["Authorization"],
+            "Bearer real-secret"
+        );
+        // A mask with nothing stored is dropped, never written.
+        let mut fresh: Value = serde_json::from_str(&redacted_text(&stored)).unwrap();
+        unmask(&mut fresh, &Map::new());
+        assert!(!fresh.to_string().contains(redact::MASK));
+    }
+
+    #[test]
+    fn web_mcp_connect_drop_clears_starting() {
+        let host = Host::new(false);
+        let guard = StartingGuard::begin(&host.starting, "a").expect("first start");
+        assert!(StartingGuard::begin(&host.starting, "a").is_none());
+        drop(guard);
+        assert!(host.starting.lock().unwrap().is_empty());
+        assert!(StartingGuard::begin(&host.starting, "a").is_some());
+    }
+
+    #[test]
+    fn web_mcp_call_drop_clears_cancellation() {
+        let host = Host::new(false);
+        let (tx, _rx) = oneshot::channel::<()>();
+        let guard = CancellationGuard::register(&host.cancellations, "t", tx);
+        assert!(host.cancellations.lock().unwrap().contains_key("t"));
+        drop(guard);
+        assert!(host.cancellations.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn web_mcp_timeouts_trip_stall_tracker() {
+        let server = "web-mcp-stall-test";
+        let timed_out: Result<(), stall::CallFailure> = Err(stall::CallFailure::TimedOut);
+        for _ in 1..stall::STALL_STOP_THRESHOLD {
+            assert!(!stall::note_outcome(server, &timed_out));
+        }
+        assert!(stall::note_outcome(server, &timed_out));
+    }
+
+    /// A server whose tool listing never answers.
+    struct Stalled;
+
+    impl rmcp::ServerHandler for Stalled {
+        fn get_info(&self) -> rmcp::model::ServerInfo {
+            rmcp::model::ServerInfo::new(
+                rmcp::model::ServerCapabilities::builder().enable_tools().build(),
+            )
+        }
+
+        async fn list_tools(
+            &self,
+            _request: Option<rmcp::model::PaginatedRequestParams>,
+            _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> Result<rmcp::model::ListToolsResult, rmcp::ErrorData> {
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn web_mcp_call_does_not_hold_servers_lock() {
+        use rmcp::ServiceExt;
+        let host = Arc::new(Host::new(false));
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        tokio::spawn(async move {
+            let running = Stalled.serve(server_io).await.expect("server starts");
+            let _ = running.waiting().await;
+        });
+        let client = ().serve(client_io).await.expect("client starts");
+        host.servers
+            .lock()
+            .await
+            .insert("stub".into(), crate::core::state::RunningServiceEnum::NoInit(client));
+
+        let background = host.clone();
+        let call_task = tokio::spawn(async move {
+            let request = Call {
+                tool: "t",
+                server: Some("stub"),
+                arguments: None,
+                cancellation_token: None,
+                max_output_chars: None,
+                approval_ticket: None,
+            };
+            let (_tx, rx) = oneshot::channel::<()>();
+            call_inner(&background, &request, std::time::Duration::from_secs(3), 1000, rx).await
+        });
+        // Let the call reach the stalled round trip.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(
+            host.servers.try_lock().is_ok(),
+            "a stalled call must not hold the servers lock"
+        );
+        assert!(!call_task.is_finished());
+        call_task.abort();
+    }
 
     #[test]
     fn transport_is_read_from_the_definition() {

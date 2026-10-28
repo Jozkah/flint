@@ -72,12 +72,19 @@ pub fn split_for_host_git(command: &str, extra: &[String]) -> Option<Vec<Piece>>
     steps.retain(|s| !s.trim().is_empty());
     let mut pieces = Vec::new();
     let mut any_git = false;
+    // Once a step may have changed the directory or environment, the host's git
+    // (which starts in the original directory) would run elsewhere than the
+    // steps after that change would have.
+    let mut state_changed = false;
     for step in steps {
         let Some(program) = opens_null_device(&step, extra) else {
+            if changes_cwd_or_env(&step) {
+                state_changed = true;
+            }
             pieces.push(Piece::Shell(step));
             continue;
         };
-        if program != "git" {
+        if program != "git" || state_changed {
             return None;
         }
         let mut words = words(step.trim());
@@ -104,6 +111,26 @@ pub fn split_for_host_git(command: &str, extra: &[String]) -> Option<Vec<Piece>>
         pieces.push(Piece::Git(args));
     }
     any_git.then_some(pieces)
+}
+
+/// Whether a shell step moves the working directory or sets the environment.
+fn changes_cwd_or_env(step: &str) -> bool {
+    let t = step.trim();
+    let first = t.split_whitespace().next().unwrap_or_default().to_ascii_lowercase();
+    if matches!(
+        first.as_str(),
+        "cd" | "chdir" | "pushd" | "popd" | "set-location" | "sl" | "push-location" | "pop-location"
+            | "export" | "set" | "setx" | "unset" | "source" | "." | "set-item"
+    ) {
+        return true;
+    }
+    if t.to_ascii_lowercase().contains("$env:") {
+        return true;
+    }
+    // `NAME=value` as the first word.
+    first
+        .split_once('=')
+        .is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
 }
 
 /// What the model gets instead of a run. Carries the null-device refusal
@@ -296,6 +323,21 @@ mod tests {
     }
 
     #[test]
+    fn split_after_cd_keeps_ask() {
+        for c in [
+            "cd sub; git status",
+            "Set-Location sub; git log --oneline",
+            "Push-Location x\ngit diff",
+            "export GIT_DIR=x; git status",
+            "$env:GIT_DIR='x'; git status",
+            "GIT_DIR=x; git status",
+        ] {
+            assert!(split_for_host_git(c, &[]).is_none(), "{c}");
+        }
+        assert!(split_for_host_git("git status; cd sub", &[]).is_some());
+    }
+
+    #[test]
     fn anything_that_writes_or_chains_keeps_the_ask() {
         for c in [
             "git add . && git commit -m x",
@@ -317,6 +359,6 @@ mod tests {
         assert!(text.starts_with("ERROR"), "{text}");
         assert!(text.contains("was not run in the sandbox"), "{text}");
         assert!(text.contains("being asked to approve"), "{text}");
-        assert!(crate::unsandboxed_retry::qualifies("bash", true, true, &text));
+        assert!(text.contains(super::super::jail::NULL_DEVICE_RETRY_TAG), "{text}");
     }
 }

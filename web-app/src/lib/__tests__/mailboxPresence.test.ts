@@ -182,6 +182,29 @@ describe('mailbox presence', () => {
     expect(mailbox.revive).toHaveBeenCalledTimes(1)
   })
 
+  it('retries a failed registration after a backoff, once it succeeds', async () => {
+    mailbox.register.mockRejectedValueOnce(new Error('busy'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mailbox.register).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mailbox.register).toHaveBeenCalledTimes(2)
+    // Registered now: no further attempts.
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(mailbox.register).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
+  })
+
+  it('does not retry when the session left the store', async () => {
+    mailbox.register.mockRejectedValue(new Error('busy'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await vi.advanceTimersByTimeAsync(100)
+    useCoworkSessions.setState({ sessions: [] })
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(mailbox.register).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
   it('leaves a really deleted session tombstoned', async () => {
     const { MailboxError } = await import('@/lib/sessionMailbox')
     mailbox.register.mockImplementation(async () => {

@@ -100,6 +100,36 @@ fn save_rejects_data_that_is_not_base64() {
 }
 
 #[test]
+fn save_attachment_file_uses_thread_folder() {
+    let app = mock_app();
+    let encoded = base64::engine::general_purpose::STANDARD.encode(b"x");
+    let saved = save_attachment_in(
+        app.handle().clone(),
+        "a.txt".into(),
+        encoded,
+        Some("thread-abc".into()),
+    )
+    .unwrap();
+    let saved = PathBuf::from(saved);
+    let attachments = get_jan_data_folder_path(app.handle().clone()).join(ATTACHMENTS_DIR);
+    let rel = saved.strip_prefix(&attachments).unwrap();
+    // <thread id>/<random id>/a.txt
+    assert_eq!(rel.components().count(), 3);
+    assert_eq!(rel.components().next().unwrap().as_os_str(), "thread-abc");
+    let _ = fs::remove_dir_all(attachments.join("thread-abc"));
+}
+
+#[test]
+fn save_rejects_a_traversal_thread_id() {
+    let app = mock_app();
+    let encoded = base64::engine::general_purpose::STANDARD.encode(b"x");
+    for bad in ["..", "a/b", "a\\b", ""] {
+        let r = save_attachment_in(app.handle().clone(), "a.txt".into(), encoded.clone(), Some(bad.into()));
+        assert!(r.is_err(), "{bad:?}");
+    }
+}
+
+#[test]
 fn save_rejects_an_oversized_payload_without_decoding_it() {
     let app = mock_app();
     let huge = "A".repeat(MAX_ATTACHMENT_BYTES / 3 * 4 + 16);

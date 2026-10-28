@@ -8,7 +8,8 @@
 
 use rmcp::model::{CallToolResult, ContentBlock};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::io::Write as _;
+use std::time::{Duration, SystemTime};
 
 /// Most characters of an MCP tool description (or server instructions) sent to
 /// the model. A server controls this text and it rides on every request, so an
@@ -134,7 +135,7 @@ pub fn truncate_or_spill(
 }
 
 fn write_spill(dir: &Path, label: &str, result: &CallToolResult) -> Option<std::path::PathBuf> {
-    static N: AtomicU64 = AtomicU64::new(1);
+    static PRUNED: std::sync::Once = std::sync::Once::new();
     let safe: String = label
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
@@ -148,9 +149,87 @@ fn write_spill(dir: &Path, label: &str, result: &CallToolResult) -> Option<std::
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::create_dir_all(dir).ok()?;
-    let path = dir.join(format!("{safe}-{}.txt", N.fetch_add(1, Ordering::Relaxed)));
-    std::fs::write(&path, text).ok()?;
-    Some(path)
+    // Old spill files are pruned once per process, on the first spill.
+    PRUNED.call_once(|| {
+        prune_spills(dir, SystemTime::now(), SPILL_MAX_AGE, SPILL_MAX_TOTAL_BYTES);
+    });
+    let ms = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    // `create_new` never reuses a name, so a restarted counter cannot clobber
+    // an earlier spill the model may still be reading.
+    for _ in 0..8 {
+        let rand = &uuid::Uuid::new_v4().simple().to_string()[..8];
+        let path = dir.join(format!("{safe}-{ms}-{rand}.txt"));
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                file.write_all(text.as_bytes()).ok()?;
+                return Some(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+const SPILL_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const SPILL_MAX_TOTAL_BYTES: u64 = 500 * 1024 * 1024;
+/// Entries looked at per prune, so a huge directory cannot stall the first spill.
+const SPILL_SCAN_LIMIT: usize = 5000;
+
+/// `<label>-<unix ms>-<8 hex>.txt`, the only names `write_spill` produces.
+fn is_spill_name(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".txt") else {
+        return false;
+    };
+    let mut parts = stem.rsplitn(3, '-');
+    let (Some(rand), Some(ms), Some(label)) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    rand.len() == 8
+        && rand.bytes().all(|b| b.is_ascii_hexdigit())
+        && !ms.is_empty()
+        && ms.bytes().all(|b| b.is_ascii_digit())
+        && !label.is_empty()
+}
+
+/// Delete spill files older than `max_age`, then the oldest ones until the rest
+/// fit in `max_total`. Touches only files matching the spill name pattern.
+fn prune_spills(dir: &Path, now: SystemTime, max_age: Duration, max_total: u64) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut kept: Vec<(SystemTime, u64, std::path::PathBuf)> = Vec::new();
+    for entry in entries.flatten().take(SPILL_SCAN_LIMIT) {
+        let path = entry.path();
+        if !is_spill_name(&entry.file_name().to_string_lossy()) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let modified = meta.modified().unwrap_or(now);
+        if now.duration_since(modified).is_ok_and(|age| age > max_age) {
+            let _ = std::fs::remove_file(&path);
+        } else {
+            kept.push((modified, meta.len(), path));
+        }
+    }
+    let mut total: u64 = kept.iter().map(|(_, len, _)| len).sum();
+    kept.sort_by_key(|(modified, _, _)| *modified);
+    for (_, len, path) in kept {
+        if total <= max_total {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(len);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -182,6 +261,50 @@ mod tests {
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
         let big = CallToolResult::success(vec![ContentBlock::text("x".repeat(500))]);
         assert_eq!(truncate_or_spill(&big, 100, None, "t"), truncate_tool_result(&big, 100));
+    }
+
+    #[test]
+    fn spill_names_unique_across_counter_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = CallToolResult::success(vec![ContentBlock::text("x".repeat(50))]);
+        let paths: std::collections::HashSet<_> =
+            (0..30).map(|_| write_spill(dir.path(), "srv/tool", &big).unwrap()).collect();
+        assert_eq!(paths.len(), 30);
+        for p in &paths {
+            assert!(is_spill_name(&p.file_name().unwrap().to_string_lossy()));
+        }
+    }
+
+    #[test]
+    fn spill_prune_removes_old_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("srv-1-0123abcd.txt");
+        let fresh = dir.path().join("srv-2-0123abcd.txt");
+        let foreign = dir.path().join("notes.txt");
+        for p in [&old, &fresh, &foreign] {
+            std::fs::write(p, "x").unwrap();
+        }
+        let now = SystemTime::now();
+        let long_ago = now - Duration::from_secs(30 * 24 * 60 * 60);
+        for p in [&old, &foreign] {
+            std::fs::OpenOptions::new().write(true).open(p).unwrap().set_modified(long_ago).unwrap();
+        }
+        prune_spills(dir.path(), now, SPILL_MAX_AGE, SPILL_MAX_TOTAL_BYTES);
+        assert!(!old.exists(), "old spill removed");
+        assert!(fresh.exists(), "fresh spill kept");
+        assert!(foreign.exists(), "non-spill file untouched");
+        // Over the size budget, the oldest spill goes first.
+        let newer = dir.path().join("srv-3-0123abcd.txt");
+        std::fs::write(&newer, "yy").unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&fresh)
+            .unwrap()
+            .set_modified(now - Duration::from_secs(60))
+            .unwrap();
+        prune_spills(dir.path(), now, SPILL_MAX_AGE, 2);
+        assert!(!fresh.exists());
+        assert!(newer.exists());
     }
 
     #[test]

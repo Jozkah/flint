@@ -18,7 +18,7 @@
 //!   cleaned up. What was removed is recorded — the path and the reason — so a
 //!   reader can tell "this field was empty" from "this field was a secret".
 
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -563,9 +563,7 @@ pub fn read_all(data_folder: &Path) -> Vec<PromptSnapshot> {
     let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
         return Vec::new();
     };
-    std::io::BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
+    crate::retention::lossy_lines(file)
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect()
@@ -794,6 +792,28 @@ mod tests {
         // The trim really ran: 25 records of ~400 KB do not all fit.
         assert!(all.len() < 25, "only {} records; capture may have truncated", all.len());
         assert!(!all.is_empty() && all.last().unwrap().session == "s24");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_reader_survives_invalid_utf8_line() {
+        let dir = std::env::temp_dir().join(format!("jan_snap_utf8_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let snap = |s: &str| {
+            capture(
+                &json!({ "messages": [{ "role": "user", "content": "hi" }] }),
+                &Identity { session: s.into(), ..Default::default() },
+            )
+        };
+        append(&dir, &snap("s1"));
+        let path = log_path(&dir);
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(b"{\"bad\":\"\xFF\"\n");
+        std::fs::write(&path, bytes).unwrap();
+        append(&dir, &snap("s2"));
+
+        assert_eq!(read_all(&dir).len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -364,8 +364,66 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
 /// `.git\\config`, a worktree's `.git` file -- because the cost of a false
 /// positive is a refused write, and the cost of a miss is a program git runs.
 pub fn names_git_internals(raw: &str) -> bool {
-    raw.split(['/', '\\'])
-        .any(|c| c.trim_end_matches(['.', ' ']).eq_ignore_ascii_case(".git"))
+    raw.split(['/', '\\']).any(crate::proposal::is_git_name)
+}
+
+/// [`names_git_internals`], plus where the path really lands: a link or a
+/// junction called anything that points into `.git` is judged by its target.
+/// `raw` is resolved against `project_root` when relative and, if it does not
+/// exist yet, by its deepest existing parent.
+pub fn names_git_internals_resolved(project_root: &Path, raw: &str) -> bool {
+    if names_git_internals(raw) {
+        return true;
+    }
+    let abs = if Path::new(raw).is_absolute() {
+        PathBuf::from(raw)
+    } else {
+        project_root.join(raw)
+    };
+    let Ok(resolved) = canonicalize_lenient(&abs) else {
+        return false;
+    };
+    // Only below the project: a project that itself sits under a folder with
+    // such a name must not refuse every write.
+    let below = project_root
+        .canonicalize()
+        .ok()
+        .and_then(|root| resolved.strip_prefix(&root).ok().map(Path::to_path_buf))
+        .unwrap_or(resolved);
+    below
+        .components()
+        .any(|c| names_git_internals(&c.as_os_str().to_string_lossy()))
+}
+
+/// The parts of a repository at a folder that the sandbox keeps read-only at
+/// the OS level: the hooks folder and the config file of a `.git` directory,
+/// or the `.git` pointer file of a linked worktree. Git runs these outside
+/// the sandbox, so a write is a program the user's own terminal executes.
+/// Empty when the folder has no `.git` (a `git init` inside the sandbox still
+/// works) or when `.git` is a link, which is not followed.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct GitGuard {
+    /// Folders made read-only, whole.
+    pub dirs: Vec<PathBuf>,
+    /// Single files made read-only.
+    pub files: Vec<PathBuf>,
+}
+
+pub fn git_guard(root: &Path) -> GitGuard {
+    let dot_git = root.join(".git");
+    let Ok(meta) = std::fs::symlink_metadata(&dot_git) else {
+        return GitGuard::default();
+    };
+    if meta.is_dir() {
+        GitGuard {
+            dirs: vec![dot_git.join("hooks")],
+            files: vec![dot_git.join("config")],
+        }
+    } else if meta.is_file() {
+        GitGuard { dirs: Vec::new(), files: vec![dot_git] }
+    } else {
+        GitGuard::default()
+    }
 }
 
 /// Whether any token of a shell command satisfies `names`, judged on the text
@@ -406,6 +464,11 @@ const PROTECTED_PERSISTENCE_NAMES: &[&str] = &[
     ".envrc",
     ".npmrc",
     ".pre-commit-config.yaml",
+    // Package-manager and tool configuration that runs a program or changes
+    // what one fetches: Yarn's `yarnPath`/plugins, MCP servers an agent starts.
+    ".yarnrc.yml",
+    ".yarnrc",
+    ".mcp.json",
     // Shell startup files.
     ".bashrc",
     ".bash_profile",
@@ -422,6 +485,21 @@ const PROTECTED_PERSISTENCE_NAMES: &[&str] = &[
     "profile.ps1",
 ];
 
+/// Two-component persistence paths, matched on adjacent components:
+/// CI definitions, Cargo's build-script and linker config, and the hook and
+/// MCP configuration of other coding agents that run in the user's own tools.
+const PROTECTED_PERSISTENCE_PAIRS: &[(&str, &str)] = &[
+    (".github", "workflows"),
+    (".cargo", "config"),
+    (".cargo", "config.toml"),
+    (".claude", "settings.json"),
+    (".claude", "settings.local.json"),
+    (".cursor", "mcp.json"),
+    (".cursor", "hooks.json"),
+    (".codex", "config.toml"),
+    (".gemini", "settings.json"),
+];
+
 /// Whether a path names a file the agent must not change without being asked,
 /// whichever mode is on: Git-hook managers (`.husky`, `lefthook.*`,
 /// `.pre-commit-config.yaml`), editor and container configuration that can run
@@ -431,21 +509,27 @@ const PROTECTED_PERSISTENCE_NAMES: &[&str] = &[
 /// `my.vscode.md` are not hits. The `.git` folder and `.jan/agent` have their
 /// own hard denies and are not repeated here.
 pub fn names_protected_persistence(raw: &str) -> bool {
-    let parts: Vec<String> = raw
-        .split(['/', '\\'])
-        .map(|c| c.trim_end_matches(['.', ' ']).to_ascii_lowercase())
-        .collect();
+    use crate::proposal::{canonical_component, is_short_alias_of};
+    // A name or its 8.3 short alias (`HUSKY~1`).
+    let is = |c: &str, name: &str| c == name || is_short_alias_of(c, name, false);
+    let parts: Vec<String> = raw.split(['/', '\\']).map(canonical_component).collect();
     let single = parts.iter().any(|c| {
-        PROTECTED_PERSISTENCE_NAMES.contains(&c.as_str())
+        PROTECTED_PERSISTENCE_NAMES.iter().any(|&n| is(c, n))
             || c.ends_with("_profile.ps1")
+            || (c.starts_with("micros~") && c.ends_with(".ps1"))
             || c.starts_with("lefthook.")
             || c.starts_with(".lefthook.")
             || c.starts_with("lefthook-local.")
+            || ["lefthook.yml", ".lefthook.yml", "lefthook-local.yml"]
+                .iter()
+                .any(|n| is_short_alias_of(c, n, true))
     });
     single
-        || parts
-            .windows(2)
-            .any(|w| w[0] == ".github" && w[1] == "workflows")
+        || parts.windows(2).any(|w| {
+            PROTECTED_PERSISTENCE_PAIRS
+                .iter()
+                .any(|&(dir, file)| is(&w[0], dir) && is(&w[1], file))
+        })
 }
 
 /// [`names_protected_persistence`] for each token of a shell command, read the
@@ -629,9 +713,13 @@ pub fn symlink_escapes_any_root(
         roots.push(r.as_path());
     }
     let normalized = lexical_normalize(target);
+    // Compared by a spelling-insensitive key: a canonical root carries `\\?\`
+    // on Windows while the model writes `C:\...`, and case may differ, so the
+    // plain comparison would call an inside path "not ours" and skip the check.
+    let claimed = claim_key(&normalized);
     if !roots
         .iter()
-        .any(|r| normalized.starts_with(lexical_normalize(r)))
+        .any(|r| claimed.starts_with(claim_key(&lexical_normalize(r))))
     {
         return false;
     }
@@ -642,6 +730,21 @@ pub fn symlink_escapes_any_root(
         .iter()
         .filter_map(|r| r.canonicalize().ok())
         .any(|r| resolved.starts_with(r))
+}
+
+/// A path spelled for the "is it under this root" test: a `\\?\C:\` verbatim
+/// prefix removed, and lower-cased on Windows where names ignore case.
+fn claim_key(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy().into_owned();
+    let plain = match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest.to_string(),
+        _ => text,
+    };
+    if cfg!(windows) {
+        PathBuf::from(plain.to_ascii_lowercase())
+    } else {
+        PathBuf::from(plain)
+    }
 }
 
 /// How many symlinks one resolution may follow before it is taken to be a
@@ -773,6 +876,147 @@ mod windows_name_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn symlink_recheck_handles_verbatim_prefix() {
+        let verbatim = claim_key(Path::new(r"\\?\C:\repo\sub"));
+        let plain = claim_key(Path::new(r"C:\repo"));
+        // Only Windows reads backslashes as separators; compare the text there.
+        if cfg!(windows) {
+            assert!(verbatim.starts_with(&plain), "{verbatim:?} vs {plain:?}");
+            assert!(claim_key(Path::new(r"c:\REPO\x")).starts_with(&plain));
+        } else {
+            assert_eq!(claim_key(Path::new("/a/b")), PathBuf::from("/a/b"));
+        }
+    }
+
+    #[test]
+    fn git_tilde1_flagged() {
+        for raw in [
+            "GIT~1/hooks/pre-commit",
+            "git~1/config",
+            "repo\\GIT~2\\config",
+            "a/Git~12/hooks",
+            "GIT~1.",
+        ] {
+            assert!(names_git_internals(raw), "{raw}");
+        }
+        // Lookalikes and ordinary git-named files are not `.git`.
+        for raw in [
+            ".gitignore",
+            ".github/CODEOWNERS",
+            "docs/git.md",
+            "git~notes.txt",
+            "git~",
+            "gitx~1/config",
+            "src/widget~1",
+            "repo.git",
+        ] {
+            assert!(!names_git_internals(raw), "{raw}");
+        }
+        assert!(command_names_git_internals("echo x > GIT~1/hooks/pre-commit"));
+        assert!(!command_names_git_internals("git commit -am x && git checkout -b y"));
+    }
+
+    #[test]
+    fn git_index_allocation_stream_flagged() {
+        for raw in [
+            ".git::$INDEX_ALLOCATION/hooks/pre-commit",
+            ".GIT::$index_allocation",
+            ".git:$I30:$INDEX_ALLOCATION/config",
+            "x/.git::$DATA",
+            "GIT~1::$INDEX_ALLOCATION/config",
+        ] {
+            assert!(names_git_internals(raw), "{raw}");
+        }
+        assert!(command_names_git_internals("echo x > .git::$INDEX_ALLOCATION/hooks/p"));
+    }
+
+    #[test]
+    fn a_link_into_dot_git_is_judged_by_its_target() {
+        let root = std::env::temp_dir().join(format!("jan-w13-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".git/hooks")).unwrap();
+        let link = root.join("innocent");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(root.join(".git"), &link).is_ok();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(root.join(".git"), &link).is_ok();
+        if made {
+            assert!(!names_git_internals("innocent/hooks/pre-commit"));
+            assert!(names_git_internals_resolved(&root, "innocent/hooks/pre-commit"));
+        }
+        // A plain path stays plain.
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        assert!(!names_git_internals_resolved(&root, "src/main.rs"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn yarnrc_cargo_config_persistence() {
+        for raw in [
+            ".yarnrc.yml",
+            "pkg/.yarnrc",
+            ".mcp.json",
+            ".cargo/config.toml",
+            ".cargo/config",
+            "crate/.CARGO\\Config.toml",
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+            ".cursor/mcp.json",
+            ".codex/config.toml",
+            ".gemini/settings.json",
+            // 8.3 short names of the same files.
+            "HUSKY~1/pre-commit",
+            "VSCODE~1/tasks.json",
+            "GITHUB~1/WORKFL~1/ci.yml",
+            "GITLAB~1.YML",
+            "DEVCON~1/devcontainer.json",
+            "CARGO~1/CONFIG~1.TOM",
+            "YARNRC~1.YML",
+            "LEFTHO~1.YML",
+        ] {
+            assert!(names_protected_persistence(raw), "{raw}");
+        }
+        assert!(command_names_protected_persistence("echo x > .cargo/config.toml"));
+        // Neighbours that are not persistence.
+        for raw in [
+            ".cargo/registry/index",
+            "Cargo.toml",
+            ".cargo/bin/tool",
+            "config.toml",
+            ".claude/commands/x.md",
+            ".yarnrc-notes.md",
+            "husky~notes",
+            "src/.husky-notes",
+        ] {
+            assert!(!names_protected_persistence(raw), "{raw}");
+        }
+    }
+
+    #[test]
+    fn git_guard_covers_hooks_config_and_the_worktree_pointer() {
+        let base = std::env::temp_dir().join(format!("jan-w13-guard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        // No `.git`: nothing to guard, so `git init` in the sandbox still works.
+        let plain = base.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(git_guard(&plain), GitGuard::default());
+        // A normal repository.
+        let repo = base.join("repo");
+        std::fs::create_dir_all(repo.join(".git/hooks")).unwrap();
+        let g = git_guard(&repo);
+        assert_eq!(g.dirs, vec![repo.join(".git/hooks")]);
+        assert_eq!(g.files, vec![repo.join(".git/config")]);
+        // A linked worktree: `.git` is a file.
+        let wt = base.join("wt");
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(wt.join(".git"), "gitdir: /x/.git/worktrees/wt").unwrap();
+        let g = git_guard(&wt);
+        assert!(g.dirs.is_empty());
+        assert_eq!(g.files, vec![wt.join(".git")]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// R21: on Windows a path with a root but no drive names the root of the
     /// project's drive, not somewhere in the project. It escapes, for writes

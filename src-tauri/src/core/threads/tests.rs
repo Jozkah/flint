@@ -1045,3 +1045,33 @@ async fn test_get_lock_for_thread_provides_mutual_exclusion() {
     let lock2 = get_lock_for_thread("mutex-test").await;
     assert!(lock2.try_lock().is_err());
 }
+
+#[tokio::test]
+async fn permanent_delete_removes_attachment_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let id = "perm-del-att";
+    fs::create_dir_all(get_thread_dir(root, id)).unwrap();
+    fs::write(get_thread_metadata_path(root, id), json!({"id": id}).to_string()).unwrap();
+    let att = root.join("attachments");
+    fs::create_dir_all(att.join(id).join("u1")).unwrap();
+    fs::write(att.join(id).join("u1").join("a.txt"), "x").unwrap();
+    // A legacy folder and another thread's folder must survive.
+    fs::create_dir_all(att.join("legacy-uuid")).unwrap();
+    fs::create_dir_all(att.join("other-thread")).unwrap();
+
+    super::storage::delete_thread_in(root, id, true).await.unwrap();
+
+    assert!(!get_thread_dir(root, id).exists());
+    assert!(!att.join(id).exists());
+    assert!(att.join("legacy-uuid").exists());
+    assert!(att.join("other-thread").exists());
+}
+
+#[tokio::test]
+async fn delete_of_unknown_thread_is_ok() {
+    let dir = tempfile::tempdir().unwrap();
+    super::storage::delete_thread_in(dir.path(), "never-existed", true)
+        .await
+        .unwrap();
+}

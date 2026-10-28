@@ -71,7 +71,7 @@ fn build_app_owns_every_piece_of_builder_configuration() {
         ".manage(AppState {",
         ".setup(",
         ".build(tauri::generate_context!())",
-        "tauri_plugin_single_instance::init",
+        "tauri_plugin_single_instance::Builder::new",
         "tauri_plugin_store::Builder::new",
         "generate_app_token()",
         "setup_mcp(app)",

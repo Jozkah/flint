@@ -41,6 +41,25 @@ import {
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups'
 
+/**
+ * `allow-scripts` + `allow-same-origin` lets a framed page remove its own
+ * sandbox when it is served from the app's origin, so such a page (or an
+ * unparseable url) is never framed.
+ */
+function isAppOrigin(url: string): boolean {
+  try {
+    const origin = new URL(url, window.location.href).origin
+    return (
+      origin === window.location.origin ||
+      origin === 'tauri://localhost' ||
+      origin === 'http://tauri.localhost' ||
+      origin === 'https://tauri.localhost'
+    )
+  } catch {
+    return true
+  }
+}
+
 /** Browser-tab style label: the site's icon and the page's title. */
 function PageTab({ url, title }: { url: string; title: string }) {
   const [iconFailed, setIconFailed] = useState(false)
@@ -354,13 +373,17 @@ export function WebPreviewHost() {
               {t('common:webPreview.openExternal')}
             </button>
           </div>
-          <iframe
-            key={`${url}#${nonce}`}
-            title={url}
-            src={url}
-            sandbox={SANDBOX}
-            className="min-h-0 w-full flex-1 border-0 bg-card"
-          />
+          {isAppOrigin(url) ? (
+            <div data-testid="wp-same-origin" className="min-h-0 w-full flex-1 bg-card" />
+          ) : (
+            <iframe
+              key={`${url}#${nonce}`}
+              title={url}
+              src={url}
+              sandbox={SANDBOX}
+              className="min-h-0 w-full flex-1 border-0 bg-card"
+            />
+          )}
         </>
       ) : (
         // The native webview is positioned over this box.

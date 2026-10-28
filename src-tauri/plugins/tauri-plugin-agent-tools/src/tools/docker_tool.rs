@@ -17,6 +17,7 @@ use serde_json::Value;
 
 const OUTPUT_CAP: usize = 48 * 1024;
 const TIMEOUT_SECS: u64 = 30;
+const DEFAULT_TAIL: u32 = 500;
 
 /// A flag, and whether it takes a value.
 type Flag = (&'static str, bool);
@@ -161,6 +162,12 @@ pub fn plan(args: &Value) -> Result<Vec<String>, String> {
             sub.requires.unwrap_or("")
         ));
     }
+    let is_logs = argv[0] == "logs" || argv.get(1).is_some_and(|w| w == "logs");
+    if is_logs && !argv.iter().any(|a| a == "--tail" || a.starts_with("--tail=")) {
+        // Without a tail a busy container's whole log would be read.
+        argv.push("--tail".to_string());
+        argv.push(DEFAULT_TAIL.to_string());
+    }
     Ok(argv)
 }
 
@@ -175,14 +182,19 @@ fn bounded(text: &str) -> String {
     format!("{}\n[output cut at {} KB; use --tail or a filter]", &text[..end], OUTPUT_CAP / 1024)
 }
 
-pub async fn docker(args: &Value) -> String {
+pub async fn docker(args: &Value, root: &std::path::Path) -> String {
+    docker_program("docker", args, root).await
+}
+
+async fn docker_program(program: impl AsRef<std::ffi::OsStr>, args: &Value, root: &std::path::Path) -> String {
     let argv = match plan(args) {
         Ok(argv) => argv,
         Err(message) => return message,
     };
-    let mut cmd = tokio::process::Command::new("docker");
+    let mut cmd = tokio::process::Command::new(program);
     jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(&argv)
+        .current_dir(root)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -276,6 +288,36 @@ mod tests {
         ] {
             assert!(argv(words).is_err(), "{words:?}");
         }
+    }
+
+    #[test]
+    fn docker_logs_defaults_tail() {
+        assert_eq!(argv(&["logs", "web"]).unwrap(), ["logs", "web", "--tail", "500"]);
+        assert_eq!(argv(&["compose", "logs"]).unwrap(), ["compose", "logs", "--tail", "500"]);
+        assert_eq!(argv(&["logs", "--tail=5", "web"]).unwrap(), ["logs", "--tail=5", "web"]);
+        assert_eq!(argv(&["ps"]).unwrap(), ["ps"]);
+    }
+
+    /// The child runs in the workspace, not in Flint's own directory. A fake
+    /// `docker.cmd` on PATH prints its working directory.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn docker_compose_runs_in_workspace() {
+        let base = std::env::temp_dir().join(format!("flint-docker-cwd-{}", std::process::id()));
+        let bin = base.join("bin");
+        let ws = base.join("ws");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(bin.join("docker.cmd"), "@echo off\r\ncd\r\n").unwrap();
+        let out = docker_program(bin.join("docker.cmd"), &json!({ "args": ["compose", "ls"] }), &ws).await;
+        let canon = std::fs::canonicalize(&ws).unwrap();
+        // The child prints the folder as it was handed it, which can be the 8.3
+        // short form (`RUNNER~1`) on a CI runner; canonicalise it too, while the
+        // folder still exists, to compare like with like.
+        let printed = std::fs::canonicalize(out.trim()).unwrap_or_else(|_| std::path::PathBuf::from(out.trim()));
+        let _ = std::fs::remove_dir_all(&base);
+        let strip = |s: &str| s.trim().trim_start_matches(r"\\?\").to_ascii_lowercase();
+        assert_eq!(strip(&printed.to_string_lossy()), strip(&canon.to_string_lossy()), "{out}");
     }
 
     #[test]

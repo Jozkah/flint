@@ -28,6 +28,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   # The SDKs are clients of the same channel the CLI tests drive, so they run
   # against a real runtime binary: a client that only agreed with itself would

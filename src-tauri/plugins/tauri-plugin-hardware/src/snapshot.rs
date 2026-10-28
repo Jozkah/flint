@@ -198,52 +198,100 @@ fn hide_apple_system_volumes(disks: Vec<DiskDetails>) -> Vec<DiskDetails> {
 
 /// Collect a snapshot, refreshing only what the page needs.
 pub fn get_system_snapshot() -> SystemSnapshot {
-    let mut guard = COLLECTORS.lock().unwrap_or_else(|e| e.into_inner());
-    let first = guard.is_none();
-    let c = guard.get_or_insert_with(|| Collectors {
-        system: System::new_with_specifics(
-            RefreshKind::nothing()
-                .with_cpu(CpuRefreshKind::nothing().with_cpu_usage().with_frequency())
-                .with_memory(MemoryRefreshKind::everything()),
-        ),
-        networks: Networks::new_with_refreshed_list(),
-        // On Windows sysinfo reads only the ACPI zones, which the cached
-        // query in `windows_sensors` covers along with more sources.
-        components: if cfg!(windows) {
-            Components::new()
+    // Hold the collector lock only for the sysinfo refreshes; disk listing and
+    // GPU enumeration below can be slow and must not block other callers.
+    let (name, frequency_mhz, logical, usage, per_core, networks, sensors, memory) = {
+        let mut guard = COLLECTORS.lock().unwrap_or_else(|e| e.into_inner());
+        let first = guard.is_none();
+        let c = guard.get_or_insert_with(|| Collectors {
+            system: System::new_with_specifics(
+                RefreshKind::nothing()
+                    .with_cpu(CpuRefreshKind::nothing().with_cpu_usage().with_frequency())
+                    .with_memory(MemoryRefreshKind::everything()),
+            ),
+            networks: Networks::new_with_refreshed_list(),
+            // On Windows sysinfo reads only the ACPI zones, which the cached
+            // query in `windows_sensors` covers along with more sources.
+            components: if cfg!(windows) {
+                Components::new()
+            } else {
+                Components::new_with_refreshed_list()
+            },
+        });
+
+        let cpu_kind = CpuRefreshKind::nothing().with_cpu_usage().with_frequency();
+        if first {
+            // Usage needs two samples; only the very first poll pays the wait.
+            std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+            c.system.refresh_cpu_specifics(cpu_kind);
         } else {
-            Components::new_with_refreshed_list()
-        },
-    });
-
-    let cpu_kind = CpuRefreshKind::nothing().with_cpu_usage().with_frequency();
-    if first {
-        // Usage needs two samples; only the very first poll pays the wait.
-        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-        c.system.refresh_cpu_specifics(cpu_kind);
-    } else {
-        c.system.refresh_cpu_specifics(cpu_kind);
-        c.networks.refresh(true);
-        if !cfg!(windows) {
-            c.components.refresh(true);
+            c.system.refresh_cpu_specifics(cpu_kind);
+            c.networks.refresh(true);
+            if !cfg!(windows) {
+                c.components.refresh(true);
+            }
         }
-    }
-    c.system
-        .refresh_memory_specifics(MemoryRefreshKind::everything());
+        c.system
+            .refresh_memory_specifics(MemoryRefreshKind::everything());
 
-    let cpus = c.system.cpus();
-    let per_core: Vec<f32> = cpus.iter().map(|cpu| cpu.cpu_usage()).collect();
-    let logical = cpus.len();
-    let usage = per_core.iter().sum::<f32>() / (logical.max(1) as f32);
-    let frequency_mhz = if logical == 0 {
-        0
-    } else {
-        cpus.iter().map(|cpu| cpu.frequency()).sum::<u64>() / logical as u64
+        let cpus = c.system.cpus();
+        let per_core: Vec<f32> = cpus.iter().map(|cpu| cpu.cpu_usage()).collect();
+        let logical = cpus.len();
+        let usage = per_core.iter().sum::<f32>() / (logical.max(1) as f32);
+        let frequency_mhz = if logical == 0 {
+            0
+        } else {
+            cpus.iter().map(|cpu| cpu.frequency()).sum::<u64>() / logical as u64
+        };
+        let name = cpus
+            .first()
+            .map(|cpu| cpu.brand().trim().to_string())
+            .unwrap_or_default();
+
+        let mut networks: Vec<NetworkDetails> = c
+            .networks
+            .iter()
+            .map(|(name, data)| NetworkDetails {
+                name: name.clone(),
+                mac_address: data.mac_address().to_string(),
+                total_received: data.total_received(),
+                total_transmitted: data.total_transmitted(),
+            })
+            .collect();
+        networks.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let sensors: Vec<SensorDetails> = c
+            .components
+            .iter()
+            .map(|comp| SensorDetails {
+                label: comp.label().to_string(),
+                kind: sensor_kind(comp.label()).into(),
+                source: "sysinfo".into(),
+                temperature: comp.temperature().filter(|t| t.is_finite()),
+                max: comp.max().filter(|t| t.is_finite()),
+                critical: comp.critical().filter(|t| t.is_finite()),
+            })
+            .collect();
+        #[cfg(target_os = "macos")]
+        let sensors = condense_apple_sensors(sensors);
+        let memory = MemoryDetails {
+            total: c.system.total_memory(),
+            used: c.system.used_memory(),
+            swap_total: c.system.total_swap(),
+            swap_used: c.system.used_swap(),
+        };
+
+        (
+            name,
+            frequency_mhz,
+            logical,
+            usage,
+            per_core,
+            networks,
+            sensors,
+            memory,
+        )
     };
-    let name = cpus
-        .first()
-        .map(|cpu| cpu.brand().trim().to_string())
-        .unwrap_or_default();
 
     let disks = Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_storage())
         .list()
@@ -265,32 +313,7 @@ pub fn get_system_snapshot() -> SystemSnapshot {
     #[cfg(target_os = "macos")]
     let disks = hide_apple_system_volumes(disks);
 
-    let mut networks: Vec<NetworkDetails> = c
-        .networks
-        .iter()
-        .map(|(name, data)| NetworkDetails {
-            name: name.clone(),
-            mac_address: data.mac_address().to_string(),
-            total_received: data.total_received(),
-            total_transmitted: data.total_transmitted(),
-        })
-        .collect();
-    networks.sort_by(|a, b| a.name.cmp(&b.name));
-
-    let mut sensors: Vec<SensorDetails> = c
-        .components
-        .iter()
-        .map(|comp| SensorDetails {
-            label: comp.label().to_string(),
-            kind: sensor_kind(comp.label()).into(),
-            source: "sysinfo".into(),
-            temperature: comp.temperature().filter(|t| t.is_finite()),
-            max: comp.max().filter(|t| t.is_finite()),
-            critical: comp.critical().filter(|t| t.is_finite()),
-        })
-        .collect();
-    #[cfg(target_os = "macos")]
-    let mut sensors = condense_apple_sensors(sensors);
+    let mut sensors = sensors;
     sensors.extend(crate::windows_sensors::sensors());
     for gpu in crate::get_system_info().gpus {
         if let Some((temp, critical)) = gpu.nvidia_temperature() {
@@ -304,13 +327,6 @@ pub fn get_system_snapshot() -> SystemSnapshot {
             });
         }
     }
-
-    let memory = MemoryDetails {
-        total: c.system.total_memory(),
-        used: c.system.used_memory(),
-        swap_total: c.system.total_swap(),
-        swap_used: c.system.used_swap(),
-    };
 
     SystemSnapshot {
         host_name: System::host_name(),

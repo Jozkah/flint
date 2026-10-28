@@ -14,6 +14,7 @@ import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
 import { archiveEnabled, trackArchiveWork } from '@/lib/archive'
 
@@ -61,6 +62,29 @@ type ThreadState = {
   searchIndex: Fzf<Thread[]> | null
 }
 
+// Drops every per-thread entry the sibling stores keep for a deleted thread,
+// so none of them outlives it (a tool grant for a gone thread would otherwise
+// sit in the persisted record forever).
+const forgetThreadState = (threadId: string) => {
+  useAgentMode.getState().removeThread(threadId)
+  useChatSessions.getState().removeSession(threadId)
+  useAppState.getState().clearThreadState(threadId)
+  // The chat's model-setting overrides are keyed by thread id; left
+  // behind they would sit in the record forever.
+  useModelOverrides.getState().dropThread(threadId)
+  useThreadToolGrants.getState().dropThread(threadId)
+  useToolApproval.getState().revokeThread(threadId)
+}
+
+// The selected thread id, or undefined when that thread was just deleted.
+const stillSelected = (
+  currentThreadId: string | undefined,
+  deletedIds: string[]
+): string | undefined =>
+  currentThreadId && deletedIds.includes(currentThreadId)
+    ? undefined
+    : currentThreadId
+
 // Helper function to clean up vector DB collection for a thread
 const cleanupVectorDB = async (threadId: string) => {
   try {
@@ -68,7 +92,8 @@ const cleanupVectorDB = async (threadId: string) => {
       ExtensionTypeEnum.VectorDB
     )
     if (vec?.deleteCollection) {
-      await vec.deleteCollection(`attachments_${threadId}`)
+      // The extension adds the `attachments_` prefix itself.
+      await vec.deleteCollection(threadId)
     }
   } catch (e) {
     console.warn(
@@ -250,13 +275,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [threadId]: _, ...remainingThreads } = state.threads
 
-      useAgentMode.getState().removeThread(threadId)
-      useChatSessions.getState().removeSession(threadId)
-      useAppState.getState().clearThreadState(threadId)
-      // The chat's model-setting overrides are keyed by thread id; left
-      // behind they would sit in the record forever.
-      useModelOverrides.getState().dropThread(threadId)
-      useThreadToolGrants.getState().dropThread(threadId)
+      forgetThreadState(threadId)
       cleanupThreadArtifacts(threadId, permanent)
       backend = deleteThreadBackend(threadId, permanent)
 
@@ -294,6 +313,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
       // Delete threads and clean up their out-of-store artifacts
       threadsToDeleteIds.forEach((threadId) => {
+        forgetThreadState(threadId)
         cleanupThreadArtifacts(threadId)
         deleteThreadBackend(threadId)
       })
@@ -309,6 +329,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
       return {
         threads: remainingThreads,
+        currentThreadId: stillSelected(state.currentThreadId, threadsToDeleteIds),
         searchIndex: new Fzf<Thread[]>(
           Object.values(remainingThreads).filter(
             (t) => t.id !== TEMPORARY_CHAT_ID && t.title
@@ -325,9 +346,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       const allThreadIds = Object.keys(state.threads)
 
       allThreadIds.forEach((threadId) => {
-        useAgentMode.getState().removeThread(threadId)
-        useChatSessions.getState().removeSession(threadId)
-        useAppState.getState().clearThreadState(threadId)
+        forgetThreadState(threadId)
         cleanupThreadArtifacts(threadId)
         deleteThreadBackend(threadId)
       })
@@ -352,8 +371,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       )
 
       threadsToDeleteIds.forEach((threadId) => {
-        useChatSessions.getState().removeSession(threadId)
-        useAppState.getState().clearThreadState(threadId)
+        forgetThreadState(threadId)
         cleanupThreadArtifacts(threadId)
         deleteThreadBackend(threadId)
       })
@@ -371,6 +389,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
       return {
         threads: remainingThreads,
+        currentThreadId: stillSelected(state.currentThreadId, threadsToDeleteIds),
         searchIndex: new Fzf<Thread[]>(Object.values(remainingThreads).filter(t => t.id !== TEMPORARY_CHAT_ID && t.title), {
           selector: (item: Thread) => item.title ?? '',
         }),
@@ -390,7 +409,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         {} as Record<string, Thread>
       )
       Object.values(updatedThreads).forEach((thread) => {
-        persistThread({ ...thread, isFavorite: false }, state.threads[thread.id])
+        persistThread(thread, state.threads[thread.id])
       })
       return { threads: updatedThreads }
     })
@@ -455,29 +474,25 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     set((state) => {
       if (!state.currentThreadId) return { ...state }
       const currentThread = state.getCurrentThread()
+      if (!currentThread) return state
       // A pick by the user means the assistant is no longer Jev's to change.
       const rest = { ...(currentThread?.metadata ?? {}) }
       delete rest.jevRoutedAssistantId
-      if (currentThread)
-        persistThread(
-          {
-            ...currentThread,
-            assistants: assistant ? [{ ...assistant, model: currentThread.model }] : [],
-            metadata: rest,
-          },
-          currentThread
-        )
+      // One object, persisted and stored, so a failed write can tell whether
+      // the thread is still the one it wrote.
+      const updatedThread = {
+        ...state.threads[state.currentThreadId as string],
+        assistants: assistant
+          ? [{ ...assistant, model: currentThread?.model }]
+          : [],
+        metadata: rest,
+        updated: Date.now() / 1000,
+      } as Thread
+      if (currentThread) persistThread(updatedThread, currentThread)
       return {
         threads: {
           ...state.threads,
-          [state.currentThreadId as string]: {
-            ...state.threads[state.currentThreadId as string],
-            assistants: assistant
-              ? [{ ...assistant, model: currentThread?.model }]
-              : [],
-            metadata: rest,
-            updated: Date.now() / 1000,
-          },
+          [state.currentThreadId as string]: updatedThread,
         },
       }
     })
@@ -488,28 +503,29 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     get().updateThreadModel(currentThreadId, model)
   },
   updateThreadModel: (threadId, model) => {
+    // An unknown id must not create a ghost thread or touch the overrides.
+    if (!get().threads[threadId]) return
+    // The new model may not define every setting this chat had overridden.
+    // Such an override is already inert — `resolveModel` ignores a key the
+    // model does not have — but leaving it in the record would let it come
+    // back to life if the old model were ever selected again. Look the model
+    // up under its own provider: the selected one may differ (split panes).
+    useModelOverrides
+      .getState()
+      .pruneForThread(
+        threadId,
+        model.provider,
+        useModelProvider.getState().getModelBy(model.id, model.provider)
+      )
     set((state) => {
-      // The new model may not define every setting this chat had overridden.
-      // Such an override is already inert — `resolveModel` ignores a key the
-      // model does not have — but leaving it in the record would let it come
-      // back to life if the old model were ever selected again.
-      useModelOverrides
-        .getState()
-        .pruneForThread(
-          threadId,
-          model.provider,
-          useModelProvider.getState().getModelBy(model.id)
-        )
       const thread = state.threads[threadId]
-      if (thread)
-        persistThread({ ...thread, model }, thread)
+      if (!thread) return state
+      const updatedThread = { ...thread, model } as Thread
+      persistThread(updatedThread, thread)
       return {
         threads: {
           ...state.threads,
-          [threadId]: {
-            ...state.threads[threadId],
-            model,
-          },
+          [threadId]: updatedThread,
         },
       }
     })
@@ -601,8 +617,10 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
 /**
  * Persist a thread write without an unhandled rejection. On failure the
- * optimistic state is rolled back to `prev` (if the thread still exists) and
- * the user is told, so the UI no longer shows a change the disk never got.
+ * optimistic state is rolled back to `prev`, but only while the store still
+ * holds `next`: a newer edit (or a delete) made since must not be undone.
+ * The caller therefore has to store the very object it persists. The user is
+ * told either way.
  */
 function persistThread(next: Thread, prev?: Thread) {
   Promise.resolve()
@@ -612,7 +630,7 @@ function persistThread(next: Thread, prev?: Thread) {
       toast.error(i18n.t('common:threadSaveFailed'))
       if (!prev) return
       useThreads.setState((state) =>
-        state.threads[prev.id]
+        state.threads[prev.id] === next
           ? { threads: { ...state.threads, [prev.id]: prev } }
           : state
       )

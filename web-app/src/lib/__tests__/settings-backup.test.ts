@@ -58,6 +58,36 @@ describe('stripSecretFields', () => {
   })
 })
 
+describe('stripSecretFields camelCase and header names', () => {
+  it('drops camelCase token fields but keeps token counts', () => {
+    const out = stripSecretFields({
+      accessToken: 'a',
+      authToken: 'b',
+      refreshToken: 'c',
+      githubToken: 'd',
+      hfToken: 'e',
+      maxTokens: 100,
+      max_tokens: 5,
+    })
+    expect(out).toEqual({ maxTokens: 100, max_tokens: 5 })
+  })
+
+  it('blanks values of secret-named headers even without the flag', () => {
+    const out = stripSecretFields({
+      custom_header: [
+        { header: 'X-Api-Key', value: 'abc', secret: false },
+        { header: 'Accept', value: 'x' },
+      ],
+    })
+    expect(out).toEqual({
+      custom_header: [
+        { header: 'X-Api-Key', value: '', secret: false },
+        { header: 'Accept', value: 'x' },
+      ],
+    })
+  })
+})
+
 describe('buildBackup', () => {
   it('exports allowlisted stores only, scrubbed, without providers by default', async () => {
     const { io } = fakeIo(

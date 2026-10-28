@@ -175,12 +175,44 @@ impl Default for ArchiveSettings {
     }
 }
 
-/// The settings file next to the data, defaulting when absent or unreadable.
+/// What the settings file held. Absent is a fresh install and uses the
+/// defaults; Unreadable is a file that exists but could not be read or parsed,
+/// which must never be mistaken for "use the defaults" by anything destructive.
+#[derive(Debug)]
+pub enum SettingsRead {
+    Absent,
+    Ok(ArchiveSettings),
+    Unreadable(String),
+}
+
+pub fn read_settings_checked(data: &Path) -> SettingsRead {
+    match fs::read(data.join(SETTINGS_FILE)) {
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(s) => SettingsRead::Ok(s),
+            Err(e) => {
+                log::error!("archive settings are damaged: {e}");
+                SettingsRead::Unreadable(format!("parse {SETTINGS_FILE}: {e}"))
+            }
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => SettingsRead::Absent,
+        Err(e) => {
+            log::error!("archive settings could not be read: {e}");
+            SettingsRead::Unreadable(format!("read {SETTINGS_FILE}: {e}"))
+        }
+    }
+}
+
+/// The settings for callers that only read `enabled`. An unreadable file maps
+/// to a non-destructive fallback (nothing auto-deleted), not the defaults.
 pub fn read_settings(data: &Path) -> ArchiveSettings {
-    fs::read(data.join(SETTINGS_FILE))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+    match read_settings_checked(data) {
+        SettingsRead::Ok(s) => s,
+        SettingsRead::Absent => ArchiveSettings::default(),
+        SettingsRead::Unreadable(_) => ArchiveSettings {
+            auto_delete_days: 0,
+            ..ArchiveSettings::default()
+        },
+    }
 }
 
 pub fn write_settings(data: &Path, settings: &ArchiveSettings) -> Result<(), String> {
@@ -189,12 +221,8 @@ pub fn write_settings(data: &Path, settings: &ArchiveSettings) -> Result<(), Str
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, bytes).map_err(|e| format!("write {}: {e}", path.display()))?;
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        format!("write {}: {e}", path.display())
-    })
+    crate::core::atomic_io::write_atomic_durable(path, bytes)
+        .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -336,10 +364,11 @@ pub fn archive_dir(
     fs::create_dir_all(&dir).map_err(|e| format!("create archive: {e}"))?;
     let name = free_name(&dir, id)?;
     let dst = dir.join(&name);
-    move_dir(&src, &dst)?;
-    if let Err(e) = write_meta(&dst, &make_meta(kind, id, title, Storage::Dir, extra)) {
-        // Without its meta the item could not be listed; put it back.
-        let _ = move_dir(&dst, &src);
+    // The meta goes into the live directory first so the rename carries it: a
+    // crash can no longer leave an archived directory without one.
+    write_meta(&src, &make_meta(kind, id, title, Storage::Dir, extra))?;
+    if let Err(e) = move_dir(&src, &dst) {
+        let _ = fs::remove_file(src.join(META_FILE));
         return Err(e);
     }
     Ok(name)
@@ -442,9 +471,49 @@ fn move_file(from: &Path, to: &Path) -> Result<(), String> {
     fs::remove_file(from).map_err(|e| format!("move {}: {e}", from.display()))
 }
 
+/// Rebuild the meta of archived directories that lost it (an archive from
+/// before meta travelled with the rename, interrupted by a crash). Only
+/// directories holding a `thread.json` qualify; nothing is ever purged here.
+pub fn recover_orphans(data: &Path) -> usize {
+    let mut recovered = 0;
+    for kind in Kind::ALL {
+        let Ok(entries) = fs::read_dir(kind_dir(data, kind)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !path.is_dir() || read_meta(&path).is_ok() || !path.join("thread.json").is_file() {
+                continue;
+            }
+            let title = fs::read(path.join("thread.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                .and_then(|v| v.get("title").and_then(|t| t.as_str()).map(str::to_owned))
+                .unwrap_or_default();
+            let mut meta = make_meta(kind, &name, &title, Storage::Dir, None);
+            if let Some(ms) = fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            {
+                meta.archived_at = ms.as_millis() as u64;
+            }
+            match write_meta(&path, &meta) {
+                Ok(()) => recovered += 1,
+                Err(e) => log::warn!("could not rebuild archive meta for {name}: {e}"),
+            }
+        }
+    }
+    recovered
+}
+
 /// Every archived item, newest first. Items whose meta cannot be read are
 /// skipped (they are still on disk, and `purge` can remove them by name).
 pub fn list(data: &Path) -> Vec<ArchivedItem> {
+    recover_orphans(data);
     let mut items = Vec::new();
     for kind in Kind::ALL {
         let Ok(entries) = fs::read_dir(kind_dir(data, kind)) else {
@@ -864,6 +933,41 @@ mod tests {
         assert_eq!(report.blocked.len(), 1);
         assert_eq!(report.blocked[0].title, "B");
         assert_eq!(list(d.path()).len(), 1);
+    }
+
+    #[test]
+    fn absent_settings_uses_default_retention() {
+        let d = data();
+        assert!(matches!(read_settings_checked(d.path()), SettingsRead::Absent));
+        assert_eq!(read_settings(d.path()).auto_delete_days, 30);
+    }
+
+    #[test]
+    fn retention_zero_survives_garbage_file() {
+        let d = data();
+        fs::write(d.path().join(SETTINGS_FILE), b"{ not json").unwrap();
+        assert!(matches!(read_settings_checked(d.path()), SettingsRead::Unreadable(_)));
+        assert_eq!(read_settings(d.path()).auto_delete_days, 0);
+    }
+
+    #[test]
+    fn meta_less_dir_is_recovered_and_listed() {
+        let d = data();
+        thread(d.path(), "lost", 1.0);
+        archive_dir(d.path(), Kind::Thread, "lost", "lost", None).unwrap();
+        fs::remove_file(d.path().join(".archive/thread/lost").join(META_FILE)).unwrap();
+        let items = list(d.path());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].meta.title, "t lost");
+    }
+
+    #[test]
+    fn archive_dir_meta_travels_with_rename() {
+        let d = data();
+        thread(d.path(), "x", 1.0);
+        let name = archive_dir(d.path(), Kind::Thread, "x", "x", None).unwrap();
+        assert!(d.path().join(".archive/thread").join(&name).join(META_FILE).is_file());
+        assert!(!d.path().join(THREADS_DIR).join("x").exists());
     }
 
     #[test]

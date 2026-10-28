@@ -42,7 +42,7 @@ use hyper::{header, Response};
 use serde_json::{json, Value};
 use tauri_plugin_agent_tools::tools::gate::PermissionDecision;
 use tokio::sync::{broadcast, mpsc, oneshot};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 
 use super::agent::Fail;
@@ -324,7 +324,7 @@ enum Cmd {
     SetAccess { mode: PermissionMode, reply: Reply },
     Rename { title: String, reply: Reply },
     Worktree { op: super::session_worktree::Op, caller: Caller, reply: Reply },
-    Delete { reply: Reply },
+    Delete { force: bool, reply: Reply },
     /// Leave memory (the thread stays); refused while a turn is active.
     Close { reply: Reply },
 }
@@ -448,7 +448,7 @@ impl Runner {
     /// caller then serves the finite replay of what is on disk).
     pub fn tail(&self, id: &str, after: u64) -> Option<Resp> {
         let live = self.get(id)?;
-        let (tx, rx) = mpsc::unbounded_channel::<Bytes>();
+        let (tx, rx) = mpsc::channel::<Bytes>(super::events::SSE_QUEUE);
         let shared = live.shared.clone();
         let id = id.to_owned();
         // Subscribe and snapshot under one lock; see `Shared::publish`.
@@ -478,12 +478,12 @@ impl Runner {
             (events, backlog, preface + hello.as_str(), after)
         };
         tokio::spawn(async move {
-            if tx.send(Bytes::from(hello)).is_err() {
+            if !super::events::put(&tx, Bytes::from(hello)).await {
                 return;
             }
             for (seq, json) in backlog {
                 last = seq;
-                if tx.send(Bytes::from(sse_frame(seq, &json))).is_err() {
+                if !super::events::put(&tx, Bytes::from(sse_frame(seq, &json))).await {
                     return;
                 }
             }
@@ -511,7 +511,7 @@ impl Runner {
                             Bytes::from(buffer)
                         }
                         Err(broadcast::error::RecvError::Closed) => {
-                            let _ = tx.send(Bytes::from_static(b"event: end\ndata: {\"reason\":\"closed\"}\n\n"));
+                            let _ = tx.try_send(Bytes::from_static(b"event: end\ndata: {\"reason\":\"closed\"}\n\n"));
                             break;
                         }
                     },
@@ -519,13 +519,13 @@ impl Runner {
                 };
                 // A client that went away ends the task here, on the next
                 // event or heartbeat.
-                if tx.send(chunk).is_err() {
+                if !super::events::offer(&tx, chunk) {
                     break;
                 }
             }
         });
         let body = StreamBody::new(
-            UnboundedReceiverStream::new(rx).map(|bytes| Ok::<_, Infallible>(Frame::data(bytes))),
+            ReceiverStream::new(rx).map(|bytes| Ok::<_, Infallible>(Frame::data(bytes))),
         );
         let mut response = Response::new(body.boxed_unsync());
         let headers = response.headers_mut();
@@ -682,9 +682,10 @@ impl Runner {
             }
             "agent_run_delete" => {
                 let id = text(args, "id")?;
+                let force = args.get("force").and_then(Value::as_bool).unwrap_or(false);
                 match self.get(id) {
-                    Some(live) => self.send(&live, |reply| Cmd::Delete { reply }).await,
-                    None => self.delete_stored(id),
+                    Some(live) => self.send(&live, |reply| Cmd::Delete { force, reply }).await,
+                    None => self.delete_stored(id, force),
                 }
             }
             command if wt::handles(command) => self.worktree(command, args, caller, confined).await,
@@ -796,12 +797,14 @@ impl Runner {
     }
 
     /// A stored session that is not live: it may be deleted if the runner
-    /// started it.
-    fn delete_stored(&self, id: &str) -> Result<Value, Fail> {
+    /// started it. Its worktree goes with it, or the delete is refused
+    /// (`session_worktree::release_for_delete`).
+    fn delete_stored(&self, id: &str, force: bool) -> Result<Value, Fail> {
         let (_, thread) = agent_runs::open(&self.data_folder, &self.roots, id)?;
         if thread.pointer("/metadata/source").and_then(Value::as_str) != Some("runner") {
             return Err(fail(403, "only sessions started on this server can be deleted here"));
         }
+        wt::release_for_delete(&self.data_folder, &self.roots, id, force)?;
         crate::core::cli::delete_thread_at(&self.data_folder, id)
             .map_err(|m| fail(500, format!("could not delete the session: {m}")))?;
         self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "deleted" }));
@@ -1911,7 +1914,15 @@ async fn actor(
                         let _ = reply.send(Ok(json!({})));
                         break;
                     }
-                    Cmd::Delete { reply } => {
+                    Cmd::Delete { force, reply } => {
+                        // The worktree first: a refusal leaves the session, and
+                        // its running turn, exactly as they were.
+                        if let Err(refused) =
+                            wt::release_for_delete(&runner.data_folder, &runner.roots, &session.id, force)
+                        {
+                            let _ = reply.send(Err(refused));
+                            continue;
+                        }
                         if let Some(turn) = active.take() {
                             turn.task.runner.abort();
                             turn.task.steerer.abort();

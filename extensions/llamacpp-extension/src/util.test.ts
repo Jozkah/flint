@@ -11,6 +11,10 @@ import {
   truncateToTokenBudget,
   modelFileProblem,
   assertSha256Matches,
+  isValidModelId,
+  isSafeModelRef,
+  legacyAutoUnload,
+  modelsMaxFromAutoUnload,
 } from './util'
 import { getBackendSecret, getBackendSetting } from './backend-settings'
 
@@ -852,5 +856,75 @@ describe('ggufFirstShardPath', () => {
     expect(ggufFirstShardPath('C:\m\a-00002-of-00002.gguf')).toBe(
       'C:\m\a-00001-of-00002.gguf'
     )
+  })
+})
+
+describe('isValidModelId', () => {
+  it('accepts plain and nested ids', () => {
+    expect(isValidModelId('org/name-1.2')).toBe(true)
+    expect(isValidModelId('model_1')).toBe(true)
+  })
+
+  it.each([
+    '../x',
+    'a/../b',
+    'a//b',
+    'a/./b',
+    'C:\\x',
+    '/abs',
+    'con',
+    'a/nul.txt',
+    'name.',
+    'bad id',
+    '',
+  ])('rejects %s', (id) => {
+    expect(isValidModelId(id)).toBe(false)
+  })
+
+  it('rejects non-strings', () => {
+    expect(isValidModelId(undefined)).toBe(false)
+    expect(isValidModelId(42)).toBe(false)
+  })
+})
+
+describe('isSafeModelRef', () => {
+  it('keeps legacy names with spaces deletable', () => {
+    expect(isSafeModelRef('My Model (1)')).toBe(true)
+    expect(isSafeModelRef('org\\name')).toBe(true)
+  })
+
+  it.each([
+    '..',
+    '../x',
+    'a/../b',
+    'a\\..\\b',
+    'a//b',
+    '/abs',
+    '\\abs',
+    'C:\\x',
+    'C:x',
+    '',
+  ])('rejects %s', (id) => {
+    expect(isSafeModelRef(id)).toBe(false)
+  })
+
+  it('rejects non-strings', () => {
+    expect(isSafeModelRef(undefined)).toBe(false)
+  })
+})
+
+describe('auto_unload migration helpers', () => {
+  it('migrates_auto_unload_false_to_unlimited', () => {
+    const v = legacyAutoUnload([
+      { key: 'auto_unload', controllerProps: { value: false } },
+    ])
+    expect(v).toBe(false)
+    expect(modelsMaxFromAutoUnload(v as boolean)).toBe('0')
+    expect(modelsMaxFromAutoUnload(true)).toBe('1')
+  })
+
+  it('fresh_install_marks_done_no_change', () => {
+    expect(legacyAutoUnload([])).toBeUndefined()
+    expect(legacyAutoUnload([{ key: 'models_max' }])).toBeUndefined()
   })
 })

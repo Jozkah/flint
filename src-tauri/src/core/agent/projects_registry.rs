@@ -66,23 +66,42 @@ pub(crate) fn registry_path() -> Option<PathBuf> {
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Loads the registry from disk. Missing or corrupt file -> empty list;
-/// never panics. A corrupt file is logged, so it is not mistaken for an
-/// install that simply has no projects yet.
+/// never panics. A corrupt file is moved aside to `projects.json.corrupt-<ts>`
+/// (so the next save cannot overwrite it) and logged.
 fn load_registry() -> Registry {
+    load_registry_checked().0
+}
+
+/// Like [`load_registry`], plus whether it is safe to save the result back:
+/// false when the file exists but could not be read, or was corrupt and could
+/// not be moved aside (saving would destroy the only copy).
+fn load_registry_checked() -> (Registry, bool) {
     let Some(path) = registry_path() else {
-        return Registry::default();
+        return (Registry::default(), true);
     };
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return Registry::default();
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Registry::default(), true),
+        Err(e) => {
+            log::warn!("Project registry {} is unreadable ({e})", path.display());
+            return (Registry::default(), false);
+        }
     };
     match serde_json::from_str(&raw) {
-        Ok(registry) => registry,
+        Ok(registry) => (registry, true),
         Err(err) => {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let mut backup = path.as_os_str().to_owned();
+            backup.push(format!(".corrupt-{ts}"));
+            let moved = std::fs::rename(&path, PathBuf::from(&backup)).is_ok();
             log::warn!(
-                "Project registry {} is corrupt ({err}); treating it as empty",
+                "Project registry {} is corrupt ({err}); treating it as empty (backup kept: {moved})",
                 path.display()
             );
-            Registry::default()
+            (Registry::default(), moved)
         }
     }
 }
@@ -172,7 +191,7 @@ pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
     let folder_str = folder.to_string_lossy().to_string();
     let name = folder_name(folder);
     let _store = STORE.lock().unwrap_or_else(|e| e.into_inner());
-    let mut registry = load_registry();
+    let (mut registry, can_save) = load_registry_checked();
 
     // Marker carries the id across a move/rename.
     if let Some(id) = read_marker(folder) {
@@ -180,9 +199,24 @@ pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
             entry.folder = folder_str;
             entry.name = name;
             let updated = entry.clone();
-            save_registry(&registry);
+            if can_save {
+                save_registry(&registry);
+            }
             return updated;
         }
+        // Marker id the registry lost (e.g. a corrupt file was moved aside):
+        // re-adopt the same id instead of minting a new one, so per-project
+        // settings keyed on it stay attached.
+        let entry = ProjectEntry {
+            id,
+            folder: folder_str,
+            name,
+        };
+        registry.projects.push(entry.clone());
+        if can_save {
+            save_registry(&registry);
+        }
+        return entry;
     }
 
     // No usable marker: an exact path match in the registry is the same
@@ -202,7 +236,9 @@ pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
         name,
     };
     registry.projects.push(entry.clone());
-    save_registry(&registry);
+    if can_save {
+        save_registry(&registry);
+    }
     entry
 }
 
@@ -284,6 +320,36 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "not json").unwrap();
         assert!(list_projects().is_empty());
+    }
+
+    #[test]
+    fn corrupt_registry_is_moved_aside_not_overwritten() {
+        let data = tempfile::tempdir().unwrap();
+        set_test_registry_root(Some(data.path().to_path_buf()));
+        let path = registry_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "not json").unwrap();
+        let a = tempfile::tempdir().unwrap();
+        register_folder(a.path());
+        let backups: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".corrupt-"))
+            .collect();
+        assert_eq!(backups.len(), 1, "corrupt file must be kept");
+        assert_eq!(std::fs::read_to_string(backups[0].path()).unwrap(), "not json");
+        assert_eq!(list_projects().len(), 1);
+    }
+
+    #[test]
+    fn marker_with_unknown_id_is_readopted() {
+        let data = tempfile::tempdir().unwrap();
+        set_test_registry_root(Some(data.path().to_path_buf()));
+        let a = tempfile::tempdir().unwrap();
+        write_marker(a.path(), "lost-id");
+        let entry = register_folder(a.path());
+        assert_eq!(entry.id, "lost-id");
+        assert_eq!(list_projects()[0].id, "lost-id");
     }
 
     #[test]

@@ -38,6 +38,21 @@ describe('parseTextToolCalls', () => {
     ])
   })
 
+  it('refuses an unclosed function tag cut off mid-parameter', () => {
+    expect(
+      parseTextToolCalls(
+        '<tool_call><function=write><parameter=path>a</parameter><parameter=content>half'
+      )
+    ).toBeNull()
+  })
+
+  it('accepts an unclosed tool_call that ended on </function>', () => {
+    const out = parseTextToolCalls(
+      '<tool_call><function=write><parameter=path>a</parameter></function>'
+    )
+    expect(out?.calls).toEqual([{ name: 'write', args: { path: 'a' } }])
+  })
+
   it('parses GLM arg_key / arg_value blocks', () => {
     const out = parseTextToolCalls(
       '<tool_call>get_weather\n<arg_key>city</arg_key>\n<arg_value>Paris</arg_value>\n</tool_call>'

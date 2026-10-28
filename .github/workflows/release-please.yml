@@ -27,6 +27,9 @@ jobs:
       startsWith(github.event.head_commit.message, 'chore(main): release')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      # Job-level so step `if:` can read it (a step's own env is not visible there).
+      HAS_PAT: ${{ secrets.RELEASE_PLEASE_TOKEN != '' }}
     steps:
       - name: Run release-please
         id: rp
@@ -46,3 +49,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.rp.outputs.tag_name }}
         run: gh workflow run flint-release.yml --repo "$GITHUB_REPOSITORY" -f tag="$TAG"
+
+      # The CLI release and the website both listen for `release: published`,
+      # which GITHUB_TOKEN-created releases never emit, so dispatch them too.
+      # With a PAT the release event fires them itself; skip to avoid doubles.
+      - name: Build and attach the CLI
+        if: steps.rp.outputs.release_created == 'true' && env.HAS_PAT != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.rp.outputs.tag_name }}
+        run: gh workflow run flint-cli-release.yml --repo "$GITHUB_REPOSITORY" -f tag="$TAG"
+
+      - name: Deploy the website
+        if: steps.rp.outputs.release_created == 'true' && env.HAS_PAT != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run website.yml --repo "$GITHUB_REPOSITORY"

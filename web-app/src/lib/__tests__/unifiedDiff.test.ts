@@ -134,3 +134,47 @@ describe('the gutter', () => {
     expect(gutterWidth(parseUnifiedDiff('@@ -1000,1 +1000,1 @@\n a'))).toBe(4)
   })
 })
+
+describe('multi-file diffs', () => {
+  const TWO = [
+    'diff --git a/a.ts b/a.ts',
+    '--- a/a.ts',
+    '+++ b/a.ts',
+    '@@ -1,2 +1,2 @@',
+    '-old',
+    '+new',
+    ' same',
+    'diff --git a/b.ts b/b.ts',
+    'index 111..222 100644',
+    '--- a/b.ts',
+    '+++ b/b.ts',
+    '@@ -20,1 +20,2 @@',
+    ' keep',
+    '+added',
+  ].join('\n')
+
+  it('counts only real changes, not later file headers', () => {
+    const parsed = parseUnifiedDiff(TWO)
+    expect(parsed.additions).toBe(2)
+    expect(parsed.deletions).toBe(1)
+  })
+
+  it('numbers the second file from its own hunk header', () => {
+    const second = parseUnifiedDiff(TWO).hunks[1]
+    expect(second.lines[0]).toMatchObject({
+      content: 'keep',
+      oldNumber: 20,
+      newNumber: 20,
+    })
+    expect(second.lines[1]).toMatchObject({ content: 'added', newNumber: 21 })
+  })
+
+  it('still counts a removed line whose text starts with dashes inside a hunk', () => {
+    const parsed = parseUnifiedDiff('@@ -1,2 +1,1 @@\n--- comment\n keep')
+    expect(parsed.deletions).toBe(1)
+    expect(parsed.hunks[0].lines[0]).toMatchObject({
+      kind: 'remove',
+      content: '-- comment',
+    })
+  })
+})

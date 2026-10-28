@@ -31,6 +31,14 @@ const SECRET_NAMES = new Set([
   '.npmrc',
   '.netrc',
   '.pgpass',
+  '.pypirc',
+  '.git-credentials',
+  '.dockercfg',
+  '.vault-token',
+  '.htpasswd',
+  'kubeconfig',
+  'credentials.tfrc.json',
+  '_netrc',
   'credentials',
   'credentials.json',
   'service-account.json',
@@ -47,7 +55,10 @@ const KEY_PREFIXES = ['id_rsa', 'id_ed25519', 'id_ecdsa']
  * than rendering somebody's private key into a panel.
  */
 export function isSensitiveName(name: string): boolean {
-  const lower = (name.split(/[\\/]/).pop() ?? name).toLowerCase()
+  const base = (name.split(/[\\/]/).pop() ?? name).toLowerCase()
+  // Windows alternate data streams and trailing dots/spaces name the same file.
+  const colon = base.indexOf(':')
+  const lower = (colon === -1 ? base : base.slice(0, colon)).replace(/[. ]+$/, '')
   if (lower === '.env' || lower.startsWith('.env.')) return true
   if (SECRET_NAMES.has(lower)) return true
   if (KEY_PREFIXES.some((prefix) => lower.startsWith(prefix))) return true

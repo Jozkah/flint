@@ -173,6 +173,13 @@ pub fn schedule_preview(schedule: Schedule, timezone: String, count: Option<usiz
     let exprs = schedule.compile().map_err(|e| e.message)?;
     let count = count.unwrap_or(5).clamp(1, 20);
     let now = Utc::now();
+    if schedule.is_once() {
+        // A one-time schedule fires once; its cron has no year and would repeat.
+        return match schedule.once_instant_in(tz) {
+            Some(at) if at > now => Ok(vec![at]),
+            _ => Err("that time has already passed".to_string()),
+        };
+    }
     let mut all: Vec<DateTime<Utc>> = Vec::new();
     for e in exprs {
         all.extend(e.next_fires(tz, now, count));
@@ -291,6 +298,20 @@ mod tests {
         let f = schedule_preview(s, "Europe/Berlin".into(), Some(5)).unwrap();
         assert_eq!(f.len(), 5);
         assert!(f.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn preview_once_returns_single_future_instant() {
+        let s = Schedule::Once { at: "2099-03-04T09:30".into() };
+        let f = schedule_preview(s, "UTC".into(), Some(5)).unwrap();
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].to_rfc3339(), "2099-03-04T09:30:00+00:00");
+    }
+
+    #[test]
+    fn preview_once_in_past_errors() {
+        let s = Schedule::Once { at: "2020-01-01T09:00".into() };
+        assert!(schedule_preview(s, "UTC".into(), None).unwrap_err().contains("already passed"));
     }
 
     #[test]

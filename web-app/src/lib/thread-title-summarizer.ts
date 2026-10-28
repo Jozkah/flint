@@ -45,7 +45,9 @@ export function cleanTitle(raw: string): string | null {
   // Keep letters, numbers and spaces (unicode-aware), plus the punctuation
   // that is part of a name: `hello.txt`, `node.js`, `C++`, `snake_case`,
   // `v1-2`, `a/b`. Whatever else the model added around a word is dropped.
-  text = text.replace(/[^\p{L}\p{N}\s._+#/'-]/gu, '')
+  // Combining marks stay: they are part of the letters in Hindi, Thai and
+  // Arabic, and of accented Latin written in decomposed form.
+  text = text.normalize('NFC').replace(/[^\p{L}\p{M}\p{N}\s._+#/'-]/gu, '')
   text = text
     .split(/\s+/)
     .map((word) => word.replace(/^[._/'-]+|[._-]+$/g, ''))

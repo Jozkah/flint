@@ -375,12 +375,23 @@ pub async fn deactivate_mcp_server<R: Runtime>(
     let servers = state.mcp_servers.clone();
     let mut servers_map = servers.lock().await;
 
-    let service = servers_map
-        .remove(&name)
-        .ok_or_else(|| format!("Server {name} not found"))?;
+    let removed = servers_map.remove(&name);
 
     // Release the lock before calling cancel
     drop(servers_map);
+
+    // A lazy server that never started (or was already reaped) has no running
+    // service: deactivating it is a no-op that still withdraws its grant and
+    // tells the UI, not an error.
+    let Some(service) = removed else {
+        let child_pid = state.mcp_server_pids.lock().await.remove(&name);
+        super::launch::release_folder_grants(stopped_config.as_ref(), child_pid);
+        log::info!("Server {name} had no running service; marked as deactivated.");
+        if let Err(e) = app.emit("mcp-update", serde_json::json!({ "server": name })) {
+            log::error!("Failed to emit mcp-update event: {e}");
+        }
+        return Ok(());
+    };
 
     log::info!("Stopping server {name}...");
     let cancelled = service.cancel().await.map_err(|e| e.to_string());
@@ -874,11 +885,27 @@ pub async fn call_tool<R: Runtime>(
                 }
             }
         };
-        for name in needed
-            .iter()
-            .filter(|n| enabled.contains(*n) && !running.contains(*n))
-        {
-            super::helpers::ensure_mcp_server_started(&app, name).await?;
+        let to_start: Vec<String> = needed
+            .into_iter()
+            .filter(|n| enabled.contains(n) && !running.contains(n))
+            .collect();
+        if server_name.is_some() {
+            // The caller named the server: its start failure is the answer.
+            for name in &to_start {
+                super::helpers::ensure_mcp_server_started(&app, name).await?;
+            }
+        } else {
+            // No server named: any enabled server might own the tool. Start
+            // them a few at a time and let a failing one be logged, not fatal,
+            // so one broken server cannot hide the owner behind it.
+            let started = start_candidates(&to_start, |n| {
+                let app = app.clone();
+                async move { super::helpers::ensure_mcp_server_started(&app, &n).await }
+            })
+            .await;
+            for (name, err) in started {
+                log::warn!("MCP server {name} failed to start while looking for tool {tool_name}: {err}");
+            }
         }
     }
 
@@ -1085,6 +1112,28 @@ pub async fn call_tool<R: Runtime>(
 
     cleanup_cancellation_token(&state, &cancellation_token).await;
     Err(format!("Tool {tool_name} not found"))
+}
+
+/// At most this many lazy servers are started at once while a call names none.
+const MAX_CONCURRENT_CANDIDATE_STARTS: usize = 4;
+
+/// Run `start` for each name, at most `MAX_CONCURRENT_CANDIDATE_STARTS` at a
+/// time, and return the ones that failed with their errors.
+pub(super) async fn start_candidates<F, Fut>(names: &[String], start: F) -> Vec<(String, String)>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    let mut failures = Vec::new();
+    for chunk in names.chunks(MAX_CONCURRENT_CANDIDATE_STARTS) {
+        let results = futures_util::future::join_all(chunk.iter().map(|n| start(n.clone()))).await;
+        for (name, result) in chunk.iter().zip(results) {
+            if let Err(e) = result {
+                failures.push((name.clone(), e));
+            }
+        }
+    }
+    failures
 }
 
 /// Cancels a running tool call by its cancellation token

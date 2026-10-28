@@ -20,11 +20,14 @@ function isAnthropicProvider(provider: {
   base_url?: string
   api_type?: string
 }): boolean {
-  return (
-    provider.api_type === 'anthropic' ||
-    (provider.provider ?? '').toLowerCase().includes('anthropic') ||
-    (provider.base_url ?? '').toLowerCase().includes('anthropic')
-  )
+  if (provider.api_type) return provider.api_type === 'anthropic'
+  if ((provider.provider ?? '').toLowerCase() === 'anthropic') return true
+  try {
+    return new URL(provider.base_url ?? '').hostname.toLowerCase() ===
+      'api.anthropic.com'
+  } catch {
+    return false
+  }
 }
 
 /// Google's native Gemini API (`.../v1beta`) takes the key as `x-goog-api-key`;

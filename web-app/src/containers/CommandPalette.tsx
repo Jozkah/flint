@@ -287,6 +287,13 @@ export function CommandPalette() {
     setActive(0)
   }, [query])
 
+  // Keep the highlighted row visible while arrowing through a long list.
+  useEffect(() => {
+    const id = results[active]?.id
+    if (!id) return
+    document.getElementById(`palette-${id}`)?.scrollIntoView?.({ block: 'nearest' })
+  }, [active, results])
+
   const runAt = (index: number) => {
     const command = results[index]
     if (!command) return
@@ -295,6 +302,9 @@ export function CommandPalette() {
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // An IME confirming a candidate (Enter) or moving through its candidate
+    // list (arrows) is not a palette command.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActive((i) => Math.min(i + 1, Math.max(results.length - 1, 0)))

@@ -366,5 +366,33 @@
     "none": "此文件夹未声明钩子。",
     "error": "无法读取钩子文件",
     "loadFailed": "无法读取钩子"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "允许代理更改此文件夹中的文件吗？",
+        "file": "允许代理更改此文件吗？"
+      },
+      "read": {
+        "folder": "允许代理读取此文件夹吗？",
+        "file": "允许代理读取此文件吗？"
+      }
+    },
+    "asking": "{{task}} 请求访问其工作区之外的内容。",
+    "askingFrom": "{{task}} 中的 {{origin}} 请求访问其工作区之外的内容。",
+    "thisConversation": "此对话",
+    "folderLabel": "文件夹（及其中的所有内容）",
+    "fileLabel": "文件",
+    "requestedAs": "请求的路径为 {{requested}}，解析为上面的路径。",
+    "reason": "给出的理由",
+    "access": "访问：",
+    "readWrite": "读取和写入",
+    "readOnly": "只读",
+    "grantNote": "“在此对话中允许”会在对话结束时或 8 小时后失效。“始终允许”对所有对话有效，直到你在 设置 > 权限 > 文件夹访问 中撤销。",
+    "moreWaiting_one": "还有 {{count}} 个请求在等待。",
+    "moreWaiting_other": "还有 {{count}} 个请求在等待。",
+    "deny": "拒绝",
+    "always": "始终允许",
+    "session": "在此对话中允许"
   }
 }

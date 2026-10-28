@@ -92,8 +92,63 @@ pub fn expand_config_with(
 }
 
 /// [`expand_config_with`] against the app's own environment.
+#[allow(dead_code)]
 pub fn expand_config(server: &str, config: &Value) -> Result<Value, String> {
-    expand_config_with(server, config, &|name| std::env::var(name).ok())
+    expand_config_for(server, config, None)
+}
+
+/// Like [`expand_config`], but with `allowed` set only those variable names may
+/// be expanded; any other `${NAME}` (even with a fallback) is an error naming
+/// the variable. `None` keeps full expansion.
+pub fn expand_config_for(
+    server: &str,
+    config: &Value,
+    allowed: Option<&[String]>,
+) -> Result<Value, String> {
+    expand_config_gated(server, config, allowed, &|name| std::env::var(name).ok())
+}
+
+fn expand_config_gated(
+    server: &str,
+    config: &Value,
+    allowed: Option<&[String]>,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Result<Value, String> {
+    let Some(allowed) = allowed else {
+        return expand_config_with(server, config, lookup);
+    };
+    let denied = std::cell::RefCell::new(None::<String>);
+    let gated = |name: &str| {
+        if allowed.iter().any(|a| a == name) {
+            lookup(name)
+        } else {
+            denied.borrow_mut().get_or_insert_with(|| name.to_string());
+            None
+        }
+    };
+    let result = expand_config_with(server, config, &gated);
+    if let Some(name) = denied.into_inner() {
+        return Err(format!(
+            "MCP server '{server}' reads host variable {name} which it is not approved for. Add {name} to the server's approved environment variables to allow it."
+        ));
+    }
+    result
+}
+
+/// The variable names a repository-imported server may expand: its approved
+/// `allowedEnv`. `None` for a user-configured server (full expansion).
+pub fn expansion_allowlist(config: &Value) -> Option<Vec<String>> {
+    if config.get("janImported").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    Some(
+        config
+            .get("janConfinement")
+            .and_then(|c| c.get("allowedEnv"))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+            .unwrap_or_default(),
+    )
 }
 
 #[cfg(test)]
@@ -157,5 +212,44 @@ mod tests {
         let cfg = json!({"args": ["$HOME", "${unterminated", "plain", 5, true]});
         let out = expand_config_with("s", &cfg, &lookup).unwrap();
         assert_eq!(out, cfg);
+    }
+
+    fn approved(allowed: &[&str]) -> Vec<String> {
+        allowed.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn envexpand_imported_rejects_unapproved_var() {
+        let cfg = json!({"args": ["--key", "${TOKEN:-fallback}"]});
+        let a = approved(&["HOST"]);
+        let err = expand_config_gated("r", &cfg, Some(&a), &lookup).unwrap_err();
+        assert!(err.contains("TOKEN") && err.contains("not approved"), "{err}");
+        assert!(!err.contains("s3cret-value"), "{err}");
+    }
+
+    #[test]
+    fn envexpand_imported_allows_approved_env_name() {
+        let cfg = json!({"env": {"H": "${HOST}"}});
+        let a = approved(&["HOST"]);
+        let out = expand_config_gated("r", &cfg, Some(&a), &lookup).unwrap();
+        assert_eq!(out["env"]["H"], "api.example.com");
+    }
+
+    #[test]
+    fn envexpand_user_server_unchanged() {
+        let cfg = json!({"args": ["${TOKEN}"]});
+        assert_eq!(expansion_allowlist(&cfg), None);
+        let out = expand_config_gated("u", &cfg, None, &lookup).unwrap();
+        assert_eq!(out["args"], json!(["s3cret-value"]));
+        let imp = json!({"janImported": true, "janConfinement": {"allowedEnv": ["HOST"]}});
+        assert_eq!(expansion_allowlist(&imp), Some(approved(&["HOST"])));
+    }
+
+    #[test]
+    fn envexpand_imported_env_value_placeholder_rejected() {
+        let cfg = json!({"env": {"LOG_LEVEL": "${TOKEN}"}});
+        let a = approved(&["LOG_LEVEL"]);
+        let err = expand_config_gated("r", &cfg, Some(&a), &lookup).unwrap_err();
+        assert!(err.contains("TOKEN"), "{err}");
     }
 }

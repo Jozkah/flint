@@ -18,6 +18,7 @@ import {
  * cleared: a downgraded (pre-feature) build can still read it.
  */
 const MIGRATION_FLAG_KEY = '__settings_migrated_to_backend__'
+const KEY_MARKER_PREFIX = '__migrated_'
 
 // Every store key persisted through backendStorage. Plain copy unless listed in
 // the secret-handling transforms below.
@@ -181,40 +182,70 @@ export async function migrateLocalStorageToBackend(): Promise<void> {
     })
     if (alreadyMigrated === 'true') return
 
+    // Per-key markers: a key already migrated (or permanently unreadable) is
+    // never rewritten, so a retry cannot clobber newer backend data. A
+    // transient (invoke) failure leaves the key unmarked and the global flag
+    // unset, so only that key is retried next launch.
+    let allOk = true
     for (const key of MIGRATED_KEYS) {
-      const local = localStorage.getItem(key)
-      if (local == null) continue
-      // Gate solely on MIGRATION_FLAG_KEY (checked above), never on per-key
-      // presence. The only way backend data exists while the flag is unset is a
-      // pre-feature fossil (the #7821 build persisted a model-provider blob into
-      // settings.json before being reverted in the same v0.8.0 release) or a
-      // crashed prior run — in both cases localStorage is authoritative, so we
-      // overwrite. Once the flag is set migration short-circuits entirely, so
-      // steady-state store writes are never clobbered.
-      let value = local
-      if (key === localStorageKey.modelProvider) {
-        value = await transformModelProviderBlob(local, invoke)
-      } else if (key === localStorageKey.settingGeneral) {
-        value = await transformGeneralBlob(local, invoke)
-      } else if (key === localStorageKey.settingLocalApiServer) {
-        value = await transformSecretField(
-          local,
-          'apiKey',
-          LOCAL_API_SERVER_KEY_SECRET,
-          invoke
-        )
-      } else if (key === localStorageKey.settingProxyConfig) {
-        value = await transformSecretField(
-          local,
-          'proxyPassword',
-          PROXY_PASSWORD_SECRET,
-          invoke
-        )
+      const markerKey = `${KEY_MARKER_PREFIX}${key}`
+      try {
+        const local = localStorage.getItem(key)
+        if (local == null) continue
+        if (
+          (await invoke<string | null>('settings_get', { key: markerKey })) ===
+          'true'
+        ) {
+          continue
+        }
+        // Without a marker, localStorage is authoritative (a pre-feature
+        // fossil, e.g. the reverted #7821 build, or a crashed prior run), so
+        // we overwrite.
+        let value = local
+        try {
+          if (key === localStorageKey.modelProvider) {
+            value = await transformModelProviderBlob(local, invoke)
+          } else if (key === localStorageKey.settingGeneral) {
+            value = await transformGeneralBlob(local, invoke)
+          } else if (key === localStorageKey.settingLocalApiServer) {
+            value = await transformSecretField(
+              local,
+              'apiKey',
+              LOCAL_API_SERVER_KEY_SECRET,
+              invoke
+            )
+          } else if (key === localStorageKey.settingProxyConfig) {
+            value = await transformSecretField(
+              local,
+              'proxyPassword',
+              PROXY_PASSWORD_SECRET,
+              invoke
+            )
+          }
+        } catch (error) {
+          if (error instanceof SyntaxError) {
+            // Corrupt blob: permanent. Mark it so it is not retried forever.
+            console.error(
+              `Settings migration: '${key}' is not valid JSON, skipping:`,
+              error
+            )
+            await invoke('settings_set', { key: markerKey, value: 'true' })
+            continue
+          }
+          throw error
+        }
+        await invoke('settings_set', { key, value })
+        await invoke('settings_set', { key: markerKey, value: 'true' })
+      } catch (error) {
+        // Transient: leave unmarked, keep going with the other keys.
+        allOk = false
+        console.error(`Settings migration of '${key}' failed, will retry:`, error)
       }
-      await invoke('settings_set', { key, value })
     }
 
-    await invoke('settings_set', { key: MIGRATION_FLAG_KEY, value: 'true' })
+    if (allOk) {
+      await invoke('settings_set', { key: MIGRATION_FLAG_KEY, value: 'true' })
+    }
   } catch (error) {
     // Leave the flag unset so migration retries on the next launch.
     console.error('Settings localStorage->backend migration failed:', error)

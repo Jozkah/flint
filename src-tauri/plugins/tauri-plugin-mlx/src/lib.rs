@@ -6,6 +6,7 @@ use tauri::{
 pub mod cleanup;
 mod commands;
 mod error;
+mod hardening;
 mod process;
 pub mod state;
 

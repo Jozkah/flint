@@ -190,6 +190,8 @@ impl Slot {
 fn attribute_commit(args: &mut Vec<String>, trailer: &str, base: &Path) {
     let mut messages: Vec<Slot> = Vec::new();
     let mut file: Option<Slot> = None;
+    // Short flags that shared an entry with `-F` (`-aF`): kept when it is inlined.
+    let mut file_keep: Option<String> = None;
     let mut amend = false;
     let mut reuse = false;
     let mut fixup = false;
@@ -251,7 +253,10 @@ fn attribute_commit(args: &mut Vec<String>, trailer: &str, base: &Path) {
                     };
                     match (c, slot) {
                         ('m', Some(s)) => messages.push(s),
-                        ('F', Some(s)) => file = Some(s),
+                        ('F', Some(s)) => {
+                            file = Some(s);
+                            file_keep = (pos > 0).then(|| format!("-{}", &cluster[..pos]));
+                        }
                         ('c' | 'C', _) => reuse = true,
                         _ => {}
                     }
@@ -274,7 +279,9 @@ fn attribute_commit(args: &mut Vec<String>, trailer: &str, base: &Path) {
         match read_file(base, slot.get(args)) {
             Some(text) => {
                 let span = slot.span();
-                args.splice(span, ["-m".to_string(), add_trailer(&text, trailer)]);
+                let mut repl: Vec<String> = file_keep.into_iter().collect();
+                repl.extend(["-m".to_string(), add_trailer(&text, trailer)]);
+                args.splice(span, repl);
             }
             // Not readable from here (no folder to resolve it against, or
             // stdin): git reads the file and adds the trailer itself.
@@ -329,7 +336,7 @@ fn git_output(repo: &Path, args: &[&str]) -> Option<String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    let out = cmd.output().ok()?;
+    let out = crate::tools::owned::output_blocking(&mut cmd, std::time::Duration::from_secs(15)).ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
@@ -538,6 +545,19 @@ mod tests {
         // Already present in any paragraph: nothing added.
         let got = run("git", &["commit", "-m", "Subject", "-m", T, "-m", "More"]);
         assert_eq!(got, vec!["commit", "-m", "Subject", "-m", T, "-m", "More"]);
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn attribution_aF_keeps_a() {
+        let dir = std::env::temp_dir().join(format!("flint-attr-aF-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("msg.txt"), "Subject\n").unwrap();
+        let got = run_with("git", &["commit", "-aF", "msg.txt"], Settings::default(), &dir);
+        assert_eq!(got, vec!["commit", "-a", "-m", &format!("Subject\n\n{T}")]);
+        let got = run_with("git", &["commit", "-aFmsg.txt"], Settings::default(), &dir);
+        assert_eq!(got, vec!["commit", "-a", "-m", &format!("Subject\n\n{T}")]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -302,6 +302,15 @@ pub fn import(
         // directory), or a directory above it (a file): neither can be
         // replaced by this entry, with or without `overwrite`, and reading
         // one as "absent" skipped the overwrite refusal (Jozkah/jan#193).
+        let mut probe = project.to_path_buf();
+        for dir in [".jan", ".jan/agent"] {
+            probe.push(dir.split('/').last().unwrap_or(dir));
+            if let Ok(meta) = std::fs::symlink_metadata(&probe) {
+                if meta.file_type().is_symlink() || is_reparse_point(&meta) {
+                    return Err(err(ErrorKind::PolicyViolation, Stage::Persistence, format!("{dir} is a link; this will not write through it")));
+                }
+            }
+        }
         let mut probe = base.clone();
         let parts: Vec<_> = Path::new(&entry.path).components().collect();
         for (i, part) in parts.iter().enumerate() {
@@ -338,6 +347,7 @@ pub fn import(
     // Policy is planned before anything is written, so a refused widening
     // leaves the components unwritten too.
     let mut policy_write = None;
+    let mut toml_write: Option<String> = None;
     if let Some(text) = &bundle.policy {
         let current = crate::core::agent::project::load_agent_config(project)
             .map(|cfg| {
@@ -363,13 +373,26 @@ pub fn import(
             policy_write = Some(document);
         }
     }
+    // The rewritten agent.toml is computed now, so an unreadable one aborts
+    // before anything is moved, and it travels in the same all-or-none move.
+    if let Some(document) = &policy_write {
+        let existing = match std::fs::read_to_string(base.join("agent.toml")) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(err(ErrorKind::Io, Stage::Persistence, format!("agent.toml could not be read: {e}"))),
+        };
+        toml_write = Some(crate::core::agent::project::replace_tools_section(
+            &existing,
+            &tauri_plugin_agent_tools::policy_transfer::to_toml(document),
+        ));
+    }
     if dry_run {
         report.written = to_write.len();
         return Ok(report);
     }
     std::fs::create_dir_all(&base).map_err(|e| err(ErrorKind::Io, Stage::Persistence, format!("the project's agent directory is not writable: {e}")))?;
-    let staging = base.join(format!(".bundle-import-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&staging);
+    sweep_stale_staging(&base);
+    let staging = base.join(format!(".bundle-import-{}", staging_id()));
     let staged = (|| -> Result<(), HarnessError> {
         for entry in &to_write {
             let path = staging.join(&entry.path);
@@ -378,27 +401,62 @@ pub fn import(
             }
             std::fs::write(&path, entry.content.as_bytes()).map_err(|e| err(ErrorKind::Io, Stage::Persistence, format!("{}: {e}", entry.path)))?;
         }
+        if let Some(text) = &toml_write {
+            std::fs::create_dir_all(&staging).map_err(|e| err(ErrorKind::Io, Stage::Persistence, format!("the policy could not be staged: {e}")))?;
+            std::fs::write(staging.join("agent.toml"), text.as_bytes())
+                .map_err(|e| err(ErrorKind::Io, Stage::Persistence, format!("the policy could not be staged: {e}")))?;
+        }
         Ok(())
     })();
     if let Err(e) = staged {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(e);
     }
-    let paths: Vec<&str> = to_write.iter().map(|e| e.path.as_str()).collect();
+    let mut paths: Vec<&str> = to_write.iter().map(|e| e.path.as_str()).collect();
+    let components = paths.len();
+    if toml_write.is_some() {
+        paths.push("agent.toml");
+    }
     let moved = move_into_place(&staging, &base, &paths);
     let _ = std::fs::remove_dir_all(&staging);
     moved?;
-    report.written += paths.len();
-    if let Some(document) = policy_write {
-        let path = base.join("agent.toml");
-        let existing = std::fs::read_to_string(&path).unwrap_or_default();
-        let rewritten = crate::core::agent::project::replace_tools_section(
-            &existing,
-            &tauri_plugin_agent_tools::policy_transfer::to_toml(&document),
-        );
-        std::fs::write(&path, rewritten).map_err(|e| err(ErrorKind::Io, Stage::Persistence, format!("the policy could not be written: {e}")))?;
-    }
+    report.written += components;
     Ok(report)
+}
+
+/// A name no other import shares, in this process or another.
+fn staging_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{nanos:x}-{}-{}", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed))
+}
+
+/// Remove staging directories a stopped import left behind. Only ones not
+/// touched for an hour go, so an import still running is never swept.
+fn sweep_stale_staging(base: &Path) {
+    sweep_staging_older_than(base, std::time::Duration::from_secs(3600));
+}
+
+fn sweep_staging_older_than(base: &Path, age: std::time::Duration) {
+    let Ok(read) = std::fs::read_dir(base) else { return };
+    for e in read.flatten() {
+        if !e.file_name().to_string_lossy().starts_with(".bundle-import-") {
+            continue;
+        }
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|d| d >= age);
+        if old {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
 }
 
 /// Move each staged entry from `staging` into `base`, all or none.
@@ -613,6 +671,49 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::Io);
         assert!(!base.join("skills/new.md").exists(), "a moved entry was left behind");
         assert_eq!(std::fs::read_to_string(base.join("skills/old.md")).unwrap(), "original\n");
+    }
+
+    #[test]
+    fn two_imports_use_distinct_staging_dirs() {
+        assert_ne!(staging_id(), staging_id());
+    }
+
+    #[test]
+    fn stale_staging_dirs_are_swept() {
+        let dst = project("sweep");
+        let base = agent_dir(&dst);
+        std::fs::create_dir_all(base.join(".bundle-import-old")).unwrap();
+        std::fs::create_dir_all(base.join("skills")).unwrap();
+        sweep_staging_older_than(&base, std::time::Duration::from_secs(3600));
+        assert!(base.join(".bundle-import-old").exists(), "a fresh staging dir was swept");
+        sweep_staging_older_than(&base, std::time::Duration::ZERO);
+        assert!(!base.join(".bundle-import-old").exists());
+        assert!(base.join("skills").exists(), "an unrelated dir was swept");
+    }
+
+    #[test]
+    fn unreadable_agent_toml_aborts_import() {
+        let src = seeded();
+        let (bundle, _) = export(&src).unwrap();
+        let dst = project("unreadable");
+        // A directory at agent.toml reads as an error other than NotFound.
+        std::fs::create_dir_all(agent_dir(&dst).join("agent.toml")).unwrap();
+        let e = import(&dst, &bundle, false, true, false).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Io, "{e}");
+        assert!(!agent_dir(&dst).join("subagents").exists(), "a component was moved");
+    }
+
+    #[test]
+    fn policy_write_failure_leaves_no_components_moved() {
+        let dst = project("policy-fail");
+        // The staged policy file is missing, so its move fails after skills/a.md moved.
+        let staging = agent_dir(&dst).join(".bundle-import-t");
+        let p = staging.join("skills/a.md");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, "a").unwrap();
+        let e = move_into_place(&staging, &agent_dir(&dst), &["skills/a.md", "agent.toml"]).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Io);
+        assert!(!agent_dir(&dst).join("skills/a.md").exists());
     }
 
     #[test]

@@ -106,13 +106,26 @@ export function useAutoSessionWorktree(input: Input) {
 
   useEffect(() => {
     let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
     setIsGit(null)
-    if (!input.folder) return
-    void isGitRepo(input.folder).then((yes) => {
-      if (!cancelled) setIsGit(yes)
-    })
+    const folder = input.folder
+    if (!folder) return
+    // null = the check failed, not "not a repo": stay unknown and retry a
+    // couple of times, so a busy backend is not remembered as a negative.
+    const check = (retriesLeft: number) => {
+      void isGitRepo(folder).then((yes) => {
+        if (cancelled) return
+        if (yes === null && retriesLeft > 0) {
+          timer = setTimeout(() => check(retriesLeft - 1), 3000)
+          return
+        }
+        setIsGit(yes)
+      })
+    }
+    check(2)
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [input.folder])
 
@@ -172,6 +185,8 @@ export function useAutoSessionWorktree(input: Input) {
           await attach(sid, folder, copy.path, dataFolder)
           return
         }
+        // Only a real `false` gets here: an unknown (null) answer returned
+        // early above, so a failed check never marks the session skipped.
         if (!isGit) {
           if (action === 'start') parallel.mark(sid, folder, 'skipped')
           return

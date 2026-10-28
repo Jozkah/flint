@@ -130,3 +130,22 @@ describe('plain command output', () => {
     expect(out.stderr).toBe('')
   })
 })
+
+describe('redactDeep separator', () => {
+  it('keeps fields intact when one contains the old plain separator', async () => {
+    const input = { a: 'one', b: 'x\n\u0000\u0000\ny', c: 'three' }
+    expect(await redactDeep(input)).toEqual(input)
+  })
+
+  it('picks another separator when a field contains the first candidate', async () => {
+    const input = ['a\n⁣FLSEP0⁣\nb', 'c']
+    expect(await redactDeep(input)).toEqual(input)
+  })
+
+  it('still redacts one field and leaves the others', async () => {
+    const out = await redactDeep({ a: 'k ' + KEY, b: 'plain', c: '' })
+    expect(out.a).not.toContain(KEY)
+    expect(out.b).toBe('plain')
+    expect(out.c).toBe('')
+  })
+})

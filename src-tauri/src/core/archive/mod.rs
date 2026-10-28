@@ -23,7 +23,14 @@ pub struct StartupReport {
 /// setting is off (the default): nothing is read. Meant to run before the
 /// window lists threads, so the list never names a thread that has just moved.
 pub fn auto_archive_idle_threads(data: &Path, now: u64) -> usize {
-    let settings = store::read_settings(data);
+    let settings = match store::read_settings_checked(data) {
+        store::SettingsRead::Ok(s) => s,
+        store::SettingsRead::Absent => store::ArchiveSettings::default(),
+        store::SettingsRead::Unreadable(e) => {
+            log::error!("auto-archive skipped, archive settings unreadable: {e}");
+            return 0;
+        }
+    };
     if !settings.enabled {
         return 0;
     }
@@ -34,7 +41,15 @@ pub fn auto_archive_idle_threads(data: &Path, now: u64) -> usize {
 /// refuses (a Cowork session whose worktree holds unmerged work) stay and are
 /// retried on the next start.
 pub fn sweep_expired(data: &Path, now: u64) -> StartupReport {
-    let settings = store::read_settings(data);
+    store::recover_orphans(data);
+    let settings = match store::read_settings_checked(data) {
+        store::SettingsRead::Ok(s) => s,
+        store::SettingsRead::Absent => store::ArchiveSettings::default(),
+        store::SettingsRead::Unreadable(e) => {
+            log::error!("archive sweep skipped, archive settings unreadable: {e}");
+            return StartupReport::default();
+        }
+    };
     let mut hook = |m: &ArchiveMeta, d: &Path| purge_cleanup(data, m, d);
     let report = store::sweep(data, settings.auto_delete_days, now, &mut hook);
     for b in &report.blocked {
@@ -64,6 +79,8 @@ pub fn purge_cleanup(data: &Path, meta: &ArchiveMeta, _dir: &Path) -> Result<(),
             if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(data, &meta.id) {
                 log::warn!("could not remove request records for a purged thread: {e}");
             }
+            // Files attached to the thread and its document index.
+            crate::core::attachments::cleanup::remove_thread_data(data, &meta.id);
             // The thread's agent scratch dir in the OS temp folder is ours to
             // remove too (Jozkah/jan#186).
             if let Some(scratch) = crate::core::threads::utils::thread_scratch_dir(&meta.id) {
@@ -127,6 +144,19 @@ mod tests {
             .output()
             .expect("git");
         assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    #[test]
+    fn unreadable_settings_file_skips_sweep() {
+        let d = tempfile::tempdir().unwrap();
+        let item = d.path().join(".archive/thread/old");
+        std::fs::create_dir_all(&item).unwrap();
+        let meta = json!({"kind":"thread","id":"old","title":"o","archivedAt":1,"origin":"threads/old","storage":"dir"});
+        std::fs::write(item.join("meta.json"), meta.to_string()).unwrap();
+        std::fs::write(d.path().join("archive-settings.json"), b"garbage").unwrap();
+        let report = sweep_expired(d.path(), store::now_ms());
+        assert_eq!(report, StartupReport::default());
+        assert!(item.exists(), "damaged settings must not purge");
     }
 
     /// A data folder, a repository, and a Flint worktree for one session.

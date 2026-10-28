@@ -29,18 +29,14 @@ use std::process::Command;
 /// Run `git` with literal args (callers pass their own `-C`). Returns trimmed
 /// stdout on success, trimmed stderr (or a generic message) on failure.
 fn git(args: &[&str]) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy().trim().to_string())
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stderr = out.stderr_lossy().trim().to_string();
         Err(if stderr.is_empty() {
             format!("git {} failed", args.first().copied().unwrap_or(""))
         } else {
@@ -71,64 +67,36 @@ fn exec(
     args: &[&str],
     stdin: Option<&[u8]>,
 ) -> Result<String, String> {
-    use std::io::Write;
-    use std::process::Stdio;
-
-    let mut cmd = Command::new("git");
-    jan_process::HostProcessEnv::host_env(&mut cmd);
-    cmd.arg("-C").arg(repo).args(crate::core::agent::vcs::HARDENED).env("GIT_TERMINAL_PROMPT", "0");
-    // Snapshot and restore must round-trip the working tree byte for byte.
-    // `core.autocrlf` is on by default in Git for Windows, which converts on
-    // the way into the index and back out again -- so a file snapshotted as
-    // "one\n" was restored as "one\r\n", and Flint silently rewrote the line
-    // endings of every file it put back. These are Flint's own private objects,
-    // not the user's commits, so the conversion has nothing to gain here and a
-    // fidelity guarantee to lose.
-    cmd.arg("-c").arg("core.autocrlf=false");
-    cmd.arg("-c").arg("core.eol=lf");
-    cmd.args(args);
-    // The same fidelity argument covers the repository's own `.gitattributes`:
-    // `text`, `eol=crlf` or a filter there converts on the way in and out
-    // regardless of `core.autocrlf`, so a CRLF file under `text=auto` came back
-    // as LF. Reading attributes from the empty tree turns that off for Flint's
-    // private objects. Git older than 2.40 ignores the variable and keeps the
-    // previous behaviour.
-    cmd.env("GIT_ATTR_SOURCE", EMPTY_TREE);
-    cmd.env("GIT_AUTHOR_NAME", "Flint")
-        .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Flint")
-        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
+    let mut cmd = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        // Snapshot and restore must round-trip the working tree byte for byte.
+        // `core.autocrlf` is on by default in Git for Windows, which converts on
+        // the way into the index and back out again -- so a file snapshotted as
+        // "one\n" was restored as "one\r\n", and Flint silently rewrote the line
+        // endings of every file it put back. These are Flint's own private objects,
+        // not the user's commits, so the conversion has nothing to gain here and a
+        // fidelity guarantee to lose.
+        .pre(["-c", "core.autocrlf=false", "-c", "core.eol=lf"])
+        .args(args)
+        // The same fidelity argument covers the repository's own `.gitattributes`:
+        // `text`, `eol=crlf` or a filter there converts on the way in and out
+        // regardless of `core.autocrlf`, so a CRLF file under `text=auto` came back
+        // as LF. Reading attributes from the empty tree turns that off for Flint's
+        // private objects. Git older than 2.40 ignores the variable and keeps the
+        // previous behaviour.
+        .env("GIT_ATTR_SOURCE", EMPTY_TREE)
+        .flint_identity();
     if let Some(idx) = index {
-        cmd.env("GIT_INDEX_FILE", idx);
+        cmd = cmd.env("GIT_INDEX_FILE", idx);
     }
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = match stdin {
-        None => cmd.output(),
-        Some(input) => cmd
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .and_then(|mut child| {
-                // Written from another thread so a child that fills its output
-                // pipe before reading all of its input cannot deadlock us.
-                let mut pipe = child.stdin.take();
-                let input = input.to_vec();
-                let writer = std::thread::spawn(move || {
-                    if let Some(pipe) = pipe.as_mut() {
-                        let _ = pipe.write_all(&input);
-                    }
-                });
-                let out = child.wait_with_output();
-                let _ = writer.join();
-                out
-            }),
+    if let Some(input) = stdin {
+        cmd = cmd.stdin(input);
     }
-    .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    let out = cmd.run().map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy())
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stderr = out.stderr_lossy().trim().to_string();
         Err(if stderr.is_empty() {
             format!("git {} failed", args.first().copied().unwrap_or(""))
         } else {
@@ -342,8 +310,10 @@ pub(crate) fn snapshot(
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| EMPTY_TREE.to_string());
         run(repo, Some(idx), &["read-tree", &base_tree])?;
-        if let Ok(dirty) = run(repo, None, &["diff", "--name-only", "HEAD"]) {
-            for rel in dirty.lines().filter(|l| !l.is_empty()) {
+        // `-z`: names come back raw, not C-quoted ("caf\303\251.txt"), which
+        // would stage a path that does not exist and drop the dirty edit.
+        if let Ok(dirty) = run_untrimmed(repo, None, &["diff", "--name-only", "-z", "HEAD"]) {
+            for rel in dirty.split('\0').filter(|l| !l.is_empty()) {
                 stage_path(repo, idx, Path::new(rel), true)?;
             }
         }
@@ -1320,10 +1290,11 @@ fn cap_diff(diff: String, max_bytes: usize, binary: bool) -> GitFileDiff {
             truncated: false,
         };
     }
-    let cut = diff[..max_bytes]
-        .rfind('\n')
-        .map(|n| n + 1)
-        .unwrap_or(max_bytes);
+    let mut end = max_bytes;
+    while !diff.is_char_boundary(end) {
+        end -= 1;
+    }
+    let cut = diff[..end].rfind('\n').map(|n| n + 1).unwrap_or(end);
     let mut head = diff[..cut].to_string();
     head.push_str("\n… diff truncated (too large to display in full) …\n");
     GitFileDiff {
@@ -1413,20 +1384,15 @@ pub fn file_diff(
 
 /// Run a read-only `git -C <dir>` and return stdout exactly as written.
 fn git_read_raw(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(dir)
-        .args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(dir)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
         Ok(out.stdout)
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        Err(out.stderr_lossy().trim().to_string())
     }
 }
 
@@ -1683,6 +1649,17 @@ mod review_tests {
     }
 
     #[test]
+    fn cap_diff_does_not_panic_when_cap_splits_a_multibyte_char() {
+        for ch in ["é", "中", "😀"] {
+            let big = ch.repeat(10);
+            // cap lands inside a char for every width > 1 byte
+            let out = cap_diff(big, 3, false);
+            assert!(out.truncated);
+            assert!(out.diff.contains("truncated"));
+        }
+    }
+
+    #[test]
     fn cap_diff_keeps_small_diffs_intact() {
         let small = "one\ntwo\n".to_string();
         let out = cap_diff(small.clone(), 1000, false);
@@ -1844,27 +1821,32 @@ pub(crate) fn worktree_prune(repo: &Path) {
 }
 
 /// Paths changed in a worktree relative to its own `HEAD`, staged, unstaged and
-/// untracked alike (`status --porcelain`, whose status letters are stripped).
-/// This is the "what has the agent done in there" summary, not a diff.
+/// untracked alike. This is the "what has the agent done in there" summary, not
+/// a diff.
 ///
-/// The status field is split off at its first space rather than by a fixed
-/// width: `run` trims the output, so the leading space of an unstaged-only
-/// line (` M a.txt`) is gone by the time this sees it and a fixed offset would
-/// eat the first character of that one path.
+/// Reads NUL-separated porcelain v2 so names are never quoted or escaped (a
+/// non-ASCII, space or ` -> ` name comes back verbatim) and untracked
+/// directories are expanded to their files. A rename yields both the new path
+/// and the old one: the caller stages each, and the old one no longer exists, so
+/// staging it records the delete.
 #[cfg(feature = "cli")]
 pub(crate) fn changed_paths(worktree: &Path) -> Vec<String> {
-    run(worktree, None, &["status", "--porcelain"])
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.trim_start().split_once(' '))
-        // A rename reads `R old -> new`; the new name is the path on disk, and
-        // the old one no longer exists, so staging it would be a delete.
-        .map(|(_, path)| match path.trim().split_once(" -> ") {
-            Some((_, to)) => to.to_string(),
-            None => path.trim().to_string(),
-        })
-        .filter(|s| !s.is_empty())
-        .collect()
+    let raw = run_untrimmed(
+        worktree,
+        None,
+        &["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+    )
+    .unwrap_or_default();
+    let (_, records) = parse_status_v2(&raw);
+    let mut out = Vec::new();
+    for r in records {
+        if let Some(old) = r.orig_path {
+            out.push(old);
+        }
+        out.push(r.path);
+    }
+    out.retain(|s| !s.is_empty());
+    out
 }
 
 #[cfg(all(test, feature = "cli"))]
@@ -2206,6 +2188,55 @@ mod tests {
         );
 
         cleanup_snapshot_index(thread_id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn base_snapshot_picks_up_dirty_non_ascii_tracked_file() {
+        let Some(root) = init_repo() else { return };
+        let thread_id = "test-thread-dirty-non-ascii";
+        cleanup_snapshot_index(thread_id);
+
+        std::fs::write(root.join("café.txt"), "one\n").unwrap();
+        run(&root, None, &["add", "-A"]).unwrap();
+        run(&root, None, &["commit", "-q", "-m", "cafe", "--no-gpg-sign"]).unwrap();
+        std::fs::write(root.join("café.txt"), "dirty-at-start\n").unwrap();
+
+        let base = snapshot(&root, None, "base", thread_id, &[]).expect("base snapshot");
+        let blob = run(&root, None, &["show", &format!("{base}:café.txt")]).unwrap();
+        assert_eq!(blob, "dirty-at-start");
+
+        cleanup_snapshot_index(thread_id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn changed_paths_returns_unquoted_non_ascii_space_and_arrow_names() {
+        let Some(root) = init_repo() else { return };
+        std::fs::write(root.join("old.txt"), "rename me\nrename me\nrename me\n").unwrap();
+        run(&root, None, &["add", "-A"]).unwrap();
+        run(&root, None, &["commit", "-q", "-m", "old", "--no-gpg-sign"]).unwrap();
+
+        std::fs::write(root.join("café.txt"), "x\n").unwrap();
+        std::fs::write(root.join("a b.txt"), "x\n").unwrap();
+        std::fs::write(root.join("a -> b.txt"), "x\n").unwrap();
+        std::fs::create_dir_all(root.join("newdir").join("sub")).unwrap();
+        std::fs::write(root.join("newdir").join("sub").join("f.txt"), "x\n").unwrap();
+        run(&root, None, &["mv", "old.txt", "renamed.txt"]).unwrap();
+
+        let mut got = changed_paths(&root);
+        got.sort();
+        for want in [
+            "café.txt",
+            "a b.txt",
+            "a -> b.txt",
+            "old.txt",
+            "renamed.txt",
+            "newdir/sub/f.txt",
+        ] {
+            assert!(got.iter().any(|g| g == want), "missing {want:?} in {got:?}");
+        }
+
         let _ = std::fs::remove_dir_all(&root);
     }
 

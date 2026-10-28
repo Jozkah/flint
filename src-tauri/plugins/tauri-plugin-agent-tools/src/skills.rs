@@ -167,17 +167,17 @@ const UNREADABLE_CONFIG: &str = "\0unreadable agent.toml";
 #[derive(Debug, Default, Deserialize)]
 struct Frontmatter {
     #[allow(dead_code)]
-    name: Option<String>,
-    description: Option<String>,
+    name: Option<serde_yaml::Value>,
+    description: Option<serde_yaml::Value>,
     /// Claude Code convention: `user-invocable: false` keeps the skill
     /// model-invocable while hiding it from the human's invoke list.
     #[serde(rename = "user-invocable")]
-    user_invocable: Option<bool>,
+    user_invocable: Option<serde_yaml::Value>,
     /// Matt Pocock's SKILL-MECHANICS convention: `disable-model-invocation:
     /// true` keeps the skill user-invocable while removing its description
     /// from the model's reach (no context load).
     #[serde(rename = "disable-model-invocation")]
-    disable_model_invocation: Option<bool>,
+    disable_model_invocation: Option<serde_yaml::Value>,
     /// AH-040. The tools a skill's instructions actually require, by the
     /// convention Claude Code uses. Declaring them lets the harness withhold a
     /// skill this run could never carry out, rather than handing over
@@ -187,17 +187,17 @@ struct Frontmatter {
     /// run where `bash` is denied is withheld; a skill can never make a denied
     /// tool callable.
     #[serde(rename = "allowed-tools")]
-    allowed_tools: Option<Vec<String>>,
+    allowed_tools: Option<serde_yaml::Value>,
     /// AH-123. What this skill calls itself, so another skill can say which
     /// version of it it was written against.
     version: Option<serde_yaml::Value>,
     /// AH-124. The skills this one's instructions depend on, optionally with
     /// a version bound: `requires: ["formatting", "deploy >=2.1"]`.
-    requires: Option<Vec<String>>,
+    requires: Option<serde_yaml::Value>,
     /// The skill should be active in every conversation (caveman-style modes,
     /// house rules). Spelled `always`, `always-on` or `always_active`.
     #[serde(alias = "always-on", alias = "always_active", alias = "always-active")]
-    always: Option<bool>,
+    always: Option<serde_yaml::Value>,
     /// What a request looks like when this skill applies: a list, or one
     /// comma/newline separated string. Spelled `triggers`, `trigger` or `when`.
     #[serde(alias = "trigger", alias = "when")]
@@ -206,7 +206,45 @@ struct Frontmatter {
     /// the skill is offered only where the project has a matching file.
     paths: Option<serde_yaml::Value>,
     /// Claude Code `context: fork`: run the skill in an isolated subagent.
-    context: Option<String>,
+    context: Option<serde_yaml::Value>,
+}
+
+/// A YAML scalar as a bool, tolerating the string spellings authors use.
+/// `None` means present but not readable as a bool.
+fn lenient_bool(v: &serde_yaml::Value) -> Option<bool> {
+    match v {
+        serde_yaml::Value::Bool(b) => Some(*b),
+        serde_yaml::Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "yes" | "on" => Some(true),
+            "false" | "no" | "off" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// A YAML scalar as text (strings and numbers).
+fn lenient_string(v: &serde_yaml::Value) -> Option<String> {
+    match v {
+        serde_yaml::Value::String(s) => Some(s.clone()),
+        serde_yaml::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+/// A YAML list, or one comma/newline separated string. `None` means present
+/// but neither (a map, a bool, ...), which the caller treats as unreadable.
+fn lenient_list(v: &serde_yaml::Value) -> Option<Vec<String>> {
+    match v {
+        serde_yaml::Value::Null => Some(Vec::new()),
+        serde_yaml::Value::String(s) => {
+            Some(s.split([',', '\n']).map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect())
+        }
+        serde_yaml::Value::Sequence(items) => {
+            items.iter().map(lenient_string).collect::<Option<Vec<_>>>()
+        }
+        _ => None,
+    }
 }
 
 /// The trigger phrases a frontmatter value declares: a list, or a string split
@@ -505,15 +543,55 @@ pub fn parse(content: &str) -> ParsedSkill {
             fork: false,
         };
     }
-    let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
+    // Fail closed (W30): a restriction that cannot be read must not vanish.
+    // Invalid YAML, or a security-relevant key of the wrong shape, keeps the
+    // skill away from the model rather than silently dropping the restriction.
+    let (fm, mut restricted) = match serde_yaml::from_str::<Frontmatter>(&yaml) {
+        Ok(fm) => (fm, false),
+        Err(e) => {
+            eprintln!("skills: frontmatter is not valid YAML, skill hidden from the model: {e}");
+            (Frontmatter::default(), true)
+        }
+    };
+    let mut flag = |v: &Option<serde_yaml::Value>, key: &str, default: bool, restrictive: bool| -> bool {
+        match v {
+            None | Some(serde_yaml::Value::Null) => default,
+            Some(v) => lenient_bool(v).unwrap_or_else(|| {
+                eprintln!("skills: frontmatter key '{key}' is not a boolean, failing closed");
+                restricted |= restrictive;
+                default
+            }),
+        }
+    };
+    let user_invocable_flag = flag(&fm.user_invocable, "user-invocable", true, false);
+    let disable_model = flag(&fm.disable_model_invocation, "disable-model-invocation", false, true);
+    let always = flag(&fm.always, "always", false, false);
+    let mut list_key = |v: &Option<serde_yaml::Value>, key: &str| -> Vec<String> {
+        match v.as_ref().map(lenient_list) {
+            None => Vec::new(),
+            Some(Some(l)) => l,
+            Some(None) => {
+                eprintln!("skills: frontmatter key '{key}' is not a list or string, failing closed");
+                restricted = true;
+                Vec::new()
+            }
+        }
+    };
+    let allowed = list_key(&fm.allowed_tools, "allowed-tools");
+    let requires_raw = list_key(&fm.requires, "requires");
+    // A non-boolean user-invocable cannot be honoured either way; the safe
+    // reading is to hide the skill from the human list but not widen anything.
+    let user_invocable = user_invocable_flag;
     ParsedSkill {
-        description: fm.description.map(|d| d.trim().to_string()),
+        description: fm
+            .description
+            .as_ref()
+            .and_then(lenient_string)
+            .map(|d| d.trim().to_string()),
         body: body.join("\n").trim_start_matches('\n').to_string(),
-        user_invocable: fm.user_invocable.unwrap_or(true),
-        model_invocable: !fm.disable_model_invocation.unwrap_or(false),
-        needs: fm
-            .allowed_tools
-            .unwrap_or_default()
+        user_invocable,
+        model_invocable: !disable_model && !restricted,
+        needs: allowed
             .into_iter()
             .map(|t| t.trim().to_ascii_lowercase())
             .filter(|t| !t.is_empty())
@@ -530,16 +608,18 @@ pub fn parse(content: &str) -> ParsedSkill {
             })
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty()),
-        requires: fm
-            .requires
-            .unwrap_or_default()
+        requires: requires_raw
             .iter()
             .filter_map(|entry| parse_requirement(entry))
             .collect(),
-        always: fm.always.unwrap_or(false),
+        always,
         triggers: parse_triggers(fm.triggers),
         paths: parse_list(fm.paths, false),
-        fork: fm.context.is_some_and(|c| c.trim().eq_ignore_ascii_case("fork")),
+        fork: fm
+            .context
+            .as_ref()
+            .and_then(lenient_string)
+            .is_some_and(|c| c.trim().eq_ignore_ascii_case("fork")),
     }
 }
 
@@ -1628,6 +1708,52 @@ pub fn delete(store: &Path, name: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bad_field_keeps_disable_model_invocation() {
+        let p = parse("---
+disable-model-invocation: true
+requires: {a: b}
+user-invocable: false
+---
+body");
+        assert!(!p.model_invocable);
+        assert!(!p.user_invocable);
+    }
+
+    #[test]
+    fn unreadable_security_key_fails_closed() {
+        let p = parse("---
+disable-model-invocation: maybe
+---
+b");
+        assert!(!p.model_invocable);
+        let p = parse("---
+allowed-tools: {x: 1}
+---
+b");
+        assert!(!p.model_invocable);
+    }
+
+    #[test]
+    fn allowed_tools_string_form() {
+        let p = parse("---
+allowed-tools: Read, Grep
+---
+b");
+        assert_eq!(p.needs, vec!["read".to_string(), "grep".to_string()]);
+        assert!(p.model_invocable);
+    }
+
+    #[test]
+    fn invalid_yaml_skill_not_model_invocable() {
+        let p = parse("---
+name: [unclosed
+---
+b");
+        assert!(!p.model_invocable);
+        assert!(p.user_invocable);
+    }
 
     /// A store of skills, each installed by name with whatever frontmatter it
     /// declares. Named for this process and this moment so concurrent tests

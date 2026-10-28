@@ -65,7 +65,11 @@ export function deferredPersistStorage<S>(
     if (!timer) timer = setTimeout(() => void flush(), ms)
   }
 
-  const flush = async () => {
+  // Keys removed while a write may be in flight: a failed write must not
+  // re-queue (resurrect) them.
+  const tombstones = new Set<string>()
+
+  const run = async () => {
     if (timer) {
       clearTimeout(timer)
       timer = null
@@ -78,13 +82,20 @@ export function deferredPersistStorage<S>(
           await inner.setItem(name, value)
         } catch (e) {
           // Keep the value unless something newer arrived while it failed.
-          if (!pending.has(name)) pending.set(name, value)
+          if (!pending.has(name) && !tombstones.has(name)) {
+            pending.set(name, value)
+            arm(delay)
+          }
           console.error(`deferred write of '${name}' failed, will retry:`, e)
-          arm(delay)
         }
       })
     )
   }
+
+  // Flushes run one after another so an older snapshot can never land after a
+  // newer one. `run` never rejects.
+  let chain: Promise<void> = Promise.resolve()
+  const flush = (): Promise<void> => (chain = chain.then(run, run))
 
   flushers.add(flush)
   installExitFlush()
@@ -97,15 +108,22 @@ export function deferredPersistStorage<S>(
   }
 
   return {
-    getItem: (name) => inner.getItem(name),
+    getItem: (name) =>
+      pending.has(name)
+        ? Promise.resolve(pending.get(name)!)
+        : inner.getItem(name),
     setItem: (name, value) => {
+      tombstones.delete(name)
       pending.set(name, value)
       const quiet = options.idleDelay !== undefined && !options.busy?.()
       arm(quiet ? options.idleDelay! : delay)
     },
-    removeItem: (name) => {
+    removeItem: async (name) => {
       pending.delete(name)
-      return inner.removeItem(name)
+      tombstones.add(name)
+      // Let any in-flight write land first so it cannot resurrect the key.
+      await chain
+      await inner.removeItem(name)
     },
     flush,
   }

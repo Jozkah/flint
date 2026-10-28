@@ -225,4 +225,40 @@ describe('migrateLocalStorageToBackend', () => {
     expect(proxy).not.toContain('p-proxy')
     expect(proxy).toContain('alice')
   })
+
+  it('a_bad_key_does_not_block_later_keys', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    localStorage.setItem('theme', '{"state":{"activeTheme":"dark"}}')
+    localStorage.setItem('left-panel', '{"state":{"open":false}}')
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (cmd: string, args: any) => {
+      if (cmd === 'settings_set' && args.key === 'theme') throw new Error('io')
+      return base(cmd, args)
+    })
+    await migrateLocalStorageToBackend()
+    expect(backend.get('left-panel')).toBe('{"state":{"open":false}}')
+    expect(backend.has('__migrated_theme')).toBe(false)
+    // transient failure: global flag stays unset so theme retries
+    expect(backend.has('__settings_migrated_to_backend__')).toBe(false)
+  })
+
+  it('a_migrated_key_is_not_overwritten_on_retry', async () => {
+    backend.set('__migrated_theme', 'true')
+    backend.set('theme', '{"state":{"activeTheme":"newer"}}')
+    localStorage.setItem('theme', '{"state":{"activeTheme":"stale"}}')
+    await migrateLocalStorageToBackend()
+    expect(backend.get('theme')).toBe('{"state":{"activeTheme":"newer"}}')
+    expect(backend.get('__settings_migrated_to_backend__')).toBe('true')
+  })
+
+  it('corrupt_json_blob_is_marked_permanent_and_skipped', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    localStorage.setItem('model-provider', '{not json')
+    localStorage.setItem('theme', '{"state":{"activeTheme":"dark"}}')
+    await migrateLocalStorageToBackend()
+    expect(backend.has('model-provider')).toBe(false)
+    expect(backend.get('__migrated_model-provider')).toBe('true')
+    expect(backend.get('theme')).toBe('{"state":{"activeTheme":"dark"}}')
+    expect(backend.get('__settings_migrated_to_backend__')).toBe('true')
+  })
 })

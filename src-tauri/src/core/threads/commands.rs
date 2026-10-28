@@ -4,7 +4,7 @@ use tauri::Runtime;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use super::db;
 use super::helpers::{
-    read_messages_from_file, should_use_sqlite, update_thread_metadata,
+    should_use_sqlite, update_thread_metadata,
 };
 use super::{
     constants::THREADS_FILE,
@@ -130,7 +130,7 @@ pub async fn modify_thread<R: Runtime>(
 
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
-    super::storage::modify_thread_in(&data_folder, thread)
+    super::storage::modify_thread_in(&data_folder, thread).await
 }
 
 /// Deletes a thread. With the archive on (the default) the thread is moved to
@@ -188,7 +188,7 @@ pub async fn list_messages<R: Runtime>(
 
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
-    read_messages_from_file(&data_folder, &thread_id)
+    super::helpers::read_messages_lossy(&data_folder, &thread_id).map(|r| r.messages)
 }
 
 /// Finds a phrase in the text of every conversation: where it was said, with a

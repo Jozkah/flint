@@ -68,6 +68,44 @@ impl Links {
     }
 }
 
+/// Serializes every load-modify-save of `cc-links.json`. Hold it only around
+/// that sequence, never across a slow copy.
+pub(crate) static LINKS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Reload the links under [`LINKS_LOCK`], let `edit` change them, save.
+pub(crate) fn update(edit: impl FnOnce(&mut Links)) -> Result<(), String> {
+    let _guard = LINKS_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let mut links = load();
+    edit(&mut links);
+    save(&links)
+}
+
+/// True for a symlink or, on Windows, any reparse point (junction, mount
+/// point): copying or hashing through one can reach files outside the source.
+pub(crate) fn is_link(entry: &std::fs::DirEntry) -> bool {
+    let Ok(ft) = entry.file_type() else {
+        return true;
+    };
+    if ft.is_symlink() {
+        return true;
+    }
+    reparse_point(entry)
+}
+
+#[cfg(windows)]
+fn reparse_point(entry: &std::fs::DirEntry) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    match entry.metadata() {
+        Ok(meta) => meta.file_attributes() & 0x400 != 0,
+        Err(_) => true,
+    }
+}
+
+#[cfg(not(windows))]
+fn reparse_point(_entry: &std::fs::DirEntry) -> bool {
+    false
+}
+
 fn path() -> Option<PathBuf> {
     crate::core::agent::skills::user_skill_store_raw().map(|store| store.join("cc-links.json"))
 }
@@ -87,7 +125,9 @@ pub fn save(links: &Links) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let raw = serde_json::to_string_pretty(links).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("json.{}-{n}.tmp", std::process::id()));
     std::fs::write(&tmp, raw).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
@@ -121,11 +161,12 @@ fn walk(root: &Path, dir: &Path, hasher: &mut DefaultHasher) {
             continue;
         }
         let path = entry.path();
+        // Not through a link (file or folder): a link back up the tree would
+        // loop, and a file link can point outside the source.
+        if is_link(&entry) {
+            continue;
+        }
         if path.is_dir() {
-            // Not through a linked folder: a link back up the tree would loop.
-            if entry.file_type().is_ok_and(|t| t.is_symlink()) {
-                continue;
-            }
             walk(root, &path, hasher);
         } else if path.is_file() {
             stamp(root, &path, hasher);
@@ -164,6 +205,38 @@ mod tests {
 
         std::fs::write(dir.path().join("SKILL.md"), "longer body").unwrap();
         assert_ne!(before, fingerprint(dir.path()));
+    }
+
+    #[test]
+    fn concurrent_link_updates_do_not_lose_entries() {
+        use crate::core::agent::skills::set_test_user_skills;
+        let store = tempfile::tempdir().unwrap();
+        let root = store.path().to_path_buf();
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let root = root.clone();
+                std::thread::spawn(move || {
+                    // The test store is per thread.
+                    set_test_user_skills(Some(root));
+                    update(|l| {
+                        l.upsert(Link {
+                            kind: LinkKind::Skill,
+                            name: format!("skill-{i}"),
+                            origin: "cc-user".into(),
+                            source_path: String::new(),
+                            fingerprint: 0,
+                        })
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        set_test_user_skills(Some(root));
+        assert_eq!(load().items.len(), 8);
+        set_test_user_skills(None);
     }
 
     #[test]

@@ -406,10 +406,12 @@ fn an_import_stopped_part_way_leaves_nothing() {
     assert_eq!(err.kind, ImportErrorKind::Cancelled);
     assert!(leftovers(&fx).is_empty());
     assert!(list(&fx.data, &fx.dest.to_string_lossy()).is_empty());
-    // A copy left by a process that died is swept by the next import.
+    // A young unclaimed copy may belong to another process, so the next
+    // import leaves it alone (old ones are swept: see partial_dirs tests); the
+    // import itself leaves no copy of its own.
     std::fs::create_dir_all(imports_dir(&fx.data).join("imp-dead.partial")).unwrap();
     run(&fx, &fx.bundle).unwrap();
-    assert!(leftovers(&fx).is_empty());
+    assert_eq!(leftovers(&fx), ["imp-dead.partial"]);
 }
 
 #[test]

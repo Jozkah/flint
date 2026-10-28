@@ -565,15 +565,12 @@ pub async fn agent_extensions_matrix_set(
     project_id: Option<String>,
     enabled: bool,
 ) -> Result<serde_json::Value, String> {
-    use crate::core::agent::extensions::{ItemKind, Matrix};
-    let item_kind = match kind.as_str() {
-        "plugin" => ItemKind::Plugin,
-        _ => ItemKind::Skill,
-    };
+    use crate::core::agent::extensions::ItemKind;
+    let item_kind = ItemKind::parse(&kind)?;
     let resolved_surface = resolve_surface(&surface, project_id.as_deref());
-    let mut matrix = Matrix::load();
-    matrix.set(item_kind, &id, &resolved_surface, enabled);
-    matrix.save();
+    let matrix = crate::core::agent::extensions::update(|m| {
+        m.set(item_kind, &id, &resolved_surface, enabled)
+    })?;
     serde_json::to_value(&matrix).map_err(|e| e.to_string())
 }
 
@@ -590,17 +587,12 @@ pub async fn agent_extensions_matrix_set_item(
     id: String,
     surfaces: Option<Vec<String>>,
 ) -> Result<serde_json::Value, String> {
-    use crate::core::agent::extensions::{ItemKind, Matrix};
-    let item_kind = match kind.as_str() {
-        "plugin" => ItemKind::Plugin,
-        _ => ItemKind::Skill,
-    };
-    let mut matrix = Matrix::load();
-    match surfaces {
-        Some(list) => matrix.set_item(item_kind, &id, list),
-        None => matrix.clear_item(item_kind, &id),
-    }
-    matrix.save();
+    use crate::core::agent::extensions::ItemKind;
+    let item_kind = ItemKind::parse(&kind)?;
+    let matrix = crate::core::agent::extensions::update(|m| match surfaces {
+        Some(list) => m.set_item(item_kind, &id, list),
+        None => m.clear_item(item_kind, &id),
+    })?;
     serde_json::to_value(&matrix).map_err(|e| e.to_string())
 }
 
@@ -1154,7 +1146,8 @@ pub async fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> 
 /// works end to end; the editor/terminal/diff tools require a live window and
 /// are served by the desktop window layer's own UI implementation.
 #[tauri::command]
-pub fn agent_desktop_bridge(
+pub fn agent_desktop_bridge<R: tauri::Runtime>(
+    window: tauri::Window<R>,
     data_folder: String,
     session_id: String,
     conversation_id: String,
@@ -1176,9 +1169,11 @@ pub fn agent_desktop_bridge(
     } else {
         FileSettingsUi::new(settings_path)
     };
-    let mut bridge = DesktopBridge::new(ui);
+    // One diff-id registry for the process: an id issued by one call is
+    // accepted by a later call of the same session, and by nobody else.
+    let mut bridge = DesktopBridge::with_registry(ui, crate::core::agent::desktop_bridge::shared_diff_registry());
     let ctx = RequestContext {
-        window_id: String::new(),
+        window_id: window.label().to_string(),
         workspace_root: std::path::PathBuf::from(&workspace),
         conversation_id,
         session_id,

@@ -76,7 +76,7 @@ pub struct Policy {
     /// outside `$HOME` would otherwise leave all of it readable by the shell. The
     /// CLI leaves this unset: there the project itself is the workspace, so
     /// masking it would hide the very files the agent works on.
-    pub mask_root: Option<PathBuf>,
+    pub mask_roots: Vec<PathBuf>,
     pub allow_network: bool,
     /// Paths to hide from the shell: the agent's own `<project>/.jan` state
     /// directory, and the `.jan` of every write root (a managed worktree or a
@@ -144,7 +144,7 @@ impl Policy {
     pub fn new(workspace: &Path, allow_network: bool) -> Self {
         Self {
             workspace: workspace.to_path_buf(),
-            mask_root: None,
+            mask_roots: Vec::new(),
             allow_network,
             hide_roots: Vec::new(),
             home_readonly: false,
@@ -217,7 +217,10 @@ impl Policy {
     /// masking it keeps a relocated data folder out of the shell's reach. The
     /// thread workspace (nested under it) is re-bound on top so it survives.
     pub fn with_mask_root(mut self, mask_root: &Path) -> Self {
-        self.mask_root = Some(mask_root.to_path_buf());
+        let root = mask_root.to_path_buf();
+        if !self.mask_roots.contains(&root) {
+            self.mask_roots.push(root);
+        }
         self
     }
 
@@ -734,7 +737,7 @@ pub fn fs_rules(policy: &Policy) -> FsRules {
     must.extend(policy.scratch_root.iter().cloned());
     must.extend(policy.read_roots.iter().cloned());
     let mut hidden: Vec<PathBuf> = policy.hide_roots.clone();
-    hidden.extend(policy.mask_root.iter().cloned());
+    hidden.extend(policy.mask_roots.iter().cloned());
     let home = home_dir();
     fs_policy::resolve(&fs_policy::FsInput {
         config: &policy.fs,
@@ -796,6 +799,41 @@ fn bwrap_fs_args(args: &mut Vec<String>, policy: &Policy) {
             continue;
         }
         let path = d.to_string_lossy();
+        push(args, &["--ro-bind-try", &path, &path]);
+    }
+}
+
+/// The hooks folders and config files of every repository the shell can write
+/// (the workspace and each write root) that must stay read-only, as
+/// `(folders, files)`. See [`crate::tools::sandbox::git_guard`]: git runs these
+/// outside the sandbox, so a script that plants a hook here runs in the user's
+/// own terminal at the next commit.
+fn git_guard_targets(policy: &Policy) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
+    for root in std::iter::once(&policy.workspace).chain(policy.write_roots.iter()) {
+        let guard = crate::tools::sandbox::git_guard(root);
+        for d in guard.dirs {
+            if !dirs.contains(&d) {
+                dirs.push(d);
+            }
+        }
+        for f in guard.files {
+            if !files.contains(&f) {
+                files.push(f);
+            }
+        }
+    }
+    (dirs, files)
+}
+
+/// Read-only binds over the repository parts git executes. Last, so no
+/// writable bind above can shadow them. `-try`: a hooks folder that does not
+/// exist is skipped here and stays refused by the lexical `.git` scan.
+fn bwrap_git_guard_args(args: &mut Vec<String>, policy: &Policy) {
+    let (dirs, files) = git_guard_targets(policy);
+    for path in dirs.iter().chain(files.iter()) {
+        let path = path.to_string_lossy();
         push(args, &["--ro-bind-try", &path, &path]);
     }
 }
@@ -881,7 +919,7 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // a `JAN_DATA_FOLDER` outside the home readable, exposing the permanent
     // store and any co-located `settings.json`. The workspace is re-bound below
     // (it is nested under this root on the desktop), so it survives.
-    if let Some(mask) = &policy.mask_root {
+    for mask in &policy.mask_roots {
         push(&mut args, &["--tmpfs", &mask.to_string_lossy()]);
     }
 
@@ -913,6 +951,7 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
         push(&mut args, &["--tmpfs", &hide.to_string_lossy()]);
     }
     bwrap_fs_args(&mut args, policy);
+    bwrap_git_guard_args(&mut args, policy);
     push(&mut args, &["--chdir", &policy.start_dir().to_string_lossy()]);
 
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
@@ -978,7 +1017,7 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
          ; Python multiprocessing and OpenMP runtimes. Their shared POSIX shm/sem\n\
          ; names are host-wide and cannot be scoped per-sandbox on sandbox-exec\n\
          ; (also deprecated / not a security boundary per Apple) -- accepted tradeoff;\n\
-         ; the real boundary is the $HOME / MASK_ROOT read denial below.\n\
+         ; the real boundary is the $HOME / MASK_ROOT_n read denial below.\n\
          (allow ipc-posix-sem)\n\
          (allow ipc-posix-shm*)\n\
          (allow mach-lookup (global-name \"com.apple.system.opendirectoryd.libinfo\"))\n\
@@ -991,8 +1030,10 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
     if home_dir().is_some() && !policy.home_readonly {
         p.push_str("(deny file-read* (subpath (param \"HOME_ROOT\")))\n");
     }
-    if policy.mask_root.is_some() {
-        p.push_str("(deny file-read* (subpath (param \"MASK_ROOT\")))\n");
+    for i in 0..policy.mask_roots.len() {
+        p.push_str(&format!(
+            "(deny file-read* (subpath (param \"MASK_ROOT_{i}\")))\n"
+        ));
     }
     p.push_str(
         "(allow file-read* (subpath (param \"WORKSPACE\")))\n\
@@ -1068,6 +1109,19 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
             "(deny file-write* (subpath (param \"FS_DENY_WRITE_{i}\")))\n"
         ));
     }
+    // Last of the file rules: git hooks and config stay unwritable inside every
+    // repository the shell may write, whatever allow came before.
+    let (guard_dirs, guard_files) = git_guard_targets(policy);
+    for i in 0..guard_dirs.len() {
+        p.push_str(&format!(
+            "(deny file-write* (subpath (param \"GIT_GUARD_DIR_{i}\")))\n"
+        ));
+    }
+    for i in 0..guard_files.len() {
+        p.push_str(&format!(
+            "(deny file-write* (literal (param \"GIT_GUARD_FILE_{i}\")))\n"
+        ));
+    }
     // IP only (Jozkah/jan#206). A bare `(allow network*)` also covers
     // `network-outbound` to a `unix-socket` remote, i.e. connect() to any
     // unix socket the command can name -- among them the launchd ssh-agent
@@ -1115,8 +1169,8 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
         "-DWORKSPACE={}",
         policy.workspace.to_string_lossy()
     ));
-    if let Some(mask) = &policy.mask_root {
-        args.push(format!("-DMASK_ROOT={}", mask.to_string_lossy()));
+    for (i, mask) in policy.mask_roots.iter().enumerate() {
+        args.push(format!("-DMASK_ROOT_{i}={}", mask.to_string_lossy()));
     }
     for (i, root) in policy.read_roots.iter().enumerate() {
         args.push(format!("-DREAD_ROOT_{i}={}", root.to_string_lossy()));
@@ -1139,6 +1193,13 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
         for (i, path) in list.iter().enumerate() {
             args.push(format!("-D{name}_{i}={}", path.to_string_lossy()));
         }
+    }
+    let (guard_dirs, guard_files) = git_guard_targets(policy);
+    for (i, path) in guard_dirs.iter().enumerate() {
+        args.push(format!("-DGIT_GUARD_DIR_{i}={}", path.to_string_lossy()));
+    }
+    for (i, path) in guard_files.iter().enumerate() {
+        args.push(format!("-DGIT_GUARD_FILE_{i}={}", path.to_string_lossy()));
     }
     args.push(format!(
         "-DTMPDIR={}",
@@ -2067,7 +2128,7 @@ mod probe_cache_tests {
 mod tests {
     use super::*;
 
-    fn cfg() -> ShellConfig {
+    pub(super) fn cfg() -> ShellConfig {
         ShellConfig {
             program: PathBuf::from("/bin/bash"),
             args: vec!["-c".to_string()],
@@ -2077,12 +2138,81 @@ mod tests {
         }
     }
 
-    fn policy() -> Policy {
+    pub(super) fn policy() -> Policy {
         Policy::new(Path::new("/data/agent-workspace/threads/t1"), false)
     }
 
-    fn joined(args: &[String]) -> String {
+    pub(super) fn joined(args: &[String]) -> String {
         args.join(" ")
+    }
+
+    /// A workspace with a normal repository and a write root that is a linked
+    /// worktree, on the real disk because the guard looks at what exists.
+    fn repo_fixture(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let base = std::env::temp_dir().join(format!("jan-w13-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let ws = base.join("ws");
+        let wt = base.join("wt");
+        std::fs::create_dir_all(ws.join(".git/hooks")).unwrap();
+        std::fs::write(ws.join(".git/config"), "[core]\n").unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(wt.join(".git"), "gitdir: /elsewhere").unwrap();
+        (base, ws, wt)
+    }
+
+    #[test]
+    fn bwrap_binds_hooks_and_config_read_only_after_every_writable_bind() {
+        let (base, ws, wt) = repo_fixture("bwrap");
+        let p = Policy::new(&ws, false).with_write_roots(vec![wt.clone()]);
+        let args = bwrap_args(&p, &cfg());
+        let text = joined(&args);
+        let hooks = ws.join(".git/hooks").to_string_lossy().to_string();
+        let config = ws.join(".git/config").to_string_lossy().to_string();
+        let ptr = wt.join(".git").to_string_lossy().to_string();
+        let ws_s = ws.to_string_lossy().to_string();
+        let wt_s = wt.to_string_lossy().to_string();
+        let last_rw = text.rfind(&format!("--bind {wt_s} {wt_s}")).unwrap()
+            .max(text.rfind(&format!("--bind {ws_s} {ws_s}")).unwrap());
+        for path in [&hooks, &config, &ptr] {
+            let needle = format!("--ro-bind-try {path} {path}");
+            let at = text.find(&needle).unwrap_or_else(|| panic!("missing {needle}: {text}"));
+            assert!(at > last_rw, "{path} must follow the writable binds: {text}");
+        }
+        // Ordinary repository files are not bound read-only: commit and checkout
+        // write the index, refs and objects.
+        let objects = ws.join(".git/objects").to_string_lossy().to_string();
+        assert!(!text.contains(&objects) && !text.contains(&format!("{ws_s}/.git {ws_s}/.git")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn bwrap_leaves_a_folder_without_dot_git_alone() {
+        let base = std::env::temp_dir().join(format!("jan-w13-none-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let text = joined(&bwrap_args(&Policy::new(&base, false), &cfg()));
+        assert!(!text.contains(&base.join(".git").to_string_lossy().to_string()), "{text}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn seatbelt_denies_writes_to_hooks_and_config() {
+        let (base, ws, wt) = repo_fixture("seatbelt");
+        let p = Policy::new(&ws, false).with_write_roots(vec![wt.clone()]);
+        let profile = seatbelt_policy(&p);
+        assert!(profile.contains("(deny file-write* (subpath (param \"GIT_GUARD_DIR_0\")))"), "{profile}");
+        assert!(profile.contains("(deny file-write* (literal (param \"GIT_GUARD_FILE_0\")))"), "{profile}");
+        assert!(profile.contains("GIT_GUARD_FILE_1"), "{profile}");
+        let args = seatbelt_args(&p, &cfg());
+        assert!(args.contains(&format!("-DGIT_GUARD_DIR_0={}", ws.join(".git/hooks").display())), "{args:?}");
+        assert!(args.contains(&format!("-DGIT_GUARD_FILE_0={}", ws.join(".git/config").display())), "{args:?}");
+        assert!(args.contains(&format!("-DGIT_GUARD_FILE_1={}", wt.join(".git").display())), "{args:?}");
+        // The deny follows every allow, the network rules apart.
+        let deny = profile.find("GIT_GUARD_DIR_0").unwrap();
+        assert!(deny > profile.rfind("(allow file-write*").unwrap());
+        let plain = seatbelt_policy(&Policy::new(&base.join("none"), false));
+        assert!(!plain.contains("GIT_GUARD"));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -2153,16 +2283,19 @@ mod tests {
             panic!("test needs a HOME");
         };
         let home = home.to_string_lossy();
-        let ro_bind = format!("--ro-bind {home} {home}");
-        let tmpfs = format!("--tmpfs {home}");
+        // The needles end in a space and the argument text is padded with one,
+        // so `--tmpfs $HOME` does not also match `--tmpfs $HOME/.docker` (the
+        // credential directories under the home are masked the same way).
+        let ro_bind = format!("--ro-bind {home} {home} ");
+        let tmpfs = format!("--tmpfs {home} ");
 
         // Default: an empty tmpfs hides the home.
-        let masked = joined(&bwrap_args(&policy(), &cfg()));
+        let masked = format!("{} ", joined(&bwrap_args(&policy(), &cfg())));
         assert!(masked.contains(&tmpfs), "{masked}");
         assert!(!masked.contains(&ro_bind), "{masked}");
 
         // home_readonly: the home is bound read-only instead of hidden.
-        let ro = joined(&bwrap_args(&policy().with_home_readonly(true), &cfg()));
+        let ro = format!("{} ", joined(&bwrap_args(&policy().with_home_readonly(true), &cfg())));
         assert!(!ro.contains(&tmpfs), "{ro}");
         assert!(ro.contains(&ro_bind), "{ro}");
     }
@@ -2243,7 +2376,7 @@ mod tests {
                 .with_read_roots(vec![PathBuf::from(repo)]),
         );
         let deny = p
-            .find("(deny file-read* (subpath (param \"MASK_ROOT\")))")
+            .find("(deny file-read* (subpath (param \"MASK_ROOT_0\")))")
             .expect("mask deny");
         let allow = p
             .find("(allow file-read* (subpath (param \"READ_ROOT_0\")))")
@@ -2789,7 +2922,7 @@ mod tests {
         );
 
         let deny = p
-            .find("(deny file-read* (subpath (param \"MASK_ROOT\")))")
+            .find("(deny file-read* (subpath (param \"MASK_ROOT_0\")))")
             .expect("mask deny");
         let read = p
             .find("(allow file-read* (subpath (param \"WRITE_ROOT_0\")))")
@@ -3050,6 +3183,7 @@ mod tests {
 /// not that we generated the right flags. Skipped when no backend is available.
 #[cfg(all(test, unix))]
 mod enforcement_tests {
+    use super::tests::{cfg, joined, policy};
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

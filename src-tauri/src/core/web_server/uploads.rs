@@ -68,37 +68,97 @@ fn is_id(id: &str) -> bool {
 /// to be deleted, so nothing else would.
 const UPLOAD_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// Removes the uploads nobody has touched for [`UPLOAD_MAX_AGE`].
+/// Most bytes all uploads together may take; a store past it is refused.
+pub const MAX_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum StoreError {
+    TooLarge,
+    OverQuota,
+    Io(String),
+}
+
+impl std::fmt::Display for StoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoreError::TooLarge => f.write_str("file too large"),
+            StoreError::OverQuota => f.write_str("upload storage is full"),
+            StoreError::Io(message) => f.write_str(message),
+        }
+    }
+}
+
+/// When an upload was last used: the newest time among its files (a use
+/// refreshes the file, see [`resolve`]), or the folder's own time when empty.
+fn last_used(dir: &Path) -> Option<std::time::SystemTime> {
+    let newest = fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter_map(|file| file.metadata().and_then(|m| m.modified()).ok())
+        .max();
+    newest.or_else(|| fs::metadata(dir).and_then(|m| m.modified()).ok())
+}
+
+/// Removes the uploads nobody has used for [`UPLOAD_MAX_AGE`].
 pub fn sweep(data_folder: &Path) {
+    sweep_older_than(data_folder, UPLOAD_MAX_AGE);
+}
+
+fn sweep_older_than(data_folder: &Path, max_age: std::time::Duration) {
     let Ok(entries) = fs::read_dir(root(data_folder)) else {
         return;
     };
     for entry in entries.flatten() {
-        let old = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .ok()
+        let old = last_used(&entry.path())
             .and_then(|t| t.elapsed().ok())
-            .is_some_and(|age| age > UPLOAD_MAX_AGE);
+            .is_some_and(|age| age > max_age);
         if old && entry.file_name().to_str().is_some_and(is_id) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
 }
 
-pub fn store(data_folder: &Path, name: &str, bytes: &[u8]) -> Result<Value, String> {
+/// Bytes held by every stored upload.
+fn total_bytes(data_folder: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(root(data_folder)) else {
+        return 0;
+    };
+    let mut total = 0u64;
+    for entry in entries.flatten() {
+        if let Ok(files) = fs::read_dir(entry.path()) {
+            for file in files.flatten() {
+                total = total.saturating_add(file.metadata().map(|m| m.len()).unwrap_or(0));
+            }
+        }
+    }
+    total
+}
+
+pub fn store(data_folder: &Path, name: &str, bytes: &[u8]) -> Result<Value, StoreError> {
+    store_with_quota(data_folder, name, bytes, MAX_TOTAL_BYTES)
+}
+
+fn store_with_quota(
+    data_folder: &Path,
+    name: &str,
+    bytes: &[u8],
+    quota: u64,
+) -> Result<Value, StoreError> {
     if bytes.len() > MAX_UPLOAD_BYTES {
-        return Err("file too large".into());
+        return Err(StoreError::TooLarge);
     }
     sweep(data_folder);
+    if total_bytes(data_folder).saturating_add(bytes.len() as u64) > quota {
+        return Err(StoreError::OverQuota);
+    }
     let mut id = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut id);
     let id = hex::encode(id);
     let name = clean_name(name);
     let dir = root(data_folder).join(&id);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| StoreError::Io(e.to_string()))?;
     let path = dir.join(&name);
-    fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    fs::write(&path, bytes).map_err(|e| StoreError::Io(e.to_string()))?;
     Ok(json!({
         "id": id,
         "name": name,
@@ -124,6 +184,10 @@ pub fn resolve(data_folder: &Path, path: &str) -> Result<PathBuf, String> {
     let base = fs::canonicalize(root(data_folder)).map_err(|_| "no uploads".to_string())?;
     let file = fs::canonicalize(path).map_err(|_| "file not found".to_string())?;
     if file.starts_with(&base) && file.is_file() {
+        // A use keeps the upload alive: refresh the time the sweep reads.
+        if let Ok(handle) = fs::OpenOptions::new().write(true).open(&file) {
+            let _ = handle.set_modified(std::time::SystemTime::now());
+        }
         Ok(file)
     } else {
         Err("path is not an uploaded file".into())
@@ -179,6 +243,37 @@ mod tests {
         assert_eq!(parse(dir.path(), path, "txt").unwrap(), "hello upload");
         delete(dir.path(), stored["id"].as_str().unwrap()).unwrap();
         assert!(parse(dir.path(), path, "txt").is_err());
+    }
+
+    #[test]
+    fn upload_over_quota_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        store_with_quota(dir.path(), "a.txt", &[0u8; 10], 15).unwrap();
+        assert_eq!(
+            store_with_quota(dir.path(), "b.txt", &[0u8; 10], 15),
+            Err(StoreError::OverQuota)
+        );
+        store_with_quota(dir.path(), "c.txt", &[0u8; 5], 15).unwrap();
+    }
+
+    #[test]
+    fn resolve_refreshes_last_used_so_sweep_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
+        // Store both first: every store sweeps, so aging comes after.
+        let paths: Vec<String> = ["used.txt", "idle.txt"]
+            .iter()
+            .map(|name| store(dir.path(), name, b"x").unwrap()["path"].as_str().unwrap().to_string())
+            .collect();
+        for path in &paths {
+            let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+            file.set_modified(old).unwrap();
+        }
+        // Using one upload makes it recent again; the idle one stays old.
+        resolve(dir.path(), &paths[0]).unwrap();
+        sweep(dir.path());
+        assert!(Path::new(&paths[0]).exists());
+        assert!(!Path::new(&paths[1]).exists());
     }
 
     #[test]

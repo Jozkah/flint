@@ -152,6 +152,32 @@ describe('runAccessRequest', () => {
     }
   })
 
+  it('starts a queued request clock only when it reaches the head', async () => {
+    vi.useFakeTimers()
+    try {
+      const first = runAccessRequest({ path: 'D:/a', reason: 'r' }, 't1', opts)
+      await vi.waitFor(() => {
+        expect(useAccessRequests.getState().queue).toHaveLength(1)
+      })
+      const second = runAccessRequest({ path: 'D:/b', reason: 'r' }, 't2', opts)
+      await vi.waitFor(() => {
+        expect(useAccessRequests.getState().queue).toHaveLength(2)
+      })
+      await vi.advanceTimersByTimeAsync(ACCESS_REQUEST_TIMEOUT_MS - 60_000)
+      await answerNext('session')
+      expect(JSON.parse(await first).status).toBe('granted')
+      // The second request has waited almost the full timeout behind the
+      // first, but its own clock only just started.
+      await vi.advanceTimersByTimeAsync(ACCESS_REQUEST_TIMEOUT_MS - 60_000)
+      expect(useAccessRequests.getState().queue).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(JSON.parse(await second).status).toBe('timed_out')
+      expect(useAccessRequests.getState().queue).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('an answer before the timeout stands', async () => {
     vi.useFakeTimers()
     try {

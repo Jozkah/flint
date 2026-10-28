@@ -19,6 +19,15 @@ const DEFAULT_BYTES: usize = 16 * 1024;
 const MAX_BYTES: usize = 64 * 1024;
 const TIMEOUT_SECS: u64 = 15;
 
+/// Local admin APIs that are never reached from here: Docker's unauthenticated
+/// TCP socket (2375/2376), Ollama (11434), and Flint's own servers (the local
+/// API on 1337, the remote bridge on 1340).
+const DENIED_PORTS: &[u16] = &[2375, 2376, 11434, 1337, 1340];
+
+pub fn is_denied_port(port: u16) -> bool {
+    DENIED_PORTS.contains(&port)
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Request {
     pub head: bool,
@@ -84,10 +93,10 @@ pub fn parse(args: &Value) -> Result<Request, String> {
 }
 
 /// The one address a request may use: every resolved address must be loopback.
-fn loopback_only(addrs: &[SocketAddr]) -> Result<SocketAddr, String> {
-    let first = addrs.first().ok_or("ERROR: that name did not resolve.")?;
+fn loopback_only(addrs: &[SocketAddr]) -> Result<Vec<SocketAddr>, String> {
+    addrs.first().ok_or("ERROR: that name did not resolve.")?;
     if addrs.iter().all(|a| ip_is_loopback(a.ip())) {
-        Ok(*first)
+        Ok(addrs.to_vec())
     } else {
         Err("ERROR: local_http only reaches this computer (localhost, 127.0.0.1, [::1]). Use web_fetch for anything else.".into())
     }
@@ -133,23 +142,41 @@ pub async fn local_http(args: &Value) -> String {
         Ok(req) => req,
         Err(message) => return message,
     };
+    if is_denied_port(req.port) {
+        return format!(
+            "ERROR: local_http does not reach port {}: it is a local admin or Flint's own service.",
+            req.port
+        );
+    }
     let resolved: Vec<SocketAddr> = match tokio::net::lookup_host((req.host.as_str(), req.port)).await {
         Ok(addrs) => addrs.collect(),
         Err(e) => return format!("ERROR: could not resolve {}: {e}", req.host),
     };
-    let addr = match loopback_only(&resolved) {
-        Ok(addr) => addr,
+    let addrs = match loopback_only(&resolved) {
+        Ok(addrs) => addrs,
         Err(message) => return message,
     };
     let exchange = async {
-        let mut stream = tokio::net::TcpStream::connect(addr)
-            .await
-            .map_err(|e| format!("ERROR: could not connect to {addr}: {e}"))?;
+        // `localhost` often resolves to ::1 first while the server listens on
+        // 127.0.0.1 only: try every validated address in turn.
+        let mut connected = None;
+        let mut last = String::new();
+        for addr in &addrs {
+            match tokio::net::TcpStream::connect(addr).await {
+                Ok(s) => {
+                    connected = Some(s);
+                    break;
+                }
+                Err(e) => last = format!("ERROR: could not connect to {addr}: {e}"),
+            }
+        }
+        let mut stream = connected.ok_or(last)?;
+        let host = if req.host.contains(':') { format!("[{}]", req.host) } else { req.host.clone() };
         let method = if req.head { "HEAD" } else { "GET" };
         // HTTP/1.0 with a closed connection: the body is not chunked.
         let request = format!(
             "{method} {} HTTP/1.0\r\nHost: {}:{}\r\nUser-Agent: Flint\r\nAccept: */*\r\nConnection: close\r\n\r\n",
-            req.target, req.host, req.port
+            req.target, host, req.port
         );
         stream
             .write_all(request.as_bytes())
@@ -187,6 +214,20 @@ pub async fn local_http(args: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn local_http_admin_port_denied() {
+        for port in [2375u16, 2376, 11434, 1337, 1340] {
+            assert!(is_denied_port(port), "{port}");
+        }
+        assert!(!is_denied_port(5173));
+        let out = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(local_http(&json!({ "url": "http://127.0.0.1:2375/version" })));
+        assert!(out.starts_with("ERROR: local_http does not reach port 2375"), "{out}");
+    }
 
     #[test]
     fn parses_host_port_and_path() {
@@ -249,6 +290,21 @@ mod tests {
             s.write_all(b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\npong").await.unwrap();
         });
         let out = local_http(&json!({ "url": format!("http://127.0.0.1:{port}/ping") })).await;
+        assert!(out.contains("200 OK") && out.ends_with("pong"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn local_http_localhost_falls_back_to_ipv4() {
+        // Listens on IPv4 only; `localhost` may resolve to ::1 first.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf).await;
+            s.write_all(b"HTTP/1.0 200 OK\r\n\r\npong").await.unwrap();
+        });
+        let out = local_http(&json!({ "url": format!("http://localhost:{port}/") })).await;
         assert!(out.contains("200 OK") && out.ends_with("pong"), "{out}");
     }
 

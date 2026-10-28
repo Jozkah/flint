@@ -72,6 +72,9 @@ pub fn delete_provider_keys(name: &str) -> Result<(), String> {
 pub fn get_secret(key: &str) -> Option<String> {
     use crate::core::server::provider_secrets as secrets;
     secrets::reject_reserved_key(key).ok()?;
+    if !secrets::is_webview_readable_secret(key) {
+        return None;
+    }
     secrets::load_provider_keys(key).into_iter().next()
 }
 
@@ -263,10 +266,13 @@ mod tests {
         let prev = std::env::var("JAN_DATA_FOLDER").ok();
         std::env::set_var("JAN_DATA_FOLDER", dir.path());
         crate::core::server::provider_secrets::force_file_secrets();
-        set_secret("web-search-test", "k1").unwrap();
-        assert_eq!(get_secret("web-search-test").as_deref(), Some("k1"));
-        set_secret("web-search-test", "").unwrap();
-        assert_eq!(get_secret("web-search-test"), None);
+        set_secret("exa-api-key", "k1").unwrap();
+        assert_eq!(get_secret("exa-api-key").as_deref(), Some("k1"));
+        set_secret("exa-api-key", "").unwrap();
+        assert_eq!(get_secret("exa-api-key"), None);
+        // A provider's API key is not a generic secret the page may read back.
+        set_secret("openai", "sk-1").unwrap();
+        assert_eq!(get_secret("openai"), None);
         assert!(set_secret("auth:bedrock-aws", "x").is_err());
         assert_eq!(get_secret("AUTH:bedrock-aws"), None);
         match &prev {

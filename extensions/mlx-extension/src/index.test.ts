@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import mlx_extension from './index'
 import { fs, getJanDataFolderPath, events } from '@janhq/core'
 import { invoke } from '@tauri-apps/api/core'
-import { unloadMlxModel } from '@janhq/tauri-plugin-mlx-api'
+import { unloadMlxModel, loadMlxModel } from '@janhq/tauri-plugin-mlx-api'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 
 const mockInvoke = vi.mocked(invoke)
@@ -190,6 +190,26 @@ describe('load', () => {
     expect(a).toEqual({ pid: 7 })
     expect(b).toEqual({ pid: 7 })
     expect(ext.performLoad).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('performLoad key handling', () => {
+  it('sends no MLX_API_KEY and returns the plugin SessionInfo', async () => {
+    const ext = newExt()
+    mockJanData.mockResolvedValue('/data')
+    ext.providerPath = '/data/mlx'
+    ext.getRandomPort = vi.fn().mockResolvedValue(5555)
+    mockInvoke.mockImplementation(async (cmd: string) =>
+      cmd === 'read_yaml' ? ({ model_path: '/abs/model' } as any) : ([] as any)
+    )
+    const info = { pid: 1, api_key: 'server-generated' }
+    vi.mocked(loadMlxModel).mockResolvedValue(info as any)
+
+    const out = await ext.performLoad('foo', undefined, false)
+    expect(out.api_key).toBe('server-generated')
+    const envs = vi.mocked(loadMlxModel).mock.calls.at(-1)![4]
+    expect(envs).not.toHaveProperty('MLX_API_KEY')
+    expect(typeof (ext as any).generateApiKey).toBe('undefined')
   })
 })
 
@@ -431,5 +451,60 @@ describe('isToolSupported', () => {
       p.endsWith('tokenizer_config.json')
     )
     expect(await ext.isToolSupported('foo')).toBe(false)
+  })
+})
+
+describe('model id validation', () => {
+  const mockMv = vi.mocked(fs.mv)
+
+  it('abortImport rejects a traversal id without touching fs', async () => {
+    const ext = newExt()
+    mockExistsSync.mockResolvedValue(true)
+    await ext.abortImport('../../x')
+    expect(mockRm).not.toHaveBeenCalled()
+  })
+
+  it('delete rejects a traversal id', async () => {
+    const ext = newExt()
+    await expect(ext.delete('a/../../b')).rejects.toThrow('Invalid modelId')
+    expect(mockRm).not.toHaveBeenCalled()
+  })
+
+  it('delete allows a legacy name with a space', async () => {
+    const ext = newExt()
+    mockExistsSync.mockResolvedValue(true)
+    mockInvoke.mockResolvedValue({ model_path: '/abs/m' })
+    mockRm.mockResolvedValue(undefined)
+    await ext.delete('old model')
+    expect(mockRm).toHaveBeenCalledWith('/data/mlx/models/old model')
+  })
+
+  it('update rejects an invalid new id', async () => {
+    const ext = newExt()
+    await expect(ext.update('foo', { id: '../evil' })).rejects.toThrow(
+      'Invalid modelId'
+    )
+    expect(mockMv).not.toHaveBeenCalled()
+  })
+
+  it('update without a new id is a no-op', async () => {
+    const ext = newExt()
+    await ext.update('foo', {})
+    expect(mockMv).not.toHaveBeenCalled()
+  })
+
+  it('update moves the folder back when the yaml write fails', async () => {
+    const ext = newExt()
+    mockExistsSync.mockResolvedValue(false)
+    mockMv.mockResolvedValue(undefined)
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'write_yaml') throw new Error('disk full')
+      return { model_path: 'mlx/models/foo/m' }
+    })
+    await expect(ext.update('foo', { id: 'bar' })).rejects.toThrow('disk full')
+    expect(mockMv).toHaveBeenLastCalledWith(
+      '/data/mlx/models/bar',
+      '/data/mlx/models/foo'
+    )
   })
 })

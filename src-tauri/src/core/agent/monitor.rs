@@ -33,6 +33,53 @@ struct Watcher {
     capped: bool,
     /// Matching lines held back by the rate cap, delivered on later turns.
     backlog: Vec<String>,
+    /// Matching lines discarded because the backlog hit its bound.
+    dropped: usize,
+}
+
+/// The backlog never holds more than this many lines.
+const MAX_BACKLOG: usize = 2 * MAX_LINES_PER_JOB;
+
+/// Job ids a run is watching. Dropping it (any way the run ends) forgets
+/// their watchers so a stopped job cannot leave one behind.
+#[derive(Default)]
+pub struct Tracked(Vec<String>);
+
+impl std::ops::Deref for Tracked {
+    type Target = Vec<String>;
+    fn deref(&self) -> &Vec<String> {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Tracked {
+    fn deref_mut(&mut self) -> &mut Vec<String> {
+        &mut self.0
+    }
+}
+
+impl Drop for Tracked {
+    fn drop(&mut self) {
+        for job in &self.0 {
+            forget(job);
+        }
+    }
+}
+
+/// Drop the watcher for a job that ended or whose run is over.
+pub fn forget(job_id: &str) {
+    if let Ok(mut map) = watchers().lock() {
+        map.remove(job_id);
+    }
+}
+
+/// Queue a line unless the backlog is full, in which case count the drop.
+fn push_bounded(w: &mut Watcher, line: String) {
+    if w.backlog.len() >= MAX_BACKLOG {
+        w.dropped += 1;
+    } else {
+        w.backlog.push(line);
+    }
 }
 
 fn watchers() -> &'static Mutex<HashMap<String, Watcher>> {
@@ -61,6 +108,7 @@ pub fn register(job_id: &str, filter: Option<Regex>) {
             last_delivery: None,
             capped: false,
             backlog: Vec::new(),
+            dropped: 0,
         },
     );
 }
@@ -115,7 +163,7 @@ pub fn collect(jobs: &[String]) -> Option<String> {
         if let Some((text, next)) = bash_job_output_since(job, None, w.cursor) {
             let skipped = next.saturating_sub(w.cursor).saturating_sub(text.len() as u64);
             if skipped > 0 {
-                w.backlog.push(format!("({skipped} bytes of output were not kept)"));
+                push_bounded(w, format!("({skipped} bytes of output were not kept)"));
             }
             w.cursor = next;
             for line in text.lines() {
@@ -124,7 +172,7 @@ pub fn collect(jobs: &[String]) -> Option<String> {
                     continue;
                 }
                 if w.filter.as_ref().is_none_or(|f| f.is_match(line)) {
-                    w.backlog.push(clip(line));
+                    push_bounded(w, clip(line));
                 }
             }
         }
@@ -137,8 +185,9 @@ pub fn collect(jobs: &[String]) -> Option<String> {
             }
         }
         if hit_cap {
-            let dropped = w.backlog.len();
+            let dropped = w.backlog.len() + w.dropped;
             w.backlog.clear();
+            w.dropped = 0;
             w.capped = true;
             out.push(format!(
                 "[monitor {job}] {MAX_LINES_PER_JOB} lines delivered, the cap for one watcher; \
@@ -189,6 +238,42 @@ mod tests {
         assert!(parse_filter(Some("(")).is_err());
         assert!(parse_filter(Some("  ")).unwrap().is_none());
         assert!(parse_filter(Some("ERROR|WARN")).unwrap().unwrap().is_match("WARN: x"));
+    }
+
+    fn test_watcher() -> Watcher {
+        Watcher {
+            filter: None,
+            cursor: 0,
+            delivered: 0,
+            last_delivery: None,
+            capped: false,
+            backlog: Vec::new(),
+            dropped: 0,
+        }
+    }
+
+    #[test]
+    fn backlog_is_capped_and_counts_drops() {
+        let mut w = test_watcher();
+        for i in 0..(MAX_BACKLOG + 50) {
+            push_bounded(&mut w, i.to_string());
+        }
+        assert_eq!(w.backlog.len(), MAX_BACKLOG);
+        assert_eq!(w.dropped, 50);
+    }
+
+    #[test]
+    fn forget_removes_watcher() {
+        register("monitor-test-forget", None);
+        assert!(is_watched("monitor-test-forget"));
+        forget("monitor-test-forget");
+        assert!(!is_watched("monitor-test-forget"));
+        register("monitor-test-tracked", None);
+        {
+            let mut t = Tracked::default();
+            t.push("monitor-test-tracked".to_string());
+        }
+        assert!(!is_watched("monitor-test-tracked"));
     }
 
     #[test]

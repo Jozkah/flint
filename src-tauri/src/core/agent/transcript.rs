@@ -276,6 +276,13 @@ pub fn export(
     format: Format,
 ) -> Result<String, tauri_plugin_agent_tools::harness_error::HarnessError> {
     use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+    if !valid_session_id(session) {
+        return Err(HarnessError::new(
+            ErrorKind::InvalidInput,
+            "a session id is letters, digits, '-', '_' and '.', and names no path",
+        )
+        .at(Stage::Startup));
+    }
     let mut path = None;
     for (_, dir) in threads_dirs(project_root, data_folder) {
         let candidate = dir.join(session).join("messages.jsonl");
@@ -294,8 +301,10 @@ pub fn export(
     let raw = std::fs::read_to_string(&path).map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("{}: {e}", path.display())).at(Stage::Startup)
     })?;
+    // A transcript can hold a credential a model echoed; every format is
+    // scrubbed, as the search snippets are.
     if format == Format::Json {
-        return Ok(raw);
+        return Ok(tauri_plugin_agent_tools::harness_error::scrub(&raw));
     }
     let mut out = String::new();
     if format == Format::Markdown {
@@ -347,7 +356,17 @@ pub fn export(
             }
         }
     }
-    Ok(out)
+    Ok(tauri_plugin_agent_tools::harness_error::scrub(&out))
+}
+
+/// A session id that names one directory entry and nothing else.
+fn valid_session_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s != "."
+        && !s.contains("..")
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 /// The hits, as a person reads them.
@@ -409,6 +428,30 @@ mod tests {
         let root = temp_root("project");
         write_transcript(&root.join(".jan").join("agent").join("threads"), session, lines);
         root
+    }
+
+    #[test]
+    fn export_rejects_dotdot_and_absolute_session() {
+        let root = project_with("s1", &[serde_json::json!({ "role": "user", "content": "hi" })]);
+        for bad in ["..", "../s1", "a/b", "a\\b", "/etc", "C:\\x", "", "s1/.."] {
+            let err = export(Some(&root), None, bad, Format::Text).unwrap_err();
+            assert_eq!(err.kind(), tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput, "{bad:?}");
+        }
+        assert!(export(Some(&root), None, "s1", Format::Text).is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn export_output_is_scrubbed() {
+        let root = project_with(
+            "s1",
+            &[serde_json::json!({ "role": "user", "content": "key is api_key=sk-live-9f8a7b6c5d4e3f2a1b0c ok" })],
+        );
+        for format in [Format::Text, Format::Markdown, Format::Json] {
+            let out = export(Some(&root), None, "s1", format).unwrap();
+            assert!(!out.contains("sk-live-9f8a7b6c5d4e3f2a1b0c"), "{format:?}: {out}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// A past run is found by what was said in it, in the project's own

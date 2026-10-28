@@ -367,5 +367,33 @@
     "none": "Esta pasta não declara hooks.",
     "error": "Não foi possível ler o arquivo de hooks",
     "loadFailed": "Não foi possível ler os hooks"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Permitir que o agente altere arquivos nesta pasta?",
+        "file": "Permitir que o agente altere este arquivo?"
+      },
+      "read": {
+        "folder": "Permitir que o agente leia esta pasta?",
+        "file": "Permitir que o agente leia este arquivo?"
+      }
+    },
+    "asking": "{{task}} está pedindo acesso fora do seu espaço de trabalho.",
+    "askingFrom": "{{origin}} em {{task}} está pedindo acesso fora do seu espaço de trabalho.",
+    "thisConversation": "esta conversa",
+    "folderLabel": "Pasta (e tudo dentro dela)",
+    "fileLabel": "Arquivo",
+    "requestedAs": "Solicitado como {{requested}}, que resolve para o caminho acima.",
+    "reason": "Motivo informado",
+    "access": "Acesso:",
+    "readWrite": "Leitura e escrita",
+    "readOnly": "Somente leitura",
+    "grantNote": "\"Permitir nesta conversa\" termina quando a conversa termina, ou após 8 horas. \"Sempre permitir\" vale para todas as conversas até você revogar em Configurações > Permissões > Acesso a pastas.",
+    "moreWaiting_one": "Mais {{count}} solicitação aguardando.",
+    "moreWaiting_other": "Mais {{count}} solicitações aguardando.",
+    "deny": "Negar",
+    "always": "Sempre permitir",
+    "session": "Permitir nesta conversa"
   }
 }

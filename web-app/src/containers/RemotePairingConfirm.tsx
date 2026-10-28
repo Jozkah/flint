@@ -47,8 +47,14 @@ export function RemotePairingConfirm({ api = remoteApi }: { api?: RemoteApi }) {
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && dismiss()}>
-      <DialogContent data-testid="remote-confirm-dialog">
+    <Dialog open onOpenChange={(open) => !open && !busy && dismiss()}>
+      <DialogContent
+        data-testid="remote-confirm-dialog"
+        // A stray click outside must not refuse (or pair) a phone; only Esc and
+        // the Deny button answer.
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{t('remote:confirmTitle', { name: request.deviceName })}</DialogTitle>
           <DialogDescription>{t('remote:confirmDesc')}</DialogDescription>

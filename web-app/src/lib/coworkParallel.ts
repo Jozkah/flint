@@ -68,11 +68,16 @@ export const isPlaceholderTitle = (title: string | undefined): boolean =>
 export const sessionCommitMessage = (title: string | undefined): string =>
   isPlaceholderTitle(title) ? 'Work from a Flint session' : title!.trim()
 
-export const isGitRepo = async (folder: string): Promise<boolean> => {
+/**
+ * Whether `folder` is a Git repository. `null` means the check itself failed
+ * (backend busy or erroring), which is not the same as "not a repository":
+ * callers must not record a failure as a negative answer.
+ */
+export const isGitRepo = async (folder: string): Promise<boolean | null> => {
   try {
     return await invoke<boolean>('agent_is_git_repo', { folder })
   } catch {
-    return false
+    return null
   }
 }
 

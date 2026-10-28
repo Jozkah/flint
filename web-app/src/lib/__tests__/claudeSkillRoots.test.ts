@@ -73,6 +73,50 @@ describe('which folders may be read for skills', () => {
   })
 })
 
+describe('windows paths', () => {
+  it('compares drive paths case-insensitively', () => {
+    expect(
+      checkRoot('c:/users/x/Flint/threads', {
+        approved: [],
+        janData: 'C:/Users/x/flint',
+        ...ok,
+      })
+    ).toEqual({ ok: false, reason: 'jan-data' })
+    expect(
+      checkRoot('c:/users/x/skills/a', {
+        approved: ['C:/Users/x/Skills'],
+        ...ok,
+      })
+    ).toEqual({ ok: false, reason: 'duplicate' })
+    expect(
+      checkRoot('C:/Users/x', { approved: ['c:/users/x/skills'], ...ok })
+    ).toEqual({ ok: false, reason: 'overlaps' })
+  })
+
+  it.each(['//server', '//server/share', '\\\\server\\share\\'])(
+    'refuses %s as too broad',
+    (path) => {
+      expect(checkRoot(path, { approved: [], ...ok })).toEqual({
+        ok: false,
+        reason: 'too-broad',
+      })
+    }
+  )
+
+  it('strips the verbatim prefix', () => {
+    expect(checkRoot('\\\\?\\C:', { approved: [], ...ok })).toEqual({
+      ok: false,
+      reason: 'too-broad',
+    })
+  })
+
+  it('keeps posix paths case-sensitive', () => {
+    expect(
+      checkRoot('/Home/x/skills', { approved: ['/home/x'], ...ok })
+    ).toMatchObject({ ok: true })
+  })
+})
+
 describe('keeping the list', () => {
   it('adds an accepted folder and leaves the input alone', () => {
     const before: readonly string[] = []

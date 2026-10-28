@@ -600,6 +600,12 @@ pub fn validate_plan(tasks: &[PlanTask]) -> Result<(), Vec<String>> {
         if t.brief.chars().count() > MAX_TEXT {
             issues.push(format!("task {} has a brief over {MAX_TEXT} characters", t.id));
         }
+        if t.kind != KIND_CHECK && t.paths.is_empty() {
+            issues.push(format!(
+                "task {} changes files but declares no paths; list the paths it works in, or set \"kind\":\"check\" if it only reads or runs things",
+                t.id
+            ));
+        }
         for p in &t.paths {
             if normalize_path(p).is_none() {
                 issues.push(format!("task {} declares path {p:?}, which is not a relative path inside the project", t.id));
@@ -675,6 +681,18 @@ fn find_cycle(tasks: &[PlanTask]) -> Option<Vec<String>> {
     None
 }
 
+/// The normalized paths a change task works in. A task persisted before empty
+/// paths were refused declares none; it is treated as touching the whole
+/// project so it still serializes against every other change task.
+fn effective_paths(t: &PlanTask) -> Vec<String> {
+    let declared: Vec<String> = t.paths.iter().filter_map(|p| normalize_path(p)).collect();
+    if declared.is_empty() {
+        vec![String::new()]
+    } else {
+        declared
+    }
+}
+
 /// Tasks that neither depends (transitively) on the other can run at the same
 /// time; declared paths of such a pair must not overlap.
 fn parallel_overlaps(tasks: &[PlanTask]) -> Vec<String> {
@@ -701,8 +719,8 @@ fn parallel_overlaps(tasks: &[PlanTask]) -> Vec<String> {
             if a_anc.contains(&b.id) || ancestors(&b.id).contains(&a.id) {
                 continue;
             }
-            'pair: for pa in a.paths.iter().filter_map(|p| normalize_path(p)) {
-                for pb in b.paths.iter().filter_map(|p| normalize_path(p)) {
+            'pair: for pa in effective_paths(a) {
+                for pb in effective_paths(b) {
                     if covers(&pa, &pb) || covers(&pb, &pa) {
                         out.push(format!(
                             "tasks {} and {} can run in parallel but both declare {}; make one depend on the other",
@@ -1522,6 +1540,20 @@ pub fn write_handoff(data_folder: &Path, id: &str, task_id: &str, text: &str) ->
     Ok(format!("tasks/{task_id}/handoff.md"))
 }
 
+/// `text` cut to at most `MAX_HANDOFF` bytes on a character boundary, with a
+/// marker when something was cut.
+fn clip_handoff(text: &str) -> String {
+    const MARK: &str = "\n[handoff cut]";
+    if text.len() <= MAX_HANDOFF {
+        return text.to_string();
+    }
+    let mut end = MAX_HANDOFF - MARK.len();
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{MARK}", &text[..end])
+}
+
 /// Record how a task's run ended. The first ending wins: a late settle of a
 /// task that has already ended returns the record unchanged.
 pub fn task_settle(
@@ -1567,8 +1599,13 @@ pub fn task_settle(
         },
     );
     if let Some(text) = input.handoff.as_deref() {
-        let rel = write_handoff(data_folder, id, task_id, text)?;
-        c.task_mut(task_id)?.handoff_path = Some(rel);
+        // A handoff the model made too long, or one that cannot be written,
+        // must not leave the task unsettled and stuck Running.
+        let clipped = clip_handoff(text);
+        match write_handoff(data_folder, id, task_id, &clipped) {
+            Ok(rel) => c.task_mut(task_id)?.handoff_path = Some(rel),
+            Err(e) => log::warn!("campaign {id}: handoff for {task_id} was not saved: {e:?}"),
+        }
     }
     let reviewing = advance_to_review(&mut c);
     c.updated_at = now();
@@ -2077,7 +2114,7 @@ pub(crate) mod tests {
             title: format!("task {id}"),
             brief: format!("do {id}"),
             acceptance: vec![],
-            paths: paths.iter().map(|s| s.to_string()).collect(),
+            paths: if paths.is_empty() { vec![format!("p-{id}")] } else { paths.iter().map(|s| s.to_string()).collect() },
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
             kind: String::new(),
         }
@@ -2240,6 +2277,26 @@ pub(crate) mod tests {
     fn a_sound_plan_validates() {
         let t = vec![plan("a", &[], &["src/a"]), plan("b", &["a"], &["src/a/x.rs"]), plan("c", &[], &["docs"])];
         assert!(validate_plan(&t).is_ok());
+    }
+
+    #[test]
+    fn change_task_without_paths_fails_validation() {
+        let mut bare = plan("a", &[], &["x"]);
+        bare.paths.clear();
+        assert!(err_of(&[bare.clone()]).contains("declares no paths"));
+        bare.kind = KIND_CHECK.into();
+        assert!(validate_plan(&[bare]).is_ok());
+    }
+
+    #[test]
+    fn empty_paths_task_overlaps_every_change_task() {
+        let mut bare = plan("a", &[], &["x"]);
+        bare.paths.clear();
+        let other = plan("b", &[], &["src/b"]);
+        assert_eq!(parallel_overlaps(&[bare.clone(), other.clone()]).len(), 1);
+        let mut chained = other;
+        chained.depends_on = vec!["a".into()];
+        assert!(parallel_overlaps(&[bare, chained]).is_empty());
     }
 
     #[test]
@@ -2646,7 +2703,7 @@ pub(crate) mod tests {
             "modeCeiling": "ask",
             "model": "p/m",
             "limits": { "maxParallel": 3, "tokenBudget": null },
-            "tasks": [{ "id": "a", "title": "A", "brief": "do a" }]
+            "tasks": [{ "id": "a", "title": "A", "brief": "do a", "paths": ["src"] }]
         });
         let i: CreateInput = serde_json::from_value(payload).unwrap();
         let l = i.limits.clone().unwrap();
@@ -2700,6 +2757,35 @@ pub(crate) mod tests {
         let mut i = input(Some("c"), vec![plan("a", &[], &[])]);
         i.limits = Some(CampaignLimits { max_parallel: 40, ..Default::default() });
         assert_eq!(create(&d, i).unwrap().limits.max_parallel, MAX_PARALLEL_CAP);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn settle_with_oversized_handoff_still_settles() {
+        let d = data_dir("big-handoff");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        for s in [CampaignStatus::Approved, CampaignStatus::Running] {
+            transition(&d, "c", TransitionInput { campaign: Some(s), task: None, integration: None }).unwrap();
+        }
+        for to in [TaskStatus::Queued, TaskStatus::Running] {
+            let mv = TransitionInput {
+                campaign: None,
+                task: Some(TaskMove { id: "a".into(), to, verdict: None, patch: TaskPatch::default() }),
+                integration: None,
+            };
+            transition(&d, "c", mv).unwrap();
+        }
+        let huge = "é".repeat(MAX_HANDOFF);
+        let c = task_settle(
+            &d,
+            "c",
+            "a",
+            SettleInput { outcome: Outcome::Completed, detail: "ok".into(), handoff: Some(huge), tokens_used: None, fingerprint: None },
+        )
+        .unwrap();
+        assert_eq!(c.tasks[0].status, TaskStatus::Completed);
+        let written = std::fs::read_to_string(d.join("campaigns/c/tasks/a/handoff.md")).unwrap();
+        assert!(written.len() <= MAX_HANDOFF && written.ends_with("[handoff cut]"));
         std::fs::remove_dir_all(&d).ok();
     }
 

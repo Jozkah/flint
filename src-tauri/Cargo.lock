@@ -7809,6 +7809,7 @@ name = "tauri-plugin-agent-tools"
 version = "0.8.3"
 dependencies = [
  "ashpd",
+ "async-trait",
  "base64 0.22.1",
  "futures-util",
  "glob",
@@ -8003,6 +8004,7 @@ dependencies = [
  "jan-utils",
  "log",
  "nix 0.30.1",
+ "rand 0.8.7",
  "serde",
  "sysinfo",
  "tauri",
@@ -8062,6 +8064,7 @@ dependencies = [
  "flate2",
  "html2text",
  "infer 0.15.0",
+ "jan-utils",
  "log",
  "lopdf",
  "pdf-extract",

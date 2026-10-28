@@ -64,6 +64,16 @@ impl GitOp {
         let Some(sub) = argv.get(idx).map(String::as_str) else {
             return GitOp::Other;
         };
+        // `-c alias.x=reset --hard` hides a destructive command behind a name
+        // this classifier never sees; treat it as destructive, fail closed.
+        let is_alias = |v: &str| v.to_ascii_lowercase().starts_with("alias.");
+        let alias = argv[..idx].iter().enumerate().any(|(i, a)| {
+            ((a == "-c" || a == "--config-env") && argv.get(i + 1).is_some_and(|v| is_alias(v)))
+                || a.strip_prefix("--config-env=").is_some_and(is_alias)
+        });
+        if alias {
+            return GitOp::ResetHard;
+        }
         let rest: Vec<&str> = argv[idx + 1..].iter().map(String::as_str).collect();
         let has = |flags: &[&str]| rest.iter().any(|a| flags.contains(a));
 
@@ -100,7 +110,30 @@ impl GitOp {
             "switch" if has(&["--force", "-f", "--discard-changes"]) => GitOp::DiscardWorktree,
             // `git checkout .` and `git checkout -- path` overwrite the tree.
             "checkout" if rest.iter().any(|a| *a == "." || *a == "--") => GitOp::DiscardWorktree,
-            "restore" if !has(&["--staged"]) && !rest.is_empty() => GitOp::DiscardWorktree,
+            // `restore` touches the worktree unless it is `--staged` alone;
+            // `--staged --worktree` (or `-SW`) still overwrites files.
+            "restore"
+                if !rest.is_empty()
+                    && (has(&["--worktree"])
+                        || rest.iter().any(|a| is_short_flag_with(a, &['W']))
+                        || !(has(&["--staged"]) || rest.iter().any(|a| is_short_flag_with(a, &['S'])))) =>
+            {
+                GitOp::DiscardWorktree
+            }
+            "checkout" if rest.iter().any(|a| is_short_flag_with(a, &['B'])) => GitOp::DiscardWorktree,
+            "switch" if rest.iter().any(|a| is_short_flag_with(a, &['C'])) || has(&["--force-create"]) => {
+                GitOp::DiscardWorktree
+            }
+            "rm" => GitOp::DiscardWorktree,
+            "worktree" if rest.first().is_some_and(|a| *a == "remove" || *a == "prune") => {
+                GitOp::DiscardWorktree
+            }
+            "branch" if rest.iter().any(|a| is_short_flag_with(a, &['f', 'M'])) || has(&["--force"]) => {
+                GitOp::DeleteBranch
+            }
+            "tag" if rest.iter().any(|a| is_short_flag_with(a, &['d', 'f'])) || has(&["--delete", "--force"]) => {
+                GitOp::DeleteBranch
+            }
             "branch"
                 if rest.iter().any(|a| is_short_flag_with(a, &['D'])) || has(&["--delete"]) =>
             {
@@ -326,43 +359,33 @@ impl Resource {
     /// the same destination.
     pub fn net(url: &str) -> Resource {
         let trimmed = url.trim();
-        let (scheme, rest) = match trimmed.split_once("://") {
-            Some((s, r)) => (s.to_ascii_lowercase(), r),
-            None => (String::new(), trimmed),
+        // The same parser the fetcher uses, so the gate and the request agree
+        // on the host (`https://evil.test\@docs.internal/` is `evil.test`).
+        let parsed = if trimmed.contains("://") {
+            url::Url::parse(trimmed)
+        } else {
+            url::Url::parse(&format!("https://{trimmed}"))
         };
-        let authority = rest
-            .split(['/', '?', '#'])
-            .next()
-            .unwrap_or("")
-            .rsplit('@')
-            .next()
-            .unwrap_or("");
-        if authority.is_empty() {
+        let host = parsed
+            .as_ref()
+            .ok()
+            .and_then(|u| u.host_str().map(|h| (h, u.port())));
+        let Some((host, port)) = host else {
+            return Resource::Unknown {
+                tool: "web_fetch".into(),
+                why: format!("no usable host in url {url:?}"),
+            };
+        };
+        // `example.com.` is `example.com` to DNS; compare them as one.
+        let host = host.trim_end_matches('.').to_ascii_lowercase();
+        if host.is_empty() {
             return Resource::Unknown {
                 tool: "web_fetch".into(),
                 why: format!("no host in url {url:?}"),
             };
         }
-        // IPv6 literals keep their brackets; a port follows the closing one.
-        let (host, port) = if let Some(end) = authority.rfind(']') {
-            let (h, tail) = authority.split_at(end + 1);
-            (h, tail.strip_prefix(':'))
-        } else {
-            match authority.rsplit_once(':') {
-                Some((h, p)) => (h, Some(p)),
-                None => (authority, None),
-            }
-        };
-        let port = port.and_then(|p| p.parse::<u16>().ok());
-        let default_port = match scheme.as_str() {
-            "https" | "wss" => Some(443),
-            "http" | "ws" => Some(80),
-            _ => None,
-        };
-        Resource::Net {
-            host: host.to_ascii_lowercase(),
-            port: if port == default_port { None } else { port },
-        }
+        // `Url::port` is already `None` for the scheme's default port.
+        Resource::Net { host, port }
     }
 
     /// Every resource a built-in call touches.
@@ -462,6 +485,23 @@ impl Resource {
             }
         }
 
+        // The git tool reaches a host through fetch, pull, push, ls-remote,
+        // clone and every gh call. Each host is a network resource, so
+        // allow/deny rules and the domain lists apply to it like a web_fetch.
+        if tool_name == "git" {
+            if let Ok(plan) = crate::tools::git_tool::plan_from_args(args) {
+                let cwd = match (args.get("cwd").and_then(|v| v.as_str()), root) {
+                    (Some(c), Some(r)) => r.join(c),
+                    (Some(c), None) => PathBuf::from(c),
+                    (None, Some(r)) => r.to_path_buf(),
+                    (None, None) => PathBuf::new(),
+                };
+                for host in plan.net_hosts(&cwd) {
+                    out.push(Resource::Net { host, port: None });
+                }
+            }
+        }
+
         if capability_is_net {
             match args.get("url") {
                 Some(serde_json::Value::String(url)) if !url.trim().is_empty() => {
@@ -472,6 +512,28 @@ impl Resource {
                     why: "`url` is not a non-empty string".into(),
                 }),
                 None => {}
+            }
+            // `urls` (web_fetch batches): every entry is its own network
+            // resource so allow/deny rules and the audit log see each host.
+            match args.get("urls") {
+                Some(serde_json::Value::Array(items)) => {
+                    for it in items {
+                        match it {
+                            serde_json::Value::String(u) if !u.trim().is_empty() => {
+                                out.push(Resource::net(u))
+                            }
+                            _ => out.push(Resource::Unknown {
+                                tool: tool_name.to_string(),
+                                why: "`urls` holds an entry that is not a non-empty string".into(),
+                            }),
+                        }
+                    }
+                }
+                Some(serde_json::Value::Null) | None => {}
+                Some(_) => out.push(Resource::Unknown {
+                    tool: tool_name.to_string(),
+                    why: "`urls` is not an array".into(),
+                }),
             }
         }
 
@@ -733,14 +795,47 @@ impl ResourceRule {
                 .iter()
                 .any(|r| matches!(r, Resource::Unknown { .. }));
         };
-        let commands: Vec<&Resource> = resources
+        // An allow rule never vouches for a call with a part it did not
+        // understand.
+        if resources.iter().any(|r| matches!(r, Resource::Unknown { .. })) {
+            return false;
+        }
+        let relevant: Vec<&Resource> = resources.iter().collect();
+        let commands: Vec<&&Resource> = relevant
             .iter()
             .filter(|r| matches!(r, Resource::Command { .. }))
             .collect();
         if !commands.is_empty() {
+            // `browser` emits a bare-action twin and an action-with-target
+            // twin; either spelling of the pattern (`open`, `open https://x*`)
+            // vouches for the action, so each action needs one match.
+            if tool_name == "browser" {
+                let program_of = |r: &Resource| match r {
+                    Resource::Command { program, .. } => program.clone(),
+                    _ => String::new(),
+                };
+                return commands.iter().all(|r| {
+                    let prog = program_of(r);
+                    commands
+                        .iter()
+                        .any(|c| program_of(c) == prog && resource_matches(pattern, c))
+                });
+            }
             return commands.iter().all(|r| resource_matches(pattern, r));
         }
-        resources.iter().any(|r| resource_matches(pattern, r))
+        // Resources of one kind (paths, hosts) each need their own match, so
+        // a rule matching one path does not vouch for a second one.
+        let kind = |r: &Resource| std::mem::discriminant(r);
+        let matched: Vec<_> = relevant
+            .iter()
+            .filter(|r| resource_matches(pattern, r))
+            .map(|r| kind(r))
+            .collect();
+        !matched.is_empty()
+            && relevant
+                .iter()
+                .filter(|r| matched.contains(&kind(r)))
+                .all(|r| resource_matches(pattern, r))
     }
 
     /// Whether this rule denies this call.
@@ -1026,6 +1121,105 @@ mod tests {
         );
     }
 
+    fn host_of(url: &str) -> String {
+        match Resource::net(url) {
+            Resource::Net { host, .. } => host,
+            other => panic!("{url:?} -> {other:?}"),
+        }
+    }
+
+    #[test]
+    fn net_backslash_at_host() {
+        assert_eq!(host_of("https://evil.test\\@docs.internal/"), "evil.test");
+    }
+
+    #[test]
+    fn net_tab_newline_percent40_userinfo_ipv6() {
+        assert_eq!(host_of("https://evil.te\tst/x"), "evil.test");
+        assert_eq!(host_of("https://a.test\n/x"), "a.test");
+        assert!(matches!(Resource::net("https://good.test%40evil.test/"), Resource::Unknown { .. }));
+        assert_eq!(host_of("https://good.test%40@evil.test/"), "evil.test");
+        assert_eq!(host_of("https://good.test@evil.test/"), "evil.test");
+        assert_eq!(host_of("https://good.test:pw@evil.test:8443/"), "evil.test");
+        assert_eq!(host_of("https://example.com./x"), "example.com");
+        assert_eq!(host_of("http://[::1]/x"), "[::1]");
+        assert_eq!(host_of("http://[2001:db8::1]:81/x"), "[2001:db8::1]");
+    }
+
+    #[test]
+    fn net_unparseable_is_unknown() {
+        for u in ["https://", "https://exa mple.com/", "https://\u{1}evil.test/", "http://[::1/"] {
+            assert!(matches!(Resource::net(u), Resource::Unknown { .. }), "{u:?}");
+        }
+    }
+
+    #[test]
+    fn net_plain_host_without_scheme_unchanged() {
+        assert_eq!(host_of("Example.com/x"), "example.com");
+    }
+
+    #[test]
+    fn restore_alias_and_branch_force_are_destructive() {
+        for (line, expected) in [
+            ("restore --staged --worktree a.rs", GitOp::DiscardWorktree),
+            ("restore -SW a.rs", GitOp::DiscardWorktree),
+            ("restore -W a.rs", GitOp::DiscardWorktree),
+            ("checkout -B x", GitOp::DiscardWorktree),
+            ("switch -C x", GitOp::DiscardWorktree),
+            ("rm a.rs", GitOp::DiscardWorktree),
+            ("worktree remove w", GitOp::DiscardWorktree),
+            ("branch -f x HEAD~3", GitOp::DeleteBranch),
+            ("branch -M a b", GitOp::DeleteBranch),
+            ("tag -d v1", GitOp::DeleteBranch),
+            ("tag -f v1", GitOp::DeleteBranch),
+            ("-c alias.x=reset --hard x", GitOp::ResetHard),
+            ("--config-env=alias.x=V x", GitOp::ResetHard),
+        ] {
+            assert_eq!(git(line), expected, "git {line}");
+        }
+        assert!(!git("restore --staged a.rs").is_destructive());
+        assert!(!git("-c user.name=x status").is_destructive());
+    }
+
+    #[test]
+    fn allow_with_unknown_resource_not_allowed() {
+        let main = crate::subject::Subject::MainAgent;
+        let rule = ResourceRule::parse("web_fetch(net:example.com)").unwrap();
+        let unknown = Resource::Unknown { tool: "web_fetch".into(), why: "x".into() };
+        assert!(rule.matches_allow("web_fetch", &[Resource::net("https://example.com/")], &main));
+        assert!(!rule.matches_allow(
+            "web_fetch",
+            &[Resource::net("https://example.com/"), unknown],
+            &main
+        ));
+    }
+
+    #[test]
+    fn allow_needs_every_path_to_match() {
+        let main = crate::subject::Subject::MainAgent;
+        let rule = ResourceRule::parse("edit(/proj/src/**)").unwrap();
+        let ok = Resource::path("/proj/src/a.rs", None);
+        let bad = Resource::path("/etc/passwd", None);
+        assert!(rule.matches_allow("edit", std::slice::from_ref(&ok), &main));
+        assert!(!rule.matches_allow("edit", &[ok, bad], &main));
+    }
+
+    #[test]
+    fn browser_bare_action_allow_matches() {
+        let main = crate::subject::Subject::MainAgent;
+        let open = Resource::for_builtin(
+            "browser",
+            &["path"],
+            false,
+            &json!({ "action": "open", "url": "http://localhost:5173/app" }),
+            None,
+        );
+        for rule in ["browser(open)", "browser(open*)", "browser(open http://localhost:*)"] {
+            assert!(ResourceRule::parse(rule).unwrap().matches_allow("browser", &open, &main), "{rule}");
+        }
+        assert!(!ResourceRule::parse("browser(press)").unwrap().matches_allow("browser", &open, &main));
+    }
+
     // ---- git classification (AH-046) ------------------------------------
 
     #[test]
@@ -1169,6 +1363,27 @@ mod tests {
             &[unbalanced],
             &crate::subject::Subject::MainAgent
         ));
+    }
+
+    #[test]
+    fn web_fetch_urls_batch_yields_one_net_resource_per_url() {
+        let r = Resource::for_builtin(
+            "web_fetch",
+            &[],
+            true,
+            &json!({"urls": ["https://a.example/x", "https://b.example/y"]}),
+            None,
+        );
+        let hosts: Vec<String> = r
+            .iter()
+            .filter_map(|x| match x {
+                Resource::Net { host, .. } => Some(host.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(hosts, vec!["a.example", "b.example"]);
+        let bad = Resource::for_builtin("web_fetch", &[], true, &json!({"urls": ["https://a.example", 3]}), None);
+        assert!(bad.iter().any(|x| matches!(x, Resource::Unknown { .. })));
     }
 
     #[test]

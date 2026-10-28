@@ -51,6 +51,10 @@ import {
   ggufFirstShardPath,
   assertSha256Matches,
   setDefaultEmbeddingModelId,
+  isValidModelId,
+  isSafeModelRef,
+  legacyAutoUnload,
+  modelsMaxFromAutoUnload,
   type EmbedBatchResult,
 } from './util'
 import {
@@ -60,6 +64,7 @@ import {
   DEFAULT_EMBEDDING_UBATCH,
   CACHE_RAM_AUTO,
   describeFitBudget,
+  toModelId,
 } from './preset'
 import {
   kvDefaultsInEffect,
@@ -221,6 +226,40 @@ const LEGACY_NGL_DEFAULT = 100
 
 /// Matches the `timeout` default in settings.json.
 const DEFAULT_TIMEOUT = 600
+const TOKENIZE_TIMEOUT_MS = 60_000
+const EMBED_TIMEOUT_MS = 120_000
+
+/**
+ * fetch with a deadline for the response headers. A deadline hit rejects with
+ * `Request timed out`; an abort from `external` keeps its own reason.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  ms: number,
+  external?: AbortSignal
+): Promise<Response> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort(new Error('Request timed out'))
+  }, ms)
+  const onExternal = () => controller.abort(external?.reason)
+  if (external) {
+    if (external.aborted) controller.abort(external.reason)
+    else external.addEventListener('abort', onExternal, { once: true })
+  }
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (e) {
+    if (timedOut) throw new Error('Request timed out')
+    throw e
+  } finally {
+    clearTimeout(timer)
+    external?.removeEventListener('abort', onExternal)
+  }
+}
 
 // Short and non-empty: enough to exercise tokenize plus pooling without making
 // setup wait on a long prompt.
@@ -522,6 +561,14 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // check_for_updates, auto_update_engine, verify_backend_deps) from the
     // persisted set on its own.
     const settings = structuredClone(SETTINGS)
+    // registerSettings rewrites the persisted set without `auto_unload`, so
+    // the legacy value has to be read first.
+    let legacyAutoUnloadValue: boolean | undefined
+    try {
+      legacyAutoUnloadValue = legacyAutoUnload(await readSettingsFile())
+    } catch (e) {
+      logger.warn('Could not read legacy auto_unload:', e)
+    }
     await this.registerSettings(settings)
 
     this.config = (await this.loadConfig(settings)) as LlamacppConfig
@@ -531,7 +578,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // back on for users the old force-off migration left with it disabled.
     await this.migrateFitOn()
 
-    await this.migrateAutoUnloadToModelsMax()
+    await this.migrateAutoUnloadToModelsMax(legacyAutoUnloadValue)
 
     await this.migrateUbatchAuto()
 
@@ -584,14 +631,21 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * "download a backend first" and "start first for availability" is gone.
    */
   private ensureProvisioned(): Promise<void> {
-    this.provisioning ??= (async () => {
-      try {
-        await this.startEngine()
-      } catch (e) {
-        logger.error('Engine failed to start during provisioning:', e)
-        this.reportMissingLibrariesFromError(e)
-      }
-    })()
+    if (!this.provisioning) {
+      const run: Promise<void> = (async () => {
+        try {
+          await this.startEngine()
+        } catch (e) {
+          logger.error('Engine failed to start during provisioning:', e)
+          this.reportMissingLibrariesFromError(e)
+          // Forget the failed run so the next call retries instead of handing
+          // back the cached failure for the rest of the session.
+          await Promise.resolve()
+          if (this.provisioning === run) this.provisioning = undefined
+        }
+      })()
+      this.provisioning = run
+    }
     this.backgroundInit = this.provisioning
     return this.provisioning
   }
@@ -1122,7 +1176,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         `Engine preset reloaded: +${report.added.length} ~${report.changed.length} -${report.removed.length}, ${report.kept.length} kept loaded`
       )
     } catch (e) {
-      logger.warn('Live engine reload failed; falling back to restart:', e)
+      logger.warn('Live engine reload failed; stopping and restarting the engine:', e)
+      // start_engine is idempotent while a worker is up, so without a stop the
+      // "restart" returned the same worker holding the old preset.
+      await pluginStopEngine()
+      this.enginePort = undefined
+      this.engineApiKey = undefined
       await this.startEngine()
     }
   }
@@ -1251,17 +1310,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
-  private async migrateAutoUnloadToModelsMax(): Promise<void> {
+  private async migrateAutoUnloadToModelsMax(
+    old: boolean | undefined
+  ): Promise<void> {
     const MIGRATION_KEY = 'llamacpp_models_max_migrated_v1'
     if (await getBackendSetting(MIGRATION_KEY)) return
 
     try {
-      const old = await this.getSetting<boolean | undefined>(
-        'auto_unload',
-        undefined
-      )
       if (old !== undefined) {
-        const targetValue = old ? '1' : '0'
+        const targetValue = modelsMaxFromAutoUnload(old)
         const settings = await this.getSettings()
         await this.updateSettings(
           settings.map((item) => {
@@ -1895,9 +1952,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       // check if model.yml exists
       const modelConfigPath = await joinPath([currentDir, 'model.yml'])
       if (await fs.existsSync(modelConfigPath)) {
-        // +1 to remove the leading slash
-        // NOTE: this does not handle Windows path \\
-        modelIds.push(currentDir.slice(modelsDir.length + 1))
+        modelIds.push(toModelId(modelsDir, currentDir))
         continue
       }
 
@@ -2016,9 +2071,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
               })
               const legacyModelPath = legacyModelConfig.files?.[0]
               if (!legacyModelPath) continue
-              // +1 to remove the leading slash
-              // NOTE: this does not handle Windows path \\
-              let modelId = currentDir.slice(modelsDir.length + 1)
+              let modelId = toModelId(modelsDir, currentDir)
 
               modelId =
                 modelId !== 'imported'
@@ -2087,11 +2140,48 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   /**
+   * Unload a model if it is running so its files are not held open by the
+   * worker while we rename or delete them. Worker-down errors are ignored.
+   */
+  private async unloadIfLoaded(modelId: string): Promise<void> {
+    try {
+      const sInfo = await pluginFindSessionByModel(modelId)
+      if (!sInfo) return
+      await unloadLlamaModel(modelId)
+    } catch (e) {
+      logger.warn(`Could not unload ${modelId} before changing its files:`, e)
+    }
+    this.loadedChatOrder = this.loadedChatOrder.filter((m) => m !== modelId)
+  }
+
+  /** rm with a few bounded retries; Windows keeps files busy briefly. */
+  private async rmWithRetry(path: string): Promise<void> {
+    let delay = 200
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await fs.rm(path)
+        return
+      } catch (e) {
+        if (attempt >= 5) throw e
+        await new Promise((r) => setTimeout(r, delay))
+        delay *= 2
+      }
+    }
+  }
+
+  /**
    * Update a model with new information.
    * @param modelId
    * @param model
    */
   async update(modelId: string, model: Partial<modelInfo>): Promise<void> {
+    if (!isSafeModelRef(modelId)) throw new Error(`Invalid modelId: ${modelId}`)
+    // Nothing to rename; without this the folder became "undefined".
+    if (model.id === undefined) return
+    if (!isValidModelId(model.id))
+      throw new Error(
+        `Invalid modelId: ${model.id}. Only alphanumeric and / _ - . characters are allowed.`
+      )
     const modelFolderPath = await joinPath([
       await this.getProviderPath(),
       'models',
@@ -2110,9 +2200,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       throw new Error(`Model with ID ${model.id} already exists`)
     }
     const newModelConfigPath = await joinPath([newFolderPath, 'model.yml'])
-    await fs.mv(modelFolderPath, newFolderPath).then(() =>
+    await this.unloadIfLoaded(modelId)
+    await fs.mv(modelFolderPath, newFolderPath)
+    try {
       // now replace what values have previous model name with format
-      invoke('write_yaml', {
+      await invoke('write_yaml', {
         data: {
           ...modelConfig,
           model_path: modelConfig?.model_path?.replace(
@@ -2126,7 +2218,18 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         },
         savePath: newModelConfigPath,
       })
-    )
+    } catch (e) {
+      // Put the folder back so the model is not left half-renamed.
+      try {
+        await fs.mv(newFolderPath, modelFolderPath)
+      } catch (rollbackError) {
+        logger.error(
+          `Rename rollback failed (${newFolderPath} -> ${modelFolderPath})`,
+          rollbackError
+        )
+      }
+      throw e
+    }
 
     // The router's preset still references the old model id until we
     // regenerate; without this a `POST /models/load <new-id>` would 404.
@@ -2160,23 +2263,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   private async runImport(modelId: string, opts: ImportOptions): Promise<void> {
-    const isValidModelId = (id: string) => {
-      // only allow alphanumeric, underscore, hyphen, and dot characters in modelId
-      if (!/^[a-zA-Z0-9/_\-\.]+$/.test(id)) return false
-
-      // check for empty parts or path traversal
-      const parts = id.split('/')
-      // Trailing dots/spaces and Windows device names collide or fail on NTFS.
-      return parts.every(
-        (s) =>
-          s !== '' &&
-          s !== '.' &&
-          s !== '..' &&
-          !s.endsWith('.') &&
-          !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(s)
-      )
-    }
-
     if (!isValidModelId(modelId))
       throw new Error(
         `Invalid modelId: ${modelId}. Only alphanumeric and / _ - . characters are allowed.`
@@ -2413,6 +2499,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * @param modelId The model ID to delete
    */
   private async deleteModelFolder(modelId: string): Promise<void> {
+    if (!isSafeModelRef(modelId)) {
+      logger.warn(`Refusing to delete model folder for unsafe id: ${modelId}`)
+      return
+    }
     try {
       const modelDir = await joinPath([
         await this.getProviderPath(),
@@ -2845,9 +2935,23 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
     let jsonStr = ''
+    // After the headers arrive the stream may still stall; abort it when no
+    // chunk shows up for the configured timeout (a total cap would kill long
+    // generations).
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer)
+      idleTimer = setTimeout(
+        () => combinedController.abort(new Error('Request timed out')),
+        this.timeout * 1000
+      )
+    }
     try {
       while (true) {
+        armIdle()
         const { done, value } = await reader.read()
+        // Not waiting on the server while the consumer processes this chunk.
+        if (idleTimer) clearTimeout(idleTimer)
 
         if (done) {
           break
@@ -2896,6 +3000,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         }
       }
     } finally {
+      if (idleTimer) clearTimeout(idleTimer)
       // Cancel first so an early consumer exit closes the HTTP body instead of
       // leaving it open until the abort signal fires.
       await reader.cancel().catch(() => {})
@@ -2950,12 +3055,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       return this.handleStreamingResponse(url, headers, body, abortController)
     }
     // Handle non-streaming response
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-      signal: abortController?.signal,
-    })
+    const response = await fetchWithTimeout(
+      url,
+      { method: 'POST', headers, body },
+      this.timeout * 1000,
+      abortController?.signal
+    )
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
@@ -2993,8 +3098,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * Delete downloaded GGUFs no remaining model.yml references. Files outside
    * `downloads/` (user-imported in place) are never touched.
    */
-  private async removeUnreferencedDownloads(files: string[]): Promise<void> {
-    if (files.length === 0) return
+  private async removeUnreferencedDownloads(
+    files: string[]
+  ): Promise<string[]> {
+    const failed: string[] = []
+    if (files.length === 0) return failed
     try {
       const modelsDir = await joinPath([await this.getProviderPath(), 'models'])
       const stillUsed = new Set<string>()
@@ -3023,14 +3131,17 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           await fs.rm(await joinPath([dataFolder, rel]))
         } catch (e) {
           logger.warn(`Could not remove downloaded file ${rel}:`, e)
+          failed.push(rel)
         }
       }
     } catch (e) {
       logger.warn('Cleanup of downloaded model files failed:', e)
     }
+    return failed
   }
 
   override async delete(modelId: string): Promise<void> {
+    if (!isSafeModelRef(modelId)) throw new Error(`Invalid modelId: ${modelId}`)
     const modelDir = await joinPath([
       await this.getProviderPath(),
       'models',
@@ -3043,13 +3154,22 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
     // Collect the model's downloaded files before its yaml goes away.
     const owned = await this.downloadedFilesOf(modelDir)
-    await fs.rm(modelDir)
-    await this.removeUnreferencedDownloads(owned)
-
+    await this.unloadIfLoaded(modelId)
+    await this.rmWithRetry(modelDir)
+    let leftovers: string[] = []
     try {
-      await this.refreshEnginePreset()
-    } catch (e) {
-      logger.warn(`Router refresh after delete(${modelId}) failed:`, e)
+      leftovers = await this.removeUnreferencedDownloads(owned)
+    } finally {
+      try {
+        await this.refreshEnginePreset()
+      } catch (e) {
+        logger.warn(`Router refresh after delete(${modelId}) failed:`, e)
+      }
+    }
+    if (leftovers.length > 0) {
+      throw new Error(
+        `Model ${modelId} was removed but these files could not be deleted: ${leftovers.join(', ')}`
+      )
     }
   }
 
@@ -3348,6 +3468,26 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * model is "the" embedding model.
    */
   private async ensureEmbeddingModelLoaded(): Promise<SessionInfo> {
+    // Hot path: a configured, installed embedding model needs one yml read
+    // (get() runs the same embedding resolution list() does), not a full
+    // relisting of every model on disk per embed/tokenize call.
+    const configured = await getDefaultEmbeddingModelId('llamacpp')
+    if (configured) {
+      let configuredInfo: modelInfo | undefined
+      try {
+        configuredInfo = await this.get(configured)
+      } catch (e) {
+        logger.warn(`Could not read embedding model "${configured}":`, e)
+      }
+      if (configuredInfo && (configuredInfo as any).embedding === true) {
+        let fast = await this.findSessionByModel(configured)
+        if (!fast) {
+          fast = await this.load(configured, undefined, true)
+        }
+        return fast as SessionInfo
+      }
+    }
+
     const downloadedModelList = await this.list()
     const installedEmbedding = downloadedModelList.filter(
       (m) => (m as any).embedding === true
@@ -3417,14 +3557,18 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const sInfo = await this.ensureEmbeddingModelLoaded()
     const counts: number[] = []
     for (const text of texts) {
-      const res = await fetch(`http://localhost:${sInfo.port}/tokenize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sInfo.api_key}`,
+      const res = await fetchWithTimeout(
+        `http://localhost:${sInfo.port}/tokenize`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sInfo.api_key}`,
+          },
+          body: JSON.stringify({ content: text, model: sInfo.model_id }),
         },
-        body: JSON.stringify({ content: text, model: sInfo.model_id }),
-      })
+        TOKENIZE_TIMEOUT_MS
+      )
       if (!res.ok) {
         throw new Error(`Tokenize request failed with status ${res.status}`)
       }
@@ -3476,11 +3620,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         model: session.model_id,
         encoding_format: 'float',
       })
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers,
-        body,
-      })
+      const response = await fetchWithTimeout(
+        baseUrl,
+        { method: 'POST', headers, body },
+        EMBED_TIMEOUT_MS
+      )
       return response
     }
 

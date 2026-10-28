@@ -189,6 +189,92 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
             apply(&state).await;
         });
     }
+    // Always running, idle while remote access is off: it retries a listener
+    // that could not bind and follows an address change.
+    let app = app.clone();
+    tauri::async_runtime::spawn(supervise(app));
+}
+
+/// First and longest wait between retries of a listener that is not running.
+const RETRY_MIN_SECS: u64 = 5;
+const RETRY_MAX_SECS: u64 = 60;
+/// How often a running listener is checked against the interface address.
+const POLL_SECS: u64 = 30;
+
+/// What the supervisor does on one tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Supervise {
+    /// Remote access is off: nothing to keep alive.
+    Idle,
+    /// Enabled but not listening (bind failed or the interface was down).
+    Retry,
+    /// Listening on an address that is no longer the wanted one.
+    Rebind,
+    Keep,
+}
+
+fn supervise_decision(
+    enabled: bool,
+    running: bool,
+    bound: Option<std::net::Ipv4Addr>,
+    wanted: Option<std::net::Ipv4Addr>,
+) -> Supervise {
+    if !enabled {
+        return Supervise::Idle;
+    }
+    if !running {
+        return Supervise::Retry;
+    }
+    match (bound, wanted) {
+        (Some(b), Some(w)) if b != w => Supervise::Rebind,
+        _ => Supervise::Keep,
+    }
+}
+
+fn next_backoff(current: u64) -> u64 {
+    current.saturating_mul(2).clamp(RETRY_MIN_SECS, RETRY_MAX_SECS)
+}
+
+async fn supervise<R: Runtime>(app: AppHandle<R>) {
+    let mut wait = RETRY_MIN_SECS;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        let state = app.state::<RemoteState>();
+        let cfg = state.hub.config();
+        let (running, bound) = {
+            let rt = state.rt.lock().await;
+            (
+                rt.server.is_some(),
+                rt.serving
+                    .as_ref()
+                    .and_then(|s| s.address.parse::<std::net::Ipv4Addr>().ok()),
+            )
+        };
+        let wanted = if cfg.enabled && running {
+            let (ts, lan) = detect().await;
+            select_bind_ip(cfg.interface, ts, lan).ok()
+        } else {
+            None
+        };
+        match supervise_decision(cfg.enabled, running, bound, wanted) {
+            Supervise::Idle | Supervise::Keep => wait = POLL_SECS,
+            Supervise::Retry => {
+                apply(&state).await;
+                let up = state.rt.lock().await.server.is_some();
+                if up {
+                    log::info!("remote: listener is up again");
+                    wait = POLL_SECS;
+                } else {
+                    wait = if wait >= POLL_SECS { RETRY_MIN_SECS } else { next_backoff(wait) };
+                }
+            }
+            Supervise::Rebind => {
+                log::info!("remote: interface address changed from {bound:?} to {wanted:?}; rebinding");
+                apply(&state).await;
+                wait = POLL_SECS;
+            }
+        }
+    }
 }
 
 /// Stops the listener, then starts it again if remote access is on, with the
@@ -421,7 +507,12 @@ pub fn remote_confirm_pairing(
     state
         .hub
         .confirm_pairing(&request_id, approve)
-        .map_err(|_| "This pairing request has expired".to_string())
+        .map_err(|e| match e {
+            super::auth::PairError::TooManyDevices => {
+                "Too many phones are paired; unpair one first".to_string()
+            }
+            _ => "This pairing request has expired".to_string(),
+        })
 }
 
 #[tauri::command]
@@ -537,4 +628,36 @@ pub fn remote_set_preview(state: State<'_, RemoteState>, session_id: Option<Stri
         _ => None,
     };
     state.hub.set_preview(target);
+}
+
+#[cfg(test)]
+mod supervise_tests {
+    use super::{next_backoff, supervise_decision, Supervise};
+    use std::net::Ipv4Addr;
+
+    const A: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 5);
+    const B: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 9);
+
+    #[test]
+    fn remote_apply_retries_until_interface_up() {
+        // Enabled but not listening: retry, with a backoff that grows to 60 s.
+        assert_eq!(supervise_decision(true, false, None, None), Supervise::Retry);
+        assert_eq!(next_backoff(5), 10);
+        assert_eq!(next_backoff(40), 60);
+        assert_eq!(next_backoff(60), 60);
+    }
+
+    #[test]
+    fn remote_rebinds_on_ip_change() {
+        assert_eq!(supervise_decision(true, true, Some(A), Some(B)), Supervise::Rebind);
+        assert_eq!(supervise_decision(true, true, Some(A), Some(A)), Supervise::Keep);
+        // Interface gone for a moment: keep the live socket, do not flap.
+        assert_eq!(supervise_decision(true, true, Some(A), None), Supervise::Keep);
+    }
+
+    #[test]
+    fn remote_supervisor_stops_when_disabled() {
+        assert_eq!(supervise_decision(false, false, None, None), Supervise::Idle);
+        assert_eq!(supervise_decision(false, true, Some(A), Some(B)), Supervise::Idle);
+    }
 }

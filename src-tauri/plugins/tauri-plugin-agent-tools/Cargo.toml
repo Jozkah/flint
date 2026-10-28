@@ -20,6 +20,7 @@ tauri = ["dep:tauri", "dep:tauri-plugin"]
 test-default-trusted = []
 
 [dependencies]
+async-trait = "0.1"
 base64 = "0.22"
 glob = "0.3"
 ignore = "0.4"

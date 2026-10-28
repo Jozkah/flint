@@ -216,7 +216,7 @@ async fn a_model_style_sequence_works_end_to_end_and_leaves_nothing_behind() {
     let typed = act(&c, json!({ "action": "type", "ref": name, "text": "Ada" })).await;
     assert!(typed.contains("Typed 3 character(s)") && !typed.contains("Ada"), "typed text is never echoed: {typed}");
     let clicked = act(&c, json!({ "action": "click", "ref": greet })).await;
-    assert!(clicked.contains("Clicked button \"Greet\""), "{clicked}");
+    assert!(clicked.contains("Clicked e") && clicked.contains("clicked: button \"Greet\""), "{clicked}");
 
     let after = act(&c, json!({ "action": "snapshot" })).await;
     assert!(after.contains("text: Hello Ada"), "{after}");
@@ -366,9 +366,9 @@ async fn select_press_scroll_wait_and_evaluate_work() {
     let snap = act(&c, json!({ "action": "snapshot" })).await;
     let colour = ref_of(&snap, "combobox \"Colour\"");
     let bad = act(&c, json!({ "action": "select", "ref": colour, "value": "Purple" })).await;
-    assert!(bad.contains("no option \"Purple\"") && bad.contains("Red | Green"), "{bad}");
+    assert!(bad.contains("no option with that text") && !bad.contains("Red | Green"), "{bad}");
     let ok = act(&c, json!({ "action": "select", "ref": colour, "value": "Green" })).await;
-    assert!(ok.contains("Selected \"Green\""), "{ok}");
+    assert!(ok.contains("Selected an option") && ok.contains("selected: Green"), "{ok}");
     let name = ref_of(&snap, "textbox \"Your name\"");
     let wrong = act(&c, json!({ "action": "type", "ref": ref_of(&snap, "button \"Greet\""), "text": "x" })).await;
     assert!(wrong.contains("cannot take text"), "{wrong}");
@@ -626,7 +626,7 @@ async fn tabs_open_list_switch_and_close_and_refs_belong_to_their_tab() {
     let back = act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "t1" })).await;
     assert!(back.contains("Switched to tab t1") && back.contains("title: Demo shop"), "{back}");
     let ok = act(&c, json!({ "action": "click", "ref": greet1 })).await;
-    assert!(ok.contains("Clicked button \"Greet\""), "the first tab's ref works in the first tab: {ok}");
+    assert!(ok.contains("clicked: button \"Greet\""), "the first tab's ref works in the first tab: {ok}");
     assert!(act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "t9" })).await.contains("there is no tab t9"));
     assert!(act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "two" })).await.contains("not a tab id"));
 
@@ -782,7 +782,7 @@ async fn download_saves_one_file_into_a_confined_folder_and_everything_else_stay
     assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
 
     let ok = run_call(4, json!({ "action": "download", "ref": link, "path": "got" })).await;
-    assert!(ok.contains("Saved a.zip (2 bytes)") && ok.contains("untrusted"), "{ok}");
+    assert!(ok.contains("Saved the download (2 bytes)") && ok.contains("file: a.zip") && ok.contains("untrusted"), "{ok}");
     assert_eq!(std::fs::read(work.join("got").join("a.zip")).unwrap(), b"PK");
     // A second download never replaces the first, and the scratch folder is gone.
     let again = run_call(5, json!({ "action": "download", "ref": link, "path": "got" })).await;

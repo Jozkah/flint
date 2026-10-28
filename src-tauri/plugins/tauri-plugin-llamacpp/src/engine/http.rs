@@ -1009,7 +1009,9 @@ async fn acquire_engine(
             AcquireStep::Ready(engine) => return Ok(engine),
             AcquireStep::Wait(mut rx) => {
                 let _ = rx.wait_for(|done| *done).await;
-                let reg = registry.lock().await;
+                let mut reg = registry.lock().await;
+                // A loader that died unsettled is recorded as a failure here.
+                reg.drain_abandoned();
                 if !reg.is_loaded(model) {
                     if let Some(f) = reg.failure_of(model) {
                         return Err(RegistryError::Engine(super::EngineError::Start(

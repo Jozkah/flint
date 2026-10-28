@@ -27,17 +27,44 @@ const isImage = (v: unknown): v is ChatImage =>
   typeof (v as ChatImage).id === 'string' &&
   typeof (v as ChatImage).galleryId === 'string'
 
+/** What storage holds for a thread now, or null when it holds nothing usable. */
+function readStored(threadId: string): ChatImage[] | null {
+  try {
+    const raw = window.localStorage.getItem(KEY + threadId)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter(isImage) : null
+  } catch {
+    // Unreadable or unavailable storage.
+    return null
+  }
+}
+
+/**
+ * The list a write builds on: storage as it is now (another window may have
+ * named pictures since this one cached the list), else this session's copy.
+ */
+function listForWrite(threadId: string): ChatImage[] {
+  return readStored(threadId) ?? listChatImages(threadId)
+}
+
+let watchingStorage = false
+function watchStorage() {
+  if (watchingStorage || typeof window === 'undefined') return
+  watchingStorage = true
+  try {
+    window.addEventListener('storage', (e) => {
+      if (e.key?.startsWith(KEY)) memory.delete(e.key.slice(KEY.length))
+    })
+  } catch {
+    // No event target: writes still re-read storage.
+  }
+}
+
 export function listChatImages(threadId: string): ChatImage[] {
   const cached = memory.get(threadId)
   if (cached) return cached
-  let loaded: ChatImage[] = []
-  try {
-    const raw = window.localStorage.getItem(KEY + threadId)
-    const parsed: unknown = raw ? JSON.parse(raw) : []
-    if (Array.isArray(parsed)) loaded = parsed.filter(isImage)
-  } catch {
-    // Unreadable or unavailable storage: start empty.
-  }
+  const loaded = readStored(threadId) ?? []
   memory.set(threadId, loaded)
   return loaded
 }
@@ -57,7 +84,8 @@ export function addChatImages(
   threadId: string,
   made: readonly { galleryId: string; prompt: string }[]
 ): ChatImage[] {
-  const existing = listChatImages(threadId)
+  watchStorage()
+  const existing = listForWrite(threadId)
   let n = nextNumber(existing)
   const added = made.map((m) => ({
     id: `img_${n++}`,
@@ -99,7 +127,7 @@ export function chatsUsingGalleryImage(galleryId: string): string[] {
   }
   for (const id of memory.keys()) threads.add(id)
   return [...threads].filter((t) =>
-    listChatImages(t).some((img) => img.galleryId === galleryId && !img.deleted)
+    listForWrite(t).some((img) => img.galleryId === galleryId && !img.deleted)
   )
 }
 
@@ -111,7 +139,7 @@ export function markGalleryImageDeleted(galleryId: string): void {
   for (const threadId of chatsUsingGalleryImage(galleryId)) {
     persist(
       threadId,
-      listChatImages(threadId).map((img) =>
+      listForWrite(threadId).map((img) =>
         img.galleryId === galleryId ? { ...img, deleted: true } : img
       )
     )

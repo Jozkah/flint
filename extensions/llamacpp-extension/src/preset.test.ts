@@ -55,6 +55,8 @@ import {
   autoCacheRamMiB,
   defaultContextSize,
   CACHE_RAM_AUTO,
+  toModelId,
+  isSafePresetSectionId,
 } from './preset'
 
 const CONFIG = {} as any
@@ -1713,5 +1715,28 @@ describe('generatePreset slots for a model fit has to trim', () => {
     expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).not.toContain(
       'parallel = 1'
     )
+  })
+})
+
+describe('toModelId', () => {
+  it('toModelId_windows_backslash_to_slash', () => {
+    expect(
+      toModelId('C:\\data\\models', 'C:\\data\\models\\org\\name')
+    ).toBe('org/name')
+  })
+  it('toModelId_posix_unchanged', () => {
+    expect(toModelId('/d/models', '/d/models/org/name')).toBe('org/name')
+    expect(toModelId('/d/models', '/d/models/flat')).toBe('flat')
+  })
+})
+
+describe('isSafePresetSectionId', () => {
+  it('preset_section_with_bracket_skipped', () => {
+    for (const bad of ['a]b', 'a[b', 'a;b', 'a#b', 'a=b', 'a\nb', 'a\rb'])
+      expect(isSafePresetSectionId(bad)).toBe(false)
+  })
+  it('ordinary_ids_are_safe', () => {
+    for (const ok of ['org/name-1.2', 'My Model', 'C-drive_x'])
+      expect(isSafePresetSectionId(ok)).toBe(true)
   })
 })

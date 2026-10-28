@@ -31,6 +31,7 @@
 //! the branch exactly to its backup and checks that it did.
 
 use std::path::Path;
+#[cfg(test)]
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
@@ -137,6 +138,12 @@ fn runs_a_program(key: &str, value: &str) -> bool {
                 | "core.hookspath"
         )
         || (key.starts_with("credential.") && last == "helper")
+        || (key.starts_with("trailer.") && last == "command")
+        || (key.starts_with("remote.") && matches!(last, "vcs" | "uploadpack" | "receivepack"))
+        || (key.starts_with("submodule.") && last == "update" && value.trim_start().starts_with('!'))
+        || (key.starts_with("difftool.") && last == "cmd")
+        || (key.starts_with("mergetool.") && matches!(last, "cmd" | "path"))
+        || (key.starts_with("pager.") && !boolean)
         || key.starts_with("alias.") && value.trim_start().starts_with('!')
 }
 
@@ -159,19 +166,18 @@ fn is_git_lfs_filter(key: &str, value: &str) -> bool {
 /// followed. A listing git cannot produce is refused rather than read as
 /// "nothing set".
 fn repository_config(repo: &Path) -> Result<Vec<(String, String)>, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(["config", "--show-scope", "--includes", "--list", "-z"]);
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd.output().map_err(|e| format!("git would not run: {e}"))?;
-    if !out.status.success() {
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        .args(["config", "--show-scope", "--includes", "--list", "-z"])
+        .run()
+        .map_err(|e| e.with_prefix("git would not run: "))?;
+    if !out.success {
         return Err(format!(
             "git could not list this repository's config: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+            out.stderr_lossy().trim()
         ));
     }
-    let listed = String::from_utf8_lossy(&out.stdout);
+    let listed = out.stdout_lossy();
     // With `-z`, each entry is its scope, a NUL, then `key\nvalue`, a NUL.
     let mut fields = listed.split('\0');
     let mut entries = Vec::new();
@@ -221,23 +227,25 @@ pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        .run()
+        .map_err(vcs_launch_error)?;
+    if out.success {
+        Ok(out.stdout_lossy().trim_end().to_string())
     } else {
-        Err(VcsError::new(
-            VcsErrorKind::GitFailed,
-            String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        ))
+        Err(VcsError::new(VcsErrorKind::GitFailed, out.stderr_lossy().trim().to_string()))
+    }
+}
+
+/// A git that did not start is unavailable; one that was killed at its
+/// deadline failed, and says so.
+fn vcs_launch_error(e: crate::core::agent::git_exec::GitError) -> VcsError {
+    if e.timed_out {
+        VcsError::new(VcsErrorKind::GitFailed, e.message)
+    } else {
+        VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {}", e.message))
     }
 }
 
@@ -1243,26 +1251,18 @@ fn parse_backup(backup: &str) -> Result<(&'static str, String), VcsError> {
 
 /// git with no editor: continuing a rebase or a cherry-pick never opens one.
 fn git_no_editor(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(HARDENED)
-        .args(["-c", "core.editor=true"])
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        .pre(["-c", "core.editor=true"])
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
-        .env("GIT_SEQUENCE_EDITOR", "true");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        .env("GIT_SEQUENCE_EDITOR", "true")
+        .run()
+        .map_err(vcs_launch_error)?;
+    if out.success {
+        Ok(out.stdout_lossy().trim_end().to_string())
     } else {
-        Err(VcsError::new(
-            VcsErrorKind::GitFailed,
-            String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        ))
+        Err(VcsError::new(VcsErrorKind::GitFailed, out.stderr_lossy().trim().to_string()))
     }
 }
 
@@ -1317,7 +1317,13 @@ pub fn rebase_start(repo: &Path, onto: &str) -> Result<HistoryOp, VcsError> {
         }
     }
     let backup = write_backup(repo, "rebase", &branch)?;
-    let _ = git_no_editor(repo, &["rebase", "--no-autostash", &onto]);
+    if let Err(e) = git_no_editor(repo, &["rebase", "--no-autostash", &onto]) {
+        // A failure that left no stopped rebase is an error, not a conflict.
+        if in_progress(repo).is_none() {
+            let _ = git(repo, &["update-ref", "-d", &backup]);
+            return Err(e);
+        }
+    }
     op_state(
         repo,
         "rebase",
@@ -1334,7 +1340,12 @@ pub fn cherry_pick(repo: &Path, commit: &str) -> Result<HistoryOp, VcsError> {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("{commit}^{{commit}}")])
         .map_err(|_| VcsError::new(VcsErrorKind::NoBranch, format!("`{commit}` is not a commit here")))?;
     let backup = write_backup(repo, "cherry-pick", &branch)?;
-    let _ = git_no_editor(repo, &["cherry-pick", "-x", &commit]);
+    if let Err(e) = git_no_editor(repo, &["cherry-pick", "-x", &commit]) {
+        if in_progress(repo).is_none() {
+            let _ = git(repo, &["update-ref", "-d", &backup]);
+            return Err(e);
+        }
+    }
     op_state(
         repo,
         "cherry-pick",
@@ -2204,6 +2215,45 @@ mod tests {
         assert_eq!(abort_op(&work, &again.backup).unwrap_err().kind, VcsErrorKind::WouldDiscard);
         assert_eq!(head(&work), here);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn cherry_pick_of_merge_commit_reports_git_failure_not_done() {
+        let (base, work) = pair("pick-merge");
+        run(&work, &["switch", "-q", "-c", "side"]);
+        commit(&work, "side.txt", "side\n", "side change");
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "main.txt", "main\n", "main change");
+        run(&work, &["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+        let merge = head(&work);
+        run(&work, &["switch", "-q", "-c", "target", "HEAD~1"]);
+        let before = head(&work);
+        let err = cherry_pick(&work, &merge).unwrap_err();
+        assert_eq!(err.kind, VcsErrorKind::GitFailed, "{}", err.message);
+        assert_eq!(head(&work), before);
+        let listed = Command::new("git").arg("-C").arg(&work).args(["for-each-ref", "refs/flint/"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&listed.stdout).trim().is_empty(), "the failed pick left a backup");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn more_config_keys_that_run_a_program_are_refused() {
+        for (key, value) in [
+            ("trailer.x.command", "evil"),
+            ("remote.origin.vcs", "evil"),
+            ("remote.origin.uploadpack", "evil"),
+            ("remote.origin.receivepack", "evil"),
+            ("submodule.s.update", "!evil"),
+            ("difftool.x.cmd", "evil"),
+            ("mergetool.x.cmd", "evil"),
+            ("mergetool.x.path", "evil"),
+            ("pager.log", "evil"),
+        ] {
+            assert!(runs_a_program(key, value), "{key}");
+        }
+        assert!(!runs_a_program("pager.log", "true"));
+        assert!(!runs_a_program("submodule.s.update", "checkout"));
+        assert!(!runs_a_program("remote.origin.url", "https://example.com/r.git"));
     }
 
     /// A repository's own config can name programs git runs while it reads

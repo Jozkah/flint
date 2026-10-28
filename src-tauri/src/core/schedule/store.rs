@@ -205,25 +205,67 @@ impl Store {
 
     // ---- tasks ----
 
+    fn bak_path(&self) -> PathBuf {
+        self.root.join("tasks.json.bak")
+    }
+
     pub fn load_tasks(&self) -> Result<Vec<Task>, StoreError> {
         let text = match fs::read_to_string(self.tasks_path()) {
             Ok(t) => t,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(io_err("the task list could not be read", e)),
         };
-        let file: TasksFile = serde_json::from_str(&text)
-            .map_err(|e| StoreError::new(format!("tasks.json is not valid: {e}")))?;
-        if file.version != SCHEMA_VERSION {
-            return Err(StoreError::new(format!(
-                "tasks.json is version {}, this build reads version {SCHEMA_VERSION}",
-                file.version
-            )));
+        match parse_tasks(&text) {
+            Ok(tasks) => Ok(tasks),
+            Err(ParseFail::Version(m)) => Err(StoreError::new(m)),
+            Err(ParseFail::Invalid(m)) => {
+                // Damaged file: the copy taken before the last save, if good.
+                if let Ok(bak) = fs::read_to_string(self.bak_path()) {
+                    if let Ok(tasks) = parse_tasks(&bak) {
+                        set_recovery_notice(format!(
+                            "tasks.json was damaged ({m}); the copy from before the last save was loaded"
+                        ));
+                        return Ok(tasks);
+                    }
+                }
+                Err(StoreError::new(format!("tasks.json is not valid: {m}")))
+            }
         }
-        Ok(file.tasks)
     }
 
     fn write_tasks(&self, tasks: Vec<Task>) -> Result<(), StoreError> {
+        // Keep the last good file as a fallback before replacing it.
+        if let Ok(cur) = fs::read_to_string(self.tasks_path()) {
+            if parse_tasks_strict(&cur) {
+                let _ = fs::copy(self.tasks_path(), self.bak_path());
+            }
+        }
         write_json(&self.tasks_path(), &TasksFile { version: SCHEMA_VERSION, tasks })
+    }
+
+    /// Run `f` holding the tasks lock: in-process mutex first, then the
+    /// cross-process `tasks.lock` file. Lock order: `tick.lock` then this.
+    fn with_tasks_lock<R>(&self, f: impl FnOnce() -> Result<R, StoreError>) -> Result<R, StoreError> {
+        let m = process_lock_for(&self.tasks_path());
+        let _g = m.lock().unwrap_or_else(|e| e.into_inner());
+        fs::create_dir_all(&self.root).map_err(|e| io_err("the schedules folder could not be created", e))?;
+        let path = self.root.join("tasks.lock");
+        let deadline = std::time::Instant::now() + TASKS_LOCK_WAIT;
+        let _file = loop {
+            if let Some(l) = acquire_lock_file(&path, TASKS_LOCK_STALE_SECS) {
+                break l;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(StoreError::new("the task list is busy; try again"));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        f()
+    }
+
+    /// One-shot notice that the task list was restored from its backup.
+    pub fn take_recovery_notice() -> Option<String> {
+        RECOVERY_NOTICE.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 
     pub fn get_task(&self, id: &str) -> Result<Option<Task>, StoreError> {
@@ -233,6 +275,10 @@ impl Store {
     /// Validate and save a task, adding or replacing by id.
     pub fn save_task(&self, mut task: Task) -> Result<Task, StoreError> {
         task.validate()?;
+        self.with_tasks_lock(|| self.save_task_locked(task))
+    }
+
+    fn save_task_locked(&self, mut task: Task) -> Result<Task, StoreError> {
         let mut tasks = self.load_tasks()?;
         let now = now_ms();
         task.name = task.name.trim().to_string();
@@ -253,6 +299,10 @@ impl Store {
     }
 
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<Task, StoreError> {
+        self.with_tasks_lock(|| self.set_enabled_locked(id, enabled))
+    }
+
+    fn set_enabled_locked(&self, id: &str, enabled: bool) -> Result<Task, StoreError> {
         let mut tasks = self.load_tasks()?;
         let task = tasks
             .iter_mut()
@@ -267,13 +317,19 @@ impl Store {
 
     /// Delete a task, its watermark and its run history.
     pub fn delete_task(&self, id: &str) -> Result<bool, StoreError> {
-        let mut tasks = self.load_tasks()?;
-        let before = tasks.len();
-        tasks.retain(|t| t.id != id);
-        if tasks.len() == before {
+        let removed = self.with_tasks_lock(|| {
+            let mut tasks = self.load_tasks()?;
+            let before = tasks.len();
+            tasks.retain(|t| t.id != id);
+            if tasks.len() == before {
+                return Ok(false);
+            }
+            self.write_tasks(tasks)?;
+            Ok(true)
+        })?;
+        if !removed {
             return Ok(false);
         }
-        self.write_tasks(tasks)?;
         let mut state = self.load_state()?;
         if state.watermarks.remove(id).is_some() {
             write_json(&self.state_path(), &state)?;
@@ -307,7 +363,10 @@ impl Store {
         }
         let mut state = self.load_state()?;
         state.version = SCHEMA_VERSION;
-        state.watermarks.extend(new.iter().map(|(k, v)| (k.clone(), *v)));
+        // A mark far ahead of the real clock would silence its task; clamp it.
+        let now = Utc::now();
+        let limit = now + chrono::Duration::seconds(super::engine::MAX_FUTURE_SKEW_SECS);
+        state.watermarks.extend(new.iter().map(|(k, v)| (k.clone(), if *v > limit { now } else { *v })));
         write_json(&self.state_path(), &state)
     }
 
@@ -458,42 +517,116 @@ impl Store {
     /// Take the lock for one tick, or `None` if another process holds it.
     pub fn try_lock_tick(&self) -> Option<TickLock> {
         fs::create_dir_all(&self.root).ok()?;
-        let path = self.root.join("tick.lock");
-        for _ in 0..2 {
-            match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-                Ok(mut f) => {
-                    use std::io::Write;
-                    let _ = write!(f, "{} {}", std::process::id(), now_ms());
-                    return Some(TickLock { path });
-                }
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                    let stale = fs::metadata(&path)
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|t| SystemTime::now().duration_since(t).ok())
-                        .is_some_and(|age| age > Duration::from_secs(LOCK_STALE_SECS));
-                    if !stale {
-                        return None;
-                    }
-                    let _ = fs::remove_file(&path);
-                }
-                Err(_) => return None,
-            }
-        }
-        None
+        acquire_lock_file(&self.root.join("tick.lock"), LOCK_STALE_SECS).map(|l| TickLock { _lock: l })
     }
 }
 
 /// Released on drop.
 #[derive(Debug)]
 pub struct TickLock {
+    _lock: LockFile,
+}
+
+/// A lock file removed on drop.
+#[derive(Debug)]
+struct LockFile {
     path: PathBuf,
 }
 
-impl Drop for TickLock {
+impl Drop for LockFile {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
     }
+}
+
+/// Wait at most this long for `tasks.lock`.
+const TASKS_LOCK_WAIT: Duration = Duration::from_secs(3);
+/// A `tasks.lock` older than this belonged to a dead writer (edits take ms).
+const TASKS_LOCK_STALE_SECS: u64 = 10;
+
+static RECOVERY_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn set_recovery_notice(msg: String) {
+    *RECOVERY_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg);
+}
+
+fn process_lock_for(path: &Path) -> std::sync::Arc<std::sync::Mutex<()>> {
+    static LOCKS: std::sync::Mutex<BTreeMap<PathBuf, std::sync::Arc<std::sync::Mutex<()>>>> =
+        std::sync::Mutex::new(BTreeMap::new());
+    let mut g = LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    g.entry(path.to_path_buf()).or_default().clone()
+}
+
+fn lock_age_exceeds(path: &Path, secs: u64) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(t).ok())
+        .is_some_and(|age| age > Duration::from_secs(secs))
+}
+
+/// Create `path` exclusively. A stale one is taken over by renaming it to a
+/// name unique to this caller (only one racer's rename can succeed) rather
+/// than check-then-delete, which let two callers each delete the other's new
+/// lock. If the renamed file turns out fresh, it is put back.
+fn acquire_lock_file(path: &Path, stale_secs: u64) -> Option<LockFile> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    for _ in 0..3 {
+        match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+            Ok(mut f) => {
+                use std::io::Write;
+                let _ = write!(f, "{} {}", std::process::id(), now_ms());
+                return Some(LockFile { path: path.to_path_buf() });
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                if !lock_age_exceeds(path, stale_secs) {
+                    return None;
+                }
+                let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let mut n = path.file_name()?.to_os_string();
+                n.push(format!(".stale-{}-{seq}", std::process::id()));
+                let grave = path.with_file_name(n);
+                if fs::rename(path, &grave).is_err() {
+                    continue; // someone else took it over first
+                }
+                if lock_age_exceeds(&grave, stale_secs) {
+                    let _ = fs::remove_file(&grave);
+                } else {
+                    // We moved a lock a faster racer had just made: give it back.
+                    let _ = fs::hard_link(&grave, path);
+                    let _ = fs::remove_file(&grave);
+                    return None;
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+enum ParseFail {
+    /// Valid JSON of a schema this build does not read.
+    Version(String),
+    Invalid(String),
+}
+
+/// Parse tasks.json. A task that does not parse is skipped, the rest load; a
+/// file that is not JSON at all, or has no `tasks` array, is Invalid.
+fn parse_tasks(text: &str) -> Result<Vec<Task>, ParseFail> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| ParseFail::Invalid(e.to_string()))?;
+    let version = v.get("version").and_then(|x| x.as_u64()).ok_or_else(|| ParseFail::Invalid("no version".into()))?;
+    if version != u64::from(SCHEMA_VERSION) {
+        return Err(ParseFail::Version(format!(
+            "tasks.json is version {version}, this build reads version {SCHEMA_VERSION}"
+        )));
+    }
+    let arr = v.get("tasks").and_then(|x| x.as_array()).ok_or_else(|| ParseFail::Invalid("no tasks list".into()))?;
+    Ok(arr.iter().filter_map(|t| serde_json::from_value::<Task>(t.clone()).ok()).collect())
+}
+
+/// True when every task in the text parses (so it is worth keeping as backup).
+fn parse_tasks_strict(text: &str) -> bool {
+    serde_json::from_str::<TasksFile>(text).is_ok_and(|f| f.version == SCHEMA_VERSION)
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
@@ -501,17 +634,8 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
         fs::create_dir_all(dir).map_err(|e| io_err("the schedules folder could not be created", e))?;
     }
     let body = serde_json::to_vec_pretty(value).map_err(|e| StoreError::new(e.to_string()))?;
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    // Pid plus a counter: two threads of one process writing the same file
-    // must not share (and truncate) one temp file.
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp = path.with_file_name(format!(".{name}.{}-{seq}.tmp", std::process::id()));
-    fs::write(&tmp, body).map_err(|e| io_err("a schedule file could not be written", e))?;
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        io_err("a schedule file could not be replaced", e)
-    })
+    crate::core::threads::helpers::write_file_atomically(path, &body)
+        .map_err(|e| StoreError::new(format!("a schedule file could not be written: {e}")))
 }
 
 #[cfg(test)]
@@ -585,6 +709,14 @@ mod tests {
         assert_eq!(s.watermarks().len(), 2);
         fs::write(s.root().join("state.json"), "{ not json").unwrap();
         assert!(s.watermarks().is_empty());
+    }
+
+    #[test]
+    fn merge_watermarks_clamps_future() {
+        let (_d, s) = store();
+        let far = Utc::now() + chrono::Duration::days(30);
+        s.merge_watermarks(&[("a".to_string(), far)].into()).unwrap();
+        assert!(s.watermarks()["a"] < Utc::now() + chrono::Duration::hours(1));
     }
 
     #[test]
@@ -680,6 +812,111 @@ mod tests {
         let old = SystemTime::now() - Duration::from_secs(LOCK_STALE_SECS + 30);
         fs::File::options().write(true).open(&path).unwrap().set_modified(old).unwrap();
         assert!(s.try_lock_tick().is_some());
+    }
+
+    #[test]
+    fn concurrent_save_and_set_enabled_lose_nothing() {
+        let (_d, s) = store();
+        s.save_task(task("base")).unwrap();
+        let s = std::sync::Arc::new(s);
+        let mut hs = Vec::new();
+        for i in 0..8 {
+            let s = s.clone();
+            hs.push(std::thread::spawn(move || {
+                s.save_task(task(&format!("t{i}"))).unwrap();
+                s.set_enabled("base", i % 2 == 0).unwrap();
+            }));
+        }
+        for h in hs {
+            h.join().unwrap();
+        }
+        assert_eq!(s.load_tasks().unwrap().len(), 9);
+    }
+
+    #[test]
+    fn once_task_self_disable_does_not_revert_edit() {
+        let (_d, s) = store();
+        s.save_task(task("a")).unwrap();
+        // An edit lands between the tick's load and its disable.
+        let mut edited = task("a");
+        edited.name = "Edited".into();
+        s.save_task(edited).unwrap();
+        s.set_enabled("a", false).unwrap();
+        let t = s.get_task("a").unwrap().unwrap();
+        assert_eq!(t.name, "Edited");
+        assert!(!t.enabled);
+    }
+
+    #[test]
+    fn lock_is_stale_after_timeout() {
+        let (_d, s) = store();
+        fs::create_dir_all(s.root()).unwrap();
+        let path = s.root().join("tasks.lock");
+        fs::write(&path, "1 0").unwrap();
+        let old = SystemTime::now() - Duration::from_secs(TASKS_LOCK_STALE_SECS + 5);
+        fs::File::options().write(true).open(&path).unwrap().set_modified(old).unwrap();
+        s.save_task(task("a")).unwrap();
+        assert!(!path.exists(), "lock released");
+    }
+
+    #[test]
+    fn stale_takeover_lets_only_one_racer_in() {
+        let (_d, s) = store();
+        fs::create_dir_all(s.root()).unwrap();
+        let path = s.root().join("tick.lock");
+        fs::write(&path, "1 0").unwrap();
+        let old = SystemTime::now() - Duration::from_secs(LOCK_STALE_SECS + 30);
+        fs::File::options().write(true).open(&path).unwrap().set_modified(old).unwrap();
+        let s = std::sync::Arc::new(s);
+        let hs: Vec<_> = (0..8)
+            .map(|_| {
+                let s = s.clone();
+                std::thread::spawn(move || {
+                    let l = s.try_lock_tick();
+                    std::thread::sleep(Duration::from_millis(100));
+                    l.is_some()
+                })
+            })
+            .collect();
+        let winners = hs.into_iter().map(|h| h.join().unwrap()).filter(|w| *w).count();
+        assert_eq!(winners, 1);
+    }
+
+    #[test]
+    fn corrupt_tasks_falls_back_to_bak() {
+        let (_d, s) = store();
+        s.save_task(task("a")).unwrap();
+        s.save_task(task("b")).unwrap(); // bak now holds [a]
+        fs::write(s.root().join("tasks.json"), "{ torn").unwrap();
+        let tasks = s.load_tasks().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert!(Store::take_recovery_notice().is_some());
+        // No backup and no JSON: error stays.
+        fs::remove_file(s.root().join("tasks.json.bak")).unwrap();
+        assert!(s.load_tasks().is_err());
+    }
+
+    #[test]
+    fn one_bad_task_is_skipped_others_load() {
+        let (_d, s) = store();
+        s.save_task(task("a")).unwrap();
+        let mut v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(s.root().join("tasks.json")).unwrap()).unwrap();
+        v["tasks"].as_array_mut().unwrap().push(serde_json::json!({"id": 5, "junk": true}));
+        fs::write(s.root().join("tasks.json"), v.to_string()).unwrap();
+        let tasks = s.load_tasks().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "a");
+    }
+
+    #[test]
+    fn bak_written_before_each_save() {
+        let (_d, s) = store();
+        s.save_task(task("a")).unwrap();
+        assert!(!s.root().join("tasks.json.bak").exists());
+        s.save_task(task("b")).unwrap();
+        let bak = fs::read_to_string(s.root().join("tasks.json.bak")).unwrap();
+        assert!(bak.contains("\"a\"") && !bak.contains("\"b\""));
     }
 
     #[test]

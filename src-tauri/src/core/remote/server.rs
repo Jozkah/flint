@@ -113,6 +113,71 @@ impl Drop for UnauthSlot {
     }
 }
 
+/// Total sockets the listener serves at once, and how many one address may hold.
+const MAX_CONNECTIONS: usize = 128;
+const MAX_CONNECTIONS_PER_IP: usize = 16;
+/// A write that makes no progress this long means the phone is gone.
+const WS_SEND_TIMEOUT: Duration = Duration::from_secs(10);
+
+type IpCounts = Arc<std::sync::Mutex<std::collections::HashMap<IpAddr, usize>>>;
+
+/// Caps concurrent connections, overall and per address. A permit is held for
+/// the life of a connection and given back on drop.
+struct ConnLimiter {
+    total: Arc<tokio::sync::Semaphore>,
+    per_ip: IpCounts,
+    per_ip_cap: usize,
+}
+
+struct ConnPermit {
+    _total: tokio::sync::OwnedSemaphorePermit,
+    per_ip: IpCounts,
+    ip: IpAddr,
+}
+
+impl ConnLimiter {
+    fn new(total: usize, per_ip_cap: usize) -> Self {
+        Self {
+            total: Arc::new(tokio::sync::Semaphore::new(total)),
+            per_ip: Default::default(),
+            per_ip_cap,
+        }
+    }
+
+    fn try_acquire(&self, ip: IpAddr) -> Option<ConnPermit> {
+        let total = self.total.clone().try_acquire_owned().ok()?;
+        let mut counts = self.per_ip.lock().unwrap_or_else(|e| e.into_inner());
+        let n = counts.entry(ip).or_insert(0);
+        if *n >= self.per_ip_cap {
+            return None;
+        }
+        *n += 1;
+        Some(ConnPermit { _total: total, per_ip: self.per_ip.clone(), ip })
+    }
+}
+
+impl Drop for ConnPermit {
+    fn drop(&mut self) {
+        let mut counts = self.per_ip.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = counts.get_mut(&self.ip) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                counts.remove(&self.ip);
+            }
+        }
+    }
+}
+
+/// Sends one text frame, giving up after `limit`. False means the socket is
+/// unusable (error or timeout); the caller drops it whole, since a send that
+/// was cancelled part way leaves the frame stream in an unknown state.
+async fn send_text<W>(ws: &mut W, text: String, limit: Duration) -> bool
+where
+    W: futures_util::Sink<Message> + Unpin,
+{
+    matches!(tokio::time::timeout(limit, ws.send(Message::Text(text.into()))).await, Ok(Ok(())))
+}
+
 type Resp = Response<Full<Bytes>>;
 
 /// What the router needs to know about the listener it serves.
@@ -954,7 +1019,7 @@ async fn run_socket<S>(
     let mut revoked = hub.subscribe_revocations();
     let mut topics: HashSet<String> = HashSet::new();
     let ready = json!({ "type": "ready", "deviceId": device.id }).to_string();
-    let mut alive = ws.send(Message::Text(ready.into())).await.is_ok();
+    let mut alive = send_text(&mut ws, ready, WS_SEND_TIMEOUT).await;
     // The phone pings every 25 s. A socket that has said nothing for much longer
     // is half open (it left the network without closing): drop it, so its
     // "visible" flag stops suppressing push for a phone that is not there.
@@ -972,13 +1037,13 @@ async fn run_socket<S>(
             ev = events.recv() => match ev {
                 Ok(ev) if event_matches(&ev, &topics) => {
                     let msg = json!({ "type": "event", "topic": ev.topic, "event": ev.event }).to_string();
-                    alive = ws.send(Message::Text(msg.into())).await.is_ok();
+                    alive = send_text(&mut ws, msg, WS_SEND_TIMEOUT).await;
                 }
                 Ok(_) => {}
                 // A slow phone missed events: say so, so it can refetch.
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     let msg = json!({ "type": "lagged", "missed": n }).to_string();
-                    alive = ws.send(Message::Text(msg.into())).await.is_ok();
+                    alive = send_text(&mut ws, msg, WS_SEND_TIMEOUT).await;
                 }
                 Err(_) => alive = false,
             },
@@ -1007,7 +1072,7 @@ async fn run_socket<S>(
                         }
                     }
                     Ok(ClientMessage::Ping) => {
-                        alive = ws.send(Message::Text(json!({ "type": "pong" }).to_string().into())).await.is_ok();
+                        alive = send_text(&mut ws, json!({ "type": "pong" }).to_string(), WS_SEND_TIMEOUT).await;
                     }
                     _ => {}
                 },
@@ -1084,6 +1149,24 @@ pub async fn start(
     let acceptor = tls.map(TlsAcceptor::from);
     let (tx, rx) = watch::channel(false);
     let mut stop = rx.clone();
+    let limiter = ConnLimiter::new(MAX_CONNECTIONS, MAX_CONNECTIONS_PER_IP);
+    // Write-behind for `last_seen`: every minute, and once more on stop.
+    let flush_hub = hub.clone();
+    let mut flush_stop = rx.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            let stopping = tokio::select! {
+                _ = tick.tick() => false,
+                _ = flush_stop.changed() => true,
+            };
+            let h = flush_hub.clone();
+            let _ = tokio::task::spawn_blocking(move || h.flush_devices()).await;
+            if stopping {
+                break;
+            }
+        }
+    });
     tokio::spawn(async move {
         loop {
             let accepted = tokio::select! {
@@ -1099,11 +1182,16 @@ pub async fn start(
             if hub.is_blocked(peer_ip) {
                 continue; // dropped: this IP failed authentication too often
             }
+            let Some(permit) = limiter.try_acquire(peer_ip) else {
+                log::debug!("remote: connection from {peer_ip} refused: over the connection cap");
+                continue; // dropped: the stream closes
+            };
             let hub = hub.clone();
             let listener = listener.clone();
             let acceptor = acceptor.clone();
             let conn_stop = rx.clone();
             tokio::spawn(async move {
+                let _permit = permit;
                 match acceptor {
                     Some(acceptor) => {
                         match tokio::time::timeout(Duration::from_secs(10), acceptor.accept(stream))
@@ -1157,5 +1245,50 @@ mod unauth_slot_tests {
         assert!(UnauthSlot::acquire("203.0.113.78".parse().unwrap(), 3).is_some());
         drop(held);
         assert!(UnauthSlot::acquire(ip, 3).is_some());
+    }
+}
+
+#[cfg(test)]
+mod conn_cap_tests {
+    use super::*;
+
+    #[test]
+    fn remote_accept_cap_rejects_over_limit() {
+        let limiter = ConnLimiter::new(4, 2);
+        let a: IpAddr = "203.0.113.1".parse().unwrap();
+        let b: IpAddr = "203.0.113.2".parse().unwrap();
+        let c: IpAddr = "203.0.113.3".parse().unwrap();
+        let a1 = limiter.try_acquire(a).unwrap();
+        let _a2 = limiter.try_acquire(a).unwrap();
+        // Per-address cap.
+        assert!(limiter.try_acquire(a).is_none());
+        let _b1 = limiter.try_acquire(b).unwrap();
+        let _b2 = limiter.try_acquire(b).unwrap();
+        // Global cap: four held, a fresh address is refused.
+        assert!(limiter.try_acquire(c).is_none());
+        // A released permit frees both budgets.
+        drop(a1);
+        assert!(limiter.try_acquire(c).is_some());
+        assert!(limiter.try_acquire(a).is_some());
+    }
+
+    #[tokio::test]
+    async fn remote_ws_send_timeout_closes() {
+        let (server_io, _client_io) = tokio::io::duplex(1024);
+        let mut ws = WebSocketStream::from_raw_socket(server_io, Role::Server, None).await;
+        // The peer never reads: a frame larger than the pipe cannot drain.
+        let big = "x".repeat(64 * 1024);
+        let started = tokio::time::Instant::now();
+        let ok = send_text(&mut ws, big, Duration::from_millis(100)).await;
+        assert!(!ok);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // A healthy socket still sends.
+        let (a, mut b) = tokio::io::duplex(64 * 1024);
+        let mut ws2 = WebSocketStream::from_raw_socket(a, Role::Server, None).await;
+        assert!(send_text(&mut ws2, "hi".into(), Duration::from_secs(5)).await);
+        drop(ws2);
+        let mut buf = Vec::new();
+        tokio::io::AsyncReadExt::read_to_end(&mut b, &mut buf).await.unwrap();
+        assert!(!buf.is_empty());
     }
 }

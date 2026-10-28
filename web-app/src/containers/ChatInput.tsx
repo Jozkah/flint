@@ -1951,7 +1951,9 @@ const ChatInput = memo(function ChatInput({
     if (withinLimit.length === 0) return
     try {
       const paths = await Promise.all(
-        withinLimit.map((f) => serviceHub.uploads().saveDroppedFile(f))
+        withinLimit.map((f) =>
+          serviceHub.uploads().saveDroppedFile(f, currentThreadId)
+        )
       )
       await attachDocumentPaths(paths)
     } catch (e) {
@@ -3018,6 +3020,8 @@ const ChatInput = memo(function ChatInput({
 
   const offerPastedPath = async (candidate: string) => {
     if (!isPlatformTauri()) return
+    // A UNC path would make the OS connect to that host on stat.
+    if (/^[\\/]{2}/.test(candidate)) return
     try {
       const { fs } = await import('@janhq/core')
       const stat = await fs.fileStat(candidate)

@@ -96,6 +96,29 @@ pub struct Proposal {
     pub redacted: bool,
 }
 
+/// The content checks every write path shares: empty, over the length cap, a
+/// credential, an instruction posing as a fact. `content` must already be
+/// normalised. Creation and edit both go through here so they cannot drift.
+pub(crate) fn check_content(content: &str) -> Result<(), Refusal> {
+    if content.is_empty() {
+        return Err(Refusal::Empty);
+    }
+    if content.chars().count() > MAX_CONTENT_CHARS {
+        return Err(Refusal::TooLong {
+            limit: MAX_CONTENT_CHARS,
+        });
+    }
+    // Refused, not redacted: here the credential is what the caller asked to
+    // remember, and a redacted husk would imply something was kept.
+    if !secrets::scan_text(content).is_empty() {
+        return Err(Refusal::ContainsSecret);
+    }
+    if let Some(why) = super::precedence::authority_claim(content) {
+        return Err(Refusal::ClaimsAuthority(why));
+    }
+    Ok(())
+}
+
 /// Build a reviewable proposal, or say why not.
 ///
 /// Does not write. Nothing reaches the store until [`commit`] is called with a
@@ -113,25 +136,7 @@ pub fn propose(
     existing: &[MemoryRecord],
 ) -> Result<Proposal, Refusal> {
     let content = normalise(content);
-    if content.is_empty() {
-        return Err(Refusal::Empty);
-    }
-    if content.chars().count() > MAX_CONTENT_CHARS {
-        return Err(Refusal::TooLong {
-            limit: MAX_CONTENT_CHARS,
-        });
-    }
-
-    // Refused, not redacted. Redaction is right for tool output that happens to
-    // contain a key; here the credential is what the caller asked to remember,
-    // and storing a redacted husk of it would leave a memory that says nothing
-    // while implying something was kept.
-    if !secrets::scan_text(&content).is_empty() {
-        return Err(Refusal::ContainsSecret);
-    }
-    if let Some(why) = super::precedence::authority_claim(&content) {
-        return Err(Refusal::ClaimsAuthority(why));
-    }
+    check_content(&content)?;
 
     // A scope without its identity would apply to nothing or, worse, to
     // everything. Refused here rather than stored and silently ignored.

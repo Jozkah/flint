@@ -24,6 +24,11 @@ const {
   mockConstructor: vi.fn(),
 }))
 
+const themeState = vi.hoisted(() => ({ activeTheme: 'auto' as string }))
+vi.mock('@/hooks/useTheme', () => ({
+  useTheme: { getState: () => themeState },
+}))
+
 function makeMockWindow() {
   return {
     close: mockClose,
@@ -76,7 +81,7 @@ describe('TauriWindowService', () => {
     mockOnce.mockResolvedValue(vi.fn())
     mockListen.mockImplementation(async () => vi.fn())
     __testing.themeListeners.clear()
-    localStorage.clear()
+    themeState.activeTheme = 'auto'
     svc = new TauriWindowService()
   })
 
@@ -103,11 +108,8 @@ describe('TauriWindowService', () => {
       expect(result.label).toBe('test-window')
     })
 
-    it('sets dark theme from localStorage', async () => {
-      localStorage.setItem(
-        'jan-theme',
-        JSON.stringify({ state: { activeTheme: 'dark', isDark: true } })
-      )
+    it('sets dark theme from the theme store', async () => {
+      themeState.activeTheme = 'dark'
       await svc.createWebviewWindow(baseConfig)
       expect(mockConstructor).toHaveBeenCalledWith(
         'test-window',
@@ -115,11 +117,8 @@ describe('TauriWindowService', () => {
       )
     })
 
-    it('sets light theme from localStorage', async () => {
-      localStorage.setItem(
-        'jan-theme',
-        JSON.stringify({ state: { activeTheme: 'light', isDark: false } })
-      )
+    it('sets light theme from the theme store', async () => {
+      themeState.activeTheme = 'light'
       await svc.createWebviewWindow(baseConfig)
       expect(mockConstructor).toHaveBeenCalledWith(
         'test-window',
@@ -128,27 +127,12 @@ describe('TauriWindowService', () => {
     })
 
     it('sets undefined theme when activeTheme is auto', async () => {
-      localStorage.setItem(
-        'jan-theme',
-        JSON.stringify({ state: { activeTheme: 'auto', isDark: false } })
-      )
+      themeState.activeTheme = 'auto'
       await svc.createWebviewWindow(baseConfig)
       expect(mockConstructor).toHaveBeenCalledWith(
         'test-window',
         expect.objectContaining({ theme: undefined })
       )
-    })
-
-    it('handles invalid JSON in localStorage gracefully', async () => {
-      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      localStorage.setItem('jan-theme', 'not-json')
-      await svc.createWebviewWindow(baseConfig)
-      expect(spy).toHaveBeenCalled()
-      expect(mockConstructor).toHaveBeenCalledWith(
-        'test-window',
-        expect.objectContaining({ theme: undefined })
-      )
-      spy.mockRestore()
     })
 
     it('returned instance delegates to webviewWindow methods', async () => {

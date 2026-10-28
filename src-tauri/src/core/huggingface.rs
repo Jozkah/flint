@@ -180,6 +180,19 @@ fn sibling_file(file: RepoSibling) -> HuggingFaceFile {
     }
 }
 
+/// Whole-request cap for the small metadata calls (search, file list, README,
+/// GGUF header). The multi-GB downloads use their own stall-based handling and
+/// must never get a total timeout.
+const HF_API_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn api_error(prefix: &str, e: &reqwest::Error) -> String {
+    if e.is_timeout() {
+        "Hugging Face did not answer in time".to_string()
+    } else {
+        format!("{prefix}: {e}")
+    }
+}
+
 fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -443,9 +456,10 @@ pub async fn huggingface_search_models(
     }
     let response = hf_client(token.as_deref())?
         .get(url)
+        .timeout(HF_API_TIMEOUT)
         .send()
         .await
-        .map_err(|e| format!("Hugging Face search failed: {e}"))?;
+        .map_err(|e| api_error("Hugging Face search failed", &e))?;
     if !response.status().is_success() {
         return Err(response_error(response).await);
     }
@@ -494,9 +508,10 @@ pub async fn huggingface_model_files(
     url.query_pairs_mut().append_pair("blobs", "true");
     let response = hf_client(token.as_deref())?
         .get(url)
+        .timeout(HF_API_TIMEOUT)
         .send()
         .await
-        .map_err(|e| format!("Could not load Hugging Face model files: {e}"))?;
+        .map_err(|e| api_error("Could not load Hugging Face model files", &e))?;
     if !response.status().is_success() {
         return Err(response_error(response).await);
     }
@@ -519,9 +534,10 @@ pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<S
     let url = remote_file_url(&repo, "README.md", None)?;
     let response = hf_client(token.as_deref())?
         .get(url)
+        .timeout(HF_API_TIMEOUT)
         .send()
         .await
-        .map_err(|e| format!("Could not load Hugging Face README: {e}"))?;
+        .map_err(|e| api_error("Could not load Hugging Face README", &e))?;
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(String::new());
     }
@@ -556,6 +572,7 @@ pub async fn huggingface_gguf_header(
     let url = remote_file_url(&repo, &filename, None)?;
     let mut response = hf_client(token.as_deref())?
         .get(url)
+        .timeout(HF_API_TIMEOUT)
         .header(
             reqwest::header::RANGE,
             format!("bytes=0-{}", GGUF_HEADER_BYTES - 1),

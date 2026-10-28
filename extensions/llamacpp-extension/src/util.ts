@@ -461,3 +461,53 @@ export function ggufShardPaths(path: string): string[] {
   }
   return out
 }
+
+/**
+ * Strict rule for NEW model ids (import, rename target): alphanumerics and
+ * `/ _ - .` only, no empty or dot segments, no trailing dots, no Windows
+ * device names.
+ */
+export function isValidModelId(id: unknown): id is string {
+  if (typeof id !== 'string') return false
+  if (!/^[a-zA-Z0-9/_\-\.]+$/.test(id)) return false
+
+  return id
+    .split('/')
+    .every(
+      (s) =>
+        s !== '' &&
+        s !== '.' &&
+        s !== '..' &&
+        !s.endsWith('.') &&
+        !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(s)
+    )
+}
+
+/**
+ * Loose safety rule for ids that already exist on disk (delete, abort, rename
+ * source): old oddly named models stay manageable, but the id can never leave
+ * the models folder. Accepts `\` as a separator.
+ */
+export function isSafeModelRef(id: unknown): id is string {
+  if (typeof id !== 'string' || id === '' || id.includes('\0')) return false
+  if (id.startsWith('/') || id.startsWith('\\')) return false
+  if (/^[a-zA-Z]:/.test(id)) return false
+  return id.split(/[\\/]/).every((s) => s !== '' && s !== '.' && s !== '..')
+}
+
+/**
+ * The legacy `auto_unload` value out of a settings snapshot. Read before
+ * `registerSettings`, which drops keys that no longer exist in SETTINGS, so
+ * reading it afterwards always found nothing and the migration never ran.
+ */
+export function legacyAutoUnload(
+  settings: ReadonlyArray<{ key?: string; controllerProps?: { value?: unknown } }>
+): boolean | undefined {
+  const v = settings.find((s) => s.key === 'auto_unload')?.controllerProps?.value
+  return typeof v === 'boolean' ? v : undefined
+}
+
+/** `auto_unload` true kept one model loaded; false meant unlimited (0). */
+export function modelsMaxFromAutoUnload(old: boolean): string {
+  return old ? '1' : '0'
+}

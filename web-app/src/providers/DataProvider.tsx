@@ -332,8 +332,16 @@ export function DataProvider() {
         .getState()
         .assignLegacyProviders(useModelProvider.getState().providers)
       // Seed keyring keys into the merged store (predefined + engine + custom).
-      await applyKeyringKeys()
-      await applySecretHeaderValues()
+      try {
+        await applyKeyringKeys()
+      } catch (e) {
+        console.error('Could not seed provider keys from the keyring:', e)
+      }
+      try {
+        await applySecretHeaderValues()
+      } catch (e) {
+        console.error('Could not load secret provider header values:', e)
+      }
       // Register active remote providers with the backend, keys now in place.
       useModelProvider.getState().providers.forEach((provider) => {
         if (provider.active && !solo) {
@@ -341,7 +349,7 @@ export function DataProvider() {
           registeredProviderNames.add(provider.provider)
         }
       })
-    })
+    }).catch((e) => console.error('Could not load providers:', e))
     // Re-seed the Hugging Face token from the keyring (no longer persisted to
     // settings storage) into the store + download extension for this session.
     if (!solo) {
@@ -363,6 +371,7 @@ export function DataProvider() {
         setServers(data.mcpServers ?? {})
         setSettings(data.mcpSettings ?? DEFAULT_MCP_SETTINGS)
       })
+      .catch((e) => console.error('Could not load the MCP config:', e))
     let cancelled = false
     // Reads can overlap (the mount read, the post-load read, a retry) and a
     // slow one must never overwrite a newer one, so only the latest applies.
@@ -524,7 +533,7 @@ export function DataProvider() {
         await applyKeyringKeys()
         syncRemoteProviders()
         syncModelParamDefaults()
-      })
+      }).catch((e) => console.error('Could not refresh providers:', e))
     }
     events.on(AppEvent.onModelImported, handler)
     return () => {

@@ -53,7 +53,18 @@ const INTERPRETERS = new Set([
   'ruby', 'perl', 'php', 'lua', 'wsl', 'start', 'call', 'xargs', 'nohup',
   'sudo', 'time', 'exec', 'eval', 'source', 'wscript', 'cscript', 'mshta',
   'rundll32', 'regsvr32',
+  // Build tools, runners and remote shells that execute arbitrary commands.
+  'find', 'make', 'nmake', 'gmake', 'npm', 'pnpm', 'yarn', 'cargo', 'dotnet',
+  'awk', 'gawk', 'ssh', 'scp', 'tar', 'rsync', 'java', 'javac', 'osascript',
+  'forfiles', 'msiexec', 'mvn', 'gradle', 'pip', 'pip3', 'uv', 'rake',
+  'docker', 'kubectl', 'powershell_ise', 'schtasks', 'sc', 'reg', 'wmic',
+  'certutil', 'bitsadmin',
 ])
+
+/** Split on whitespace, keeping a quoted run (spaces included) as one word. */
+function commandWords(command: string): string[] {
+  return command.trim().match(/"[^"]*"|'[^']*'|\S+/g) ?? []
+}
 
 /**
  * The program a `bash` call runs (`go` for `go test ./...`), lowercased with
@@ -76,6 +87,13 @@ export function commandProgram(input: unknown): string | undefined {
   const bare = first.replace(/^["']|["']$/g, '').split(/[\\/]/).pop() ?? ''
   const program = bare.toLowerCase().replace(/\.exe$/, '')
   if (INTERPRETERS.has(program.replace(/[\d.]+$/, ''))) return undefined
+  // `git -c alias.x=!cmd status` runs an arbitrary command.
+  if (
+    program === 'git' &&
+    words.some((w) => w === '-c' || w.startsWith('-c') || w.startsWith('--exec-path'))
+  ) {
+    return undefined
+  }
   return /^[a-z0-9._+-]+$/.test(program) ? program : undefined
 }
 

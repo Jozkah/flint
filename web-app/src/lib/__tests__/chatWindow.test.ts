@@ -174,6 +174,16 @@ describe('warm window assignment', () => {
     expect(h.create).not.toHaveBeenCalled()
   })
 
+  it('removes both listeners when the hand-off fails', async () => {
+    await prewarmSoloWindow()
+    const label = h.create.mock.calls[0][0].label as string
+    h.handlers.get('solo-spare-ready')?.({ payload: label })
+    h.emitTo.mockRejectedValue(new Error('gone'))
+    await openChatWindow({ kind: 'chat', refId: 't1' })
+    expect(h.handlers.has('solo-shown')).toBe(false)
+    expect(h.handlers.has('solo-failed')).toBe(false)
+  })
+
   it('opens a window the old way when no spare is ready', async () => {
     await openChatWindow({ kind: 'room', refId: 'r1' })
     expect(h.emitTo).not.toHaveBeenCalled()

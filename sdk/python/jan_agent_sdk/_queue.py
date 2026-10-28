@@ -39,6 +39,24 @@ class EventQueue:
             self._condition.notify()
             return False
 
+    def push_bounded(self, item: Any, limit: int) -> bool:
+        """Append ``item``, dropping the oldest buffered one past ``limit``.
+
+        One critical section: ``True`` when an event was dropped. The bound is
+        on what is buffered now, not on how many were ever buffered.
+        """
+        with self._condition:
+            if self._ended:
+                return False
+            self._items.append(item)
+            if len(self._items) == 1:
+                self._condition.notify()
+                return False
+            if len(self._items) > limit:
+                self._items.popleft()
+                return True
+            return False
+
     def drop_oldest(self) -> bool:
         with self._condition:
             if not self._items:

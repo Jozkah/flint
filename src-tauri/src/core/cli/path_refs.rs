@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 /// * `@path` - unquoted, whitespace terminates the token
 static REFERENCE_RE: Lazy<regex::Regex> = Lazy::new(|| {
     // Using a raw string with hash delimiters avoids escaping quotes and backticks.
-    regex::Regex::new(r###"@\"[^\"]+\"|@[^\s,;:!?'"`\[\](){}<>)\)]+"###).unwrap()
+    regex::Regex::new(r###"@\"[^\"]+\"|@(?:[A-Za-z]:[\\/])?[^\s,;:!?'"`\[\](){}<>)\)]+"###).unwrap()
 });
 
 /// True when `at_idx` in `text` is the start of a reference token: the `@` is
@@ -137,8 +137,31 @@ fn strip_references(text: &str) -> String {
 /// Like `strip_references`, but keeps references whose unquoted path is in
 /// `keep` (paths that did not resolve, so the user's words stay in the prompt).
 fn strip_references_except(text: &str, keep: &std::collections::HashSet<String>) -> String {
+    let is_blank = |c: char| c == ' ' || c == '\t';
     let mut kept = String::with_capacity(text.len());
     let mut last = 0;
+    // True after a token was removed: spaces/tabs around the gap collapse to
+    // one space. Newlines are never touched.
+    let mut pending = false;
+    let push_segment = |kept: &mut String, seg: &str, pending: &mut bool| {
+        if *pending {
+            let seg = seg.trim_start_matches(is_blank);
+            if seg.is_empty() {
+                return;
+            }
+            if !kept.is_empty()
+                && !kept.ends_with('\n')
+                && !seg.starts_with('\n')
+                && !seg.starts_with('\r')
+            {
+                kept.push(' ');
+            }
+            kept.push_str(seg);
+            *pending = false;
+        } else {
+            kept.push_str(seg);
+        }
+    };
     for m in ref_matches(text) {
         let raw = &text[m.start() + 1..m.end()];
         let raw = raw
@@ -148,25 +171,18 @@ fn strip_references_except(text: &str, keep: &std::collections::HashSet<String>)
         if keep.contains(raw) {
             continue;
         }
-        kept.push_str(&text[last..m.start()]);
+        push_segment(&mut kept, &text[last..m.start()], &mut pending);
+        let trimmed = kept.trim_end_matches(is_blank).len();
+        kept.truncate(trimmed);
+        pending = true;
         last = m.end();
     }
-    kept.push_str(&text[last..]);
-
-    let mut result = String::with_capacity(kept.len());
-    let mut prev_space = false;
-    for ch in kept.chars() {
-        if ch.is_whitespace() {
-            if !prev_space {
-                result.push(' ');
-                prev_space = true;
-            }
-        } else {
-            result.push(ch);
-            prev_space = false;
-        }
+    push_segment(&mut kept, &text[last..], &mut pending);
+    if kept.trim().is_empty() {
+        String::new()
+    } else {
+        kept
     }
-    result.trim().to_string()
 }
 
 /// Resolve all @path references in `text` synchronously (blocking).
@@ -175,6 +191,44 @@ fn strip_references_except(text: &str, keep: &std::collections::HashSet<String>)
 /// When no references are found, returns the original text unchanged with an
 /// empty injected block.
 pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
+    resolve_references_with(text, project_root, true)
+}
+
+/// File names that are never injected into a prompt (credentials, keys).
+fn is_sensitive_name(abs: &Path) -> bool {
+    let name = abs
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    name.starts_with(".env")
+        || name.starts_with("id_rsa")
+        || name.starts_with("id_ed25519")
+        || name.ends_with(".pem")
+        || name.ends_with(".key")
+        || matches!(
+            name.as_str(),
+            "credentials" | ".npmrc" | ".netrc" | "mcp_config.json"
+        )
+}
+
+/// True when `abs` resolves (symlinks included) to somewhere outside `root`.
+fn is_outside_root(abs: &Path, root: &Path) -> bool {
+    match (abs.canonicalize(), root.canonicalize()) {
+        (Ok(a), Ok(r)) => !a.starts_with(&r),
+        _ => false,
+    }
+}
+
+/// Like `resolve_references`; `allow_outside` controls whether references to
+/// paths outside `project_root` are read (interactive TUI) or refused
+/// (headless). Sensitive file names are always refused and the injected block
+/// is scrubbed of secrets.
+pub fn resolve_references_with(
+    text: &str,
+    project_root: &Path,
+    allow_outside: bool,
+) -> (String, String) {
     let refs = parse_references(text);
     if refs.is_empty() {
         return (text.to_string(), String::new());
@@ -183,11 +237,23 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
     let mut parts: Vec<String> = Vec::new();
     let mut unresolved = std::collections::HashSet::new();
     for raw in &refs {
-        let abs = if raw.starts_with('/') {
+        let abs = if Path::new(raw).is_absolute() {
             PathBuf::from(raw)
         } else {
             project_root.join(raw)
         };
+
+        if is_sensitive_name(&abs) {
+            parts.push(format!("[{}: refused (sensitive file)]", raw));
+            continue;
+        }
+        if is_outside_root(&abs, project_root) {
+            if !allow_outside {
+                parts.push(format!("[{}: refused (outside project)]", raw));
+                continue;
+            }
+            parts.push(format!("[{}: outside project]", raw));
+        }
 
         let metadata = match std::fs::metadata(&abs) {
             Ok(m) => m,
@@ -268,7 +334,7 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
     }
 
     let clean = strip_references_except(text, &unresolved);
-    let block = parts.join("\n\n");
+    let block = super::secrets::scrub_text(&parts.join("\n\n"));
     (clean, block)
 }
 
@@ -568,5 +634,49 @@ mod tests {
     fn test_strip_quoted_reference() {
         let cleaned = strip_references("see @\"my file.txt\" and done");
         assert_eq!(cleaned, "see and done");
+    }
+
+    #[test]
+    fn multiline_prompt_with_fenced_block_keeps_newlines() {
+        let text = "fix @a.rs\n\n```\nfn  main() {\n    x();\n}\n```\nthanks";
+        let cleaned = strip_references(text);
+        assert_eq!(cleaned, "fix\n\n```\nfn  main() {\n    x();\n}\n```\nthanks");
+    }
+
+    #[test]
+    fn windows_drive_path_reference_parses() {
+        let refs = parse_references("read @C:\\Users\\me\\a.txt and @D:/x/y.txt now");
+        assert_eq!(refs, vec!["C:\\Users\\me\\a.txt", "D:/x/y.txt"]);
+    }
+
+    #[test]
+    fn env_file_reference_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".env"), b"SECRET=topsecretvalue").unwrap();
+        let (_clean, block) = resolve_references("see @.env", dir.path());
+        assert!(block.contains("refused (sensitive file)"));
+        assert!(!block.contains("topsecretvalue"));
+    }
+
+    #[test]
+    fn outside_root_refused_headless() {
+        let root = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let f = other.path().join("note.txt");
+        std::fs::write(&f, b"outside content").unwrap();
+        let text = format!("read @\"{}\"", f.display());
+        let (_c, block) = resolve_references_with(&text, root.path(), false);
+        assert!(block.contains("refused (outside project)"));
+        assert!(!block.contains("outside content"));
+        let (_c, block) = resolve_references_with(&text, root.path(), true);
+        assert!(block.contains("outside content"));
+    }
+
+    #[test]
+    fn injected_block_scrubbed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("cfg.txt"), b"api_key=abcdefgh12345").unwrap();
+        let (_c, block) = resolve_references("see @cfg.txt", dir.path());
+        assert!(!block.contains("abcdefgh12345"));
     }
 }

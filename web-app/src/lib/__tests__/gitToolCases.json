@@ -36,6 +36,14 @@
   { "program": "git", "args": ["clone", "https://github.com/o/r"], "class": "local" },
   { "program": "git", "args": ["fetch", "origin"], "class": "local" },
   { "program": "git", "args": ["pull"], "class": "local" },
+  { "program": "git", "args": ["ls-remote", "https://example.com/o/r.git"], "class": "read" },
+  { "program": "git", "args": ["ls-remote", "origin"], "class": "read" },
+  { "program": "git", "args": ["ls-remote", "/etc"], "class": "deny" },
+  { "program": "git", "args": ["ls-remote", "file:///etc"], "class": "deny" },
+  { "program": "git", "args": ["fetch", "file:///x"], "class": "deny" },
+  { "program": "git", "args": ["pull", "../other"], "class": "deny" },
+  { "program": "git", "args": ["push", "--repo=/tmp/x", "main"], "class": "deny" },
+  { "program": "git", "args": ["remote", "show", "/tmp/x"], "class": "deny" },
   { "program": "git", "args": ["reset", "HEAD~1"], "class": "local" },
   { "program": "git", "args": ["restore", "--staged", "a.txt"], "class": "local" },
   { "program": "git", "args": ["push"], "class": "remote" },
@@ -91,5 +99,12 @@
   { "program": "git", "args": ["rebase", "-mx", "calc", "main"], "class": "deny" },
   { "program": "git", "args": ["fetch", "--upload-p=calc"], "class": "deny" },
   { "program": "git", "args": ["clone", "-qccore.sshCommand=calc", "https://example.com/r.git"], "class": "deny" },
-  { "program": "git", "args": ["push", "--rec=calc"], "class": "deny" }
+  { "program": "git", "args": ["push", "--rec=calc"], "class": "deny" },
+  { "program": "gh", "args": ["repo", "clone", "o/r", "d", "--", "-c", "credential.helper=!calc"], "class": "deny" },
+  { "program": "git", "args": ["diff", "/dev/null", "/home/u/.aws/credentials"], "class": "deny" },
+  { "program": "git", "args": ["blame", "--contents", "/etc/passwd", "a.rs"], "class": "deny" },
+  { "program": "git", "args": ["blame", "--ignore-revs-file", "/etc/passwd", "a.rs"], "class": "deny" },
+  { "program": "git", "args": ["tag", "-a", "-F", "/etc/passwd", "v1"], "class": "deny" },
+  { "program": "git", "args": ["merge", "-F", "/etc/passwd", "feature"], "class": "deny" },
+  { "program": "git", "args": ["diff", "a.txt", "b.txt"], "class": "read" }
 ]

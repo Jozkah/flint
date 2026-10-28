@@ -170,7 +170,7 @@ pub async fn output_with_timeout(
         Err(e) => return Ok(Err(e)),
     };
     let owner = child.id().and_then(|pid| OwnedChild::own(pid).ok());
-    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+    match tokio::time::timeout(timeout, bounded_output(child)).await {
         Ok(out) => {
             if let Some(owner) = owner {
                 owner.release();
@@ -185,6 +185,91 @@ pub async fn output_with_timeout(
     }
 }
 
+/// `cmd.output()` for sync callers, with a deadline (W10): stdin is null, both
+/// streams are drained on threads so a chatty child cannot block on a full
+/// pipe, and a child still running at `timeout` is killed. `TimedOut` then.
+pub fn output_blocking(
+    cmd: &mut std::process::Command,
+    timeout: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let out_t = std::thread::spawn(move || {
+        let mut v = Vec::new();
+        if let Some(p) = out_pipe.as_mut() {
+            let _ = p.take(CAPTURE_CAP as u64).read_to_end(&mut v);
+            let _ = std::io::copy(p, &mut std::io::sink());
+        }
+        v
+    });
+    let err_t = std::thread::spawn(move || {
+        let mut v = Vec::new();
+        if let Some(p) = err_pipe.as_mut() {
+            let _ = p.take(CAPTURE_CAP as u64).read_to_end(&mut v);
+            let _ = std::io::copy(p, &mut std::io::sink());
+        }
+        v
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        if let Some(s) = child.try_wait()? {
+            break Some(s);
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    };
+    let stdout = out_t.join().unwrap_or_default();
+    let stderr = err_t.join().unwrap_or_default();
+    match status {
+        Some(status) => Ok(std::process::Output { status, stdout, stderr }),
+        None => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out")),
+    }
+}
+
+/// Most bytes kept from each output stream (W33). A child that prints more has
+/// the rest read and discarded, so it never blocks on a full pipe and Flint
+/// never holds more than this per stream.
+pub const CAPTURE_CAP: usize = 1024 * 1024;
+
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(reader: Option<R>, cap: usize) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let Some(mut reader) = reader else { return Vec::new() };
+    let mut kept = Vec::new();
+    let mut chunk = [0u8; 16 * 1024];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                let room = cap.saturating_sub(kept.len());
+                kept.extend_from_slice(&chunk[..n.min(room)]);
+            }
+        }
+    }
+    kept
+}
+
+/// `wait_with_output` with each stream capped at `cap` bytes.
+async fn bounded_output_with(mut child: tokio::process::Child, cap: usize) -> std::io::Result<std::process::Output> {
+    let out = read_capped(child.stdout.take(), cap);
+    let err = read_capped(child.stderr.take(), cap);
+    let (stdout, stderr) = tokio::join!(out, err);
+    let status = child.wait().await?;
+    Ok(std::process::Output { status, stdout, stderr })
+}
+
+async fn bounded_output(child: tokio::process::Child) -> std::io::Result<std::process::Output> {
+    bounded_output_with(child, CAPTURE_CAP).await
+}
+
 impl Drop for OwnedChild {
     fn drop(&mut self) {
         self.stop();
@@ -194,6 +279,29 @@ impl Drop for OwnedChild {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A child that prints far more than the cap is read to the end, but only
+    /// the first `cap` bytes per stream are kept.
+    #[tokio::test]
+    async fn capture_bounds_memory() {
+        let mut cmd = if cfg!(windows) {
+            let mut c = tokio::process::Command::new("powershell");
+            c.args(["-NoProfile", "-Command", "$s='x'*1048576; 1..50 | ForEach-Object { [Console]::Out.Write($s) }"]);
+            c
+        } else {
+            let mut c = tokio::process::Command::new("sh");
+            c.args(["-c", "head -c 52428800 /dev/zero | tr '\\0' x"]);
+            c
+        };
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let child = cmd.spawn().expect("spawn");
+        let out = bounded_output_with(child, 64 * 1024).await.expect("output");
+        assert_eq!(out.stdout.len(), 64 * 1024);
+        assert!(out.status.success());
+    }
 
     #[test]
     fn a_program_that_is_not_there_is_reported_missing() {
@@ -231,5 +339,23 @@ mod tests {
         let _ = child.wait();
         let left: Vec<u32> = everyone.into_iter().filter(|p| process_exists(*p)).collect();
         assert!(left.is_empty(), "still running after the owner was dropped: {left:?}");
+    }
+
+    /// A query that never answers is stopped at its deadline (W10).
+    #[test]
+    fn git_inspect_times_out() {
+        let mut cmd = if cfg!(windows) {
+            let mut c = std::process::Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        } else {
+            let mut c = std::process::Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let start = std::time::Instant::now();
+        let r = output_blocking(&mut cmd, std::time::Duration::from_millis(300));
+        assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+        assert!(start.elapsed() < std::time::Duration::from_secs(10));
     }
 }

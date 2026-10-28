@@ -299,7 +299,8 @@ fn deletes_home_or_root(command: &str) -> bool {
                 // Brace-group braces (`{ rm -rf ~; }`, `{rm`), not `${HOME}`.
                 let w = if w.starts_with('{') { w.trim_start_matches('{') } else { w };
                 let w = if w.contains('{') { w } else { w.trim_end_matches('}') };
-                w.trim_matches(|c| c == '"' || c == '\'').to_string()
+                // Quotes are dropped anywhere in the word: `"$HOME"/`, `$HO""ME`.
+                w.chars().filter(|c| !matches!(c, '"' | '\'')).collect::<String>()
             })
             .filter(|w| !w.is_empty())
             .collect();
@@ -310,7 +311,7 @@ fn deletes_home_or_root(command: &str) -> bool {
                 || lower == "/c"
                 || lower == "/k"
                 || w.chars().next().is_some_and(|c| c.is_ascii_digit())
-                || (w.contains('=') && !w.starts_with('=') && !w.contains('/'));
+                || (w.contains('=') && !w.starts_with('='));
             !wrapper
         });
         let Some(start) = start else {
@@ -347,6 +348,11 @@ fn deletes_home_or_root(command: &str) -> bool {
 /// root, however spelled, and not something inside one.
 pub(crate) fn names_home_or_root(target: &str) -> bool {
     let mut t = target.replace('\\', "/");
+    // A `..` hop can climb out of anywhere into a home or root (`~/..`), so a
+    // recursive delete naming one is never judged safe.
+    if t.split('/').any(|c| c == "..") {
+        return true;
+    }
     loop {
         let before = t.len();
         for suffix in ["/*", "/.*", "/."] {
@@ -574,6 +580,15 @@ pub fn resolve_decision(
     if tool.capability == Capability::Net && !network.allowed {
         return Decision::HardDeny(DenyReason::NetworkOff);
     }
+    // The git tool leaves the machine for fetch, pull, push, ls-remote, clone
+    // and every gh call (W10): the same switch applies, and each host in
+    // `resources` goes through the domain lists below.
+    if tool.name == "git"
+        && !network.allowed
+        && crate::tools::git_tool::plan_from_args(args).is_ok_and(|p| p.reaches_remote)
+    {
+        return Decision::HardDeny(DenyReason::NetworkOff);
+    }
     for resource in &resources {
         if let crate::resource::Resource::Net { host, .. } = resource {
             if let Some(refused) = network.refuses(host) {
@@ -676,7 +691,9 @@ pub fn resolve_decision(
         let path_hits = tool.path_args.iter().any(|key| {
             args.get(key)
                 .and_then(|v| v.as_str())
-                .is_some_and(crate::tools::sandbox::names_git_internals)
+                .is_some_and(|p| {
+                    crate::tools::sandbox::names_git_internals_resolved(project_root, p)
+                })
         });
         let command_hits = tool.capability == Capability::Exec
             && args
@@ -807,6 +824,28 @@ pub fn resolve_decision(
     }
     if tool.name == "open_path" {
         return match crate::tools::open_path::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // Some host_query kinds read private data (every app's registry settings,
+    // window titles, which program talks to which host, scheduled task command
+    // lines, startup entries, env var names): asked about every time. The
+    // plain machine facts (system, disks, ports, processes, ...) stay free.
+    if tool.name == "host_query" {
+        return match args.get("query").and_then(|q| q.as_str()) {
+            Some(q) if crate::tools::host_read::is_private_query(q) => {
+                Decision::Prompt(PromptKind::Ask)
+            }
+            _ => Decision::Allow,
+        };
+    }
+    // Any loopback port can hold an admin or credentialed API (Docker, Ollama,
+    // a dev server's file endpoints): asked about every time, with the address
+    // in the call the user sees. The admin ports themselves are refused by the
+    // tool.
+    if tool.name == "local_http" {
+        return match crate::tools::local_http::parse(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
         };
@@ -1256,6 +1295,45 @@ mod tests {
     }
 
     #[test]
+    fn git_aliases_and_streams_are_refused_and_git_work_is_not() {
+        let root = unique_root();
+        let perms = ToolPermissions::allow_all();
+        let grants = SessionGrants::default();
+        let decide = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let git = Decision::HardDeny(DenyReason::GitInternals);
+        for (tool, args) in [
+            ("write", json!({"path": "GIT~1/hooks/pre-commit", "content": "x"})),
+            ("write", json!({"path": ".git::$INDEX_ALLOCATION/hooks/pre-commit", "content": "x"})),
+            ("bash", json!({"command": "echo x > GIT~1/hooks/pre-commit"})),
+            ("bash", json!({"command": "echo x > .git::$INDEX_ALLOCATION/config"})),
+        ] {
+            assert_eq!(decide(tool, args.clone()), git, "{tool} {args}");
+        }
+        // Ordinary git work in the shell names no `.git` path.
+        for command in [
+            "git commit -am \"fix: x\"",
+            "git checkout -b feature/x",
+            "git config user.name tester",
+            "git status && git log --oneline -5",
+        ] {
+            assert_ne!(decide("bash", json!({"command": command})), git, "{command}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn host_action_is_asked_about_every_time() {
         let root = unique_root();
         let mut grants = SessionGrants::default();
@@ -1309,6 +1387,15 @@ mod tests {
         assert_eq!(simple("clipboard", json!({"action": "read"})), ask);
         assert_eq!(simple("clipboard", json!({"action": "write", "text": "x"})), ask);
         assert_eq!(simple("clipboard", json!({"action": "clear"})), Decision::Allow);
+        // host_query: private kinds prompt, plain machine facts stay free.
+        for q in ["registry", "windows", "network", "scheduled_tasks", "env_names", "startup_items"] {
+            assert_eq!(simple("host_query", json!({"query": q})), ask, "{q}");
+        }
+        for q in ["system", "disks", "ports", "processes"] {
+            assert_eq!(simple("host_query", json!({"query": q})), Decision::Allow, "{q}");
+        }
+        assert_eq!(simple("local_http", json!({"url": "http://localhost:5173/"})), ask);
+        assert_eq!(simple("local_http", json!({})), Decision::Allow);
         assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
         assert_eq!(simple("open_path", json!({})), Decision::Allow);
         assert_eq!(simple("host_powershell", json!({"script": "Get-Date"})), ask);
@@ -2943,6 +3030,15 @@ mod security_corpus {
             "rd /s /q C:\\",
             "rmdir /s /q C:\\Users\\Jozkah",
             "del /s /q C:/",
+            "rm -rf \"$HOME\"/",
+            "rm -rf ~/..",
+            "rm -rf $HOME/..",
+            "rm -rf $HO\"\"ME",
+            "X=1 rm -rf ~",
+            "X=/tmp/y rm -rf ~",
+            "rm -rf ../x",
+            // A quoted literal '~' is still judged as home: asking is the safe side.
+            "rm -rf '~'",
         ] {
             let d = decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open());
             assert_eq!(d, Decision::Prompt(PromptKind::Ask), "{command}");
@@ -3323,6 +3419,109 @@ mod security_corpus {
                 "{tool} left the machine with the network off"
             );
         }
+    }
+
+    /// A repo folder whose `origin` points at `url`.
+    fn repo_with_origin(url: &str) -> PathBuf {
+        let root = root();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(
+            root.join(".git").join("config"),
+            format!("[core]\n\tbare = false\n[remote \"origin\"]\n\turl = {url}\n"),
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn git_fetch_denied_when_network_off() {
+        let root = repo_with_origin("https://github.com/o/r.git");
+        let perms = ToolPermissions::allow_all();
+        let off = NetworkPolicy { allowed: false, ..NetworkPolicy::default() };
+        for args in [
+            json!({"args": ["fetch"]}),
+            json!({"args": ["pull", "origin", "main"]}),
+            json!({"args": ["ls-remote", "https://example.com/x.git"]}),
+            json!({"program": "gh", "args": ["pr", "list"]}),
+        ] {
+            assert_eq!(
+                decide("git", args.clone(), &root, &perms, &off),
+                Decision::HardDeny(DenyReason::NetworkOff),
+                "{args}"
+            );
+        }
+        // A local read is not network.
+        assert_eq!(
+            decide("git", json!({"args": ["status"]}), &root, &perms, &off),
+            Decision::Allow
+        );
+    }
+
+    #[test]
+    fn git_push_denied_host_in_deny_list() {
+        let root = repo_with_origin("git@evil.test:o/r.git");
+        let perms = ToolPermissions::allow_all();
+        let policy = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["evil.test".into()],
+        };
+        // By remote name (resolved through the config), by URL, by --repo.
+        for args in [
+            json!({"args": ["push", "origin", "main"]}),
+            json!({"args": ["push"]}),
+            json!({"args": ["ls-remote", "https://EVIL.test/x.git"]}),
+            json!({"args": ["push", "--repo=ssh://git@evil.test/o/r.git", "main"]}),
+        ] {
+            assert_eq!(
+                decide("git", args.clone(), &root, &perms, &policy),
+                Decision::HardDeny(DenyReason::Domain("evil.test".into())),
+                "{args}"
+            );
+        }
+        // An allow list that omits the host refuses it too.
+        let only = NetworkPolicy {
+            allowed: true,
+            allow_domains: vec!["github.com".into()],
+            deny_domains: Vec::new(),
+        };
+        assert!(matches!(
+            decide("git", json!({"args": ["fetch", "https://other.test/x.git"]}), &root, &perms, &only),
+            Decision::HardDeny(DenyReason::Domain(_))
+        ));
+        // A local path or file:// remote is refused by the planner, not run.
+        assert!(crate::tools::git_tool::plan_from_args(&json!({"args": ["ls-remote", "/etc"]})).is_err());
+        assert!(crate::tools::git_tool::plan_from_args(&json!({"args": ["fetch", "file:///x"]})).is_err());
+    }
+
+    #[test]
+    fn gh_uses_github_host_for_policy() {
+        let root = root();
+        let perms = ToolPermissions::allow_all();
+        let deny_gh = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["github.com".into()],
+        };
+        assert_eq!(
+            decide("git", json!({"program": "gh", "args": ["issue", "list"]}), &root, &perms, &deny_gh),
+            Decision::HardDeny(DenyReason::Domain("github.com".into()))
+        );
+        let ghe = json!({"program": "gh", "args": ["issue", "list", "--repo", "ghe.corp.test/o/r"]});
+        assert_eq!(
+            decide("git", ghe.clone(), &root, &perms, &deny_gh),
+            decide("git", ghe.clone(), &root, &perms, &NetworkPolicy::open()),
+            "an enterprise host is not github.com"
+        );
+        let deny_ghe = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["ghe.corp.test".into()],
+        };
+        assert_eq!(
+            decide("git", ghe, &root, &perms, &deny_ghe),
+            Decision::HardDeny(DenyReason::Domain("ghe.corp.test".into()))
+        );
     }
 
     #[test]

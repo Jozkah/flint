@@ -18,7 +18,7 @@
 //! turn an allowed call into a refused one: every write path returns `()` and
 //! logs rather than propagating.
 
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -350,9 +350,7 @@ pub fn read_all(data_folder: &Path) -> Vec<PermissionRecord> {
     let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
         return Vec::new();
     };
-    std::io::BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
+    crate::retention::lossy_lines(file)
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect()
@@ -411,7 +409,7 @@ pub fn recent(data_folder: &Path, limit: usize) -> Vec<PermissionRecord> {
     };
     let mut window: std::collections::VecDeque<PermissionRecord> =
         std::collections::VecDeque::with_capacity(limit);
-    for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
+    for line in crate::retention::lossy_lines(file) {
         if line.trim().is_empty() {
             continue;
         }
@@ -493,6 +491,21 @@ mod tests {
 
         let read_back = read_all(&dir);
         assert_eq!(read_back.len(), 2, "the two complete records must survive");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn audit_reader_survives_invalid_utf8_line() {
+        let dir = temp_dir("invalid-utf8");
+        append(&dir, &record("s1", Outcome::Allow));
+        let path = log_path(&dir);
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(b"{\"v\":1,\"at\":\"\xFF\xFE\n");
+        std::fs::write(&path, bytes).unwrap();
+        append(&dir, &record("s1", Outcome::Deny));
+
+        assert_eq!(read_all(&dir).len(), 2, "records after the bad line must be read");
+        assert_eq!(recent(&dir, 10).len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

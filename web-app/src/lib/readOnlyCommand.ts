@@ -117,6 +117,27 @@ const UNSAFE_WORDS =
 /** Flags of allowlisted tools that write a file or run a program. */
 const UNSAFE_FLAGS = /(^|\s)(--output|--pre|--ext-diff|-o|--exec|-exec)(=|\s|$)/i
 
+/**
+ * Reads of secrets: an environment variable (other than PATH), the `Env:`
+ * drive, `%VAR%`, and well-known credential files. Reading these is not a
+ * write, but the output goes to the model, so the user is asked first.
+ */
+const SECRET_SOURCES = new RegExp(
+  [
+    String.raw`\$(?!env:path\b)[a-z_{]`,
+    String.raw`(^|[\s"'])env:`,
+    String.raw`%[a-z_]+%`,
+    String.raw`\.env(\.[\w-]+)?(?![\w-])`,
+    String.raw`id_(rsa|dsa|ecdsa|ed25519)`,
+    String.raw`\.(pem|p12|pfx|key|npmrc|pypirc|netrc|git-credentials|gnupg)(?![\w-])`,
+    String.raw`\.(aws|ssh)[\\/]`,
+    String.raw`\.kube[\\/]config`,
+    String.raw`secrets?\.(json|ya?ml|toml)`,
+    String.raw`(^|[\s"'/\\])credentials([\s"']|$)`,
+  ].join('|'),
+  'i'
+)
+
 const tokens = (segment: string): string[] =>
   segment.trim().split(/\s+/).filter(Boolean)
 
@@ -141,5 +162,6 @@ export function isReadOnlyCommand(command: string): boolean {
   if (UNSAFE_SYNTAX.test(line)) return false
   if (UNSAFE_WORDS.test(line)) return false
   if (UNSAFE_FLAGS.test(line)) return false
+  if (SECRET_SOURCES.test(line)) return false
   return line.split(/&&|\|\||;|\|/).every(segmentIsReadOnly)
 }

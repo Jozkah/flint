@@ -432,7 +432,38 @@ pub async fn memory_record_propose_inferred(
     proposal.record.provenance.message_id = source_message_id;
 
     // A duplicate confirms what is already there rather than adding a second
-    // copy of it; `create::commit` keys on content, so this is idempotent.
+    // copy of it. The new record's id embeds the clock, so `commit` would not
+    // match the old row; touch the existing one instead (visible to this
+    // caller only, never another chat's or project's).
+    let now_ts = now();
+    let mut confirmed: Option<MemoryId> = None;
+    for dup in &proposal.duplicates {
+        let id = dup.clone();
+        let touched = super::store::update(&store_root, scope, |records| {
+            let Some(r) = records
+                .iter_mut()
+                .find(|r| r.id == id && matches!(r.status, super::record::Status::Active))
+            else {
+                return Ok((false, false));
+            };
+            if !access.may_see(r) {
+                return Ok((false, false));
+            }
+            r.last_confirmed_at = Some(now_ts);
+            r.updated_at = now_ts;
+            Ok((true, true))
+        })
+        .map_err(AgentToolsError::from)?;
+        if touched {
+            confirmed = Some(id);
+            break;
+        }
+    }
+    if let Some(id) = confirmed {
+        return Ok(InferredOutcome::Saved {
+            memory: Box::new(service::get(&access, scope, &id)?),
+        });
+    }
     create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
     Ok(InferredOutcome::Saved {
         memory: Box::new(service::get(&access, scope, &proposal.record.id)?),
@@ -2009,6 +2040,26 @@ mod inferred_tests {
             .filter(|r| r.content.contains("tabs"))
             .count();
         assert_eq!(live, 1, "a duplicate must confirm, not multiply");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The record id embeds the clock, so a re-inference a couple of seconds
+    /// later must still match by content and add no row.
+    #[tokio::test]
+    async fn duplicate_after_two_seconds_not_inserted() {
+        let dir = root("dupe-late");
+        allow_automatic(&dir);
+        let content = "The user prefers tabs over spaces.";
+        assert!(matches!(propose(&dir, content).await, InferredOutcome::Saved { .. }));
+        tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+        assert!(matches!(propose(&dir, content).await, InferredOutcome::Saved { .. }));
+        let store = crate::workspace::permanent_store(&dir);
+        let rows = crate::memory::store::load(&store, Scope::User)
+            .records
+            .into_iter()
+            .filter(|r| r.content.contains("tabs"))
+            .count();
+        assert_eq!(rows, 1, "a late duplicate must confirm, not add a row");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

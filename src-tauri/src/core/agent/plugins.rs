@@ -1717,6 +1717,13 @@ fn install_git_pinned(
             return Err(sha_mismatch(pinned, &actual));
         }
     }
+    // The commit is recorded; the history is not part of the plugin. Keeping
+    // it would install the whole object store and a config git may later read.
+    if let Err(e) = std::fs::remove_dir_all(tmp.join(".git")) {
+        if e.kind() != io::ErrorKind::NotFound {
+            log::warn!("plugins: could not remove .git from staging: {e}");
+        }
+    }
     let payload_root = source
         .subdir
         .as_deref()
@@ -2997,6 +3004,20 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("already installed"), "{err}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn root_plugin_install_has_no_dot_git() {
+        let repo = make_repo("nodotgit", true);
+        let root = unique_root("nodotgit");
+        install(&root, &format!("file://{}", repo.display()))
+            .await
+            .unwrap();
+        let dir = skills::plugins_dir(&root).join("release-tools");
+        assert!(dir.join("plugin.toml").is_file());
+        assert!(!dir.join(".git").exists(), ".git must not be installed");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     /// A symbolic link committed to a plugin repository is never checked out

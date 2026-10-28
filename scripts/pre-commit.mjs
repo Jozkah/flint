@@ -92,12 +92,14 @@ export function runChecks({
 
   const lint = run(
     yarnCommand(platform),
-    ['lint', '--fix', '--quiet'],
+    ['lint', '--quiet'],
     root,
     platform === 'win32'
   )
   if (!lint.ok) {
-    log('pre-commit: lint failed.')
+    // No `--fix` here: it rewrites the whole working tree, including unstaged
+    // work in progress, while the commit only takes the index.
+    log('pre-commit: lint failed. Run `yarn lint --fix`, review, and re-stage.')
     return lint.status || 1
   }
   return 0
@@ -109,7 +111,7 @@ const invokedDirectly =
   process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invokedDirectly) {
   // `--help` only describes the gate; it must not run it, because the lint step
-  // rewrites files (`--fix`) and takes longer than a smoke test should wait.
+  // takes longer than a smoke test should wait.
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
     console.log(
       'pre-commit: checks staged changes for whitespace errors and conflict markers, then runs the workspace lint.'

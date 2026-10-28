@@ -5654,7 +5654,7 @@ auto_compact_window = 9000
         // Restrict the "caveman" plugin to Home only.
         let mut matrix = Matrix::load();
         matrix.set(ItemKind::Plugin, "caveman", &Surface::Home, true);
-        matrix.save();
+        matrix.save().unwrap();
 
         let reg_home = SubagentRegistry::load_for(&root, Surface::Home);
         assert!(

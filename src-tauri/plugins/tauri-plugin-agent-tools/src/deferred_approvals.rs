@@ -140,6 +140,19 @@ pub enum Redeem {
 
 static LOCK: Mutex<()> = Mutex::new(());
 
+/// The process-local mutex plus the cross-process file lock, so the CLI and
+/// the desktop cannot both spend the same approval.
+struct Guard {
+    _held: crate::mailbox::Held,
+    _local: std::sync::MutexGuard<'static, ()>,
+}
+
+fn lock(data_folder: &Path) -> Result<Guard, String> {
+    let local = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let held = crate::mailbox::Held::take(&store_file(data_folder))?;
+    Ok(Guard { _held: held, _local: local })
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct File {
     #[serde(default)]
@@ -234,7 +247,7 @@ pub fn defer_at(
     ttl_secs: u64,
     now: u64,
 ) -> Result<Deferred, String> {
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = lock(data_folder)?;
     let mut items = read(data_folder)?;
     expire(&mut items, now);
     let project = project_key(new.project_root);
@@ -282,7 +295,9 @@ pub fn list_at(
     include_settled: bool,
     now: u64,
 ) -> Vec<Deferred> {
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Ok(_guard) = lock(data_folder) else {
+        return Vec::new();
+    };
     let key = project.map(project_key);
     let mut items = read(data_folder).unwrap_or_default();
     expire(&mut items, now);
@@ -301,7 +316,7 @@ pub fn answer(data_folder: &Path, id: &str, allow: bool) -> Result<Deferred, Str
 }
 
 pub fn answer_at(data_folder: &Path, id: &str, allow: bool, now: u64) -> Result<Deferred, String> {
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = lock(data_folder)?;
     let mut items = read(data_folder)?;
     expire(&mut items, now);
     let Some(entry) = items.iter_mut().find(|d| d.id == id) else {
@@ -327,7 +342,7 @@ pub fn answer_at(data_folder: &Path, id: &str, allow: bool, now: u64) -> Result<
 
 /// Drop a record from the listing.
 pub fn discard(data_folder: &Path, id: &str) -> Result<bool, String> {
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = lock(data_folder)?;
     let mut items = read(data_folder)?;
     let before = items.len();
     items.retain(|d| d.id != id);
@@ -357,7 +372,9 @@ pub fn redeem_at(
     args_digest: &str,
     now: u64,
 ) -> Redeem {
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Ok(_guard) = lock(data_folder) else {
+        return Redeem::None;
+    };
     // Unreadable store: nothing is found, so the call is asked about afresh.
     let Ok(mut items) = read(data_folder) else {
         return Redeem::None;
@@ -421,7 +438,9 @@ pub fn void_session(data_folder: &Path, session: &str) -> usize {
 }
 
 pub fn void_session_at(data_folder: &Path, session: &str, now: u64) -> usize {
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Ok(_guard) = lock(data_folder) else {
+        return 0;
+    };
     let Ok(mut items) = read(data_folder) else {
         return 0;
     };
@@ -451,7 +470,7 @@ pub fn record_restore(data_folder: &Path, session: &str) -> Result<(), String> {
         return Ok(());
     }
     void_session(data_folder, session);
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = lock(data_folder)?;
     let path = restores_file(data_folder);
     let mut file: Restores = std::fs::read_to_string(&path)
         .ok()
@@ -476,7 +495,7 @@ pub fn take_restore(data_folder: &Path, session: &str) -> Option<u64> {
     if session.is_empty() {
         return None;
     }
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = lock(data_folder).ok()?;
     let path = restores_file(data_folder);
     let mut file: Restores = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
     let at = file.sessions.remove(session)?;
@@ -728,5 +747,33 @@ mod tests {
         let all = list_at(&f.data, None, true, T0 + KEEP_SETTLED_SECS + 11);
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, open.id);
+    }
+
+    #[test]
+    fn deferred_two_handles_no_lost_update() {
+        let f = fx();
+        // Another process holds the store: a writer waits, then both survive.
+        let held = crate::mailbox::Held::take(&store_file(&f.data)).unwrap();
+        let data = f.data.clone();
+        let project = f.project.clone();
+        let writer = std::thread::spawn(move || {
+            let n = NewDeferred {
+                project_root: &project,
+                session: "s-a",
+                tool: "bash",
+                kind: "exec",
+                summary: "a",
+                args_digest: "digest-a",
+                detail: "a",
+                base_file: None,
+            };
+            defer_at(&data, n, 600, 1_000).unwrap()
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!writer.is_finished(), "the writer ignored the held lock");
+        drop(held);
+        writer.join().unwrap();
+        defer_at(&f.data, ask(&f, "s-b", "digest-b"), 600, 1_000).unwrap();
+        assert_eq!(list_at(&f.data, None, true, 1_000).len(), 2);
     }
 }

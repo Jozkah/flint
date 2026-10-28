@@ -66,6 +66,30 @@ describe('reading frontmatter', () => {
     expect(body).toBe('Just instructions.')
   })
 
+  it('folds a > block scalar and keeps its colons out of the keys', () => {
+    const { data } = parseFrontmatter(
+      '---\ndescription: >\n  Use when: foo\n  bar\nname: real\n---\nx'
+    )
+    expect(data).toEqual({ description: 'Use when: foo bar', name: 'real' })
+  })
+
+  it('keeps newlines in a | block scalar', () => {
+    const { data } = parseFrontmatter('---\ndescription: |\n  one\n  two\n---\nx')
+    expect(data?.description).toBe('one\ntwo')
+  })
+
+  it('does not let an injected key inside a scalar become a key', () => {
+    const { data } = parseFrontmatter(
+      '---\ndescription: |\n  hi\n  name: evil\nname: good\n---\nx'
+    )
+    expect(data?.name).toBe('good')
+  })
+
+  it('reports a stray indented line as malformed', () => {
+    const { data } = parseFrontmatter('---\nname: a\n  foo: bar\n---\nx')
+    expect(data).toBeNull()
+  })
+
   it('strips quotes rather than keeping them in the value', () => {
     const { data } = parseFrontmatter('---\nname: "reviewer"\n---\nx')
 

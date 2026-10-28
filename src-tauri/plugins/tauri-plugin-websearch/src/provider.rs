@@ -344,6 +344,31 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
                 let v4 = std::net::Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
                 return is_public_ip(IpAddr::V4(v4));
             }
+            // IPv4-compatible (::a.b.c.d, deprecated): low 32 bits are an IPv4.
+            if seg[..6] == [0, 0, 0, 0, 0, 0] {
+                let [.., hi, lo] = seg;
+                let v4 = std::net::Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            // 6to4 (2002::/16): segments 1-2 are the embedded IPv4.
+            if seg[0] == 0x2002 {
+                let v4 = std::net::Ipv4Addr::new(
+                    (seg[1] >> 8) as u8, seg[1] as u8, (seg[2] >> 8) as u8, seg[2] as u8,
+                );
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            // Teredo (2001:0000::/32): server in segments 2-3, client IPv4 is
+            // segments 6-7 XORed with 0xffff. Both must be public.
+            if seg[0] == 0x2001 && seg[1] == 0 {
+                let server = std::net::Ipv4Addr::new(
+                    (seg[2] >> 8) as u8, seg[2] as u8, (seg[3] >> 8) as u8, seg[3] as u8,
+                );
+                let (c_hi, c_lo) = (seg[6] ^ 0xffff, seg[7] ^ 0xffff);
+                let client = std::net::Ipv4Addr::new(
+                    (c_hi >> 8) as u8, c_hi as u8, (c_lo >> 8) as u8, c_lo as u8,
+                );
+                return is_public_ip(IpAddr::V4(server)) && is_public_ip(IpAddr::V4(client));
+            }
             !(v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
@@ -387,20 +412,46 @@ fn proxy_configured() -> bool {
         })
 }
 
-/// With a proxy in the path, refuse a name that resolves (here) to any
-/// non-public address. Blocking; only used on the proxy path.
+/// With a proxy in the path, refuse a name that does not resolve here to
+/// public addresses only. Fails closed: a resolve error or empty answer is
+/// refused too, since the proxy would resolve the name elsewhere.
+///
+/// Known limit: the proxy re-resolves the name itself (and for https only sees
+/// the SNI), so a DNS-rebinding answer between this check and the proxy's own
+/// lookup cannot be ruled out. Each redirect hop is re-checked, but the proxy
+/// must enforce its own egress policy for that gap to be closed.
 fn check_name_public_blocking(url: &reqwest::Url) -> Result<(), String> {
     use std::net::ToSocketAddrs;
-    if let Some(url::Host::Domain(d)) = url.host() {
-        if let Ok(addrs) = (d, 0u16).to_socket_addrs() {
-            if addrs.into_iter().any(|a| !is_public_ip(a.ip())) {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) if !is_public_ip(ip.into()) => {
+            Err(format!("refused to fetch {url}: {ip} is a local or private address"))
+        }
+        Some(url::Host::Ipv6(ip)) if !is_public_ip(ip.into()) => {
+            Err(format!("refused to fetch {url}: {ip} is a local or private address"))
+        }
+        Some(url::Host::Domain(d)) => {
+            let addrs: Vec<_> = (d, 0u16)
+                .to_socket_addrs()
+                .map_err(|e| {
+                    format!(
+                        "refused to fetch {url}: {d} did not resolve locally ({e}) and a proxy would resolve it elsewhere"
+                    )
+                })?
+                .collect();
+            if addrs.is_empty() {
+                return Err(format!(
+                    "refused to fetch {url}: {d} did not resolve locally and a proxy would resolve it elsewhere"
+                ));
+            }
+            if addrs.iter().any(|a| !is_public_ip(a.ip())) {
                 return Err(format!(
                     "refused to fetch {url}: {d} resolves to a local or private address"
                 ));
             }
+            Ok(())
         }
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 /// Resolves a name to its public addresses only; a name with none is an error.
@@ -548,14 +599,20 @@ pub struct ExaProvider {
 
 impl ExaProvider {
     pub fn new(api_key: Option<String>) -> Result<Self, String> {
+        Self::with_client_factory(api_key, build_http_client)
+    }
+
+    /// Build with an injected client factory (the shared proxy-aware one in
+    /// production; `PROXY_HOOK` is a OnceLock so tests inject their own).
+    fn with_client_factory(
+        api_key: Option<String>,
+        factory: impl FnOnce(&str) -> Result<reqwest::Client, String>,
+    ) -> Result<Self, String> {
         let mode = match normalize_key(api_key) {
             Some(key) => ExaMode::Rest(key),
             None => ExaMode::Hosted,
         };
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .build()
-            .map_err(|e| format!("failed to build HTTP client for Exa: {e}"))?;
+        let client = factory("Exa")?;
         Ok(Self { mode, client, hosted_url: EXA_HOSTED_URL.to_string() })
     }
 
@@ -2156,12 +2213,39 @@ mod tests {
             "100.64.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "240.0.0.1", "198.18.0.1",
             "::1", "::", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "fc00::1", "fd12::1", "fe80::1",
             "64:ff9b::7f00:1", "ff02::1",
+            "::127.0.0.1", "::10.0.0.1", "::a00:1", "2002:7f00:1::1", "2002:a00:1::", "2002:c0a8:101::1",
+            "2001:0:4136:e378:8000:63bf:80ff:fefe", "2001:0:7f00:1::1", "2001:0:4136:e378:8000:63bf:f5ff:fffe",
         ] {
             assert!(!is_public_ip(local.parse().unwrap()), "{local} counted as public");
         }
-        for public in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"] {
+        for public in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8", "2002:0808:0808::1"] {
             assert!(is_public_ip(public.parse().unwrap()), "{public} counted as local");
         }
+    }
+
+    #[test]
+    fn proxy_path_refuses_unresolvable_name() {
+        let url = reqwest::Url::parse("https://no-such-host.invalid/").unwrap();
+        let err = check_name_public_blocking(&url).unwrap_err();
+        assert!(err.contains("did not resolve locally"), "{err}");
+    }
+
+    #[test]
+    fn proxy_path_refuses_name_resolving_to_loopback() {
+        let url = reqwest::Url::parse("https://localhost/").unwrap();
+        assert!(check_name_public_blocking(&url).is_err());
+    }
+
+    #[test]
+    fn exa_provider_builds_via_shared_client_factory() {
+        let mut called_with = None;
+        let p = ExaProvider::with_client_factory(None, |name| {
+            called_with = Some(name.to_string());
+            reqwest::Client::builder().build().map_err(|e| e.to_string())
+        });
+        assert!(p.is_ok());
+        assert_eq!(called_with.as_deref(), Some("Exa"));
+        assert!(ExaProvider::with_client_factory(None, |_| Err("boom".into())).is_err());
     }
 
     #[test]

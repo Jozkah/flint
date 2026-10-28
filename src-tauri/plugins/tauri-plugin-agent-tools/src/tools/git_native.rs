@@ -272,7 +272,7 @@ fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> (bool, String) {
         .env("GIT_PAGER", "cat")
         .env("GIT_OPTIONAL_LOCKS", "0");
     hide_console(&mut cmd);
-    match cmd.output() {
+    match crate::tools::owned::output_blocking(&mut cmd, GIT_QUERY_TIMEOUT) {
         Ok(out) => {
             let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
             if !out.status.success() {
@@ -358,18 +358,39 @@ fn matching_clones(git: &Path, target: &RepoRef, read_roots: &[PathBuf]) -> Vec<
 /// `(gh installed, gh authenticated)`. Native, no shell. `"unknown"` when `gh`
 /// is present but its auth state could not be read.
 fn gh_status() -> (bool, &'static str) {
+    // `gh auth status` can reach the network and takes a while; one answer per
+    // minute is plenty for a recovery hint.
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, (bool, &'static str))>> =
+        std::sync::Mutex::new(None);
+    if let Ok(g) = CACHE.lock() {
+        if let Some((at, v)) = *g {
+            if at.elapsed() < std::time::Duration::from_secs(60) {
+                return v;
+            }
+        }
+    }
     let Some(gh) = on_path(if cfg!(windows) { "gh.exe" } else { "gh" }) else {
         return (false, "unknown");
     };
     let mut cmd = Command::new(&gh);
-    cmd.args(["auth", "status"]);
+    cmd.args(["auth", "status"])
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("GH_NO_UPDATE_NOTIFIER", "1");
     hide_console(&mut cmd);
-    match cmd.output() {
+    let v = match crate::tools::owned::output_blocking(&mut cmd, GH_STATUS_TIMEOUT) {
         Ok(out) if out.status.success() => (true, "yes"),
         Ok(_) => (true, "no"),
         Err(_) => (true, "unknown"),
+    };
+    if let Ok(mut g) = CACHE.lock() {
+        *g = Some((std::time::Instant::now(), v));
     }
+    v
 }
+
+/// Deadline for a local git query and for `gh auth status` (W10).
+const GIT_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const GH_STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// A read-only Git operation the tool will run. Fixed argv per variant so no
 /// caller string reaches git as an option -- there is no arbitrary passthrough.
@@ -418,7 +439,14 @@ pub async fn git_inspect(args: &Value, read_roots: &[PathBuf]) -> String {
         }).to_string();
     };
 
-    let clones = matching_clones(&git, &target, read_roots);
+    // The git queries below block on child processes: keep them off the
+    // async worker (W10).
+    let clones = {
+        let (g, t, r) = (git.clone(), target.clone(), read_roots.to_vec());
+        tokio::task::spawn_blocking(move || matching_clones(&g, &t, &r))
+            .await
+            .unwrap_or_default()
+    };
     match clones.len() {
         0 => json!({
             "status": "no_local_clone",
@@ -461,7 +489,14 @@ pub async fn git_inspect(args: &Value, read_roots: &[PathBuf]) -> String {
                 dir.display()
             );
             for cmd in commands {
-                let (ok, text) = run_git(&git, dir, &cmd);
+                let (g, d) = (git.clone(), dir.clone());
+                let argv: Vec<String> = cmd.iter().map(|s| s.to_string()).collect();
+                let (ok, text) = tokio::task::spawn_blocking(move || {
+                    let a: Vec<&str> = argv.iter().map(String::as_str).collect();
+                    run_git(&g, &d, &a)
+                })
+                .await
+                .unwrap_or((false, "failed to run git".to_string()));
                 out.push_str(&format!("\n$ git {}\n{}\n", cmd.join(" "), if text.is_empty() { if ok { "(no output)" } else { "(failed)" } } else { &text }));
             }
             out.push_str("\nContinue the original task using this local clone. Read files with the read/ls/grep tools (this folder is attached), and use git_inspect again for other read-only Git facts.");
@@ -520,7 +555,10 @@ pub fn web_fetch_recovery_note(url: &str, err: &str, read_roots: &[PathBuf]) -> 
     // Structured metadata so the agent loop has machine-readable state, not only
     // prose. Mirrors the RecoveryReport shape: reason, what was searched, what is
     // available, and the ordered actions.
-    let (gh_available, gh_authenticated) = gh_status();
+    // gh's login matters only when no clone answers the question.
+    let gh = clones.is_empty().then(gh_status);
+    let gh_available = gh.map(|g| json!(g.0)).unwrap_or(Value::Null);
+    let gh_authenticated = gh.map(|g| json!(g.1)).unwrap_or(Value::Null);
     let recommended_actions: Vec<&str> = match clones.len() {
         1 => vec!["call_git_inspect", "use_matching_local_clone"],
         n if n > 1 => vec!["call_git_inspect", "ask_user_to_choose_clone"],

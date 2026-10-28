@@ -323,8 +323,22 @@ fn write_atomic_with(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let temp = path.with_extension(format!("tmp-{}", std::process::id()));
-    std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+    // `create_new` never follows a link planted at the temp name and never
+    // reuses a leftover: it fails instead of writing through it.
+    let temp = crate::atomic_file::temp_sibling(path);
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = file.write_all(bytes) {
+            drop(file);
+            let _ = std::fs::remove_file(&temp);
+            return Err(e.to_string());
+        }
+    }
     if let Some(perms) = perms {
         if let Err(e) = std::fs::set_permissions(&temp, perms) {
             let _ = std::fs::remove_file(&temp);
@@ -535,15 +549,52 @@ pub fn validate_path(raw: &str) -> Result<String, ProposalError> {
 /// Git hooks. The number is not always 1 -- it depends on what else was named
 /// alike first -- so every `git~N` and `jan~N` is refused, as Git itself does.
 pub fn is_reserved_name(part: &str) -> bool {
-    let lower = part.trim_end_matches(['.', ' ']).to_ascii_lowercase();
-    if lower == ".git" || lower == ".jan" {
-        return true;
+    is_git_name(part) || {
+        let lower = canonical_component(part);
+        lower == ".jan" || is_short_alias_of(&lower, ".jan", false)
     }
-    ["git~", "jan~"].iter().any(|prefix| {
-        lower
-            .strip_prefix(prefix)
-            .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
-    })
+}
+
+/// One path component the way Windows resolves it: lower case, with an NTFS
+/// stream or index suffix dropped (`.git::$INDEX_ALLOCATION` opens `.git`
+/// itself, `.git:x` a stream of it) and the trailing dots and spaces Windows
+/// ignores trimmed.
+pub fn canonical_component(part: &str) -> String {
+    let base = part.split(':').next().unwrap_or(part);
+    base.trim_end_matches(['.', ' ']).to_ascii_lowercase()
+}
+
+/// `.git`, or its 8.3 short name `git~N`, however it is cased or streamed.
+pub fn is_git_name(part: &str) -> bool {
+    let lower = canonical_component(part);
+    lower == ".git" || is_short_alias_of(&lower, ".git", false)
+}
+
+/// Whether `component` (already [`canonical_component`]) is the 8.3 short
+/// name NTFS gives a file called `name`: the first six letters of the name
+/// without its leading dot, `~N`, and the first three letters of the
+/// extension (`.husky` is `husky~1`, `.gitlab-ci.yml` is `gitlab~1.yml`).
+/// The tail number is not always 1, and the prefix shrinks as it grows, so
+/// the shape is matched rather than one spelling. `any_ext` ignores the
+/// extension, for a family such as `lefthook.*`.
+pub fn is_short_alias_of(component: &str, name: &str, any_ext: bool) -> bool {
+    let Some((left, right)) = component.split_once('~') else {
+        return false;
+    };
+    let (digits, got_ext) = right.split_once('.').unwrap_or((right, ""));
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let stripped = name.trim_start_matches('.').to_ascii_lowercase();
+    let (stem, ext) = match stripped.rfind('.') {
+        Some(i) => (&stripped[..i], &stripped[i + 1..]),
+        None => (&stripped[..], ""),
+    };
+    let stem: String = stem.chars().filter(|c| !matches!(c, '.' | ' ')).collect();
+    let take = 7usize.saturating_sub(digits.len()).clamp(1, 6);
+    let want: String = stem.chars().take(take).collect();
+    let want_ext: String = ext.chars().take(3).collect();
+    left == want && (any_ext || got_ext == want_ext)
 }
 
 /// Whether `root/rel` resolves into `root/.git` or `root/.jan`, whatever it
@@ -1199,6 +1250,35 @@ fn existing_mode(_target: &Path) -> Option<std::fs::Permissions> {
     None
 }
 
+/// Whether `file` no longer matches what the plan read: its destination now
+/// passes through a link, or holds different bytes than were planned against.
+fn changed_since_plan(dest_root: &Path, file: &PlannedFile) -> Option<ProposalError> {
+    if passes_through_link(dest_root, &file.path) {
+        return Some(ProposalError::LinkedDestination(file.path.clone()));
+    }
+    match read_current(dest_root, &file.path) {
+        Ok(now) if now == file.current => None,
+        Ok(_) => Some(ProposalError::Conflicts(vec![Conflict {
+            path: file.path.clone(),
+            hunk: String::new(),
+            reason: "the file changed at the destination after the plan was made; nothing was applied"
+                .into(),
+        }])),
+        Err(e) => Some(e),
+    }
+}
+
+/// Put back files already written, in reverse; the paths that could not be.
+fn roll_back(dest_root: &Path, written: &[&PlannedFile]) -> Vec<String> {
+    let mut not_restored = Vec::new();
+    for done in written.iter().rev() {
+        if write_file(dest_root, &done.path, done.current.as_deref()).is_err() {
+            not_restored.push(done.path.clone());
+        }
+    }
+    not_restored
+}
+
 /// Apply an approval. All files land, or none do.
 pub fn apply(
     data_folder: &Path,
@@ -1235,15 +1315,24 @@ pub fn apply(
 
     let mut written: Vec<&PlannedFile> = Vec::new();
     for file in &planned {
+        // Looked at again immediately before this file is written: the plan
+        // was made earlier, and a file edited (or a folder turned into a link)
+        // in between must not be overwritten from a stale read.
+        if let Some(err) = changed_since_plan(dest_root, file) {
+            let not_restored = roll_back(dest_root, &written);
+            audit(data_folder, &record, "rolled-back", format!("{}: {err:?}", file.path));
+            return Err(match (err, not_restored.is_empty()) {
+                (err, true) => err,
+                (err, false) => ProposalError::WriteFailed {
+                    error: format!("{err:?}"),
+                    not_restored,
+                },
+            });
+        }
         if let Err(e) = write_file(dest_root, &file.path, file.content.as_deref()) {
             // Put back everything already written, in reverse, and say which
             // could not be (Jozkah/jan#264).
-            let mut not_restored = Vec::new();
-            for done in written.iter().rev() {
-                if write_file(dest_root, &done.path, done.current.as_deref()).is_err() {
-                    not_restored.push(done.path.clone());
-                }
-            }
+            let not_restored = roll_back(dest_root, &written);
             audit(data_folder, &record, "rolled-back", format!("{}: {e}", file.path));
             return Err(ProposalError::WriteFailed { error: e, not_restored });
         }
@@ -1310,6 +1399,25 @@ pub fn reject(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn temp_symlink_planted_not_followed() {
+        let dir = crate::test_temp_root().join(format!("prop-temp-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let victim = dir.join("victim.txt");
+        std::fs::write(&victim, "keep").unwrap();
+        let target = dir.join("a.rs");
+        // Occupy every name a writer could pick next with a link to the victim.
+        for _ in 0..8 {
+            let temp = crate::atomic_file::temp_sibling(&target);
+            let _ = std::os::unix::fs::symlink(&victim, &temp);
+        }
+        let _ = write_atomic(&target, b"new");
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {
@@ -1750,6 +1858,36 @@ mod tests {
     }
 
     #[test]
+    fn apply_conflict_when_file_changed_after_plan() {
+        let (_data, dest) = dirs("changed-after-plan");
+        std::fs::write(dest.join("a.txt"), "edited later\n").unwrap();
+        let planned = PlannedFile {
+            path: "a.txt".into(),
+            content: Some(b"A\n".to_vec()),
+            current: Some(b"a\n".to_vec()),
+        };
+        assert!(matches!(
+            changed_since_plan(&dest, &planned),
+            Some(ProposalError::Conflicts(_))
+        ));
+        let fresh = PlannedFile { current: Some(b"edited later\n".to_vec()), ..planned };
+        assert!(changed_since_plan(&dest, &fresh).is_none());
+    }
+
+    #[test]
+    fn apply_rolls_back_on_conflict() {
+        let (_data, dest) = dirs("rollback-conflict");
+        std::fs::write(dest.join("a.txt"), "A\n").unwrap();
+        let first = PlannedFile {
+            path: "a.txt".into(),
+            content: Some(b"A\n".to_vec()),
+            current: Some(b"a\n".to_vec()),
+        };
+        assert!(roll_back(&dest, &[&first]).is_empty());
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a\n");
+    }
+
+    #[test]
     fn paths_outside_the_project_are_refused_at_creation() {
         let (data, dest) = dirs("paths");
         for bad in ["../escape.txt", "/etc/passwd", "C:/Windows/x", ".jan/state"] {
@@ -2179,5 +2317,32 @@ mod tests {
         );
         assert!(!dest.join("Cargo.lock").exists());
         assert!(!dest.join("db/migrations/0002.sql").exists());
+    }
+}
+
+#[cfg(test)]
+mod short_alias_tests {
+    use super::*;
+
+    #[test]
+    fn reserved_names_cover_streams_and_short_names() {
+        for part in [".git", ".GIT.", "GIT~1", "git~7", ".git::$INDEX_ALLOCATION", ".jan", "JAN~1", ".jan:x"] {
+            assert!(is_reserved_name(part), "{part}");
+        }
+        for part in ["git~", "git~x", ".gitignore", "git", "jan.txt"] {
+            assert!(!is_reserved_name(part), "{part}");
+        }
+    }
+
+    #[test]
+    fn short_alias_shape() {
+        assert!(is_short_alias_of("husky~1", ".husky", false));
+        assert!(is_short_alias_of("gitlab~1.yml", ".gitlab-ci.yml", false));
+        assert!(is_short_alias_of("gitlab~3.yml", ".gitlab-ci.yml", false));
+        // The prefix shrinks once the number takes a second digit.
+        assert!(is_short_alias_of("gitla~10.yml", ".gitlab-ci.yml", false));
+        assert!(!is_short_alias_of("husky~1.txt", ".husky", false));
+        assert!(!is_short_alias_of("hooks~1", ".husky", false));
+        assert!(is_short_alias_of("leftho~1.yml", "lefthook.yml", true));
     }
 }

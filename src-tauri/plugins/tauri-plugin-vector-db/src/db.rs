@@ -35,6 +35,10 @@ pub struct AttachmentFileInfo {
     pub file_type: Option<String>,
     pub size: Option<i64>,
     pub chunk_count: i64,
+    /// Set by `create_file` when an existing row for the same path was reset
+    /// because the file on disk changed; its old chunks are gone.
+    #[serde(default)]
+    pub replaced: bool,
 }
 
 // New minimal chunk input (no id/metadata) for file-scoped insertion
@@ -59,12 +63,72 @@ pub fn default_base_dir() -> PathBuf {
     base
 }
 
-pub fn collection_path(base: &Path, name: &str) -> PathBuf {
-    let mut p = base.to_path_buf();
-    let clean = name.replace(['/', '\\'], "_");
-    let filename = format!("{}.db", clean);
-    p.push(&filename);
-    p
+const RESERVED_WINDOWS_STEMS: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// Map a collection name to its `.db` file under `base`. The name is an
+/// allow-list (`[A-Za-z0-9_.-]{1,128}`, no leading dot, no Windows reserved
+/// device stem) so `C:evil`, `..`, `a/b` and `NUL` can never leave `base`.
+pub fn collection_path(base: &Path, name: &str) -> Result<PathBuf, VectorDBError> {
+    let bad = |why: &str| VectorDBError::InvalidInput(format!("invalid collection name '{name}': {why}"));
+    if name.is_empty() || name.len() > 128 {
+        return Err(bad("length must be 1-128"));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    {
+        return Err(bad("only letters, digits, '_', '.' and '-' are allowed"));
+    }
+    if name.starts_with('.') {
+        return Err(bad("must not start with '.'"));
+    }
+    let stem = name.split('.').next().unwrap_or(name);
+    if RESERVED_WINDOWS_STEMS.iter().any(|r| r.eq_ignore_ascii_case(stem)) {
+        return Err(bad("reserved device name"));
+    }
+    let path = base.join(format!("{name}.db"));
+    if path.parent() != Some(base) {
+        return Err(bad("escapes the database folder"));
+    }
+    Ok(path)
+}
+
+/// Remove a collection's database and its `-wal`, `-shm` and `-journal`
+/// sidecars. Missing files are fine; a `.db` that is still present afterwards
+/// (for example locked on Windows) is an error.
+pub fn delete_collection_files(base: &Path, name: &str) -> Result<(), VectorDBError> {
+    let db_path = collection_path(base, name)?;
+    let mut targets = vec![db_path.clone()];
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut s = db_path.clone().into_os_string();
+        s.push(suffix);
+        targets.push(PathBuf::from(s));
+    }
+    let mut last_err: Option<std::io::Error> = None;
+    for target in &targets {
+        for attempt in 0..5 {
+            match fs::remove_file(target) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < 4 {
+                        std::thread::sleep(std::time::Duration::from_millis(40));
+                    }
+                }
+            }
+        }
+    }
+    if db_path.exists() {
+        let why = last_err.map(|e| e.to_string()).unwrap_or_else(|| "file still present".into());
+        return Err(VectorDBError::DatabaseError(format!(
+            "could not delete collection '{name}': {why}"
+        )));
+    }
+    Ok(())
 }
 
 pub fn open_or_init_conn(path: &PathBuf) -> Result<Connection, VectorDBError> {
@@ -286,25 +350,89 @@ fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -
     paths
 }
 
+/// Column options of `chunks_vec`. Cosine distance makes the ANN score
+/// (`1 - distance`) the same quantity the linear path computes.
+const VEC_METRIC: &str = "distance_metric=cosine";
+
+/// The `CREATE` text of `chunks_vec`, if the table exists.
+fn vec_table_sql(conn: &Connection) -> Option<String> {
+    conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='chunks_vec'",
+        [],
+        |r| r.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .flatten()
+}
+
+/// Whether `chunks_vec` exists and ranks by cosine distance. A table made by an
+/// earlier build ranks by L2, which is not comparable with the linear score.
+fn cosine_vec_table_exists(conn: &Connection) -> bool {
+    vec_table_sql(conn).is_some_and(|sql| sql.contains(VEC_METRIC))
+}
+
+/// Create `chunks_vec` for `dimension`, rebuilding it from `chunks` when the
+/// existing table is an L2 one or was built for another dimension (the
+/// embedding model changed). Returns false when ANN is unavailable, so callers
+/// fall back to linear search.
 pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
-    if try_load_sqlite_vec(conn) {
-        let create = format!(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{}])",
-            dimension
-        );
-        match conn.execute(&create, []) {
-            Ok(_) => return true,
-            Err(e) => {
-                println!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
-            }
+    if !try_load_sqlite_vec(conn) {
+        return false;
+    }
+    let rebuild = vec_table_sql(conn)
+        .is_some_and(|sql| !sql.contains(VEC_METRIC) || !sql.contains(&format!("float[{dimension}]")));
+    if rebuild {
+        if let Err(e) = conn.execute("DROP TABLE chunks_vec", []) {
+            println!("[VectorDB] ✗ Failed to drop stale chunks_vec: {}", e);
+            return false;
         }
     }
-    false
+    let create = format!(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{dimension}] {VEC_METRIC})"
+    );
+    if let Err(e) = conn.execute(&create, []) {
+        println!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
+        return false;
+    }
+    if rebuild {
+        // Stored embeddings are little-endian f32 blobs, the layout vec0 takes.
+        let filled = conn.execute(
+            "INSERT INTO chunks_vec(rowid, embedding) SELECT rowid, embedding FROM chunks WHERE length(embedding) = ?1",
+            params![(dimension * 4) as i64],
+        );
+        if let Err(e) = filled {
+            println!("[VectorDB] ✗ Failed to rebuild chunks_vec: {}", e);
+            let _ = conn.execute("DROP TABLE IF EXISTS chunks_vec", []);
+            return false;
+        }
+    }
+    true
 }
 
 // ============================================================================
 // Schema Creation
 // ============================================================================
+
+/// Idempotent `ALTER TABLE files ADD COLUMN mtime` for databases made before
+/// the column existed.
+fn ensure_files_mtime(conn: &Connection) -> Result<(), VectorDBError> {
+    let has_mtime = conn
+        .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'mtime'")?
+        .exists([])?;
+    if !has_mtime {
+        conn.execute("ALTER TABLE files ADD COLUMN mtime INTEGER", [])?;
+    }
+    Ok(())
+}
+
+/// Modification time of `path` in whole seconds since the epoch, if readable.
+fn file_mtime(path: &str) -> Option<i64> {
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    let secs = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    i64::try_from(secs).ok()
+}
 
 pub fn create_schema(conn: &Connection, dimension: usize) -> Result<bool, VectorDBError> {
     // Files table
@@ -315,10 +443,12 @@ pub fn create_schema(conn: &Connection, dimension: usize) -> Result<bool, Vector
             name TEXT,
             type TEXT,
             size INTEGER,
-            chunk_count INTEGER DEFAULT 0
+            chunk_count INTEGER DEFAULT 0,
+            mtime INTEGER
         )",
         [],
     )?;
+    ensure_files_mtime(conn)?;
 
     // Chunks table
     conn.execute(
@@ -353,53 +483,21 @@ pub fn create_file(
     file_type: Option<&str>,
     size: Option<i64>,
 ) -> Result<AttachmentFileInfo, VectorDBError> {
+    ensure_files_mtime(conn)?;
     let tx = conn.unchecked_transaction()?;
 
-    // Try get existing by path
-    if let Ok(Some(id)) = tx
-        .prepare("SELECT id FROM files WHERE path = ?1")
-        .and_then(|mut s| s.query_row(params![path], |r| r.get::<_, String>(0)).optional())
-    {
-        let row: AttachmentFileInfo = {
-            let mut stmt = tx.prepare(
-                "SELECT id, path, name, type, size, chunk_count FROM files WHERE id = ?1",
-            )?;
-            stmt.query_row(params![id.as_str()], |r| {
-                Ok(AttachmentFileInfo {
-                    id: r.get(0)?,
-                    path: r.get(1)?,
-                    name: r.get(2)?,
-                    file_type: r.get(3)?,
-                    size: r.get(4)?,
-                    chunk_count: r.get(5)?,
-                })
-            })?
-        };
-        tx.commit()?;
-        return Ok(row);
-    }
-
-    let new_id = Uuid::new_v4().to_string();
     // Determine file size if not provided
     let computed_size: Option<i64> = match size {
         Some(s) if s > 0 => Some(s),
-        _ => {
-            match std::fs::metadata(path) {
-                Ok(meta) => Some(meta.len() as i64),
-                Err(_) => None,
-            }
-        }
+        _ => std::fs::metadata(path).ok().map(|meta| meta.len() as i64),
     };
-    tx.execute(
-        "INSERT INTO files (id, path, name, type, size, chunk_count) VALUES (?1, ?2, ?3, ?4, ?5, 0)",
-        params![new_id, path, name, file_type, computed_size],
-    )?;
+    let mtime = file_mtime(path);
 
-    let row: AttachmentFileInfo = {
+    let read_row = |tx: &Connection, id: &str, replaced: bool| -> Result<AttachmentFileInfo, VectorDBError> {
         let mut stmt = tx.prepare(
-            "SELECT id, path, name, type, size, chunk_count FROM files WHERE path = ?1",
+            "SELECT id, path, name, type, size, chunk_count FROM files WHERE id = ?1",
         )?;
-        stmt.query_row(params![path], |r| {
+        Ok(stmt.query_row(params![id], |r| {
             Ok(AttachmentFileInfo {
                 id: r.get(0)?,
                 path: r.get(1)?,
@@ -407,10 +505,45 @@ pub fn create_file(
                 file_type: r.get(3)?,
                 size: r.get(4)?,
                 chunk_count: r.get(5)?,
+                replaced,
             })
-        })?
+        })?)
     };
 
+    // An existing row for this path: keep it when the file is unchanged (or
+    // cannot be checked); otherwise drop its chunks so stale text cannot be
+    // served, and reuse the row. A NULL stored mtime is unknown and replaced.
+    let existing: Option<(String, Option<i64>, Option<i64>)> = tx
+        .prepare("SELECT id, size, mtime FROM files WHERE path = ?1")?
+        .query_row(params![path], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .optional()?;
+    if let Some((id, old_size, old_mtime)) = existing {
+        let unchanged = match mtime {
+            None => true,
+            Some(m) => old_mtime == Some(m) && (computed_size.is_none() || old_size == computed_size),
+        };
+        if unchanged {
+            let row = read_row(&tx, &id, false)?;
+            tx.commit()?;
+            return Ok(row);
+        }
+        delete_vec_rows(&tx, "file_id = ?1", &id);
+        tx.execute("DELETE FROM chunks WHERE file_id = ?1", params![id])?;
+        tx.execute(
+            "UPDATE files SET name = ?2, type = ?3, size = ?4, mtime = ?5, chunk_count = 0 WHERE id = ?1",
+            params![id, name, file_type, computed_size, mtime],
+        )?;
+        let row = read_row(&tx, &id, true)?;
+        tx.commit()?;
+        return Ok(row);
+    }
+
+    let new_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO files (id, path, name, type, size, chunk_count, mtime) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6)",
+        params![new_id, path, name, file_type, computed_size, mtime],
+    )?;
+    let row = read_row(&tx, &new_id, false)?;
     tx.commit()?;
     Ok(row)
 }
@@ -423,17 +556,9 @@ pub fn insert_chunks(
 ) -> Result<(), VectorDBError> {
     let tx = conn.unchecked_transaction()?;
 
-    // Check if vec table exists
-    let has_vec = if vec_loaded {
-        conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chunks_vec'")
-            .and_then(|mut s| s.query_row([], |r| r.get::<_, String>(0)).optional())
-            .ok()
-            .flatten()
-            .is_some()
-    } else {
-        false
-    };
+    // A table that is not a cosine one is left alone: search ignores it and
+    // `create_schema` rebuilds it from `chunks`.
+    let has_vec = vec_loaded && cosine_vec_table_exists(conn);
 
     // Determine current max order
     let mut current_order: i64 = tx
@@ -462,14 +587,18 @@ pub fn insert_chunks(
                 .prepare("SELECT rowid FROM chunks WHERE id=?1")?
                 .query_row(params![chunk_id], |r| r.get(0))?;
             let json_vec = embedding_to_json(&ch.embedding)?;
-            // Tolerated, not propagated: an existing chunks_vec built for a
-            // different dimension (the embedding model changed) rejects the
-            // row, and linear search still serves it.
+            // Propagated: a row that is stored but missing from the index would
+            // make ANN search silently incomplete. The usual cause is a
+            // chunks_vec built for another dimension, which `create_schema`
+            // rebuilds.
             if let Err(e) = tx.execute(
                 "INSERT OR REPLACE INTO chunks_vec(rowid, embedding) VALUES (?1, ?2)",
                 params![rowid, json_vec],
             ) {
-                println!("[VectorDB] ✗ Failed to index chunk in chunks_vec: {}", e);
+                return Err(VectorDBError::DimensionMismatch(format!(
+                    "could not index a {}-value embedding in chunks_vec: {e}",
+                    ch.embedding.len()
+                )));
             }
         }
     }
@@ -560,6 +689,8 @@ const MAX_SEARCH_LIMIT: usize = 1000;
 /// Upper bound on the `file_ids` filter, well under SQLite's variable limit.
 const MAX_FILE_IDS: usize = 500;
 
+/// Scores are cosine similarity, higher is better, and `threshold` is a floor
+/// on that score on both the ANN and the linear path.
 pub fn search_collection(
     conn: &Connection,
     query_embedding: &[f32],
@@ -583,16 +714,8 @@ pub fn search_collection(
         )));
     }
 
-    let has_vec = if vec_loaded {
-        conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chunks_vec'")
-            .and_then(|mut s| s.query_row([], |r| r.get::<_, String>(0)).optional())
-            .ok()
-            .flatten()
-            .is_some()
-    } else {
-        false
-    };
+    // An L2 table left by an earlier build scores on another scale: linear.
+    let has_vec = vec_loaded && cosine_vec_table_exists(conn);
 
     let prefer_ann = match mode.as_deref() {
         Some("ann") => true,
@@ -604,7 +727,7 @@ pub fn search_collection(
     // returns only those of the k global nearest that belong to the files --
     // often none. A scoped search covers few chunks; scan them exactly.
     if has_vec && prefer_ann && file_ids.is_none() {
-        search_ann(conn, query_embedding, limit, file_ids)
+        search_ann(conn, query_embedding, limit, threshold, file_ids)
     } else {
         search_linear(conn, query_embedding, limit, threshold, file_ids)
     }
@@ -614,6 +737,7 @@ fn search_ann(
     conn: &Connection,
     query_embedding: &[f32],
     limit: usize,
+    threshold: f32,
     file_ids: Option<Vec<String>>,
 ) -> Result<Vec<SearchResult>, VectorDBError> {
     let json_vec = embedding_to_json(query_embedding)?;
@@ -678,11 +802,16 @@ fn search_ann(
         let file_id: String = row.get(2)?;
         let chunk_file_order: i64 = row.get(3)?;
         let distance: f32 = row.get(4)?;
+        // Cosine distance to similarity: higher is better, as on the linear path.
+        let score = 1.0 - distance;
+        if score < threshold {
+            continue;
+        }
 
         results.push(SearchResult {
             id,
             text,
-            score: Some(distance),
+            score: Some(score),
             file_id,
             chunk_file_order,
         });
@@ -818,6 +947,7 @@ pub fn list_attachments(
             file_type,
             size,
             chunk_count,
+            replaced: false,
         });
     }
 
@@ -851,7 +981,8 @@ pub fn get_chunks(
     let mut stmt = conn.prepare(
         "SELECT id, text, chunk_file_order FROM chunks
          WHERE file_id = ?1 AND chunk_file_order >= ?2 AND chunk_file_order <= ?3
-         ORDER BY chunk_file_order"
+         ORDER BY chunk_file_order
+         LIMIT 200"
     )?;
     let mut rows = stmt.query(params![&file_id, start_order, end_order])?;
 
@@ -873,36 +1004,120 @@ pub fn get_chunks(
 // Utility Operations
 // ============================================================================
 
-pub fn chunk_text(text: String, chunk_size: usize, chunk_overlap: usize) -> Vec<String> {
-    if chunk_size == 0 {
-        return vec![];
-    }
+pub const MAX_CHUNK_SIZE: usize = 100_000;
+pub const MAX_CHUNKS: usize = 20_000;
 
+/// Split `text` into windows of `chunk_size` characters that overlap by
+/// `chunk_overlap`. Offsets are char-boundary byte offsets; no per-char vector.
+pub fn chunk_text(
+    text: String,
+    chunk_size: usize,
+    chunk_overlap: usize,
+) -> Result<Vec<String>, VectorDBError> {
+    if chunk_size == 0 || chunk_size > MAX_CHUNK_SIZE {
+        return Err(VectorDBError::InvalidInput(format!(
+            "chunk_size must be between 1 and {MAX_CHUNK_SIZE}"
+        )));
+    }
+    if chunk_overlap >= chunk_size {
+        return Err(VectorDBError::InvalidInput(
+            "chunk_overlap must be smaller than chunk_size".into(),
+        ));
+    }
+    let step = chunk_size - chunk_overlap;
     let mut chunks = Vec::new();
-    let chars: Vec<char> = text.chars().collect();
     let mut start = 0usize;
 
-    while start < chars.len() {
-        let end = (start + chunk_size).min(chars.len());
-        let ch: String = chars[start..end].iter().collect();
-        chunks.push(ch);
-        if end >= chars.len() {
+    while start < text.len() {
+        let rest = &text[start..];
+        let (end, last) = match rest.char_indices().nth(chunk_size) {
+            Some((i, _)) => (start + i, false),
+            None => (text.len(), true),
+        };
+        if chunks.len() >= MAX_CHUNKS {
+            return Err(VectorDBError::InvalidInput(format!(
+                "text would produce more than {MAX_CHUNKS} chunks"
+            )));
+        }
+        chunks.push(text[start..end].to_string());
+        if last {
             break;
         }
-        let advance = if chunk_overlap >= chunk_size {
-            1
-        } else {
-            chunk_size - chunk_overlap
-        };
-        start += advance;
+        start += rest.char_indices().nth(step).map(|(i, _)| i).unwrap_or(rest.len());
     }
 
-    chunks
+    Ok(chunks)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_path_rejects_drive_relative_name() {
+        let base = Path::new("base");
+        for bad in ["C:evil", "..", "a/b", "a\\b", "CON", "nul.x", "", ".hidden", "a b"] {
+            assert!(collection_path(base, bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn collection_path_accepts_real_ids() {
+        let base = Path::new("base");
+        for ok in ["attachments_0a1b-2c", "project_123e4567-e89b", "__memory__", "__status__"] {
+            let p = collection_path(base, ok).unwrap();
+            assert_eq!(p.parent(), Some(base));
+            assert_eq!(p.file_name().unwrap().to_string_lossy(), format!("{ok}.db"));
+        }
+    }
+
+    #[test]
+    fn delete_collection_removes_wal_and_shm() {
+        let dir = std::env::temp_dir().join(format!("vdb-del-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        for ext in ["db", "db-wal", "db-shm", "db-journal"] {
+            fs::write(dir.join(format!("c1.{ext}")), b"x").unwrap();
+        }
+        delete_collection_files(&dir, "c1").unwrap();
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+        // Missing files are fine.
+        delete_collection_files(&dir, "c1").unwrap();
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn delete_collection_errors_when_file_locked() {
+        let dir = std::env::temp_dir().join(format!("vdb-lock-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("locked.db");
+        let _held = fs::File::create(&path).unwrap();
+        assert!(delete_collection_files(&dir, "locked").is_err());
+        drop(_held);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn chunk_text_rejects_overlap_ge_size() {
+        assert!(chunk_text("abcdef".into(), 3, 3).is_err());
+        assert!(chunk_text("abcdef".into(), 3, 9).is_err());
+        assert!(chunk_text("abcdef".into(), 0, 0).is_err());
+    }
+
+    #[test]
+    fn chunk_text_multibyte_boundaries() {
+        let out = chunk_text("héllo wörld ✓✓".into(), 4, 1).unwrap();
+        assert_eq!(out[0], "héll");
+        assert_eq!(out[1], "lo w");
+        assert!(out.iter().all(|c| c.chars().count() <= 4));
+        assert_eq!(out.last().unwrap(), "✓✓");
+    }
+
+    #[test]
+    fn chunk_text_caps_chunk_count() {
+        let text = "a".repeat(MAX_CHUNKS + 5);
+        assert!(chunk_text(text, 1, 0).is_err());
+    }
 
     #[test]
     fn static_vec0_knn_works_on_fresh_connection() {
@@ -1064,6 +1279,90 @@ mod tests {
         assert_eq!(found[0].text, "good");
     }
 
+    fn temp_file(tag: &str, body: &[u8]) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("flint-vdb-cf-{tag}-{}", std::process::id()));
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    #[test]
+    fn create_file_same_size_mtime_returns_existing() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("same", b"hello");
+        let p = path.to_str().unwrap();
+        let first = create_file(&conn, p, Some("a"), None, None).unwrap();
+        insert_chunks(
+            &conn,
+            &first.id,
+            vec![MinimalChunkInput { text: "x".to_string(), embedding: vec![0.1, 0.2, 0.3] }],
+            false,
+        )
+        .unwrap();
+        let second = create_file(&conn, p, Some("a"), None, None).unwrap();
+        assert_eq!(second.id, first.id);
+        assert!(!second.replaced);
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn create_file_changed_replaces_chunks() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("changed", b"hello");
+        let p = path.to_str().unwrap();
+        let first = create_file(&conn, p, Some("a"), None, None).unwrap();
+        insert_chunks(
+            &conn,
+            &first.id,
+            vec![MinimalChunkInput { text: "x".to_string(), embedding: vec![0.1, 0.2, 0.3] }],
+            false,
+        )
+        .unwrap();
+        std::fs::write(&path, b"hello, much longer now").unwrap();
+        let second = create_file(&conn, p, Some("a"), None, None).unwrap();
+        assert_eq!(second.id, first.id);
+        assert!(second.replaced);
+        assert_eq!(second.chunk_count, 0);
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0, "the stale chunks must be gone");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn schema_migration_adds_mtime_to_old_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT, type TEXT, size INTEGER, chunk_count INTEGER DEFAULT 0)",
+            [],
+        )
+        .unwrap();
+        create_schema(&conn, 3).unwrap();
+        // Running it again must not fail on the existing column.
+        create_schema(&conn, 3).unwrap();
+        let has: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'mtime'")
+            .unwrap()
+            .exists([])
+            .unwrap();
+        assert!(has);
+    }
+
+    #[test]
+    fn get_chunks_has_limit() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        let chunks: Vec<MinimalChunkInput> = (0..250)
+            .map(|i| MinimalChunkInput { text: format!("c{i}"), embedding: vec![0.1, 0.2, 0.3] })
+            .collect();
+        insert_chunks(&conn, "f1", chunks, false).unwrap();
+        let got = get_chunks(&conn, "f1".to_string(), 0, 1_000_000).unwrap();
+        assert_eq!(got.len(), 200);
+    }
+
     #[test]
     fn insert_rejects_a_non_finite_embedding() {
         let conn = Connection::open_in_memory().unwrap();
@@ -1126,8 +1425,36 @@ pub fn ensure_memory_table(conn: &Connection) -> Result<(), VectorDBError> {
         )",
         [],
     )?;
+    // Per-project key -> FTS rowid map so re-indexing deletes only the row of
+    // the same (project, message), never another project's row.
+    let keys_existed: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_keys')",
+        [],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS memory_keys (
+            project_id TEXT NOT NULL,
+            msg_id TEXT NOT NULL,
+            fts_rowid INTEGER NOT NULL,
+            ts INTEGER NOT NULL,
+            PRIMARY KEY (project_id, msg_id)
+        )",
+        [],
+    )?;
+    if !keys_existed {
+        // One-time backfill for stores created before this table existed.
+        conn.execute(
+            "INSERT OR REPLACE INTO memory_keys (project_id, msg_id, fts_rowid, ts)
+             SELECT project_id, msg_id, rowid, CAST(ts AS INTEGER) FROM memories",
+            [],
+        )?;
+    }
     Ok(())
 }
+
+/// Most memories kept per project; the oldest are evicted first.
+const MEMORY_PER_PROJECT_CAP: i64 = 20_000;
 
 /// Sanitize raw user text into a safe FTS5 MATCH expression: alphanumeric terms
 /// (>=2 chars) quoted and OR-joined, so FTS5 operators in the input cannot raise
@@ -1145,8 +1472,8 @@ fn build_fts_match(query: &str) -> Option<String> {
     }
 }
 
-/// Idempotent index: delete-then-insert by `msg_id`, so re-indexing an edited
-/// message replaces its row instead of duplicating it.
+/// Idempotent index keyed by (project_id, msg_id): re-indexing an edited
+/// message replaces its row in the same project only.
 pub fn memory_index(
     conn: &Connection,
     msg_id: &str,
@@ -1155,15 +1482,75 @@ pub fn memory_index(
     role: &str,
     ts: i64,
 ) -> Result<(), VectorDBError> {
+    memory_index_capped(conn, msg_id, project_id, text, role, ts, MEMORY_PER_PROJECT_CAP)
+}
+
+fn memory_index_capped(
+    conn: &Connection,
+    msg_id: &str,
+    project_id: &str,
+    text: &str,
+    role: &str,
+    ts: i64,
+    cap: i64,
+) -> Result<(), VectorDBError> {
     ensure_memory_table(conn)?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute("DELETE FROM memories WHERE msg_id = ?1", params![msg_id])?;
-    tx.execute(
-        "INSERT INTO memories (msg_id, project_id, text, role, ts) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![msg_id, project_id, text, role, ts],
-    )?;
-    tx.commit()?;
-    Ok(())
+    // IMMEDIATE so two connections cannot interleave the read-then-write.
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| -> Result<(), VectorDBError> {
+        let old: Option<i64> = conn
+            .query_row(
+                "SELECT fts_rowid FROM memory_keys WHERE project_id = ?1 AND msg_id = ?2",
+                params![project_id, msg_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(rowid) = old {
+            conn.execute("DELETE FROM memories WHERE rowid = ?1", params![rowid])?;
+        }
+        conn.execute(
+            "INSERT INTO memories (msg_id, project_id, text, role, ts) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![msg_id, project_id, text, role, ts],
+        )?;
+        let rowid = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT OR REPLACE INTO memory_keys (project_id, msg_id, fts_rowid, ts) VALUES (?1, ?2, ?3, ?4)",
+            params![project_id, msg_id, rowid, ts],
+        )?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM memory_keys WHERE project_id = ?1",
+            params![project_id],
+            |r| r.get(0),
+        )?;
+        if count > cap {
+            let mut stmt = conn.prepare(
+                "SELECT fts_rowid FROM memory_keys WHERE project_id = ?1
+                 ORDER BY ts ASC, fts_rowid ASC LIMIT ?2",
+            )?;
+            let victims = stmt
+                .query_map(params![project_id, count - cap], |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(stmt);
+            for v in victims {
+                conn.execute("DELETE FROM memories WHERE rowid = ?1", params![v])?;
+                conn.execute(
+                    "DELETE FROM memory_keys WHERE project_id = ?1 AND fts_rowid = ?2",
+                    params![project_id, v],
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
 }
 
 /// BM25-ranked recall scoped to a single project. Best match first (bm25 is more
@@ -1207,8 +1594,14 @@ pub fn memory_search(
 pub fn memory_clear(conn: &Connection, project_id: Option<&str>) -> Result<(), VectorDBError> {
     ensure_memory_table(conn)?;
     match project_id {
-        Some(pid) => conn.execute("DELETE FROM memories WHERE project_id = ?1", params![pid])?,
-        None => conn.execute("DELETE FROM memories", [])?,
+        Some(pid) => {
+            conn.execute("DELETE FROM memories WHERE project_id = ?1", params![pid])?;
+            conn.execute("DELETE FROM memory_keys WHERE project_id = ?1", params![pid])?
+        }
+        None => {
+            conn.execute("DELETE FROM memories", [])?;
+            conn.execute("DELETE FROM memory_keys", [])?
+        }
     };
     Ok(())
 }
@@ -1288,6 +1681,76 @@ mod memory_tests {
     }
 
     #[test]
+    fn same_msg_id_in_two_projects_does_not_collide() {
+        let conn = mem_conn();
+        memory_index(&conn, "m1", "p1", "alpha content", "user", 100).unwrap();
+        memory_index(&conn, "m1", "p2", "beta content", "user", 100).unwrap();
+        assert_eq!(memory_search(&conn, "p1", "alpha", 5).unwrap().len(), 1);
+        assert_eq!(memory_search(&conn, "p2", "beta", 5).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn reindex_replaces_row_in_same_project() {
+        let conn = mem_conn();
+        memory_index(&conn, "m1", "p1", "first version", "user", 100).unwrap();
+        memory_index(&conn, "m1", "p1", "second version", "user", 200).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM memories WHERE project_id = 'p1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        assert!(memory_search(&conn, "p1", "first", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn memory_clear_clears_keys() {
+        let conn = mem_conn();
+        memory_index(&conn, "a", "p1", "content one", "user", 100).unwrap();
+        memory_index(&conn, "b", "p2", "content two", "user", 100).unwrap();
+        memory_clear(&conn, Some("p1")).unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memory_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        memory_clear(&conn, None).unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memory_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn cap_evicts_oldest() {
+        let conn = mem_conn();
+        for (i, ts) in [(1, 100), (2, 200), (3, 300), (4, 400)] {
+            memory_index_capped(&conn, &format!("m{i}"), "p1", "capped content", "user", ts, 3).unwrap();
+        }
+        let hits = memory_search(&conn, "p1", "capped", 10).unwrap();
+        assert_eq!(hits.len(), 3);
+        assert!(hits.iter().all(|h| h.msg_id != "m1"));
+    }
+
+    #[test]
+    fn backfill_populates_keys_for_existing_rows() {
+        // Legacy store: FTS table only, no memory_keys.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE VIRTUAL TABLE memories USING fts5(
+                msg_id UNINDEXED, project_id UNINDEXED, text, role UNINDEXED, ts UNINDEXED,
+                tokenize = 'porter unicode61')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memories (msg_id, project_id, text, role, ts) VALUES ('m1','p1','legacy words','user',100)",
+            [],
+        )
+        .unwrap();
+        ensure_memory_table(&conn).unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memory_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        // Re-indexing the legacy message replaces it rather than duplicating.
+        memory_index(&conn, "m1", "p1", "updated words", "user", 200).unwrap();
+        assert_eq!(memory_search(&conn, "p1", "legacy", 5).unwrap().len(), 0);
+        assert_eq!(memory_search(&conn, "p1", "updated", 5).unwrap().len(), 1);
+    }
+
+    #[test]
     fn clear_all_and_per_project() {
         let conn = mem_conn();
         memory_index(&conn, "a", "p1", "content one", "user", 100).unwrap();
@@ -1299,5 +1762,118 @@ mod memory_tests {
 
         memory_clear(&conn, None).unwrap();
         assert!(memory_search(&conn, "p2", "content", 5).unwrap().is_empty());
+    }
+
+    /// An in-memory collection with sqlite-vec, or None when it is unavailable.
+    fn ann_conn(dim: usize) -> Option<Connection> {
+        if !register_static_vec() {
+            return None;
+        }
+        let conn = Connection::open_in_memory().unwrap();
+        if !create_schema(&conn, dim).unwrap() {
+            return None;
+        }
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        Some(conn)
+    }
+
+    fn sample_vectors(n: usize) -> Vec<Vec<f32>> {
+        (0..n)
+            .map(|i| {
+                let t = i as f32 * 0.37 + 0.1;
+                vec![t.sin(), t.cos(), (t * 0.5).sin() + 1.5]
+            })
+            .collect()
+    }
+
+    fn add(conn: &Connection, vectors: &[Vec<f32>]) -> Result<(), VectorDBError> {
+        let chunks = vectors
+            .iter()
+            .enumerate()
+            .map(|(i, v)| MinimalChunkInput { text: format!("c{i}"), embedding: v.clone() })
+            .collect();
+        insert_chunks(conn, "f1", chunks, true)
+    }
+
+    #[test]
+    fn ann_and_linear_same_order_and_score_range() {
+        let Some(conn) = ann_conn(3) else { return };
+        let vectors = sample_vectors(20);
+        add(&conn, &vectors).unwrap();
+        let q = [0.3f32, 0.9, 1.2];
+        let ann = search_collection(&conn, &q, 5, -1.0, Some("ann".into()), true, None).unwrap();
+        let lin = search_collection(&conn, &q, 5, -1.0, Some("linear".into()), true, None).unwrap();
+        assert_eq!(ann.len(), 5);
+        let ids = |r: &[SearchResult]| r.iter().map(|x| x.text.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&ann), ids(&lin));
+        for (a, l) in ann.iter().zip(lin.iter()) {
+            assert!((a.score.unwrap() - l.score.unwrap()).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn ann_applies_threshold() {
+        let Some(conn) = ann_conn(3) else { return };
+        add(&conn, &[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]]).unwrap();
+        let found =
+            search_collection(&conn, &[1.0, 0.0, 0.0], 5, 0.5, Some("ann".into()), true, None).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "c0");
+        assert!(found[0].score.unwrap() > 0.99);
+    }
+
+    #[test]
+    fn ann_insert_failure_is_error_not_silent() {
+        let Some(conn) = ann_conn(3) else { return };
+        let err = add(&conn, &[vec![1.0, 0.0]]).unwrap_err();
+        assert!(matches!(err, VectorDBError::DimensionMismatch(_)), "{err}");
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn dimension_change_rebuilds_vec_table() {
+        let Some(conn) = ann_conn(3) else { return };
+        add(&conn, &[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]]).unwrap();
+        // The model changed to 2 dimensions: the 3-d chunks stay in `chunks`
+        // but cannot be indexed, and new 2-d chunks can.
+        assert!(create_schema(&conn, 2).unwrap());
+        assert!(vec_table_sql(&conn).unwrap().contains("float[2]"));
+        let two = vec![MinimalChunkInput { text: "two".into(), embedding: vec![1.0, 0.0] }];
+        insert_chunks(&conn, "f1", two, true).unwrap();
+        let found =
+            search_collection(&conn, &[1.0, 0.0], 5, 0.5, Some("ann".into()), true, None).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "two");
+    }
+
+    #[test]
+    fn legacy_l2_table_rebuilt_or_linear() {
+        if !register_static_vec() {
+            return;
+        }
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(try_load_sqlite_vec(&conn));
+        // Collection as an earlier build left it: L2 vec table, chunks present.
+        create_schema(&conn, 3).unwrap();
+        conn.execute("DROP TABLE chunks_vec", []).unwrap();
+        conn.execute("CREATE VIRTUAL TABLE chunks_vec USING vec0(embedding float[3])", []).unwrap();
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        let blob = to_le_bytes_vec(&[1.0f32, 0.0, 0.0]);
+        conn.execute(
+            "INSERT INTO chunks (id, text, embedding, file_id, chunk_file_order) VALUES ('x', 'x', ?1, 'f1', 0)",
+            [blob],
+        )
+        .unwrap();
+        assert!(!cosine_vec_table_exists(&conn));
+        // Searching before the rebuild takes the linear path.
+        let found = search_collection(&conn, &[1.0, 0.0, 0.0], 5, 0.5, None, true, None).unwrap();
+        assert_eq!(found.len(), 1);
+        // Reopening the collection rebuilds the index as cosine from `chunks`.
+        assert!(create_schema(&conn, 3).unwrap());
+        assert!(cosine_vec_table_exists(&conn));
+        let found =
+            search_collection(&conn, &[1.0, 0.0, 0.0], 5, 0.5, Some("ann".into()), true, None).unwrap();
+        assert_eq!(found.len(), 1);
     }
 }

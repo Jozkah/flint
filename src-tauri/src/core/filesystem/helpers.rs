@@ -22,34 +22,12 @@ pub fn resolve_path<R: Runtime>(app_handle: tauri::AppHandle<R>, path: &str) -> 
     }
 }
 
-/// Path components that never belong to a legitimate renderer read: key
-/// stores, cloud credentials, browser profiles and the app's own secrets.
-const SENSITIVE_READ_COMPONENTS: &[&str] = &[
-    ".ssh",
-    ".gnupg",
-    ".aws",
-    ".kube",
-    ".azure",
-    ".mozilla",
-    "provider_secrets",
-    "login data",
-    "cookies",
-    "user data",
-];
-
 /// True when `path` passes through a credential or browser-profile location.
 /// Reads of arbitrary user-picked files stay allowed (model import needs them);
-/// this only closes the obvious secret stores.
+/// this only closes the obvious secret stores. One shared policy with the
+/// `asset:` grants and RAG parsing: see `jan_utils::path_policy`.
 pub fn is_sensitive_read_path(path: &Path) -> bool {
-    path.components().any(|c| match c {
-        std::path::Component::Normal(n) => {
-            let n = n.to_string_lossy().to_lowercase();
-            SENSITIVE_READ_COMPONENTS
-                .iter()
-                .any(|s| n == *s || (*s == "provider_secrets" && n.starts_with(s)))
-        }
-        _ => false,
-    })
+    jan_utils::path_policy::is_sensitive_path(path)
 }
 
 /// Resolve a path for a renderer-initiated read, refusing secret stores.
