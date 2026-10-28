@@ -94,7 +94,8 @@ export function speakableText(markdown: string, codeOmitted: string): string {
     .replace(/^\s*\|?[\s:-]+\|[\s|:-]*$/gm, '')
     .replace(/\|/g, ', ')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
-    .replace(/(\*|_)(?=\S)(.+?)(?<=\S)\1/g, '$2')
+    // No lookbehind: older WebKit (macOS, Linux) rejects it at parse time.
+    .replace(/(\*|_)(\S|\S.*?\S)\1/g, '$2')
     .replace(/~~(.+?)~~/g, '$1')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{2,}/g, '\n')
