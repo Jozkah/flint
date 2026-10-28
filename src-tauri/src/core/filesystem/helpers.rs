@@ -1,7 +1,8 @@
 use crate::core::app::commands::get_jan_data_folder_path;
 use jan_utils::{normalize_file_path, normalize_path};
 use std::path::{Path, PathBuf};
-use tauri::Runtime;
+use super::grants::{ReadGrants, DENIED_PREFIX};
+use tauri::{Manager, Runtime};
 
 pub fn resolve_path<R: Runtime>(app_handle: tauri::AppHandle<R>, path: &str) -> PathBuf {
     let path = if path.starts_with("file:/") || path.starts_with("file:\\") {
@@ -23,23 +24,62 @@ pub fn resolve_path<R: Runtime>(app_handle: tauri::AppHandle<R>, path: &str) -> 
 }
 
 /// True when `path` passes through a credential or browser-profile location.
-/// Reads of arbitrary user-picked files stay allowed (model import needs them);
-/// this only closes the obvious secret stores. One shared policy with the
-/// `asset:` grants and RAG parsing: see `jan_utils::path_policy`.
+/// One shared policy with the `asset:` grants and RAG parsing: see
+/// `jan_utils::path_policy`. Checked inside every read grant as well.
 pub fn is_sensitive_read_path(path: &Path) -> bool {
     jan_utils::path_policy::is_sensitive_path(path)
 }
 
-/// Resolve a path for a renderer-initiated read, refusing secret stores.
-pub fn resolve_read_path<R: Runtime>(
+fn is_file_uri(path: &str) -> bool {
+    path.starts_with("file:/") || path.starts_with("file:\\")
+}
+
+/// Resolve a path for a renderer-initiated read (`exists_sync`, `file_stat`,
+/// `read_file_sync`, `readdir_sync`).
+///
+/// `file:` URIs and relative paths are data-folder paths and must stay inside
+/// it. An absolute path must pass [`ReadGrants::allows`]: the data folder, a
+/// path the user picked in a dialog, or an ordinary home file. A refusal
+/// starts with [`DENIED_PREFIX`] and reads the same whether or not the path
+/// exists.
+pub fn resolve_read_path(
+    jan_data_folder: &Path,
+    path: &str,
+    grants: &ReadGrants,
+) -> Result<PathBuf, String> {
+    let denied = || format!("{DENIED_PREFIX}: {path} is not readable");
+    let canonical_data = canonical_scope_path(jan_data_folder);
+    let canonical = if is_file_uri(path) || !Path::new(path).is_absolute() {
+        resolve_path_within_jan_data_folder(jan_data_folder, path)
+            .map(|(_, resolved)| resolved)
+            .map_err(|_| denied())?
+    } else {
+        canonical_scope_path(Path::new(path))
+    };
+    if !grants.allows(&canonical, &canonical_data) {
+        return Err(denied());
+    }
+    Ok(canonical)
+}
+
+/// [`resolve_read_path`] against the app's data folder and managed grants.
+/// Without managed grants nothing outside the data folder is readable.
+pub fn resolve_app_read_path<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     path: &str,
 ) -> Result<PathBuf, String> {
-    let resolved = resolve_path(app_handle, path);
-    if is_sensitive_read_path(&resolved) {
-        return Err(format!("path {} is not readable", resolved.display()));
+    let data = get_jan_data_folder_path(app_handle.clone());
+    match app_handle.try_state::<ReadGrants>() {
+        Some(grants) => resolve_read_path(&data, path, &grants),
+        None => resolve_read_path(&data, path, &ReadGrants::default()),
     }
-    Ok(resolved)
+}
+
+/// The form read grants compare in: symlinks and junctions resolved, the
+/// Windows verbatim prefix stripped, `.` and `..` folded. A missing tail is
+/// kept lexically under its nearest existing ancestor.
+pub fn canonical_scope_path(path: &Path) -> PathBuf {
+    normalize_scope_path(canonicalize_for_scope(path))
 }
 
 fn resolve_path_input(path: &str, jan_data_folder: &Path) -> PathBuf {
@@ -86,6 +126,9 @@ fn normalize_scope_path(path: PathBuf) -> PathBuf {
     #[cfg(windows)]
     {
         let path_str = path.to_string_lossy();
+        if let Some(rest) = path_str.strip_prefix(r"\\?\UNC\") {
+            return normalize_path(Path::new(&format!(r"\\{rest}")));
+        }
         if let Some(stripped) = path_str.strip_prefix(r"\\?\") {
             return normalize_path(Path::new(stripped));
         }

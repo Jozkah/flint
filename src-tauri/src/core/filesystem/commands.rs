@@ -1,10 +1,16 @@
 // WARNING: These APIs will be deprecated soon due to removing FS API access from frontend.
 // It's added to ensure the legacy implementation from frontend still functions before removal.
-use super::helpers::{resolve_app_path_within_jan_data_folder, resolve_path, resolve_read_path};
+use super::grants::{is_within, record_picks, ReadGrants, DENIED_PREFIX};
+use super::helpers::{
+    canonical_scope_path, is_sensitive_read_path, resolve_app_path_within_jan_data_folder,
+    resolve_app_read_path, resolve_path,
+};
+use crate::core::app::commands::get_jan_data_folder_path;
+use std::path::PathBuf;
 use super::models::{DialogOpenOptions, FileStat};
 use super::picker::AsyncFileDialog;
 use std::fs;
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 
 #[tauri::command]
 pub fn rm<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> Result<(), String> {
@@ -90,8 +96,13 @@ pub fn exists_sync<R: Runtime>(
         return Err("exist_sync error: Invalid argument".to_string());
     }
 
-    let path = resolve_read_path(app_handle, &args[0])?;
-    Ok(path.exists())
+    match resolve_app_read_path(app_handle, &args[0]) {
+        Ok(path) => Ok(path.exists()),
+        // A path the webview may not read looks the same as a missing one, so
+        // this command cannot probe the disk.
+        Err(e) if e.starts_with(DENIED_PREFIX) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -103,7 +114,7 @@ pub fn file_stat<R: Runtime>(
         return Err("file_stat error: Invalid argument".to_string());
     }
 
-    let path = resolve_read_path(app_handle, &args)?;
+    let path = resolve_app_read_path(app_handle, &args)?;
     let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
     let is_directory = metadata.is_dir();
     let size = if is_directory { 0 } else { metadata.len() };
@@ -127,7 +138,7 @@ pub fn read_file_sync<R: Runtime>(
         return Err("read_file_sync error: Invalid argument".to_string());
     }
 
-    let path = resolve_read_path(app_handle, &args[0])?;
+    let path = resolve_app_read_path(app_handle, &args[0])?;
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
@@ -160,11 +171,24 @@ pub fn readdir_sync<R: Runtime>(
         return Err("read_dir_sync error: Invalid argument".to_string());
     }
 
-    let path = resolve_read_path(app_handle, &args[0])?;
+    let path = resolve_app_read_path(app_handle.clone(), &args[0])?;
+    let data = canonical_scope_path(&get_jan_data_folder_path(app_handle.clone()));
+    let in_data = is_within(&path, &data);
+    let none = ReadGrants::default();
+    let state = app_handle.try_state::<ReadGrants>();
+    let grants: &ReadGrants = state.as_deref().unwrap_or(&none);
     let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
     let paths: Vec<String> = entries
         .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path().to_string_lossy().to_string())
+        .map(|entry| entry.path())
+        // List only what the webview could then read: no secret stores, and
+        // outside the data folder no link out of the grant and no file a
+        // narrower grant (a picked `.gguf`'s folder) does not cover.
+        .filter(|entry| {
+            !is_sensitive_read_path(entry)
+                && (in_data || grants.allows(&canonical_scope_path(entry), &data))
+        })
+        .map(|entry| entry.to_string_lossy().to_string())
         .collect();
     Ok(paths)
 }
@@ -283,15 +307,34 @@ pub(crate) fn unpack_archive(
 
 // rfd native file dialog
 #[tauri::command]
-pub async fn open_dialog(
+pub async fn open_dialog<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
     options: Option<DialogOpenOptions>,
 ) -> Result<Option<serde_json::Value>, String> {
+    let picked = pick(options).await;
+    // Every path the user picked becomes readable (and `asset:`-viewable) by
+    // the webview; recorded here, where the webview cannot forge it.
+    if let Some(value) = &picked {
+        let paths: Vec<PathBuf> = match value {
+            serde_json::Value::String(s) => vec![PathBuf::from(s)],
+            serde_json::Value::Array(items) => items
+                .iter()
+                .filter_map(|v| v.as_str().map(PathBuf::from))
+                .collect(),
+            _ => Vec::new(),
+        };
+        record_picks(&app_handle, &paths);
+    }
+    Ok(picked)
+}
+
+async fn pick(options: Option<DialogOpenOptions>) -> Option<serde_json::Value> {
     // Test-only: the cowork-smoke harness scripts the picker's answer because a
     // WebView harness cannot drive a native modal. Everything else on this path
     // stays real. Absent from release builds -- see `smoke_dialog`.
     #[cfg(feature = "cowork-smoke")]
     if let Some(scripted) = super::smoke_dialog::scripted_response() {
-        return Ok(scripted);
+        return scripted;
     }
 
     let mut dialog = AsyncFileDialog::new();
@@ -313,27 +356,27 @@ pub async fn open_dialog(
         // Handle directory vs file selection
         if opts.directory == Some(true) {
             let result = dialog.pick_folder().await;
-            return Ok(result.map(|folder| {
+            return result.map(|folder| {
                 serde_json::Value::String(folder.path().to_string_lossy().to_string())
-            }));
+            });
         }
 
         // Handle multiple file selection
         if opts.multiple == Some(true) {
             let result = dialog.pick_files().await;
-            return Ok(result.map(|files| {
+            return result.map(|files| {
                 let paths: Vec<String> = files
                     .iter()
                     .map(|f| f.path().to_string_lossy().to_string())
                     .collect();
                 serde_json::to_value(paths).unwrap()
-            }));
+            });
         }
     }
 
     // Default: single file selection
     let result = dialog.pick_file().await;
-    Ok(result.map(|file| serde_json::Value::String(file.path().to_string_lossy().to_string())))
+    result.map(|file| serde_json::Value::String(file.path().to_string_lossy().to_string()))
 }
 
 /// Split a dialog's default path into the folder to open in and, when it names

@@ -4,7 +4,10 @@
 //! shows files from places outside them (other drives, a custom data folder), so
 //! the webview asks for a grant per path before calling `convertFileSrc`.
 //! Neither the native picker (`rfd`) nor the dialog plugin extends the asset
-//! scope, so this command is the only path to such files.
+//! scope, so this command is the only path to such files. It grants only what
+//! the read allowlist in [`super::grants`] allows, so a file the user picked in
+//! the open dialog is viewable and an arbitrary path named by the webview is
+//! not.
 
 use std::path::{Component, Path, PathBuf};
 use tauri::Runtime;
@@ -12,10 +15,10 @@ use tauri::Runtime;
 /// Strip the Windows verbatim prefix `canonicalize` adds so scope globs match.
 fn strip_verbatim(p: PathBuf) -> PathBuf {
     let s = p.to_string_lossy();
-    if let Some(rest) = s.strip_prefix(r"\?\UNC\") {
-        return PathBuf::from(format!(r"\{rest}"));
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
     }
-    match s.strip_prefix(r"\?\") {
+    match s.strip_prefix(r"\\?\") {
         Some(rest) => PathBuf::from(rest),
         None => p,
     }
@@ -85,6 +88,15 @@ pub fn allow_asset_path<R: Runtime>(
         .and_then(|h| std::fs::canonicalize(h).ok())
         .map(strip_verbatim);
     check_asset_path(&canon, home.as_deref(), recursive && meta.is_dir())?;
+    // The same allowlist as the read commands: the data folder, a path the
+    // user picked in the open dialog, or an ordinary home file. Otherwise an
+    // `asset:` fetch would read what `read_file_sync` refuses.
+    if !super::grants::app_allows(&app, &canon) {
+        return Err(format!(
+            "{}: {path} was not picked by the user",
+            super::grants::DENIED_PREFIX
+        ));
+    }
 
     let scope = app.asset_protocol_scope();
     if meta.is_dir() {
@@ -165,7 +177,7 @@ mod tests {
 
     #[test]
     fn strips_verbatim_prefix() {
-        assert_eq!(strip_verbatim(p(r"\?\D:\a\b")), p(r"D:\a\b"));
-        assert_eq!(strip_verbatim(p(r"\?\UNC\srv\share")), p(r"\srv\share"));
+        assert_eq!(strip_verbatim(p(r"\\?\D:\a\b")), p(r"D:\a\b"));
+        assert_eq!(strip_verbatim(p(r"\\?\UNC\srv\share")), p(r"\\srv\share"));
     }
 }
