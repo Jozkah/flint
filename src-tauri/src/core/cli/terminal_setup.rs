@@ -555,11 +555,15 @@ pub fn setup_hint(
                 .map(PathBuf::from)
                 .as_deref(),
         ));
-        let bound = serde_json::from_str::<Vec<serde_json::Value>>(
-            std::fs::read_to_string(&path).unwrap_or_default().trim(),
-        )
-        .map(|e| binds_shift_enter(&e))
-        .unwrap_or(false);
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        // The file is JSONC in practice (comments, trailing commas): a parse
+        // failure means "unknown", and an unknown state earns no nag.
+        let bound = match text.trim() {
+            "" => false,
+            t => serde_json::from_str::<Vec<serde_json::Value>>(t)
+                .map(|e| binds_shift_enter(&e))
+                .unwrap_or(true),
+        };
         if !bound {
             return Some(
                 "Shift+Enter is not bound in this terminal -- run /terminal-setup".to_string(),
