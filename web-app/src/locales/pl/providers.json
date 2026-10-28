@@ -252,5 +252,9 @@
     "remove": "Usuń",
     "replace": "Zapisano. Wpisz, aby zastąpić.",
     "enter": "Nie ustawiono"
-  }
+  },
+  "skippedLinkedTitle": "Pominięte modele: {{count}}",
+  "skippedLinkedBody": "Te modele są zapisane przez łącze prowadzące poza folder danych Flinta, więc Flint ich nie wczytał:",
+  "skippedLinkedHowTo": "Aby użyć jednego z nich, zaimportuj jego plik GGUF ze ścieżki (Flint zostawi plik na miejscu) albo przenieś pliki z powrotem do folderu modeli.",
+  "skippedLinkedDismiss": "Zamknij"
 }

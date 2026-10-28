@@ -236,6 +236,41 @@ describe('llamacpp_extension', () => {
     })
   })
 
+  describe('list with a model behind a link outside the data folder', () => {
+    it('reports the linked model as skipped and keeps the normal ones', async () => {
+      const { getJanDataFolderPath, joinPath, fs } = await import('@janhq/core')
+      const { invoke } = await import('@tauri-apps/api/core')
+
+      extension['providerPath'] = '/jan/llamacpp'
+      const modelsDir = '/jan/llamacpp/models'
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/jan')
+      vi.mocked(joinPath).mockImplementation((paths) => Promise.resolve(paths.join('/')))
+      vi.mocked(fs.existsSync).mockImplementation(async (p: string) =>
+        p === modelsDir || p.endsWith('/linked/model.yml') || p.endsWith('/good/model.yml')
+      )
+      vi.mocked(fs.readdirSync).mockImplementation(async (p: string) =>
+        p === modelsDir ? [`${modelsDir}/linked`, `${modelsDir}/good`] : []
+      )
+      vi.mocked(fs.fileStat).mockResolvedValue({ isDirectory: true, size: 0 })
+      vi.mocked(invoke).mockImplementation(async (cmd: string, args?: any) => {
+        if (cmd === 'read_yaml' && String(args?.path).includes('/linked/')) {
+          throw 'Path D:\\models\\linked\\model.yml is outside of Jan data folder C:\\jan'
+        }
+        if (cmd === 'read_yaml') {
+          return { model_path: 'good/model.gguf', name: 'Good', size_bytes: 5 }
+        }
+        return undefined
+      })
+
+      const result = await extension.list()
+
+      expect(result.map((m) => m.id)).toEqual(['good'])
+      expect(extension.getSkippedModels()).toEqual([
+        { id: 'linked', path: `${modelsDir}/linked`, reason: 'outside_data_folder' },
+      ])
+    })
+  })
+
   describe('list with a broken model.yml', () => {
     it('keeps the readable models when one model.yml cannot be parsed', async () => {
       const { getJanDataFolderPath, joinPath, fs } = await import('@janhq/core')
@@ -265,6 +300,8 @@ describe('llamacpp_extension', () => {
       const result = await extension.list()
 
       expect(result.map((m) => m.id)).toEqual(['good'])
+      // A malformed model.yml is not a link problem; the notice stays quiet.
+      expect(extension.getSkippedModels()).toEqual([])
     })
   })
 

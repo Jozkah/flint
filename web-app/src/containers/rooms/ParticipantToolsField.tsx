@@ -49,9 +49,13 @@ export function ParticipantToolsField({
     }
     let live = true
     setLoaded(null)
-    void loadRoomToolCatalog(folder, access).then((c) => {
-      if (live) setLoaded(c)
-    })
+    void loadRoomToolCatalog(folder, access)
+      .then((c) => {
+        if (live) setLoaded(c)
+      })
+      .catch(() => {
+        if (live) setLoaded([])
+      })
     return () => {
       live = false
     }

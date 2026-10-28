@@ -2790,7 +2790,11 @@
     "noVision": "Este modelo não consegue ler imagens",
     "details": "Detalhes de {{name}}",
     "previewLoading": "Carregando pré-visualização…",
-    "previewNone": "Nenhuma pré-visualização disponível"
+    "previewNone": "Nenhuma pré-visualização disponível",
+    "pagesAsImages": "Enviar páginas como imagens",
+    "pagesAsImagesHint": "Envie as páginas deste PDF como imagens para que o modelo veja digitalizações, gráficos e layout",
+    "pdfPagesCut": "As primeiras {{sent}} de {{total}} páginas de {{name}} foram enviadas como imagens",
+    "pdfScannedAsImages": "{{name}} não tem texto, então suas páginas foram enviadas como imagens"
   },
   "fileViewer": {
     "openFull": "Abrir prévia completa",

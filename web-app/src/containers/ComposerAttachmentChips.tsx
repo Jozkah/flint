@@ -4,6 +4,7 @@ import {
   FileCode,
   FileSpreadsheet,
   FileText,
+  Images,
   Loader2,
   Music,
   Paperclip,
@@ -22,6 +23,7 @@ import {
   type ChipIcon,
 } from '@/lib/attachmentChip'
 import { displayNameOf } from '@/lib/displayName'
+import { canSendPdfAsImages } from '@/lib/pdfPageImages'
 import {
   FilePreviewPopover,
   previewLoader,
@@ -43,7 +45,8 @@ const ICONS: Record<ChipIcon, typeof Paperclip> = {
 /**
  * The files waiting in a composer: a thumbnail or a kind icon, the name
  * (middle-truncated, extension kept), the size, a warning when the model
- * cannot read an image, and remove. One row that scrolls sideways rather than
+ * cannot read an image, a "pages as images" toggle on a PDF when the model
+ * can see images, and remove. One row that scrolls sideways rather than
  * growing, so the send button never leaves the box.
  */
 export function ComposerAttachmentChips({
@@ -51,11 +54,14 @@ export function ComposerAttachmentChips({
   canSeeImages,
   onRemove,
   onOpenImage,
+  onTogglePdfImages,
 }: {
   attachments: readonly Attachment[]
   canSeeImages: boolean
   onRemove: (index: number) => void
   onOpenImage: (dataUrl: string) => void
+  /** Flips a PDF between text and page images; no toggle without it. */
+  onTogglePdfImages?: (index: number) => void
 }) {
   const { t } = useTranslation()
   if (attachments.length === 0) return null
@@ -139,6 +145,24 @@ export function ComposerAttachmentChips({
                 {text}
               </FilePreviewPopover>
             )}
+            {onTogglePdfImages &&
+            !att.processing &&
+            canSendPdfAsImages(att, canSeeImages) ? (
+              <button
+                type="button"
+                data-testid="chip-pdf-images"
+                aria-pressed={!!att.sendAsImages}
+                aria-label={t('common:composerChip.pagesAsImages')}
+                aria-description={t('common:composerChip.pagesAsImagesHint')}
+                onClick={() => onTogglePdfImages(idx)}
+                className={cn(
+                  'flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-9',
+                  att.sendAsImages ? 'bg-card text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                <Images aria-hidden className="size-3.5" />
+              </button>
+            ) : null}
             {att.processing ? (
               <Loader2
                 aria-hidden
