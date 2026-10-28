@@ -2159,6 +2159,410 @@ impl CompositeToolInvoker {
         );
     }
 
+    /// Answers the calls that are neither built-ins, MCP tools nor host tools:
+    /// the allowlist refusal, then `ask`, `todo`, code mode, the MCP catalogue,
+    /// `lsp`, `advisor`, `schedule_task` and the subagent / git family. Returns
+    /// true when the call was handled (its outcome is already in `out`), false to
+    /// let the dispatcher carry on with the gate. The checks run in the order
+    /// they always did: the allowlist comes before every other branch.
+    async fn intercept_special(
+        &self,
+        tc: &serde_json::Value,
+        name: &str,
+        out: &mut Vec<ToolOutcome>,
+    ) -> bool {
+        // Before every other branch -- ask, todo, subagent dispatch, MCP,
+        // built-ins -- and before any gate, prompt or auto-approval: a tool
+        // this run was not offered is refused, whatever its name.
+        if let Some(allowed) = &self.allowed_tools {
+            if !allowed.contains(name) {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let mut refused = ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered);
+                // Transcript audit #11: name the offered tools it was
+                // probably meant to be.
+                refused.content.push_str(&tauri_plugin_agent_tools::tools::call_shape::did_you_mean(
+                    name,
+                    allowed.iter().map(String::as_str),
+                ));
+                out.push(refused);
+                return true;
+            }
+        }
+        if name == "ask" {
+            let id = tc
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            let content = self.handle_ask_tool(&args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        if name == "todo" {
+            let id = tc
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            let content = self.handle_todo_tool(&args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        // `[tools] code_mode`: one script, several read-only calls. Each
+        // inner call re-enters `invoke`, so it meets the same allowlist,
+        // `[[tool_rules]]` and permission gate as a call the model made.
+        if name == crate::core::agent::code_mode::TOOL_NAME {
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if !self.code_mode {
+                out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
+                return true;
+            }
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            let content = self.handle_code_tool(&args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        // Searching and loading held-back MCP schemas reads only this
+        // run's own tool list, so it needs no gate.
+        if name == crate::core::agent::mcp_catalog::TOOL_NAME {
+            if let Some(deferred) = &self.deferred_mcp {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    return true;
+                };
+                out.push(ToolOutcome::plain(id, deferred.handle(&args)));
+                return true;
+            }
+        }
+        // AH-057: read-only, so it is answered in Plan mode as well, and it
+        // needs no subagent context.
+        if name == "lsp" {
+            let id = tc
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            let content = self.handle_lsp_tool(&args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        #[cfg(feature = "cli")]
+        if name == "advisor" {
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let args = parse_tool_args(tc).unwrap_or_default();
+            let content = self.handle_advisor(&args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        if name == "schedule_task" {
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            let content = self.handle_schedule_task(&args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        // Subagent tools are handled ahead of the fs/exec gate and the MCP
+        // fallback: they orchestrate nested runs, not filesystem access.
+        if name == "symbol_find"
+            || name == "git_branch"
+            || name == "git_split"
+            || name == "git_history"
+            || name == "pull_request"
+            || name == "semantic_search"
+            || name == "commit_message"
+            || name == "review_comments"
+            || name == "mcp_resource_list"
+            || name == "mcp_resource_read"
+            || crate::core::agent::subagent::is_subagent_tool(name)
+        {
+            let id = tc
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            // Plan mode blocks the ones that can change something (a
+            // subagent, a commit, a branch, a pull request). They are not
+            // advertised in Plan; this is defense in depth against a stale
+            // tool schema. Auto-approval cannot override. The read-only
+            // ones Plan does advertise run as usual.
+            if self.run_mode == crate::core::agent::plan::RunMode::Plan
+                && !plan_mode_offers_tool(name)
+            {
+                out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
+                return true;
+            }
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            // R16: these tools are left out of the offered set when the
+            // project denies them, but a model can call a tool it was not
+            // shown. The deny is enforced here too, as it is for MCP tools.
+            if self.permissions.is_denied(name, &self.subject) {
+                out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
+                return true;
+            }
+            // Commits, rebases and branch switches rewrite the checkout
+            // without passing the write/exec gate: ask like the git tool.
+            if let Some(what) = repo_mutation(name, &args) {
+                if let Err(refused) = self.approve_repo_mutation(name, &what, &args).await {
+                    out.push(ToolOutcome::plain(id, refused));
+                    return true;
+                }
+            }
+            let content = self.handle_subagent_tool(name, &args).await;
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
+        false
+    }
+
+    /// Routes a call that is not a built-in: a host tool (answered by the
+    /// client) or an MCP tool, gated by Plan mode, the deny list and the grants.
+    /// Allowed MCP calls are queued in `mcp_calls` and run together after the
+    /// sequential pass; host reads join `host_read_calls`.
+    async fn route_non_builtin(
+        &self,
+        tc: &serde_json::Value,
+        name: &str,
+        out: &mut Vec<ToolOutcome>,
+        mcp_calls: &mut Vec<serde_json::Value>,
+        #[cfg(feature = "cli")] host_read_calls: &mut Vec<(String, String, serde_json::Value)>,
+    ) {
+        let id = tc
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // Host tools execute in the client, not here. The call leaves the
+        // process instead of running in it, and the host's declared
+        // capability decides the gate (see `host_gate`). `is_host_tool` is
+        // constant `false` off the headless build, which has no client.
+        if self.is_host_tool(name) {
+            let gate = self.host_gate(name);
+            if self.run_mode == crate::core::agent::plan::RunMode::Plan
+                && gate != HostGate::Read
+            {
+                out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
+                return;
+            }
+            if self.permissions.is_denied(name, &self.subject) {
+                out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
+                return;
+            }
+            let args: serde_json::Value = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or(serde_json::Value::Object(Default::default()));
+            // A read is deferred and joined with the other auto-allowed
+            // reads below, so two camera frames do not wait on each other.
+            #[cfg(feature = "cli")]
+            if gate == HostGate::Read {
+                host_read_calls.push((id, name.to_string(), args));
+                return;
+            }
+            let needs_prompt = match gate {
+                HostGate::Read | HostGate::Host => false,
+                // An actuator is prompted even under `auto_approve`: that
+                // is the whole point of declaring one. A session grant
+                // still covers it, since the user said so explicitly.
+                HostGate::Actuator => !self.bypass,
+                HostGate::Opaque => !(self.auto_approve || self.bypass),
+            };
+            if needs_prompt {
+                match self.approve_host_tool(&id, name).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(denied)) => {
+                        out.push(ToolOutcome::plain(id, denied));
+                        return;
+                    }
+                    Err(reason) => {
+                        return_cancelled_outcome(out, &id, name, reason);
+                        return;
+                    }
+                }
+            }
+            #[cfg(feature = "cli")]
+            {
+                let (content, parts, details) = self.call_host_tool(name, &args).await;
+                out.push(ToolOutcome {
+                    parts,
+                    details,
+                    ..ToolOutcome::plain(id, content)
+                });
+            }
+            // Unreachable off the headless build, where `is_host_tool` is
+            // constant `false`.
+            #[cfg(not(feature = "cli"))]
+            {
+                let _ = &args;
+                out.push(ToolOutcome::plain(id, String::new()));
+            }
+            return;
+        }
+        // Plan mode blocks all MCP tools: their capability is arbitrary
+        // and unknowable, so they are never advertised in Plan and are
+        // hard-denied here as defense in depth. Auto-approval cannot override.
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
+            return;
+        }
+        // Deny-listed MCP tools are never advertised, but guard anyway.
+        if self.permissions.is_denied(name, &self.subject) {
+            out.push(ToolOutcome::plain(
+                id,
+                denied_by_policy_msg(name, &self.project_root),
+            ));
+            return;
+        }
+        // The grant is about the server that will receive the call, not
+        // the tool name alone: another server can publish the same name.
+        // An unregistered tool resolves to no server, which no grant
+        // made for a real server covers.
+        let server = self
+            .mcp
+            .tool_to_server
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
+        // A tool that lets the model approve its own commands on the
+        // server (`approve_command`, `whitelist_add`, ...) is asked
+        // about every time: no auto-approval and no grant answers for
+        // it, or the model could approve past Flint's own prompt.
+        let self_approval =
+            tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name);
+        if (!self_approval || self.bypass)
+            && (self.auto_approve || self.bypass
+                || self.grants.lock().unwrap().covers_mcp(&server, name))
+        {
+            mcp_calls.push(tc.clone());
+            return;
+        }
+        match self.prompt_mcp_permission(&id, name).await {
+            Ok((PermissionDecision::AllowOnce, _)) => mcp_calls.push(tc.clone()),
+            Ok((PermissionDecision::AllowAlways, _)) if self_approval => mcp_calls.push(tc.clone()),
+            Ok((PermissionDecision::AllowAlways, _)) => {
+                self.grants.lock().unwrap().grant_mcp(&server, name);
+                mcp_calls.push(tc.clone());
+            }
+            Ok((PermissionDecision::Deny, request_id)) => out.push(ToolOutcome::plain(
+                id,
+                denied_by_user_message(name, &request_id),
+            )),
+            Err(reason) => return_cancelled_outcome(out, &id, name, reason),
+        }
+        return;
+    
+    }
+
+    /// Builds the future for an auto-allowed read-only call so it can run
+    /// concurrently with the others once the gating pass is over. The future
+    /// outlives this borrow of `self`, so it owns what it needs.
+    fn schedule_read(
+        &self,
+        tool: &'static tauri_plugin_agent_tools::tools::BuiltinTool,
+        args: serde_json::Value,
+        id: String,
+        name: &str,
+    ) -> impl std::future::Future<Output = ToolOutcome> {
+        use tauri_plugin_agent_tools::tools::{handlers::execute_builtin_with_diff, ToolContext};
+        // The future outlives this borrow of `self`, so it owns its roots
+        // and builds the context inside.
+        let root = self.project_root.clone();
+        let store = self.store_root.clone();
+        let enabled = self.enabled_skills.clone();
+        let user_skills = self.user_skills.clone();
+        let allow_network = self.allow_network;
+        let allow_home_read = self.allow_home_read;
+        let sandbox = self.sandbox;
+        let scratch = self.scratch_root.clone();
+        // The run's identity and record folder, which `write` and `edit`
+        // carry: a read is remembered against it, and without it the
+        // file a run has just read would still be "not read" when the
+        // run goes to change it.
+        let run_scope = self.cancel_scope.run.clone();
+        let record_to = self.record_to.clone();
+        // Everything `tool_context_with_run` carries, so a concurrent
+        // read sees the same mailbox, policy and tool set as a
+        // sequential one (a skill read must honour `available_tools`).
+        let session_id = self.cancel_scope.session.clone();
+        let session_messaging = self.session_messaging;
+        let sandbox_fs = self.sandbox_fs.clone();
+        let permissions = self.permissions.clone();
+        let subject = self.subject.clone();
+        let available_tools = self.available_tools.clone();
+        let nul_programs = self.nul_programs.clone();
+        let format_on_edit = self.format_on_edit;
+        let check_syntax = self.check_syntax;
+        // Reads run concurrently, so each needs its own token under the
+        // run's scope rather than sharing one.
+        let registered = self.call_token(&id);
+        let timeout_id = id.clone();
+        let call_timeout = read_only_tool_timeout(tool.name, &args);
+        bounded_read_only_call(
+            async move {
+                let ctx = ToolContext::new(&root, &store, &enabled)
+                    .with_network(allow_network)
+                    .with_home_readonly(allow_home_read)
+                    .with_sandbox(sandbox)
+                    .with_scratch_root(&scratch)
+                    .with_user_skills(user_skills.as_deref())
+                    .with_fs_config(Some(&sandbox_fs))
+                    .with_permissions(&permissions, &subject)
+                    .with_available_tools(&available_tools)
+                    .with_format_on_edit(format_on_edit)
+                    .with_check_syntax(check_syntax)
+                    .with_nul_programs(&nul_programs)
+                    .with_cancel(registered.token().clone());
+                let ctx = match record_to.as_deref() {
+                    Some(data) => {
+                        let ctx = ctx.with_run(&run_scope, data);
+                        if session_messaging {
+                            ctx.with_mailbox_as(&session_id, data)
+                        } else {
+                            ctx
+                        }
+                    }
+                    None => ctx,
+                };
+                // Held until the future completes, then dropped, which
+                // deregisters it.
+                let _registered = registered;
+                let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
+                let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
+                ToolOutcome {
+                    diff,
+                    images: images.unwrap_or_default(),
+                    ..ToolOutcome::plain(id, text)
+                }
+            },
+            timeout_id,
+            name.to_string(),
+            call_timeout,
+        )
+    }
+
     pub(super) async fn dispatch_calls(
         &self,
         tool_calls: &[serde_json::Value],
@@ -2179,7 +2583,7 @@ impl CompositeToolInvoker {
         use tauri_plugin_agent_tools::tools::{
             gate::{resolve_decision, with_secret_flag, Decision, PromptKind},
             handlers::{execute_builtin_with_diff, preview_diff, secret_findings, stage_change},
-            is_builtin, lookup, Capability, ToolContext,
+            is_builtin, lookup, Capability,
         };
         let mut out: Vec<ToolOutcome> = Vec::with_capacity(tool_calls.len());
         let mut mcp_calls: Vec<serde_json::Value> = Vec::new();
@@ -2207,293 +2611,15 @@ impl CompositeToolInvoker {
                 .and_then(|f| f.get("name"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            // Before every other branch -- ask, todo, subagent dispatch, MCP,
-            // built-ins -- and before any gate, prompt or auto-approval: a tool
-            // this run was not offered is refused, whatever its name.
-            if let Some(allowed) = &self.allowed_tools {
-                if !allowed.contains(name) {
-                    let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let mut refused = ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered);
-                    // Transcript audit #11: name the offered tools it was
-                    // probably meant to be.
-                    refused.content.push_str(&tauri_plugin_agent_tools::tools::call_shape::did_you_mean(
-                        name,
-                        allowed.iter().map(String::as_str),
-                    ));
-                    out.push(refused);
-                    continue;
-                }
-            }
-            if name == "ask" {
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let Some(args) = parse_tool_args(tc) else {
-                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                    continue;
-                };
-                let content = self.handle_ask_tool(&args).await;
-                out.push(ToolOutcome::plain(id, content));
-                continue;
-            }
-            if name == "todo" {
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let Some(args) = parse_tool_args(tc) else {
-                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                    continue;
-                };
-                let content = self.handle_todo_tool(&args).await;
-                out.push(ToolOutcome::plain(id, content));
-                continue;
-            }
-            // `[tools] code_mode`: one script, several read-only calls. Each
-            // inner call re-enters `invoke`, so it meets the same allowlist,
-            // `[[tool_rules]]` and permission gate as a call the model made.
-            if name == crate::core::agent::code_mode::TOOL_NAME {
-                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                if !self.code_mode {
-                    out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
-                    continue;
-                }
-                let Some(args) = parse_tool_args(tc) else {
-                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                    continue;
-                };
-                let content = self.handle_code_tool(&args).await;
-                out.push(ToolOutcome::plain(id, content));
-                continue;
-            }
-            // Searching and loading held-back MCP schemas reads only this
-            // run's own tool list, so it needs no gate.
-            if name == crate::core::agent::mcp_catalog::TOOL_NAME {
-                if let Some(deferred) = &self.deferred_mcp {
-                    let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let Some(args) = parse_tool_args(tc) else {
-                        out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                        continue;
-                    };
-                    out.push(ToolOutcome::plain(id, deferred.handle(&args)));
-                    continue;
-                }
-            }
-            // AH-057: read-only, so it is answered in Plan mode as well, and it
-            // needs no subagent context.
-            if name == "lsp" {
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let Some(args) = parse_tool_args(tc) else {
-                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                    continue;
-                };
-                let content = self.handle_lsp_tool(&args).await;
-                out.push(ToolOutcome::plain(id, content));
-                continue;
-            }
-            #[cfg(feature = "cli")]
-            if name == "advisor" {
-                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let args = parse_tool_args(tc).unwrap_or_default();
-                let content = self.handle_advisor(&args).await;
-                out.push(ToolOutcome::plain(id, content));
-                continue;
-            }
-            if name == "schedule_task" {
-                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let Some(args) = parse_tool_args(tc) else {
-                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                    continue;
-                };
-                let content = self.handle_schedule_task(&args).await;
-                out.push(ToolOutcome::plain(id, content));
-                continue;
-            }
-            // Subagent tools are handled ahead of the fs/exec gate and the MCP
-            // fallback: they orchestrate nested runs, not filesystem access.
-            if name == "symbol_find"
-                || name == "git_branch"
-                || name == "git_split"
-                || name == "git_history"
-                || name == "pull_request"
-                || name == "semantic_search"
-                || name == "commit_message"
-                || name == "review_comments"
-                || name == "mcp_resource_list"
-                || name == "mcp_resource_read"
-                || crate::core::agent::subagent::is_subagent_tool(name)
-            {
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                // Plan mode blocks the ones that can change something (a
-                // subagent, a commit, a branch, a pull request). They are not
-                // advertised in Plan; this is defense in depth against a stale
-                // tool schema. Auto-approval cannot override. The read-only
-                // ones Plan does advertise run as usual.
-                if self.run_mode == crate::core::agent::plan::RunMode::Plan
-                    && !plan_mode_offers_tool(name)
-                {
-                    out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
-                    continue;
-                }
-                let Some(args) = parse_tool_args(tc) else {
-                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
-                    continue;
-                };
-                // R16: these tools are left out of the offered set when the
-                // project denies them, but a model can call a tool it was not
-                // shown. The deny is enforced here too, as it is for MCP tools.
-                if self.permissions.is_denied(name, &self.subject) {
-                    out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
-                    continue;
-                }
-                // Commits, rebases and branch switches rewrite the checkout
-                // without passing the write/exec gate: ask like the git tool.
-                if let Some(what) = repo_mutation(name, &args) {
-                    if let Err(refused) = self.approve_repo_mutation(name, &what, &args).await {
-                        out.push(ToolOutcome::plain(id, refused));
-                        continue;
-                    }
-                }
-                let content = self.handle_subagent_tool(name, &args).await;
-                out.push(ToolOutcome::plain(id, content));
+            if self.intercept_special(tc, name, &mut out).await {
                 continue;
             }
             if !is_builtin(name) {
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                // Host tools execute in the client, not here. The call leaves the
-                // process instead of running in it, and the host's declared
-                // capability decides the gate (see `host_gate`). `is_host_tool` is
-                // constant `false` off the headless build, which has no client.
-                if self.is_host_tool(name) {
-                    let gate = self.host_gate(name);
-                    if self.run_mode == crate::core::agent::plan::RunMode::Plan
-                        && gate != HostGate::Read
-                    {
-                        out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
-                        continue;
-                    }
-                    if self.permissions.is_denied(name, &self.subject) {
-                        out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
-                        continue;
-                    }
-                    let args: serde_json::Value = tc
-                        .get("function")
-                        .and_then(|f| f.get("arguments"))
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| serde_json::from_str(s).ok())
-                        .unwrap_or(serde_json::Value::Object(Default::default()));
-                    // A read is deferred and joined with the other auto-allowed
-                    // reads below, so two camera frames do not wait on each other.
-                    #[cfg(feature = "cli")]
-                    if gate == HostGate::Read {
-                        host_read_calls.push((id, name.to_string(), args));
-                        continue;
-                    }
-                    let needs_prompt = match gate {
-                        HostGate::Read | HostGate::Host => false,
-                        // An actuator is prompted even under `auto_approve`: that
-                        // is the whole point of declaring one. A session grant
-                        // still covers it, since the user said so explicitly.
-                        HostGate::Actuator => !self.bypass,
-                        HostGate::Opaque => !(self.auto_approve || self.bypass),
-                    };
-                    if needs_prompt {
-                        match self.approve_host_tool(&id, name).await {
-                            Ok(Ok(())) => {}
-                            Ok(Err(denied)) => {
-                                out.push(ToolOutcome::plain(id, denied));
-                                continue;
-                            }
-                            Err(reason) => {
-                                return_cancelled_outcome(&mut out, &id, name, reason);
-                                continue;
-                            }
-                        }
-                    }
-                    #[cfg(feature = "cli")]
-                    {
-                        let (content, parts, details) = self.call_host_tool(name, &args).await;
-                        out.push(ToolOutcome {
-                            parts,
-                            details,
-                            ..ToolOutcome::plain(id, content)
-                        });
-                    }
-                    // Unreachable off the headless build, where `is_host_tool` is
-                    // constant `false`.
-                    #[cfg(not(feature = "cli"))]
-                    {
-                        let _ = &args;
-                        out.push(ToolOutcome::plain(id, String::new()));
-                    }
-                    continue;
-                }
-                // Plan mode blocks all MCP tools: their capability is arbitrary
-                // and unknowable, so they are never advertised in Plan and are
-                // hard-denied here as defense in depth. Auto-approval cannot override.
-                if self.run_mode == crate::core::agent::plan::RunMode::Plan {
-                    out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
-                    continue;
-                }
-                // Deny-listed MCP tools are never advertised, but guard anyway.
-                if self.permissions.is_denied(name, &self.subject) {
-                    out.push(ToolOutcome::plain(
-                        id,
-                        denied_by_policy_msg(name, &self.project_root),
-                    ));
-                    continue;
-                }
-                // The grant is about the server that will receive the call, not
-                // the tool name alone: another server can publish the same name.
-                // An unregistered tool resolves to no server, which no grant
-                // made for a real server covers.
-                let server = self
-                    .mcp
-                    .tool_to_server
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_default();
-                // A tool that lets the model approve its own commands on the
-                // server (`approve_command`, `whitelist_add`, ...) is asked
-                // about every time: no auto-approval and no grant answers for
-                // it, or the model could approve past Flint's own prompt.
-                let self_approval =
-                    tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name);
-                if (!self_approval || self.bypass)
-                    && (self.auto_approve || self.bypass
-                        || self.grants.lock().unwrap().covers_mcp(&server, name))
-                {
-                    mcp_calls.push(tc.clone());
-                    continue;
-                }
-                match self.prompt_mcp_permission(&id, name).await {
-                    Ok((PermissionDecision::AllowOnce, _)) => mcp_calls.push(tc.clone()),
-                    Ok((PermissionDecision::AllowAlways, _)) if self_approval => mcp_calls.push(tc.clone()),
-                    Ok((PermissionDecision::AllowAlways, _)) => {
-                        self.grants.lock().unwrap().grant_mcp(&server, name);
-                        mcp_calls.push(tc.clone());
-                    }
-                    Ok((PermissionDecision::Deny, request_id)) => out.push(ToolOutcome::plain(
-                        id,
-                        denied_by_user_message(name, &request_id),
-                    )),
-                    Err(reason) => return_cancelled_outcome(&mut out, &id, name, reason),
-                }
+                #[cfg(feature = "cli")]
+                self.route_non_builtin(tc, name, &mut out, &mut mcp_calls, &mut host_read_calls)
+                    .await;
+                #[cfg(not(feature = "cli"))]
+                self.route_non_builtin(tc, name, &mut out, &mut mcp_calls).await;
                 continue;
             }
             let id = tc
@@ -2722,80 +2848,7 @@ impl CompositeToolInvoker {
             if matches!(decision, Decision::Allow)
                 && matches!(tool.capability, Capability::Read | Capability::Net)
             {
-                // The future outlives this borrow of `self`, so it owns its roots
-                // and builds the context inside.
-                let root = self.project_root.clone();
-                let store = self.store_root.clone();
-                let enabled = self.enabled_skills.clone();
-                let user_skills = self.user_skills.clone();
-                let allow_network = self.allow_network;
-                let allow_home_read = self.allow_home_read;
-                let sandbox = self.sandbox;
-                let scratch = self.scratch_root.clone();
-                // The run's identity and record folder, which `write` and `edit`
-                // carry: a read is remembered against it, and without it the
-                // file a run has just read would still be "not read" when the
-                // run goes to change it.
-                let run_scope = self.cancel_scope.run.clone();
-                let record_to = self.record_to.clone();
-                // Everything `tool_context_with_run` carries, so a concurrent
-                // read sees the same mailbox, policy and tool set as a
-                // sequential one (a skill read must honour `available_tools`).
-                let session_id = self.cancel_scope.session.clone();
-                let session_messaging = self.session_messaging;
-                let sandbox_fs = self.sandbox_fs.clone();
-                let permissions = self.permissions.clone();
-                let subject = self.subject.clone();
-                let available_tools = self.available_tools.clone();
-                let nul_programs = self.nul_programs.clone();
-                let format_on_edit = self.format_on_edit;
-                let check_syntax = self.check_syntax;
-                // Reads run concurrently, so each needs its own token under the
-                // run's scope rather than sharing one.
-                let registered = self.call_token(&id);
-                let timeout_id = id.clone();
-                let call_timeout = read_only_tool_timeout(tool.name, &args);
-                read_futures.push(bounded_read_only_call(
-                    async move {
-                        let ctx = ToolContext::new(&root, &store, &enabled)
-                            .with_network(allow_network)
-                            .with_home_readonly(allow_home_read)
-                            .with_sandbox(sandbox)
-                            .with_scratch_root(&scratch)
-                            .with_user_skills(user_skills.as_deref())
-                            .with_fs_config(Some(&sandbox_fs))
-                            .with_permissions(&permissions, &subject)
-                            .with_available_tools(&available_tools)
-                            .with_format_on_edit(format_on_edit)
-                            .with_check_syntax(check_syntax)
-                            .with_nul_programs(&nul_programs)
-                            .with_cancel(registered.token().clone());
-                        let ctx = match record_to.as_deref() {
-                            Some(data) => {
-                                let ctx = ctx.with_run(&run_scope, data);
-                                if session_messaging {
-                                    ctx.with_mailbox_as(&session_id, data)
-                                } else {
-                                    ctx
-                                }
-                            }
-                            None => ctx,
-                        };
-                        // Held until the future completes, then dropped, which
-                        // deregisters it.
-                        let _registered = registered;
-                        let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
-                        let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
-                        ToolOutcome {
-                            diff,
-                            images: images.unwrap_or_default(),
-                            ..ToolOutcome::plain(id, text)
-                        }
-                    },
-                    timeout_id,
-                    name.to_string(),
-                    call_timeout,
-                ));
+                read_futures.push(self.schedule_read(tool, args, id, name));
                 continue;
             }
             // The harness's own word that this call ended in the null-device
