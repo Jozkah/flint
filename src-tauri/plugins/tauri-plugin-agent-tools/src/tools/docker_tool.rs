@@ -311,9 +311,13 @@ mod tests {
         std::fs::write(bin.join("docker.cmd"), "@echo off\r\ncd\r\n").unwrap();
         let out = docker_program(bin.join("docker.cmd"), &json!({ "args": ["compose", "ls"] }), &ws).await;
         let canon = std::fs::canonicalize(&ws).unwrap();
+        // The child prints the folder as it was handed it, which can be the 8.3
+        // short form (`RUNNER~1`) on a CI runner; canonicalise it too, while the
+        // folder still exists, to compare like with like.
+        let printed = std::fs::canonicalize(out.trim()).unwrap_or_else(|_| std::path::PathBuf::from(out.trim()));
         let _ = std::fs::remove_dir_all(&base);
         let strip = |s: &str| s.trim().trim_start_matches(r"\\?\").to_ascii_lowercase();
-        assert_eq!(strip(&out), strip(&canon.to_string_lossy()), "{out}");
+        assert_eq!(strip(&printed.to_string_lossy()), strip(&canon.to_string_lossy()), "{out}");
     }
 
     #[test]
