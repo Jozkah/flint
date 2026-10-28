@@ -22,7 +22,7 @@ use tokio::{
 
 use crate::core::{
     app::commands::get_jan_data_folder_path,
-    mcp::models::{extract_active_status, extract_command_args, McpSettings},
+    mcp::models::{extract_active_status, extract_command_args, McpServerConfig, McpSettings},
     mcp::oauth,
     mcp::progress::JanClientHandler,
     state::{AppState, RunningMcpService, SharedMcpServers},
@@ -548,401 +548,462 @@ async fn schedule_mcp_start_task<R: Runtime>(
         config_params.transport_type.as_deref(),
         config_params.url.clone(),
     ) {
-        // One client for both transports, and one place the configured headers
-        // are turned into a `HeaderMap` -- the http and sse arms used to carry
-        // identical copies of that loop.
-        // reqwest13 because rmcp 3.x's StreamableHttpClient is implemented for
-        // reqwest 0.13; apply13 keeps Flint's custom-CA TLS trust (AH-190) on it.
-        // `[mcp] allow_hosts`: refuse a URL outside the list before connecting.
-        super::netguard::enforce_url(&url)?;
-        let base = crate::core::net::tls::apply13(
-            super::netguard::guard13(reqwest13::Client::builder())
-                .default_headers(header_map(&name, &config_params.headers)?)
-                .connect_timeout(config_params.timeout.unwrap_or(Duration::from_secs(15)))
-                // Per-read inactivity, so a long-lived stream stays up as long
-                // as the server keeps sending (keepalives) but a dead peer ends.
-                .read_timeout(Duration::from_secs(300)),
+        return connect_remote(
+            &app,
+            &servers,
+            &name,
+            &config,
+            &config_params,
+            &app_path,
+            transport,
+            &url,
         )
-        .build()
-            .map_err(|e| format!("Failed to build HTTP client for {name}: {e}"))?;
+        .await;
+    }
 
-        // Stored OAuth credentials (refreshed if stale) are wrapped around the
-        // base client so every request carries the bearer token. `None` means
-        // there is no OAuth here -- nothing stored, or the user configured their
-        // own `Authorization` header, which the base client already sends.
-        let authorized = oauth::authorized_client(&app_path, &name, &url, &config, base.clone())
-            .await
-            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + detail.to_string().as_str())?;
-        let had_credentials = authorized.is_some();
-
-        // rmcp 3.x dropped the SSE client transport (MCP deprecated HTTP+SSE for
-        // Streamable HTTP), so a legacy `sse` config is served over the
-        // streamable-http client instead of a dedicated SSE one.
-        if transport == "sse" {
-            log::warn!(
-                "MCP server '{name}' is configured with the deprecated 'sse' transport; \
-                 connecting over Streamable HTTP instead"
-            );
-        }
-        let handler =
-            JanClientHandler::new(flint_client_info(), name.clone(), app.clone());
-
-        let client = match authorized {
-            Some(c) => serve_http(c, &url, handler).await,
-            None => serve_http(base, &url, handler).await,
-        };
-
-        match client {
-            Ok(client) => {
-                log::info!("Connected to server: {:?}", client.peer_info());
-                servers.lock().await.insert(name.clone(), client);
-
-                emit_mcp_update_event(&app, &name);
-            }
-            Err(e) => {
-                log::error!("Failed to connect to server: {e}");
-                // Only probe when no token was sent: a failure *with* credentials
-                // is either a real outage or tokens the provider revoked, and
-                // discovery cannot tell those apart. Re-authenticating is offered
-                // from the settings screen regardless.
-                if !had_credentials && oauth::advertises_oauth(&url).await {
+    let bridge_port = browser_bridge_port(&name, &config_params);
+    if let Some(port) = bridge_port {
+        if !jan_utils::network::is_port_available(port) {
+            log::warn!("Port {} occupied, attempting cleanup", port);
+            match kill_orphaned_mcp_process_with_app(&app, port).await {
+                Ok(true) => {
+                    log::info!("Cleaned up orphaned process on port {}", port);
+                }
+                Ok(false) => {
                     return Err(format!(
-                        "{}no credentials are stored ({e})",
-                        oauth::NEEDS_AUTH_PREFIX
+                        "Port {} is already in use. Please close the application using this port or restart Jan.",
+                        port
                     ));
                 }
-                return Err(format!("Failed to connect to server: {e}"));
+                Err(e) => return Err(e),
             }
         }
-    } else {
-        if name == "Jan Browser MCP" {
-            if let Some(port_str) = config_params.envs.get("BRIDGE_PORT") {
-                if let Some(port_str) = port_str.as_str() {
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        if !jan_utils::network::is_port_available(port) {
-                            log::warn!("Port {} occupied, attempting cleanup", port);
-                            match kill_orphaned_mcp_process_with_app(&app, port).await {
-                                Ok(true) => {
-                                    log::info!("Cleaned up orphaned process on port {}", port);
-                                }
-                                Ok(false) => {
-                                    return Err(format!(
-                                        "Port {} is already in use. Please close the application using this port or restart Jan.",
-                                        port
-                                    ));
-                                }
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let bun_x_path = if cfg!(windows) {
-            bin_path.join("bun.exe")
-        } else {
-            bin_path.join("bun")
-        };
-        let uv_path = if cfg!(windows) {
-            bin_path.join("uv.exe")
-        } else {
-            bin_path.join("uv")
-        };
-
-        // Whether the configured command would be rewritten to the bundled
-        // `bun x` / `uv tool run`. If the override-based handshake fails we fall
-        // back to the system `npx`/`uvx`, whose stdio plumbing differs and is
-        // what most published MCP servers are tested against.
-        let override_available = (config_params.command == "npx"
-            && can_override_npx(bun_x_path.display().to_string()))
-            || (config_params.command == "uvx" && can_override_uvx(uv_path.display().to_string()));
-
-        // Builds the command as the caller would otherwise have spawned it.
-        // What confines it is `ConfinedMcpLaunch::prepare`, which is the only
-        // way to reach the process builder for a local server.
-        let build_cmd = |use_override: bool| -> Command {
-            let mut cmd = Command::new(super::launch::launchable_program(&config_params.command));
-            if use_override
-                && config_params.command == "npx"
-                && can_override_npx(bun_x_path.display().to_string())
-            {
-                let mut cache_dir = app_path.clone();
-                cache_dir.push(".npx");
-                cmd = Command::new(bun_x_path.display().to_string());
-                cmd.arg("x");
-                cmd.env("BUN_INSTALL", &cache_dir);
-            }
-            if use_override
-                && config_params.command == "uvx"
-                && can_override_uvx(uv_path.display().to_string())
-            {
-                let mut cache_dir = app_path.clone();
-                cache_dir.push(".uvx");
-                cmd = Command::new(uv_path.clone());
-                cmd.arg("tool");
-                cmd.arg("run");
-                cmd.env("UV_CACHE_DIR", &cache_dir);
-            }
-            {
-                // No console window on Windows; `npx`, `uvx` and whatever they
-                // start inherit the hidden console.
-                use jan_process::CommandConsole;
-                cmd.background();
-            }
-            // Make the child a process-group leader (pgid == pid) so teardown can
-            // signal the whole tree; MCP bridges fork grandchildren that hold the
-            // port and outlive a single-PID kill.
-            #[cfg(unix)]
-            {
-                cmd.process_group(0);
-            }
-            cmd.kill_on_drop(true);
-            config_params
-                .args
-                .iter()
-                .filter_map(Value::as_str)
-                // An empty arg is a directory to the filesystem server and an
-                // error there; older versions never forwarded one (#274).
-                .filter(|arg| !arg.is_empty())
-                .for_each(|arg| {
-                    cmd.arg(arg);
-                });
-            // Scrub the AppImage runtime's library/path variables so host tools
-            // (node, git, python) do not load the bundle's older libs (#015, #136, #375).
-            jan_process::HostProcessEnv::host_env(&mut cmd);
-            // Flint's own gateway/worker keys are not the server's to read; the
-            // server's `env` below is applied last and still wins.
-            jan_process::WithoutAppSecrets::without_app_secrets(&mut cmd);
-            // A PYTHONHOME inherited from the host points uv's Python at a tree
-            // without a stdlib ("No module named 'encodings'", #376). A value in
-            // the server's own config is applied below and still wins.
-            if matches!(config_params.command.as_str(), "uvx" | "uv") {
-                cmd.env_remove("PYTHONHOME");
-            }
-            config_params.envs.iter().for_each(|(k, v)| {
-                if let Some(v_str) = v.as_str() {
-                    cmd.env(k, v_str);
-                }
-            });
-            // The user's own working directory for the server. An imported
-            // server never gets one: it runs in its session workspace.
-            if !config_params.imported {
-                if let Some(dir) = config_params.cwd.as_deref() {
-                    cmd.current_dir(dir);
-                }
-            }
-            cmd
-        };
-
-        let mut use_override = true;
-        let (server, stderr) = loop {
-            // An imported server is a program the repository chose, so it
-            // runs under the session's own sandbox or it does not run.
-            // Confinement failing is the server not starting, and `prepare`
-            // is the only constructor of a launchable command, so there is no
-            // unconfined path to fall back to.
-            let launch =
-                crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&config_params, || {
-                    build_cmd(use_override)
-                })?;
-            let (process, stderr) = launch.spawn(Stdio::piped()).map_err(|e| {
-                log::error!("Failed to run command {name}: {e}");
-                format!("Failed to run command {name}: {e}")
-            })?;
-
-            if let Some(pid) = process.id() {
-                log::info!("MCP server {name} spawned with PID {pid}");
-                let app_state = app.state::<AppState>();
-                let mut pids = app_state.mcp_server_pids.lock().await;
-                pids.insert(name.clone(), pid);
-            }
-
-            let handler = JanClientHandler::new(flint_client_info(), name.clone(), app.clone());
-            let served = match timeout(MCP_INIT_TIMEOUT, handler.serve(process)).await {
-                Ok(served) => served.map_err(|e| e.to_string()),
-                Err(_) => Err(format!(
-                    "no initialize reply within {} seconds",
-                    MCP_INIT_TIMEOUT.as_secs()
-                )),
-            };
-            match served {
-                Ok(server) => break (server, stderr),
-                Err(e) => {
-                    // The child often crashes here with a write EPIPE while
-                    // replying to `initialize` once its pipes are torn down;
-                    // capture its stderr so we report that instead of an opaque
-                    // serve() error.
-                    let mut buffer = String::new();
-                    if let Some(mut stderr_stream) = stderr {
-                        // Bounded: a hung child that never closes stderr must
-                        // not turn the init timeout back into a hang.
-                        let _ = timeout(
-                            Duration::from_secs(2),
-                            stderr_stream.read_to_string(&mut buffer),
-                        )
-                        .await;
-                    }
-                    // The same scrub the running-server stderr pump applies: a
-                    // server that prints a credential and then crashes must
-                    // not put it in app.log or the error shown in the UI (#119).
-                    let buffer = scrub_handshake_stderr(&buffer);
-
-                    if use_override && override_available {
-                        log::warn!(
-                            "MCP server {name} failed to start via bundled bun/uv override ({e}); retrying with system {}. stderr: {buffer}",
-                            config_params.command
-                        );
-                        use_override = false;
-                        continue;
-                    }
-
-                    let error = if buffer.trim().is_empty() {
-                        format!("Failed to start MCP server {name}: {e}")
-                    } else {
-                        format!("Failed to start MCP server {name}: {buffer}")
-                    };
-                    log::error!("{error}");
-                    return Err(error);
-                }
-            }
-        };
-
-        // Keep the stderr pipe alive to prevent the child process from
-        // receiving SIGPIPE and to capture diagnostic output.
-        if let Some(mut stderr_stream) = stderr {
-            let stderr_name = name.clone();
-            let log_folder = crate::core::app::commands::resolve_jan_data_folder();
-            tokio::spawn(async move {
-                let mut buf = [0u8; 1024];
-                // #187: bytes of a UTF-8 character split across two reads.
-                let mut carry: Vec<u8> = Vec::new();
-                while let Ok(n) = stderr_stream.read(&mut buf).await {
-                    if n == 0 {
-                        break;
-                    }
-                    let text = decode_stderr_chunk(&mut carry, &buf[..n]);
-                    {
-                        for line in text.lines() {
-                            if !line.trim().is_empty() {
-                                log_mcp_stderr_line(&stderr_name, line);
-                                // AH-140: and into the server's own log.
-                                crate::core::mcp::server_log::append(
-                                    &log_folder,
-                                    &stderr_name,
-                                    line,
-                                );
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        log::trace!("Connected to server: {:#?}", server.peer_info());
-        servers.lock().await.insert(name.clone(), server);
-        log::info!("Server {name} started successfully.");
-
-        // Wait a short time to verify the server is stable before marking as connected
-        // This prevents race conditions where the server quits immediately
-        let verification_delay = Duration::from_millis(500);
-        sleep(verification_delay).await;
-
-        // Check if server is still running after the verification delay
-        let server_still_running = {
-            let servers_map = servers.lock().await;
-            servers_map.contains_key(&name)
-        };
-
-        if !server_still_running {
-            return Err(format!("MCP server {name} quit immediately after starting"));
-        }
-
-        // Verify tools/list is reachable before emitting the ready event.
-        // Stdio servers (especially via npx mcp-remote) may need extra time
-        // after serve() completes before the transport is ready for JSON-RPC.
-        const MAX_TOOL_VERIFY_ATTEMPTS: u32 = 3;
-        const TOOL_VERIFY_TIMEOUT_SECS: u64 = 2;
-        const TOOL_VERIFY_BACKOFF_MS: u64 = 1000;
-
-        for attempt in 1..=MAX_TOOL_VERIFY_ATTEMPTS {
-            // Clone the peer under a short lock; the list call runs unlocked.
-            let verify_peer = {
-                let servers_map = servers.lock().await;
-                servers_map.get(&name).map(|service| service.peer().clone())
-            };
-            let verify_result = {
-                if let Some(peer) = verify_peer {
-                    Some(
-                        timeout(
-                            Duration::from_secs(TOOL_VERIFY_TIMEOUT_SECS),
-                            peer.list_all_tools(),
-                        )
-                        .await,
-                    )
-                } else {
-                    log::info!(
-                        "MCP server {name} was removed during tools/list verification; skipping"
-                    );
-                    None
-                }
-            };
-
-            match verify_result {
-                None => {
-                    // Server was removed from state (e.g., user toggled it off).
-                    // Skip emitting the event entirely — this is intentional.
-                    return Ok(());
-                }
-                Some(Ok(Ok(_tools))) => {
-                    log::info!("MCP server {name} tools/list verified on attempt {attempt}");
-                    break;
-                }
-                Some(Ok(Err(e))) => {
-                    log::warn!(
-                        "MCP server {name} tools/list failed on attempt {attempt}/{MAX_TOOL_VERIFY_ATTEMPTS}: {e}"
-                    );
-                    if attempt < MAX_TOOL_VERIFY_ATTEMPTS {
-                        sleep(Duration::from_millis(TOOL_VERIFY_BACKOFF_MS)).await;
-                    }
-                }
-                Some(Err(_)) => {
-                    log::warn!(
-                        "MCP server {name} tools/list timed out on attempt {attempt}/{MAX_TOOL_VERIFY_ATTEMPTS}"
-                    );
-                    if attempt < MAX_TOOL_VERIFY_ATTEMPTS {
-                        sleep(Duration::from_millis(TOOL_VERIFY_BACKOFF_MS)).await;
-                    }
-                }
-            }
-        }
-        // If all attempts failed, we still proceed to emit the event.
-        // The health monitor will handle ongoing reconnection.
-
-        if name == "Jan Browser MCP" {
-            if let Some(port_str) = config_params.envs.get("BRIDGE_PORT") {
-                if let Some(port_str) = port_str.as_str() {
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        use crate::core::mcp::lockfile::create_lock_file;
-                        let child_pid = app
-                            .state::<AppState>()
-                            .mcp_server_pids
-                            .lock()
-                            .await
-                            .get(&name)
-                            .copied();
-                        if let Some(pid) = child_pid {
-                            if let Err(e) = create_lock_file(&app, port, &name, pid) {
-                                log::warn!("Failed to create lock file for port {}: {}", port, e);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        emit_mcp_update_event(&app, &name);
     }
+
+    let bun_x_path = if cfg!(windows) {
+        bin_path.join("bun.exe")
+    } else {
+        bin_path.join("bun")
+    };
+    let uv_path = if cfg!(windows) {
+        bin_path.join("uv.exe")
+    } else {
+        bin_path.join("uv")
+    };
+
+    let (server, stderr) = spawn_with_handshake(
+        &app,
+        &name,
+        &config_params,
+        &app_path,
+        &bun_x_path,
+        &uv_path,
+    )
+    .await?;
+
+    // Keep the stderr pipe alive to prevent the child process from
+    // receiving SIGPIPE and to capture diagnostic output.
+    if let Some(stderr_stream) = stderr {
+        pump_stderr(name.clone(), stderr_stream);
+    }
+    log::trace!("Connected to server: {:#?}", server.peer_info());
+    servers.lock().await.insert(name.clone(), server);
+    log::info!("Server {name} started successfully.");
+
+    // Wait a short time to verify the server is stable before marking as connected
+    // This prevents race conditions where the server quits immediately
+    let verification_delay = Duration::from_millis(500);
+    sleep(verification_delay).await;
+
+    // Check if server is still running after the verification delay
+    let server_still_running = {
+        let servers_map = servers.lock().await;
+        servers_map.contains_key(&name)
+    };
+
+    if !server_still_running {
+        return Err(format!("MCP server {name} quit immediately after starting"));
+    }
+
+    if !verify_tools_reachable(&servers, &name).await {
+        // Server was removed from state (e.g., user toggled it off).
+        // Skip emitting the event entirely -- this is intentional.
+        return Ok(());
+    }
+
+    if let Some(port) = bridge_port {
+        use crate::core::mcp::lockfile::create_lock_file;
+        let child_pid = app
+            .state::<AppState>()
+            .mcp_server_pids
+            .lock()
+            .await
+            .get(&name)
+            .copied();
+        if let Some(pid) = child_pid {
+            if let Err(e) = create_lock_file(&app, port, &name, pid) {
+                log::warn!("Failed to create lock file for port {}: {}", port, e);
+            }
+        }
+    }
+
+    emit_mcp_update_event(&app, &name);
     Ok(())
+}
+
+/// The bridge port of the bundled browser MCP, the only server whose port
+/// Flint cleans up and records in a lock file.
+fn browser_bridge_port(name: &str, params: &McpServerConfig) -> Option<u16> {
+    if name != "Jan Browser MCP" {
+        return None;
+    }
+    params
+        .envs
+        .get("BRIDGE_PORT")?
+        .as_str()?
+        .parse::<u16>()
+        .ok()
+}
+
+/// Connects to a remote (`http` / `sse`) server and stores the live client.
+#[allow(clippy::too_many_arguments)]
+async fn connect_remote<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    servers: &SharedMcpServers,
+    name: &str,
+    config: &Value,
+    config_params: &McpServerConfig,
+    app_path: &std::path::Path,
+    transport: &str,
+    url: &str,
+) -> Result<(), String> {
+    // One client for both transports, and one place the configured headers
+    // are turned into a `HeaderMap` -- the http and sse arms used to carry
+    // identical copies of that loop.
+    // reqwest13 because rmcp 3.x's StreamableHttpClient is implemented for
+    // reqwest 0.13; apply13 keeps Flint's custom-CA TLS trust (AH-190) on it.
+    // `[mcp] allow_hosts`: refuse a URL outside the list before connecting.
+    super::netguard::enforce_url(url)?;
+    let base = crate::core::net::tls::apply13(
+        super::netguard::guard13(reqwest13::Client::builder())
+            .default_headers(header_map(name, &config_params.headers)?)
+            .connect_timeout(config_params.timeout.unwrap_or(Duration::from_secs(15)))
+            // Per-read inactivity, so a long-lived stream stays up as long
+            // as the server keeps sending (keepalives) but a dead peer ends.
+            .read_timeout(Duration::from_secs(300)),
+    )
+    .build()
+        .map_err(|e| format!("Failed to build HTTP client for {name}: {e}"))?;
+
+    // Stored OAuth credentials (refreshed if stale) are wrapped around the
+    // base client so every request carries the bearer token. `None` means
+    // there is no OAuth here -- nothing stored, or the user configured their
+    // own `Authorization` header, which the base client already sends.
+    let authorized = oauth::authorized_client(app_path, name, url, config, base.clone())
+        .await
+        .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + detail.to_string().as_str())?;
+    let had_credentials = authorized.is_some();
+
+    // rmcp 3.x dropped the SSE client transport (MCP deprecated HTTP+SSE for
+    // Streamable HTTP), so a legacy `sse` config is served over the
+    // streamable-http client instead of a dedicated SSE one.
+    if transport == "sse" {
+        log::warn!(
+            "MCP server '{name}' is configured with the deprecated 'sse' transport; \
+             connecting over Streamable HTTP instead"
+        );
+    }
+    let handler = JanClientHandler::new(flint_client_info(), name.to_string(), app.clone());
+
+    let client = match authorized {
+        Some(c) => serve_http(c, url, handler).await,
+        None => serve_http(base, url, handler).await,
+    };
+
+    match client {
+        Ok(client) => {
+            log::info!("Connected to server: {:?}", client.peer_info());
+            servers.lock().await.insert(name.to_string(), client);
+
+            emit_mcp_update_event(app, name);
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to connect to server: {e}");
+            // Only probe when no token was sent: a failure *with* credentials
+            // is either a real outage or tokens the provider revoked, and
+            // discovery cannot tell those apart. Re-authenticating is offered
+            // from the settings screen regardless.
+            if !had_credentials && oauth::advertises_oauth(url).await {
+                return Err(format!(
+                    "{}no credentials are stored ({e})",
+                    oauth::NEEDS_AUTH_PREFIX
+                ));
+            }
+            Err(format!("Failed to connect to server: {e}"))
+        }
+    }
+}
+
+/// Builds the command for a local server as the caller would otherwise have
+/// spawned it. What confines it is `ConfinedMcpLaunch::prepare`, which is the
+/// only way to reach the process builder for a local server.
+fn build_local_command(
+    params: &McpServerConfig,
+    app_path: &std::path::Path,
+    bun_x_path: &std::path::Path,
+    uv_path: &std::path::Path,
+    use_override: bool,
+) -> Command {
+    let mut cmd = Command::new(super::launch::launchable_program(&params.command));
+    if use_override
+        && params.command == "npx"
+        && can_override_npx(bun_x_path.display().to_string())
+    {
+        let mut cache_dir = app_path.to_path_buf();
+        cache_dir.push(".npx");
+        cmd = Command::new(bun_x_path.display().to_string());
+        cmd.arg("x");
+        cmd.env("BUN_INSTALL", &cache_dir);
+    }
+    if use_override
+        && params.command == "uvx"
+        && can_override_uvx(uv_path.display().to_string())
+    {
+        let mut cache_dir = app_path.to_path_buf();
+        cache_dir.push(".uvx");
+        cmd = Command::new(uv_path.to_path_buf());
+        cmd.arg("tool");
+        cmd.arg("run");
+        cmd.env("UV_CACHE_DIR", &cache_dir);
+    }
+    {
+        // No console window on Windows; `npx`, `uvx` and whatever they
+        // start inherit the hidden console.
+        use jan_process::CommandConsole;
+        cmd.background();
+    }
+    // Make the child a process-group leader (pgid == pid) so teardown can
+    // signal the whole tree; MCP bridges fork grandchildren that hold the
+    // port and outlive a single-PID kill.
+    #[cfg(unix)]
+    {
+        cmd.process_group(0);
+    }
+    cmd.kill_on_drop(true);
+    params
+        .args
+        .iter()
+        .filter_map(Value::as_str)
+        // An empty arg is a directory to the filesystem server and an
+        // error there; older versions never forwarded one (#274).
+        .filter(|arg| !arg.is_empty())
+        .for_each(|arg| {
+            cmd.arg(arg);
+        });
+    // Scrub the AppImage runtime's library/path variables so host tools
+    // (node, git, python) do not load the bundle's older libs (#015, #136, #375).
+    jan_process::HostProcessEnv::host_env(&mut cmd);
+    // Flint's own gateway/worker keys are not the server's to read; the
+    // server's `env` below is applied last and still wins.
+    jan_process::WithoutAppSecrets::without_app_secrets(&mut cmd);
+    // A PYTHONHOME inherited from the host points uv's Python at a tree
+    // without a stdlib ("No module named 'encodings'", #376). A value in
+    // the server's own config is applied below and still wins.
+    if matches!(params.command.as_str(), "uvx" | "uv") {
+        cmd.env_remove("PYTHONHOME");
+    }
+    params.envs.iter().for_each(|(k, v)| {
+        if let Some(v_str) = v.as_str() {
+            cmd.env(k, v_str);
+        }
+    });
+    // The user's own working directory for the server. An imported
+    // server never gets one: it runs in its session workspace.
+    if !params.imported {
+        if let Some(dir) = params.cwd.as_deref() {
+            cmd.current_dir(dir);
+        }
+    }
+    cmd
+}
+
+/// Spawns a local server and completes the MCP `initialize` handshake. When the
+/// bundled `bun x` / `uv tool run` override fails the handshake, it retries once
+/// with the system `npx` / `uvx`, whose stdio plumbing differs and is what most
+/// published MCP servers are tested against.
+async fn spawn_with_handshake<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    name: &str,
+    config_params: &McpServerConfig,
+    app_path: &std::path::Path,
+    bun_x_path: &std::path::Path,
+    uv_path: &std::path::Path,
+) -> Result<(RunningMcpService, Option<tokio::process::ChildStderr>), String> {
+    // Whether the configured command would be rewritten to the bundled
+    // `bun x` / `uv tool run`.
+    let override_available = (config_params.command == "npx"
+        && can_override_npx(bun_x_path.display().to_string()))
+        || (config_params.command == "uvx" && can_override_uvx(uv_path.display().to_string()));
+
+    let mut use_override = true;
+    loop {
+        // An imported server is a program the repository chose, so it
+        // runs under the session's own sandbox or it does not run.
+        // Confinement failing is the server not starting, and `prepare`
+        // is the only constructor of a launchable command, so there is no
+        // unconfined path to fall back to.
+        let launch = crate::core::mcp::launch::ConfinedMcpLaunch::prepare(config_params, || {
+            build_local_command(config_params, app_path, bun_x_path, uv_path, use_override)
+        })?;
+        let (process, stderr) = launch.spawn(Stdio::piped()).map_err(|e| {
+            log::error!("Failed to run command {name}: {e}");
+            format!("Failed to run command {name}: {e}")
+        })?;
+
+        if let Some(pid) = process.id() {
+            log::info!("MCP server {name} spawned with PID {pid}");
+            let app_state = app.state::<AppState>();
+            let mut pids = app_state.mcp_server_pids.lock().await;
+            pids.insert(name.to_string(), pid);
+        }
+
+        let handler = JanClientHandler::new(flint_client_info(), name.to_string(), app.clone());
+        let served = match timeout(MCP_INIT_TIMEOUT, handler.serve(process)).await {
+            Ok(served) => served.map_err(|e| e.to_string()),
+            Err(_) => Err(format!(
+                "no initialize reply within {} seconds",
+                MCP_INIT_TIMEOUT.as_secs()
+            )),
+        };
+        match served {
+            Ok(server) => return Ok((server, stderr)),
+            Err(e) => {
+                // The child often crashes here with a write EPIPE while
+                // replying to `initialize` once its pipes are torn down;
+                // capture its stderr so we report that instead of an opaque
+                // serve() error.
+                let mut buffer = String::new();
+                if let Some(mut stderr_stream) = stderr {
+                    // Bounded: a hung child that never closes stderr must
+                    // not turn the init timeout back into a hang.
+                    let _ = timeout(
+                        Duration::from_secs(2),
+                        stderr_stream.read_to_string(&mut buffer),
+                    )
+                    .await;
+                }
+                // The same scrub the running-server stderr pump applies: a
+                // server that prints a credential and then crashes must
+                // not put it in app.log or the error shown in the UI (#119).
+                let buffer = scrub_handshake_stderr(&buffer);
+
+                if use_override && override_available {
+                    log::warn!(
+                        "MCP server {name} failed to start via bundled bun/uv override ({e}); retrying with system {}. stderr: {buffer}",
+                        config_params.command
+                    );
+                    use_override = false;
+                    continue;
+                }
+
+                let error = if buffer.trim().is_empty() {
+                    format!("Failed to start MCP server {name}: {e}")
+                } else {
+                    format!("Failed to start MCP server {name}: {buffer}")
+                };
+                log::error!("{error}");
+                return Err(error);
+            }
+        }
+    }
+}
+
+/// Reads a server's stderr to its end on a task, logging each line and
+/// appending it to the server's own log.
+fn pump_stderr(name: String, mut stderr_stream: tokio::process::ChildStderr) {
+    let log_folder = crate::core::app::commands::resolve_jan_data_folder();
+    tokio::spawn(async move {
+        let mut buf = [0u8; 1024];
+        // #187: bytes of a UTF-8 character split across two reads.
+        let mut carry: Vec<u8> = Vec::new();
+        while let Ok(n) = stderr_stream.read(&mut buf).await {
+            if n == 0 {
+                break;
+            }
+            let text = decode_stderr_chunk(&mut carry, &buf[..n]);
+            {
+                for line in text.lines() {
+                    if !line.trim().is_empty() {
+                        log_mcp_stderr_line(&name, line);
+                        // AH-140: and into the server's own log.
+                        crate::core::mcp::server_log::append(&log_folder, &name, line);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Verifies `tools/list` is reachable before the ready event is emitted.
+/// Stdio servers (especially via npx mcp-remote) may need extra time after
+/// serve() completes before the transport is ready for JSON-RPC. Returns false
+/// when the server was removed from `servers` meanwhile (the user toggled it
+/// off), in which case the caller skips the event; true otherwise, even when
+/// every attempt failed -- the health monitor handles ongoing reconnection.
+async fn verify_tools_reachable(servers: &SharedMcpServers, name: &str) -> bool {
+    const MAX_TOOL_VERIFY_ATTEMPTS: u32 = 3;
+    const TOOL_VERIFY_TIMEOUT_SECS: u64 = 2;
+    const TOOL_VERIFY_BACKOFF_MS: u64 = 1000;
+
+    for attempt in 1..=MAX_TOOL_VERIFY_ATTEMPTS {
+        // Clone the peer under a short lock; the list call runs unlocked.
+        let verify_peer = {
+            let servers_map = servers.lock().await;
+            servers_map.get(name).map(|service| service.peer().clone())
+        };
+        let verify_result = {
+            if let Some(peer) = verify_peer {
+                Some(
+                    timeout(
+                        Duration::from_secs(TOOL_VERIFY_TIMEOUT_SECS),
+                        peer.list_all_tools(),
+                    )
+                    .await,
+                )
+            } else {
+                log::info!(
+                    "MCP server {name} was removed during tools/list verification; skipping"
+                );
+                None
+            }
+        };
+
+        match verify_result {
+            None => return false,
+            Some(Ok(Ok(_tools))) => {
+                log::info!("MCP server {name} tools/list verified on attempt {attempt}");
+                break;
+            }
+            Some(Ok(Err(e))) => {
+                log::warn!(
+                    "MCP server {name} tools/list failed on attempt {attempt}/{MAX_TOOL_VERIFY_ATTEMPTS}: {e}"
+                );
+                if attempt < MAX_TOOL_VERIFY_ATTEMPTS {
+                    sleep(Duration::from_millis(TOOL_VERIFY_BACKOFF_MS)).await;
+                }
+            }
+            Some(Err(_)) => {
+                log::warn!(
+                    "MCP server {name} tools/list timed out on attempt {attempt}/{MAX_TOOL_VERIFY_ATTEMPTS}"
+                );
+                if attempt < MAX_TOOL_VERIFY_ATTEMPTS {
+                    sleep(Duration::from_millis(TOOL_VERIFY_BACKOFF_MS)).await;
+                }
+            }
+        }
+    }
+    true
 }
 
 /// Route an MCP server's stderr line through Flint's logger at the level the
@@ -1407,6 +1468,111 @@ pub(crate) async fn stop_stdio_child(pid: u32, grace: Duration) -> StdioStop {
     StdioStop::Killed
 }
 
+/// Workspaces whose sandbox holds a folder grant for a server stopping now,
+/// withdrawn once they are down (restart re-grants on the next spawn).
+async fn collect_grant_holders(
+    state: &AppState,
+    pids_snapshot: &std::collections::HashMap<String, u32>,
+) -> Vec<(serde_json::Value, Option<u32>)> {
+    let active_servers = state.mcp_active_servers.lock().await;
+    active_servers
+        .iter()
+        .filter(|(_, config)| super::launch::folder_grant_workspace(config).is_some())
+        .map(|(name, config)| (config.clone(), pids_snapshot.get(name).copied()))
+        .collect()
+}
+
+/// Takes every running service out of the shared map, with the bridge port of
+/// the Browser MCP (the one server whose port is freed on stop).
+async fn take_servers_to_stop(state: &AppState) -> Vec<(String, RunningMcpService, Option<u16>)> {
+    let mut servers_map = state.mcp_servers.lock().await;
+    let keys: Vec<String> = servers_map.keys().cloned().collect();
+
+    let mut result = Vec::new();
+    for key in keys {
+        if let Some(service) = servers_map.remove(&key) {
+            let port = if key == "Jan Browser MCP" {
+                let active_servers = state.mcp_active_servers.lock().await;
+                active_servers.get(&key).and_then(|config| {
+                    config
+                        .get("env")
+                        .and_then(|e| e.get("BRIDGE_PORT"))
+                        .and_then(|p| p.as_str())
+                        .and_then(|s| s.parse::<u16>().ok())
+                })
+            } else {
+                None
+            };
+
+            result.push((key, service, port));
+        }
+    }
+    result
+}
+
+/// Stops one server: cancel its transport, give the child a grace period, then
+/// kill its tree. Returns the name and whether the cancel went through cleanly.
+async fn stop_one_server<R: Runtime>(
+    app: AppHandle<R>,
+    name: String,
+    service: RunningMcpService,
+    port: Option<u16>,
+    child_pid: Option<u32>,
+    per_server_timeout: Duration,
+) -> (String, bool) {
+    let cancel_future = service.cancel();
+
+    // `cancel` closes the transport, and with it the child's stdin:
+    // the polite way to ask a stdio server to exit.
+    let success = tokio::time::timeout(per_server_timeout, cancel_future)
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false);
+
+    // Then give the process a moment to leave on its own before
+    // its tree is killed. The Browser MCP has its own teardown
+    // below, which also frees its port.
+    if name != "Jan Browser MCP" {
+        if let Some(pid) = child_pid {
+            if stop_stdio_child(pid, STDIO_EXIT_GRACE).await == StdioStop::Killed {
+                log::info!(
+                    "MCP server {name} (PID {pid}) did not exit after its stdin closed; killed its process tree"
+                );
+            }
+        }
+    }
+
+    if name == "Jan Browser MCP" {
+        if let Some(port) = port {
+            use crate::core::mcp::lockfile::delete_lock_file;
+            terminate_browser_mcp(child_pid, port).await;
+            let _ = delete_lock_file(&app, port);
+        }
+    }
+
+    (name, success)
+}
+
+/// Force-kills the servers that did not stop gracefully.
+async fn force_kill_failed(
+    failed_servers: &[String],
+    pids_snapshot: &std::collections::HashMap<String, u32>,
+) {
+    for server_name in failed_servers {
+        if let Some(&pid) = pids_snapshot.get(server_name) {
+            // Already gone (it left within its grace period): nothing to kill,
+            // and a recycled pid is not ours to signal.
+            if !crate::core::migration::lock::pid_alive(pid) {
+                continue;
+            }
+            log::warn!("Force-killing MCP server {} (PID {})", server_name, pid);
+            if let Err(e) = kill_process_by_pid(pid).await {
+                log::error!("Failed to force-kill PID {}: {}", pid, e);
+            }
+        }
+    }
+}
+
 pub async fn stop_mcp_servers_with_context<R: Runtime>(
     app: &AppHandle<R>,
     state: &State<'_, AppState>,
@@ -1437,41 +1603,8 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
         let pids = state.mcp_server_pids.lock().await;
         pids.clone()
     };
-    // Workspaces whose sandbox holds a folder grant for a server stopping now,
-    // withdrawn once they are down (restart re-grants on the next spawn).
-    let grant_holders: Vec<(serde_json::Value, Option<u32>)> = {
-        let active_servers = state.mcp_active_servers.lock().await;
-        active_servers
-            .iter()
-            .filter(|(_, config)| super::launch::folder_grant_workspace(config).is_some())
-            .map(|(name, config)| (config.clone(), pids_snapshot.get(name).copied()))
-            .collect()
-    };
-    let servers_to_stop: Vec<(String, RunningMcpService, Option<u16>)> = {
-        let mut servers_map = state.mcp_servers.lock().await;
-        let keys: Vec<String> = servers_map.keys().cloned().collect();
-
-        let mut result = Vec::new();
-        for key in keys {
-            if let Some(service) = servers_map.remove(&key) {
-                let port = if key == "Jan Browser MCP" {
-                    let active_servers = state.mcp_active_servers.lock().await;
-                    active_servers.get(&key).and_then(|config| {
-                        config
-                            .get("env")
-                            .and_then(|e| e.get("BRIDGE_PORT"))
-                            .and_then(|p| p.as_str())
-                            .and_then(|s| s.parse::<u16>().ok())
-                    })
-                } else {
-                    None
-                };
-
-                result.push((key, service, port));
-            }
-        }
-        result
-    };
+    let grant_holders = collect_grant_holders(state, &pids_snapshot).await;
+    let servers_to_stop = take_servers_to_stop(state).await;
 
     if servers_to_stop.is_empty() {
         return Ok(());
@@ -1488,41 +1621,14 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
             let app_clone = app.clone();
             let child_pid = pids_snapshot.get(&name).copied();
 
-            tauri::async_runtime::spawn(async move {
-                let cancel_future = service.cancel();
-
-                // `cancel` closes the transport, and with it the child's stdin:
-                // the polite way to ask a stdio server to exit.
-                let success = tokio::time::timeout(per_server_timeout, cancel_future)
-                    .await
-                    .map(|r| r.is_ok())
-                    .unwrap_or(false);
-
-                // Then give the process a moment to leave on its own before
-                // its tree is killed. The Browser MCP has its own teardown
-                // below, which also frees its port.
-                if name != "Jan Browser MCP" {
-                    if let Some(pid) = child_pid {
-                        if stop_stdio_child(pid, STDIO_EXIT_GRACE).await
-                            == StdioStop::Killed
-                        {
-                            log::info!(
-                                "MCP server {name} (PID {pid}) did not exit after its stdin closed; killed its process tree"
-                            );
-                        }
-                    }
-                }
-
-                if name == "Jan Browser MCP" {
-                    if let Some(port) = port {
-                        use crate::core::mcp::lockfile::delete_lock_file;
-                        terminate_browser_mcp(child_pid, port).await;
-                        let _ = delete_lock_file(&app_clone, port);
-                    }
-                }
-
-                (name, success)
-            })
+            tauri::async_runtime::spawn(stop_one_server(
+                app_clone,
+                name,
+                service,
+                port,
+                child_pid,
+                per_server_timeout,
+            ))
         })
         .collect();
 
@@ -1554,20 +1660,7 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
         }
     };
 
-    // Force-kill processes that didn't stop gracefully
-    for server_name in &failed_servers {
-        if let Some(&pid) = pids_snapshot.get(server_name) {
-            // Already gone (it left within its grace period): nothing to kill,
-            // and a recycled pid is not ours to signal.
-            if !crate::core::migration::lock::pid_alive(pid) {
-                continue;
-            }
-            log::warn!("Force-killing MCP server {} (PID {})", server_name, pid);
-            if let Err(e) = kill_process_by_pid(pid).await {
-                log::error!("Failed to force-kill PID {}: {}", pid, e);
-            }
-        }
-    }
+    force_kill_failed(&failed_servers, &pids_snapshot).await;
 
     // Clean up PIDs from tracking
     {
@@ -2166,5 +2259,90 @@ mod kill_guard_tests {
         assert_eq!(kill_target(100, Some(100), 100), KillTarget::Single);
         assert_eq!(kill_target(1, Some(1), 100), KillTarget::Single);
         assert_eq!(kill_target(500, None, 100), KillTarget::Single);
+    }
+}
+
+#[cfg(test)]
+mod start_split_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn params(v: Value) -> McpServerConfig {
+        extract_command_args(&v).expect("a valid server entry")
+    }
+
+    fn env_of(cmd: &Command, key: &str) -> Option<Option<String>> {
+        cmd.as_std()
+            .get_envs()
+            .find(|(k, _)| *k == std::ffi::OsStr::new(key))
+            .map(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()))
+    }
+
+    #[test]
+    fn build_local_command_drops_empty_args_and_applies_env() {
+        let p = params(json!({
+            "command": "somecli",
+            "args": ["a", "", "b"],
+            "env": { "TOKEN": "x", "NOT_A_STRING": 3 }
+        }));
+        let dir = std::path::Path::new("data");
+        let cmd = build_local_command(&p, dir, dir, dir, false);
+        let args: Vec<_> = cmd.as_std().get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(args, vec!["a", "b"]);
+        assert_eq!(env_of(&cmd, "TOKEN"), Some(Some("x".to_string())));
+        assert_eq!(env_of(&cmd, "NOT_A_STRING"), None);
+    }
+
+    #[test]
+    fn uv_commands_clear_pythonhome_but_the_server_env_wins() {
+        let dir = std::path::Path::new("data");
+        let cleared = build_local_command(
+            &params(json!({ "command": "uvx", "args": [] })),
+            dir,
+            dir,
+            dir,
+            false,
+        );
+        assert_eq!(env_of(&cleared, "PYTHONHOME"), Some(None));
+        let own = build_local_command(
+            &params(json!({ "command": "uvx", "args": [], "env": { "PYTHONHOME": "/mine" } })),
+            dir,
+            dir,
+            dir,
+            false,
+        );
+        assert_eq!(env_of(&own, "PYTHONHOME"), Some(Some("/mine".to_string())));
+    }
+
+    #[test]
+    fn an_imported_server_never_gets_the_users_cwd() {
+        let dir = std::path::Path::new("data");
+        let user = build_local_command(
+            &params(json!({ "command": "c", "args": [], "cwd": "/work" })),
+            dir,
+            dir,
+            dir,
+            false,
+        );
+        assert_eq!(user.as_std().get_current_dir(), Some(std::path::Path::new("/work")));
+        let imported = build_local_command(
+            &params(json!({ "command": "c", "args": [], "cwd": "/work", "janImported": true })),
+            dir,
+            dir,
+            dir,
+            false,
+        );
+        assert_eq!(imported.as_std().get_current_dir(), None);
+    }
+
+    #[test]
+    fn browser_bridge_port_applies_only_to_the_browser_server() {
+        let p = params(json!({ "command": "c", "args": [], "env": { "BRIDGE_PORT": "9223" } }));
+        assert_eq!(browser_bridge_port("Jan Browser MCP", &p), Some(9223));
+        assert_eq!(browser_bridge_port("other", &p), None);
+        let bad = params(json!({ "command": "c", "args": [], "env": { "BRIDGE_PORT": "nope" } }));
+        assert_eq!(browser_bridge_port("Jan Browser MCP", &bad), None);
+        let none = params(json!({ "command": "c", "args": [] }));
+        assert_eq!(browser_bridge_port("Jan Browser MCP", &none), None);
     }
 }
