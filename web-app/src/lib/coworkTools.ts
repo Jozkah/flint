@@ -79,6 +79,25 @@ export const PLAN_DENIED_TOOLS = new Set([
 export const isReviewDeniedBrowserTool = (name: string): boolean =>
   isBrowserActionTool(name) || name === 'browser'
 
+/**
+ * Tools that run commands or change the machine. Review mode changes nothing,
+ * so these are withheld there (whole tool, including any read-only
+ * subcommands) and refused by the dispatcher.
+ */
+export const REVIEW_DENIED_TOOLS = new Set([
+  'host_powershell',
+  'host_build',
+  'host_wsl',
+  'host_ssh',
+  'host_action',
+  'host_package',
+  'docker',
+  'git_clone',
+])
+
+export const isReviewDeniedTool = (name: string): boolean =>
+  isReviewDeniedBrowserTool(name) || REVIEW_DENIED_TOOLS.has(name)
+
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
 export { TEAM_TOOL_NAME, WORKFLOW_TOOL_NAME }
@@ -699,7 +718,7 @@ export function allowedToolNames(
 ): string[] {
   return names.filter((name) => {
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) return false
-    if (opts.planMode && isReviewDeniedBrowserTool(name)) return false
+    if (opts.planMode && isReviewDeniedTool(name)) return false
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) return false
     if (
       (name === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(name)) &&
@@ -796,7 +815,7 @@ export function coworkToolsFromSchemas(
   for (const s of schemas) {
     const name = s.function.name
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) continue
-    if (opts.planMode && isReviewDeniedBrowserTool(name)) continue
+    if (opts.planMode && isReviewDeniedTool(name)) continue
     // Review (plan) mode changes nothing, and stopping another session's run
     // is a change. Withheld here and refused by the dispatcher too.
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) continue

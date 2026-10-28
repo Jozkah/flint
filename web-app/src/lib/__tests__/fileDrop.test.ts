@@ -146,10 +146,12 @@ describe('withoutPastedPath', () => {
 })
 
 describe('pastedPath', () => {
-  it('accepts absolute Windows, UNC and POSIX paths, quoted or not', () => {
+  it('accepts absolute Windows and POSIX paths, quoted or not', () => {
     expect(pastedPath('C:\\Users\\me\\proj')).toBe('C:\\Users\\me\\proj')
     expect(pastedPath('"D:/work/app"')).toBe('D:/work/app')
-    expect(pastedPath('\\\\srv\\share\\dir')).toBe('\\\\srv\\share\\dir')
+    expect(pastedPath('\\\\srv\\share\\dir')).toBeNull()
+    expect(pastedPath('//srv/share/x')).toBeNull()
+    expect(pastedPath('\\\\?\\UNC\\srv\\share')).toBeNull()
     expect(pastedPath('  /home/me/proj  ')).toBe('/home/me/proj')
   })
 
