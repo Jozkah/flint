@@ -4902,13 +4902,20 @@ impl App {
         self.journal_writer = None;
     }
 
+    /// Take `model` as the active one and re-resolve its context window, without
+    /// persisting it or compacting. For paths that adopt a model the user did
+    /// not just pick (resuming a thread, a fresh sign-in).
+    fn adopt_model(&mut self, model: String) {
+        self.model = model;
+        self.refresh_context_window();
+    }
+
     /// Switch the active model and remember it in the project's agent.toml so it
     /// persists across sessions. The context window is re-resolved for the new
     /// model immediately, and if the target window shrinks below the current
     /// usage a target-model compaction is queued before the next ordinary request.
     fn set_model(&mut self, model: String) {
-        self.model = model;
-        self.refresh_context_window();
+        self.adopt_model(model);
         // Persistence warning preserved verbatim from the prior behaviour.
         let persistence = match super::cli_set_project_model(&self.agent_dir, &self.model) {
             Ok(()) => String::new(),
@@ -14995,7 +15002,7 @@ fn adopt_login_model(app: &mut App, login: &crate::core::cli::auth::LoginResult)
         return;
     }
     if let Some(model) = login.models.first() {
-        app.model = model.clone();
+        app.adopt_model(model.clone());
         let _ = super::cli_set_project_model(&app.agent_dir, &app.model);
     }
 }
@@ -16035,7 +16042,7 @@ async fn load_thread(app: &mut App, thread: &serde_json::Value, verb: &str) {
         .and_then(|m| m.get("id"))
         .and_then(|v| v.as_str())
     {
-        app.model = model.to_string();
+        app.adopt_model(model.to_string());
     }
 
     // The journal holds what was rendered (reasoning, tool rows, diffs); the
@@ -22160,6 +22167,21 @@ mod tests {
         let seq = panic_restore_sequence();
         assert!(seq.contains("[?1049l"));
         assert!(seq.ends_with("[?25h"));
+    }
+
+    #[test]
+    fn resume_adopts_thread_model_window() {
+        let mut app = test_app();
+        let model = "claude-sonnet-4-6";
+        let want = crate::core::cli::model_capabilities::resolve_context_window(
+            model,
+            app.configured_context_window,
+        )
+        .tokens;
+        app.context_window = 1;
+        app.adopt_model(model.to_string());
+        assert_eq!(app.model, model);
+        assert_eq!(app.context_window, want);
     }
 
     #[test]
