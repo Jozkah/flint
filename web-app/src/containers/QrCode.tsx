@@ -15,18 +15,35 @@ export function QrCode({
   size?: number
   label: string
 }) {
-  const { d, n } = useMemo(() => {
-    const qr = create(value, { errorCorrectionLevel: 'M' })
-    const count = qr.modules.size
-    let path = ''
-    for (let r = 0; r < count; r++) {
-      for (let c = 0; c < count; c++) {
-        if (qr.modules.get(r, c)) path += `M${c + 4} ${r + 4}h1v1h-1z`
+  const drawn = useMemo(() => {
+    try {
+      const qr = create(value, { errorCorrectionLevel: 'M' })
+      const count = qr.modules.size
+      let path = ''
+      for (let r = 0; r < count; r++) {
+        for (let c = 0; c < count; c++) {
+          if (qr.modules.get(r, c)) path += `M${c + 4} ${r + 4}h1v1h-1z`
+        }
       }
+      // Four modules of quiet zone on each side, as the spec asks.
+      return { d: path, n: count + 8 }
+    } catch {
+      // Too long to encode: show the text so it can still be typed in.
+      return null
     }
-    // Four modules of quiet zone on each side, as the spec asks.
-    return { d: path, n: count + 8 }
   }, [value])
+
+  if (!drawn) {
+    return (
+      <code
+        data-testid="remote-qr-fallback"
+        className="block max-w-full break-all rounded-md bg-muted p-2 text-xs"
+      >
+        {value}
+      </code>
+    )
+  }
+  const { d, n } = drawn
 
   return (
     <svg
