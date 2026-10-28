@@ -2841,7 +2841,7 @@ mod tests {
         assert_eq!(base.as_deref(), Some(dir.as_path()));
         let mut args = json!({ "path": "note.txt", "content": "x" });
         handlers::rebase_relative_paths("write", &mut args, &dir);
-        let rebased = args["path"].as_str().unwrap().replace('\', "/");
+        let rebased = args["path"].as_str().unwrap().replace('\\', "/");
         assert!(rebased.ends_with("note.txt") && Path::new(&rebased).is_absolute(), "{rebased}");
         assert_eq!(rebase_base_for(Path::new("C:/data"), &[], None), None);
         let _ = std::fs::remove_dir_all(&dir);
