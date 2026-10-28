@@ -21,6 +21,7 @@ export interface AttachmentFileInfo {
   type?: string
   size?: number
   chunk_count: number
+  mtime?: number | null
 }
 
 // Events

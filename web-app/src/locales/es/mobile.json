@@ -50,7 +50,8 @@
     "retention_many": "Los elementos archivados se eliminan definitivamente tras {{count}} de días.",
     "retention_other": "Los elementos archivados se eliminan definitivamente tras {{count}} días.",
     "retentionForever": "Los elementos archivados se quedan hasta que los elimines.",
-    "emptyAction": "Vaciar archivo"
+    "emptyAction": "Vaciar archivo",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Eso no funcionó",
@@ -1305,6 +1306,7 @@
       "working": "Trabajando: {{done}} de {{total}} tareas hechas",
       "attention_one": "Necesita tu atención: {{count}} tarea te está esperando",
       "attention_other": "Necesita tu atención: {{count}} tareas te están esperando",
+      "attention_many": "Necesita tu atención: {{count}} tareas te están esperando",
       "review": "Lista para tu revisión",
       "merging": "Esperando a que se apliquen los cambios",
       "paused": "En pausa",
@@ -1334,6 +1336,7 @@
     },
     "files_one": "{{count}} archivo, +{{added}} -{{removed}}",
     "files_other": "{{count}} archivos, +{{added}} -{{removed}}",
+    "files_many": "{{count}} archivos, +{{added}} -{{removed}}",
     "filesUncommitted": "aún no guardado en un commit",
     "budget": "{{used}} de {{budget}} tokens usados",
     "tokens": "{{used}} tokens usados",
@@ -1362,6 +1365,7 @@
       "prepared": "Los cambios están listos para revisar",
       "changes_one": "{{count}} archivo por aplicar",
       "changes_other": "{{count}} archivos por aplicar",
+      "changes_many": "{{count}} archivos por aplicar",
       "gateFailed": "La comprobación falló: {{command}}",
       "flagged": "Mira esto primero",
       "looked": "He mirado este archivo",
@@ -1376,5 +1380,13 @@
       "tickFirst": "Marca primero los archivos señalados que has mirado.",
       "missing": "Los cambios propuestos ya no están. Abre la campaña en el ordenador."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

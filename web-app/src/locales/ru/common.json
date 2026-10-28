@@ -800,6 +800,14 @@
     "filesDescription": "Добавьте PDF, документы или другой текст, на который смогут ссылаться эти разговоры.",
     "uploadingFiles": "Обработка файлов…",
     "processButton": "Добавить",
+    "fileChangedOnDisk": "Изменён на диске",
+    "fileMissing": "Отсутствует",
+    "reindexFile": "Переиндексировать",
+    "reindexAllChanged": "Переиндексировать все изменённые",
+    "filesChangedOnDisk": "Файлов, изменённых на диске после индексации: {{count}}",
+    "reindexed": "Переиндексировано файлов: {{count}}",
+    "reindexFailed": "Не удалось переиндексировать файл",
+    "staleFilesNotice": "Файлов коллекции, изменённых или удалённых на диске: {{count}}. Переиндексируйте их в списке файлов коллекции.",
     "deleteFileDialog": {
       "title": "Удалить файл",
       "description": "«{{fileName}}» и его проиндексированное содержимое будут удалены из этой коллекции. Это действие нельзя отменить."
@@ -868,6 +876,14 @@
     "openCodeFolder": "Открыть папку с кодом",
     "openCodeFolderDescription": "Выберите папку на вашем компьютере, в которой будет работать Flint.",
     "setUpEmbeddingModel": "Настроить модель эмбеддингов",
+    "mcpServers": {
+      "title": "Серверы MCP",
+      "useAll": "Использовать все включённые серверы (по умолчанию)",
+      "onlyThese": "Только эти серверы",
+      "noneConfigured": "Серверы MCP не настроены.",
+      "filterActive": "Этот проект использует только: {{servers}}",
+      "filterNone": "Этот проект не использует серверы MCP"
+    },
     "webPage": {
       "open": "Добавить веб-страницу",
       "title": "Добавить веб-страницу",
@@ -3278,6 +3294,8 @@
     "applying": "Применение…",
     "applySelected": "Применить выбранное"
   },
+  "chatRules": "Правила",
+  "chatRuleForThisChat": "Использовать это правило в этом чате",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
@@ -3306,6 +3324,44 @@
     "debug": "Debug",
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
+  },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "documents_few": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "web_few": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   },
   "eta": {
     "seconds": "{{n}} s",

@@ -18,6 +18,7 @@ import { timingFor } from '@/lib/toolTimingLog'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   DEFAULT_COMPACTION_POLICY,
+  clampCompactAtPercent,
   effectiveReserve,
   getCompactionPolicy,
   setCompactionPolicy,
@@ -88,7 +89,9 @@ export function AutoCompactRow({ maxTokens }: { maxTokens?: number }) {
   }, [])
 
   const percent =
-    maxTokens && maxTokens > 0
+    policy.compactAtPercent > 0
+      ? clampCompactAtPercent(policy.compactAtPercent)
+      : maxTokens && maxTokens > 0
       ? Math.round(
           ((maxTokens - effectiveReserve(maxTokens, policy)) / maxTokens) * 100
         )

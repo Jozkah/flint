@@ -348,12 +348,16 @@ pub fn cancel_run(task_id: &str, run_id: &str) -> Result<(), HarnessError> {
         println!("That run already ended ({:?}).", run.status);
         return Ok(());
     }
-    if let Some(job) = run.job_id.as_deref() {
-        tauri_plugin_agent_tools::worker::cancel(&data, &runner::owner_for(task_id), job)
-            .map_err(|e| HarnessError::new(ErrorKind::Io, e.message().to_string()).at(Stage::Startup))?;
-    }
+    let Some(job) = run.job_id.as_deref() else {
+        return Err(HarnessError::new(ErrorKind::Io, "that run has not started yet; try again in a moment").at(Stage::Startup));
+    };
+    tauri_plugin_agent_tools::worker::cancel(&data, &runner::owner_for(task_id), job)
+        .map_err(|e| HarnessError::new(ErrorKind::Io, e.message().to_string()).at(Stage::Startup))?;
     runner::settle(&store, &data);
-    println!("Cancelled {run_id}.");
+    match store.get_run(task_id, run_id).map_err(store_err)? {
+        Some(after) if after.status.is_ended() => println!("Cancelled {run_id} ({:?}).", after.status),
+        _ => println!("Cancel requested for {run_id}; it is still stopping."),
+    }
     Ok(())
 }
 

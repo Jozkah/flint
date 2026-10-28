@@ -59,6 +59,9 @@ pub struct Policy {
     pub strategy: Strategy,
     /// Longest summary asked for.
     pub summary_max_tokens: u64,
+    /// Compact once the conversation reaches this percentage of the context
+    /// window. 0 is automatic: each surface's built-in trigger, unchanged.
+    pub compact_at_percent: u8,
     pub origins: Origins,
 }
 
@@ -70,11 +73,26 @@ pub struct Origins {
     pub keep_recent: Origin,
     pub strategy: Origin,
     pub summary_max_tokens: Origin,
+    pub compact_at_percent: Origin,
 }
 
 pub const DEFAULT_RESERVE_TOKENS: u64 = 16_384;
 pub const DEFAULT_KEEP_RECENT: usize = 8;
 pub const DEFAULT_SUMMARY_MAX_TOKENS: u64 = 512;
+/// Range a chosen compaction point must fall in (0 is automatic). Below 50%
+/// most of the window is never used; above 95% llama.cpp's context shift (or a
+/// provider's overflow) can drop content before the summary is written.
+pub const MIN_COMPACT_AT_PERCENT: u8 = 50;
+pub const MAX_COMPACT_AT_PERCENT: u8 = 95;
+
+/// A chosen percentage forced into range; 0 (automatic) stays 0.
+pub fn clamp_compact_at_percent(p: u8) -> u8 {
+    if p == 0 {
+        0
+    } else {
+        p.clamp(MIN_COMPACT_AT_PERCENT, MAX_COMPACT_AT_PERCENT)
+    }
+}
 
 impl Default for Policy {
     fn default() -> Self {
@@ -84,12 +102,14 @@ impl Default for Policy {
             keep_recent: DEFAULT_KEEP_RECENT,
             strategy: Strategy::Summarize,
             summary_max_tokens: DEFAULT_SUMMARY_MAX_TOKENS,
+            compact_at_percent: 0,
             origins: Origins {
                 auto: Origin::Default,
                 reserve_tokens: Origin::Default,
                 keep_recent: Origin::Default,
                 strategy: Origin::Default,
                 summary_max_tokens: Origin::Default,
+                compact_at_percent: Origin::Default,
             },
         }
     }
@@ -109,6 +129,8 @@ pub struct Layer {
     pub strategy: Option<Strategy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary_max_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compact_at_percent: Option<u8>,
 }
 
 pub fn user_path(data_folder: &Path) -> PathBuf {
@@ -143,6 +165,14 @@ impl Layer {
         if let Some(s) = self.summary_max_tokens {
             if !(64..=8192).contains(&s) {
                 return Err(invalid(path, format!("summaryMaxTokens must be between 64 and 8192, not {s}")));
+            }
+        }
+        if let Some(p) = self.compact_at_percent {
+            if p != 0 && !(MIN_COMPACT_AT_PERCENT..=MAX_COMPACT_AT_PERCENT).contains(&p) {
+                return Err(invalid(
+                    path,
+                    format!("compactAtPercent must be 0 (automatic) or between {MIN_COMPACT_AT_PERCENT} and {MAX_COMPACT_AT_PERCENT}, not {p}"),
+                ));
             }
         }
         Ok(())
@@ -182,6 +212,10 @@ impl Policy {
         if let Some(v) = layer.summary_max_tokens {
             self.summary_max_tokens = v;
             self.origins.summary_max_tokens = origin;
+        }
+        if let Some(v) = layer.compact_at_percent {
+            self.compact_at_percent = v;
+            self.origins.compact_at_percent = origin;
         }
     }
 
@@ -372,6 +406,22 @@ mod tests {
         assert_eq!(legacy.effective_reserve(50_000), 6_000);
         // The default still scales.
         assert_eq!(Policy::default().effective_reserve(50_000), 5_000);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn compact_at_percent_defaults_to_automatic_and_is_bounded() {
+        assert_eq!(Policy::default().compact_at_percent, 0);
+        let data = temp("percent");
+        for bad in [1u8, 49, 96, 100] {
+            assert!(save_user(&data, &Layer { compact_at_percent: Some(bad), ..Default::default() }).is_err(), "{bad}");
+        }
+        save_user(&data, &Layer { compact_at_percent: Some(70), ..Default::default() }).unwrap();
+        let p = Policy::resolve(Some(&data), None, None).unwrap();
+        assert_eq!((p.compact_at_percent, p.origins.compact_at_percent), (70, Origin::User));
+        assert_eq!(clamp_compact_at_percent(0), 0);
+        assert_eq!(clamp_compact_at_percent(10), 50);
+        assert_eq!(clamp_compact_at_percent(99), 95);
         let _ = std::fs::remove_dir_all(&data);
     }
 

@@ -193,7 +193,8 @@
       "redacted": "Đã che",
       "nothing": "không có",
       "redactedList_one": "{{count}} trường: {{list}}",
-      "redactedList_other": "{{count}} trường: {{list}}"
+      "redactedList_other": "{{count}} trường: {{list}}",
+      "redactedList_many": "{{count}} trường: {{list}}"
     },
     "view": {
       "label": "Xem dạng",
@@ -212,8 +213,10 @@
       "left": "{{count}} ra",
       "keptMessages_one": "giữ lại {{count}} tin nhắn",
       "keptMessages_other": "giữ lại {{count}} tin nhắn",
+      "keptMessages_many": "giữ lại {{count}} tin nhắn",
       "keptTools_one": "giữ lại {{count}} công cụ",
       "keptTools_other": "giữ lại {{count}} công cụ",
+      "keptTools_many": "giữ lại {{count}} công cụ",
       "systemChanged": "lời nhắc hệ thống đã đổi",
       "enteredHeading": "Đã vào",
       "leftHeading": "Đã ra",
@@ -227,6 +230,7 @@
       "needsSession": "Phát lại cần phiên mà lượt này thuộc về.",
       "redactedBlock_one": "Không thể phát lại: {{count}} trường đã bị che trước khi lưu, nên mô hình sẽ không nhận được những gì đã nhận khi đó.",
       "redactedBlock_other": "Không thể phát lại: {{count}} trường đã bị che trước khi lưu, nên mô hình sẽ không nhận được những gì đã nhận khi đó.",
+      "redactedBlock_many": "Không thể phát lại: {{count}} trường đã bị che trước khi lưu, nên mô hình sẽ không nhận được những gì đã nhận khi đó.",
       "state": {
         "running": "Đang phát lại…",
         "interrupted": "Bị gián đoạn: Flint đã dừng khi đang chạy",

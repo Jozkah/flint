@@ -41,6 +41,7 @@ import {
   type WebSearchToggle,
 } from '@/containers/WebSearchToggleRow'
 import { ShellToggleRow, type ShellToggle } from '@/containers/ShellToggleRow'
+import { ChatRulesToggleRows } from '@/containers/ChatRulesToggleRows'
 
 interface SamplerPopoverProps {
   /** Provider ID of the currently-selected model, if any. Used to scope the
@@ -96,6 +97,13 @@ export function SamplerPopover({
   //    (selectedAssistantId), since that's what a new chat will use;
   //  - no switcher at all: the global current assistant.
   const inThread = !!assistantSwitcher?.currentThread
+  const rulesThread = assistantSwitcher?.currentThread
+  const rulesRows = rulesThread ? (
+    <ChatRulesToggleRows
+      threadId={rulesThread.id}
+      groupId={rulesThread.metadata?.project?.id}
+    />
+  ) : null
   const threadAssistant = assistantSwitcher?.currentThread?.assistants?.[0]
   const isThreadAssistant =
     !!threadAssistant && threadAssistant.id !== 'model-only'
@@ -209,6 +217,7 @@ export function SamplerPopover({
           >
             {webSearch && <WebSearchToggleRow {...webSearch} />}
             {shell && <ShellToggleRow {...shell} />}
+            {rulesRows}
             <p
               data-testid="sampler-unsupported"
               className="border-t px-2 py-1.5 text-xs text-muted-foreground"
@@ -327,6 +336,7 @@ export function SamplerPopover({
             {shell && <ShellToggleRow {...shell} />}
           </div>
         )}
+        {rulesRows}
         {activeAssistant ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
             <ParametersSection

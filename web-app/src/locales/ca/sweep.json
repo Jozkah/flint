@@ -3,6 +3,7 @@
     "actionFailed": "No s’ha pogut completar aquesta acció. Torna-ho a provar.",
     "alreadyInList_one": "{{names}} ja és a la llista",
     "alreadyInList_other": "{{names}} ja són a la llista",
+    "alreadyInList_many": "{{names}} ja són a la llista",
     "attachmentsDisabled": "Els fitxers adjunts estan desactivats a Configuració",
     "docsInPrompt": "Els documents s'afegeixen a la indicació",
     "docsInPromptDescription": "Aquest model no pot cercar fitxers, així que cada document s'envia com a text amb el teu missatge.",
@@ -64,6 +65,7 @@
     "mayExceed": "Pot superar la memòria",
     "modelCount_one": "{{count}} model",
     "modelCount_other": "{{count}} models",
+    "modelCount_many": "{{count}} models",
     "mostDownloaded": "Més baixats",
     "mostLiked": "Més valorats",
     "newChat": "Xat nou",
@@ -97,7 +99,11 @@
     "variant": "Variant",
     "whatToLookFor": "Què cercar",
     "searchPlaceholderShort": "Cerca o enganxa un URL…",
-    "resultLimit": "Mostra"
+    "resultLimit": "Mostra",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Importa un fitxer de model GGUF per afegir-lo a la teva col·lecció. Activa el suport multimodal per adjuntar un mmproj (entrada d’imatge o àudio), o el suport de models esborrany per a la descodificació especulativa. Els models d’embedding es detecten automàticament.",

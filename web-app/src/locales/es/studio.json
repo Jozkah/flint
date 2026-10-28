@@ -1,4 +1,28 @@
 {
+  "discover": {
+    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
+    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
+    "familiesError": "Could not load the model kinds: {{error}}",
+    "retry": "Retry",
+    "emptyTitle": "No picture models found",
+    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "gated": "Gated",
+    "hideFiles": "Hide files",
+    "chooseFile": "Choose a file",
+    "whatKind": "What kind of model is this?",
+    "modelFamily": "Model family",
+    "pickOne": "Pick one…",
+    "filesError": "Could not list the files: {{error}}",
+    "noWeights": "No weights files (.gguf) in this repository.",
+    "unsupportedSystem": "Unsupported system",
+    "inStudio": "In Studio",
+    "adding": "Adding…",
+    "addToStudio": "Add to Studio",
+    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
+    "pickKindFirst": "Pick what kind of model this is first.",
+    "added": "{{name}} added to Studio",
+    "openStudio": "Open Studio"
+  },
   "page": {
     "title": "Estudio",
     "descriptionLocal": "Crea imágenes y vídeo en local en este ordenador. Nada sale de tu dispositivo.",
@@ -68,8 +92,10 @@
   "video": {
     "steps_one": "{{count}} paso",
     "steps_other": "{{count}} pasos",
+    "steps_many": "{{count}} pasos",
     "frames_one": "{{count}} fotograma",
     "frames_other": "{{count}} fotogramas",
+    "frames_many": "{{count}} fotogramas",
     "seed": "semilla {{seed}}",
     "avoid": "Evitar: {{prompt}}",
     "copyPrompt": "Copiar prompt"
@@ -94,6 +120,7 @@
     "hostedNote": "Tu prompt se envía a {{provider}}, usa tu clave de API de Proveedores y te lo factura él.",
     "localNote_one": "Se ejecuta en este ordenador. Empieza en {{width}} × {{height}}, {{count}} paso.",
     "localNote_other": "Se ejecuta en este ordenador. Empieza en {{width}} × {{height}}, {{count}} pasos.",
+    "localNote_many": "Se ejecuta en este ordenador. Empieza en {{width}} × {{height}}, {{count}} pasos.",
     "unload": "Descargar de memoria",
     "loading": "Cargando…",
     "load": "Cargar",

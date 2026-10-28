@@ -114,7 +114,11 @@ impl ClaimTable {
 
     pub fn note_read(&mut self, session: &str, file: &str, now: i64) {
         if self.reads.len() > 4096 {
-            self.reads.clear();
+            // Drop the oldest read, not all of them: clearing would make every
+            // session look as if it had read nothing.
+            if let Some(oldest) = self.reads.iter().min_by_key(|(_, at)| **at).map(|(k, _)| k.clone()) {
+                self.reads.remove(&oldest);
+            }
         }
         self.reads.insert((session.to_string(), file.to_string()), now);
     }
@@ -562,6 +566,17 @@ mod tests {
         assert!(t.recent_of("a", RECENT_WINDOW_MS, T0).is_empty());
         assert!(!t.is_allowed("a", Scope::Edit, T0));
         assert!(t.claim_of("f").is_none());
+    }
+
+    #[test]
+    fn the_read_record_evicts_the_oldest_instead_of_clearing() {
+        let mut t = ClaimTable::new();
+        for i in 0..4200 {
+            t.note_read("s", &format!("f{i}"), T0 + i);
+        }
+        assert!(t.reads.len() <= 4097);
+        assert!(t.reads.contains_key(&("s".to_string(), "f4199".to_string())));
+        assert!(!t.reads.contains_key(&("s".to_string(), "f0".to_string())));
     }
 
     #[test]

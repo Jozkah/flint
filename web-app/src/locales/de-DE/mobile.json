@@ -49,7 +49,8 @@
     "retention_one": "Archivierte Elemente werden nach {{count}} Tag endgültig gelöscht.",
     "retention_other": "Archivierte Elemente werden nach {{count}} Tagen endgültig gelöscht.",
     "retentionForever": "Archivierte Elemente bleiben, bis du sie löschst.",
-    "emptyAction": "Archiv leeren"
+    "emptyAction": "Archiv leeren",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Das hat nicht funktioniert",
@@ -1360,5 +1361,13 @@
       "tickFirst": "Hake zuerst die markierten Dateien ab, die du dir angesehen hast.",
       "missing": "Die vorgeschlagenen Änderungen sind nicht mehr vorhanden. Öffne die Kampagne am Computer."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

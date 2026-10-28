@@ -193,7 +193,8 @@
       "redacted": "Oscurato",
       "nothing": "niente",
       "redactedList_one": "{{count}} campo: {{list}}",
-      "redactedList_other": "{{count}} campi: {{list}}"
+      "redactedList_other": "{{count}} campi: {{list}}",
+      "redactedList_many": "{{count}} campi: {{list}}"
     },
     "view": {
       "label": "Visualizza come",
@@ -212,8 +213,10 @@
       "left": "{{count}} usciti",
       "keptMessages_one": "{{count}} messaggio mantenuto",
       "keptMessages_other": "{{count}} messaggi mantenuti",
+      "keptMessages_many": "{{count}} messaggi mantenuti",
       "keptTools_one": "{{count}} strumento mantenuto",
       "keptTools_other": "{{count}} strumenti mantenuti",
+      "keptTools_many": "{{count}} strumenti mantenuti",
       "systemChanged": "prompt di sistema modificato",
       "enteredHeading": "Entrati",
       "leftHeading": "Usciti",
@@ -227,6 +230,7 @@
       "needsSession": "La riesecuzione richiede la sessione a cui appartiene questo turno.",
       "redactedBlock_one": "Non può essere rieseguita: {{count}} campo è stato oscurato prima del salvataggio, quindi il modello non riceverebbe ciò che ricevette allora.",
       "redactedBlock_other": "Non può essere rieseguita: {{count}} campi sono stati oscurati prima del salvataggio, quindi il modello non riceverebbe ciò che ricevette allora.",
+      "redactedBlock_many": "Non può essere rieseguita: {{count}} campi sono stati oscurati prima del salvataggio, quindi il modello non riceverebbe ciò che ricevette allora.",
       "state": {
         "running": "Riesecuzione…",
         "interrupted": "Interrotto: Flint si è fermato durante l'esecuzione",

@@ -1981,8 +1981,7 @@ impl SessionActor {
         self.session.agent.permission_requests.lock().await.clear();
         cancel_asks(&self.session).await;
         let _ = reply.send(Ok(json!({})));
-        return Flow::Stop;
-        Flow::Continue
+        Flow::Stop
     }
 
     async fn on_delete(&mut self, force: bool, reply: Reply) -> Flow {
@@ -2007,8 +2006,7 @@ impl SessionActor {
         self.shared.publish("session.deleted", json!({}));
         self.ping("deleted");
         let _ = reply.send(outcome);
-        return Flow::Gone;
-        Flow::Continue
+        Flow::Gone
     }
 
     async fn on_turn_message(&mut self, message: Option<TurnMessage>) -> Flow {

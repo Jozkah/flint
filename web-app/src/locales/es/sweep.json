@@ -3,6 +3,7 @@
     "actionFailed": "No se pudo completar esa acción. Inténtalo de nuevo.",
     "alreadyInList_one": "{{names}} ya está en la lista",
     "alreadyInList_other": "{{names}} ya están en la lista",
+    "alreadyInList_many": "{{names}} ya están en la lista",
     "attachmentsDisabled": "Los archivos adjuntos están desactivados en Ajustes",
     "docsInPrompt": "Los documentos se añaden a la instrucción",
     "docsInPromptDescription": "Este modelo no puede buscar en archivos, así que cada documento se envía como texto con tu mensaje.",
@@ -64,6 +65,7 @@
     "mayExceed": "Podría superar la memoria",
     "modelCount_one": "{{count}} modelo",
     "modelCount_other": "{{count}} modelos",
+    "modelCount_many": "{{count}} modelos",
     "mostDownloaded": "Más descargados",
     "mostLiked": "Más populares",
     "newChat": "Chat nuevo",
@@ -97,7 +99,11 @@
     "variant": "Variante",
     "whatToLookFor": "Qué buscar",
     "searchPlaceholderShort": "Busca o pega una URL…",
-    "resultLimit": "Mostrar"
+    "resultLimit": "Mostrar",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Importa un archivo de modelo GGUF para añadirlo a tu colección. Activa la compatibilidad multimodal para adjuntar un mmproj (entrada de imagen o audio), o la de modelos borrador para la decodificación especulativa. Los modelos de embeddings se detectan automáticamente.",

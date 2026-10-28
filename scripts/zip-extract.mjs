@@ -1,12 +1,14 @@
 import fs, { mkdirSync } from 'fs'
 import path from 'path'
-import unzipper from 'unzipper'
 import { assertSafeZipEntry } from './archive-extract-guard.mjs'
 
 // Validates and extracts from the same central-directory listing, so what was
 // checked is exactly what is written (a streaming extractor reads the local
 // headers, which a crafted archive can make disagree with the directory).
 export async function extractZipArchive(filePath, targetDir) {
+  // Loaded on use, so this module (and the dependency-free script tests that
+  // import its neighbours) load without node_modules installed.
+  const { default: unzipper } = await import('unzipper')
   const archive = await unzipper.Open.file(filePath)
   for (const entry of archive.files) {
     assertSafeZipEntry(entry, targetDir)

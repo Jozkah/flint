@@ -3,6 +3,7 @@
     "actionFailed": "Impossible de terminer cette action. Réessayez.",
     "alreadyInList_one": "{{names}} figure déjà dans la liste",
     "alreadyInList_other": "{{names}} figurent déjà dans la liste",
+    "alreadyInList_many": "{{names}} figurent déjà dans la liste",
     "attachmentsDisabled": "Les pièces jointes sont désactivées dans les réglages",
     "docsInPrompt": "Les documents sont ajoutés à l'invite",
     "docsInPromptDescription": "Ce modèle ne peut pas rechercher dans les fichiers, chaque document est donc envoyé sous forme de texte avec votre message.",
@@ -64,6 +65,7 @@
     "mayExceed": "Peut dépasser la mémoire",
     "modelCount_one": "{{count}} modèle",
     "modelCount_other": "{{count}} modèles",
+    "modelCount_many": "{{count}} modèles",
     "mostDownloaded": "Les plus téléchargés",
     "mostLiked": "Les plus aimés",
     "newChat": "Nouvelle conversation",
@@ -97,7 +99,11 @@
     "variant": "Variante",
     "whatToLookFor": "Que chercher ?",
     "searchPlaceholderShort": "Rechercher ou coller une URL…",
-    "resultLimit": "Afficher"
+    "resultLimit": "Afficher",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Importez un fichier de modèle GGUF pour l’ajouter à votre collection. Activez la prise en charge multimodale pour joindre un mmproj (entrée image ou audio), ou celle des modèles brouillons pour le décodage spéculatif. Les modèles d’embedding sont détectés automatiquement.",

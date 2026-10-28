@@ -48,7 +48,8 @@
     "empty": "アーカイブは空です。",
     "retention_other": "アーカイブした項目は {{count}} 日後に完全に削除されます。",
     "retentionForever": "アーカイブした項目は、削除するまで保持されます。",
-    "emptyAction": "アーカイブを空にする"
+    "emptyAction": "アーカイブを空にする",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "うまくいきませんでした",
@@ -1344,5 +1345,13 @@
       "tickFirst": "先に、確認したフラグ付きのファイルにチェックを入れてください。",
       "missing": "提案された変更はもう存在しません。コンピューターでキャンペーンを開いてください。"
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

@@ -48,8 +48,10 @@
     "empty": "Kho lưu trữ trống.",
     "retention_one": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
     "retention_other": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
+    "retention_many": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
     "retentionForever": "Các mục đã lưu trữ được giữ cho đến khi bạn xóa.",
-    "emptyAction": "Dọn sạch kho lưu trữ"
+    "emptyAction": "Dọn sạch kho lưu trữ",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Không thành công",
@@ -86,6 +88,7 @@
     "loadingEarlier": "Đang tải các tin nhắn trước đó…",
     "loadEarlier_one": "Tải {{count}} tin nhắn trước đó",
     "loadEarlier_other": "Tải {{count}} tin nhắn trước đó",
+    "loadEarlier_many": "Tải {{count}} tin nhắn trước đó",
     "modelGoneTitle": "Một mô hình không còn khả dụng",
     "modelGoneBody": "{{name}} đã bị gỡ khỏi máy tính.",
     "thisModel": "Mô hình của cuộc trò chuyện này",
@@ -122,6 +125,7 @@
     "empty": "Phiên này chưa có gì.",
     "showEarlier_one": "Hiện {{count}} tin nhắn trước đó",
     "showEarlier_other": "Hiện {{count}} tin nhắn trước đó",
+    "showEarlier_many": "Hiện {{count}} tin nhắn trước đó",
     "compacting": "Đang nén cuộc trò chuyện…",
     "continueMessage": "Tiếp tục.",
     "keepGoing": "Tiếp tục",
@@ -146,6 +150,7 @@
     "aCoworkSession": "Một phiên Cowork",
     "approvalsWaiting_one": "{{count}} phê duyệt đang chờ",
     "approvalsWaiting_other": "{{count}} phê duyệt đang chờ",
+    "approvalsWaiting_many": "{{count}} phê duyệt đang chờ",
     "roomWaiting": "{{title}} đang chờ bạn",
     "roomWaitingHint": "Chọn ai nói tiếp theo hoặc trả lời",
     "needTwoModels": "Hãy thiết lập ít nhất hai mô hình trên máy tính trước khi tạo Phòng.",
@@ -262,6 +267,7 @@
     "remote": "Từ xa",
     "count_one": "{{count}} mô hình",
     "count_other": "{{count}} mô hình",
+    "count_many": "{{count}} mô hình",
     "running": "Đang chạy",
     "connected": "Đã kết nối",
     "installed": "Mô hình đã cài",
@@ -457,6 +463,7 @@
     "searchLabel": "Tìm cài đặt",
     "connectedThrough_one": "Đã kết nối qua {{via}} · đã tải {{count}} mô hình",
     "connectedThrough_other": "Đã kết nối qua {{via}} · đã tải {{count}} mô hình",
+    "connectedThrough_many": "Đã kết nối qua {{via}} · đã tải {{count}} mô hình",
     "changeOnComputer": "Thay đổi trên máy tính",
     "managedOnComputer": "Được quản lý trên máy tính",
     "notify": {
@@ -665,6 +672,7 @@
     "square": "Vuông",
     "imageCount_one": "{{count}} hình ảnh",
     "imageCount_other": "{{count}} hình ảnh",
+    "imageCount_many": "{{count}} hình ảnh",
     "summary": "{{size}} · {{amount}} · seed {{seed}}",
     "random": "ngẫu nhiên",
     "makingVideoTitle": "Đang tạo video",
@@ -714,6 +722,7 @@
   "changes": {
     "filesReady_one": "{{count}} tệp sẵn sàng để xem xét",
     "filesReady_other": "{{count}} tệp sẵn sàng để xem xét",
+    "filesReady_many": "{{count}} tệp sẵn sàng để xem xét",
     "review": "Xem lại thay đổi",
     "workingCopy": "Bản sao làm việc",
     "worktree": "Cây làm việc",
@@ -745,6 +754,7 @@
     },
     "toolCalls_one": "{{count}} lệnh gọi công cụ",
     "toolCalls_other": "{{count}} lệnh gọi công cụ",
+    "toolCalls_many": "{{count}} lệnh gọi công cụ",
     "noActivity": "Phiên này chưa có tác tử con hay lệnh nào.",
     "command": "Lệnh",
     "agent": "Tác tử",
@@ -791,13 +801,15 @@
     "error": "Lỗi",
     "result": "Kết quả",
     "steps_one": "{{count}} bước",
-    "steps_other": "{{count}} bước"
+    "steps_other": "{{count}} bước",
+    "steps_many": "{{count}} bước"
   },
   "reply": {
     "tokens": "{{count}} token",
     "cached": "đã lưu đệm",
     "skills_one": "Đã dùng {{count}} kỹ năng",
     "skills_other": "Đã dùng {{count}} kỹ năng",
+    "skills_many": "Đã dùng {{count}} kỹ năng",
     "context": "Cửa sổ ngữ cảnh",
     "nothingSent": "Chưa gửi gì.",
     "untilCompact": "Còn {{count}} đến lúc tự động nén",
@@ -842,8 +854,10 @@
     "running": "{{count}} đang chạy",
     "approvals_one": "{{count}} phê duyệt đang chờ",
     "approvals_other": "{{count}} phê duyệt đang chờ",
+    "approvals_many": "{{count}} phê duyệt đang chờ",
     "questions_one": "{{count}} câu hỏi đang chờ",
     "questions_other": "{{count}} câu hỏi đang chờ",
+    "questions_many": "{{count}} câu hỏi đang chờ",
     "openNav": "Mở điều hướng",
     "openPanel": "Mở bảng",
     "more": "Thêm",
@@ -946,6 +960,7 @@
     "showMore": "Hiện thêm {{count}}",
     "connected_one": "Đã tải {{count}} mô hình · {{via}}",
     "connected_other": "Đã tải {{count}} mô hình · {{via}}",
+    "connected_many": "Đã tải {{count}} mô hình · {{via}}",
     "connecting": "Đang kết nối · {{via}}",
     "offline": "Ngoại tuyến · {{via}}",
     "campaigns": "Chiến dịch"
@@ -1045,6 +1060,7 @@
     "computers": "Máy tính",
     "connLine_one": "{{conn}} · {{via}} · đã tải {{count}} mô hình",
     "connLine_other": "{{conn}} · {{via}} · đã tải {{count}} mô hình",
+    "connLine_many": "{{conn}} · {{via}} · đã tải {{count}} mô hình",
     "route": "Tuyến",
     "palettePlaceholder": "Gõ một lệnh, một trang hoặc một cuộc trò chuyện…",
     "newCowork": "Phiên Cowork mới",
@@ -1247,6 +1263,7 @@
   "attachments": {
     "max_one": "Tối đa {{count}} tệp mỗi tin nhắn",
     "max_other": "Tối đa {{count}} tệp mỗi tin nhắn",
+    "max_many": "Tối đa {{count}} tệp mỗi tin nhắn",
     "file": "tệp",
     "uploadFailed": "Tải lên thất bại",
     "wait": "Hãy chờ các tệp tải lên xong"
@@ -1289,6 +1306,7 @@
       "working": "Đang làm: xong {{done}} trên {{total}} tác vụ",
       "attention_one": "Cần bạn chú ý: {{count}} tác vụ đang chờ bạn",
       "attention_other": "Cần bạn chú ý: {{count}} tác vụ đang chờ bạn",
+      "attention_many": "Cần bạn chú ý: {{count}} tác vụ đang chờ bạn",
       "review": "Sẵn sàng để bạn xem xét",
       "merging": "Đang chờ các thay đổi được áp dụng",
       "paused": "Đã tạm dừng",
@@ -1318,6 +1336,7 @@
     },
     "files_one": "{{count}} tệp, +{{added}} -{{removed}}",
     "files_other": "{{count}} tệp, +{{added}} -{{removed}}",
+    "files_many": "{{count}} tệp, +{{added}} -{{removed}}",
     "filesUncommitted": "chưa lưu vào commit",
     "budget": "Đã dùng {{used}} trên {{budget}} token",
     "tokens": "Đã dùng {{used}} token",
@@ -1346,6 +1365,7 @@
       "prepared": "Các thay đổi đã sẵn sàng để xem xét",
       "changes_one": "{{count}} tệp để áp dụng",
       "changes_other": "{{count}} tệp để áp dụng",
+      "changes_many": "{{count}} tệp để áp dụng",
       "gateFailed": "Kiểm tra thất bại: {{command}}",
       "flagged": "Hãy xem cái này trước",
       "looked": "Tôi đã xem tệp này",
@@ -1360,5 +1380,13 @@
       "tickFirst": "Hãy tích các tệp được đánh dấu mà bạn đã xem trước.",
       "missing": "Các thay đổi được đề xuất không còn nữa. Hãy mở chiến dịch trên máy tính."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

@@ -277,7 +277,7 @@
     "caBundleBroken": "Tego pakietu nie można użyć ({{kind}}): wychodzące HTTPS nikomu nie ufa, dopóki nie zostanie naprawiony lub usunięty.",
     "ignoreSslScope": "Dotyczy całego ruchu przez serwer proxy. Pojedynczy dostawca może też zezwolić na nieprawidłowe certyfikaty dla własnego adresu, na swojej stronie w Dostawcy Modeli.",
     "proxyUrlInvalid": "To nie wygląda na adres proxy. Użyj host:port lub http://host:port.",
-    "proxyUrlScheme": "Obsługiwane są tylko proxy http i https.",
+    "proxyUrlScheme": "Obsługiwane są tylko serwery proxy http, https, socks5 i socks5h.",
     "ignoreSslConfirmTitle": "Zignorować certyfikaty SSL?",
     "ignoreSslConfirmBody": "Flint będzie akceptować certyfikaty z podpisem własnym, wygasłe lub niepasujące dla całego ruchu przez proxy, więc każdy na trasie mógłby go odczytać lub zmienić. Kontynuuj tylko wtedy, gdy ufasz proxy i sieci.",
     "ignoreSslConfirm": "Zignoruj certyfikaty",
@@ -478,7 +478,9 @@
     "usageUnsaved": "Niezapisane zmiany",
     "stopServerToEdit": "Zatrzymaj serwer, aby edytować",
     "trustedHostsInvalid": "Nieprawidłowy host: {{hosts}}. Użyj hosta lub host:port, np. example.com lub 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa."
+    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Dane Analityczne",
@@ -552,6 +554,15 @@
     "closeToTrayDesc": "Zamknięcie okna ukrywa Flint w zasobniku systemowym zamiast zamykać aplikację. Zakończ ją z menu zasobnika.",
     "downloadLimit": "Limit szybkości pobierania",
     "downloadLimitDesc": "Ogranicz pobieranie modeli do tylu MB na sekundę. 0 oznacza bez limitu.",
+    "hfEndpoint": "Punkt końcowy Hugging Face",
+    "hfEndpointDesc": "Dokąd trafiają wyszukiwania i pobierania modeli. Wybierz serwer lustrzany, jeśli huggingface.co jest u Ciebie zablokowany lub wolny.",
+    "hfEndpointDefault": "Domyślny (huggingface.co)",
+    "hfEndpointCustom": "Własny adres URL",
+    "hfEndpointSave": "Zapisz",
+    "hfEndpointSaved": "Zapisano punkt końcowy Hugging Face",
+    "hfEndpointEnvOverride": "Zmienna środowiskowa HF_ENDPOINT ma wartość {{value}} i ma pierwszeństwo przed tym ustawieniem.",
+    "hfEndpointSendToken": "Wysyłaj mój token do tego serwera lustrzanego",
+    "hfEndpointSendTokenDesc": "Domyślnie wyłączone: token Hugging Face trafia tylko do huggingface.co. Włącz tylko, jeśli ufasz temu serwerowi.",
     "exportLogs": "Eksportuj dzienniki (zanonimizowane)",
     "exportLogsDesc": "Zapisz dziennik aplikacji z usuniętymi znanymi kluczami API i tokenami, aby dołączyć go do zgłoszenia błędu. Sprawdź go przed udostępnieniem.",
     "importChatGpt": "Importuj eksport z ChatGPT",
@@ -592,7 +603,11 @@
       "installing": "Instalowanie…",
       "uninstall": "Odinstaluj",
       "uninstalling": "Odinstalowywanie…",
-      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii."
+      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Uruchamianie i zasobnik",
     "cliGroup": "Wiersz poleceń",
@@ -694,6 +709,9 @@
     "title": "Kompaktowanie kontekstu",
     "auto": "Kompaktuj automatycznie",
     "autoDescription": "Zrób miejsce, zanim rozmowa przerośnie okno kontekstu modelu. Wspólne dla Czatu, Cowork i CLI.",
+    "compactAt": "Kompaktuj przy",
+    "compactAtDescription": "Gdy rozmowa osiągnie ten udział okna kontekstu, starsze wiadomości są najpierw podsumowywane. Automatycznie zachowuje wbudowany punkt. Działa, zanim przesunięcie kontekstu llama.cpp cokolwiek odrzuci.",
+    "compactAtAuto": "Automatycznie",
     "reserveTokens": "Zarezerwowane tokeny",
     "reserveDescription": "Zapas utrzymywany jako wolny: kompaktowanie rozpoczyna się, gdy rozmowa zużyje więcej niż okno minus ta wartość.",
     "keepRecent": "Zachowane ostatnie wiadomości",
@@ -1469,7 +1487,21 @@
     "footerCount_few": "{{count}} wspomnienia w tym zakresie",
     "footerCount_many": "{{count}} wspomnień w tym zakresie",
     "footerCount_other": "{{count}} wspomnienia w tym zakresie",
-    "agentNotes": "Notatki agenta"
+    "agentNotes": "Notatki agenta",
+    "report": {
+      "summary_one": "Zaimportowano {{count}} wspomnienie z eksportu",
+      "summary_few": "Zaimportowano {{count}} wspomnień z eksportu",
+      "summary_many": "Zaimportowano {{count}} wspomnień z eksportu",
+      "summary_other": "Zaimportowano {{count}} wspomnień z eksportu",
+      "duplicates_one": "Pominięto {{count}} duplikat",
+      "duplicates_few": "Pominięto {{count}} duplikatów",
+      "duplicates_many": "Pominięto {{count}} duplikatów",
+      "duplicates_other": "Pominięto {{count}} duplikatów",
+      "refused_one": "{{count}} odrzucone",
+      "refused_few": "{{count}} odrzuconych",
+      "refused_many": "{{count}} odrzuconych",
+      "refused_other": "{{count}} odrzuconych"
+    }
   },
   "chatMentions": {
     "title": "Wzmianki o rozmowach",
@@ -1557,7 +1589,16 @@
     "reasoningDefaultDesc": "Czy myślenie w nowym czacie zaczyna się włączone, czy wyłączone. Własne ustawienie rozumowania modelu i przełącznik w polu wiadomości nadal mają pierwszeństwo. Modele, które nie mogą przełączać myślenia, pozostają bez zmian.",
     "reasoningDefaultModel": "Domyślne modelu",
     "reasoningDefaultOn": "Włączone",
-    "reasoningDefaultOff": "Wyłączone"
+    "reasoningDefaultOff": "Wyłączone",
+    "rulesGroup": "Reguły",
+    "rulesDesc": "Stałe instrukcje dodawane do czatów po instrukcjach asystenta. Wyłącz regułę dla jednego czatu w panelu opcji tego czatu.",
+    "rulesEnabled": "Reguła włączona",
+    "rulesRemove": "Usuń regułę",
+    "rulesAllChats": "Wszystkie czaty",
+    "rulesNoGroups": "Brak grup",
+    "rulesPlaceholder": "Dodaj regułę, np. „Odpowiadaj w jednostkach metrycznych”",
+    "rulesAdd": "Dodaj",
+    "rulesTooLong": "Aktywne reguły mają około {{tokens}} tokenów, więcej niż zalecane {{budget}}. Długie reguły zajmują kontekst w każdym czacie."
   },
   "data": {
     "tabStorage": "Pamięć",

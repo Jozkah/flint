@@ -193,7 +193,8 @@
       "redacted": "Ocultado",
       "nothing": "nada",
       "redactedList_one": "{{count}} campo: {{list}}",
-      "redactedList_other": "{{count}} campos: {{list}}"
+      "redactedList_other": "{{count}} campos: {{list}}",
+      "redactedList_many": "{{count}} campos: {{list}}"
     },
     "view": {
       "label": "Ver como",
@@ -212,8 +213,10 @@
       "left": "{{count}} saíram",
       "keptMessages_one": "{{count}} mensagem mantida",
       "keptMessages_other": "{{count}} mensagens mantidas",
+      "keptMessages_many": "{{count}} mensagens mantidas",
       "keptTools_one": "{{count}} ferramenta mantida",
       "keptTools_other": "{{count}} ferramentas mantidas",
+      "keptTools_many": "{{count}} ferramentas mantidas",
       "systemChanged": "prompt do sistema alterado",
       "enteredHeading": "Entraram",
       "leftHeading": "Saíram",
@@ -227,6 +230,7 @@
       "needsSession": "A reprodução precisa da sessão a que este turno pertence.",
       "redactedBlock_one": "Não pode ser reproduzida: {{count}} campo foi ocultado antes do armazenamento, então o modelo não receberia o que recebeu na época.",
       "redactedBlock_other": "Não pode ser reproduzida: {{count}} campos foram ocultados antes do armazenamento, então o modelo não receberia o que recebeu na época.",
+      "redactedBlock_many": "Não pode ser reproduzida: {{count}} campos foram ocultados antes do armazenamento, então o modelo não receberia o que recebeu na época.",
       "state": {
         "running": "Reproduzindo…",
         "interrupted": "Interrompido: o Flint parou durante a execução",

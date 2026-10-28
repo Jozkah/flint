@@ -97,15 +97,27 @@ impl Configured {
 }
 
 fn skill_name_of(event: &serde_json::Value, known: &[(String, Option<String>, u64)]) -> Option<String> {
-    let text = format!(
-        "{} {}",
-        event.get("resource").and_then(|v| v.as_str()).unwrap_or_default(),
+    let resource = event.get("resource").and_then(|v| v.as_str()).unwrap_or_default();
+    // The resource names the skill; free-form input is consulted only when the
+    // event carries no resource, so a skill mentioned in prose is not credited.
+    let text = if resource.is_empty() {
         event.get("input").and_then(|v| v.as_str()).unwrap_or_default()
-    );
+    } else {
+        resource
+    };
     // Longest name first so `review` does not claim `review-pr`.
     let mut names: Vec<&String> = known.iter().map(|(n, _, _)| n).collect();
     names.sort_by_key(|n| std::cmp::Reverse(n.len()));
-    names.into_iter().find(|n| text.contains(n.as_str())).cloned()
+    names.into_iter().find(|n| contains_word(text, n)).cloned()
+}
+
+/// `name` in `text` with no identifier character on either side.
+fn contains_word(text: &str, name: &str) -> bool {
+    let ident = |c: char| c.is_alphanumeric() || matches!(c, '-' | '_');
+    text.match_indices(name).any(|(i, m)| {
+        text[..i].chars().next_back().is_none_or(|c| !ident(c))
+            && text[i + m.len()..].chars().next().is_none_or(|c| !ident(c))
+    })
 }
 
 /// Attribution over `envelopes` newer than `cutoff` (an RFC-3339 instant).
@@ -310,6 +322,19 @@ pub fn render(a: &Attribution) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_skill_named_only_in_free_text_is_not_credited() {
+        let known = vec![("review".to_string(), None, 0u64), ("deploy".to_string(), None, 0u64)];
+        let ev = serde_json::json!({"resource": "deploy", "input": "please review this"});
+        assert_eq!(skill_name_of(&ev, &known).as_deref(), Some("deploy"));
+        let ev = serde_json::json!({"resource": "other", "input": "review"});
+        assert_eq!(skill_name_of(&ev, &known), None);
+        let ev = serde_json::json!({"resource": "review-pr"});
+        assert_eq!(skill_name_of(&ev, &known), None, "word boundary");
+        let ev = serde_json::json!({"input": "review"});
+        assert_eq!(skill_name_of(&ev, &known).as_deref(), Some("review"));
+    }
+
     use super::*;
     use serde_json::json;
 

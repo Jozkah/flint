@@ -275,7 +275,7 @@
     "caBundleBroken": "This bundle cannot be used ({{kind}}): outbound HTTPS trusts nothing until it is fixed or removed.",
     "ignoreSslScope": "Applies to all proxied traffic. A single provider can also allow invalid certificates for its own address, on its page under Model Providers.",
     "proxyUrlInvalid": "This does not look like a proxy address. Use host:port or http://host:port.",
-    "proxyUrlScheme": "Only http and https proxies are supported.",
+    "proxyUrlScheme": "Only http, https, socks5 and socks5h proxies are supported.",
     "ignoreSslConfirmTitle": "Ignore SSL certificates?",
     "ignoreSslConfirmBody": "Flint will accept self-signed, expired or mismatched certificates for all proxied traffic, so anyone on the path could read or alter it. Only continue if you trust the proxy and the network.",
     "ignoreSslConfirm": "Ignore certificates",
@@ -474,7 +474,9 @@
     "usageUnsaved": "Unsaved changes",
     "stopServerToEdit": "Stop the server to edit",
     "trustedHostsInvalid": "Not a valid host: {{hosts}}. Use a host or host:port, like example.com or 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Unsaved. Press Enter to save, Escape to undo."
+    "trustedHostsUnsaved": "Unsaved. Press Enter to save, Escape to undo.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analytics",
@@ -560,6 +562,15 @@
     "closeToTrayDesc": "Closing the window hides Flint to the system tray instead of quitting. Quit from the tray menu.",
     "downloadLimit": "Download speed limit",
     "downloadLimitDesc": "Cap model downloads at this many MB per second. 0 means unlimited.",
+    "hfEndpoint": "Hugging Face endpoint",
+    "hfEndpointDesc": "Where model search and downloads go. Pick a mirror if huggingface.co is blocked or slow where you are.",
+    "hfEndpointDefault": "Default (huggingface.co)",
+    "hfEndpointCustom": "Custom URL",
+    "hfEndpointSave": "Save",
+    "hfEndpointSaved": "Hugging Face endpoint saved",
+    "hfEndpointEnvOverride": "The HF_ENDPOINT environment variable is set to {{value}} and overrides this setting.",
+    "hfEndpointSendToken": "Send my token to this mirror",
+    "hfEndpointSendTokenDesc": "Off by default: your Hugging Face token only goes to huggingface.co. Turn on only if you trust this mirror.",
     "exportLogs": "Export logs (redacted)",
     "exportLogsDesc": "Save the app log with known API keys and tokens removed, to attach to a bug report. Review it before sharing.",
     "importChatGpt": "Import ChatGPT export",
@@ -600,7 +611,11 @@
       "installing": "Installing…",
       "uninstall": "Uninstall",
       "uninstalling": "Uninstalling…",
-      "foreignDesc": "Found at {{path}}, installed by another copy of Flint. Install here to use this copy's CLI."
+      "foreignDesc": "Found at {{path}}, installed by another copy of Flint. Install here to use this copy's CLI.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Startup and tray",
     "cliGroup": "Command line",
@@ -690,6 +705,9 @@
     "title": "Context compaction",
     "auto": "Compact automatically",
     "autoDescription": "Make room before a conversation outgrows the model's context window. Shared by Chat, Cowork and the CLI.",
+    "compactAt": "Compact at",
+    "compactAtDescription": "When the conversation reaches this share of the context window, older messages are summarized first. Automatic keeps the built-in point. Runs before llama.cpp's context shift drops anything.",
+    "compactAtAuto": "Automatic",
     "reserveTokens": "Reserved tokens",
     "reserveDescription": "Headroom kept free: compaction starts once a conversation uses more than the window minus this.",
     "keepRecent": "Recent messages kept",
@@ -1188,7 +1206,7 @@
       "updated": "Updated {{when}}",
       "loading": "Loading campaigns",
       "loadFailed": "Couldn't load campaigns.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
+      "skipped_one": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_other": "Skipped {{count}} unreadable campaign records. The files were left in place.",
       "retry": "Retry",
       "needsDesktop": "Campaigns need the desktop app",
@@ -1427,7 +1445,15 @@
     "emptyHint": "Write one above, or let Flint remember as you chat.",
     "footerCount_one": "1 memory in this scope",
     "footerCount_other": "{{count}} memories in this scope",
-    "agentNotes": "Agent notes"
+    "agentNotes": "Agent notes",
+    "report": {
+      "summary_one": "Imported {{count}} memory from export",
+      "summary_other": "Imported {{count}} memories from export",
+      "duplicates_one": "{{count}} duplicate skipped",
+      "duplicates_other": "{{count}} duplicates skipped",
+      "refused_one": "{{count}} refused",
+      "refused_other": "{{count}} refused"
+    }
   },
   "chatMentions": {
     "title": "Conversation mentions",
@@ -1511,7 +1537,16 @@
     "reasoningDefaultDesc": "Whether thinking starts on or off in a new chat. A model's own Reasoning setting and the composer toggle still win. Models that cannot switch thinking are left alone.",
     "reasoningDefaultModel": "Model default",
     "reasoningDefaultOn": "On",
-    "reasoningDefaultOff": "Off"
+    "reasoningDefaultOff": "Off",
+    "rulesGroup": "Rules",
+    "rulesDesc": "Standing instructions added to chats after the assistant's own instructions. Switch one off for a single chat from that chat's options panel.",
+    "rulesEnabled": "Rule on",
+    "rulesRemove": "Remove rule",
+    "rulesAllChats": "All chats",
+    "rulesNoGroups": "No groups yet",
+    "rulesPlaceholder": "Add a rule, e.g. \"Answer in metric units\"",
+    "rulesAdd": "Add",
+    "rulesTooLong": "Active rules are about {{tokens}} tokens, over the suggested {{budget}}. Long rules use context in every chat."
   },
   "data": {
     "tabStorage": "Storage",

@@ -51,7 +51,8 @@
     "retention_many": "Архивные элементы удаляются навсегда через {{count}} дней.",
     "retention_other": "Архивные элементы удаляются навсегда через {{count}} дня.",
     "retentionForever": "Архивные элементы хранятся, пока вы не удалите их.",
-    "emptyAction": "Очистить архив"
+    "emptyAction": "Очистить архив",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Не получилось",
@@ -1398,5 +1399,13 @@
       "tickFirst": "Сначала отметьте помеченные файлы, которые вы просмотрели.",
       "missing": "Предложенных изменений больше нет. Откройте кампанию на компьютере."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

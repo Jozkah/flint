@@ -784,6 +784,14 @@
     "filesDescription": "इस प्रोजेक्ट में संदर्भ के रूप में उपयोग के लिए PDF, दस्तावेज़ या अन्य टेक्स्ट जोड़ें।",
     "uploadingFiles": "फाइलें प्रोसेस हो रही हैं…",
     "processButton": "जोड़ें",
+    "fileChangedOnDisk": "डिस्क पर बदला गया",
+    "fileMissing": "मौजूद नहीं",
+    "reindexFile": "फिर से इंडेक्स करें",
+    "reindexAllChanged": "सभी बदली फ़ाइलें फिर से इंडेक्स करें",
+    "filesChangedOnDisk": "इंडेक्स होने के बाद डिस्क पर बदली फ़ाइलें: {{count}}",
+    "reindexed": "फिर से इंडेक्स की गई फ़ाइलें: {{count}}",
+    "reindexFailed": "फ़ाइल फिर से इंडेक्स नहीं हो सकी",
+    "staleFilesNotice": "संग्रह की फ़ाइलें जो डिस्क पर बदली या गायब हैं: {{count}}। उन्हें संग्रह की फ़ाइल सूची से फिर से इंडेक्स करें।",
     "deleteFileDialog": {
       "title": "फ़ाइल हटाएँ",
       "description": "\"{{fileName}}\" और उसकी इंडेक्स की गई सामग्री इस कलेक्शन से हटा दी जाएगी। इसे वापस नहीं किया जा सकता।"
@@ -851,6 +859,14 @@
     "openCodeFolder": "कोड फ़ोल्डर खोलें",
     "openCodeFolderDescription": "अपने कंप्यूटर पर वह फ़ोल्डर चुनें जिसमें Flint काम करे।",
     "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें",
+    "mcpServers": {
+      "title": "MCP सर्वर",
+      "useAll": "सभी सक्षम सर्वर इस्तेमाल करें (डिफ़ॉल्ट)",
+      "onlyThese": "केवल ये सर्वर",
+      "noneConfigured": "कोई MCP सर्वर कॉन्फ़िगर नहीं है।",
+      "filterActive": "यह प्रोजेक्ट केवल इनका इस्तेमाल करता है: {{servers}}",
+      "filterNone": "यह प्रोजेक्ट किसी MCP सर्वर का इस्तेमाल नहीं करता"
+    },
     "webPage": {
       "open": "वेब पेज जोड़ें",
       "title": "वेब पेज जोड़ें",
@@ -3141,6 +3157,8 @@
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
   },
+  "chatRules": "नियम",
+  "chatRuleForThisChat": "इस चैट में यह नियम उपयोग करें",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
@@ -3169,6 +3187,40 @@
     "debug": "Debug",
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
+  },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   },
   "eta": {
     "seconds": "{{n}} s",

@@ -784,6 +784,14 @@
     "filesDescription": "이 프로젝트에서 참조할 PDF, 문서 또는 기타 텍스트를 추가하세요.",
     "uploadingFiles": "파일 처리 중…",
     "processButton": "추가",
+    "fileChangedOnDisk": "디스크에서 변경됨",
+    "fileMissing": "없음",
+    "reindexFile": "다시 색인",
+    "reindexAllChanged": "변경된 파일 모두 다시 색인",
+    "filesChangedOnDisk": "색인 후 디스크에서 변경된 파일: {{count}}",
+    "reindexed": "다시 색인한 파일: {{count}}",
+    "reindexFailed": "파일을 다시 색인하지 못했습니다",
+    "staleFilesNotice": "디스크에서 변경되었거나 사라진 컬렉션 파일: {{count}}. 컬렉션의 파일 목록에서 다시 색인하세요.",
     "deleteFileDialog": {
       "title": "파일 삭제",
       "description": "\"{{fileName}}\"과(와) 색인된 내용이 이 컬렉션에서 제거됩니다. 되돌릴 수 없습니다."
@@ -851,6 +859,14 @@
     "openCodeFolder": "코드 폴더 열기",
     "openCodeFolderDescription": "Flint가 작업할 컴퓨터의 폴더를 선택하세요.",
     "setUpEmbeddingModel": "임베딩 모델 설정",
+    "mcpServers": {
+      "title": "MCP 서버",
+      "useAll": "활성화된 모든 서버 사용(기본값)",
+      "onlyThese": "이 서버만 사용",
+      "noneConfigured": "구성된 MCP 서버가 없습니다.",
+      "filterActive": "이 프로젝트는 다음만 사용합니다: {{servers}}",
+      "filterNone": "이 프로젝트는 MCP 서버를 사용하지 않습니다"
+    },
     "webPage": {
       "open": "웹 페이지 추가",
       "title": "웹 페이지 추가",
@@ -3124,6 +3140,8 @@
     "applying": "적용 중…",
     "applySelected": "선택 항목 적용"
   },
+  "chatRules": "규칙",
+  "chatRuleForThisChat": "이 채팅에서 이 규칙 사용",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
@@ -3152,6 +3170,40 @@
     "debug": "Debug",
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
+  },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   },
   "eta": {
     "seconds": "{{n}} s",

@@ -8009,6 +8009,7 @@ dependencies = [
  "nix 0.30.1",
  "rand 0.8.7",
  "serde",
+ "serde_json",
  "sysinfo",
  "tauri",
  "tauri-plugin",
@@ -8141,6 +8142,7 @@ name = "tauri-plugin-vector-db"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "jan-process",
  "log",
  "rusqlite",
  "serde",

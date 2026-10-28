@@ -2,6 +2,8 @@
   "chat": {
     "actionFailed": "Không thể hoàn tất thao tác này. Vui lòng thử lại.",
     "alreadyInList_other": "{{names}} đã có trong danh sách",
+    "alreadyInList_one": "{{names}} đã có trong danh sách",
+    "alreadyInList_many": "{{names}} đã có trong danh sách",
     "attachmentsDisabled": "Tệp đính kèm đã bị tắt trong Cài đặt",
     "docsInPrompt": "Tài liệu được thêm vào lời nhắc",
     "docsInPromptDescription": "Mô hình này không thể tìm kiếm tệp, vì vậy mỗi tài liệu được gửi dưới dạng văn bản cùng tin nhắn của bạn.",
@@ -62,6 +64,8 @@
     "loadingVariants": "Đang tải biến thể…",
     "mayExceed": "Có thể vượt quá bộ nhớ",
     "modelCount_other": "{{count}} mô hình",
+    "modelCount_one": "{{count}} mô hình",
+    "modelCount_many": "{{count}} mô hình",
     "mostDownloaded": "Tải nhiều nhất",
     "mostLiked": "Được thích nhiều nhất",
     "newChat": "Cuộc trò chuyện mới",
@@ -95,7 +99,11 @@
     "variant": "Biến thể",
     "whatToLookFor": "Cần tìm gì",
     "searchPlaceholderShort": "Tìm hoặc dán URL…",
-    "resultLimit": "Hiển thị"
+    "resultLimit": "Hiển thị",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Nhập một tệp mô hình GGUF để thêm vào bộ sưu tập của bạn. Bật hỗ trợ đa phương thức để đính kèm mmproj cho đầu vào hình ảnh hoặc âm thanh, hoặc bật hỗ trợ mô hình nháp cho giải mã suy đoán. Mô hình embedding được nhận diện tự động.",

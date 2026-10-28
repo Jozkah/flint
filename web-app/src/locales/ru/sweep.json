@@ -101,7 +101,12 @@
     "variant": "Вариант",
     "whatToLookFor": "Что искать",
     "searchPlaceholderShort": "Поиск или вставьте URL…",
-    "resultLimit": "Показать"
+    "resultLimit": "Показать",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_few": "{{count}} shards",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Импортируйте файл модели GGUF, чтобы добавить его в коллекцию. Включите мультимодальную поддержку, чтобы подключить mmproj для ввода изображений или звука, либо поддержку черновых моделей для спекулятивного декодирования. Модели эмбеддингов определяются автоматически.",

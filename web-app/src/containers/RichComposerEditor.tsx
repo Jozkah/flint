@@ -94,6 +94,8 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
           role: 'textbox',
           'aria-label': tRef.current('common:composer.messageLabel'),
           'aria-multiline': 'true',
+          // Arabic/Hebrew/Persian input lays out RTL (janhq/jan#9423).
+          dir: 'auto',
           class: 'min-h-10 max-h-60 overflow-y-auto outline-none',
         }),
         handleKeyDown: (_view, event) => {

@@ -15,18 +15,22 @@ export type CompactionPolicy = {
   keepRecent: number
   strategy: CompactionStrategy
   summaryMaxTokens: number
+  /** Compact at this % of the context window; 0 keeps the built-in trigger. */
+  compactAtPercent: number
   origins: {
     auto: CompactionOrigin
     reserveTokens: CompactionOrigin
     keepRecent: CompactionOrigin
     strategy: CompactionOrigin
     summaryMaxTokens: CompactionOrigin
+    compactAtPercent: CompactionOrigin
   }
 }
 
 /** A user-scope edit: only the fields being set. */
 export type CompactionLayer = Partial<
-  Pick<CompactionPolicy, 'auto' | 'reserveTokens' | 'keepRecent' | 'strategy' | 'summaryMaxTokens'>
+  Pick<CompactionPolicy, 'auto' | 'reserveTokens' | 'keepRecent' | 'strategy' | 'summaryMaxTokens' | 'compactAtPercent'
+  >
 >
 
 export const DEFAULT_COMPACTION_POLICY: CompactionPolicy = {
@@ -35,13 +39,37 @@ export const DEFAULT_COMPACTION_POLICY: CompactionPolicy = {
   keepRecent: 8,
   strategy: 'summarize',
   summaryMaxTokens: 512,
+  compactAtPercent: 0,
   origins: {
     auto: 'default',
     reserveTokens: 'default',
     keepRecent: 'default',
     strategy: 'default',
     summaryMaxTokens: 'default',
+    compactAtPercent: 'default',
   },
+}
+
+/** Range a chosen compaction point must fall in (`compaction_policy.rs`). */
+export const MIN_COMPACT_AT_PERCENT = 50
+export const MAX_COMPACT_AT_PERCENT = 95
+
+/** A chosen percentage forced into range; 0 (automatic) stays 0. */
+export function clampCompactAtPercent(percent: number): number {
+  if (!Number.isFinite(percent) || percent <= 0) return 0
+  return Math.min(MAX_COMPACT_AT_PERCENT, Math.max(MIN_COMPACT_AT_PERCENT, Math.round(percent)))
+}
+
+/**
+ * Share of the window at which to compact: the user's percentage, or
+ * `fallback` (the built-in trigger) when it is automatic.
+ */
+export function compactThresholdFor(
+  policy: Partial<Pick<CompactionPolicy, 'compactAtPercent'>> | undefined,
+  fallback: number
+): number {
+  const percent = clampCompactAtPercent(policy?.compactAtPercent ?? 0)
+  return percent > 0 ? percent / 100 : fallback
 }
 
 const inTauri = (): boolean =>
