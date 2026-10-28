@@ -76,7 +76,13 @@ fn thread_id() -> u32 {
     unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn thread_id() -> u32 {
+    // SAFETY: a plain system call with no arguments; async-signal-safe.
+    unsafe { libc::syscall(libc::SYS_gettid) as u32 }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn thread_id() -> u32 {
     0
 }
@@ -196,12 +202,14 @@ fn render(out: &mut dyn std::fmt::Write, info: &CrashInfo<'_>) {
     );
     let _ = writeln!(out, "at: {}+0x{:X} (address 0x{:X})", info.module, info.offset, info.address);
     let _ = writeln!(out, "uptime: {} ms", info.uptime_ms);
-    let _ = writeln!(
-        out,
-        "stack: {:.2} MB reserved, pointer {} bytes above the lowest address",
-        stack as f64 / (1024.0 * 1024.0),
-        info.stack_pointer.saturating_sub(info.stack_low)
-    );
+    if info.stack_high != 0 {
+        let _ = writeln!(
+            out,
+            "stack: {:.2} MB reserved, pointer {} bytes above the lowest address",
+            stack as f64 / (1024.0 * 1024.0),
+            info.stack_pointer.saturating_sub(info.stack_low)
+        );
+    }
     let _ = writeln!(out, "frames, innermost first (module+offset):");
     for frame in info.frames {
         let _ = writeln!(out, "  {}+0x{:X}", frame.module, frame.offset);
@@ -528,8 +536,130 @@ mod handler {
     }
 }
 
-/// Start recording fatal exceptions. Windows only; elsewhere the platform's own
-/// message is all there is. Call once, from the main thread, early. Returns what
+// ---------------------------------------------------------------------------
+// macOS and Linux: the signal handler.
+
+/// A fatal signal (SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE) writes the same
+/// short report to `crashes/pending.txt`: the signal, the faulting address, the
+/// build, the uptime and the trail of last commands. It uses only a file opened
+/// at start, a fixed buffer and `write(2)`, which is all a signal handler may
+/// rely on, and runs on the alternate signal stack Rust sets up per thread, so a
+/// stack overflow can still be reported. The handler then falls through to
+/// whatever was installed before (Rust's own stack overflow message), and the
+/// signal's default action ends the process as it always did.
+#[cfg(unix)]
+mod unix_handler {
+    use super::*;
+    use std::ffi::c_void;
+    use std::os::fd::IntoRawFd;
+    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize};
+
+    const SIGNALS: [libc::c_int; 5] = [libc::SIGSEGV, libc::SIGBUS, libc::SIGABRT, libc::SIGILL, libc::SIGFPE];
+
+    static CRASH_FD: AtomicI32 = AtomicI32::new(-1);
+    static MAIN_THREAD: AtomicU32 = AtomicU32::new(0);
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    static PREVIOUS: [AtomicUsize; SIGNALS.len()] = [const { AtomicUsize::new(0) }; SIGNALS.len()];
+    static PREVIOUS_INFO: [AtomicBool; SIGNALS.len()] = [const { AtomicBool::new(false) }; SIGNALS.len()];
+
+    /// The report is built here, not on the (possibly exhausted) stack.
+    struct Shared(std::cell::UnsafeCell<[u8; 8 * 1024]>);
+    // SAFETY: only the thread that wins `BUSY` touches it.
+    unsafe impl Sync for Shared {}
+    static BUFFER: Shared = Shared(std::cell::UnsafeCell::new([0; 8 * 1024]));
+
+    fn name_of(sig: libc::c_int) -> &'static str {
+        match sig {
+            libc::SIGSEGV => "SIGSEGV (access violation)",
+            libc::SIGBUS => "SIGBUS (bad memory access)",
+            libc::SIGABRT => "SIGABRT (abort)",
+            libc::SIGILL => "SIGILL (illegal instruction)",
+            libc::SIGFPE => "SIGFPE (arithmetic error)",
+            _ => "fatal signal",
+        }
+    }
+
+    extern "C" fn on_signal(sig: libc::c_int, info: *mut libc::siginfo_t, context: *mut c_void) {
+        if !BUSY.swap(true, Ordering::SeqCst) {
+            // SAFETY: the kernel passes a valid siginfo for SA_SIGINFO handlers.
+            let address = if info.is_null() { 0 } else { unsafe { (*info).si_addr() as usize as u64 } };
+            let thread = thread_id();
+            let crash = CrashInfo {
+                what: name_of(sig),
+                code: sig as u32,
+                thread,
+                main_thread: thread == MAIN_THREAD.load(Ordering::Relaxed),
+                address,
+                module: "unknown",
+                offset: address,
+                uptime_ms: uptime_ms(),
+                stack_low: 0,
+                stack_high: 0,
+                stack_pointer: 0,
+                frames: &[],
+            };
+            // SAFETY: `BUSY` gave this thread the buffer.
+            let buffer = unsafe { &mut *BUFFER.0.get() };
+            let mut out = Fixed { buf: buffer, len: 0 };
+            render(&mut out, &crash);
+            let len = out.len;
+            let fd = CRASH_FD.load(Ordering::Relaxed);
+            if fd >= 0 {
+                // SAFETY: `fd` is the file opened at start; the buffer holds `len` bytes.
+                unsafe {
+                    libc::write(fd, buffer.as_ptr() as *const c_void, len);
+                    libc::fsync(fd);
+                }
+            }
+        }
+        // Whoever was there first (Rust's stack overflow message) still runs.
+        if let Some(i) = SIGNALS.iter().position(|s| *s == sig) {
+            let previous = PREVIOUS[i].load(Ordering::Relaxed);
+            if previous > 1 {
+                // SAFETY: `previous` came from the old sigaction of this signal.
+                unsafe {
+                    if PREVIOUS_INFO[i].load(Ordering::Relaxed) {
+                        let f: extern "C" fn(libc::c_int, *mut libc::siginfo_t, *mut c_void) =
+                            std::mem::transmute(previous);
+                        f(sig, info, context);
+                    } else {
+                        let f: extern "C" fn(libc::c_int) = std::mem::transmute(previous);
+                        f(sig);
+                    }
+                }
+            }
+        }
+        // Installed with SA_RESETHAND: returning lets the default action end the
+        // process (the fault re-runs, or abort() finishes).
+    }
+
+    pub fn install(data_folder: &Path) {
+        let dir = crash_dir(data_folder);
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(file) = std::fs::File::create(dir.join(PENDING)) {
+            // Kept open for the life of the process, on purpose.
+            CRASH_FD.store(file.into_raw_fd(), Ordering::SeqCst);
+        }
+        MAIN_THREAD.store(thread_id(), Ordering::Relaxed);
+        for (i, sig) in SIGNALS.iter().enumerate() {
+            // SAFETY: `action` is fully initialised, `on_signal` has the
+            // SA_SIGINFO signature and lives for the whole process.
+            unsafe {
+                let mut action: libc::sigaction = std::mem::zeroed();
+                action.sa_sigaction = on_signal as *const () as usize;
+                libc::sigemptyset(&mut action.sa_mask);
+                action.sa_flags = libc::SA_SIGINFO | libc::SA_ONSTACK | libc::SA_RESETHAND | libc::SA_NODEFER;
+                let mut old: libc::sigaction = std::mem::zeroed();
+                if libc::sigaction(*sig, &action, &mut old) == 0 {
+                    PREVIOUS[i].store(old.sa_sigaction, Ordering::SeqCst);
+                    PREVIOUS_INFO[i].store(old.sa_flags & libc::SA_SIGINFO != 0, Ordering::SeqCst);
+                }
+            }
+        }
+    }
+}
+
+/// Start recording fatal exceptions (Windows) or fatal signals (macOS, Linux). Call once, from the main thread, early. Returns what
 /// to log about the main thread's stack: the logger is not attached yet at the
 /// point this is called, so the caller logs it once it is.
 pub fn install_crash_handler(data_folder: &Path) -> Option<(log::Level, String)> {
@@ -542,7 +672,12 @@ pub fn install_crash_handler(data_folder: &Path) -> Option<(log::Level, String)>
         }
         Some((log::Level::Info, format!("main thread stack: {:.2} MB", bytes as f64 / (1024.0 * 1024.0))))
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        unix_handler::install(data_folder);
+        None
+    }
+    #[cfg(not(any(windows, unix)))]
     {
         let _ = data_folder;
         None
@@ -706,6 +841,37 @@ mod tests {
     fn a_small_main_stack_is_called_out_with_its_size() {
         assert!(small_stack_message(1024 * 1024).contains("1.00 MB"));
         assert!(small_stack_message(1024 * 1024).contains("4 MB"));
+    }
+
+    /// The real thing on macOS and Linux: a child process aborts and the report
+    /// is in the file afterwards.
+    #[cfg(unix)]
+    #[test]
+    fn an_abort_leaves_a_report_with_the_last_commands() {
+        const CHILD_FOLDER: &str = "FLINT_CRASH_TRACE_CHILD_FOLDER";
+        if let Ok(folder) = std::env::var(CHILD_FOLDER) {
+            let folder = PathBuf::from(folder);
+            let _ = mark_started(&folder);
+            let _ = install_crash_handler(&folder);
+            breadcrumb("child-before-abort");
+            breadcrumb("execute_tool read");
+            std::process::abort();
+        }
+        let dir = folder("abort");
+        let exe = std::env::current_exe().unwrap();
+        let output = std::process::Command::new(exe)
+            .args(["--exact", "core::crash_trace::tests::an_abort_leaves_a_report_with_the_last_commands", "--nocapture", "--test-threads=1"])
+            .env(CHILD_FOLDER, &dir)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "the child should have died");
+        let report = std::fs::read_to_string(crash_dir(&dir).join(PENDING)).expect("a crash file");
+        assert!(report.contains("exception: SIGABRT"), "{report}");
+        assert!(report.contains("execute_tool read"), "{report}");
+        assert!(report.contains("child-before-abort"), "{report}");
+        let found = take_crash_report(&dir).expect("the report is found at the next start");
+        assert!(found.contains("SIGABRT"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The real thing: a child process overflows its stack and the report
