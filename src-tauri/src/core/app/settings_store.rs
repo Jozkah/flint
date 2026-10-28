@@ -12,12 +12,20 @@
 //! whole-file rewrite instead of one O(total-size) rewrite per call. A
 //! synchronous [`flush_settings`] drains the debounce on app exit so jan CLI
 //! never reads a stale file.
+//!
+//! A flush normally re-reads the file and applies only this process's changes
+//! onto it, so a key another writer (the agent's `apply_settings`) changed is
+//! kept. To avoid re-reading a file nobody else touched, each write records the
+//! file's length and mtime; the next flush skips the read and writes the
+//! in-memory map when the file still has exactly that stamp and the stamp is at
+//! least [`UNCHANGED_MIN_AGE`] old (so a coarse filesystem clock cannot hide a
+//! second writer). Any doubt falls back to the read-and-merge.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Condvar, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::commands::resolve_jan_data_folder;
 use crate::core::app::constants::CONFIGURATION_FILE_NAME;
@@ -161,6 +169,8 @@ fn merge_changes(
 /// but is not a JSON object (then the flush keeps the old whole-snapshot
 /// behaviour rather than merging into nothing).
 fn read_map_for_merge(path: &PathBuf) -> Option<BTreeMap<String, String>> {
+    #[cfg(test)]
+    MERGE_READS.lock().unwrap_or_else(|e| e.into_inner()).push(path.clone());
     match fs::read_to_string(path) {
         Ok(content) if !content.trim().is_empty() => {
             // The agent's apply_settings may write non-string JSON values;
@@ -183,16 +193,87 @@ fn read_map_for_merge(path: &PathBuf) -> Option<BTreeMap<String, String>> {
     }
 }
 
+/// Length and modification time of the settings file as this process last
+/// wrote it.
+type Stamp = (u64, SystemTime);
+
+/// The stamp of each settings file this process last wrote, by path.
+static LAST_WRITTEN: Mutex<BTreeMap<PathBuf, Stamp>> = Mutex::new(BTreeMap::new());
+
+/// Test-only: every path [`read_map_for_merge`] was asked to read.
+#[cfg(test)]
+static MERGE_READS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// How old the recorded stamp must be before it proves nobody else wrote. Inside
+/// this window a second write could land in the same mtime tick with the same
+/// length, so the file is read and merged as before.
+const UNCHANGED_MIN_AGE: Duration = Duration::from_secs(2);
+
+/// True when the file is exactly as this process last wrote it and that write
+/// is at least `min_age` old.
+fn unchanged_since_our_write(path: &PathBuf, min_age: Duration) -> bool {
+    let last = LAST_WRITTEN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(path)
+        .copied();
+    let Some(last) = last else {
+        return false;
+    };
+    let Some(now) = fs::metadata(path)
+        .ok()
+        .and_then(|m| Some((m.len(), m.modified().ok()?)))
+    else {
+        return false;
+    };
+    now == last
+        && SystemTime::now()
+            .duration_since(now.1)
+            .unwrap_or(Duration::ZERO)
+            >= min_age
+}
+
 /// Write one flush batch to `path`. Returns the map that was written.
 fn write_batch(path: &PathBuf, batch: &FlushBatch) -> Result<BTreeMap<String, String>, String> {
-    let to_write = match read_map_for_merge(path) {
-        Some(disk) => merge_changes(disk, &batch.changes),
-        None => {
-            backup_unreadable(path);
-            batch.snapshot.clone()
+    write_batch_aged(path, batch, UNCHANGED_MIN_AGE)
+}
+
+fn write_batch_aged(
+    path: &PathBuf,
+    batch: &FlushBatch,
+    min_age: Duration,
+) -> Result<BTreeMap<String, String>, String> {
+    // Nothing of ours to put on disk.
+    if batch.changes.is_empty() {
+        return Ok(batch.snapshot.clone());
+    }
+    let to_write = if unchanged_since_our_write(path, min_age) {
+        // No other writer touched the file: the in-memory map is the file plus
+        // our changes, so there is nothing to read or merge.
+        batch.snapshot.clone()
+    } else {
+        match read_map_for_merge(path) {
+            Some(disk) => merge_changes(disk, &batch.changes),
+            None => {
+                backup_unreadable(path);
+                batch.snapshot.clone()
+            }
         }
     };
-    write_map_atomic(path, &to_write)?;
+    let stamp = write_map_atomic(path, &to_write);
+    let mut last = LAST_WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
+    match stamp {
+        Ok(Some(stamp)) => {
+            last.insert(path.clone(), stamp);
+        }
+        Ok(None) => {
+            last.remove(path);
+        }
+        Err(e) => {
+            last.remove(path);
+            return Err(e);
+        }
+    }
     Ok(to_write)
 }
 
@@ -282,7 +363,10 @@ pub fn take_settings_recovery_notice() -> Option<SettingsRecovery> {
     RECOVERY_NOTICE.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
-fn write_map_atomic(path: &PathBuf, map: &BTreeMap<String, String>) -> Result<(), String> {
+/// Write the map through a temp file and rename. Returns the new file's stamp,
+/// taken from the temp file before the rename so a writer that replaces the
+/// file right after cannot be mistaken for this write.
+fn write_map_atomic(path: &PathBuf, map: &BTreeMap<String, String>) -> Result<Option<Stamp>, String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -292,7 +376,11 @@ fn write_map_atomic(path: &PathBuf, map: &BTreeMap<String, String>) -> Result<()
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = path.with_extension(format!("json.{}-{seq}.tmp", std::process::id()));
     fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, path).map_err(|e| e.to_string())
+    let stamp = fs::metadata(&tmp)
+        .ok()
+        .and_then(|m| Some((m.len(), m.modified().ok()?)));
+    fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    Ok(stamp)
 }
 
 fn store() -> &'static Store {
@@ -627,5 +715,77 @@ mod tests {
         RECOVERY_NOTICE.lock().unwrap().take();
         assert!(read_map(&dir.path().join("settings.json")).is_empty());
         assert!(RECOVERY_NOTICE.lock().unwrap().take().is_none());
+    }
+
+    fn reads_of(path: &PathBuf) -> usize {
+        MERGE_READS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|p| *p == path)
+            .count()
+    }
+
+    fn batch_of(snapshot: &BTreeMap<String, String>, key: &str, value: &str) -> FlushBatch {
+        let mut snapshot = snapshot.clone();
+        snapshot.insert(key.to_string(), value.to_string());
+        let mut changes = BTreeMap::new();
+        changes.insert(key.to_string(), Some(value.to_string()));
+        FlushBatch { snapshot, changes }
+    }
+
+    #[test]
+    fn second_flush_does_not_reread_unchanged_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let first = batch_of(&BTreeMap::new(), "a", "1");
+        // The first write has no stamp to trust, so it reads once.
+        let written = write_batch_aged(&path, &first, Duration::ZERO).unwrap();
+        assert_eq!(reads_of(&path), 1);
+        let second = batch_of(&written, "b", "2");
+        let written = write_batch_aged(&path, &second, Duration::ZERO).unwrap();
+        assert_eq!(reads_of(&path), 1, "the unchanged file was read again");
+        assert_eq!(read_map(&path), written);
+        assert_eq!(written.get("a").map(String::as_str), Some("1"));
+        assert_eq!(written.get("b").map(String::as_str), Some("2"));
+    }
+
+    #[test]
+    fn external_writer_change_is_merged() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let written =
+            write_batch_aged(&path, &batch_of(&BTreeMap::new(), "a", "1"), Duration::ZERO).unwrap();
+        // Another writer adds a key; the file's length changes.
+        let mut external = written.clone();
+        external.insert("agent.key".to_string(), "from-the-agent".to_string());
+        write_map_atomic(&path, &external).unwrap();
+        let reads = reads_of(&path);
+        let after =
+            write_batch_aged(&path, &batch_of(&written, "b", "2"), Duration::ZERO).unwrap();
+        assert_eq!(reads_of(&path), reads + 1, "the changed file was not read");
+        assert_eq!(after.get("agent.key").map(String::as_str), Some("from-the-agent"));
+        assert_eq!(read_map(&path).get("b").map(String::as_str), Some("2"));
+    }
+
+    #[test]
+    fn mtime_resolution_race_falls_back_to_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let written =
+            write_batch_aged(&path, &batch_of(&BTreeMap::new(), "a", "1"), Duration::ZERO).unwrap();
+        let reads = reads_of(&path);
+        // The stamp is fresh, so with the real minimum age it is not trusted.
+        write_batch_aged(&path, &batch_of(&written, "b", "2"), UNCHANGED_MIN_AGE).unwrap();
+        assert_eq!(reads_of(&path), reads + 1, "a fresh stamp was trusted");
+    }
+
+    #[test]
+    fn a_flush_with_no_changes_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let batch = FlushBatch { snapshot: BTreeMap::new(), changes: BTreeMap::new() };
+        write_batch_aged(&path, &batch, Duration::ZERO).unwrap();
+        assert!(!path.exists());
     }
 }
