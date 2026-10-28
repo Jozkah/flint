@@ -24,11 +24,6 @@ fn hex(hash: &[u8; 32]) -> String {
     hash.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn lives_on_shared_tree(mailbox: &Mailbox, id: &str) -> bool {
-    mailbox
-        .session(id)
-        .is_some_and(|r| mailbox.is_live_member(&r) && !r.shared.isolated)
-}
 
 // -- file claims ------------------------------------------------------------
 
@@ -42,18 +37,21 @@ pub fn decide_write(
     shown: &str,
     now: i64,
 ) -> Option<String> {
-    let record = mailbox.session(me)?;
+    // One registry read for the whole decision, not one per session named.
+    let sessions = mailbox.sessions_now();
+    let record = sessions.get(me)?;
     // An isolated session writes in its own copy: no claims either way.
     if record.shared.isolated || record.shared.folder_key.is_none() {
         return None;
     }
     let name = |id: &str| {
-        mailbox
-            .session(id)
+        sessions
+            .get(id)
             .map(|r| clean_name(&r.display_name))
             .unwrap_or_else(|| "another session".to_string())
     };
-    match table.check_write(me, file, &name, &|id| lives_on_shared_tree(mailbox, id), now) {
+    let live = |id: &str| sessions.get(id).is_some_and(|r| mailbox.is_live_member(r) && !r.shared.isolated);
+    match table.check_write(me, file, &name, &live, now) {
         Decision::Allow => None,
         Decision::Hold { owner_id } => Some(format!(
             "{HELD_PREFIX}{shown} is being edited by {}. Message them with send_message, \
