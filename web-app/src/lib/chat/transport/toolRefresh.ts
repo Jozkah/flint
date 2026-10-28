@@ -9,7 +9,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { webSearchOnFor } from '@/hooks/useWebSearchChoice'
-import { WEB_SEARCH_DESCRIPTION, WEB_SEARCH_INPUT_SCHEMA, WEB_FETCH_DESCRIPTION, WEB_FETCH_INPUT_SCHEMA, IMAGE_SEARCH_DESCRIPTION, IMAGE_SEARCH_INPUT_SCHEMA } from '@/lib/webSearchTool'
+import { recordRunWebTools, WEB_SEARCH_DESCRIPTION, WEB_SEARCH_INPUT_SCHEMA, WEB_FETCH_DESCRIPTION, WEB_FETCH_INPUT_SCHEMA, IMAGE_SEARCH_DESCRIPTION, IMAGE_SEARCH_INPUT_SCHEMA } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, SHELL_TOOL_NAME } from '@/lib/agentTools'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
@@ -159,6 +159,7 @@ export async function refreshTools(
   })
   if (useCache && host.toolsCacheKey === cacheKey) {
     if (host.loadedTools) host.tools = host.loadedTools
+    recordRunWebTools(host.threadId, host.tools)
     return
   }
 
@@ -436,6 +437,7 @@ export async function refreshTools(
   )
   host.toolServers = toolServers
   host.loadedTools = host.tools
+  recordRunWebTools(host.threadId, host.tools)
   host.toolsCacheKey = mcpLoadFailed ? null : cacheKey
 }
 

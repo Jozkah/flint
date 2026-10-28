@@ -8,6 +8,28 @@ const context = {
 }
 
 describe('resolveToolOrigin', () => {
+  it('credits an MCP server web_search to that server while native web is off', () => {
+    for (const name of ['web_search', 'web_fetch']) {
+      expect(
+        resolveToolOrigin(name, {
+          ...context,
+          mcpServer: 'brave',
+          nativeWebEnabled: false,
+        })
+      ).toEqual({ kind: 'mcp', detail: 'brave' })
+    }
+  })
+
+  it('keeps the built-in credit while native web is on', () => {
+    expect(
+      resolveToolOrigin('web_search', {
+        ...context,
+        mcpServer: 'brave',
+        nativeWebEnabled: true,
+      })
+    ).toEqual({ kind: 'web-search', detail: 'Exa' })
+  })
+
   it('attributes web_search to the configured provider', () => {
     expect(resolveToolOrigin('web_search', context)).toEqual({
       kind: 'web-search',

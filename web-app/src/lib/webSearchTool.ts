@@ -27,6 +27,39 @@ export function isNativeWebTool(
   return useWebSearchConfig.getState().webSearchEnabled
 }
 
+// Whether each thread's latest tool set advertised the native web tools,
+// recorded by refreshTools when it builds the set a request is sent with.
+const runNativeWeb = new Map<string, boolean>()
+
+/** Record whether a thread's current run advertises the native web tools. */
+export function recordRunWebTools(
+  threadId: string | undefined,
+  advertised: Record<string, unknown>
+): void {
+  if (threadId) runNativeWeb.set(threadId, 'web_search' in advertised)
+}
+
+/**
+ * isNativeWebTool against the tool set this thread's run was sent with, so a
+ * Settings toggle mid-run does not change how a call of that run is treated.
+ * Falls back to the global setting when no run was recorded for the thread.
+ */
+export function isNativeWebToolInRun(
+  toolName: string,
+  threadId: string | undefined
+): boolean {
+  const native = threadId ? runNativeWeb.get(threadId) : undefined
+  return isNativeWebTool(
+    toolName,
+    native === undefined ? undefined : native ? { web_search: true } : {}
+  )
+}
+
+/** Forget recorded run tool sets (tests). */
+export function resetRunWebTools(): void {
+  runNativeWeb.clear()
+}
+
 export const WEB_SEARCH_DESCRIPTION =
   'Search the web and return a ranked list of results (title, URL, snippet, and optional publish date). Use this to find current information, documentation, or sources you can then read with web_fetch. Cite the URLs you rely on.'
 
