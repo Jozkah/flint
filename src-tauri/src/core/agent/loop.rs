@@ -9275,13 +9275,12 @@ async fn run_turn_cycle(
         let started_now = background_jobs_started(unscanned(&conversation_messages, shells_scanned));
         // Watchers are claimed before the doorbell can drop a job that
         // finished at once.
-        monitored.extend(
-            started_now
-                .iter()
-                .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
-                .cloned()
-                .collect::<Vec<_>>(),
-        );
+        let fresh: Vec<_> = started_now
+            .iter()
+            .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
+            .cloned()
+            .collect();
+        monitored.extend(fresh);
         shells_owed.extend(started_now);
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
