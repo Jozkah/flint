@@ -471,11 +471,15 @@ fn now_ms() -> u64 {
 }
 
 fn idle_secs() -> u64 {
-    std::env::var("FLINT_BROWSER_IDLE_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|s| *s > 0)
-        .unwrap_or(IDLE_SECS)
+    // Read once: the reaper asks for every session on every tick.
+    static IDLE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *IDLE.get_or_init(|| {
+        std::env::var("FLINT_BROWSER_IDLE_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|s| *s > 0)
+            .unwrap_or(IDLE_SECS)
+    })
 }
 
 impl Control {
@@ -748,6 +752,7 @@ pub fn close_for(id: &str) -> usize {
 pub fn close_all() {
     let all: Vec<Arc<Session>> = SESSIONS.lock().map(|m| m.values().cloned().collect()).unwrap_or_default();
     for s in all {
+        s.announce_closed("the app is closing");
         s.ctl.kill_detached("the app is closing");
     }
 }
@@ -1709,7 +1714,11 @@ impl Session {
             if rect.get("hidden").is_some() {
                 return Err(format!("{r} has no visible area to capture."));
             }
-            params["clip"] = json!({ "x": rect["x"], "y": rect["y"], "width": rect["w"], "height": rect["h"], "scale": 1 });
+            // The same ceilings as a full-page capture: a huge element must not
+            // ask the browser for a gigantic bitmap.
+            let w = rect["w"].as_f64().unwrap_or(0.0).clamp(1.0, 4096.0);
+            let h = rect["h"].as_f64().unwrap_or(0.0).clamp(1.0, 8000.0);
+            params["clip"] = json!({ "x": rect["x"], "y": rect["y"], "width": w, "height": h, "scale": 1 });
             params["captureBeyondViewport"] = json!(true);
             what = format!("element {r}");
         } else if full {

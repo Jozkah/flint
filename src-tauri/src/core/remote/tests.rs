@@ -93,6 +93,31 @@ fn only_the_hash_is_stored_and_verification_uses_it() {
 }
 
 #[test]
+fn a_corrupt_device_file_is_moved_aside_not_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("devices.json");
+    std::fs::write(&path, "{ not json").unwrap();
+    let store = DeviceStore::load(path.clone());
+    assert!(store.list().is_empty());
+    assert!(!path.exists());
+    let kept: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with("devices.json.corrupt-"))
+        .collect();
+    assert_eq!(kept.len(), 1);
+}
+
+#[test]
+fn a_corrupt_vapid_file_is_never_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("vapid.json");
+    std::fs::write(&path, "garbage").unwrap();
+    assert!(super::push::VapidKey::load_or_create(&path).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "garbage");
+}
+
+#[test]
 fn stored_file_has_no_token() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("devices.json");

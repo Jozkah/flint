@@ -336,7 +336,11 @@ impl Automation {
     /// folders (compared as real paths).
     pub fn task_for_run(&self, folder: Option<&str>) -> Result<Task, String> {
         let chosen = match folder {
-            None => self.folders[0].clone(),
+            None => self
+                .folders
+                .first()
+                .cloned()
+                .ok_or_else(|| "list at least one folder the automation may work in".to_string())?,
             Some(f) => {
                 let want = canon_key(f);
                 self.folders
@@ -722,6 +726,15 @@ mod tests {
         assert!(a.task_for_run(Some(&via)).is_ok());
         // A manual automation compiles to a runnable task whose timetable never fires it.
         a.task_for_run(None).unwrap().validate().unwrap();
+    }
+
+    #[test]
+    fn a_run_with_no_folders_is_an_error_not_a_panic() {
+        let d = folder();
+        let mut a = sample(d.path());
+        a.folders.clear();
+        let err = a.task_for_run(None).unwrap_err();
+        assert!(err.contains("at least one folder"), "{err}");
     }
 
     #[test]

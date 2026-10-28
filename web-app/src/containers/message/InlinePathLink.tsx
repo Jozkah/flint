@@ -74,9 +74,10 @@ export function InlinePathLink({
           path: action.path,
           mode: action.kind === 'open' ? 'open' : 'reveal',
         })
-        .catch((error: unknown) =>
+        .catch((error: unknown) => {
           console.error('Could not open path:', error)
-        )
+          toast.error(t('common:codePanel.openFailed', { name: parsed.path }))
+        })
     }
   }
 

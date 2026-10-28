@@ -81,6 +81,8 @@ import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { deriveToolOutputCap } from '@/lib/context-manager'
 import { renderInstructions } from '@/lib/instructionTemplate'
+import { useChatRulesBlock } from '@/hooks/useChatRules'
+import { composeSystemMessage } from '@/lib/chatRules'
 import {
   contextIsResizable,
   knownContextWindow,
@@ -274,6 +276,7 @@ import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { route } from '@/constants/routes'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
+import { warnIfProjectFilesChanged } from '@/lib/projectFileFreshness'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { generateThreadTitle } from '@/lib/thread-title-summarizer'
@@ -460,9 +463,14 @@ export function ThreadConversation({
   // Get system message from thread's assistant instructions (if thread has an assigned assistant)
   // Only use assistant instructions if the thread was created with one (e.g., via a project)
   const threadAssistant = thread?.assistants?.[0]
-  const systemMessage = threadAssistant?.instructions
-    ? renderInstructions(threadAssistant.instructions)
-    : undefined
+  // Standing rules (Settings > Chat) follow the assistant's instructions.
+  const chatRulesBlock = useChatRulesBlock(threadId, thread?.metadata?.project?.id)
+  const systemMessage = composeSystemMessage(
+    threadAssistant?.instructions
+      ? renderInstructions(threadAssistant.instructions)
+      : undefined,
+    chatRulesBlock
+  )
 
   // AH-032/AH-083: the transport takes a snapshot of every request and has
   // nowhere to return it -- the AI SDK owns the call -- so it hands it here.
@@ -556,6 +564,14 @@ export function ThreadConversation({
   const backendError = isLlamacppActive ? backendErrorRaw : undefined
 
   const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  const regenerateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A pending post-resize regenerate must not fire into another thread.
+  useEffect(
+    () => () => {
+      if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    },
+    [threadId]
+  )
   // Compacts and continues a reply that stopped because the window filled;
   // resolves false when it could not, and the banner is shown instead.
   const recoverContextLimitRef = useRef<
@@ -1634,6 +1650,7 @@ export function ThreadConversation({
           if (ext?.listAttachmentsForProject) {
             const projectFiles = await ext.listAttachmentsForProject(projectId)
             hasProjectDocuments = projectFiles.length > 0
+            void warnIfProjectFilesChanged(projectId, projectFiles)
           }
         } catch (error) {
           console.warn('Failed to check project files:', error)
@@ -2095,6 +2112,7 @@ export function ThreadConversation({
             serviceHub,
             selectedProvider,
             modelSupportsTools: toolsEnabled,
+            modelSupportsVision: !!selectedModel?.capabilities?.includes('vision'),
             parsePreference,
             contextThreshold,
             estimateTokens: estimateAttachmentTokens,
@@ -2688,7 +2706,9 @@ export function ThreadConversation({
       continueReplaceIdRef.current = pending.message.id
     }
 
-    setTimeout(() => {
+    if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    regenerateTimerRef.current = setTimeout(() => {
+      regenerateTimerRef.current = null
       handleRegenerate(pending?.message.id)
     }, 1000)
   }, [
@@ -3487,10 +3507,10 @@ export function ThreadConversation({
                       </div>
                       {oomError && (
                         <ul className="mt-2 list-disc pl-5 text-xs text-fg-2 space-y-0.5">
-                          <li>Reduce context size (ctx-size)</li>
-                          <li>Disable MTP (Multi-Token Prediction)</li>
-                          <li>Lower n-gpu-layers or switch to a CPU backend</li>
-                          <li>Use a smaller / more quantized model</li>
+                          <li>{t('chat:errorBanner.oomReduceContext')}</li>
+                          <li>{t('chat:errorBanner.oomDisableMtp')}</li>
+                          <li>{t('chat:errorBanner.oomLowerGpuLayers')}</li>
+                          <li>{t('chat:errorBanner.oomSmallerModel')}</li>
                         </ul>
                       )}
                       {((error ?? contextLimitError)?.message
@@ -3534,7 +3554,7 @@ export function ThreadConversation({
                               onClick={handleContextSizeIncrease}
                             >
                               <CircleAlert className="size-4" />
-                              Increase Context Size
+                              {t('common:outOfContextError.increaseContextSize')}
                             </Button>
                           ) : (
                             <div className="mt-3 space-y-2">
@@ -3542,9 +3562,7 @@ export function ThreadConversation({
                                 PREFLIGHT_CONTEXT_ERROR_PREFIX
                               ) && (
                                 <p className="text-sm text-fg-2">
-                                  This model's context window is set by its server,
-                                  so Flint cannot enlarge it. Start a new chat, shorten
-                                  the conversation, or raise the limit on the server.
+                                  {t('chat:errorBanner.serverContext')}
                                 </p>
                               )}
                               <Button
@@ -3554,7 +3572,7 @@ export function ThreadConversation({
                                 onClick={() => handleRegenerate()}
                               >
                                 <RefreshCw className="size-4" />
-                                Regenerate
+                                {t('chat:errorBanner.regenerate')}
                               </Button>
                             </div>
                           )}
@@ -3567,7 +3585,9 @@ export function ThreadConversation({
                           onClick={() => handleRegenerate()}
                         >
                           <RefreshCw className="size-4" />
-                          {oomError || backendError ? 'Reload' : 'Regenerate'}
+                          {oomError || backendError
+                            ? t('chat:errorBanner.reload')
+                            : t('chat:errorBanner.regenerate')}
                         </Button>
                       )}
                     </div>

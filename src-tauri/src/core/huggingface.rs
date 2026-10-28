@@ -39,6 +39,35 @@ pub fn set_download_speed_limit(bytes_per_sec: u64) {
     DOWNLOAD_LIMIT_BPS.store(bytes_per_sec, Ordering::Relaxed);
 }
 
+/// The Hugging Face endpoint chosen in Settings, and the `HF_ENDPOINT`
+/// override when one is set (it wins over the setting).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HfEndpointState {
+    endpoint: String,
+    send_token_to_mirror: bool,
+    env_override: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_hf_endpoint_setting() -> HfEndpointState {
+    let (setting, env_override) = crate::core::hf_endpoint::current_setting_and_env();
+    HfEndpointState { endpoint: setting.endpoint, send_token_to_mirror: setting.send_token_to_mirror, env_override }
+}
+
+#[tauri::command]
+pub fn set_hf_endpoint_setting<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    endpoint: String,
+    send_token_to_mirror: bool,
+) -> Result<(), String> {
+    let data = crate::core::app::commands::get_jan_data_folder_path(app);
+    crate::core::hf_endpoint::save_setting(
+        &data,
+        crate::core::hf_endpoint::HfEndpointSetting { endpoint, send_token_to_mirror },
+    )
+}
+
 /// How long to wait so `bytes` received over `elapsed` stay within `limit`
 /// bytes per second. Zero when unlimited or already behind the pace.
 fn throttle_delay(bytes: u64, elapsed: std::time::Duration, limit: u64) -> std::time::Duration {
@@ -205,7 +234,8 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface"),
     );
-    if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
+    // Token only over https, and to a mirror only when the user opted in.
+    if let Some(token) = crate::core::hf_endpoint::hub_token(token)? {
         let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
@@ -340,9 +370,28 @@ fn remote_file_url_on(
     Ok(url)
 }
 
+/// Error pages are only quoted briefly; never buffer more than this.
+const MAX_ERROR_BODY_BYTES: u64 = 4 * 1024;
+
+/// Reads a body in chunks, stopping with `None` once it passes `cap` bytes, so a
+/// response without a `content-length` cannot be buffered whole.
+async fn read_capped(mut response: reqwest::Response, cap: u64) -> Result<Option<Vec<u8>>, reqwest::Error> {
+    let mut out = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if out.len() as u64 + chunk.len() as u64 > cap {
+            return Ok(None);
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(Some(out))
+}
+
 async fn response_error(response: reqwest::Response) -> String {
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = match read_capped(response, MAX_ERROR_BODY_BYTES).await {
+        Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+        _ => String::new(),
+    };
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
         return "Hugging Face denied access. If the model is gated or private, accept its license on Hugging Face and add a token in Flint Settings.".to_string();
     }
@@ -589,14 +638,11 @@ pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<S
     if response.content_length().unwrap_or(0) > MAX_README_BYTES {
         return Err("Hugging Face README is too large to display".to_string());
     }
-    let bytes = response
-        .bytes()
+    let bytes = read_capped(response, MAX_README_BYTES)
         .await
-        .map_err(|e| format!("Could not read Hugging Face README: {e}"))?;
-    if bytes.len() as u64 > MAX_README_BYTES {
-        return Err("Hugging Face README is too large to display".to_string());
-    }
-    String::from_utf8(bytes.to_vec()).map_err(|_| "Hugging Face README is not UTF-8".to_string())
+        .map_err(|e| format!("Could not read Hugging Face README: {e}"))?
+        .ok_or_else(|| "Hugging Face README is too large to display".to_string())?;
+    String::from_utf8(bytes).map_err(|_| "Hugging Face README is not UTF-8".to_string())
 }
 
 /// The first `GGUF_HEADER_BYTES` of a `.gguf` file, base64-encoded, so the UI

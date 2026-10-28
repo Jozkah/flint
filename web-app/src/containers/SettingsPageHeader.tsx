@@ -1,5 +1,6 @@
 import { Children, Fragment, isValidElement, type ReactNode } from 'react'
 import { useLocation } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu, { SettingsSectionPicker } from '@/containers/SettingsMenu'
@@ -8,6 +9,9 @@ import { showsSettingsSections } from '@/lib/shellNavigation'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { SettingsBalancedColumns } from '@/containers/SettingsBalancedColumns'
+import { useLeftPanel } from '@/hooks/useLeftPanel'
+import { leaveSettings } from '@/lib/settingsReturn'
+import { cn } from '@/lib/utils'
 
 /**
  * The context bar of a settings page: "Settings · Page" in the compact
@@ -27,6 +31,7 @@ export function SettingsPageHeader({
   // readers and for the standalone bar outside the shell.
   return (
     <HeaderPage>
+      <LeaveSettingsButton />
       <h1 className="sr-only">
         <span>{t('common:settings')}</span>
         {title ? <span> · {title}</span> : null}
@@ -37,6 +42,31 @@ export function SettingsPageHeader({
         </div>
       )}
     </HeaderPage>
+  )
+}
+
+/**
+ * Leaves Settings for the last page outside it (home when there is none).
+ * The sidebar is the usual way out, so this only shows when it is collapsed
+ * or the window is too narrow for it (janhq/jan#8581).
+ */
+function LeaveSettingsButton() {
+  const { t } = useTranslation()
+  const sidebarOpen = useLeftPanel((s) => s.open)
+  return (
+    <button
+      type="button"
+      data-testid="leave-settings"
+      aria-label={t('common:back')}
+      title={t('common:back')}
+      onClick={leaveSettings}
+      className={cn(
+        'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-nav-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 outline-hidden',
+        sidebarOpen && 'md:hidden'
+      )}
+    >
+      <ArrowLeft className="size-4" />
+    </button>
   )
 }
 

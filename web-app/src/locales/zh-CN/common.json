@@ -331,7 +331,8 @@
       "settings": "设置",
       "threads": "对话"
     },
-    "openItem": "打开 {{item}}"
+    "openItem": "打开 {{item}}",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "页面",
@@ -536,6 +537,7 @@
   "threadImage": "会话图片",
   "editMessage": "编辑消息",
   "deleteMessage": "删除消息",
+  "deleteMessageDescription": "确定要删除这条消息吗？此操作无法撤销。",
   "deleteThread": "删除会话",
   "renameThread": "重命名会话",
   "threadTitle": "会话标题",
@@ -781,6 +783,14 @@
     "filesDescription": "添加 PDF、文档或其他文本，供此项目引用。",
     "uploadingFiles": "正在处理文件…",
     "processButton": "添加",
+    "fileChangedOnDisk": "磁盘上已更改",
+    "fileMissing": "缺失",
+    "reindexFile": "重新索引",
+    "reindexAllChanged": "重新索引所有已更改文件",
+    "filesChangedOnDisk": "索引后在磁盘上已更改的文件：{{count}}",
+    "reindexed": "已重新索引的文件：{{count}}",
+    "reindexFailed": "无法重新索引该文件",
+    "staleFilesNotice": "磁盘上已更改或缺失的集合文件：{{count}}。请在集合的文件列表中重新索引。",
     "deleteFileDialog": {
       "title": "删除文件",
       "description": "“{{fileName}}”及其已索引的内容将从此集合中移除。此操作无法撤销。"
@@ -849,7 +859,38 @@
     "openCodeFolder": "打开代码文件夹",
     "openCodeFolderDescription": "选择你电脑上供 Flint 工作的文件夹。",
     "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。",
-    "setUpEmbeddingModel": "设置嵌入模型"
+    "setUpEmbeddingModel": "设置嵌入模型",
+    "mcpServers": {
+      "title": "MCP 服务器",
+      "useAll": "使用所有已启用的服务器（默认）",
+      "onlyThese": "仅使用这些服务器",
+      "noneConfigured": "尚未配置 MCP 服务器。",
+      "filterActive": "此项目仅使用：{{servers}}",
+      "filterNone": "此项目不使用任何 MCP 服务器"
+    },
+    "webPage": {
+      "open": "添加网页",
+      "title": "添加网页",
+      "description": "获取网页并将其可读文本保存为项目文件。仅支持公开的 http 和 https 地址。",
+      "urlLabel": "网页地址",
+      "add": "添加网页",
+      "refresh": "刷新",
+      "added": "已添加“{{name}}”",
+      "refreshed": "已刷新“{{name}}”",
+      "truncated": "网页超过大小限制，仅保存了前面部分。",
+      "refreshFailed": "无法刷新网页",
+      "errors": {
+        "invalidUrl": "请输入以 http:// 或 https:// 开头的完整网址。",
+        "blocked": "该地址指向本机或私有网络，因此未获取。",
+        "timeout": "网页响应超时，请稍后重试。",
+        "notHtml": "该地址不是包含可读文本的网页（例如 PDF、图片或下载文件）。",
+        "tooLarge": "网页过大，无法获取。",
+        "httpError": "网站返回错误：{{message}}",
+        "failed": "无法获取网页：{{message}}"
+      }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "选择附件的导入方式",
@@ -1342,7 +1383,8 @@
     "binaryRefused": "{{name}} 不是文本文件，无论其扩展名如何",
     "chooseAgainAction": "重新选择",
     "externalGone": "此文件是从项目之外打开的，该访问权限未能保留。请重新选择它以再次打开。",
-    "oneFolderAtATime": "一次只能添加一个文件夹。未添加“{{name}}”。"
+    "oneFolderAtATime": "一次只能添加一个文件夹。未添加“{{name}}”。",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "搜索设置",
@@ -2526,7 +2568,14 @@
     "noMatches": "没有匹配的参数",
     "noneForProvider": "此提供商没有可调参数。",
     "maybeUnsupported": "{{providers}} 可能不支持",
-    "modelReports": "模型：{{value}}"
+    "modelReports": "模型：{{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "将进度固定在对话上方",
@@ -2544,7 +2593,74 @@
     "restartManually": "请重启 Flint 以开始使用已迁移的数据。",
     "chooseNote": "在你确认之前不会复制任何内容。JAN 的数据永远不会被修改或删除。",
     "copyDescription": "为下方勾选的项目，将你的 JAN 对话、设置和提供商密钥复制到 Flint。JAN 本身不会被更改或删除。",
-    "freshDescription": "以空白状态启动 Flint。不会读取或复制 JAN 的任何内容，包括其提供商密钥，现在和以后启动都是如此。你随时可以在设置的数据文件夹中导入。"
+    "freshDescription": "以空白状态启动 Flint。不会读取或复制 JAN 的任何内容，包括其提供商密钥，现在和以后启动都是如此。你随时可以在设置的数据文件夹中导入。",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "图片 {{n}}",
@@ -2726,7 +2842,11 @@
     "noVision": "此模型无法读取图片",
     "details": "{{name}} 的详情",
     "previewLoading": "正在加载预览…",
-    "previewNone": "没有可用的预览"
+    "previewNone": "没有可用的预览",
+    "pagesAsImages": "将页面作为图片发送",
+    "pagesAsImagesHint": "将此 PDF 的页面作为图片发送，让模型能看到扫描件、图表和版式",
+    "pdfPagesCut": "已将 {{name}} 共 {{total}} 页中的前 {{sent}} 页作为图片发送",
+    "pdfScannedAsImages": "{{name}} 没有文本，因此已将其页面作为图片发送"
   },
   "fileViewer": {
     "openFull": "打开完整预览",
@@ -3071,5 +3191,76 @@
     "reject": "拒绝",
     "applying": "正在应用…",
     "applySelected": "应用所选"
+  },
+  "chatRules": "规则",
+  "chatRuleForThisChat": "在此对话中使用此规则",
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
+  },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   }
 }

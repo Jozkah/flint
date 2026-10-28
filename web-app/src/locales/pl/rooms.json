@@ -682,5 +682,6 @@
     "ranTools": "Wcześniej w tej turze uruchomiono już narzędzia ({{ran}}); {{reason}} Nie powtarzaj niczego, co zmieniło pliki lub stan; odczytaj ponownie tylko to, czego jeszcze potrzebujesz.",
     "ranToolsDropped": "ich wynik został odrzucony, aby zmieścić się w oknie kontekstu.",
     "ranToolsRetry": "dostawca zwrócił potem błąd, więc żądanie jest ponawiane."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

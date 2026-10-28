@@ -129,7 +129,7 @@ impl Token {
     pub fn child(parent: &Token) -> Token {
         let child = Token::new(parent.0.scope.clone());
         {
-            let mut kids = parent.0.children.lock().unwrap();
+            let mut kids = parent.0.children.lock().unwrap_or_else(|e| e.into_inner());
             kids.retain(|w| w.strong_count() > 0);
             kids.push(Arc::downgrade(&child.0));
         }
@@ -185,7 +185,7 @@ impl Token {
                 .0
                 .children
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .iter()
                 .filter_map(Weak::upgrade)
                 .collect();
@@ -205,7 +205,7 @@ impl Token {
         // State is checked under the pids lock: `stop` sets the state first and
         // `reap` then takes this lock, so either we see it stopped here or
         // `reap` sees our push.
-        let mut pids = self.0.pids.lock().unwrap();
+        let mut pids = self.0.pids.lock().unwrap_or_else(|e| e.into_inner());
         if self.is_stopped() {
             drop(pids);
             let _ = crate::tools::proc::kill_tree(pid);
@@ -216,12 +216,12 @@ impl Token {
 
     /// Release a child that exited on its own.
     pub fn release(&self, pid: u32) {
-        self.0.pids.lock().unwrap().retain(|p| *p != pid);
+        self.0.pids.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| *p != pid);
     }
 
     /// Kill every child this token still owns.
     fn reap(&self) {
-        let pids: Vec<u32> = std::mem::take(&mut *self.0.pids.lock().unwrap());
+        let pids: Vec<u32> = std::mem::take(&mut *self.0.pids.lock().unwrap_or_else(|e| e.into_inner()));
         for pid in pids {
             let _ = crate::tools::proc::kill_tree(pid);
         }
@@ -230,7 +230,7 @@ impl Token {
     /// How many children this token still owns. A stopped token with children
     /// left is a cleanup failure, which AH-051 has to fail closed on.
     pub fn live_children(&self) -> usize {
-        self.0.pids.lock().unwrap().len()
+        self.0.pids.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Turn a completed result into the terminal one, rejecting late success.
@@ -277,14 +277,14 @@ impl Registered {
 
 impl Drop for Registered {
     fn drop(&mut self) {
-        registry().lock().unwrap().remove(&self.id);
+        registry().lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
     }
 }
 
 /// Register a token so `stop_scope` can reach it.
 pub fn register(token: Token) -> Registered {
     let id = next_id();
-    registry().lock().unwrap().insert(id, token.clone());
+    registry().lock().unwrap_or_else(|e| e.into_inner()).insert(id, token.clone());
     Registered { id, token }
 }
 
@@ -296,7 +296,7 @@ pub fn register(token: Token) -> Registered {
 pub fn stop_scope(scope: &Scope, reason: StopReason) -> usize {
     let tokens: Vec<Token> = registry()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .values()
         .filter(|t| t.scope().within(scope))
         .cloned()
@@ -309,7 +309,7 @@ pub fn stop_scope(scope: &Scope, reason: StopReason) -> usize {
 pub fn live_children_in(scope: &Scope) -> usize {
     registry()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .values()
         .filter(|t| t.scope().within(scope))
         .map(|t| t.live_children())
@@ -894,6 +894,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn report_for(session: &str, run: &str, call: &str) -> StopReport {
+        StopReport {
+            stopped: 0,
+            already_stopped: 0,
+            live_children: 0,
+            complete: true,
+            session: session.into(),
+            run: run.into(),
+            call: call.into(),
+        }
+    }
+
+    #[test]
+    fn an_app_wide_stop_is_not_recorded() {
+        let dir = kill_dir("appwide");
+        record_killed(&dir, &report_for("", "", ""));
+        assert!(!was_killed(&dir, &scope("fresh-s", "r", "c")));
+    }
+
+    #[test]
+    fn the_kill_log_stays_bounded() {
+        let dir = kill_dir("bounded");
+        for i in 0..(KILLED_LOG_KEEP + 3000) {
+            record_killed(&dir, &report_for(&format!("bound-{i}"), "", ""));
+        }
+        let text = std::fs::read_to_string(killed_path(&dir)).unwrap();
+        assert!(text.lines().count() <= KILLED_LOG_KEEP + 2000);
+        let last = format!("bound-{}", KILLED_LOG_KEEP + 2999);
+        assert!(was_killed(&dir, &scope(&last, "r", "c")));
+    }
+
     #[test]
     fn no_kill_log_means_nothing_was_killed() {
         let dir = kill_dir("absent");
@@ -1020,6 +1051,11 @@ fn killed_path(data_folder: &std::path::Path) -> std::path::PathBuf {
 /// Record that a scope was killed. Best effort, like the audit log: failing to
 /// record must not change what was stopped.
 pub fn record_killed(data_folder: &std::path::Path, report: &StopReport) {
+    // An app-wide stop names no session: recorded, it would contain every
+    // scope and refuse all later work for good. It stops what runs now only.
+    if report.session.is_empty() && report.run.is_empty() && report.call.is_empty() {
+        return;
+    }
     let entry = KilledScope {
         at: crate::audit::now(),
         session: report.session.clone(),
@@ -1041,11 +1077,33 @@ pub fn record_killed(data_folder: &std::path::Path, report: &StopReport) {
             .open(&path)
             .map_err(|e| e.to_string())?;
         file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-        file.flush().map_err(|e| e.to_string())
+        file.flush().map_err(|e| e.to_string())?;
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        drop(file);
+        if len > KILLED_LOG_MAX_BYTES {
+            trim_killed_log(&path)?;
+        }
+        Ok(())
     };
     if let Err(e) = write() {
         eprintln!("emergency stop: could not record the killed scope: {e}");
     }
+}
+
+/// The kill log is rewritten to its newest [`KILLED_LOG_KEEP`] lines once it
+/// grows past this size.
+const KILLED_LOG_MAX_BYTES: u64 = 256 * 1024;
+const KILLED_LOG_KEEP: usize = 1000;
+
+fn trim_killed_log(path: &std::path::Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() <= KILLED_LOG_KEEP {
+        return Ok(());
+    }
+    let mut kept = lines[lines.len() - KILLED_LOG_KEEP..].join("\n");
+    kept.push('\n');
+    crate::atomic_file::write_atomic(path, kept.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// Whether this scope was killed in an earlier session.

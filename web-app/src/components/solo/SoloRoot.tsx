@@ -23,6 +23,7 @@ import { BrowserDomainDialog } from '@/containers/BrowserDomainDialog'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import BypassConfirmDialog from '@/containers/dialogs/BypassConfirmDialog'
+import GpuCrashCpuFallbackDialog from '@/containers/dialogs/GpuCrashCpuFallbackDialog'
 import OutOfContextPromiseModal from '@/containers/dialogs/OutOfContextDialog'
 import AccessRequestDialog from '@/containers/dialogs/AccessRequestDialog'
 import { ModelReplaceDialog } from '@/containers/ModelReplaceDialog'
@@ -184,6 +185,7 @@ export default function SoloRoot() {
           <ErrorDialog />
           <OutOfContextPromiseModal />
           <BypassConfirmDialog />
+          <GpuCrashCpuFallbackDialog />
           <AccessRequestDialog />
           <ModelReplaceDialog />
         </TranslationProvider>

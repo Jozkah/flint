@@ -13,7 +13,11 @@
     "delete": "Xóa",
     "deleteLabel": "Xóa {{title}}",
     "participants_other": "{{count}} người tham gia",
+    "participants_one": "{{count}} người tham gia",
+    "participants_many": "{{count}} người tham gia",
     "turns_other": "{{count}} lượt",
+    "turns_one": "{{count}} lượt",
+    "turns_many": "{{count}} lượt",
     "updated": "Cập nhật {{time}}",
     "untitled": "Phòng chưa đặt tên",
     "moreLabel": "Thêm thao tác cho {{title}}",
@@ -295,6 +299,7 @@
     "continuePrompt": "Hãy tiếp tục câu trả lời trước từ chỗ bị cắt.",
     "catchUp": "Bắt kịp: đã trả lời thêm {{count}} câu hỏi trước đó",
     "catchUp_one": "Bắt kịp: đã trả lời thêm 1 câu hỏi trước đó",
+    "catchUp_many": "Bắt kịp: đã trả lời thêm {{count}} câu hỏi trước đó",
     "catchUpHint": "Người tham gia này vào sau các câu hỏi này, nên câu trả lời này cũng trả lời chúng:"
   },
   "unknownWindow": {
@@ -347,6 +352,8 @@
     "compacting": "{{name}} đang bắt kịp",
     "draft": "Sẵn sàng bắt đầu",
     "draftHint_other": "{{count}} người tham gia · {{mode}}",
+    "draftHint_one": "{{count}} người tham gia · {{mode}}",
+    "draftHint_many": "{{count}} người tham gia · {{mode}}",
     "running": "Cuộc thảo luận đang chạy",
     "runningHint": "Người nói tiếp theo đang chuẩn bị.",
     "awaiting-user": "Đến lượt bạn chọn",
@@ -421,6 +428,8 @@
     "waitingNone": "Không có gì cần bạn",
     "turns": "Lượt trong tuần này",
     "turnsHint_other": "Trên {{count}} phòng",
+    "turnsHint_one": "Trên {{count}} phòng",
+    "turnsHint_many": "Trên {{count}} phòng",
     "models": "Mô hình tham gia",
     "modelsNone": "Chưa có người tham gia"
   },
@@ -528,15 +537,21 @@
     "scope": "Thay đổi cần hiển thị",
     "showAll": "Hiện tất cả tệp ({{count}})",
     "partial_other": "Đã áp dụng {{count}} tệp",
-    "applyIncludesEarlier_other": "Áp dụng cũng gồm {{count}} tệp trước đó chưa được áp dụng"
+    "partial_one": "Đã áp dụng {{count}} tệp",
+    "partial_many": "Đã áp dụng {{count}} tệp",
+    "applyIncludesEarlier_other": "Áp dụng cũng gồm {{count}} tệp trước đó chưa được áp dụng",
+    "applyIncludesEarlier_one": "Áp dụng cũng gồm {{count}} tệp trước đó chưa được áp dụng",
+    "applyIncludesEarlier_many": "Áp dụng cũng gồm {{count}} tệp trước đó chưa được áp dụng"
   },
   "apply": {
     "title_one": "Áp dụng {{count}} thay đổi vào thư mục của bạn",
     "title_other": "Áp dụng {{count}} thay đổi vào thư mục của bạn",
+    "title_many": "Áp dụng {{count}} thay đổi vào thư mục của bạn",
     "copyPath": "Sao chép đường dẫn thư mục {{path}}",
     "pathCopied": "Đã sao chép đường dẫn thư mục",
     "files_one": "{{count}} tệp",
     "files_other": "{{count}} tệp",
+    "files_many": "{{count}} tệp",
     "source": "Từ {{name}} · vòng {{round}}",
     "safety": "Không có gì được áp dụng nếu bản vá không khớp gọn. Bạn có thể hoàn tác ngay sau đó.",
     "checking": "Đang kiểm tra xem có áp dụng được vào thư mục của bạn không…",
@@ -544,6 +559,7 @@
     "checkFailed": "Không thể kiểm tra bản vá: {{message}}",
     "conflict_one": "{{count}} tệp không áp dụng được vào thư mục của bạn",
     "conflict_other": "{{count}} tệp không áp dụng được vào thư mục của bạn",
+    "conflict_many": "{{count}} tệp không áp dụng được vào thư mục của bạn",
     "conflictHint": "Bỏ chúng ra, hoặc nhờ người tham gia làm lại theo thư mục hiện tại của bạn.",
     "notChecked": "chưa kiểm tra riêng (quá nhiều tệp)",
     "fileConflict": "Không áp dụng được",
@@ -552,6 +568,7 @@
     "fileDirty": "Chỉnh sửa của bạn",
     "dirtyTitle_one": "Bạn có thay đổi chưa commit trong {{count}} tệp này",
     "dirtyTitle_other": "Bạn có thay đổi chưa commit trong {{count}} tệp này",
+    "dirtyTitle_many": "Bạn có thay đổi chưa commit trong {{count}} tệp này",
     "dirtyHint": "Bản vá được ghi đè lên chỉnh sửa của bạn. Hãy commit hoặc stash trước nếu muốn dễ quay lại.",
     "selectAll": "Chọn tất cả tệp",
     "include": "Bao gồm {{path}}",
@@ -566,8 +583,10 @@
     "noLines": "Không có dòng nào thay đổi (chỉ chế độ hoặc tên).",
     "showMore_one": "Hiện thêm {{count}} dòng",
     "showMore_other": "Hiện thêm {{count}} dòng",
+    "showMore_many": "Hiện thêm {{count}} dòng",
     "hiddenLines_one": "({{count}} bị ẩn)",
     "hiddenLines_other": "({{count}} bị ẩn)",
+    "hiddenLines_many": "({{count}} bị ẩn)",
     "blockedConflict": "Không thể áp dụng: một số tệp đã chọn không khớp gọn.",
     "blockedNothing": "Hãy chọn ít nhất một tệp.",
     "blockedFailed": "Không thể áp dụng cho đến khi kiểm tra thành công.",
@@ -575,8 +594,10 @@
     "patchCopied": "Đã sao chép bản vá",
     "confirm_one": "Áp dụng {{count}} tệp",
     "confirm_other": "Áp dụng {{count}} tệp",
+    "confirm_many": "Áp dụng {{count}} tệp",
     "applied_one": "Đã áp dụng {{count}} tệp vào thư mục của bạn",
     "applied_other": "Đã áp dụng {{count}} tệp vào thư mục của bạn",
+    "applied_many": "Đã áp dụng {{count}} tệp vào thư mục của bạn",
     "undo": "Hoàn tác",
     "undone": "Thay đổi đã được gỡ khỏi thư mục của bạn",
     "undoFailed": "Không thể hoàn tác: {{message}}"
@@ -646,5 +667,6 @@
     "ranTools": "Trước đó trong lượt này bạn đã chạy các công cụ ({{ran}}); {{reason}} Đừng lặp lại bất cứ việc gì đã thay đổi tệp hoặc trạng thái; chỉ đọc lại những gì bạn còn cần.",
     "ranToolsDropped": "đầu ra của chúng đã bị loại bỏ để vừa với cửa sổ ngữ cảnh.",
     "ranToolsRetry": "sau đó nhà cung cấp gặp lỗi và yêu cầu đang được thử lại."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

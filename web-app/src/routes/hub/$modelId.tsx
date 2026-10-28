@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import {
   ArrowLeft,
   Copy,
@@ -51,7 +51,7 @@ import {
 import { fitSummary } from '@/lib/hubFitSummary'
 import type { KvArchitecture } from '@/lib/modelCompatibility'
 
-export const Route = createFileRoute(route.hub.model as any)({
+export const Route = createFileRoute(route.hub.model)({
   component: HuggingFaceModelDetail,
   validateSearch: (search: Record<string, unknown>) => ({
     repo: typeof search.repo === 'string' ? search.repo : '',
@@ -103,6 +103,7 @@ function HuggingFaceModelDetail() {
           setModel(exact)
           setFiles(repoFiles)
         }
+        if (cancelled) return
         setReadmeLoading(true)
         const markdown = await getHuggingFaceReadme(exact.id, token).catch(() => '')
         if (!cancelled) setReadme(markdown)
@@ -201,8 +202,12 @@ function HuggingFaceModelDetail() {
               variant="outline"
               size="sm"
               onClick={() => {
-                void navigator.clipboard.writeText(model.id)
-                toast.success(t('hub:detail.repoCopied'))
+                navigator.clipboard
+                  .writeText(model.id)
+                  .then(() => toast.success(t('hub:detail.repoCopied')))
+                  .catch((error: unknown) => {
+                    console.error('Failed to copy to clipboard:', error)
+                  })
               }}
             >
               <Copy className="size-3.5" /> {t('hub:detail.copyRepo')}

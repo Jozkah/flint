@@ -109,6 +109,7 @@ import {
   getProviderApiType,
 } from '@/lib/providerCaps'
 import { engineFailure } from '@/lib/engineError'
+import { withMlxCrashReport } from '@/lib/mlxCrash'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -1562,6 +1563,12 @@ export class ModelFactory {
     if (shouldStripReasoningFromContext()) {
       baseCustomFetch = withAssistantReasoningStripped(baseCustomFetch)
     }
+    // A server that died on this request says why instead of a network error.
+    const crashAwareFetch = withMlxCrashReport(
+      baseCustomFetch,
+      (cmd, args) => invoke(cmd, args),
+      sessionInfo.pid
+    )
     const customFetch: typeof globalThis.fetch = async (
       input: RequestInfo | URL,
       init?: RequestInit
@@ -1580,7 +1587,7 @@ export class ModelFactory {
         })
       }
 
-      return baseCustomFetch(input, init)
+      return crashAwareFetch(input, init)
     }
 
     const model = new OpenAICompatibleChatLanguageModel(modelId, {

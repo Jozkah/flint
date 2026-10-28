@@ -1373,7 +1373,11 @@ export async function generatePreset(
   }
 
   const outPath = await joinPath([providerPath, 'router.preset.ini'])
-  const tmpPath = await joinPath([providerPath, 'router.preset.ini.tmp'])
+  // Unique per call so two concurrent generates never share one tmp file.
+  const tmpName = `router.preset.ini.${Date.now().toString(36)}${Math.random()
+    .toString(36)
+    .slice(2, 8)}.tmp`
+  const tmpPath = await joinPath([providerPath, tmpName])
   const body = lines.join('\n')
 
   // Atomic write: tmp + rename. fs.mv overwrites on Tauri's side.

@@ -37,7 +37,7 @@ describe('PromptProgress', () => {
 
     render(<PromptProgress />)
 
-    expect(screen.getByTestId('model-loader')).toHaveTextContent(/Failed after/)
+    expect(screen.getByTestId('model-loader')).toHaveTextContent(/common:modelLoader.failed/)
   })
 
   it('does not show a failure for another thread', () => {
@@ -249,12 +249,12 @@ describe('PromptProgress loaded state', () => {
     })
     loading = false
     rerender(<PromptProgress />)
-    expect(screen.getByText('Loaded in')).toBeInTheDocument()
+    expect(screen.getByText('common:modelLoader.done')).toBeInTheDocument()
     expect(screen.getByTestId('model-loader-elapsed')).toHaveTextContent('3s')
     act(() => {
       vi.advanceTimersByTime(1300)
     })
-    expect(screen.queryByText('Loaded in')).not.toBeInTheDocument()
+    expect(screen.queryByText('common:modelLoader.done')).not.toBeInTheDocument()
     vi.useRealTimers()
   })
 

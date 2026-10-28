@@ -9,6 +9,7 @@ import { go, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { routeFor, useSessions } from '../state/sessions'
 import { t } from '../i18n'
+import { activate } from '../ui/a11y'
 
 const ICON: Record<string, [IconId, string]> = {
   approval: ['shield', 'var(--tk-appr)'],
@@ -128,7 +129,8 @@ export default function Notifications() {
               </span>
               <span
                 style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, cursor: n.route ? 'pointer' : undefined }}
-                onClick={() => n.route && go(n.route)}
+                role={n.route ? 'button' : undefined}
+                {...(n.route ? activate(() => go(n.route!)) : {})}
               >
                 <b style={{ fontWeight: 600, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
                   {n.title}

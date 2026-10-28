@@ -6,7 +6,8 @@ import path from 'path'
 import unzipper from 'unzipper'
 import tar from 'tar'
 import { installSidecar, pickSqliteVecLibrary, sqliteVecLibName } from './download-bin-install.mjs'
-import { assertSafeTarEntry, assertSafeZipEntry } from './archive-extract-guard.mjs'
+import { assertSafeTarEntry } from './archive-extract-guard.mjs'
+import { extractZipArchive } from './zip-extract.mjs'
 import { execFileSync } from 'child_process'
 import crypto from 'crypto'
 import { readFileSync } from 'fs'
@@ -71,6 +72,8 @@ function download(url, dest, redirectsLeft = MAX_REDIRECTS) {
       return
     }
     req.on('error', (err) => fs.unlink(dest, () => reject(err)))
+    // A stalled connection would otherwise hang the build forever.
+    req.setTimeout(60_000, () => req.destroy(new Error(`Timed out fetching '${url}'`)))
   })
 }
 
@@ -102,21 +105,10 @@ async function fetchPinned(url, dest, expected) {
   return true
 }
 
-async function validateZipArchive(filePath, targetDir) {
-  const archive = await unzipper.Open.file(filePath)
-  for (const entry of archive.files) {
-    assertSafeZipEntry(entry, targetDir)
-  }
-}
-
 async function decompress(filePath, targetDir) {
   console.log(`Decompressing ${filePath} to ${targetDir}`)
   if (filePath.endsWith('.zip')) {
-    await validateZipArchive(filePath, targetDir)
-    await fs
-      .createReadStream(filePath)
-      .pipe(unzipper.Extract({ path: targetDir }))
-      .promise()
+    await extractZipArchive(filePath, targetDir)
   } else if (filePath.endsWith('.tar.gz')) {
     await tar.x({
       file: filePath,
@@ -152,11 +144,18 @@ function resolveSqliteVec(platform, arch) {
 }
 
 function getPlatformArch() {
-  const rustPlatform = execFileSync('rustc', ['-vV'], { encoding: 'utf8' })
-    .split('\n')
-    .find((line) => line.startsWith('host:'))
-    .slice('host:'.length)
-    .trim()
+  let hostLine
+  try {
+    hostLine = execFileSync('rustc', ['-vV'], { encoding: 'utf8' })
+      .split('\n')
+      .find((line) => line.startsWith('host:'))
+  } catch {
+    hostLine = undefined
+  }
+  if (!hostLine) {
+    throw new Error('rustc not found (or reported no host triple); install Rust (rustup) first')
+  }
+  const rustPlatform = hostLine.slice('host:'.length).trim()
   const [arch, vendor, os, abi] = rustPlatform.split('-')
   // handle cases without abi
   const abiSuffix = abi ? `-${abi}` : ''

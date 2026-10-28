@@ -331,7 +331,8 @@
       "settings": "सेटिंग",
       "threads": "बातचीतें"
     },
-    "openItem": "{{item}} खोलें"
+    "openItem": "{{item}} खोलें",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "पेज",
@@ -536,6 +537,7 @@
   "threadImage": "थ्रेड की छवि",
   "editMessage": "संदेश संपादित करें",
   "deleteMessage": "संदेश हटाएं",
+  "deleteMessageDescription": "क्या आप वाकई इस संदेश को हटाना चाहते हैं? यह कार्रवाई पूर्ववत नहीं की जा सकती।",
   "deleteThread": "थ्रेड हटाएं",
   "renameThread": "थ्रेड का नाम बदलें",
   "threadTitle": "थ्रेड शीर्षक",
@@ -781,6 +783,14 @@
     "filesDescription": "इस प्रोजेक्ट में संदर्भ के रूप में उपयोग के लिए PDF, दस्तावेज़ या अन्य टेक्स्ट जोड़ें।",
     "uploadingFiles": "फाइलें प्रोसेस हो रही हैं…",
     "processButton": "जोड़ें",
+    "fileChangedOnDisk": "डिस्क पर बदला गया",
+    "fileMissing": "मौजूद नहीं",
+    "reindexFile": "फिर से इंडेक्स करें",
+    "reindexAllChanged": "सभी बदली फ़ाइलें फिर से इंडेक्स करें",
+    "filesChangedOnDisk": "इंडेक्स होने के बाद डिस्क पर बदली फ़ाइलें: {{count}}",
+    "reindexed": "फिर से इंडेक्स की गई फ़ाइलें: {{count}}",
+    "reindexFailed": "फ़ाइल फिर से इंडेक्स नहीं हो सकी",
+    "staleFilesNotice": "संग्रह की फ़ाइलें जो डिस्क पर बदली या गायब हैं: {{count}}। उन्हें संग्रह की फ़ाइल सूची से फिर से इंडेक्स करें।",
     "deleteFileDialog": {
       "title": "फ़ाइल हटाएँ",
       "description": "\"{{fileName}}\" और उसकी इंडेक्स की गई सामग्री इस कलेक्शन से हटा दी जाएगी। इसे वापस नहीं किया जा सकता।"
@@ -847,7 +857,38 @@
     "openCodeFolderInCowork": "कोड फ़ोल्डर Cowork में खोलें",
     "openCodeFolder": "कोड फ़ोल्डर खोलें",
     "openCodeFolderDescription": "अपने कंप्यूटर पर वह फ़ोल्डर चुनें जिसमें Flint काम करे।",
-    "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें"
+    "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें",
+    "mcpServers": {
+      "title": "MCP सर्वर",
+      "useAll": "सभी सक्षम सर्वर इस्तेमाल करें (डिफ़ॉल्ट)",
+      "onlyThese": "केवल ये सर्वर",
+      "noneConfigured": "कोई MCP सर्वर कॉन्फ़िगर नहीं है।",
+      "filterActive": "यह प्रोजेक्ट केवल इनका इस्तेमाल करता है: {{servers}}",
+      "filterNone": "यह प्रोजेक्ट किसी MCP सर्वर का इस्तेमाल नहीं करता"
+    },
+    "webPage": {
+      "open": "वेब पेज जोड़ें",
+      "title": "वेब पेज जोड़ें",
+      "description": "पेज लाकर उसका पढ़ने योग्य टेक्स्ट प्रोजेक्ट फ़ाइल के रूप में रखें। केवल सार्वजनिक http और https पते काम करते हैं।",
+      "urlLabel": "पेज का पता",
+      "add": "पेज जोड़ें",
+      "refresh": "रीफ़्रेश करें",
+      "added": "\"{{name}}\" जोड़ा गया",
+      "refreshed": "\"{{name}}\" रीफ़्रेश किया गया",
+      "truncated": "पेज आकार सीमा से बड़ा था, इसलिए केवल पहला भाग रखा गया।",
+      "refreshFailed": "पेज रीफ़्रेश नहीं हो सका",
+      "errors": {
+        "invalidUrl": "http:// या https:// से शुरू होने वाला पूरा वेब पता दर्ज करें।",
+        "blocked": "यह पता इस कंप्यूटर या किसी निजी नेटवर्क की ओर जाता है, इसलिए इसे नहीं लाया गया।",
+        "timeout": "पेज ने जवाब देने में बहुत समय लिया। बाद में फिर कोशिश करें।",
+        "notHtml": "यह पता पढ़ने योग्य टेक्स्ट वाला वेब पेज नहीं है (जैसे PDF, चित्र या डाउनलोड)।",
+        "tooLarge": "पेज लाने के लिए बहुत बड़ा है।",
+        "httpError": "साइट ने त्रुटि लौटाई: {{message}}",
+        "failed": "पेज नहीं लाया जा सका: {{message}}"
+      }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "संलग्नकों को कैसे प्रोसेस करना है चुनें",
@@ -1340,7 +1381,8 @@
     "binaryRefused": "{{name}} टेक्स्ट फ़ाइल नहीं है, चाहे उसका एक्सटेंशन कुछ भी कहे",
     "chooseAgainAction": "फिर से चुनें",
     "externalGone": "यह फ़ाइल प्रोजेक्ट के बाहर से खोली गई थी, और वह एक्सेस नहीं बचा। इसे दोबारा खोलने के लिए फिर से चुनें।",
-    "oneFolderAtATime": "एक बार में केवल एक फ़ोल्डर। \"{{name}}\" नहीं जोड़ा गया।"
+    "oneFolderAtATime": "एक बार में केवल एक फ़ोल्डर। \"{{name}}\" नहीं जोड़ा गया।",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "सेटिंग खोजें",
@@ -2519,7 +2561,14 @@
     "noMatches": "कोई पैरामीटर मेल नहीं खाता",
     "noneForProvider": "इस प्रदाता के लिए कोई समायोज्य पैरामीटर नहीं है।",
     "maybeUnsupported": "{{providers}} द्वारा समर्थित नहीं हो सकता",
-    "modelReports": "मॉडल: {{value}}"
+    "modelReports": "मॉडल: {{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "प्रगति को बातचीत के ऊपर पिन करें",
@@ -2537,7 +2586,74 @@
     "restartManually": "माइग्रेट किए गए डेटा का उपयोग शुरू करने के लिए Flint रीस्टार्ट करें।",
     "chooseNote": "आपके पुष्टि करने तक कुछ भी कॉपी नहीं होता। JAN का डेटा कभी बदला या हटाया नहीं जाता।",
     "copyDescription": "नीचे चुने गए आइटम के लिए आपकी JAN बातचीत, सेटिंग और प्रोवाइडर कुंजियाँ Flint में कॉपी करता है। JAN को कभी बदला या हटाया नहीं जाता।",
-    "freshDescription": "Flint को खाली शुरू करता है। JAN से कुछ भी पढ़ा या कॉपी नहीं किया जाता, प्रोवाइडर कुंजियाँ भी नहीं, अभी या बाद के लॉन्च पर। आप कभी भी सेटिंग, डेटा फ़ोल्डर से इम्पोर्ट कर सकते हैं।"
+    "freshDescription": "Flint को खाली शुरू करता है। JAN से कुछ भी पढ़ा या कॉपी नहीं किया जाता, प्रोवाइडर कुंजियाँ भी नहीं, अभी या बाद के लॉन्च पर। आप कभी भी सेटिंग, डेटा फ़ोल्डर से इम्पोर्ट कर सकते हैं।",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "इमेज {{n}}",
@@ -2726,7 +2842,11 @@
     "noVision": "यह मॉडल छवियाँ नहीं पढ़ सकता",
     "details": "{{name}} का विवरण",
     "previewLoading": "पूर्वावलोकन लोड हो रहा है…",
-    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं"
+    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं",
+    "pagesAsImages": "पेज इमेज के रूप में भेजें",
+    "pagesAsImagesHint": "इस PDF के पेज इमेज के रूप में भेजें, ताकि मॉडल स्कैन, चार्ट और लेआउट देख सके",
+    "pdfPagesCut": "{{name}} के {{total}} में से पहले {{sent}} पेज इमेज के रूप में भेजे गए",
+    "pdfScannedAsImages": "{{name}} में कोई टेक्स्ट नहीं है, इसलिए इसके पेज इमेज के रूप में भेजे गए"
   },
   "fileViewer": {
     "openFull": "पूरा पूर्वावलोकन खोलें",
@@ -3085,5 +3205,76 @@
     "reject": "अस्वीकार करें",
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
+  },
+  "chatRules": "नियम",
+  "chatRuleForThisChat": "इस चैट में यह नियम उपयोग करें",
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
+  },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   }
 }

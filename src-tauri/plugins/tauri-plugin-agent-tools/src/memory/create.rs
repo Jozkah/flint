@@ -164,8 +164,12 @@ pub fn propose(
     record.redacted = redacted;
 
     let hash = content_hash(&redacted_text);
+    // Only records this context could see: another chat's id must not be
+    // reported back, nor its text compared against.
+    let visible = |r: &&MemoryRecord| r.applies_to(session_id, project_id);
     let duplicates = existing
         .iter()
+        .filter(visible)
         .filter(|r| r.content_hash == hash && matches!(r.status, Status::Active))
         .map(|r| r.id.clone())
         .collect();
@@ -173,6 +177,7 @@ pub fn propose(
     // Conflicts are looked for against the records this one would sit beside.
     let mut together: Vec<MemoryRecord> = existing
         .iter()
+        .filter(visible)
         .filter(|r| matches!(r.status, Status::Active))
         .cloned()
         .collect();
@@ -254,6 +259,10 @@ pub fn forget_text(
         let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
             return Ok((false, false));
         };
+        // Already forgotten: nothing to take, and its timestamp stays.
+        if matches!(record.status, Status::Deleted) {
+            return Ok((false, false));
+        }
         forgotten = Some(std::mem::take(&mut record.content));
         record.status = Status::Deleted;
         record.updated_at = now;
@@ -680,6 +689,32 @@ mod tests {
     }
 
     #[test]
+    fn another_chats_session_memory_is_not_reported_as_a_duplicate() {
+        let mut other = MemoryRecord::new(
+            MemoryId::new("chat-b"),
+            "The user prefers yarn",
+            Scope::Session,
+            Creator::User,
+            Origin::Explicit,
+            500,
+        );
+        other.session_id = Some("session-b".into());
+        let p = propose(
+            MemoryId::new("m1"),
+            "The user prefers yarn",
+            Scope::Session,
+            None,
+            Some("session-a"),
+            Creator::User,
+            Origin::Explicit,
+            1_000,
+            std::slice::from_ref(&other),
+        )
+        .unwrap();
+        assert!(p.duplicates.is_empty());
+    }
+
+    #[test]
     fn conflicts_are_reported_before_saving() {
         let existing = MemoryRecord::new(
             MemoryId::new("old"),
@@ -958,7 +993,7 @@ mod tests {
         forget_text(&root, Scope::Project, &id, 20).unwrap();
         write_note(&root, "deploy.md", "Deploy with make ship");
 
-        forget_text(&root, Scope::Project, &id, 21).unwrap();
+        assert_eq!(forget_text(&root, Scope::Project, &id, 21).unwrap(), None);
 
         assert!(memory_file(&root, "deploy.md").exists());
         let _ = std::fs::remove_dir_all(&root);

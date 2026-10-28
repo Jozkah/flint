@@ -299,6 +299,7 @@
     "continuePrompt": "Reprends ta réponse précédente là où elle a été coupée.",
     "catchUp": "Rattrapage : a aussi répondu à {{count}} questions précédentes",
     "catchUp_one": "Rattrapage : a aussi répondu à 1 question précédente",
+    "catchUp_many": "Rattrapage : a aussi répondu à {{count}} questions précédentes",
     "catchUpHint": "Ce participant est arrivé après ces questions, cette réponse y répond donc aussi :"
   },
   "unknownWindow": {
@@ -545,10 +546,12 @@
   "apply": {
     "title_one": "Appliquer {{count}} modification à votre dossier",
     "title_other": "Appliquer {{count}} modifications à votre dossier",
+    "title_many": "Appliquer {{count}} modifications à votre dossier",
     "copyPath": "Copier le chemin du dossier {{path}}",
     "pathCopied": "Chemin du dossier copié",
     "files_one": "{{count}} fichier",
     "files_other": "{{count}} fichiers",
+    "files_many": "{{count}} fichiers",
     "source": "De {{name}} · tour {{round}}",
     "safety": "Rien n’est appliqué si le patch ne s’applique pas proprement. Vous pourrez annuler juste après.",
     "checking": "Vérification de l’application à votre dossier…",
@@ -556,6 +559,7 @@
     "checkFailed": "Impossible de vérifier le patch : {{message}}",
     "conflict_one": "{{count}} fichier ne s’applique pas à votre dossier",
     "conflict_other": "{{count}} fichiers ne s’appliquent pas à votre dossier",
+    "conflict_many": "{{count}} fichiers ne s’appliquent pas à votre dossier",
     "conflictHint": "Laissez-les de côté, ou demandez au participant de les refaire sur l’état actuel de votre dossier.",
     "notChecked": "non vérifié individuellement (trop de fichiers)",
     "fileConflict": "Ne s’applique pas",
@@ -564,6 +568,7 @@
     "fileDirty": "Vos modifications",
     "dirtyTitle_one": "Vous avez des modifications non validées dans {{count}} de ces fichiers",
     "dirtyTitle_other": "Vous avez des modifications non validées dans {{count}} de ces fichiers",
+    "dirtyTitle_many": "Vous avez des modifications non validées dans {{count}} de ces fichiers",
     "dirtyHint": "Le patch s’écrit par-dessus vos modifications. Validez ou mettez de côté (stash) d’abord si vous voulez pouvoir revenir facilement.",
     "selectAll": "Sélectionner tous les fichiers",
     "include": "Inclure {{path}}",
@@ -578,8 +583,10 @@
     "noLines": "Aucune ligne modifiée (mode ou nom seulement).",
     "showMore_one": "Afficher {{count}} ligne de plus",
     "showMore_other": "Afficher {{count}} lignes de plus",
+    "showMore_many": "Afficher {{count}} lignes de plus",
     "hiddenLines_one": "({{count}} masquée)",
     "hiddenLines_other": "({{count}} masquées)",
+    "hiddenLines_many": "({{count}} masquées)",
     "blockedConflict": "Application désactivée : certains fichiers sélectionnés ne s’appliquent pas proprement.",
     "blockedNothing": "Sélectionnez au moins un fichier.",
     "blockedFailed": "Application désactivée tant que la vérification échoue.",
@@ -587,8 +594,10 @@
     "patchCopied": "Patch copié",
     "confirm_one": "Appliquer {{count}} fichier",
     "confirm_other": "Appliquer {{count}} fichiers",
+    "confirm_many": "Appliquer {{count}} fichiers",
     "applied_one": "{{count}} fichier appliqué à votre dossier",
     "applied_other": "{{count}} fichiers appliqués à votre dossier",
+    "applied_many": "{{count}} fichiers appliqués à votre dossier",
     "undo": "Annuler",
     "undone": "La modification a été retirée de votre dossier",
     "undoFailed": "Impossible d’annuler : {{message}}"
@@ -658,5 +667,6 @@
     "ranTools": "Plus tôt dans ce tour, vous avez déjà exécuté des outils ({{ran}}) ; {{reason}} Ne répétez rien de ce qui a modifié des fichiers ou un état ; relisez uniquement ce dont vous avez encore besoin.",
     "ranToolsDropped": "leur sortie a été supprimée pour tenir dans la fenêtre de contexte.",
     "ranToolsRetry": "le fournisseur a ensuite échoué et la requête est relancée."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

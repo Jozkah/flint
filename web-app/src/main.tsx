@@ -12,6 +12,7 @@ import { bootMark } from '@/lib/bootMarks'
 import { noteBootError, startBootWatchdog } from '@/lib/bootWatchdog'
 import { routerDefaults } from '@/components/RoutePending'
 import { installWindowIdleMarker } from '@/lib/windowIdle'
+import { noteLocation, setSettingsNavigator } from '@/lib/settingsReturn'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
@@ -23,11 +24,11 @@ const setupMobileViewport = () => {
                    window.matchMedia('(max-width: 768px)').matches
 
   if (isMobile) {
-    // Update viewport meta tag to disable zoom
+    // Keep pinch zoom available (accessibility); only extend under the notch
     const viewportMeta = document.querySelector('meta[name="viewport"]')
     if (viewportMeta) {
       viewportMeta.setAttribute('content',
-        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+        'width=device-width, initial-scale=1.0, viewport-fit=cover'
       )
     }
 
@@ -136,6 +137,8 @@ const boot = async () => {
   bootMark('boot:i18n')
 
   const router = createRouter({ routeTree, ...routerDefaults })
+  router.subscribe('onResolved', (e) => noteLocation(e.toLocation.href))
+  setSettingsNavigator((to) => void router.navigate({ to }))
   // The app opens on the Overview once the first-run setup is done; until
   // then the new-chat page carries the setup guide. Only the main window's
   // start: a deep link or a logs window keeps its own path.

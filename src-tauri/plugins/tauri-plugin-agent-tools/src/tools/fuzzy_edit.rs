@@ -118,12 +118,21 @@ fn norm_str(s: &str) -> String {
     s.chars().map(norm_char).collect()
 }
 
-/// Every start byte offset of `needle` in `hay` (non-overlapping).
+/// Every start byte offset of `needle` in `hay`, overlapping matches included:
+/// `aa` in `aaa` is found twice, so the edit is reported as ambiguous.
 fn find_all(hay: &str, needle: &str) -> Vec<usize> {
     if needle.is_empty() {
         return Vec::new();
     }
-    hay.match_indices(needle).map(|(i, _)| i).collect()
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(at) = hay[from..].find(needle) {
+        let start = from + at;
+        out.push(start);
+        // Resume one character on, never inside one.
+        from = start + hay[start..].chars().next().map_or(1, char::len_utf8);
+    }
+    out
 }
 
 fn line_of(content: &str, byte: usize) -> usize {
@@ -404,6 +413,12 @@ mod tests {
         let mut s = content.to_string();
         s.replace_range(r.range, &r.replacement);
         Ok(s)
+    }
+
+    #[test]
+    fn an_overlapping_second_match_is_ambiguous() {
+        assert_eq!(find_all("aaa", "aa"), vec![0, 1]);
+        assert!(apply("aaa", "aa", "b").is_err());
     }
 
     #[test]

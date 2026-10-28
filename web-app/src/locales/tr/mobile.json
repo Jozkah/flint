@@ -49,7 +49,8 @@
     "retention_one": "Arşivlenen öğeler {{count}} gün sonra kalıcı olarak silinir.",
     "retention_other": "Arşivlenen öğeler {{count}} gün sonra kalıcı olarak silinir.",
     "retentionForever": "Arşivlenen öğeler siz silene kadar kalır.",
-    "emptyAction": "Arşivi boşalt"
+    "emptyAction": "Arşivi boşalt",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Bu işe yaramadı",
@@ -1360,5 +1361,13 @@
       "tickFirst": "Önce baktığınız işaretli dosyaları işaretleyin.",
       "missing": "Önerilen değişiklikler artık yok. Kampanyayı bilgisayarda açın."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

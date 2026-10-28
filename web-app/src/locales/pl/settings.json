@@ -157,6 +157,15 @@
     "composerRailButtonsDesc": "Pokazuje Podgląd, Kod, Zmiany, Aktywność i Oś czasu pod polem wiadomości Cowork. Po wyłączeniu jeden przycisk Wynik w nagłówku otwiera panel.",
     "autoGenerateTitle": "Automatycznie generuj tytuł czatu",
     "autoGenerateTitleDesc": "Automatycznie podsumowuje nowe rozmowy w tytule wątku. Wyłącz, aby zachować tytuł domyślny, dopóki sam nie zmienisz nazwy.",
+    "titleModel": "Model tytułów",
+    "titleModelDesc": "Model, który pisze automatyczne tytuły czatów. Jeśli jest niedostępny, używany jest model danego czatu.",
+    "titleModelDefault": "Model czatu",
+    "titleModelSearch": "Szukaj modeli",
+    "titleModelEmpty": "Brak dostępnych modeli",
+    "titleModelEmptySearch": "Żaden model nie pasuje do „{{query}}”",
+    "titlePrompt": "Polecenie tytułu",
+    "titlePromptDesc": "Polecenie wysyłane wraz z rozmową podczas generowania tytułu.",
+    "titlePromptReset": "Przywróć domyślne",
     "windowBackground": "Tło Okna",
     "windowBackgroundDesc": "Ustaw kolor tła okna aplikacji.",
     "appMainView": "Główny Obszar Aplikacji",
@@ -268,7 +277,7 @@
     "caBundleBroken": "Tego pakietu nie można użyć ({{kind}}): wychodzące HTTPS nikomu nie ufa, dopóki nie zostanie naprawiony lub usunięty.",
     "ignoreSslScope": "Dotyczy całego ruchu przez serwer proxy. Pojedynczy dostawca może też zezwolić na nieprawidłowe certyfikaty dla własnego adresu, na swojej stronie w Dostawcy Modeli.",
     "proxyUrlInvalid": "To nie wygląda na adres proxy. Użyj host:port lub http://host:port.",
-    "proxyUrlScheme": "Obsługiwane są tylko proxy http i https.",
+    "proxyUrlScheme": "Obsługiwane są tylko serwery proxy http, https, socks5 i socks5h.",
     "ignoreSslConfirmTitle": "Zignorować certyfikaty SSL?",
     "ignoreSslConfirmBody": "Flint będzie akceptować certyfikaty z podpisem własnym, wygasłe lub niepasujące dla całego ruchu przez proxy, więc każdy na trasie mógłby go odczytać lub zmienić. Kontynuuj tylko wtedy, gdy ufasz proxy i sieci.",
     "ignoreSslConfirm": "Zignoruj certyfikaty",
@@ -469,7 +478,9 @@
     "usageUnsaved": "Niezapisane zmiany",
     "stopServerToEdit": "Zatrzymaj serwer, aby edytować",
     "trustedHostsInvalid": "Nieprawidłowy host: {{hosts}}. Użyj hosta lub host:port, np. example.com lub 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa."
+    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Dane Analityczne",
@@ -543,6 +554,15 @@
     "closeToTrayDesc": "Zamknięcie okna ukrywa Flint w zasobniku systemowym zamiast zamykać aplikację. Zakończ ją z menu zasobnika.",
     "downloadLimit": "Limit szybkości pobierania",
     "downloadLimitDesc": "Ogranicz pobieranie modeli do tylu MB na sekundę. 0 oznacza bez limitu.",
+    "hfEndpoint": "Punkt końcowy Hugging Face",
+    "hfEndpointDesc": "Dokąd trafiają wyszukiwania i pobierania modeli. Wybierz serwer lustrzany, jeśli huggingface.co jest u Ciebie zablokowany lub wolny.",
+    "hfEndpointDefault": "Domyślny (huggingface.co)",
+    "hfEndpointCustom": "Własny adres URL",
+    "hfEndpointSave": "Zapisz",
+    "hfEndpointSaved": "Zapisano punkt końcowy Hugging Face",
+    "hfEndpointEnvOverride": "Zmienna środowiskowa HF_ENDPOINT ma wartość {{value}} i ma pierwszeństwo przed tym ustawieniem.",
+    "hfEndpointSendToken": "Wysyłaj mój token do tego serwera lustrzanego",
+    "hfEndpointSendTokenDesc": "Domyślnie wyłączone: token Hugging Face trafia tylko do huggingface.co. Włącz tylko, jeśli ufasz temu serwerowi.",
     "exportLogs": "Eksportuj dzienniki (zanonimizowane)",
     "exportLogsDesc": "Zapisz dziennik aplikacji z usuniętymi znanymi kluczami API i tokenami, aby dołączyć go do zgłoszenia błędu. Sprawdź go przed udostępnieniem.",
     "importChatGpt": "Importuj eksport z ChatGPT",
@@ -583,14 +603,30 @@
       "installing": "Instalowanie…",
       "uninstall": "Odinstaluj",
       "uninstalling": "Odinstalowywanie…",
-      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii."
+      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Uruchamianie i zasobnik",
     "cliGroup": "Wiersz poleceń",
     "keepAwake": "Keep the computer awake during runs",
     "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
     "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "hfToken": {
+      "empty": "Please enter a Hugging Face token to validate",
+      "valid": "Token is valid",
+      "signedInAs": "Signed in as {{name}}",
+      "validDesc": "Your Hugging Face token is valid.",
+      "invalid": "Token invalid",
+      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
+      "timedOut": "Validation timed out",
+      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
+      "failed": "Validation failed",
+      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+    }
   },
   "extensions": {
     "title": "Rozszerzenia"
@@ -673,6 +709,9 @@
     "title": "Kompaktowanie kontekstu",
     "auto": "Kompaktuj automatycznie",
     "autoDescription": "Zrób miejsce, zanim rozmowa przerośnie okno kontekstu modelu. Wspólne dla Czatu, Cowork i CLI.",
+    "compactAt": "Kompaktuj przy",
+    "compactAtDescription": "Gdy rozmowa osiągnie ten udział okna kontekstu, starsze wiadomości są najpierw podsumowywane. Automatycznie zachowuje wbudowany punkt. Działa, zanim przesunięcie kontekstu llama.cpp cokolwiek odrzuci.",
+    "compactAtAuto": "Automatycznie",
     "reserveTokens": "Zarezerwowane tokeny",
     "reserveDescription": "Zapas utrzymywany jako wolny: kompaktowanie rozpoczyna się, gdy rozmowa zużyje więcej niż okno minus ta wartość.",
     "keepRecent": "Zachowane ostatnie wiadomości",
@@ -1417,6 +1456,7 @@
       "settleFailed": "Nie udało się rozstrzygnąć tego konfliktu",
       "forgotten": "Wspomnienie zapomniane",
       "forgetFailed": "Nie udało się zapomnieć tego wspomnienia",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Nie udało się zmienić tego wspomnienia",
       "updated": "Wspomnienie zaktualizowane",
       "updateFailed": "Nie udało się zaktualizować tego wspomnienia",
@@ -1447,7 +1487,21 @@
     "footerCount_few": "{{count}} wspomnienia w tym zakresie",
     "footerCount_many": "{{count}} wspomnień w tym zakresie",
     "footerCount_other": "{{count}} wspomnienia w tym zakresie",
-    "agentNotes": "Notatki agenta"
+    "agentNotes": "Notatki agenta",
+    "report": {
+      "summary_one": "Zaimportowano {{count}} wspomnienie z eksportu",
+      "summary_few": "Zaimportowano {{count}} wspomnień z eksportu",
+      "summary_many": "Zaimportowano {{count}} wspomnień z eksportu",
+      "summary_other": "Zaimportowano {{count}} wspomnień z eksportu",
+      "duplicates_one": "Pominięto {{count}} duplikat",
+      "duplicates_few": "Pominięto {{count}} duplikatów",
+      "duplicates_many": "Pominięto {{count}} duplikatów",
+      "duplicates_other": "Pominięto {{count}} duplikatów",
+      "refused_one": "{{count}} odrzucone",
+      "refused_few": "{{count}} odrzuconych",
+      "refused_many": "{{count}} odrzuconych",
+      "refused_other": "{{count}} odrzuconych"
+    }
   },
   "chatMentions": {
     "title": "Wzmianki o rozmowach",
@@ -1530,7 +1584,21 @@
     "composerGroup": "Pole wiadomości",
     "repliesGroup": "Odpowiedzi",
     "linksGroup": "Linki",
-    "artifactsGroup": "Artefakty i widżety"
+    "artifactsGroup": "Artefakty i widżety",
+    "reasoningDefault": "Rozumowanie w nowych czatach",
+    "reasoningDefaultDesc": "Czy myślenie w nowym czacie zaczyna się włączone, czy wyłączone. Własne ustawienie rozumowania modelu i przełącznik w polu wiadomości nadal mają pierwszeństwo. Modele, które nie mogą przełączać myślenia, pozostają bez zmian.",
+    "reasoningDefaultModel": "Domyślne modelu",
+    "reasoningDefaultOn": "Włączone",
+    "reasoningDefaultOff": "Wyłączone",
+    "rulesGroup": "Reguły",
+    "rulesDesc": "Stałe instrukcje dodawane do czatów po instrukcjach asystenta. Wyłącz regułę dla jednego czatu w panelu opcji tego czatu.",
+    "rulesEnabled": "Reguła włączona",
+    "rulesRemove": "Usuń regułę",
+    "rulesAllChats": "Wszystkie czaty",
+    "rulesNoGroups": "Brak grup",
+    "rulesPlaceholder": "Dodaj regułę, np. „Odpowiadaj w jednostkach metrycznych”",
+    "rulesAdd": "Dodaj",
+    "rulesTooLong": "Aktywne reguły mają około {{tokens}} tokenów, więcej niż zalecane {{budget}}. Długie reguły zajmują kontekst w każdym czacie."
   },
   "data": {
     "tabStorage": "Pamięć",
@@ -1549,6 +1617,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

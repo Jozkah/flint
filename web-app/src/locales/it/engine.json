@@ -140,6 +140,7 @@
     "tabRouting": "Instradamento e limiti",
     "toolsCount_one": "{{count}} strumento",
     "toolsCount_other": "{{count}} strumenti",
+    "toolsCount_many": "{{count}} strumenti",
     "filterLabel": "Mostra server",
     "filterAll": "Tutti",
     "filterOn": "On",

@@ -10,6 +10,7 @@ import { useRpc } from '../state/rpc'
 import { byKind, useSessions } from '../state/sessions'
 import { ROOM_STATUS } from '../shell/labels'
 import { t } from '../i18n'
+import { activate } from '../ui/a11y'
 
 const MODE = { 'round-robin': t('rooms.mode.roundRobin'), 'user-selected': t('rooms.mode.userSelected'), 'moderator-selected': t('rooms.mode.moderatorSelected'), compare: t('rooms.mode.compare') } as const
 
@@ -17,15 +18,23 @@ function RoomCard({ s }: { s: SessionSummary }) {
   const { data: room } = useRpc('rooms.get', { id: s.id })
   const status = room?.roomStatus ?? (s.status === 'running' ? 'running' : 'completed')
   return (
-    <div className="rc" role="button" onClick={() => go({ name: 'room', id: s.id })} data-testid="room-card">
+    <div className="rc" role="button" {...activate(() => go({ name: 'room', id: s.id }))} data-testid="room-card">
       <h3>
         {s.title || t('rooms.untitled')}
         <span
           role="button"
           aria-label={t('rooms.menu')}
+          tabIndex={0}
           onClick={(e) => {
             e.stopPropagation()
             openSheet('roommenu', { id: s.id, title: s.title })
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              openSheet('roommenu', { id: s.id, title: s.title })
+            }
           }}
         >
           <I n="more" style={{ color: 'var(--muted-foreground)' }} />

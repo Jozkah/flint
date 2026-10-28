@@ -152,9 +152,7 @@ impl DeviceStore {
     /// worst outcome is re-pairing, never a phone that stays trusted by
     /// accident.
     pub fn load(path: PathBuf) -> Self {
-        let mut devices = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<DeviceFile>(&raw).ok())
+        let mut devices = read_json_or_quarantine::<DeviceFile>(&path)
             .map(|f| f.devices)
             .unwrap_or_default();
         // A device from before `last_seen` was kept counts as seen now, so
@@ -279,6 +277,37 @@ impl DeviceStore {
 /// Writes JSON through a temp file and a rename, readable by the owner only
 /// on Unix: the file holds token hashes and, for TLS, private keys live beside
 /// it.
+/// Reads and parses `path`. A missing file is `None` quietly. A file that
+/// exists but does not read or parse is logged and renamed to
+/// `<name>.corrupt-<ms>` so the next save cannot silently destroy it, then
+/// `None`.
+pub fn read_json_or_quarantine<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            log::error!("remote: could not read {}: {e}", path.display());
+            quarantine(path);
+            return None;
+        }
+    };
+    match serde_json::from_str::<T>(&raw) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            log::error!("remote: {} is corrupt ({e}); moving it aside", path.display());
+            quarantine(path);
+            None
+        }
+    }
+}
+
+/// Moves a bad state file aside (best effort).
+pub fn quarantine(path: &Path) {
+    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(format!(".corrupt-{}", now_ms()));
+    let _ = std::fs::rename(path, path.with_file_name(name));
+}
+
 pub fn write_private_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
     let json = serde_json::to_vec_pretty(value)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;

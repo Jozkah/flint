@@ -129,3 +129,19 @@ test('flags a ru/pl/cs plural key missing one of its forms', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('plural categories are checked for every locale, and a baseline excuses known gaps', () => {
+  const en = { n_one: '{{count}} item', n_other: '{{count}} items' }
+  const ca = { n_one: '{{count}} a', n_other: '{{count}} b' } // Catalan also needs "many"
+  const ja = { n_other: '{{count}} b' } // Japanese has only "other"
+  const root = locales({ 'en/a.json': en, 'ca/a.json': ca, 'ja/a.json': ja })
+  try {
+    const { errors, found } = checkLocales(root)
+    assert.ok(errors.some((e) => e.includes('ca/a.json') && e.includes('missing: many')))
+    assert.ok(!errors.some((e) => e.includes('ja/a.json')))
+    const again = checkLocales(root, { baseline: { 'ca/a.json': { plurals: found['ca/a.json'].plurals } } })
+    assert.ok(!again.errors.some((e) => e.includes('ca/a.json')))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

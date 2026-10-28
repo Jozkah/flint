@@ -287,7 +287,16 @@ fn too_large() -> Resp {
 async fn read_bytes(body: Incoming, limit: usize) -> Result<Bytes, Resp> {
     match tokio::time::timeout(BODY_DEADLINE, Limited::new(body, limit).collect()).await {
         Ok(Ok(collected)) => Ok(collected.to_bytes()),
-        Ok(Err(_)) => Err(too_large()),
+        // Only the limit is "too large"; a connection that dropped or sent a
+        // broken body mid-read is the client's malformed request.
+        Ok(Err(e)) if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() => {
+            Err(too_large())
+        }
+        Ok(Err(_)) => Err(error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "The request body could not be read",
+        )),
         Err(_) => Err(error(
             StatusCode::REQUEST_TIMEOUT,
             "request_timeout",
@@ -397,7 +406,15 @@ async fn route(
         if method != Method::GET && method != Method::HEAD {
             return error(StatusCode::METHOD_NOT_ALLOWED, "method", "Method not allowed");
         }
-        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, outside, listener.https).await;
+        // The cookie only has to be (re)set when the phone does not already
+        // hold this ticket's; every asset response repeating it is noise.
+        let has_cookie = req
+            .headers()
+            .get(header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(preview::ticket_from_cookie)
+            .is_some_and(|t| t == ticket);
+        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, outside, listener.https, has_cookie).await;
     }
 
     if path == "/" || path == "/m" {
@@ -732,7 +749,7 @@ fn preview_headers(b: hyper::http::response::Builder) -> hyper::http::response::
         .header(header::CACHE_CONTROL, "no-store")
 }
 
-async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, outside: bool, https: bool) -> Resp {
+async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, outside: bool, https: bool, has_cookie: bool) -> Resp {
     let Some(origin) = hub.preview_origin_for(ticket) else {
         return error(StatusCode::NOT_FOUND, "not_found", "This preview has ended");
     };
@@ -744,7 +761,7 @@ async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool
             .body(Full::new(Bytes::new()))
             .expect("static response parts are valid");
     }
-    let set_cookie = true;
+    let set_cookie = !has_cookie;
     let Some(url) = preview::upstream_url(&origin, upstream) else {
         return error(StatusCode::FORBIDDEN, "forbidden", "Forbidden");
     };
@@ -974,6 +991,22 @@ enum ClientMessage {
     Ping,
 }
 
+const MAX_TOPICS_PER_SOCKET: usize = 256;
+const MAX_TOPIC_LEN: usize = 128;
+
+/// Adds subscribe topics, dropping over-long ones and anything past the per-socket cap.
+fn add_topics(set: &mut HashSet<String>, wanted: Vec<String>) {
+    for topic in wanted.into_iter().take(64) {
+        if topic.len() > MAX_TOPIC_LEN {
+            continue;
+        }
+        if set.len() >= MAX_TOPICS_PER_SOCKET && !set.contains(&topic) {
+            break;
+        }
+        set.insert(topic);
+    }
+}
+
 async fn run_socket<S>(
     hub: Arc<RemoteHub>,
     mut ws: WebSocketStream<S>,
@@ -1063,7 +1096,7 @@ async fn run_socket<S>(
                 }
                 match msg {
                 Some(Ok(Message::Text(t))) => match serde_json::from_str::<ClientMessage>(&t) {
-                    Ok(ClientMessage::Subscribe { topics: t }) => topics.extend(t.into_iter().take(64)),
+                    Ok(ClientMessage::Subscribe { topics: t }) => add_topics(&mut topics, t),
                     Ok(ClientMessage::Unsubscribe { topics: t }) => t.iter().for_each(|x| { topics.remove(x); }),
                     Ok(ClientMessage::Visibility { hidden }) => {
                         if hidden == shown {
@@ -1290,5 +1323,25 @@ mod conn_cap_tests {
         let mut buf = Vec::new();
         tokio::io::AsyncReadExt::read_to_end(&mut b, &mut buf).await.unwrap();
         assert!(!buf.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod topic_cap_tests {
+    use super::*;
+
+    #[test]
+    fn topics_are_capped_per_socket_and_by_length() {
+        let mut set = HashSet::new();
+        for batch in 0..5 {
+            add_topics(&mut set, (0..64).map(|i| format!("t{batch}-{i}")).collect());
+        }
+        assert_eq!(set.len(), MAX_TOPICS_PER_SOCKET);
+        add_topics(&mut set, vec!["one-more".into()]);
+        assert!(!set.contains("one-more"));
+        let mut fresh = HashSet::new();
+        add_topics(&mut fresh, vec!["x".repeat(MAX_TOPIC_LEN + 1), "ok".into()]);
+        assert_eq!(fresh.len(), 1);
+        assert!(fresh.contains("ok"));
     }
 }

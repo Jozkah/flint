@@ -210,11 +210,21 @@ fn gated(
     endpoint: Option<String>,
 ) -> Result<Box<dyn SearchProvider>, String> {
     let keyless_exa = id == "exa" && normalize_key(api_key.clone()).is_none();
+    let gate_secret = api_key.clone();
     let inner = create_raw_provider(id, api_key, endpoint)?;
     let gate_key = match id {
         "exa" if keyless_exa => "exa-hosted".to_string(),
         "ddg" => "duckduckgo".to_string(),
-        _ => id.to_string(),
+        // One gate per credential: a limit hit by one key leaves another usable.
+        _ => match gate_secret.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+            Some(key) => {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                key.hash(&mut hasher);
+                format!("{id}#{:08x}", hasher.finish() as u32)
+            }
+            None => id.to_string(),
+        },
     };
     Ok(Box::new(crate::ratelimit::Gated::new(
         display_name(id),
@@ -275,10 +285,11 @@ fn require_key(provider: &str, api_key: Option<String>) -> Result<String, String
 /// user's configured HTTPS proxy: given the request URL it returns the proxy to
 /// use, or `None` to connect directly. Set once at startup.
 ///
-/// It applies only to [`build_http_client`] (the providers' own search/API
-/// endpoints). The page-fetch client ([`public_fetch_client`]) never uses it: a
-/// proxy resolves the host name on its side, which would bypass that client's
-/// public-addresses-only DNS rule.
+/// It applies to [`build_http_client`] (the providers' own search/API
+/// endpoints) and to the page-fetch client ([`public_fetch_client`]). A proxy
+/// resolves the host name on its side, which would bypass the page-fetch
+/// client's public-addresses-only DNS rule, so a page fetch that goes through
+/// it has its name vetted here first ([`check_name_public_blocking`]).
 pub type ProxyHook = Box<dyn Fn(&reqwest::Url) -> Option<reqwest::Url> + Send + Sync>;
 
 static PROXY_HOOK: std::sync::OnceLock<ProxyHook> = std::sync::OnceLock::new();
@@ -400,10 +411,15 @@ pub(crate) fn check_public_url(url: &reqwest::Url) -> Result<(), String> {
     }
 }
 
-/// True when a system proxy is configured through the environment. Behind a
+/// True when a request for `url` may go through a proxy: one from the
+/// environment, or the Settings proxy ([`PROXY_HOOK`]) picks it. Behind a
 /// proxy the target name is resolved by the proxy, so [`PublicOnlyResolver`]
 /// never runs for it and the name has to be vetted here instead.
-fn proxy_configured() -> bool {
+fn proxy_configured(url: &reqwest::Url) -> bool {
+    PROXY_HOOK.get().is_some_and(|hook| hook(url).is_some()) || env_proxy_configured()
+}
+
+fn env_proxy_configured() -> bool {
     ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]
         .iter()
         .any(|k| {
@@ -477,61 +493,67 @@ impl reqwest::dns::Resolve for PublicOnlyResolver {
 fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
     CLIENT
-        .get_or_init(|| {
-            // Only the environment proxies `proxy_configured` knows about. A
-            // system proxy (Windows registry, macOS settings) would resolve
-            // the target itself, bypass `PublicOnlyResolver`, and go unvetted.
-            let mut builder = reqwest::Client::builder().no_proxy();
-            type MakeProxy = fn(String) -> reqwest::Result<reqwest::Proxy>;
-            let env_proxies: [([&str; 2], MakeProxy); 3] = [
-                (["HTTP_PROXY", "http_proxy"], reqwest::Proxy::http::<String>),
-                (["HTTPS_PROXY", "https_proxy"], reqwest::Proxy::https::<String>),
-                (["ALL_PROXY", "all_proxy"], reqwest::Proxy::all::<String>),
-            ];
-            for (vars, make) in env_proxies {
-                let Some(url) = vars
-                    .iter()
-                    .filter_map(|k| std::env::var(k).ok())
-                    .find(|v| !v.trim().is_empty())
-                else {
-                    continue;
-                };
-                let proxy = make(url.trim().to_string())
-                    .map_err(|e| format!("invalid proxy in {}: {e}", vars[0]))?
-                    .no_proxy(reqwest::NoProxy::from_env());
-                builder = builder.proxy(proxy);
-            }
-            builder
-                .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-                .dns_resolver(std::sync::Arc::new(PublicOnlyResolver))
-                .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                    if attempt.previous().len() >= 10 {
-                        return attempt.error("too many redirects");
-                    }
-                    // A redirect to another host is handed back, not followed:
-                    // `public_get` reports the new address so the caller decides.
-                    if attempt.previous().last().and_then(|u| u.host_str().map(str::to_owned))
-                        != attempt.url().host_str().map(str::to_owned)
-                    {
-                        return attempt.stop();
-                    }
-                    let checked = check_public_url(attempt.url()).and_then(|()| {
-                        if proxy_configured() {
-                            check_name_public_blocking(attempt.url())
-                        } else {
-                            Ok(())
-                        }
-                    });
-                    match checked {
-                        Ok(()) => attempt.follow(),
-                        Err(e) => attempt.error(e),
-                    }
-                }))
-                .build()
-                .map_err(|e| format!("failed to build the page-fetch HTTP client: {e}"))
-        })
+        .get_or_init(|| build_public_fetch_client(PROXY_HOOK.get()))
         .as_ref()
         .map_err(Clone::clone)
+}
+
+fn build_public_fetch_client(hook: Option<&'static ProxyHook>) -> Result<reqwest::Client, String> {
+    // Only the proxies `proxy_configured` knows about: the Settings
+    // proxy, then the environment ones. A system proxy (Windows
+    // registry, macOS settings) would resolve the target itself,
+    // bypass `PublicOnlyResolver`, and go unvetted.
+    let mut builder = reqwest::Client::builder().no_proxy();
+    if let Some(hook) = hook {
+        builder = builder.proxy(reqwest::Proxy::custom(move |url| hook(url)));
+    }
+    type MakeProxy = fn(String) -> reqwest::Result<reqwest::Proxy>;
+    let env_proxies: [([&str; 2], MakeProxy); 3] = [
+        (["HTTP_PROXY", "http_proxy"], reqwest::Proxy::http::<String>),
+        (["HTTPS_PROXY", "https_proxy"], reqwest::Proxy::https::<String>),
+        (["ALL_PROXY", "all_proxy"], reqwest::Proxy::all::<String>),
+    ];
+    for (vars, make) in env_proxies {
+        let Some(url) = vars
+            .iter()
+            .filter_map(|k| std::env::var(k).ok())
+            .find(|v| !v.trim().is_empty())
+        else {
+            continue;
+        };
+        let proxy = make(url.trim().to_string())
+            .map_err(|e| format!("invalid proxy in {}: {e}", vars[0]))?
+            .no_proxy(reqwest::NoProxy::from_env());
+        builder = builder.proxy(proxy);
+    }
+    builder
+        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .dns_resolver(std::sync::Arc::new(PublicOnlyResolver))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 10 {
+                return attempt.error("too many redirects");
+            }
+            // A redirect to another host is handed back, not followed:
+            // `public_get` reports the new address so the caller decides.
+            if attempt.previous().last().and_then(|u| u.host_str().map(str::to_owned))
+                != attempt.url().host_str().map(str::to_owned)
+            {
+                return attempt.stop();
+            }
+            let checked = check_public_url(attempt.url()).and_then(|()| {
+                if proxy_configured(attempt.url()) {
+                    check_name_public_blocking(attempt.url())
+                } else {
+                    Ok(())
+                }
+            });
+            match checked {
+                Ok(()) => attempt.follow(),
+                Err(e) => attempt.error(e),
+            }
+        }))
+        .build()
+        .map_err(|e| format!("failed to build the page-fetch HTTP client: {e}"))
 }
 
 /// GET `url` from this machine, refusing anything that is not a public
@@ -539,7 +561,7 @@ fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
 async fn public_get(url: &str, provider: &str) -> Result<reqwest::Response, String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("{provider} fetch: invalid URL: {e}"))?;
     check_public_url(&parsed)?;
-    if proxy_configured() {
+    if proxy_configured(&parsed) {
         let target = parsed.clone();
         tokio::task::spawn_blocking(move || check_name_public_blocking(&target))
             .await
@@ -2091,7 +2113,7 @@ fn bound_text(s: &str) -> (String, bool) {
 pub fn clamp_count(requested: Option<u64>) -> u32 {
     match requested {
         Some(0) | None => SEARCH_DEFAULT_COUNT,
-        Some(n) => (n as u32).min(SEARCH_MAX_COUNT),
+        Some(n) => n.min(SEARCH_MAX_COUNT as u64) as u32,
     }
 }
 
@@ -2230,6 +2252,35 @@ mod tests {
         assert!(err.contains("did not resolve locally"), "{err}");
     }
 
+    #[tokio::test]
+    async fn page_fetch_client_uses_the_settings_proxy() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_url = reqwest::Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = sock.read(&mut buf).await.unwrap();
+            sock.write_all(b"HTTP/1.1 200 OK
+content-length: 2
+connection: close
+
+ok")
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&buf[..n]).into_owned()
+        });
+        let hook: &'static ProxyHook = Box::leak(Box::new(Box::new(move |_url: &reqwest::Url| {
+            Some(proxy_url.clone())
+        }) as ProxyHook));
+        let client = build_public_fetch_client(Some(hook)).unwrap();
+        // A public IP literal: no DNS, so only the proxy can answer.
+        let body = client.get("http://93.184.216.34/page").send().await.unwrap().text().await.unwrap();
+        assert_eq!(body, "ok");
+        let request = server.await.unwrap();
+        assert!(request.starts_with("GET http://93.184.216.34/page"), "{request}");
+    }
+
     #[test]
     fn proxy_path_refuses_name_resolving_to_loopback() {
         let url = reqwest::Url::parse("https://localhost/").unwrap();
@@ -2323,6 +2374,8 @@ mod tests {
         assert_eq!(clamp_count(Some(0)), SEARCH_DEFAULT_COUNT);
         assert_eq!(clamp_count(Some(3)), 3);
         assert_eq!(clamp_count(Some(1000)), SEARCH_MAX_COUNT);
+        // Truncating to u32 would turn 2^32 into 0.
+        assert_eq!(clamp_count(Some(4_294_967_296)), SEARCH_MAX_COUNT);
     }
 
     #[test]

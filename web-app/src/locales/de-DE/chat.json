@@ -44,6 +44,9 @@
     "description": "Die angehängten Dateien werden indiziert, damit sie durchsucht und zitiert werden können. Bei großen Dokumenten kann das einen Moment dauern."
   },
   "actions": {
+    "readAloud": "Vorlesen",
+    "stopReading": "Vorlesen beenden",
+    "codeOmitted": "Code ausgelassen",
     "copy": "Kopieren",
     "regenerate": "Antwort neu generieren",
     "continue": "Weiter generieren",
@@ -266,5 +269,14 @@
     "reasoningLabel": "Reasoning: {{state}}",
     "thinkingBudget": "Denkbudget",
     "stopGenerating": "Generierung stoppen"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

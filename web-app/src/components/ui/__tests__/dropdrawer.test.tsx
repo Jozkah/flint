@@ -23,8 +23,8 @@ vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => mockUseIsMobile(),
 }))
 
-// Mock framer-motion to avoid animation complexity in tests
-vi.mock('framer-motion', () => ({
+// Mock motion/react to avoid animation complexity in tests
+vi.mock('motion/react', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <div data-testid="animate-presence">{children}</div>,
   motion: {
     div: ({ children, ...props }: any) => <div {...props}>{children}</div>,

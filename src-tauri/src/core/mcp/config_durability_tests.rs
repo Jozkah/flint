@@ -8,10 +8,11 @@
 //! place because every writer used a truncate-then-write `fs::write`.
 
 use super::commands::get_mcp_configs;
+use super::tests::lock_test_app;
 use crate::core::app::commands::get_jan_data_folder_path;
 use crate::core::state::AppState;
 use std::fs;
-use tauri::{test::mock_app, Manager};
+use tauri::Manager;
 
 fn corrupt_copies(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     fs::read_dir(dir)
@@ -31,7 +32,7 @@ fn corrupt_copies(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[tokio::test]
 async fn an_unreadable_config_is_kept_before_defaults_are_written() {
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     app.manage(AppState::default());
     let data = get_jan_data_folder_path(app.handle().clone());
     fs::create_dir_all(&data).unwrap();
@@ -62,7 +63,7 @@ async fn an_unreadable_config_is_kept_before_defaults_are_written() {
 
 #[tokio::test]
 async fn a_readable_config_is_not_copied_aside() {
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     app.manage(AppState::default());
     let data = get_jan_data_folder_path(app.handle().clone());
     fs::create_dir_all(&data).unwrap();

@@ -31,6 +31,11 @@ export const TranslationProvider: React.FC<{ children: ReactNode }> = ({ childre
 			void i18next
 				.changeLanguage(currentLanguage)
 				.then(() => setActiveLanguage(i18next.language))
+				.catch((error: unknown) => {
+					// A language file that will not load keeps the previous language
+					// instead of surfacing as an unhandled rejection.
+					console.error(`Could not switch to language ${currentLanguage}:`, error)
+				})
 		}
 	}, [currentLanguage])
 

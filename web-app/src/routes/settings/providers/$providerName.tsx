@@ -29,6 +29,7 @@ import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppMo
 import { ImportMlxModelDialog } from '@/containers/dialogs/ImportMlxModelDialog'
 import { ModelSetting } from '@/containers/ModelSetting'
 import { LlamacppEngineInfo } from '@/containers/LlamacppEngineInfo'
+import { SkippedLinkedModelsNotice } from '@/containers/SkippedLinkedModelsNotice'
 import { DialogDeleteModel } from '@/containers/dialogs/DeleteModel'
 import { DialogDeleteAllModels } from '@/containers/dialogs/DeleteAllModels'
 import { FavoriteModelAction } from '@/containers/FavoriteModelAction'
@@ -40,7 +41,6 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { BedrockCredentials } from '@/containers/BedrockCredentials'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { ProviderTlsTrust } from '@/containers/ProviderTlsTrust'
-import { Switch } from '@/components/ui/switch'
 import {
   ChevronDown,
   CircleCheck,
@@ -55,7 +55,6 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
-import { ProviderStatusChip } from '@/components/ProviderStatusChip'
 import {
   useCallback,
   useEffect,
@@ -98,14 +97,14 @@ import { EngineAddonFrame } from '@/containers/EngineAddon'
 import {
   CapabilityChips,
   EnginePage,
-  KpiRow,
-  KpiTile,
   TBOX_ROW,
   TBox,
 } from '@/containers/engine/EngineKit'
 import { BrandMark } from '@/containers/engine/BrandMark'
+import { ProviderHero } from '@/containers/providers/ProviderHero'
+import { ProviderKpiRow } from '@/containers/providers/ProviderKpiRow'
 import { LiveChart } from '@/containers/engine/LiveChart'
-import { modelLogo, providerLogo } from '@/lib/brandLogos'
+import { modelLogo } from '@/lib/brandLogos'
 import { effectiveContextLength, formatTps, recentSpeeds } from '@/lib/engineModels'
 import { providerSettingAnchor } from '@/lib/settingsSearch'
 import {
@@ -1508,7 +1507,7 @@ function ProviderDetail() {
             role="status"
             className="flex min-h-11 items-center gap-2 border-t border-dashed border-border px-2 py-3"
           >
-            <Chip live>Importing...</Chip>
+            <Chip live>{t('sweep:modelImport.importing')}</Chip>
             <span className="min-w-0 truncate font-medium text-foreground">
               {importingModel}
             </span>
@@ -1788,6 +1787,7 @@ function ProviderDetail() {
         </div>
       )}
       {isLlamacpp && <LlamacppEngineInfo />}
+      {isLlamacpp && <SkippedLinkedModelsNotice />}
       {provider.provider === 'mlx' && (
         <div className="flex items-start gap-3 rounded-xl bg-warning-tint px-3.5 py-3 text-xs leading-normal text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
           <Info className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
@@ -1869,81 +1869,24 @@ function ProviderDetail() {
       <SettingsPageHeader title={title} />
       <SettingsWithSections>
       <EnginePage testId="provider-page">
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[14px] bg-muted bg-[repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.06)_10px_10.8px)] p-4 shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <BrandMark
-              logo={providerLogo(providerName)}
-              name={title}
-              size={48}
-              className="rounded-xl shadow-[0_0_0_0.8px_var(--border),0_8px_20px_-12px_rgba(0,0,0,.5)]"
-            />
-            <div className="min-w-0">
-              <h2 className="descender-safe mb-2 truncate text-[length:calc(var(--ui-font-base)*1.375)] leading-none font-medium text-foreground">
-                {title}
-              </h2>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {provider?.active ? (
-                  isEngineProvider ? (
-                    <Chip tone="ok" live>
-                      {t('engine:status.running')}
-                    </Chip>
-                  ) : apiKeyMissing || headerKeyStatus === 'missing' || headerKeyStatus === 'credentials-missing' ? (
-                    // The same words the provider list uses for the same state:
-                    // Bedrock has AWS credentials, not an API key, and a remote
-                    // provider with no endpoint yet is not "connected".
-                    <ProviderStatusChip
-                      status={
-                        provider.provider === 'bedrock' || headerKeyStatus === 'credentials-missing'
-                          ? 'credentials-missing'
-                          : 'missing'
-                      }
-                    />
-                  ) : connectionFailed ? (
-                    <Chip tone="warn" dot>
-                      {t('providers:status.failed')}
-                    </Chip>
-                  ) : (
-                    <Chip tone="ok" dot>
-                      {connectionVerified
-                        ? t('engine:status.verified')
-                        : providerKeyStatus(provider) === 'keyless'
-                          ? t('engine:status.keyless')
-                          : t('engine:status.connected')}
-                    </Chip>
-                  )
-                ) : (
-                  <Chip dot>{t('engine:status.off')}</Chip>
-                )}
-                <Chip
-                  data-testid="provider-reach-note"
-                  // A long note wraps inside the header instead of running past it.
-                  className="h-auto min-h-[22px] max-w-full shrink py-1 leading-tight whitespace-normal"
-                >
-                  {reachNote}
-                </Chip>
-                <Chip>
-                  {t('engine:providers.modelsCount', {
-                    count: provider?.models.length ?? 0,
-                  })}
-                </Chip>
-              </div>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-xs font-medium text-secondary-foreground">
-            <Switch
-              aria-label={t('providers:useProvider', { provider: title })}
-              checked={provider?.active ?? false}
-              onCheckedChange={(checked) => {
-                if (!provider) return
-                if (!checked && isEngineProvider) {
-                  void stopProviderModels(provider.provider).catch(() => {})
-                }
-                updateProvider(providerName, { active: checked })
-              }}
-            />
-            {t('engine:provider.enabled')}
-          </label>
-        </div>
+        <ProviderHero
+          provider={provider}
+          providerName={providerName}
+          title={title}
+          isEngineProvider={isEngineProvider}
+          apiKeyMissing={apiKeyMissing}
+          headerKeyStatus={headerKeyStatus}
+          connectionFailed={connectionFailed}
+          connectionVerified={connectionVerified}
+          reachNote={reachNote}
+          onActiveChange={(checked) => {
+            if (!provider) return
+            if (!checked && isEngineProvider) {
+              void stopProviderModels(provider.provider).catch(() => {})
+            }
+            updateProvider(providerName, { active: checked })
+          }}
+        />
 
         <SettingsTabStrip<DetailTab>
           tabs={detailTabs}
@@ -1953,80 +1896,20 @@ function ProviderDetail() {
         />
 
         {activeTab === 'models' && (
-        <KpiRow>
-          {isEngineProvider ? (
-            <>
-              <KpiTile
-                title={t('engine:kpi.installed')}
-                icon={<Icon name="x-cube" />}
-                value={chatModels.length}
-                sub={t('engine:kpi.embeddingSub', {
-                  count: embeddingModels.length,
-                })}
-                delay={40}
-              />
-              <KpiTile
-                title={t('engine:kpi.loaded')}
-                icon={<Icon name="x-cpu" />}
-                value={loadedHere.length}
-                sub={t('engine:kpi.loadedSub', {
-                  count: provider?.models.length ?? 0,
-                })}
-                delay={80}
-              />
-              <KpiTile
-                title={t('engine:kpi.disk')}
-                icon={<Icon name="x-disk" />}
-                value={diskBytes > 0 ? formatBytes(diskBytes) : '—'}
-                sub={t('engine:kpi.diskSub', {
-                  count: Object.keys(localFiles).length,
-                })}
-                delay={120}
-              />
-            </>
-          ) : (
-            <>
-              <KpiTile
-                title={t('providers:models')}
-                icon={<Icon name="x-cube" />}
-                value={allModels.length}
-                sub={t('engine:kpi.addedSub')}
-                delay={40}
-              />
-              <KpiTile
-                title={t('engine:kpi.repliesToday')}
-                icon={<Icon name="x-activity" />}
-                value={repliesToday}
-                sub={t('engine:kpi.repliesSub', {
-                  count: providerSamples.length,
-                })}
-                delay={80}
-              />
-              <KpiTile
-                title={t('engine:kpi.apiKeys')}
-                icon={<Icon name="x-key" />}
-                value={keyCount}
-                sub={
-                  keyCount > 1
-                    ? t('engine:kpi.fallbackSub', { count: keyCount - 1 })
-                    : t('engine:kpi.noFallbackSub')
-                }
-                delay={120}
-              />
-            </>
-          )}
-          <KpiTile
-            title={t('engine:kpi.avgSpeed')}
-            icon={<Icon name="zap" />}
-            value={averageSpeed !== undefined ? formatTps(averageSpeed) : '—'}
-            sub={
-              averageSpeed !== undefined
-                ? t('engine:kpi.repliesSub', { count: providerSamples.length })
-                : t('engine:kpi.fastestNone')
-            }
-            delay={160}
-          />
-        </KpiRow>
+        <ProviderKpiRow
+          isEngineProvider={isEngineProvider}
+          chatModelCount={chatModels.length}
+          embeddingModelCount={embeddingModels.length}
+          loadedCount={loadedHere.length}
+          modelCount={provider?.models.length ?? 0}
+          diskBytes={diskBytes}
+          localFileCount={Object.keys(localFiles).length}
+          allModelCount={allModels.length}
+          repliesToday={repliesToday}
+          replySampleCount={providerSamples.length}
+          keyCount={keyCount}
+          averageSpeed={averageSpeed}
+        />
         )}
 
         {/* janhq/jan#8374. A local model list read from the default data

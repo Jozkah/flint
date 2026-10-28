@@ -6,6 +6,8 @@ import {
   Copy,
   FileText,
   Folder,
+  Globe,
+  RefreshCw,
   Trash2,
   UploadIcon,
   AlertCircle,
@@ -46,8 +48,18 @@ import { useProjectUploads } from '@/stores/project-uploads-store'
 import { collectFilesFromDirectory } from '@/lib/directoryWalk'
 import { namedFilePaths } from '@/lib/fileDrop'
 import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
+import {
+  checkProjectFiles,
+  reindexProjectFile,
+  type ProjectFileFreshness,
+} from '@/lib/projectFileFreshness'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
+import { AddWebPageDialog, useRefreshWebPage } from '@/containers/AddWebPageDialog'
+import {
+  useProjectUrlSources,
+  type UrlSource,
+} from '@/stores/project-url-sources-store'
 
 type ProjectFilesProps = {
   projectId: string
@@ -152,6 +164,7 @@ type ProjectFile = {
   type?: string
   size?: number
   chunk_count: number
+  mtime?: number | null
 }
 
 const SUPPORTED_EXTENSIONS = [
@@ -258,7 +271,6 @@ const SUPPORTED_EXTENSIONS = [
   'vue',
   'svelte',
   'astro',
-  'php',
   'asp',
   'aspx',
   'jsp',
@@ -328,12 +340,31 @@ function getFilesFromDirectory(
 type FileRowProps = {
   file: ProjectFile
   onDelete: (id: string) => void
+  /** Source on disk vs the indexed copy; only changed/missing show a badge. */
+  freshness?: ProjectFileFreshness
+  onReindex?: (id: string) => void
+  reindexing?: boolean
   t: ReturnType<typeof useTranslation>['t']
   /** Folder depth, for the indent when files are shown as a tree. */
   depth?: number
+  /** Set when the file was added from a web page (a URL row). */
+  source?: UrlSource
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
-function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
+function FileRow({
+  file,
+  onDelete,
+  freshness,
+  onReindex,
+  reindexing = false,
+  t,
+  depth = 0,
+  source,
+  onRefresh,
+  refreshing,
+}: FileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const openContextMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -360,7 +391,11 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
       onKeyDown={onRowKeyDown}
     >
       <div className="shrink-0">
-        <Paperclip className="size-4 text-muted-foreground" />
+        {source ? (
+          <Globe className="size-4 text-muted-foreground" />
+        ) : (
+          <Paperclip className="size-4 text-muted-foreground" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <Tooltip>
@@ -380,7 +415,69 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
           {file.chunk_count > 0 &&
             ` · ${t('common:files.chunksCount', { count: file.chunk_count })}`}
         </p>
+        {source && (
+          <p
+            className="text-xs text-muted-foreground truncate"
+            title={source.url}
+            data-testid="project-file-url"
+          >
+            {source.url}
+          </p>
+        )}
       </div>
+      {freshness === 'changed' && (
+        <span
+          data-testid="project-file-changed"
+          className="shrink-0 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-warning"
+        >
+          {t('common:projects.fileChangedOnDisk')}
+        </span>
+      )}
+      {freshness === 'missing' && (
+        <span
+          data-testid="project-file-missing"
+          className="shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs text-destructive"
+        >
+          {t('common:projects.fileMissing')}
+        </span>
+      )}
+      {freshness === 'changed' && onReindex && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => onReindex(file.id)}
+          disabled={reindexing}
+          aria-label={`${t('common:projects.reindexFile')} ${file.name}`}
+          title={t('common:projects.reindexFile')}
+        >
+          <RefreshCw
+            className={cn(
+              'size-3.5 text-muted-foreground',
+              reindexing && 'animate-spin motion-reduce:animate-none'
+            )}
+            aria-hidden
+          />
+        </Button>
+      )}
+      {source && onRefresh && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label={`${t('common:projects.webPage.refresh')} ${file.name}`}
+          title={t('common:projects.webPage.refresh')}
+        >
+          <RefreshCw
+            className={cn(
+              'size-3.5 text-muted-foreground',
+              refreshing && 'animate-spin motion-reduce:animate-none'
+            )}
+            aria-hidden
+          />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -400,6 +497,12 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
             <Copy className="size-4 mr-2" />
             {t('common:copyFileName')}
           </DropdownMenuItem>
+          {source && onRefresh && (
+            <DropdownMenuItem onClick={onRefresh} disabled={refreshing}>
+              <RefreshCw className="size-4 mr-2" />
+              {t('common:projects.webPage.refresh')}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -421,7 +524,14 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   const maxFileSizeMB = useAttachments((s) => s.maxFileSizeMB)
 
   const [files, setFiles] = useState<ProjectFile[]>([])
+  const [freshness, setFreshness] = useState<
+    Record<string, ProjectFileFreshness>
+  >({})
+  const [reindexingIds, setReindexingIds] = useState<Set<string>>(
+    () => new Set()
+  )
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     () => new Set()
@@ -443,8 +553,17 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             key={node.file.id}
             file={node.file}
             onDelete={requestDeleteFile}
+            freshness={freshness[node.file.id]}
+            onReindex={(id) => void handleReindex([id])}
+            reindexing={reindexingIds.has(node.file.id)}
             t={t}
             depth={depth}
+            source={node.file.path ? urlSources?.[node.file.path] : undefined}
+            onRefresh={() => {
+              const src = node.file.path ? urlSources?.[node.file.path] : undefined
+              if (src) void refreshWebPage(node.file.id, src)
+            }}
+            refreshing={refreshingId === node.file.id}
           />
         )
       }
@@ -492,6 +611,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   const loadProjectFiles = useCallback(async () => {
     const id = ++loadRequest.current
     setLoading(true)
+    setLoadFailed(false)
     try {
       const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
         ExtensionTypeEnum.VectorDB
@@ -500,6 +620,11 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         const projectFiles = await ext.listAttachmentsForProject(projectId)
         if (id !== loadRequest.current) return
         setFiles(projectFiles)
+        // One cheap stat per file; the badges fill in after the list shows.
+        const { fs } = await import('@janhq/core')
+        const status = await checkProjectFiles(projectFiles, fs.fileStat)
+        if (id !== loadRequest.current) return
+        setFreshness(status)
       } else {
         if (id !== loadRequest.current) return
         setFiles([])
@@ -507,6 +632,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     } catch {
       if (id !== loadRequest.current) return
       setFiles([])
+      setLoadFailed(true)
     } finally {
       if (id === loadRequest.current) setLoading(false)
     }
@@ -520,6 +646,12 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
     loadProjectFiles()
   }, [loadProjectFiles, completedTick, projectId])
+
+  // Files added from a web page: their source URL, and the refresh action.
+  const urlSources = useProjectUrlSources((s) => s.sources[projectId])
+  const [addWebPageOpen, setAddWebPageOpen] = useState(false)
+  const { refresh: refreshWebPage, refreshing: refreshingId } =
+    useRefreshWebPage(projectId, loadProjectFiles)
 
   const processFilePaths = useCallback(
     async (paths: string[]) => {
@@ -772,6 +904,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     const file = pendingDelete
     setPendingDelete(null)
     if (file) void handleDeleteFile(file.id)
+    if (file?.path) useProjectUrlSources.getState().remove(projectId, file.path)
   }
 
   const handleDeleteFile = async (fileId: string) => {
@@ -798,6 +931,54 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
   }
 
+  const handleReindex = async (fileIds: string[]) => {
+    const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
+      ExtensionTypeEnum.VectorDB
+    )
+    if (!ext?.deleteFileForProject) return
+    const targets = files.filter((f) => fileIds.includes(f.id))
+    setReindexingIds((prev) => new Set([...prev, ...fileIds]))
+    const { fs } = await import('@janhq/core')
+    let done = 0
+    for (const file of targets) {
+      try {
+        await reindexProjectFile(projectId, file, {
+          deleteFile: (pid, fid) => ext.deleteFileForProject(pid, fid),
+          ingest: (pid, input) =>
+            serviceHub.uploads().ingestFileAttachmentForProject(
+              pid,
+              createDocumentAttachment({
+                name: input.name ?? input.path.split(/[\\/]/).pop() ?? input.path,
+                path: input.path,
+                fileType: input.type,
+                size: input.size,
+              })
+            ),
+          fileStat: fs.fileStat,
+        })
+        done++
+      } catch (error) {
+        console.error('Failed to re-index file:', error)
+        toast.error(t('common:projects.reindexFailed'), {
+          description: humanizeUploadError(t, error, file.name),
+        })
+      }
+    }
+    setReindexingIds((prev) => {
+      const next = new Set(prev)
+      fileIds.forEach((id) => next.delete(id))
+      return next
+    })
+    if (done > 0) {
+      toast.success(t('common:projects.reindexed', { count: done }))
+    }
+    await loadProjectFiles()
+  }
+
+  const changedIds = files
+    .filter((f) => freshness[f.id] === 'changed')
+    .map((f) => f.id)
+
   const isEmpty = !loading && files.length === 0
   // A reload keeps the list on screen; the spinner is for an empty first load.
   const showSpinner = loading && files.length === 0
@@ -806,6 +987,21 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     <div className="p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium">{t('common:projects.files')}</h3>
+        <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            if (!attachmentsEnabled) {
+              toast.info(t('common:toast.attachmentsDisabledInfo.title'))
+              return
+            }
+            setAddWebPageOpen(true)
+          }}
+        >
+          <Globe className="size-4" />
+          <span>{t('common:projects.webPage.open')}</span>
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -819,7 +1015,14 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           )}
           <span>{t('common:projects.processButton')}</span>
         </Button>
+        </div>
       </div>
+      <AddWebPageDialog
+        projectId={projectId}
+        open={addWebPageOpen}
+        onOpenChange={setAddWebPageOpen}
+        onAdded={loadProjectFiles}
+      />
 
       {uploadProgress && uploadProgress.total > 0 && (
         <div className="mb-3 space-y-1.5">
@@ -876,6 +1079,18 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         <div className="flex items-center justify-center py-8">
           <Loader2 className="size-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
         </div>
+      ) : isEmpty && loadFailed ? (
+        <div
+          role="alert"
+          className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-destructive/40 px-4 py-6 text-center"
+        >
+          <p className="text-sm text-destructive">
+            {t('common:projects.filesLoadFailed')}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => void loadProjectFiles()}>
+            {t('common:projects.retryLoad')}
+          </Button>
+        </div>
       ) : isEmpty ? (
         <div
           className={cn(
@@ -884,6 +1099,16 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
               ? 'bg-acc-tint border-acc'
               : 'bg-muted/60 border-border-strong hover:bg-muted'
           )}
+          role="button"
+          tabIndex={0}
+          aria-label={t('common:projects.processButton')}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleUpload()
+            }
+          }}
           onClick={handleUpload}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -904,6 +1129,24 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {changedIds.length > 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/5 p-2 text-xs">
+              <span>
+                {t('common:projects.filesChangedOnDisk', {
+                  count: changedIds.length,
+                })}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleReindex(changedIds)}
+                disabled={reindexingIds.size > 0}
+              >
+                <RefreshCw className="size-3.5" aria-hidden />
+                {t('common:projects.reindexAllChanged')}
+              </Button>
+            </div>
+          )}
           {renderNodes(fileTree.nodes, 0)}
 
           <div
@@ -913,6 +1156,16 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
               ? 'bg-acc-tint border-acc'
               : 'bg-muted/60 border-border-strong hover:bg-muted'
           )}
+          role="button"
+          tabIndex={0}
+          aria-label={t('common:projects.processButton')}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleUpload()
+            }
+          }}
           onClick={handleUpload}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}

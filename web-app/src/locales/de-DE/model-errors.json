@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Dieses Modell verwendet einen Quantisierungstyp, den das GPU-Backend nicht ausführen kann. Lade eine andere Quantisierung wie Q4_K_M herunter oder schalte das GPU-Offloading aus.",
     "ENGINE_STOPPED": "Die Engine wurde unerwartet beendet. Lade das Modell erneut, um sie neu zu starten; falls das weiterhin passiert, nennt die letzte Ausgabe der Engine unten den Grund.",
     "OUT_OF_MEMORY": "Es ist nicht genug Speicher vorhanden, um dieses Modell auszuführen. Ein kleineres Modell oder eine kleinere Kontextgröße hilft meist.",
+    "PROMPT_OUT_OF_MEMORY": "Dem Modell ist bei diesem Prompt der GPU-Speicher ausgegangen, daher wurde sein Server beendet. Versuche einen kürzeren Kontext oder ein kleineres Modell; deine nächste Nachricht startet den Server neu.",
     "INVALID_ARGUMENT": "Eine der Einstellungen des Modells ist ungültig.",
     "IO_ERROR": "Beim Starten des Modells konnte eine Datei nicht gelesen oder geschrieben werden.",
     "INTERNAL_ERROR": "Beim Starten des Modells ist in Flint etwas schiefgelaufen."
@@ -38,5 +39,8 @@
   "serverStartModelFailed": "Modell konnte nicht gestartet werden",
   "serverStartFailed": "Server konnte nicht gestartet werden",
   "azureEndpointMissing": "Für {{provider}} ist kein Endpunkt konfiguriert. Lege die Basis-URL unter Einstellungen > Modellanbieter fest.",
-  "emptyReply": "Das Modell hat keine Antwort geliefert. Versuche es neu zu generieren oder prüfe die Anbieter-Einstellungen."
+  "emptyReply": "Das Modell hat keine Antwort geliefert. Versuche es neu zu generieren oder prüfe die Anbieter-Einstellungen.",
+  "gpuCrashCpuFallbackTitle": "Der GPU-Treiber ist abgestürzt",
+  "gpuCrashCpuFallbackQuestion": "Der GPU-Treiber ist beim Laden dieses Modells abgestürzt. Stattdessen auf der CPU laden? Es läuft dann langsamer.",
+  "gpuCrashCpuFallbackConfirm": "Auf CPU laden"
 }

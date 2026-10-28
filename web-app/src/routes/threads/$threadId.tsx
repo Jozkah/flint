@@ -14,10 +14,7 @@ import {
 } from '@/hooks/useConversationPane'
 import { PRIMARY_PANE, type SplitTarget } from '@/hooks/useSplitConversation'
 
-type ThreadModel = {
-  id: string
-  provider: string
-}
+import { parseThreadModel, type ThreadModel } from '@/lib/parseThreadModel'
 
 type SearchParams = {
   threadModel?: ThreadModel
@@ -28,7 +25,7 @@ export const Route = createFileRoute('/threads/$threadId')({
   component: ThreadDetail,
   validateSearch: (search: Record<string, unknown>): SearchParams => {
     return {
-      threadModel: search.threadModel as ThreadModel | undefined,
+      threadModel: parseThreadModel(search.threadModel),
     }
   },
 })

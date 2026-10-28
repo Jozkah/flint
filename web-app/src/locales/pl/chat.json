@@ -44,6 +44,9 @@
     "description": "Indeksowanie załączonych plików, aby można je było przeszukiwać i cytować. W przypadku dużych dokumentów może to chwilę potrwać."
   },
   "actions": {
+    "readAloud": "Czytaj na głos",
+    "stopReading": "Zatrzymaj czytanie",
+    "codeOmitted": "kod pominięty",
     "copy": "Kopiuj",
     "regenerate": "Wygeneruj odpowiedź ponownie",
     "continue": "Kontynuuj generowanie",
@@ -294,5 +297,14 @@
     "reasoningLabel": "Rozumowanie: {{state}}",
     "thinkingBudget": "Budżet myślenia",
     "stopGenerating": "Zatrzymaj generowanie"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

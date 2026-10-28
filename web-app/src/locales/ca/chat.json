@@ -44,6 +44,9 @@
     "description": "S'estan indexant els fitxers adjunts perquè es puguin cercar i citar. Pot trigar una mica amb documents grans."
   },
   "actions": {
+    "readAloud": "Llegeix en veu alta",
+    "stopReading": "Atura la lectura",
+    "codeOmitted": "codi omès",
     "copy": "Copia",
     "regenerate": "Regenera la resposta",
     "continue": "Continua generant",
@@ -235,6 +238,7 @@
     "referencesNone": "Cap referència coincideix",
     "references_one": "{{count}} referència",
     "references_other": "{{count}} referències",
+    "references_many": "{{count}} referències",
     "aliasNotSaved": "Àlies no desat: {{message}}",
     "aliasSaved": "@alias:{{name}} desat per a {{target}}",
     "modelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models.",
@@ -256,12 +260,16 @@
     "dupVideo": "Alguns fitxers de vídeo ja estan adjunts",
     "audioTooLarge_one": "Fitxer d'àudio massa gran (màx. {{limit}}): {{files}}",
     "audioTooLarge_other": "Fitxers d'àudio massa grans (màx. {{limit}}): {{files}}",
+    "audioTooLarge_many": "Fitxers d'àudio massa grans (màx. {{limit}}): {{files}}",
     "videoTooLarge_one": "Fitxer de vídeo massa gran (màx. {{limit}}): {{files}}",
     "videoTooLarge_other": "Fitxers de vídeo massa grans (màx. {{limit}}): {{files}}",
+    "videoTooLarge_many": "Fitxers de vídeo massa grans (màx. {{limit}}): {{files}}",
     "audioInvalid_one": "Tipus d'àudio no vàlid (només WAV, MP3): {{files}}",
     "audioInvalid_other": "Tipus d'àudio no vàlids (només WAV, MP3): {{files}}",
+    "audioInvalid_many": "Tipus d'àudio no vàlids (només WAV, MP3): {{files}}",
     "videoInvalid_one": "Tipus de vídeo no vàlid: {{files}}",
     "videoInvalid_other": "Tipus de vídeo no vàlids: {{files}}",
+    "videoInvalid_many": "Tipus de vídeo no vàlids: {{files}}",
     "addAudio": "Afegeix àudio",
     "addVideo": "Afegeix vídeo",
     "indexingDocs": "Indexant documents…",
@@ -275,5 +283,14 @@
     "reasoningLabel": "Raonament: {{state}}",
     "thinkingBudget": "Pressupost de raonament",
     "stopGenerating": "Atura la generació"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

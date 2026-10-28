@@ -17,6 +17,7 @@ import {
   type HandoffRecord,
 } from '@/lib/sessionHandoff'
 import { errorText } from '@/lib/errorText'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 export function CoworkHandoffNotice({
   handoff,
@@ -28,6 +29,7 @@ export function CoworkHandoffNotice({
   folder: string | null
   onDismiss: () => void
 }) {
+  const { t } = useTranslation()
   const expected = handoff?.info.folder ?? null
   const [match, setMatch] = useState<FolderMatch | { error: string } | null>(
     null
@@ -59,25 +61,27 @@ export function CoworkHandoffNotice({
   return (
     <section
       className="mb-2 rounded-[10px] bg-warning-tint px-3 py-2 text-xs text-fg-2 shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--warning)_30%,transparent)]"
-      aria-label="Handed off from another computer"
+      aria-label={t('common:handoff.label')}
       data-testid="handoff-notice"
     >
       <p className="mb-1 font-medium text-foreground">
-        This session was handed off from another computer.
+        {t('common:handoff.title')}
       </p>
       <ul className="list-disc pl-4" role="status" aria-live="polite">
         {items.map((item, i) => (
-          <li key={i} data-testid={`handoff-item-${item.kind}`}>
+          <li key={`${item.kind}-${i}`} data-testid={`handoff-item-${item.kind}`}>
             {describeRestoreItem(item)}
           </li>
         ))}
         {expected && folder && match && (
           <li data-testid="handoff-folder-check">
             {'error' in match
-              ? `The attached folder could not be checked: ${match.error}`
+              ? t('common:handoff.checkFailed', { error: match.error })
               : match.matches
-                ? `The attached folder matches the one the session worked in (${expected.name}).`
-                : `The attached folder is not the one the session worked in: ${match.differences.join('; ')}.`}
+                ? t('common:handoff.folderMatches', { name: expected.name })
+                : t('common:handoff.folderDiffers', {
+                    differences: match.differences.join('; '),
+                  })}
           </li>
         )}
       </ul>
@@ -88,7 +92,7 @@ export function CoworkHandoffNotice({
         onClick={onDismiss}
         data-testid="handoff-dismiss"
       >
-        Dismiss
+        {t('common:handoff.dismiss')}
       </Button>
     </section>
   )

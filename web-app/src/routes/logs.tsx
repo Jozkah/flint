@@ -6,8 +6,8 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { LogsDashboard } from '@/containers/LogViewer'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.appLogs as any)({
+ 
+export const Route = createFileRoute(route.appLogs)({
   component: LogsViewer,
 })
 
@@ -64,11 +64,16 @@ function LogsViewer() {
     }
     updateLogs()
 
-    // repeat action each 3s
-    const intervalId = setInterval(() => updateLogs(), 3000)
+    // repeat each 3s while visible; catch up as soon as the page is shown
+    const tick = () => {
+      if (document.visibilityState !== 'hidden') updateLogs()
+    }
+    const intervalId = setInterval(tick, 3000)
+    document.addEventListener('visibilitychange', tick)
 
     return () => {
       clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', tick)
     }
   }, [serviceHub])
 

@@ -155,6 +155,15 @@
     "composerRailButtonsDesc": "在 Cowork 消息框下方显示“预览”“代码”“更改”“活动”和“时间线”。关闭时，标题栏中的一个“输出”按钮会打开该面板。",
     "autoGenerateTitle": "自动生成聊天标题",
     "autoGenerateTitleDesc": "自动将新对话总结为会话标题。关闭后将保留默认标题，直到你手动重命名。",
+    "titleModel": "标题模型",
+    "titleModelDesc": "用于自动生成聊天标题的模型。若不可用，则使用该聊天自身的模型。",
+    "titleModelDefault": "聊天的模型",
+    "titleModelSearch": "搜索模型",
+    "titleModelEmpty": "没有可用的模型",
+    "titleModelEmptySearch": "没有与“{{query}}”匹配的模型",
+    "titlePrompt": "标题提示词",
+    "titlePromptDesc": "生成标题时随对话一起发送的指令。",
+    "titlePromptReset": "恢复默认",
     "windowBackground": "窗口背景",
     "windowBackgroundDesc": "设置应用窗口的背景颜色。",
     "appMainView": "应用主视图",
@@ -266,7 +275,7 @@
     "caBundleBroken": "此包无法使用（{{kind}}）：在修复或移除之前，出站 HTTPS 不信任任何内容。",
     "ignoreSslScope": "适用于所有经代理的流量。单个提供商也可以只对自己的地址允许无效证书，设置在模型提供商中该提供商的页面上。",
     "proxyUrlInvalid": "这看起来不像代理地址。请使用 host:port 或 http://host:port。",
-    "proxyUrlScheme": "仅支持 http 和 https 代理。",
+    "proxyUrlScheme": "仅支持 http、https、socks5 和 socks5h 代理。",
     "ignoreSslConfirmTitle": "忽略 SSL 证书？",
     "ignoreSslConfirmBody": "Flint 将对所有代理流量接受自签名、已过期或不匹配的证书，因此路径上的任何人都可能读取或篡改这些流量。仅在你信任该代理和网络时继续。",
     "ignoreSslConfirm": "忽略证书",
@@ -465,7 +474,9 @@
     "usageUnsaved": "未保存的更改",
     "stopServerToEdit": "停止服务器后才能编辑",
     "trustedHostsInvalid": "无效的主机：{{hosts}}。请使用主机或 主机:端口，例如 example.com 或 192.168.1.5:3000。",
-    "trustedHostsUnsaved": "未保存。按 Enter 保存，按 Escape 撤销。"
+    "trustedHostsUnsaved": "未保存。按 Enter 保存，按 Escape 撤销。",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "分析",
@@ -539,6 +550,15 @@
     "closeToTrayDesc": "关闭窗口时，Flint 会隐藏到系统托盘而不是退出。请从托盘菜单退出。",
     "downloadLimit": "下载速度限制",
     "downloadLimitDesc": "将模型下载限制为每秒这么多 MB。0 表示不限制。",
+    "hfEndpoint": "Hugging Face 端点",
+    "hfEndpointDesc": "模型搜索和下载的目标地址。如果 huggingface.co 在你所在地区被屏蔽或很慢，请选择镜像。",
+    "hfEndpointDefault": "默认 (huggingface.co)",
+    "hfEndpointCustom": "自定义 URL",
+    "hfEndpointSave": "保存",
+    "hfEndpointSaved": "已保存 Hugging Face 端点",
+    "hfEndpointEnvOverride": "环境变量 HF_ENDPOINT 已设为 {{value}}，会覆盖此设置。",
+    "hfEndpointSendToken": "将我的令牌发送到此镜像",
+    "hfEndpointSendTokenDesc": "默认关闭：你的 Hugging Face 令牌只会发送到 huggingface.co。仅在信任此镜像时开启。",
     "exportLogs": "导出日志（已脱敏）",
     "exportLogsDesc": "保存已移除已知 API 密钥和令牌的应用日志，以便附加到错误报告中。分享前请先检查。",
     "importChatGpt": "导入 ChatGPT 导出数据",
@@ -579,14 +599,30 @@
       "installing": "正在安装…",
       "uninstall": "卸载",
       "uninstalling": "正在卸载…",
-      "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安装。在此安装即可使用本份的 CLI。"
+      "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安装。在此安装即可使用本份的 CLI。",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "启动与托盘",
     "cliGroup": "命令行",
     "keepAwake": "Keep the computer awake during runs",
     "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
     "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "hfToken": {
+      "empty": "Please enter a Hugging Face token to validate",
+      "valid": "Token is valid",
+      "signedInAs": "Signed in as {{name}}",
+      "validDesc": "Your Hugging Face token is valid.",
+      "invalid": "Token invalid",
+      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
+      "timedOut": "Validation timed out",
+      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
+      "failed": "Validation failed",
+      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+    }
   },
   "extensions": {
     "title": "扩展"
@@ -669,6 +705,9 @@
     "title": "上下文压缩",
     "auto": "自动压缩",
     "autoDescription": "在对话超出模型上下文窗口之前腾出空间。聊天、Cowork 和 CLI 共用。",
+    "compactAt": "压缩时机",
+    "compactAtDescription": "当对话达到上下文窗口的这一比例时，会先总结较早的消息。自动表示使用内置值。会在 llama.cpp 上下文移位丢弃内容之前运行。",
+    "compactAtAuto": "自动",
     "reserveTokens": "保留的 token 数",
     "reserveDescription": "保持空闲的余量：当对话使用量超过窗口减去此值时开始压缩。",
     "keepRecent": "保留的近期消息",
@@ -1383,6 +1422,7 @@
       "settleFailed": "无法解决该冲突",
       "forgotten": "已忘记记忆",
       "forgetFailed": "无法忘记该记忆",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "无法更改该记忆",
       "updated": "记忆已更新",
       "updateFailed": "无法更新该记忆",
@@ -1404,7 +1444,12 @@
     "noMatchHint": "检查拼写，或清除搜索以查看全部。",
     "emptyHint": "在上方写一条，或让 Flint 在聊天时自动记住。",
     "footerCount_other": "此范围内有 {{count}} 条记忆",
-    "agentNotes": "智能体笔记"
+    "agentNotes": "智能体笔记",
+    "report": {
+      "summary_other": "已从导出中导入 {{count}} 条记忆",
+      "duplicates_other": "已跳过 {{count}} 条重复",
+      "refused_other": "已拒绝 {{count}} 条"
+    }
   },
   "chatMentions": {
     "title": "对话提及",
@@ -1481,7 +1526,21 @@
     "composerGroup": "输入框",
     "repliesGroup": "回复",
     "linksGroup": "链接",
-    "artifactsGroup": "工件与小组件"
+    "artifactsGroup": "工件与小组件",
+    "reasoningDefault": "新聊天的推理",
+    "reasoningDefaultDesc": "新聊天中思考默认开启还是关闭。模型自身的推理设置和输入框中的开关仍然优先。无法切换思考的模型不受影响。",
+    "reasoningDefaultModel": "模型默认",
+    "reasoningDefaultOn": "开启",
+    "reasoningDefaultOff": "关闭",
+    "rulesGroup": "规则",
+    "rulesDesc": "在助手自身指令之后添加到对话中的常驻指令。若只想在某个对话中关闭，请在该对话的选项面板里切换。",
+    "rulesEnabled": "规则已启用",
+    "rulesRemove": "删除规则",
+    "rulesAllChats": "所有对话",
+    "rulesNoGroups": "还没有分组",
+    "rulesPlaceholder": "添加规则，例如“用公制单位回答”",
+    "rulesAdd": "添加",
+    "rulesTooLong": "已启用的规则约 {{tokens}} 个 token，超过建议的 {{budget}}。过长的规则会在每个对话中占用上下文。"
   },
   "data": {
     "tabStorage": "存储",
@@ -1500,6 +1559,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

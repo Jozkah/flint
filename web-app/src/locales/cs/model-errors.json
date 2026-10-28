@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Tento model používá typ kvantizace, který backend GPU nedokáže spustit. Stáhněte jinou kvantizaci, například Q4_K_M, nebo vypněte offload na GPU.",
     "ENGINE_STOPPED": "Engine se neočekávaně zastavil. Načtěte model znovu, aby se restartoval; pokud se to bude opakovat, důvod uvádí poslední výstup enginu níže.",
     "OUT_OF_MEMORY": "Pro spuštění tohoto modelu není dost paměti. Obvykle pomůže menší model nebo menší velikost kontextu.",
+    "PROMPT_OUT_OF_MEMORY": "Modelu došla u tohoto promptu paměť GPU, takže se jeho server zastavil. Zkuste kratší kontext nebo menší model; další zpráva server znovu spustí.",
     "INVALID_ARGUMENT": "Jedno z nastavení modelu není platné.",
     "IO_ERROR": "Při spouštění modelu se nepodařilo přečíst nebo zapsat soubor.",
     "INTERNAL_ERROR": "Při spouštění modelu se uvnitř Flintu něco pokazilo."
@@ -38,5 +39,8 @@
   "serverStartModelFailed": "Model se nepodařilo spustit",
   "serverStartFailed": "Server se nepodařilo spustit",
   "azureEndpointMissing": "Pro {{provider}} není nastaven žádný endpoint. Nastavte základní URL v Nastavení > Poskytovatelé modelů.",
-  "emptyReply": "Model skončil bez odpovědi. Zkuste ji vygenerovat znovu nebo zkontrolujte nastavení poskytovatele."
+  "emptyReply": "Model skončil bez odpovědi. Zkuste ji vygenerovat znovu nebo zkontrolujte nastavení poskytovatele.",
+  "gpuCrashCpuFallbackTitle": "Ovladač GPU spadl",
+  "gpuCrashCpuFallbackQuestion": "Ovladač GPU spadl při načítání tohoto modelu. Načíst ho místo toho na CPU? Poběží pomaleji.",
+  "gpuCrashCpuFallbackConfirm": "Načíst na CPU"
 }

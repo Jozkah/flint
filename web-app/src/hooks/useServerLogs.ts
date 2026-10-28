@@ -46,7 +46,18 @@ export function useServerLogs(): LogEntry[] {
         const history = (logData ?? []).filter(
           (log) => log?.target === SERVER_LOG_TARGET
         ) as LogEntry[]
-        setLogs((live) => cap([...history, ...live]))
+        // A line that arrived live before the file was read is in both.
+        const seen = new Set(
+          history.map((log) => `${log.timestamp}\u0000${log.message}`)
+        )
+        setLogs((live) =>
+          cap([
+            ...history,
+            ...live.filter(
+              (log) => !seen.has(`${log.timestamp}\u0000${log.message}`)
+            ),
+          ])
+        )
       })
       .catch((error) => {
         console.error('Failed to read logs:', error)

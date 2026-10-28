@@ -7,6 +7,7 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import FallbackModelsPicker from '@/containers/FallbackModelsPicker'
+import { HfEndpointSetting } from '@/containers/HfEndpointSetting'
 
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
 
@@ -25,7 +26,7 @@ export function ModelDefaultsCard() {
   const validateToken = async () => {
     const token = (huggingfaceToken || '').trim()
     if (!token) {
-      toast.error('Please enter a Hugging Face token to validate')
+      toast.error(t('settings:general.hfToken.empty'))
       return
     }
     setIsValidatingToken(true)
@@ -41,28 +42,25 @@ export function ModelDefaultsCard() {
       })
       if (resp.ok) {
         const data = await resp.json()
-        toast.success('Token is valid', {
+        toast.success(t('settings:general.hfToken.valid'), {
           description: data?.name
-            ? `Signed in as ${data.name}`
-            : 'Your Hugging Face token is valid.',
+            ? t('settings:general.hfToken.signedInAs', { name: data.name })
+            : t('settings:general.hfToken.validDesc'),
         })
       } else {
-        toast.error('Token invalid', {
-          description:
-            'The provided Hugging Face token is invalid. Please check your token and try again.',
+        toast.error(t('settings:general.hfToken.invalid'), {
+          description: t('settings:general.hfToken.invalidDesc'),
         })
       }
     } catch (e) {
       const name = (e as { name?: string })?.name
       if (name === 'AbortError') {
-        toast.error('Validation timed out', {
-          description:
-            'The validation request timed out. Please check your network connection and try again.',
+        toast.error(t('settings:general.hfToken.timedOut'), {
+          description: t('settings:general.hfToken.timedOutDesc'),
         })
       } else {
-        toast.error('Validation failed', {
-          description:
-            'A network error occurred while validating the token. Please check your internet connection.',
+        toast.error(t('settings:general.hfToken.failed'), {
+          description: t('settings:general.hfToken.failedDesc'),
         })
       }
     } finally {
@@ -109,6 +107,7 @@ export function ModelDefaultsCard() {
           </div>
         }
       />
+      {IS_TAURI && <HfEndpointSetting />}
       {IS_TAURI && (
         <CardItem
           anchor="settings-model-providers-download-limit"

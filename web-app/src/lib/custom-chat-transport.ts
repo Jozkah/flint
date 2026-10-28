@@ -116,6 +116,7 @@ import {
   mergeProviderOptions,
 } from '@/lib/reasoningProviderOptions'
 import { resolveModel } from '@/lib/modelOverrides'
+import { withReasoningDefault } from '@/lib/reasoningDefault'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { threadToolsGranted } from '@/hooks/useThreadToolGrants'
 import { type MCPTool } from '@janhq/core'
@@ -127,7 +128,7 @@ import {
   contextSafetyMargin,
   type ContextManagerConfig,
 } from './context-manager'
-import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, type CompactionRecord } from '@/lib/compaction'
+import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, DEFAULT_COMPACT_THRESHOLD, type CompactionRecord } from '@/lib/compaction'
 import {
   resetCompactionBreaker,
 } from '@/lib/compactionGuard'
@@ -149,7 +150,7 @@ import {
   type CompactionHost,
   type RunCompactionOptions,
 } from '@/lib/chat/transport/compaction'
-import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
+import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY, compactThresholdFor } from '@/lib/compactionPolicy'
 import { toolsForConversation, toolsForWindow } from '@/lib/leanTools'
 import {
   SMALL_CONTEXT_MEMORY_CHARS,
@@ -1102,7 +1103,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       selectedProvider,
       resolveModel(
         selectedModel,
-        useModelOverrides.getState().forThread(threadId)
+        withReasoningDefault(
+          useModelOverrides.getState().forThread(threadId),
+          selectedProvider,
+          selectedModel,
+          useGeneralSetting.getState().reasoningDefault
+        )
       )
     )
   }
@@ -2096,7 +2102,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // the composer shows as set would never reach the request.
       const selectedModel = resolveModel(
         selection.selectedModel,
-        useModelOverrides.getState().forThread(threadId)
+        withReasoningDefault(
+          useModelOverrides.getState().forThread(threadId),
+          providerId,
+          selection.selectedModel,
+          useGeneralSetting.getState().reasoningDefault
+        )
       )
       const reasoningParams = buildLlamacppReasoningParams(
         effectiveProviderName,
@@ -2457,6 +2468,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             trimReserveTokens:
               contextConfig.maxOutputTokens +
               contextSafetyMargin(estimatedWindow),
+            threshold: compactThresholdFor(compaction, DEFAULT_COMPACT_THRESHOLD),
             systemPromptTokens,
             keepRecent: compaction.keepRecent || DEFAULT_KEEP_RECENT,
             summaryMaxTokens: compaction.summaryMaxTokens,

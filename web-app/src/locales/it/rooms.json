@@ -299,6 +299,7 @@
     "continuePrompt": "Continua la tua risposta precedente da dove si è interrotta.",
     "catchUp": "Recupero: ha risposto anche a {{count}} domande precedenti",
     "catchUp_one": "Recupero: ha risposto anche a 1 domanda precedente",
+    "catchUp_many": "Recupero: ha risposto anche a {{count}} domande precedenti",
     "catchUpHint": "Questo partecipante si è unito dopo queste domande, quindi questa risposta risponde anche a loro:"
   },
   "unknownWindow": {
@@ -545,10 +546,12 @@
   "apply": {
     "title_one": "Applica {{count}} modifica alla tua cartella",
     "title_other": "Applica {{count}} modifiche alla tua cartella",
+    "title_many": "Applica {{count}} modifiche alla tua cartella",
     "copyPath": "Copia il percorso della cartella {{path}}",
     "pathCopied": "Percorso della cartella copiato",
     "files_one": "{{count}} file",
     "files_other": "{{count}} file",
+    "files_many": "{{count}} file",
     "source": "Da {{name}} · turno {{round}}",
     "safety": "Non viene applicato nulla se la patch non si applica in modo pulito. Puoi annullare subito dopo.",
     "checking": "Verifica dell’applicazione alla tua cartella…",
@@ -556,6 +559,7 @@
     "checkFailed": "Impossibile verificare la patch: {{message}}",
     "conflict_one": "{{count}} file non si applica alla tua cartella",
     "conflict_other": "{{count}} file non si applicano alla tua cartella",
+    "conflict_many": "{{count}} file non si applicano alla tua cartella",
     "conflictHint": "Escludili, oppure chiedi al partecipante di rifarli sulla cartella com’è adesso.",
     "notChecked": "non verificato singolarmente (troppi file)",
     "fileConflict": "Non si applica",
@@ -564,6 +568,7 @@
     "fileDirty": "Le tue modifiche",
     "dirtyTitle_one": "Hai modifiche non salvate in commit in {{count}} di questi file",
     "dirtyTitle_other": "Hai modifiche non salvate in commit in {{count}} di questi file",
+    "dirtyTitle_many": "Hai modifiche non salvate in commit in {{count}} di questi file",
     "dirtyHint": "La patch viene scritta sopra le tue modifiche. Fai prima commit o stash se vuoi poter tornare indietro facilmente.",
     "selectAll": "Seleziona tutti i file",
     "include": "Includi {{path}}",
@@ -578,8 +583,10 @@
     "noLines": "Nessuna riga modificata (solo modalità o nome).",
     "showMore_one": "Mostra {{count}} altra riga",
     "showMore_other": "Mostra altre {{count}} righe",
+    "showMore_many": "Mostra altre {{count}} righe",
     "hiddenLines_one": "({{count}} nascosta)",
     "hiddenLines_other": "({{count}} nascoste)",
+    "hiddenLines_many": "({{count}} nascoste)",
     "blockedConflict": "Applica è disattivato: alcuni file selezionati non si applicano in modo pulito.",
     "blockedNothing": "Seleziona almeno un file.",
     "blockedFailed": "Applica è disattivato finché la verifica non riesce.",
@@ -587,8 +594,10 @@
     "patchCopied": "Patch copiata",
     "confirm_one": "Applica {{count}} file",
     "confirm_other": "Applica {{count}} file",
+    "confirm_many": "Applica {{count}} file",
     "applied_one": "{{count}} file applicato alla tua cartella",
     "applied_other": "{{count}} file applicati alla tua cartella",
+    "applied_many": "{{count}} file applicati alla tua cartella",
     "undo": "Annulla",
     "undone": "La modifica è stata tolta dalla tua cartella",
     "undoFailed": "Impossibile annullare: {{message}}"
@@ -658,5 +667,6 @@
     "ranTools": "Prima, in questo turno, hai già eseguito degli strumenti ({{ran}}); {{reason}} Non ripetere nulla che abbia modificato file o stato; rileggi solo ciò che ti serve ancora.",
     "ranToolsDropped": "il loro output è stato scartato per rientrare nella finestra di contesto.",
     "ranToolsRetry": "il provider è poi andato in errore e la richiesta viene ritentata."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

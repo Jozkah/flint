@@ -41,8 +41,8 @@ import {
 import { LoaderCircle } from 'lucide-react'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.local_api_server as any)({
+ 
+export const Route = createFileRoute(route.settings.local_api_server)({
   component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
 
@@ -101,7 +101,8 @@ function LocalAPIServerContent() {
     setDefaultModelLocalApiServer,
   } = useLocalApiServer()
 
-  const { serverStatus, setServerStatus } = useAppState()
+  const serverStatus = useAppState((state) => state.serverStatus)
+  const setServerStatus = useAppState((state) => state.setServerStatus)
   const [showApiKeyError, setShowApiKeyError] = useState(false)
   const setActiveModels = useAppState((state) => state.setActiveModels)
 
@@ -115,8 +116,8 @@ function LocalAPIServerContent() {
       try {
         const running = await serviceHub.app().getServerStatus()
         console.log('Server status check:', running)
-        if (running) {
-          setServerStatus('running')
+        if (useAppState.getState().serverStatus !== 'pending') {
+          setServerStatus(running ? 'running' : 'stopped')
         }
       } catch (error) {
         console.error('Failed to check server status:', error)
@@ -263,15 +264,31 @@ function LocalAPIServerContent() {
           }
         })
     } else {
+      const previousStatus = serverStatus
       setServerStatus('pending')
-      window.core?.api
-        ?.stopServer()
+      const stop = window.core?.api?.stopServer()
+      if (!stop) {
+        // Nothing to stop it with: do not leave the button stuck on pending.
+        setServerStatus(previousStatus)
+        return
+      }
+      stop
         .then(() => {
           setServerStatus('stopped')
         })
-        .catch((error: unknown) => {
+        .catch(async (error: unknown) => {
           console.error('Error stopping server:', error)
-          setServerStatus('stopped')
+          // The stop failed, so the server may still be up: ask, do not assume.
+          let running = true
+          try {
+            running = await serviceHub.app().getServerStatus()
+          } catch {
+            // keep "running": a failed probe is not proof it stopped
+          }
+          setServerStatus(running ? 'running' : 'stopped')
+          toast.error(t('model-errors:serverStartFailed'), {
+            description: String((error as { message?: string })?.message ?? error),
+          })
         })
     }
   }
@@ -510,8 +527,8 @@ function LocalAPIServerContent() {
           <Card title={t('settings:agentTools.tabBehaviour')}>
             <CardItem
               anchor="settings-local-api-server-server-tools"
-              title="Execute tools on server"
-              description="Run tools server-side for chat endpoints."
+              title={t('settings:localApiServer.serverTools')}
+              description={t('settings:localApiServer.serverToolsDesc')}
               actions={
                 <Switch
                   checked={enableServerToolExecution}

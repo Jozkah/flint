@@ -44,6 +44,8 @@ export type CompactAtThresholdOptions = {
   window: number
   /** What the trimmer keeps free of the window; compaction starts before it acts. */
   trimReserveTokens?: number
+  /** Share of the window to compact at (the user's choice); omitted: built-in. */
+  threshold?: number
   systemPromptTokens: number
   keepRecent: number
   summaryMaxTokens: number
@@ -95,7 +97,8 @@ export async function compactAtThreshold(
 
   const fullTrigger = compactionTriggerTokens(
     opts.window,
-    opts.trimReserveTokens
+    opts.trimReserveTokens,
+    opts.threshold
   )
   // The next request grows by about what the last assistant turns did (tool
   // output rides in them), so compact before that growth crosses the window

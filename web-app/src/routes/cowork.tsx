@@ -4,13 +4,9 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
-import { switchedFromOf } from '@/lib/assistantSwitch'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
-import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
-import { ModelDoctor } from '@/containers/ModelDoctor'
-import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
 import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
 import {
   useBrowserToolMirror,
@@ -23,9 +19,7 @@ import type { VerifyReport } from '@/lib/browserVerify'
 import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
-import ChatInput from '@/containers/ChatInput'
-import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
-import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
+import { type WidgetHost } from '@/lib/visualize/hostContext'
 import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
@@ -42,7 +36,6 @@ import { route } from '@/constants/routes'
 import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -55,7 +48,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   finishRunResources,
-  projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
@@ -66,7 +58,7 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { basenameOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
+import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import { codePathExists } from '@/lib/codePathExists'
 import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
@@ -79,13 +71,11 @@ import {
   CoworkSidePanel,
   type InspectorLayout,
 } from '@/containers/CoworkSidePanel'
-import { CoworkReviewReady } from '@/containers/CoworkReviewReady'
 import {
   useCoworkSessions,
   ensureCurrentSession,
   startPaneSession,
-  startPaneSessionParked,
-} from '@/hooks/useCoworkSessions'
+  } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { resolveCoworkModel } from '@/lib/coworkModelChoice'
@@ -111,7 +101,6 @@ import {
   sessionTotals,
   sessionWorkflows,
   taskIdFor,
-  workflowAnchoredAt,
   type ActivityTask,
   type WorkflowView,
 } from '@/lib/coworkActivity'
@@ -121,7 +110,6 @@ import {
   cancelWorkflow as cancelWorkflowRequest,
   patchForOutcome,
 } from '@/lib/coworkCancel'
-import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import {
@@ -140,13 +128,9 @@ import { currentDescriber, describeRunAttachments } from '@/lib/imageDescription
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
-import { MessageItem } from '@/containers/MessageItem'
-import SkillSelector from '@/containers/SkillSelector'
 import {
   appendLiveMessages,
   assistantAnchorId,
-  segmentAssistantMessage,
-  workflowSegmentIndex,
   coworkTurnsToUIMessages,
 } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
@@ -154,7 +138,6 @@ import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useAssistant } from '@/hooks/useAssistant'
 import {
   ContextOverflowError,
-  coworkWindow,
   isContextOverflow,
   planTurn,
   sessionTokenLimitFor,
@@ -175,14 +158,8 @@ import {
   useToolCallRuntime,
   withToolTiming,
 } from '@/hooks/useToolCallRuntime'
-import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from '@/components/ai-elements/conversation'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
 import {
@@ -199,7 +176,6 @@ import {
   baselineFromStatus,
   buildOriginLedger,
   destinationOfOrigin,
-  evidenceLimit,
   promptFolderAccess,
   summarizeRun,
   unavailableBaseline,
@@ -225,21 +201,15 @@ import {
 import { isSpawnedSession } from '@/lib/spawnSession'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
-import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
-import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
-import { samePlan } from '@/lib/todoLabels'
 import {
   CoworkPinnedProgress,
   CoworkProgressButton,
 } from '@/containers/CoworkPinnedProgress'
-import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import {
   useCoworkDisplay,
   useShowPromptSnapshot,
 } from '@/hooks/useCoworkDisplay'
-import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
-import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
 import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
@@ -254,9 +224,7 @@ import {
 } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { usageEventPayload } from '@/lib/executionTimeline'
-import { TurnUsageDetails } from '@/components/TurnUsageDetails'
 import { recordMemoryUses } from '@/lib/memoryUses'
-import type { TurnMemory } from '@/types/coworkSession'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -273,24 +241,22 @@ import {
 } from '@/lib/fileActivity'
 import { loadGitStatus } from '@/lib/coworkGit'
 import { awaitsModel } from '@/lib/agentActivity'
-import { artifactsFromParts } from '@/lib/coworkArtifacts'
-import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
-import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
-import { CoworkReviewAction } from '@/containers/CoworkReviewAction'
+import { configuredContextTokens } from '@/lib/coworkContextWindow'
+import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
+import { CoworkTranscript } from '@/containers/CoworkTranscript'
+import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
+import { CoworkComposerArea } from '@/containers/CoworkComposerArea'
+import { CoworkDetailsBody } from '@/containers/CoworkDetailsBody'
+import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
-  applySandboxHunk,
   isFlintInternalPath,
   planSandboxApply,
-  sandboxCopyOfProjectFile,
-  sandboxRelativePath,
-} from '@/lib/coworkSandboxApply'
+  } from '@/lib/coworkSandboxApply'
 import { probeSandboxFile } from '@/lib/coworkApplyAll'
 import { absoluteChangePath, shortToolPath } from '@/lib/codePathResolve'
 import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
-import { CoworkRewind } from '@/containers/CoworkRewind'
-import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import {
   NO_USER_EDITS,
   useCoworkUserEdits,
@@ -329,9 +295,6 @@ import {
 } from '@/containers/CoworkRailToolbar'
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
-import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
-import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
-import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import type { UIMessage } from 'ai'
 import {
   compactHistory,
@@ -340,8 +303,7 @@ import {
   resolveAutoCompact,
   shouldCompact,
   DEFAULT_KEEP_RECENT,
-  type CompactionRecord,
-} from '@/lib/compaction'
+  } from '@/lib/compaction'
 import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
 import { CompactionSummaryError, estimateHistoryTokens } from '@/lib/compaction'
 import { fixedPromptTokens } from '@/lib/contextBreakdown'
@@ -351,17 +313,10 @@ import {
   DEFAULT_COMPACTION_POLICY,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
-import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
-  continueRequest,
   deriveRunOutcome,
-  shouldShowRunOutcome,
-} from '@/lib/coworkRunOutcome'
-import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
-import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
-import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
-import { CoworkSubagentQuestions } from '@/containers/CoworkSubagentQuestions'
+  } from '@/lib/coworkRunOutcome'
 import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
 import {
   executeCampaignTool,
@@ -370,24 +325,14 @@ import {
 import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
-import { askedFromParts } from '@/lib/askedSessions'
-import { SessionStopNotice } from '@/containers/SessionStopNotice'
-import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
-import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
-import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
-import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
-import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
-import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
-import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
 import {
   answerMail,
   createMailLedger,
   finalAnswerText,
 } from '@/lib/mailAutoReply'
 import { holdQueueThenStop } from '@/lib/chatSteering'
-import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
 import {
   COWORK_DECISION_WINDOW_MS,
   TeamControl,
@@ -395,16 +340,10 @@ import {
 } from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
-import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { useShallow } from 'zustand/react/shallow'
 import {
-  hideRecovery,
-  recoverableWorktrees,
   recoveryHidden,
-  sessionWorktreeBranch,
-} from '@/lib/coworkWorktrees'
-import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
-import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
+  } from '@/lib/coworkWorktrees'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCompatManifest } from '@/hooks/useCompatManifest'
 import { useImportedMcp } from '@/hooks/useImportedMcp'
@@ -434,18 +373,14 @@ import {
   bindingKey,
   classifyInstruction,
   isMissingFileError,
-  parseSkillRequests,
   parseSkillRequestTriggers,
   resolveSkills,
   unresolvedSkills,
   type ContextAccounting,
   type InstructionFile,
   type InstructionProbe,
-  type ReadinessManifest,
-} from '@/lib/coworkReadiness'
-import { measureContextPack } from '@/lib/coworkContext'
-import { coworkPreRunContext } from '@/lib/coworkPreRun'
-import { notifyToolBatch, peekAgentToolSchemas } from '@/lib/agentTools'
+  } from '@/lib/coworkReadiness'
+import { notifyToolBatch, } from '@/lib/agentTools'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
@@ -455,8 +390,6 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
-import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
-import { CoworkTurnUndo } from '@/containers/CoworkTurnUndo'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -464,9 +397,6 @@ import {
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
-import { CoworkSessionWorktreeBar } from '@/containers/CoworkSessionWorktreeBar'
-import { SharedFolderBar } from '@/containers/SharedFolderBar'
-import { SharedFolderIsolationHint } from '@/containers/SharedFolderIsolationHint'
 import {
   applyDecision,
   conflictKey,
@@ -487,13 +417,7 @@ import { openRunLog, withRunLog } from '@/lib/workflowRuns'
 import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
-import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
-import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
-import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
-import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
-import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
-import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import {
   beginTeamChild,
   settleTeamChild,
@@ -558,7 +482,6 @@ import { setRunModel } from '@/lib/remoteRunner'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import { pickServerFolder } from '@/lib/serverFolderPicker'
 import { MAX_RUN_ATTACHMENTS, type RunAttachment } from '@/lib/remoteRunner'
-import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -575,36 +498,27 @@ import { createChildRunner } from '@/lib/coworkChildRunner'
 import { DelegationNudge } from '@/lib/delegationNudge'
 import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
-import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
-import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
-import { CoworkRecap } from '@/containers/CoworkRecap'
 import { runStatus } from '@/lib/runStatus'
-import { stopToolCall } from '@/lib/toolCallStop'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
-import { CoworkBarStack } from '@/containers/CoworkBarStack'
 import {
   EMPTY_SUMMARY,
-  NarrowBarsSheet,
-  NarrowStatusStrip,
   attentionCount,
   type NarrowBarsSummary,
 } from '@/containers/NarrowStatusStrip'
-import { scrollToApproval } from '@/lib/approvalDestination'
 import { CoworkRunChip } from '@/containers/CoworkRunChip'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { workProfileAsker } from '@/lib/jev'
-import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
-export const Route = createFileRoute(route.cowork as any)({
+export const Route = createFileRoute(route.cowork)({
   beforeLoad: () => ensureCoworkEnabled(),
   component: CoworkRoute,
 })
@@ -625,28 +539,6 @@ function CoworkRoute() {
 }
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
-/**
- * The window a request has to fit inside, when it is known.
- *
- * Resolved by `useModelCapabilities` (AH-195) rather than read from one
- * settings field: an OpenAI-compatible server reports its window under any of
- * several names, and reading only Flint's own `ctx_len` left every such endpoint
- * permanently "not known". When a local runtime has answered this is its
- * effective `n_ctx`, which `--fit` may have set well below the model's
- * training size -- the smaller number is the real limit.
- */
-const configuredContextTokens = (
-  caps: { contextTokens: number | null; source?: string } | null | undefined,
-  acceptedPrompt?: number | null
-): number | null =>
-  coworkWindow({
-    // Use this only when the provider has not reported its own window.
-    userSet:
-      useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
-    capabilities: caps,
-    acceptedPrompt,
-  })
-
 /** The largest prompt the provider has already accepted in these turns. */
 const largestAcceptedPrompt = (
   turns: readonly { usage?: { prompt_tokens?: number } }[] | undefined
@@ -1160,56 +1052,17 @@ export function CoworkPage() {
    * at first run. Retrieved memory and the toolchain probe are left out for
    * the same reason; the run's own measurement replaces this once it exists.
    */
-  const preRunContext = useMemo<ContextAccounting | null>(() => {
-    if (runContext) return null
-    const planMode = isReadOnly(mode)
-    const subagentNames = subagentDefs.map((d) => d.name)
-    return coworkPreRunContext({
-      prompt: {
-        workspacePath,
-        readOnlyFolder: folder,
-        extraFolders,
-        worktreeBranch:
-          effective.destination === 'managed'
-            ? (worktree?.branch ?? null)
-            : null,
-        gitBranch,
-        projectInstructions,
-        compatInstructions: compatInstructionBlocks(compat),
-        projectTooling:
-          folder && tooling?.folder === folder
-            ? (tooling.loaded?.prompt ?? null)
-            : null,
-        planMode,
-        bashAvailable: sandboxEnforces(),
-        subagentNames,
-        webSearch: webSearchEnabled,
-        platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
-        shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
-        mcpServers: [],
-      },
-      tools: {
-        planMode,
-        webSearch: webSearchEnabled,
-        allowSubagents: true,
-        subagentNames,
-        // What a run started with no message yet would carry: the core set.
-        offerGroups: groupsToOffer({ text: '', history: session?.messages ?? [] }),
-      },
-      backendSchemas: peekAgentToolSchemas(folder ?? undefined, 'session'),
-      messages: hasTurns ? null : [],
-      configuredContextTokens: configuredContextTokens(modelCapabilities),
-    })
-  }, [
+  const { readiness } = useCoworkReadiness({
+    sessionId: session?.id,
+    messages: session?.messages,
     runContext,
     mode,
-    session?.messages,
     subagentDefs,
     workspacePath,
     folder,
     extraFolders,
-    effective.destination,
-    worktree?.branch,
+    destination: effective.destination,
+    worktree,
     gitBranch,
     projectInstructions,
     compat,
@@ -1217,98 +1070,15 @@ export function CoworkPage() {
     webSearchEnabled,
     hasTurns,
     modelCapabilities,
-  ])
-  const readiness = useMemo<ReadinessManifest>(() => {
-    const registry = mergeSkillRegistry(compat, {
-      available: availableSkills.map((skill) => ({ name: skill.name })),
-      enabled: new Set(
-        effectiveEnabled(
-          enabledSkills,
-          availableSkills.map((skill) => skill.name)
-        )
-      ),
-    })
-    const requested = parseSkillRequests(
-      composerPrompt,
-      registry.available.map((skill) => skill.name)
-    )
-    return {
-      binding: { sessionId: session?.id ?? null, folder },
-      folder,
-      branch: gitBranch,
-      mode,
-      // From the effective access, not the stored preference: a session that
-      // remembers "edit this folder" but holds no live grant writes to its
-      // sandbox, and the card has to say so.
-      writeDestination: effective.destination,
-      // Only when that is where writes actually go. A session holding a
-      // worktree record but running in Review must not be shown a destination
-      // it is not using.
-      worktree:
-        effective.destination === 'managed' && worktree
-          ? {
-              path: worktree.path,
-              branch: worktree.branch,
-              baseSha: worktree.baseSha,
-              uncommittedAtCreation: worktree.uncommittedAtCreation,
-            }
-          : null,
-      instructions: instructionFiles,
-      // The same merged registry the run resolves against, so the card cannot
-      // call a skill available that the run will report missing.
-      skills: resolveSkills(requested, registry),
-      // Null until a run has built its tool set: before that nothing knows
-      // the number, and stating one would be inventing it.
-      tools: { builtins: advertisedToolCount, mcpServers: connectedMcpServers },
-      model: {
-        id: selectedModel?.id ?? null,
-        supportsTools: selectedModel
-          ? Boolean(selectedModel.capabilities?.includes('tools'))
-          : null,
-      },
-      // From the run's own snapshot when there is one, so the card and the
-      // summary cannot disagree about whether anything is attributable.
-      evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
-      // Only the read for this folder: a late answer for another is ignored.
-      tooling: folder
-        ? tooling?.folder === folder && tooling.loaded
-          ? tooling.loaded.readiness
-          : { state: 'loading' }
-        : undefined,
-      // From the run's own payload once there is one. Before that the
-      // categories that depend on it stay unknown rather than zero: a run that
-      // has not been built has not sent nothing, it has sent nothing *yet*.
-      context:
-        runContext ??
-        preRunContext ??
-        measureContextPack({
-          systemPrompt: null,
-          toolSchemas: null,
-          messages: null,
-          configuredContextTokens: configuredContextTokens(modelCapabilities),
-        }),
-    }
-  }, [
-    session?.id,
-    folder,
-    gitBranch,
-    mode,
     instructionFiles,
-    effective.destination,
-    worktree,
-    compat,
-    runOrigins?.context.baseline,
-    tooling,
+    baseline: runOrigins?.context.baseline,
     advertisedToolCount,
     connectedMcpServers,
-    runContext,
-    preRunContext,
     availableSkills,
     enabledSkills,
     composerPrompt,
     selectedModel,
-    modelCapabilities,
-  ])
+  })
 
   // Read inside the instruction effect without making the session a dependency:
   // the effect keys on the folder, and the ref is only used to notice that the
@@ -2971,11 +2741,11 @@ export function CoworkPage() {
             sessionId: sid,
             serviceHub: serviceHub,
           })
-          for (const f of prepared.failed) toast.error(`Could not read ${f.name}: ${f.error}`)
+          for (const f of prepared.failed) toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
           outgoing = text + prepared.modelSuffix
           const media = submittedToRunAttachments(prepared.parts)
           if (media.unsupported > 0) {
-            return refused('Only images can be sent to a server session; remove the other media files.')
+            return refused(t('common:coworkRun.remoteImagesOnly'))
           }
           if (media.attachments.length > MAX_RUN_ATTACHMENTS) {
             return refused(`A message can carry at most ${MAX_RUN_ATTACHMENTS} files.`)
@@ -3021,10 +2791,10 @@ export function CoworkPage() {
         : null
     if (attached) {
       for (const f of attached.failed) {
-        toast.error(`Could not read ${f.name}: ${f.error}`)
+        toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
       }
       if (attached.truncated.length > 0) {
-        toast.info(`Only part of ${attached.truncated.join(', ')} fits in one message.`)
+        toast.info(t('common:coworkRun.partFits', { files: attached.truncated.join(', ') }))
       }
     }
     const store = useCoworkSessions.getState()
@@ -3129,7 +2899,7 @@ export function CoworkPage() {
       return
     }
     // Another session's message is not what this session is about.
-    if (text && !from && !hidden && current?.title === 'New session') {
+    if (text && !from && !hidden && current?.title === DEFAULT_SESSION_TITLE) {
       // The prompt, cut short, until the model's own title arrives.
       const placeholder = slashTitle(text).slice(0, 40)
       store.setTitle(sid, placeholder)
@@ -6195,75 +5965,24 @@ export function CoworkPage() {
   // Everything about the session that is reference material rather than
   // conversation: behind a dialog on wide screens, a view of its own on phones.
   const detailsBody = (
-    <>
-      <CoworkReadinessCard
-        manifest={readiness}
-        settingsMcpServers={settingsMcpServers}
-        modelTest={
-          <ModelDoctor
-            provider={selectedProvider ? getProviderByName(selectedProvider) : undefined}
-            model={selectedModel ?? undefined}
-          />
-        }
-      />
-      {/* Whether other sessions may write to this one, and whether it answers
-          them on its own. Here, not only on a held message, so it can be
-          decided before anyone writes. */}
-      {session?.id && <SessionMessagingToggle sessionId={session.id} />}
-      {/* AH-177: this session's canonical events, written to a file. */}
-      <CoworkEventExport
-        sessionId={session?.id}
-        pickFolder={async () => {
-          const picked = await serviceHub.dialog().open({ directory: true })
-          return typeof picked === 'string' ? picked : null
-        }}
-      />
-      {/* Collapsed, and inside session details rather than above the
-          composer: someone whose session works should never read it. */}
-      <CoworkEnvironmentReadiness
-        projectRoot={folder ?? undefined}
-        reported={rendererReports}
-        collapsible
-      />
-      {runContext && <CoworkContextBreakdown context={runContext} />}
-      <CoworkCompatSection
-        manifest={compat}
-        hasFolder={Boolean(folder)}
-        onToggle={(on) =>
-          folder && useClaudeCompat.getState().setEnabled(folder, on)
-        }
-        // Drives Flint's own MCP subsystem, against the definition as it
-        // stands on disk: consent is permission to run *this* server,
-        // not whatever the file says later.
-        onMcpConsent={(server, allowed) => {
-          const probe = mcpProbes.find((one) => one.name === server)
-          if (probe) void setMcpConsent(probe, allowed)
-        }}
-      />
-      <ClaudeSkillRootsSettings
-        collapsible
-        roots={skillRoots}
-        onChange={(next) => useClaudeCompat.getState().setSkillRoots(next)}
-        janData={janDataFolder}
-        onRescan={rescanCompat}
-        pickFolder={async () => {
-          const picked = await serviceHub.dialog().open({ directory: true })
-          return typeof picked === 'string' ? picked : null
-        }}
-        // The backend is the only thing that can tell a directory from a
-        // file, or from a path that has since gone.
-        confirmDirectory={async (path) => {
-          const dataFolder = janDataFolder
-          if (!dataFolder) return false
-          try {
-            await projectListDir(dataFolder, path, '.')
-            return true
-          } catch {
-            return false
-          }
-        }}
-      />
-    </>
+    <CoworkDetailsBody
+  readiness={readiness}
+  settingsMcpServers={settingsMcpServers}
+  selectedProvider={selectedProvider}
+  getProviderByName={getProviderByName}
+  selectedModel={selectedModel}
+  session={session}
+  serviceHub={serviceHub}
+  folder={folder}
+  rendererReports={rendererReports}
+  runContext={runContext}
+  compat={compat}
+  mcpProbes={mcpProbes}
+  setMcpConsent={setMcpConsent}
+  skillRoots={skillRoots}
+  janDataFolder={janDataFolder}
+  rescanCompat={rescanCompat}
+/>
   )
 
   const runningChip = running ? (
@@ -6475,713 +6194,124 @@ export function CoworkPage() {
               }
             />
           ) : null}
-          <div
-            ref={transcriptRef}
-            className="relative flex-1 [mask-image:linear-gradient(to_bottom,transparent,#000_14px)]"
-          >
-            {displayedTurns.length === 0 ? (
-              <CoworkEmptyState
-                folder={folder}
-                access={effective.access}
-                onPick={(text) => usePrompt.getState().setPrompt(text)}
-                onAttachFolder={() => void attachFolder()}
-              />
-            ) : (
-              <Conversation className="absolute inset-0 text-start">
-                <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
-                  <WidgetHostContext.Provider value={widgetHost}>
-                  <CodeOpenProvider
-            open={openToolPath}
-            check={checkToolPath}
-            exists={toolPathExists}
-            openDiff={openToolDiff}
-            displayPath={displayToolPath}
-            roots={pathLinkRoots}
-          >
-                    {windowStart > 0 && (
-                      <div className="flex justify-center pb-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid="show-earlier-messages"
-                          className="text-muted-foreground"
-                          onClick={() =>
-                            setEarlierShown({
-                              sid: session?.id ?? null,
-                              pages: earlierPages + 1,
-                            })
-                          }
-                        >
-                          {t('common:coworkShowEarlier', {
-                            count:
-                              windowStart -
-                              transcriptWindowStart(messageWeights, earlierPages + 1),
-                          })}
-                        </Button>
-                      </div>
-                    )}
-                    {uiMessages.slice(windowStart).map((whole, shownAt) => {
-                      const i = shownAt + windowStart
-                      // Each model round renders with its own rows beneath
-                      // it, so the newest content is always last.
-                      const segments = segmentAssistantMessage(whole)
-                      const workflow = workflowAnchoredAt(
-                        activity,
-                        session?.id,
-                        whole.id
-                      )
-                      const workflowAt = workflow
-                        ? workflowSegmentIndex(
-                            segments,
-                            workflow.tasks.map((task) => task.callId)
-                          )
-                        : -1
-                      return segments.map((message, k) => (
-                      <Fragment key={message.id}>
-                        <MessageItem
-                          message={message}
-                          isFirstMessage={i === 0 && k === 0}
-                          switchedFrom={
-                            k === 0 ? switchedFromOf(uiMessages, i) : undefined
-                          }
-                          isLastMessage={
-                            i === uiMessages.length - 1 &&
-                            k === segments.length - 1
-                          }
-                          hideActions={k < segments.length - 1 || undefined}
-                          continuation={k > 0 || undefined}
-                          midReply={k < segments.length - 1 || undefined}
-                          runParts={
-                            segments.length > 1 ? whole.parts : undefined
-                          }
-                          status={running ? 'streaming' : 'ready'}
-                          onRegenerate={handleRegenerate}
-                          reasoningContainerRef={reasoningContainerRef}
-                          isReasoningAtBottom={isReasoningAtBottom}
-                          onReasoningScroll={handleReasoningScroll}
-                          onReasoningScrollToBottom={
-                            forceScrollReasoningToBottom
-                          }
-                          // The tool calls are the work here, not scaffolding
-                          // behind an answer: they stay in the conversation
-                          // unless the display option hides the finished ones.
-                          keepToolActivity
-                        />
-                        {/* The plan as this run left it, after its prompt. */}
-                        {k === segments.length - 1 &&
-                        snapshotByAnchor.has(whole.id) &&
-                        // The pinned plan above already shows this very list.
-                        !(
-                          !session?.progressUi?.unpinned &&
-                          samePlan(snapshotByAnchor.get(whole.id), session?.todos)
-                        ) ? (
-                          <CoworkPlanStrip
-                            todos={snapshotByAnchor.get(whole.id)}
-                            defaultOpen={false}
-                            snapshot
-                          />
-                        ) : null}
-                        {/* One card per workflow, at the message its first
-                        dispatch landed under. Same store as the panel, so it
-                        is live without a copy of anything. */}
-                        {(() => {
-                          const view = k === workflowAt ? workflow : null
-                          return view ? (
-                            <CoworkWorkflowCard
-                              view={view}
-                              now={activityNow}
-                              waiting={waitingForUser}
-                              onResume={(id) =>
-                                void handleSubmit(
-                                  `Resume the stopped workflow run ${id}: call workflow with resume_run_id "${id}".`
-                                )
-                              }
-                              onOpenTask={(task) => {
-                                showTaskInPanel(task)
-                                revealOutput()
-                              }}
-                              onOpenPanel={(workflowId) => {
-                                showWorkflowInPanel(workflowId)
-                                revealOutput()
-                              }}
-                            />
-                          ) : null
-                        })()}
-                        {/* Completed tool activity the display option is
-                        filtering out. The turns are still in the session; this
-                        says how many and offers to look. */}
-                        {(() => {
-                          const part = (
-                            message.parts as { type: string; data?: unknown }[]
-                          ).find((p) => p.type === 'data-hidden-tools')
-                          const data = part?.data as
-                            | { count: number }
-                            | undefined
-                          return data ? (
-                            <CoworkHiddenTools
-                              count={data.count}
-                              onReveal={() => setRevealHiddenTools(true)}
-                            />
-                          ) : null
-                        })()}
-                        {/* Questions the run asked here, in the order they
-                        were asked. A pending one is the card; an answered,
-                        skipped or stale one collapses to what happened, and
-                        stays in the transcript. */}
-                        {(message.parts as { type: string; data?: unknown }[])
-                          .filter((p) => p.type === 'data-ask')
-                          .map((p) => {
-                            const record = p.data as AskRecord
-                            return (
-                              <CoworkAskEntry
-                                key={record.requestId}
-                                record={record}
-                                running={running}
-                                onRespond={respondAsk}
-                                plan={session?.todos}
-                              />
-                            )
-                          })}
-                        {/* The conversation was compacted here. */}
-                        {(message.parts as { type: string; data?: unknown }[])
-                          .filter((p) => p.type === 'data-compaction')
-                          .map((p) => {
-                            const record = p.data as CompactionRecord
-                            return (
-                              <CompactionDivider
-                                key={`compaction-${record.at}`}
-                                record={record}
-                              />
-                            )
-                          })}
-                        {/* Another session stopped this run, with its user's
-                        approval: who, and the reason it gave. */}
-                        {(message.parts as { type: string; data?: unknown }[])
-                          .filter((p) => p.type === 'data-session-stop')
-                          .map((p) => {
-                            const notice = p.data as SessionStopNoticeData
-                            return (
-                              <SessionStopNotice
-                                key={notice.requestId}
-                                notice={notice}
-                              />
-                            )
-                          })}
-                        {/* What the model received, at the message it
-                        produced. Collapsed, and it fetches nothing until
-                        someone opens it. */}
-                        {(() => {
-                          // AH-078. The message's own part first: it was
-                          // stamped onto the assistant row when that row was
-                          // created, so it names the dispatch that produced
-                          // this reply -- including a continuation, a retry or
-                          // a compaction, which position cannot distinguish.
-                          //
-                          // The positional map stays as the fallback for turns
-                          // already on disk, written before rows carried one.
-                          const own = (
-                            message.parts as { type: string; data?: unknown }[]
-                          ).find((part) => part.type === 'data-prompt-snapshot')
-                            ?.data as { id: string } | undefined
-                          const ref = own ?? snapshotByMessageId.get(message.id)
-                          return ref && showPromptSnapshot ? (
-                            <PromptSnapshotView
-                              snapshotId={ref.id}
-                              sessionId={session?.id}
-                            />
-                          ) : null
-                        })()}
-                        {/* This turn's own token breakdown and the memory ids
-                        its request carried (AH-211, AH-083). */}
-                        {(() => {
-                          const data = (
-                            message.parts as { type: string; data?: unknown }[]
-                          ).find((part) => part.type === 'data-turn-usage')
-                            ?.data as
-                            | { usage?: Usage; memory?: TurnMemory }
-                            | undefined
-                          return data && showPromptSnapshot ? (
-                            <TurnUsageDetails
-                              usage={fromCoworkUsage(data.usage)}
-                              memory={data.memory}
-                            />
-                          ) : null
-                        })()}
-                        {/* Derived from the message's own write parts, so nothing
-                        shared with the chat surface needs to know artifacts
-                        exist. */}
-                        {askedFromParts(message.parts).map((asked) => (
-                          <CoworkAskedCard key={asked.key} asked={asked} />
-                        ))}
-                        {artifactsFromParts(message.parts).map((artifact) => (
-                          <CoworkArtifactCard
-                            key={artifact.path}
-                            artifact={artifact}
-                            root={workspacePath}
-                            onPreview={(path) => {
-                              showPreview(path)
-                              revealOutput()
-                            }}
-                          />
-                        ))}
-                      </Fragment>
-                                          ))
-                    })}
-                  </CodeOpenProvider>
-                  </WidgetHostContext.Provider>
-                  {/* AH-109: overlapping team tasks, before either runs. */}
-                  <CoworkTeamConflicts sessionId={session?.id} />
-                  <CoworkChildApprovals sessionId={session?.id} />
-                  <CoworkSubagentQuestions sessionId={session?.id} />
-                  {/* Once the run has ended: while it goes, the header says
-                      Running and Changes shows its files, and a card growing
-                      under the transcript said it a third time. */}
-                  {(((!running && (runEnding || runOrigins?.summary)) &&
-                    // Only when the run has something of its own to report:
-                    // a write, a check, a loose end, or an ending that was
-                    // not a clean finish. A working tree that was already
-                    // dirty is not the run's work, and reporting it here left
-                    // a permanent panel over the composer listing the user's
-                    // own edits. The stop reason itself stays in the notice
-                    // below; this shows what was kept.
-                    shouldShowRunOutcome(runOutcome)) ||
-                    // A browser verification is evidence the user asked
-                    // for; it is shown even after a run with nothing else.
-                    browserReports.length > 0) && (
-                      <CoworkRunSummary
-                        outcome={runOutcome}
-                        browserChecks={browserReports}
-                        canOpenPath={() => true}
-                        onOpenPath={
-                          runOutcome.resultLocation.destination ===
-                            'repository' && treeRoot
-                            ? (path) => openSummaryPath(`${treeRoot}/${path}`)
-                            : runOutcome.resultLocation.destination ===
-                                'sandbox'
-                              ? openSummaryPath
-                              : undefined
-                        }
-                        onReviewChanges={() => openRail({ kind: 'diff' })}
-                        onRestore={() => openRail({ kind: 'diff' })}
-                        onRetry={() => void runRequest(null)}
-                        // A follow-up run under the session's current mode,
-                        // asked to retry what this one left unresolved.
-                        // Focusing the composer did nothing visible. The
-                        // request is Flint's, so it is not drawn as a user
-                        // message.
-                        onContinue={() =>
-                          void runRequest(
-                            continueRequest(runOutcome.unresolved),
-                            undefined,
-                            true
-                          )
-                        }
-                      />
-                    )}
-                  {running && !(stripMode && waitingForUser) && (
-                    // Row wrapper as in the chat route: the transcript is a
-                    // column flex, which stretches the indicator's own
-                    // `inline-flex` box across the whole column.
-                    <div className="flex flex-row items-center gap-2">
-                      <PromptProgress
-                        hideIdle={!awaitingModel}
-                        stateKey={session?.id}
-                        status={runStatusNow}
-                        onStopTool={(callId) => {
-                          if (session?.id) stopToolCall(session.id, callId)
-                        }}
-                        waitingLabel={
-                          waitingForUser ? t('common:waitingForYou') : undefined
-                        }
-                      />
-                    </div>
-                  )}
-                  {memoryProposalLocation && (
-                    <MemoryProposalList
-                      className="my-2"
-                      proposals={memoryProposals}
-                      location={memoryProposalLocation}
-                      onResolved={onMemoryProposalResolved}
-                      onOpenSettings={() =>
-                        navigateTo({ to: route.settings.memory })
-                      }
-                    />
-                  )}
-                  {stoppedBy === 'steps' && (
-                    <CoworkBudgetNotice
-                      kind="steps"
-                      max={MAX_AGENT_STEPS}
-                      onContinue={() => void handleSubmit('Continue.')}
-                    />
-                  )}
-                  {stoppedBy === 'aborted' && (
-                    <CoworkRunNotice kind="stopped" />
-                  )}
-                  {session?.id ? (
-                    <CoworkRecap sessionId={session.id} running={running} />
-                  ) : null}
-                  {session?.id ? (
-                    <CoworkInterruptedTurn
-                      sessionId={session.id}
-                      running={running}
-                      onContinue={() => void runRequestRef.current(null)}
-                    />
-                  ) : null}
-                  {session?.id ? (
-                    <CoworkHeldInput sessionId={session.id} running={running} />
-                  ) : null}
-                  {stoppedBy === 'error' && (
-                    <CoworkRunNotice
-                      kind="error"
-                      message={runError}
-                      onRetry={() => void runRequest(null)}
-                    />
-                  )}
-                  {(stoppedBy === 'deadline' ||
-                    stoppedBy === 'timeout' ||
-                    stoppedBy === 'loop') && (
-                    <CoworkRunNotice
-                      kind={stoppedBy}
-                      message={runError}
-                      onRetry={() => void runRequest(null)}
-                      onAttachFolder={
-                        stoppedBy === 'loop' && !session?.folder
-                          ? () => void attachFolder()
-                          : undefined
-                      }
-                    />
-                  )}
-                  {stoppedBy === 'tokens' && (
-                    <CoworkBudgetNotice
-                      kind="tokens"
-                      // An overflow carries its measurement; the spend cap
-                      // stops with none.
-                      cause={runError ? 'window' : 'budget'}
-                      detail={runError ?? undefined}
-                      // Compacts the session's history for real, then
-                      // resumes the run on the room that freed.
-                      onCompact={() =>
-                        void compactNow({ thenContinue: true })
-                      }
-                      compacting={compacting}
-                      onNewSession={() => {
-                        // Same rule as the sidebar's entry point: one press,
-                        // at most one session. An unsent draft is parked on
-                        // the session being left (held input) when it has
-                        // content, so the new one opens blank.
-                        const paneId = sidePaneIdRef.current
-                        const paneSid = paneSessionIdRef.current
-                        const prompts = usePrompt.getState()
-                        const scope = coworkPane?.draftScope
-                        if (paneId && paneSid && scope) {
-                          // From a pane beside the main one: judged on that
-                          // pane's session and draft, opened in that pane.
-                          const { id, parked } = startPaneSessionParked(paneSid, {
-                            running,
-                            draft: prompts.scoped[scope]?.prompt,
-                          })
-                          useSplitConversation
-                            .getState()
-                            .setPaneTarget(paneId, { kind: 'cowork', refId: id })
-                          if (parked) prompts.setScopedPrompt(scope, '')
-                          return
-                        }
-                        const store = useCoworkSessions.getState()
-                        const { id, parked } = store.startSessionParked({
-                          running,
-                          draft: prompts.prompt,
-                        })
-                        store.selectSession(id)
-                        // Cleared here, not in the store, and only when parked:
-                        // otherwise the draft would be lost.
-                        if (parked) prompts.resetPrompt()
-                      }}
-                    />
-                  )}
-                  {compacting && <CompactingIndicator />}
-                </ConversationContent>
-                <ConversationScrollButton />
-              </Conversation>
-            )}
-          </div>
+          <CoworkTranscript
+  transcriptRef={transcriptRef}
+  displayedTurns={displayedTurns}
+  folder={folder}
+  effective={effective}
+  attachFolder={attachFolder}
+  widgetHost={widgetHost}
+  openToolPath={openToolPath}
+  checkToolPath={checkToolPath}
+  toolPathExists={toolPathExists}
+  openToolDiff={openToolDiff}
+  displayToolPath={displayToolPath}
+  pathLinkRoots={pathLinkRoots}
+  windowStart={windowStart}
+  setEarlierShown={setEarlierShown}
+  session={session}
+  earlierPages={earlierPages}
+  messageWeights={messageWeights}
+  uiMessages={uiMessages}
+  activity={activity}
+  running={running}
+  handleRegenerate={handleRegenerate}
+  reasoningContainerRef={reasoningContainerRef}
+  isReasoningAtBottom={isReasoningAtBottom}
+  handleReasoningScroll={handleReasoningScroll}
+  forceScrollReasoningToBottom={forceScrollReasoningToBottom}
+  snapshotByAnchor={snapshotByAnchor}
+  activityNow={activityNow}
+  waitingForUser={waitingForUser}
+  handleSubmit={handleSubmit}
+  showTaskInPanel={showTaskInPanel}
+  revealOutput={revealOutput}
+  showWorkflowInPanel={showWorkflowInPanel}
+  setRevealHiddenTools={setRevealHiddenTools}
+  respondAsk={respondAsk}
+  snapshotByMessageId={snapshotByMessageId}
+  showPromptSnapshot={showPromptSnapshot}
+  workspacePath={workspacePath}
+  showPreview={showPreview}
+  runEnding={runEnding}
+  runOrigins={runOrigins}
+  runOutcome={runOutcome}
+  browserReports={browserReports}
+  treeRoot={treeRoot}
+  openSummaryPath={openSummaryPath}
+  openRail={openRail}
+  runRequest={runRequest}
+  stripMode={stripMode}
+  awaitingModel={awaitingModel}
+  runStatusNow={runStatusNow}
+  memoryProposalLocation={memoryProposalLocation}
+  memoryProposals={memoryProposals}
+  onMemoryProposalResolved={onMemoryProposalResolved}
+  navigateTo={navigateTo}
+  stoppedBy={stoppedBy}
+  runRequestRef={runRequestRef}
+  runError={runError}
+  compactNow={compactNow}
+  compacting={compacting}
+  sidePaneIdRef={sidePaneIdRef}
+  paneSessionIdRef={paneSessionIdRef}
+  coworkPane={coworkPane}
+/>
 
-          <div className={cn('shrink-0 px-3.5 pt-2', paneChrome ? 'pb-3.5' : 'pb-1.5')}>
-            <div className="mx-auto w-full max-w-[780px]">
-              {/* Work a crashed or closed run left behind. Shown where the
-                  session is about to start, because that is the moment someone
-                  would otherwise start a second one beside it. Everything else
-                  that used to sit here -- readiness, compatibility, skill
-                  folders, context accounting -- moved behind the session
-                  details control in the header, so the composer sits directly
-                  beneath the conversation. */}
-              {/* Not beside the session's own worktree bar: a session that
-                  already has a worktree is not about to adopt another. */}
-              {/* Whether a folder's own hooks and agents may run: asked here,
-                  over the composer, so it cannot scroll away. Outside the
-                  stack so it never pushes the session's own bars behind
-                  "Show N more". */}
-              {(() => {
-                const bars = (
-                  <>
-              <FolderTrustBanner folder={folder} />
-              {/* The bars over the composer stack: two at a time, the rest
-                  behind "Show N more". */}
-              <CoworkBarStack max={Infinity}>
-                {folder &&
-                  !recoveryHiddenHere &&
-                  ((!worktree && (session?.turns.length ?? 0) === 0) ||
-                    effective.downgradedFrom === 'managed-worktree') && (
-                  <div className="px-1 pb-2">
-                    <CoworkWorktreeRecovery
-                      orphans={recoverableWorktrees(
-                        foundWorktrees,
-                        worktree,
-                        session?.id,
-                        coworkSessionIds,
-                        heldWorktreePaths
-                      )}
-                      onHide={() => {
-                        hideRecovery(folder)
-                        setRecoveryHiddenHere(true)
-                      }}
-                      ownBranch={
-                        session?.id ? sessionWorktreeBranch(session.id) : undefined
-                      }
-                      downgradeNote={(() => {
-                        const key = effectiveDowngradeKey(effective)
-                        return key &&
-                          effective.downgradedFrom === 'managed-worktree'
-                          ? t(key)
-                          : undefined
-                      })()}
-                      onAdopt={(record) => {
-                        if (session?.id)
-                          useCoworkWorktrees.getState().adopt(session.id, record)
-                      }}
-                      onPending={(record) =>
-                        useCoworkWorktrees.getState().pending(record)
-                      }
-                      onRemove={async (record, force) => {
-                        const dataFolder = await serviceHub
-                          .app()
-                          .getJanDataFolder()
-                        if (!dataFolder) return
-                        // Removed under a temporary binding rather than through
-                        // the session's own record: this checkout belongs to no
-                        // session, and adopting it first to delete it would put
-                        // the session on a worktree that is about to be gone.
-                        const key = `recovery:${record.path}`
-                        useCoworkWorktrees.getState().adopt(key, record)
-                        const done = await useCoworkWorktrees
-                          .getState()
-                          .discard(key, dataFolder, force)
-                        useCoworkWorktrees.getState().forget(key)
-                        if (!done.ok) toast.error(done.reason)
-                        setFoundWorktrees(
-                          await useCoworkWorktrees
-                            .getState()
-                            .list(folder, dataFolder)
-                        )
-                      }}
-                    />
-                  </div>
-                )}
-                {/* AH-210: what a handed-off session could not bring with it. */}
-                <CoworkHandoffNotice
-                  handoff={session?.handoff}
-                  folder={folder}
-                  onDismiss={() =>
-                    session &&
-                    useCoworkSessions.getState().dismissHandoff(session.id)
-                  }
-                />
-                {/* The session's changed files, one step from review: over the
-                    composer, where the design keeps it while the run goes on. */}
-                <CoworkReviewReady
-                  fileCount={changeCounts.fileCount}
-                  additions={changeCounts.additions}
-                  deletions={changeCounts.deletions}
-                  onReview={() => openRail({ kind: 'diff' })}
-                  sessionId={session?.id}
-                  running={running}
-                  sandboxPaths={fileDiffs.map((f) => f.path)}
-                  applyActions={sandboxApply}
-                />
-                {/* The pull request for the folder's branch, if it has one, with
-                    the same mark the session carries in the sidebar. */}
-                {session?.id && folder ? (
-                  <>
-                  <SharedFolderIsolationHint
-                    reason={autoWorktree.isolationReason}
-                    choseShared={autoWorktree.choseShared}
-                    onUseShared={() => void autoWorktree.chooseShared()}
-                  />
-                  <CoworkSessionWorktreeBar
-                    sessionId={session.id}
-                    title={session.title}
-                    folder={folder}
-                    record={worktree}
-                    offerCopy={
-                      autoWorktree.isGit === false &&
-                      capabilityState.known &&
-                      capabilityState.managedWorktree &&
-                      (session.turns.length ?? 0) === 0
-                    }
-                    onWorkOnCopy={autoWorktree.workOnCopy}
-                    onCreatePr={(branch, base) =>
-                      handleSubmit(
-                        t('common:coworkParallel.prPrompt', {
-                          branch,
-                          base: base || 'the default branch',
-                        })
-                      )
-                    }
-                    onDiscarded={() => {
-                      const sid = session.id
-                      void useDirectEditGrants.getState().revokeSession(sid)
-                      useCoworkWorktrees.getState().forget(sid)
-                      useCoworkSessions.getState().setAccess(sid, 'review-only')
-                      useCoworkParallel.getState().mark(sid, folder, 'skipped')
-                    }}
-                  />
-                  </>
-                ) : null}
-                <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
-                {/* Other sessions in this folder: one more bar, so the narrow
-                    strip folds it in with the rest. Nothing when alone. */}
-                <SharedFolderBar
-                  sessionId={session?.id}
-                  onOpenSession={(id) => useCoworkSessions.getState().selectSession(id)}
-                />
-              </CoworkBarStack>
-                  </>
-                )
-                return (
-                  <>
-                    <NarrowBarsSheet
-                      inline={!stripMode}
-                      open={barsSheetOpen && stripMode}
-                      onOpenChange={setBarsSheetOpen}
-                      onSummary={setBarsSummary}
-                    >
-                      {bars}
-                    </NarrowBarsSheet>
-                    {stripMode && (
-                    <NarrowStatusStrip
-                      waiting={waitingIds.length}
-                      summary={barsSummary}
-                      files={{
-                        count: changeCounts.fileCount,
-                        additions: changeCounts.additions,
-                        deletions: changeCounts.deletions,
-                      }}
-                      branch={worktree?.branch ?? gitBranch ?? null}
-                      onWaiting={() => {
-                        if (waitingIds[0]) void scrollToApproval(waitingIds[0])
-                      }}
-                      onOpen={() => setBarsSheetOpen((v) => !v)}
-                      condensed={phoneStrip}
-                    />
-                    )}
-                  </>
-                )
-              })()}
-              {/* The FLINT.md dialog; the folder menu opens it. */}
-              <CoworkProjectInit
-                hideTrigger
-                open={projectInitOpen}
-                onOpenChange={setProjectInitOpen}
-                folder={projectInitRoot}
-                hasInstructions={!projectInitOffered}
-                onAccepted={() => setInstructionsVersion((v) => v + 1)}
-              />
-              {/* Jev: a suggested skill, only when its opt-in is on. */}
-              <JevSkillSuggestion
-                surface="cowork"
-                project={folder}
-                draftScope={coworkPane?.draftScope}
-              />
-              <ChatInput
-                showSpeedToken={false}
-                initialMessage={true}
-                scopeKey={session?.id}
-                draftScope={coworkPane?.draftScope}
-                // The session's model, resolved as the run resolves it: the
-                // composer must not refuse a send the run would make.
-                modelSelection={composerModel.selection}
-                // The session's own effort, where its transport reads it.
-                modelOverrideScope={session?.id ?? ''}
-                unavailableModel={composerModel.unavailable}
-                confirmModel={confirmSessionModel}
-                // Held input is shown once, in CoworkHeldInput above.
-                heldShownElsewhere
-                // A pasted folder path offers to attach it as the project.
-                pastedFolder={{
-                  attached: applyFolders,
-                  onAttach: (path) => void attachFolder(path),
-                }}
-                ownsToolSet={false}
-                // `@` names files in the folder the run works in, nothing else.
-                referenceRoot={treeRoot}
-                referenceSources={referenceSources}
-                slashSurface="cowork"
-                slashProject={folder}
-                slashBuiltins={slashBuiltins}
-                onSubmit={handleSubmit}
-                onStop={handleStop}
-                chatStatus={running ? 'streaming' : 'ready'}
-                // One stop control for this surface, in the composer's own
-                // action slot: it asks how far to stop rather than sitting
-                // beside a second, destructive button.
-                stopControl={
-                  <CoworkStopMenu
-                    running={running}
-                    sessionId={session?.id}
-                    runId={currentRunId}
-                    onStopCurrent={handleStop}
-                    onStopAll={handleStopAll}
-                  />
-                }
-                tokenSource={tokenSource}
-                onCompact={() => void compactNowRef.current()}
-                // Assistant, sampling, web search and reasoning behind one
-                // Options button: the Cowork row stays quiet.
-                groupOptions
-                // Web search is per session; a choice made before the first
-                // message creates the session it belongs to, like the mode.
-                webSearchScope={
-                  session?.id ? coworkWebSearchScope(session.id) : null
-                }
-                ensureWebSearchScope={() =>
-                  coworkWebSearchScope(
-                    ensureCurrentSession(paneSessionIdRef.current)
-                  )
-                }
-                // Under the composer, as Claude lays it out: what the run may
-                // do on the left; the effort and the model on the right.
-                // A split pane uses the same row (its folder included).
-                belowLeft={belowComposerControls}
-                // Below the input in every layout, a split pane included: each
-                // pane picks its own session's model there, never the global one.
-                modelControl={quietModelSelector}
-                surfaceControls={
-                  <>
-                    <CoworkSandboxChip />
-                    {/* On a phone the composer is out of view while the
-                        output is, so it keeps one set there. */}
-                    {/* On a phone the box keeps only attach, options and
-                        skills: the views are one tap away in the view switch. */}
-                    {showComposerRailButtons &&
-                      !phone &&
-                      railToolbar('toolbar')}
-                    <div className="ml-auto flex items-center">
-                      <SkillSelector folder={folder} />
-                    </div>
-                  </>
-                }
-              />
-            </div>
-          </div>
+          <CoworkComposerArea
+  paneChrome={paneChrome}
+  folder={folder}
+  recoveryHiddenHere={recoveryHiddenHere}
+  worktree={worktree}
+  session={session}
+  effective={effective}
+  foundWorktrees={foundWorktrees}
+  coworkSessionIds={coworkSessionIds}
+  heldWorktreePaths={heldWorktreePaths}
+  setRecoveryHiddenHere={setRecoveryHiddenHere}
+  serviceHub={serviceHub}
+  setFoundWorktrees={setFoundWorktrees}
+  changeCounts={changeCounts}
+  openRail={openRail}
+  running={running}
+  fileDiffs={fileDiffs}
+  sandboxApply={sandboxApply}
+  autoWorktree={autoWorktree}
+  capabilityState={capabilityState}
+  handleSubmit={handleSubmit}
+  treeRoot={treeRoot}
+  stripMode={stripMode}
+  barsSheetOpen={barsSheetOpen}
+  setBarsSheetOpen={setBarsSheetOpen}
+  setBarsSummary={setBarsSummary}
+  waitingIds={waitingIds}
+  barsSummary={barsSummary}
+  gitBranch={gitBranch}
+  phoneStrip={phoneStrip}
+  projectInitOpen={projectInitOpen}
+  setProjectInitOpen={setProjectInitOpen}
+  projectInitRoot={projectInitRoot}
+  projectInitOffered={projectInitOffered}
+  setInstructionsVersion={setInstructionsVersion}
+  coworkPane={coworkPane}
+  composerModel={composerModel}
+  confirmSessionModel={confirmSessionModel}
+  applyFolders={applyFolders}
+  attachFolder={attachFolder}
+  referenceSources={referenceSources}
+  slashBuiltins={slashBuiltins}
+  handleStop={handleStop}
+  currentRunId={currentRunId}
+  handleStopAll={handleStopAll}
+  tokenSource={tokenSource}
+  compactNowRef={compactNowRef}
+  paneSessionIdRef={paneSessionIdRef}
+  belowComposerControls={belowComposerControls}
+  quietModelSelector={quietModelSelector}
+  showComposerRailButtons={showComposerRailButtons}
+  phone={phone}
+  railToolbar={railToolbar}
+/>
           </FrameBody>
         </Frame>
 
@@ -7231,153 +6361,31 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'diff' && (
-          <CoworkDiffPanel
-            // Going back to how things were belongs where what changed is
-            // shown: the two questions are asked in the same breath.
-            header={
-              <>
-              {/* An isolated run's work reaches the folder only through a
-                  reviewed proposal, so the review sits with the changes. */}
-              {worktree && session?.id ? (
-                <CoworkProposalReview
-                  worktree={worktree}
-                  session={session.id}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              {/* A server session's own checkout: merge, discard, review. */}
-              {session?.id && session.remote ? (
-                <RemoteWorktreePanel sessionId={session.id} />
-              ) : null}
-              {/* One-command review of the current diff: ranked findings, each
-                  checked by a second pass; fixes go through the session. */}
-              {folder && session?.id ? (
-                <CoworkReviewAction
-                  folder={folder}
-                  sessionId={session.id}
-                  onFix={(text) => widgetHost.sendPrompt(text)}
-                />
-              ) : null}
-              {/* AH-109: each isolated team child's worktree, for review. */}
-              {folder && session?.id ? (
-                <CoworkTeamReviews
-                  project={folder}
-                  session={session.id}
-                  focusTaskId={reviewFocusTaskId}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              </>
-            }
-            // After the files, as the design orders it: what each turn
-            // changed, earlier points, then bundles made elsewhere.
-            footer={
-              <>
-              {/* AH-202: each turn's own file changes, undone or redone
-                  from the turn that made them. */}
-              {session?.id ? (
-                <CoworkTurnUndo
-                  sessionId={session.id}
-                  writeGrant={liveGrant?.grantId}
-                  refreshKey={running}
-                  onChanged={() => git.refresh()}
-                />
-              ) : null}
-              <CoworkRewind
-                points={
-                  session?.id && checkpointChain
-                    ? useCoworkCheckpoints
-                        .getState()
-                        .usable(session.id, treeRoot)
-                    : []
-                }
-                onPlan={(sha) =>
-                  useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
-                }
-                onPreviewDiff={(sha) =>
-                  useCoworkCheckpoints
-                    .getState()
-                    .previewDiff(session?.id ?? '', sha)
-                }
-                // Newer edits Flint made itself are not someone else's work, so
-                // only the rest need an explicit acknowledgement.
-                janAuthored={
-                  runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
-                }
-                onSafetyCapture={async (label) => {
-                  if (!session?.id || !treeRoot)
-                    return { ok: false, reason: 'no working tree' }
-                  const saved = await useCoworkCheckpoints
-                    .getState()
-                    .captureSafety({
-                      sessionId: session.id,
-                      root: treeRoot,
-                      label,
-                      access: effective.access,
-                    })
-                  return saved.ok
-                    ? { ok: true, point: saved.entry }
-                    : saved
-                }}
-                onRestore={async (sha) => {
-                  const done = await useCoworkCheckpoints
-                    .getState()
-                    .restore(session?.id ?? '', sha)
-                  // The tree changed underneath every surface that describes
-                  // it, so the diff is re-read rather than left showing what
-                  // was there a moment ago.
-                  if (done.ok) git.refresh()
-                  return done
-                }}
-              />
-              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
-              {folder && session?.id ? (
-                <CoworkBundleImport
-                  destination={folder}
-                  session={session.id}
-                  pickFolder={async () => {
-                    const picked = await serviceHub
-                      .dialog()
-                      .open({ directory: true })
-                    return typeof picked === 'string' ? picked : null
-                  }}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              </>
-            }
-            branch={worktree?.branch ?? gitBranch}
-            projectName={folder ? basenameOf(folder) : undefined}
-            sandboxFiles={fileDiffs}
-            onOpenFile={openToolPath}
-            // Review only leaves the run's output in the sandbox; this is the
-            // explicit per-file step that brings one file into the folder.
-            // The primary and every extra folder the session holds.
-            isSandboxPath={(path) =>
-              sandboxRelativePath(workspacePath, path) !== null
-            }
-            applyPlanFor={(path) =>
-              planSandboxApply(workspacePath, applyFolders, path)
-            }
-            onApplyFile={sandboxApply?.apply}
-            applyActions={sandboxApply}
-            displayPath={displayToolPath}
-            onOpenExternal={(path, source) => {
-              const absolute = absoluteChangePath(path, source, {
-                treeRoot,
-                workspacePath,
-                resolved: resolveToolPath(path),
-              })
-              if (!absolute) return
-              void serviceHub
-                .opener()
-                .openPath(absolute, pathLinkRoots)
-                .catch((e) => toast.error(errorText(e)))
-            }}
-            // The tree the changes are in, not the one the session is
-            // attached to: a managed run's diff lives in its worktree.
-            folder={treeRoot}
+          <CoworkDiffRail
+            sessionId={session?.id}
+            sessionRemote={!!session?.remote}
+            folder={folder}
+            worktree={worktree}
             git={git}
+            onSendPrompt={(text) => widgetHost.sendPrompt(text)}
+            reviewFocusTaskId={reviewFocusTaskId}
+            writeGrant={liveGrant?.grantId}
+            running={running}
+            hasCheckpoints={!!checkpointChain}
+            treeRoot={treeRoot}
+            access={effective.access}
+            janAuthored={
+              runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
+            }
+            gitBranch={gitBranch}
+            fileDiffs={fileDiffs}
+            openToolPath={openToolPath}
+            workspacePath={workspacePath}
+            applyFolders={applyFolders}
+            sandboxApply={sandboxApply}
+            displayToolPath={displayToolPath}
+            resolveToolPath={resolveToolPath}
+            pathLinkRoots={pathLinkRoots}
             origins={runOrigins?.entries}
             focusPath={rail.focusPath}
             onClose={closeRail}
@@ -7451,91 +6459,23 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'code' && session?.id && (
-          <CoworkCodePanel
-            onOfferFolder={() => void attachFolder()}
-            // The tree the run reads. Browsing the attached folder while the
-            // agent works in a worktree would show two different repositories
-            // under one name.
-            folder={treeRoot}
-            projectName={folder ? basenameOf(folder) : undefined}
-            workspacePath={workspacePath}
-            sessionKey={session.id}
-            state={session.codePanel}
+          <CoworkCodeRail
+            sessionId={session.id}
+            codePanel={session.codePanel}
             turns={displayedTurns}
-            onStateChange={(next) =>
-              useCoworkSessions.getState().setCodePanel(session.id, next)
-            }
-            onAddToChat={addCodeToChat}
-            onAttach={() => void attachFolder()}
-            onClose={closeRail}
-            // A Review only run's copy of a project file shows as markers on
-            // the real one, found the way Apply to folder maps it.
-            sandboxCopyFor={(projectPath) =>
-              sandboxApply
-                ? (sandboxCopyOfProjectFile(
-                    fileDiffs.map((f) => f.path),
-                    sandboxApply.planFor,
-                    folder,
-                    projectPath
-                  )?.plan.source ?? null)
-                : null
-            }
-            onApplySandboxHunk={
-              !sandboxApply
-                ? undefined
-                : async (projectPath, expected, content) => {
-              const copy =
-                sandboxApply && session?.id
-                  ? sandboxCopyOfProjectFile(
-                      fileDiffs.map((f) => f.path),
-                      sandboxApply.planFor,
-                      folder,
-                      projectPath
-                    )
-                  : null
-              if (!copy || !session?.id) throw new Error(`${projectPath} has no sandbox copy`)
-              const outcome = await applySandboxHunk({
-                session: session.id,
-                path: copy.plan.source,
-                project: copy.plan.folder,
-                destination: copy.plan.destination,
-                expected,
-                content,
-              })
-              if (outcome === 'applied') git.refresh()
-              return outcome
-                  }
-            }
-            onApplySandboxCopy={(projectPath) => {
-              if (!sandboxApply) return
-              const copy = sandboxCopyOfProjectFile(
-                fileDiffs.map((f) => f.path),
-                sandboxApply.planFor,
-                folder,
-                projectPath
-              )
-              if (!copy) return
-              // Confirmed in the peek ("Apply whole file…"), with the change in view.
-              void sandboxApply
-                .apply(copy.path, true)
-                .then(() => toast.success(t('common:changes.applyReplaced')))
-                .catch((e) =>
-                  toast.error(
-                    t('common:changes.applyFailed', { message: errorText(e) })
-                  )
-                )
-            }}
-            // Hand edits save where the agent's writes would, under the same
-            // grant; with no live grant a real-tree mode stays read-only.
-            editAccess={{
-              destination: effective.destination,
-              writeGrant: relativeIsProject
-                ? (liveGrant?.grantId ?? null)
-                : null,
-            }}
-            readRoot={treeRoot}
+            folder={folder}
+            treeRoot={treeRoot}
+            workspacePath={workspacePath}
             extraFolders={extraFolders}
-            onSaved={() => git.refresh()}
+            destination={effective.destination}
+            relativeIsProject={relativeIsProject}
+            writeGrant={liveGrant?.grantId}
+            sandboxApply={sandboxApply}
+            fileDiffs={fileDiffs}
+            git={git}
+            onAttachFolder={() => void attachFolder()}
+            onAddToChat={addCodeToChat}
+            onClose={closeRail}
           />
         )}
         {phone && !panelShown && (

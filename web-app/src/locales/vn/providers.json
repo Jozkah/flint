@@ -39,11 +39,8 @@
   "importedTooltip": "Được nhập từ một tệp cục bộ. Gỡ nó khỏi Flint sẽ không xóa tệp trên đĩa.",
   "importModelSuccess": "Mô hình {{provider}} đã được nhập thành công.",
   "importModelError": "Không thể nhập mô hình:",
-
   "importScanHint": "Tìm trong LM Studio, Ollama, bộ nhớ đệm Hugging Face, llama.cpp và GPT4All. Không có gì được sao chép cho đến khi bạn nhập.",
-
   "importAddFolder": "Thêm thư mục mô hình",
-
   "importRemoveFolder": "Xóa thư mục {{folder}}",
   "stop": "Dừng",
   "start": "Bắt đầu",
@@ -229,7 +226,8 @@
     "cancel": "Hủy",
     "remove": "Xóa",
     "success": "Đã xóa {{provider}}.",
-    "confirmDescription": "{{provider}} và {{count}} mô hình của nó sẽ bị xóa khỏi Flint, cùng với khóa API đã lưu."
+    "confirmDescription": "{{provider}} và {{count}} mô hình của nó sẽ bị xóa khỏi Flint, cùng với khóa API đã lưu.",
+    "confirmDescription_many": "{{provider}} và {{count}} mô hình của nó sẽ bị gỡ khỏi Flint, cùng với khóa API đã lưu."
   },
   "renameProvider": {
     "title": "Đổi tên nhà cung cấp",
@@ -250,5 +248,9 @@
     "remove": "Xóa",
     "replace": "Đã lưu. Nhập để thay thế.",
     "enter": "Chưa đặt"
-  }
+  },
+  "skippedLinkedTitle": "Mô hình bị bỏ qua: {{count}}",
+  "skippedLinkedBody": "Các mô hình này được lưu qua một liên kết trỏ ra ngoài thư mục dữ liệu của Flint, nên Flint đã không tải chúng:",
+  "skippedLinkedHowTo": "Để dùng một mô hình, hãy nhập tệp GGUF theo đường dẫn (Flint giữ tệp ở nguyên chỗ) hoặc chuyển các tệp về lại thư mục mô hình.",
+  "skippedLinkedDismiss": "Đóng"
 }

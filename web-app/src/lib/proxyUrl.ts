@@ -3,7 +3,7 @@ export type ProxyUrlCheck = 'ok' | 'empty' | 'invalid' | 'scheme'
 /**
  * Whether a proxy address is one the backend will use. It mirrors
  * ProxySettings::parse in src-tauri/src/core/net/proxy.rs: an address without
- * `://` is read as `http://<address>`, only http and https are supported, and a
+ * `://` is read as `http://<address>`, http, https, socks5 and socks5h are supported, and a
  * host is required. Used to warn, never to block typing or rewrite the value.
  */
 export function validateProxyUrl(value: string): ProxyUrlCheck {
@@ -17,7 +17,8 @@ export function validateProxyUrl(value: string): ProxyUrlCheck {
   } catch {
     return 'invalid'
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'scheme'
+  if (!['http:', 'https:', 'socks5:', 'socks5h:'].includes(url.protocol))
+    return 'scheme'
   if (!url.hostname) return 'invalid'
   return 'ok'
 }

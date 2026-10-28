@@ -16,7 +16,7 @@ pub mod browser;
 pub mod browser_discovery;
 pub mod activity;
 pub mod audit;
-pub mod compat_env;
+pub use jan_process::compat_env;
 pub mod control_tags;
 pub mod deferred_approvals;
 pub mod format;
@@ -306,7 +306,8 @@ mod permission_tests {
         let missing: Vec<_> = declared
             .iter()
             .filter(|c| {
-                let permission = format!("allow-{}", c.replace('_', "-"));
+                // Quoted, so `allow-foo` is not satisfied by `allow-foo-bar`.
+                let permission = format!("\"allow-{}\"", c.replace('_', "-"));
                 !default_toml.contains(&permission)
             })
             .collect();

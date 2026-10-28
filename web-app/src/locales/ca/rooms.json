@@ -299,6 +299,7 @@
     "continuePrompt": "Continua la teva resposta anterior des d'on es va tallar.",
     "catchUp": "Posada al dia: també ha respost {{count}} preguntes anteriors",
     "catchUp_one": "Posada al dia: també ha respost 1 pregunta anterior",
+    "catchUp_many": "Posada al dia: també ha respost {{count}} preguntes anteriors",
     "catchUpHint": "Aquest participant s'ha unit després d'aquestes preguntes, així que aquesta resposta també les respon:"
   },
   "unknownWindow": {
@@ -545,10 +546,12 @@
   "apply": {
     "title_one": "Aplica {{count}} canvi a la teva carpeta",
     "title_other": "Aplica {{count}} canvis a la teva carpeta",
+    "title_many": "Aplica {{count}} canvis a la teva carpeta",
     "copyPath": "Copia el camí de la carpeta {{path}}",
     "pathCopied": "Camí de la carpeta copiat",
     "files_one": "{{count}} fitxer",
     "files_other": "{{count}} fitxers",
+    "files_many": "{{count}} fitxers",
     "source": "De {{name}} · ronda {{round}}",
     "safety": "No s’aplica res si el pedaç no encaixa netament. Ho pots desfer just després.",
     "checking": "Comprovant si s’aplica a la teva carpeta…",
@@ -556,6 +559,7 @@
     "checkFailed": "No s’ha pogut comprovar el pedaç: {{message}}",
     "conflict_one": "{{count}} fitxer no s’aplica a la teva carpeta",
     "conflict_other": "{{count}} fitxers no s’apliquen a la teva carpeta",
+    "conflict_many": "{{count}} fitxers no s’apliquen a la teva carpeta",
     "conflictHint": "Deixa’ls fora o demana al participant que els refaci sobre la carpeta tal com és ara.",
     "notChecked": "no comprovat per separat (massa fitxers)",
     "fileConflict": "No s’aplica",
@@ -564,6 +568,7 @@
     "fileDirty": "Les teves edicions",
     "dirtyTitle_one": "Tens canvis sense confirmar en {{count}} d’aquests fitxers",
     "dirtyTitle_other": "Tens canvis sense confirmar en {{count}} d’aquests fitxers",
+    "dirtyTitle_many": "Tens canvis sense confirmar en {{count}} d’aquests fitxers",
     "dirtyHint": "El pedaç s’escriu damunt dels teus canvis. Fes commit o stash abans si vols una manera fàcil de tornar enrere.",
     "selectAll": "Selecciona tots els fitxers",
     "include": "Inclou {{path}}",
@@ -578,8 +583,10 @@
     "noLines": "Cap canvi de línia (només mode o nom).",
     "showMore_one": "Mostra {{count}} línia més",
     "showMore_other": "Mostra {{count}} línies més",
+    "showMore_many": "Mostra {{count}} línies més",
     "hiddenLines_one": "({{count}} amagada)",
     "hiddenLines_other": "({{count}} amagades)",
+    "hiddenLines_many": "({{count}} amagades)",
     "blockedConflict": "Aplicar està desactivat: alguns fitxers seleccionats no s’apliquen netament.",
     "blockedNothing": "Selecciona almenys un fitxer.",
     "blockedFailed": "Aplicar està desactivat fins que la comprovació funcioni.",
@@ -587,8 +594,10 @@
     "patchCopied": "Pedaç copiat",
     "confirm_one": "Aplica {{count}} fitxer",
     "confirm_other": "Aplica {{count}} fitxers",
+    "confirm_many": "Aplica {{count}} fitxers",
     "applied_one": "{{count}} fitxer aplicat a la teva carpeta",
     "applied_other": "{{count}} fitxers aplicats a la teva carpeta",
+    "applied_many": "{{count}} fitxers aplicats a la teva carpeta",
     "undo": "Desfés",
     "undone": "El canvi s’ha retirat de la teva carpeta",
     "undoFailed": "No s’ha pogut desfer: {{message}}"
@@ -658,5 +667,6 @@
     "ranTools": "Abans, en aquest torn, ja has executat eines ({{ran}}); {{reason}} No repeteixis res que hagi canviat fitxers o l'estat; torna a llegir només el que encara necessitis.",
     "ranToolsDropped": "la seva sortida s'ha descartat perquè càpiga a la finestra de context.",
     "ranToolsRetry": "el proveïdor ha fallat després i la sol·licitud es torna a intentar."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

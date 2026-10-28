@@ -44,6 +44,9 @@
     "description": "Indexation des fichiers joints pour qu'ils puissent être recherchés et cités. Cela peut prendre un moment pour les gros documents."
   },
   "actions": {
+    "readAloud": "Lire à voix haute",
+    "stopReading": "Arrêter la lecture",
+    "codeOmitted": "code omis",
     "copy": "Copier",
     "regenerate": "Régénérer la réponse",
     "continue": "Continuer la génération",
@@ -235,6 +238,7 @@
     "referencesNone": "Aucune référence ne correspond",
     "references_one": "{{count}} référence",
     "references_other": "{{count}} références",
+    "references_many": "{{count}} références",
     "aliasNotSaved": "Alias non enregistré : {{message}}",
     "aliasSaved": "@alias:{{name}} enregistré pour {{target}}",
     "modelUnavailable": "{{model}} n'est plus disponible. Choisissez un autre modèle dans le menu des modèles.",
@@ -256,12 +260,16 @@
     "dupVideo": "Certains fichiers vidéo sont déjà joints",
     "audioTooLarge_one": "Fichier audio trop volumineux (max {{limit}}) : {{files}}",
     "audioTooLarge_other": "Fichiers audio trop volumineux (max {{limit}}) : {{files}}",
+    "audioTooLarge_many": "Fichiers audio trop volumineux (max {{limit}}) : {{files}}",
     "videoTooLarge_one": "Fichier vidéo trop volumineux (max {{limit}}) : {{files}}",
     "videoTooLarge_other": "Fichiers vidéo trop volumineux (max {{limit}}) : {{files}}",
+    "videoTooLarge_many": "Fichiers vidéo trop volumineux (max {{limit}}) : {{files}}",
     "audioInvalid_one": "Type audio non valide (WAV, MP3 uniquement) : {{files}}",
     "audioInvalid_other": "Types audio non valides (WAV, MP3 uniquement) : {{files}}",
+    "audioInvalid_many": "Types audio non valides (WAV, MP3 uniquement) : {{files}}",
     "videoInvalid_one": "Type vidéo non valide : {{files}}",
     "videoInvalid_other": "Types vidéo non valides : {{files}}",
+    "videoInvalid_many": "Types vidéo non valides : {{files}}",
     "addAudio": "Ajouter de l'audio",
     "addVideo": "Ajouter une vidéo",
     "indexingDocs": "Indexation des documents…",
@@ -275,5 +283,14 @@
     "reasoningLabel": "Raisonnement : {{state}}",
     "thinkingBudget": "Budget de réflexion",
     "stopGenerating": "Arrêter la génération"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

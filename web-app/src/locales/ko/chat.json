@@ -44,6 +44,9 @@
     "description": "첨부한 파일을 검색하고 인용할 수 있도록 색인을 만들고 있습니다. 큰 문서는 시간이 걸릴 수 있습니다."
   },
   "actions": {
+    "readAloud": "소리 내어 읽기",
+    "stopReading": "읽기 중지",
+    "codeOmitted": "코드 생략",
     "copy": "복사",
     "regenerate": "응답 다시 생성",
     "continue": "계속 생성",
@@ -261,5 +264,14 @@
     "reasoningLabel": "추론: {{state}}",
     "thinkingBudget": "사고 예산",
     "stopGenerating": "생성 중지"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

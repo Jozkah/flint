@@ -247,6 +247,7 @@
     "failed": "Impossibile considerare attendibile la cartella",
     "kept_one": "Hook mantenuti attivi per {{count}} cartella che già usi. Controllala in Impostazioni > Autorizzazioni > Cartelle attendibili.",
     "kept_other": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili.",
+    "kept_many": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili.",
     "summaryHooks": "Fidarsi di questa cartella? I suoi hook eseguono comandi",
     "summarySubagents": "Fidarsi di questa cartella? Le sue definizioni di agenti possono essere eseguite",
     "summaryBoth": "Fidarsi di questa cartella? I suoi hook e agenti possono essere eseguiti",
@@ -392,6 +393,7 @@
     "grantNote": "«Consenti per questa conversazione» termina con la conversazione, o dopo 8 ore. «Consenti sempre» vale per ogni conversazione finché non lo revochi in Impostazioni > Autorizzazioni > Accesso alle cartelle.",
     "moreWaiting_one": "{{count}} altra richiesta in attesa.",
     "moreWaiting_other": "{{count}} altre richieste in attesa.",
+    "moreWaiting_many": "{{count}} altre richieste in attesa.",
     "deny": "Nega",
     "always": "Consenti sempre",
     "session": "Consenti per questa conversazione"

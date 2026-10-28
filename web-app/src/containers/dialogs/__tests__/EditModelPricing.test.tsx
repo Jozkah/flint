@@ -62,7 +62,7 @@ const provider = {
 } as unknown as ModelProvider
 
 const field = (id: string) => document.getElementById(id) as HTMLInputElement
-const save = () => screen.getByText('Save Changes').closest('button')!
+const save = () => screen.getByText('common:saveChanges').closest('button')!
 const savedModel = (id: string): Model =>
   (updateProvider.mock.calls.at(-1)?.[1] as ModelProvider).models.find((m) => m.id === id)!
 

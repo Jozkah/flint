@@ -3,6 +3,8 @@ import type { SpecDraftKind } from '@janhq/core'
  * Default Models Service - Web implementation
  */
 
+import { warnIfOverMetalBudget } from '@/lib/metalBudgetWarning'
+import { useHardware } from '@/hooks/useHardware'
 import {
   AIEngine,
   EngineManager,
@@ -20,6 +22,7 @@ import type {
   EmbeddingModelReport,
   GpuOffloadReport,
   EngineVersionInfo,
+  SkippedLinkedModel,
 } from './types'
 import {
   extractToolContextFromContent,
@@ -27,6 +30,7 @@ import {
 } from './tokenCountToolContext'
 import { releaseImageModelForChat } from '@/lib/studio/arbiter'
 import { useAppState } from '@/hooks/useAppState'
+import { askCpuFallback, isCpuFallbackOffered } from '@/lib/gpuCrashCpuFallback'
 
 // TODO: Replace this with the actual provider later
 const defaultProvider = 'llamacpp'
@@ -147,8 +151,28 @@ export class DefaultModelsService implements ModelsService {
         )
       : undefined
 
+    if (provider.provider === 'llamacpp') {
+      // Not awaited: the warning shows while the load runs, never delays it.
+      void warnIfOverMetalBudget({
+        modelId: model,
+        hardware: useHardware.getState().hardwareData,
+        settings,
+        fetchModels: () => this.fetchModels(),
+      })
+    }
+
     return engine
       .load(model, settings, false, bypassAutoUnload)
+      .catch(async (error) => {
+        // The GPU driver crashed the engine while this model was loading.
+        // Ask once whether to run it on the CPU rather than switch silently.
+        const loadOnCpu = (engine as { loadOnCpu?: (id: string) => Promise<SessionInfo> })
+          .loadOnCpu
+        if (isCpuFallbackOffered(error) && loadOnCpu && (await askCpuFallback(model))) {
+          return loadOnCpu.call(engine, model)
+        }
+        throw error
+      })
       .then(async (session) => {
         await this.syncLoadedModels(engine, provider, model)
         return session
@@ -482,6 +506,13 @@ export class DefaultModelsService implements ModelsService {
    * The caller renders nothing rather than a half-filled panel: an unknown
    * engine version is worse than no claim about it.
    */
+  async getSkippedLinkedModels(): Promise<SkippedLinkedModel[]> {
+    const engine = this.getEngine('llamacpp') as
+      | (AIEngine & { getSkippedModels?: () => SkippedLinkedModel[] })
+      | undefined
+    return engine?.getSkippedModels?.() ?? []
+  }
+
   async getEngineVersion(): Promise<EngineVersionInfo | null> {
     try {
       const engine = this.getEngine('llamacpp') as AIEngine & {

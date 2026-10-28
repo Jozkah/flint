@@ -96,17 +96,28 @@ pub async fn post(endpoint: &str, key: &str, body: &Value, timeout: Duration) ->
         if resp.content_length().is_some_and(|n| n as usize > MAX_RESPONSE_BYTES) {
             return Err(CallError::Decode("response too large".into()));
         }
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| if e.is_timeout() { CallError::Timeout } else { CallError::Http(e.without_url().to_string()) })?;
-        if bytes.len() > MAX_RESPONSE_BYTES {
-            return Err(CallError::Decode("response too large".into()));
-        }
+        let bytes = read_capped(resp).await?;
         parse(&bytes)
     };
     // The client's own timeout covers the request; this covers everything.
     tokio::time::timeout(timeout, work).await.unwrap_or(Err(CallError::Timeout))
+}
+
+/// The body, read chunk by chunk and abandoned past [`MAX_RESPONSE_BYTES`], so a
+/// chunked response with no Content-Length cannot fill memory first.
+async fn read_capped(mut resp: reqwest::Response) -> Result<Vec<u8>, CallError> {
+    let mut out = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| if e.is_timeout() { CallError::Timeout } else { CallError::Http(e.without_url().to_string()) })?
+    {
+        if out.len() + chunk.len() > MAX_RESPONSE_BYTES {
+            return Err(CallError::Decode("response too large".into()));
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
 }
 
 /// POST a chat-completions `body` to an open model's `url`, under the same
@@ -139,13 +150,7 @@ pub async fn post_chat(
         if resp.content_length().is_some_and(|n| n as usize > MAX_RESPONSE_BYTES) {
             return Err(CallError::Decode("response too large".into()));
         }
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| if e.is_timeout() { CallError::Timeout } else { CallError::Http(e.without_url().to_string()) })?;
-        if bytes.len() > MAX_RESPONSE_BYTES {
-            return Err(CallError::Decode("response too large".into()));
-        }
+        let bytes = read_capped(resp).await?;
         serde_json::from_slice(&bytes).map_err(|e| CallError::Decode(e.to_string()))
     };
     tokio::time::timeout(timeout, work).await.unwrap_or(Err(CallError::Timeout))

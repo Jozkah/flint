@@ -28,8 +28,8 @@ import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import { RoomControls } from '@/containers/rooms/RoomControls'
 import { RoomEditor } from '@/containers/rooms/RoomEditor'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.roomDetail as any)({
+ 
+export const Route = createFileRoute(route.roomDetail)({
   component: RoomPage,
 })
 
@@ -59,7 +59,14 @@ export function RoomView({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (api.status !== 'ready') return
     setError(null)
-    api.loadRoom(roomId).catch((err) => setError(normalizeError(err)))
+    // A slow load for a room we already left must not show its error on the new one.
+    let alive = true
+    api.loadRoom(roomId).catch((err) => {
+      if (alive) setError(normalizeError(err))
+    })
+    return () => {
+      alive = false
+    }
   }, [api, roomId])
 
   const room = state.room?.id === roomId ? state.room : null

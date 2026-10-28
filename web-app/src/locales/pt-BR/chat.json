@@ -44,6 +44,9 @@
     "description": "Indexando os arquivos anexados para que possam ser pesquisados e citados. Pode levar um momento para documentos grandes."
   },
   "actions": {
+    "readAloud": "Ler em voz alta",
+    "stopReading": "Parar leitura",
+    "codeOmitted": "código omitido",
     "copy": "Copiar",
     "regenerate": "Gerar resposta novamente",
     "continue": "Continuar gerando",
@@ -235,6 +238,7 @@
     "referencesNone": "Nenhuma referência corresponde",
     "references_one": "{{count}} referência",
     "references_other": "{{count}} referências",
+    "references_many": "{{count}} referências",
     "aliasNotSaved": "Alias não salvo: {{message}}",
     "aliasSaved": "@alias:{{name}} salvo para {{target}}",
     "modelUnavailable": "{{model}} não está mais disponível. Escolha outro modelo no menu de modelos.",
@@ -256,12 +260,16 @@
     "dupVideo": "Alguns arquivos de vídeo já estão anexados",
     "audioTooLarge_one": "Arquivo de áudio grande demais (máx. {{limit}}): {{files}}",
     "audioTooLarge_other": "Arquivos de áudio grandes demais (máx. {{limit}}): {{files}}",
+    "audioTooLarge_many": "Arquivos de áudio grandes demais (máx. {{limit}}): {{files}}",
     "videoTooLarge_one": "Arquivo de vídeo grande demais (máx. {{limit}}): {{files}}",
     "videoTooLarge_other": "Arquivos de vídeo grandes demais (máx. {{limit}}): {{files}}",
+    "videoTooLarge_many": "Arquivos de vídeo grandes demais (máx. {{limit}}): {{files}}",
     "audioInvalid_one": "Tipo de áudio inválido (somente WAV, MP3): {{files}}",
     "audioInvalid_other": "Tipos de áudio inválidos (somente WAV, MP3): {{files}}",
+    "audioInvalid_many": "Tipos de áudio inválidos (somente WAV, MP3): {{files}}",
     "videoInvalid_one": "Tipo de vídeo inválido: {{files}}",
     "videoInvalid_other": "Tipos de vídeo inválidos: {{files}}",
+    "videoInvalid_many": "Tipos de vídeo inválidos: {{files}}",
     "addAudio": "Adicionar áudio",
     "addVideo": "Adicionar vídeo",
     "indexingDocs": "Indexando documentos…",
@@ -275,5 +283,14 @@
     "reasoningLabel": "Raciocínio: {{state}}",
     "thinkingBudget": "Orçamento de raciocínio",
     "stopGenerating": "Parar geração"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

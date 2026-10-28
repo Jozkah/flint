@@ -91,6 +91,9 @@ pub struct Report {
 fn plain_absolute(path: &Path) -> PathBuf {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let text = canonical.to_string_lossy();
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{unc}"));
+    }
     match text.strip_prefix(r"\\?\") {
         Some(plain) => PathBuf::from(plain),
         None => canonical.clone(),

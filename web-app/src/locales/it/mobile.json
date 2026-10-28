@@ -50,7 +50,8 @@
     "retention_other": "Gli elementi archiviati vengono eliminati definitivamente dopo {{count}} giorni.",
     "retention_many": "Gli elementi archiviati vengono eliminati definitivamente dopo {{count}} di giorni.",
     "retentionForever": "Gli elementi archiviati restano finché non li elimini.",
-    "emptyAction": "Svuota archivio"
+    "emptyAction": "Svuota archivio",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Non ha funzionato",
@@ -1305,6 +1306,7 @@
       "working": "In corso: {{done}} di {{total}} attività completate",
       "attention_one": "Serve la tua attenzione: {{count}} attività è in attesa di te",
       "attention_other": "Serve la tua attenzione: {{count}} attività sono in attesa di te",
+      "attention_many": "Serve la tua attenzione: {{count}} attività sono in attesa di te",
       "review": "Pronta per la tua revisione",
       "merging": "In attesa che le modifiche vengano applicate",
       "paused": "In pausa",
@@ -1334,6 +1336,7 @@
     },
     "files_one": "{{count}} file, +{{added}} -{{removed}}",
     "files_other": "{{count}} file, +{{added}} -{{removed}}",
+    "files_many": "{{count}} file, +{{added}} -{{removed}}",
     "filesUncommitted": "non ancora salvato in un commit",
     "budget": "{{used}} di {{budget}} token usati",
     "tokens": "{{used}} token usati",
@@ -1362,6 +1365,7 @@
       "prepared": "Le modifiche sono pronte per la revisione",
       "changes_one": "{{count}} file da applicare",
       "changes_other": "{{count}} file da applicare",
+      "changes_many": "{{count}} file da applicare",
       "gateFailed": "Il controllo non è riuscito: {{command}}",
       "flagged": "Guarda prima questo",
       "looked": "Ho guardato questo file",
@@ -1376,5 +1380,13 @@
       "tickFirst": "Seleziona prima i file segnalati che hai guardato.",
       "missing": "Le modifiche proposte non ci sono più. Apri la campagna sul computer."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

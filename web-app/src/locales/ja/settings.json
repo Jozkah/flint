@@ -155,6 +155,15 @@
     "composerRailButtonsDesc": "Cowork のメッセージ欄の下に、プレビュー、コード、変更、アクティビティ、タイムラインを表示します。オフにすると、ヘッダーの 1 つの「出力」ボタンでパネルを開きます。",
     "autoGenerateTitle": "チャットタイトルを自動生成",
     "autoGenerateTitleDesc": "新しい会話を自動的に要約して、スレッドのタイトルにします。オフにすると、自分で名前を変更するまで既定のタイトルが保たれます。",
+    "titleModel": "タイトル用モデル",
+    "titleModelDesc": "チャットのタイトルを自動で作成するモデルです。利用できない場合はチャット自体のモデルが使われます。",
+    "titleModelDefault": "チャットのモデル",
+    "titleModelSearch": "モデルを検索",
+    "titleModelEmpty": "利用できるモデルがありません",
+    "titleModelEmptySearch": "「{{query}}」に一致するモデルはありません",
+    "titlePrompt": "タイトル用プロンプト",
+    "titlePromptDesc": "タイトルを生成するときに会話と一緒に送られる指示です。",
+    "titlePromptReset": "デフォルトに戻す",
     "windowBackground": "ウィンドウの背景",
     "windowBackgroundDesc": "アプリウィンドウの背景色を設定します。",
     "appMainView": "アプリのメインビュー",
@@ -266,7 +275,7 @@
     "caBundleBroken": "このバンドルは使用できません ({{kind}})。修正または削除するまで、外部への HTTPS は何も信頼しません。",
     "ignoreSslScope": "プロキシ経由のすべての通信に適用されます。個別のプロバイダーも、モデルプロバイダー のそのページで自身のアドレスに限り無効な証明書を許可できます。",
     "proxyUrlInvalid": "プロキシのアドレスには見えません。host:port または http://host:port の形式で入力してください。",
-    "proxyUrlScheme": "http と https のプロキシのみ対応しています。",
+    "proxyUrlScheme": "http、https、socks5、socks5h のプロキシのみ対応しています。",
     "ignoreSslConfirmTitle": "SSL 証明書を無視しますか？",
     "ignoreSslConfirmBody": "Flint はプロキシ経由のすべての通信で、自己署名、期限切れ、不一致の証明書を受け入れます。そのため経路上の誰でも通信を読んだり改ざんしたりできます。プロキシとネットワークを信頼できる場合のみ続行してください。",
     "ignoreSslConfirm": "証明書を無視",
@@ -465,7 +474,9 @@
     "usageUnsaved": "未保存の変更",
     "stopServerToEdit": "編集するにはサーバーを停止してください",
     "trustedHostsInvalid": "無効なホスト: {{hosts}}。example.com や 192.168.1.5:3000 のようにホストまたはホスト:ポートで入力してください。",
-    "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。"
+    "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "分析",
@@ -539,6 +550,15 @@
     "closeToTrayDesc": "ウィンドウを閉じると、Flint は終了せずシステムトレイに格納されます。終了するにはトレイのメニューから選択してください。",
     "downloadLimit": "ダウンロード速度の制限",
     "downloadLimitDesc": "モデルのダウンロードを毎秒この MB 数に制限します。0 は無制限を意味します。",
+    "hfEndpoint": "Hugging Face エンドポイント",
+    "hfEndpointDesc": "モデルの検索とダウンロードの接続先です。huggingface.co がブロックされている、または遅い場合はミラーを選んでください。",
+    "hfEndpointDefault": "デフォルト (huggingface.co)",
+    "hfEndpointCustom": "カスタム URL",
+    "hfEndpointSave": "保存",
+    "hfEndpointSaved": "Hugging Face エンドポイントを保存しました",
+    "hfEndpointEnvOverride": "環境変数 HF_ENDPOINT が {{value}} に設定されており、この設定より優先されます。",
+    "hfEndpointSendToken": "このミラーにトークンを送信する",
+    "hfEndpointSendTokenDesc": "デフォルトはオフ: Hugging Face トークンは huggingface.co にのみ送信されます。このミラーを信頼できる場合のみオンにしてください。",
     "exportLogs": "ログをエクスポート (秘匿化済み)",
     "exportLogsDesc": "既知の API キーとトークンを除去したアプリのログを保存します。バグ報告に添付できます。共有する前に内容を確認してください。",
     "importChatGpt": "ChatGPT のエクスポートをインポート",
@@ -579,14 +599,30 @@
       "installing": "インストール中…",
       "uninstall": "アンインストール",
       "uninstalling": "アンインストール中…",
-      "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。"
+      "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "起動とトレイ",
     "cliGroup": "コマンドライン",
     "keepAwake": "Keep the computer awake during runs",
     "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
     "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "hfToken": {
+      "empty": "Please enter a Hugging Face token to validate",
+      "valid": "Token is valid",
+      "signedInAs": "Signed in as {{name}}",
+      "validDesc": "Your Hugging Face token is valid.",
+      "invalid": "Token invalid",
+      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
+      "timedOut": "Validation timed out",
+      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
+      "failed": "Validation failed",
+      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+    }
   },
   "extensions": {
     "title": "拡張機能"
@@ -669,6 +705,9 @@
     "title": "コンテキストの圧縮",
     "auto": "自動的に圧縮",
     "autoDescription": "会話がモデルのコンテキストウィンドウを超える前に、空きを作ります。チャット、Cowork、CLI で共通です。",
+    "compactAt": "圧縮するタイミング",
+    "compactAtDescription": "会話がコンテキストウィンドウのこの割合に達すると、古いメッセージを先に要約します。自動では組み込みの値を使います。llama.cpp のコンテキストシフトが内容を捨てる前に実行されます。",
+    "compactAtAuto": "自動",
     "reserveTokens": "予約トークン数",
     "reserveDescription": "空けておく余裕分です。会話が、ウィンドウからこの分を引いた量を超えると、圧縮が始まります。",
     "keepRecent": "保持する直近のメッセージ",
@@ -1383,6 +1422,7 @@
       "settleFailed": "矛盾を解決できませんでした",
       "forgotten": "メモリを忘れました",
       "forgetFailed": "メモリを忘れられませんでした",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "メモリを変更できませんでした",
       "updated": "メモリを更新しました",
       "updateFailed": "メモリを更新できませんでした",
@@ -1404,7 +1444,12 @@
     "noMatchHint": "綴りを確認するか、検索をクリアしてすべて表示してください。",
     "emptyHint": "上に書き込むか、チャット中に Flint に覚えさせてください。",
     "footerCount_other": "この範囲に {{count}} 件の記憶",
-    "agentNotes": "エージェントメモ"
+    "agentNotes": "エージェントメモ",
+    "report": {
+      "summary_other": "エクスポートから {{count}} 件のメモリをインポートしました",
+      "duplicates_other": "重複 {{count}} 件をスキップ",
+      "refused_other": "{{count}} 件を拒否"
+    }
   },
   "chatMentions": {
     "title": "会話のメンション",
@@ -1481,7 +1526,21 @@
     "composerGroup": "入力欄",
     "repliesGroup": "返信",
     "linksGroup": "リンク",
-    "artifactsGroup": "アーティファクトとウィジェット"
+    "artifactsGroup": "アーティファクトとウィジェット",
+    "reasoningDefault": "新しいチャットの推論",
+    "reasoningDefaultDesc": "新しいチャットで思考をオンで始めるかオフで始めるか。モデル自体の推論設定と入力欄のトグルが引き続き優先されます。思考を切り替えられないモデルはそのままです。",
+    "reasoningDefaultModel": "モデルの既定",
+    "reasoningDefaultOn": "オン",
+    "reasoningDefaultOff": "オフ",
+    "rulesGroup": "ルール",
+    "rulesDesc": "アシスタント自身の指示の後にチャットへ追加される常設の指示です。特定のチャットだけで無効にするには、そのチャットのオプションパネルから切り替えます。",
+    "rulesEnabled": "ルール有効",
+    "rulesRemove": "ルールを削除",
+    "rulesAllChats": "すべてのチャット",
+    "rulesNoGroups": "グループはまだありません",
+    "rulesPlaceholder": "ルールを追加（例:「メートル法で答えて」）",
+    "rulesAdd": "追加",
+    "rulesTooLong": "有効なルールは約 {{tokens}} トークンで、推奨の {{budget}} を超えています。長いルールはすべてのチャットでコンテキストを消費します。"
   },
   "data": {
     "tabStorage": "ストレージ",
@@ -1500,6 +1559,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

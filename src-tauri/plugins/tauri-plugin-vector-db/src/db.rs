@@ -35,6 +35,10 @@ pub struct AttachmentFileInfo {
     pub file_type: Option<String>,
     pub size: Option<i64>,
     pub chunk_count: i64,
+    /// Source file's modification time (seconds since the epoch) when it was
+    /// indexed. `None` for rows indexed before the column existed.
+    #[serde(default)]
+    pub mtime: Option<i64>,
     /// Set by `create_file` when an existing row for the same path was reset
     /// because the file on disk changed; its old chunks are gone.
     #[serde(default)]
@@ -160,7 +164,7 @@ pub fn register_static_vec() -> bool {
             >(sqlite_vec::sqlite3_vec_init as *const ())))
         };
         if rc != rusqlite::ffi::SQLITE_OK {
-            eprintln!("[VectorDB] static sqlite-vec registration failed (sqlite rc {rc}); trying dynamic library paths");
+            log::warn!("[VectorDB] static sqlite-vec registration failed (sqlite rc {rc}); trying dynamic library paths");
         }
         rc == rusqlite::ffi::SQLITE_OK
     })
@@ -206,7 +210,7 @@ static VEC_PROBE: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::n
 fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
     if vec0_module_available(conn) {
         if verbose {
-            println!("[VectorDB] sqlite-vec already loaded");
+            log::debug!("[VectorDB] sqlite-vec already loaded");
         }
         return true;
     }
@@ -227,7 +231,7 @@ fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
     let ok = probe_sqlite_vec(conn, verbose, cached.flatten());
     let _ = conn.load_extension_disable();
     if !ok && first_probe {
-        eprintln!(
+        log::warn!(
             "[VectorDB] sqlite-vec (vec0) unavailable: static registration {} and no loadable library found in any search path; RAG falls back to slower linear search",
             if VEC_STATIC.get().copied().unwrap_or(false) { "succeeded but vec0 did not load" } else { "failed" }
         );
@@ -241,16 +245,16 @@ fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> 
         None => possible_sqlite_vec_paths(),
     };
     if verbose {
-        println!("[VectorDB] Trying {} sqlite-vec candidates...", paths.len());
+        log::debug!("[VectorDB] Trying {} sqlite-vec candidates...", paths.len());
     }
     for p in &paths {
         if verbose {
-            println!("[VectorDB]   Trying: {}", p);
+            log::debug!("[VectorDB]   Trying: {}", p);
         }
         let loaded = unsafe { conn.load_extension(p, Some("sqlite3_vec_init")).is_ok() };
         if loaded && vec0_module_available(conn) {
             if verbose {
-                println!("[VectorDB] sqlite-vec loaded from: {}", p);
+                log::debug!("[VectorDB] sqlite-vec loaded from: {}", p);
             }
             if let Ok(mut g) = VEC_PROBE.lock() {
                 *g = Some(Some(p.clone()));
@@ -263,13 +267,13 @@ fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> 
         *g = Some(None);
     }
     if !paths.is_empty() {
-        eprintln!(
+        log::warn!(
             "[VectorDB] sqlite-vec library not loadable from any of: {}",
             paths.join(", ")
         );
     }
     if verbose {
-        println!("[VectorDB] sqlite-vec unavailable; using linear search");
+        log::debug!("[VectorDB] sqlite-vec unavailable; using linear search");
     }
     false
 }
@@ -417,7 +421,7 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
         .is_some_and(|sql| !sql.contains(VEC_METRIC) || !sql.contains(&format!("float[{dimension}]")));
     if rebuild {
         if let Err(e) = conn.execute("DROP TABLE chunks_vec", []) {
-            println!("[VectorDB] ✗ Failed to drop stale chunks_vec: {}", e);
+            log::warn!("[VectorDB] ✗ Failed to drop stale chunks_vec: {}", e);
             return false;
         }
     }
@@ -425,7 +429,7 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
         "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{dimension}] {VEC_METRIC})"
     );
     if let Err(e) = conn.execute(&create, []) {
-        println!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
+        log::warn!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
         return false;
     }
     if rebuild {
@@ -435,7 +439,7 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
             params![(dimension * 4) as i64],
         );
         if let Err(e) = filled {
-            println!("[VectorDB] ✗ Failed to rebuild chunks_vec: {}", e);
+            log::warn!("[VectorDB] ✗ Failed to rebuild chunks_vec: {}", e);
             let _ = conn.execute("DROP TABLE IF EXISTS chunks_vec", []);
             return false;
         }
@@ -527,7 +531,7 @@ pub fn create_file(
 
     let read_row = |tx: &Connection, id: &str, replaced: bool| -> Result<AttachmentFileInfo, VectorDBError> {
         let mut stmt = tx.prepare(
-            "SELECT id, path, name, type, size, chunk_count FROM files WHERE id = ?1",
+            "SELECT id, path, name, type, size, chunk_count, mtime FROM files WHERE id = ?1",
         )?;
         Ok(stmt.query_row(params![id], |r| {
             Ok(AttachmentFileInfo {
@@ -537,6 +541,7 @@ pub fn create_file(
                 file_type: r.get(3)?,
                 size: r.get(4)?,
                 chunk_count: r.get(5)?,
+                mtime: r.get(6)?,
                 replaced,
             })
         })?)
@@ -674,7 +679,7 @@ fn delete_vec_rows(conn: &Connection, chunk_filter: &str, param: &str) {
         "DELETE FROM chunks_vec WHERE rowid IN (SELECT rowid FROM chunks WHERE {chunk_filter})"
     );
     if let Err(e) = conn.execute(&sql, params![param]) {
-        println!("[VectorDB] ✗ Failed to delete chunks_vec rows: {}", e);
+        log::warn!("[VectorDB] ✗ Failed to delete chunks_vec rows: {}", e);
     }
 }
 
@@ -796,7 +801,7 @@ fn search_ann(
     let mut stmt = match conn.prepare(&query) {
         Ok(s) => s,
         Err(e) => {
-            println!("[VectorDB] ✗ Failed to prepare ANN query: {}", e);
+            log::warn!("[VectorDB] ✗ Failed to prepare ANN query: {}", e);
             return Err(e.into());
         }
     };
@@ -813,7 +818,7 @@ fn search_ann(
         match stmt.query(&*param_refs) {
             Ok(r) => r,
             Err(e) => {
-                println!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
+                log::warn!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
                 return Err(e.into());
             }
         }
@@ -821,7 +826,7 @@ fn search_ann(
         match stmt.query(params![json_vec, limit as i64]) {
             Ok(r) => r,
             Err(e) => {
-                println!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
+                log::warn!("[VectorDB] ✗ Failed to execute ANN query: {}", e);
                 return Err(e.into());
             }
         }
@@ -849,7 +854,7 @@ fn search_ann(
         });
     }
 
-    println!("[VectorDB] ANN search returned {} results", results.len());
+    log::debug!("[VectorDB] ANN search returned {} results", results.len());
     Ok(results)
 }
 
@@ -939,11 +944,11 @@ fn search_linear(
     });
     let take: Vec<SearchResult> = results.into_iter().take(limit).collect();
     if skipped > 0 {
-        println!(
+        log::debug!(
             "[VectorDB] Linear search skipped {skipped} chunk(s) stored at another dimension; re-index to include them"
         );
     }
-    println!("[VectorDB] Linear search returned {} results", take.len());
+    log::debug!("[VectorDB] Linear search returned {} results", take.len());
     Ok(take)
 }
 
@@ -955,10 +960,16 @@ pub fn list_attachments(
     conn: &Connection,
     limit: Option<usize>,
 ) -> Result<Vec<AttachmentFileInfo>, VectorDBError> {
+    // A database made before the mtime column existed is read as-is: listing
+    // never migrates, and its rows report no mtime.
+    let has_mtime = conn
+        .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'mtime'")?
+        .exists([])?;
+    let mtime_col = if has_mtime { "mtime" } else { "NULL" };
     let query = if let Some(lim) = limit {
-        format!("SELECT id, path, name, type, size, chunk_count FROM files LIMIT {}", lim)
+        format!("SELECT id, path, name, type, size, chunk_count, {} FROM files LIMIT {}", mtime_col, lim)
     } else {
-        "SELECT id, path, name, type, size, chunk_count FROM files".to_string()
+        format!("SELECT id, path, name, type, size, chunk_count, {} FROM files", mtime_col)
     };
 
     let mut stmt = conn.prepare(&query)?;
@@ -972,6 +983,7 @@ pub fn list_attachments(
         let file_type: Option<String> = row.get(3)?;
         let size: Option<i64> = row.get(4)?;
         let chunk_count: i64 = row.get(5)?;
+        let mtime: Option<i64> = row.get(6)?;
         out.push(AttachmentFileInfo {
             id,
             name,
@@ -979,6 +991,7 @@ pub fn list_attachments(
             file_type,
             size,
             chunk_count,
+            mtime,
             replaced: false,
         });
     }
@@ -1411,6 +1424,34 @@ mod tests {
             .exists([])
             .unwrap();
         assert!(has);
+    }
+
+    #[test]
+    fn list_attachments_reports_the_indexed_mtime() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("listmtime", b"hello");
+        let p = path.to_str().unwrap();
+        let created = create_file(&conn, p, Some("a"), None, None).unwrap();
+        assert!(created.mtime.is_some());
+        let listed = list_attachments(&conn, None).unwrap();
+        assert_eq!(listed[0].mtime, created.mtime);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn list_attachments_reads_a_db_without_the_mtime_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT, type TEXT, size INTEGER, chunk_count INTEGER DEFAULT 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO files (id, path, size) VALUES ('f1', '/x', 5)", [])
+            .unwrap();
+        let listed = list_attachments(&conn, None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].mtime, None);
     }
 
     #[test]

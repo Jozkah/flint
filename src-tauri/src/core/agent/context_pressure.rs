@@ -70,7 +70,7 @@ pub fn line(p: &Pressure) -> String {
     let source = if p.measured {
         "counted by the provider"
     } else {
-        "Jan's estimate"
+        "Flint's estimate"
     };
     let counts = format!(
         "{} of {} tokens, {source}",
@@ -125,7 +125,7 @@ mod tests {
     fn an_estimate_is_named_as_one() {
         let p = pressure(90_000, 100_000, 10_000, false).expect("a warning");
         let text = line(&p);
-        assert!(text.contains("Jan's estimate"), "{text}");
+        assert!(text.contains("Flint's estimate"), "{text}");
         assert!(!text.contains("counted by the provider"), "{text}");
     }
 

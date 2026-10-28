@@ -29,8 +29,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.assistant as any)({
+ 
+export const Route = createFileRoute(route.settings.assistant)({
   component: AssistantContent,
 })
 

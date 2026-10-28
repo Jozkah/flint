@@ -299,6 +299,7 @@
     "continuePrompt": "Continúa tu respuesta anterior desde donde se cortó.",
     "catchUp": "Puesta al día: también respondió {{count}} preguntas anteriores",
     "catchUp_one": "Puesta al día: también respondió 1 pregunta anterior",
+    "catchUp_many": "Puesta al día: también respondió {{count}} preguntas anteriores",
     "catchUpHint": "Este participante se unió después de estas preguntas, así que esta respuesta también las responde:"
   },
   "unknownWindow": {
@@ -545,10 +546,12 @@
   "apply": {
     "title_one": "Aplicar {{count}} cambio a tu carpeta",
     "title_other": "Aplicar {{count}} cambios a tu carpeta",
+    "title_many": "Aplicar {{count}} cambios a tu carpeta",
     "copyPath": "Copiar la ruta de la carpeta {{path}}",
     "pathCopied": "Ruta de la carpeta copiada",
     "files_one": "{{count}} archivo",
     "files_other": "{{count}} archivos",
+    "files_many": "{{count}} archivos",
     "source": "De {{name}} · ronda {{round}}",
     "safety": "No se aplica nada si el parche no encaja limpiamente. Puedes deshacerlo justo después.",
     "checking": "Comprobando si se aplica a tu carpeta…",
@@ -556,6 +559,7 @@
     "checkFailed": "No se pudo comprobar el parche: {{message}}",
     "conflict_one": "{{count}} archivo no se aplica a tu carpeta",
     "conflict_other": "{{count}} archivos no se aplican a tu carpeta",
+    "conflict_many": "{{count}} archivos no se aplican a tu carpeta",
     "conflictHint": "Déjalos fuera o pide al participante que los rehaga sobre tu carpeta tal como está ahora.",
     "notChecked": "no comprobado por separado (demasiados archivos)",
     "fileConflict": "No se aplica",
@@ -564,6 +568,7 @@
     "fileDirty": "Tus ediciones",
     "dirtyTitle_one": "Tienes cambios sin confirmar en {{count}} de estos archivos",
     "dirtyTitle_other": "Tienes cambios sin confirmar en {{count}} de estos archivos",
+    "dirtyTitle_many": "Tienes cambios sin confirmar en {{count}} de estos archivos",
     "dirtyHint": "El parche se escribe encima de tus cambios. Haz commit o stash antes si quieres una forma fácil de volver.",
     "selectAll": "Seleccionar todos los archivos",
     "include": "Incluir {{path}}",
@@ -578,8 +583,10 @@
     "noLines": "Sin cambios de líneas (solo modo o nombre).",
     "showMore_one": "Mostrar {{count}} línea más",
     "showMore_other": "Mostrar {{count}} líneas más",
+    "showMore_many": "Mostrar {{count}} líneas más",
     "hiddenLines_one": "({{count}} oculta)",
     "hiddenLines_other": "({{count}} ocultas)",
+    "hiddenLines_many": "({{count}} ocultas)",
     "blockedConflict": "Aplicar está desactivado: algunos archivos seleccionados no se aplican limpiamente.",
     "blockedNothing": "Selecciona al menos un archivo.",
     "blockedFailed": "Aplicar está desactivado hasta que la comprobación funcione.",
@@ -587,8 +594,10 @@
     "patchCopied": "Parche copiado",
     "confirm_one": "Aplicar {{count}} archivo",
     "confirm_other": "Aplicar {{count}} archivos",
+    "confirm_many": "Aplicar {{count}} archivos",
     "applied_one": "{{count}} archivo aplicado a tu carpeta",
     "applied_other": "{{count}} archivos aplicados a tu carpeta",
+    "applied_many": "{{count}} archivos aplicados a tu carpeta",
     "undo": "Deshacer",
     "undone": "El cambio se retiró de tu carpeta",
     "undoFailed": "No se pudo deshacer: {{message}}"
@@ -658,5 +667,6 @@
     "ranTools": "Antes, en este turno, ya ejecutaste herramientas ({{ran}}); {{reason}} No repitas nada que haya cambiado archivos o el estado; vuelve a leer solo lo que aún necesites.",
     "ranToolsDropped": "su salida se descartó para que cupiera en la ventana de contexto.",
     "ranToolsRetry": "el proveedor falló después y la solicitud se está reintentando."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

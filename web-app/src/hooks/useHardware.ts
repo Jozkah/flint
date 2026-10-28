@@ -129,7 +129,7 @@ export const useHardware = create<HardwareStore>()(
       pollingPaused: false,
       setGpuLoading: (index, loading) =>
         set((state) => {
-          const gpu = state.hardwareData.gpus[index]
+          const gpu = state.hardwareData.gpus?.[index]
           if (!gpu) return state
           return { gpuLoading: { ...state.gpuLoading, [gpu.uuid]: loading } }
         }),

@@ -96,7 +96,8 @@
     "preview": "Xem trước",
     "previewStreaming": "Khả dụng khi quá trình tạo hoàn tất",
     "unresolvedAssets_one": "1 tham chiếu tài nguyên không tải được trong bản xem trước. Đường dẫn tương đối không có URL gốc để phân giải.",
-    "unresolvedAssets_other": "{{count}} tham chiếu tài nguyên không tải được trong bản xem trước. Đường dẫn tương đối không có URL gốc để phân giải."
+    "unresolvedAssets_other": "{{count}} tham chiếu tài nguyên không tải được trong bản xem trước. Đường dẫn tương đối không có URL gốc để phân giải.",
+    "unresolvedAssets_many": "{{count}} tham chiếu tài nguyên không tải được trong bản xem trước. Đường dẫn tương đối không có URL gốc để phân giải."
   },
   "webPreview": {
     "title": "Xem trước web",
@@ -259,7 +260,8 @@
     "reload": "Tải lại",
     "allowNetwork": "Cho phép mạng",
     "unresolvedRefs_one": "1 tệp mà trang này liên kết đến không tải được trong bản xem trước. Hãy mở nó để xem trong trình duyệt.",
-    "unresolvedRefs_other": "{{count}} tệp mà trang này liên kết đến không tải được trong bản xem trước. Hãy mở nó để xem trong trình duyệt."
+    "unresolvedRefs_other": "{{count}} tệp mà trang này liên kết đến không tải được trong bản xem trước. Hãy mở nó để xem trong trình duyệt.",
+    "unresolvedRefs_many": "{{count}} tệp mà trang này liên kết đến không tải được trong bản xem trước. Hãy mở nó để xem trong trình duyệt."
   },
   "turnUndo": {
     "title": "Thay đổi theo lượt",
@@ -331,7 +333,8 @@
       "settings": "Cài đặt",
       "threads": "Cuộc trò chuyện"
     },
-    "openItem": "Mở {{item}}"
+    "openItem": "Mở {{item}}",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "Trang",
@@ -376,7 +379,11 @@
   },
   "sharedFolder": {
     "others_other": "{{count}} phiên khác đang làm việc trong thư mục này",
+    "others_one": "{{count}} phiên khác đang làm việc trong thư mục này",
+    "others_many": "{{count}} phiên khác đang làm việc trong thư mục này",
     "waitingApproval_other": "{{count}} phiên khác đang chờ phê duyệt",
+    "waitingApproval_one": "{{count}} phiên khác đang chờ phê duyệt",
+    "waitingApproval_many": "{{count}} phiên khác đang chờ phê duyệt",
     "waitingApprovalOne": "Đang chờ phê duyệt",
     "holdEdit": "{{owner}} đang sửa {{target}}: {{session}} được yêu cầu nhắn cho họ",
     "holdGit": "{{owner}} đang làm việc trong thư mục này: {{session}} bị giữ lại trước git {{target}} và được yêu cầu nhắn cho họ",
@@ -405,7 +412,9 @@
     "useShared": "Dùng thư mục chung thay thế",
     "sharedWarning": "Thư mục dùng chung: thay đổi git của phiên khác có thể làm đổi nhánh và tệp của phiên này. Flint giữ lại các lệnh git rủi ro và cảnh báo khi hai phiên sửa cùng một tệp.",
     "gotIt": "Đã hiểu",
-    "sidebarMark_other": "Dùng chung thư mục với {{count}} phiên khác"
+    "sidebarMark_other": "Dùng chung thư mục với {{count}} phiên khác",
+    "sidebarMark_one": "Dùng chung thư mục với {{count}} phiên khác",
+    "sidebarMark_many": "Dùng chung thư mục với {{count}} phiên khác"
   },
   "coworkLayout": {
     "views": "Chế độ xem Cowork",
@@ -418,6 +427,7 @@
   "coworkReview": {
     "ready_one": "{{count}} tệp sẵn sàng để xem xét",
     "ready_other": "{{count}} tệp sẵn sàng để xem xét",
+    "ready_many": "{{count}} tệp sẵn sàng để xem xét",
     "open": "Xem lại thay đổi",
     "hide": "Ẩn",
     "hideHint": "Ẩn cho đến khi có thay đổi mới. Thay đổi trên thanh bên và bộ đếm ± vẫn hiển thị chúng.",
@@ -463,6 +473,7 @@
     },
     "truncated": "{{count}} dòng nữa không được hiển thị",
     "truncated_other": "{{count}} dòng nữa không được hiển thị",
+    "truncated_many": "{{count}} dòng nữa không được hiển thị",
     "openFile": "Mở",
     "applyToFolder": "Áp dụng vào thư mục",
     "applyHint": "Sao chép tệp này từ sandbox của phiên vào {{folder}} dưới dạng {{path}}",
@@ -483,6 +494,7 @@
     "applyAllOverwrites": "Thay thế một tệp",
     "applyAllConfirm_one": "Áp dụng {{count}} tệp",
     "applyAllConfirm_other": "Áp dụng {{count}} tệp",
+    "applyAllConfirm_many": "Áp dụng {{count}} tệp",
     "applyAllSummary": "Đã áp dụng {{applied}} · chưa áp dụng {{failed}}",
     "openExternally": "Mở bằng ứng dụng khác"
   },
@@ -533,6 +545,7 @@
   "threadImage": "Hình ảnh chủ đề",
   "editMessage": "Chỉnh sửa tin nhắn",
   "deleteMessage": "Xóa tin nhắn",
+  "deleteMessageDescription": "Bạn có chắc muốn xóa tin nhắn này? Hành động này không thể hoàn tác.",
   "deleteThread": "Xóa chủ đề",
   "renameThread": "Đổi tên chủ đề",
   "threadTitle": "Tiêu đề chủ đề",
@@ -778,6 +791,14 @@
     "filesDescription": "Thêm PDF, tài liệu hoặc văn bản khác để các cuộc trò chuyện này tham chiếu.",
     "uploadingFiles": "Đang xử lý tệp…",
     "processButton": "Thêm",
+    "fileChangedOnDisk": "Đã thay đổi trên đĩa",
+    "fileMissing": "Không tìm thấy",
+    "reindexFile": "Lập chỉ mục lại",
+    "reindexAllChanged": "Lập chỉ mục lại tất cả tệp đã đổi",
+    "filesChangedOnDisk": "Tệp đã thay đổi trên đĩa kể từ khi lập chỉ mục: {{count}}",
+    "reindexed": "Tệp đã lập chỉ mục lại: {{count}}",
+    "reindexFailed": "Không thể lập chỉ mục lại tệp",
+    "staleFilesNotice": "Tệp của bộ sưu tập đã thay đổi hoặc bị mất trên đĩa: {{count}}. Hãy lập chỉ mục lại từ danh sách Tệp của bộ sưu tập.",
     "deleteFileDialog": {
       "title": "Xóa tệp",
       "description": "\"{{fileName}}\" và nội dung đã lập chỉ mục của nó sẽ bị gỡ khỏi bộ sưu tập này. Không thể hoàn tác."
@@ -846,7 +867,38 @@
     "openCodeFolder": "Mở thư mục mã",
     "openCodeFolderDescription": "Chọn một thư mục trên máy tính của bạn để Flint làm việc.",
     "deleteProjectConfirm": "Bạn có chắc chắn muốn xóa dự án này không? Hành động này không thể hoàn tác.",
-    "setUpEmbeddingModel": "Thiết lập mô hình embedding"
+    "setUpEmbeddingModel": "Thiết lập mô hình embedding",
+    "mcpServers": {
+      "title": "Máy chủ MCP",
+      "useAll": "Dùng tất cả máy chủ đã bật (mặc định)",
+      "onlyThese": "Chỉ những máy chủ này",
+      "noneConfigured": "Chưa cấu hình máy chủ MCP nào.",
+      "filterActive": "Dự án này chỉ dùng: {{servers}}",
+      "filterNone": "Dự án này không dùng máy chủ MCP nào"
+    },
+    "webPage": {
+      "open": "Thêm trang web",
+      "title": "Thêm một trang web",
+      "description": "Tải một trang và lưu phần văn bản đọc được thành tệp dự án. Chỉ dùng được địa chỉ http và https công khai.",
+      "urlLabel": "Địa chỉ trang",
+      "add": "Thêm trang",
+      "refresh": "Làm mới",
+      "added": "Đã thêm \"{{name}}\"",
+      "refreshed": "Đã làm mới \"{{name}}\"",
+      "truncated": "Trang vượt quá giới hạn kích thước nên chỉ lưu phần đầu.",
+      "refreshFailed": "Không thể làm mới trang",
+      "errors": {
+        "invalidUrl": "Nhập địa chỉ web đầy đủ bắt đầu bằng http:// hoặc https://.",
+        "blocked": "Địa chỉ này trỏ tới máy này hoặc mạng riêng nên không được tải.",
+        "timeout": "Trang phản hồi quá lâu. Hãy thử lại sau.",
+        "notHtml": "Địa chỉ này không phải trang web có văn bản đọc được (ví dụ PDF, hình ảnh hoặc tệp tải xuống).",
+        "tooLarge": "Trang quá lớn để tải.",
+        "httpError": "Trang web trả về lỗi: {{message}}",
+        "failed": "Không thể tải trang: {{message}}"
+      }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "Chọn cách nạp tệp đính kèm",
@@ -1033,6 +1085,7 @@
   "skillsUsed": "Kỹ năng đã dùng: {{skills}}",
   "coworkShowEarlier_one": "Hiện {{count}} tin nhắn trước đó",
   "coworkShowEarlier_other": "Hiện {{count}} tin nhắn trước đó",
+  "coworkShowEarlier_many": "Hiện {{count}} tin nhắn trước đó",
   "modelReplace": {
     "title": "Một mô hình không còn khả dụng",
     "description": "{{subject}} dùng một mô hình hiện không thể dùng. Hãy chọn mô hình khác để tiếp tục.",
@@ -1046,6 +1099,7 @@
   },
   "skillsUsedCount_one": "Đã dùng {{count}} kỹ năng",
   "skillsUsedCount_other": "Đã dùng {{count}} kỹ năng",
+  "skillsUsedCount_many": "Đã dùng {{count}} kỹ năng",
   "artifactsAll": "Tất cả",
   "artifactsEmpty": "Chưa có gì được tạo. Artifact từ các lượt chạy Cowork sẽ hiện ở đây.",
   "artifactsNoMatch": "Không có artifact nào khớp.",
@@ -1061,8 +1115,10 @@
   "artifactsFilterLabel": "Lọc theo loại",
   "artifactsCount_one": "{{count}} mục",
   "artifactsCount_other": "{{count}} mục",
+  "artifactsCount_many": "{{count}} mục",
   "previewMessageCount_one": "{{count}} tin nhắn",
   "previewMessageCount_other": "{{count}} tin nhắn",
+  "previewMessageCount_many": "{{count}} tin nhắn",
   "rowPreview": {
     "status": {
       "running": "Đang chạy",
@@ -1079,6 +1135,7 @@
     "pullRequests": "Pull request",
     "morePrs_one": "+{{count}} nữa",
     "morePrs_other": "+{{count}} nữa",
+    "morePrs_many": "+{{count}} nữa",
     "noChecks": "Không có kiểm tra",
     "empty": "Chưa có gì ở đây.",
     "noMessages": "Chưa có tin nhắn",
@@ -1207,6 +1264,7 @@
     "working": "Đang nén cuộc trò chuyện…",
     "divider_one": "Đã nén ngữ cảnh — đã tóm tắt {{count}} tin nhắn trước đó",
     "divider_other": "Đã nén ngữ cảnh — đã tóm tắt {{count}} tin nhắn trước đó",
+    "divider_many": "Đã nén ngữ cảnh — đã tóm tắt {{count}} tin nhắn trước đó",
     "showSummary": "Hiện tóm tắt",
     "hideSummary": "Ẩn tóm tắt",
     "compactNow": "Nén",
@@ -1223,8 +1281,10 @@
     "interrupted": "Lượt chạy gần nhất bị ngắt trước khi hoàn tất.",
     "interruptedDetail_one": "Đã giữ {{calls}} bước đã hoàn tất; một câu trả lời dở dang dài {{chars}} ký tự.",
     "interruptedDetail_other": "Đã giữ {{calls}} bước đã hoàn tất; một câu trả lời dở dang dài {{chars}} ký tự.",
+    "interruptedDetail_many": "Đã giữ {{calls}} bước đã hoàn tất; một câu trả lời dở dang dài {{chars}} ký tự.",
     "interruptedNoReply_one": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedNoReply_other": "Đã giữ {{calls}} bước đã hoàn tất.",
+    "interruptedNoReply_many": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedContinue": "Tiếp tục",
     "interruptedDiscard": "Bỏ câu trả lời dở dang và tiếp tục",
     "recap": "While you were away:",
@@ -1339,7 +1399,8 @@
     "binaryRefused": "{{name}} không phải tệp văn bản, dù phần mở rộng nói gì",
     "chooseAgainAction": "Chọn lại",
     "externalGone": "Tệp này được mở từ bên ngoài dự án, và quyền truy cập đó không còn. Hãy chọn lại để mở lại.",
-    "oneFolderAtATime": "Chỉ thêm được một thư mục mỗi lần. \"{{name}}\" chưa được thêm."
+    "oneFolderAtATime": "Chỉ thêm được một thư mục mỗi lần. \"{{name}}\" chưa được thêm.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Tìm cài đặt",
@@ -1347,6 +1408,7 @@
     "results": "Kết quả tìm kiếm",
     "count_one": "1 kết quả",
     "count_other": "{{count}} kết quả",
+    "count_many": "{{count}} kết quả",
     "empty": "Không có cài đặt nào khớp.",
     "clear": "Xóa tìm kiếm",
     "emptyHint": "Thử một từ khác, hoặc tìm theo chức năng: giao diện, proxy, bộ nhớ.",
@@ -1360,11 +1422,14 @@
     "finished": "Đã xong ({{count}})",
     "summary_one": "{{count}} tác vụ · {{tokens}} token",
     "summary_other": "{{count}} tác vụ · {{tokens}} token",
+    "summary_many": "{{count}} tác vụ · {{tokens}} token",
     "summaryNoTokens_one": "{{count}} tác vụ",
     "summaryNoTokens_other": "{{count}} tác vụ",
+    "summaryNoTokens_many": "{{count}} tác vụ",
     "tokens": "{{tokens}} token",
     "toolCalls_one": "{{count}} bước",
     "toolCalls_other": "{{count}} bước",
+    "toolCalls_many": "{{count}} bước",
     "queuePosition": "đang chờ #{{position}}",
     "background": "nền {{jobId}}",
     "noOutput": "Không có đầu ra được ghi lại.",
@@ -1372,6 +1437,7 @@
     "untitledRun": "Lượt chạy chưa đặt tên",
     "workflows_one": "{{count}} quy trình",
     "workflows_other": "{{count}} quy trình",
+    "workflows_many": "{{count}} quy trình",
     "phase": "Giai đoạn {{name}}",
     "workflowPhase": "{{index}}. {{name}}",
     "phaseDone": "{{finished}} of {{total}} done",
@@ -1379,6 +1445,7 @@
     "progress": "Đã xong {{finished}}/{{total}}",
     "runningTasks_one": "{{count}} tác vụ đang chạy",
     "runningTasks_other": "{{count}} tác vụ đang chạy",
+    "runningTasks_many": "{{count}} tác vụ đang chạy",
     "runningTools": "Đang chạy công cụ…",
     "stop": "Dừng",
     "stopTask": "Dừng {{name}}",
@@ -1390,8 +1457,10 @@
     "replaceSubmit": "Thay thế và chạy",
     "restartedAttempts_one": "Đã khởi động lại thủ công một lần",
     "restartedAttempts_other": "Đã khởi động lại thủ công {{count}} lần",
+    "restartedAttempts_many": "Đã khởi động lại thủ công {{count}} lần",
     "replacedAttempts_one": "Đã thay thế thủ công một lần",
     "replacedAttempts_other": "Đã thử lại thủ công {{count}} lần, lần cuối là thay thế",
+    "replacedAttempts_many": "Đã thử lại thủ công {{count}} lần, lần cuối là thay thế",
     "clearFinished": "Xóa các mục đã xong",
     "openPanel": "Hiện trong Hoạt động",
     "statusQueued": "Đang chờ",
@@ -1457,6 +1526,7 @@
     "toolChipFailed": "{{name}} {{count}} · {{failed}} thất bại",
     "stepsRunning_one": "{{count}} bước đang chạy",
     "stepsRunning_other": "{{count}} bước đang chạy",
+    "stepsRunning_many": "{{count}} bước đang chạy",
     "stepsFailed": "{{count}} thất bại",
     "statOutput": "{{tokens}} ra",
     "statApprox": "khoảng {{tokens}} token (ước tính)",
@@ -1510,8 +1580,10 @@
     "outputTruncated": "Đang hiển thị {{lines}} dòng cuối.",
     "agentCount_one": "{{count}} tác tử",
     "agentCount_other": "{{count}} tác tử",
+    "agentCount_many": "{{count}} tác tử",
     "shellCount_one": "{{count}} lệnh",
     "shellCount_other": "{{count}} lệnh",
+    "shellCount_many": "{{count}} lệnh",
     "stopWorkflow": "Dừng {{name}}",
     "stopWorkflowPartial": "Đã dừng {{cancelled}}; không thể dừng {{failed}}.",
     "cancelKillFailed": "Hệ thống từ chối dừng nó: {{error}}",
@@ -1568,6 +1640,7 @@
     "failed": "thất bại",
     "eventCount": "{{count}} sự kiện",
     "eventCount_other": "{{count}} sự kiện",
+    "eventCount_many": "{{count}} sự kiện",
     "filter": {
       "all": "Tất cả",
       "read": "Đọc",
@@ -1633,10 +1706,13 @@
     "visionDisabled": {
       "title_one": "Mô hình này không đọc được hình ảnh",
       "title_other": "Mô hình này không đọc được hình ảnh",
+      "title_many": "Mô hình này không đọc được hình ảnh",
       "description_one": "{{model}} không có khả năng thị giác, nên không thể gửi hình ảnh cùng tin nhắn của bạn.",
       "description_other": "{{model}} không có khả năng thị giác, nên không thể gửi các hình ảnh này cùng tin nhắn của bạn.",
+      "description_many": "{{model}} không có khả năng thị giác, nên không thể gửi các hình ảnh này cùng tin nhắn của bạn.",
       "proceed_one": "Gửi không kèm hình ảnh",
       "proceed_other": "Gửi không kèm hình ảnh",
+      "proceed_many": "Gửi không kèm hình ảnh",
       "enable": "Bật thị giác",
       "needsMmproj": "Mô hình cục bộ này cần một tệp mmproj trước khi có thể nhìn. Hãy thêm một tệp từ cài đặt của mô hình, rồi đính kèm lại hình ảnh."
     }
@@ -1826,6 +1902,7 @@
     "delivered": "Đã gửi cho tác tử khi nó đang làm việc",
     "held_one": "1 tin nhắn chưa được gửi đi: lượt chạy mà nó được gõ cho đã không nhận",
     "held_other": "{{count}} tin nhắn chưa được gửi đi: lượt chạy mà chúng được gõ cho đã không nhận",
+    "held_many": "{{count}} tin nhắn chưa được gửi đi: lượt chạy mà chúng được gõ cho đã không nhận",
     "send": "Gửi",
     "discard": "Loại bỏ"
   },
@@ -1912,8 +1989,10 @@
     "subtitle": "Được Flint ghi lại, không phải do mô hình viết.",
     "files_one": "{{count}} tệp",
     "files_other": "{{count}} tệp",
+    "files_many": "{{count}} tệp",
     "checks_one": "{{count}} kiểm tra",
     "checks_other": "{{count}} kiểm tra",
+    "checks_many": "{{count}} kiểm tra",
     "janWrites": {
       "repository": "Flint đã thay đổi trong thư mục này",
       "managed": "Flint đã thay đổi trong cây làm việc",
@@ -2014,6 +2093,7 @@
     "hideCompletedToolsDescription": "Ẩn hoạt động công cụ đã kết thúc thành công. Hoạt động đang chạy, thất bại, bị từ chối, bị hủy và lỗi thời luôn được hiển thị, và không có gì bị xóa.",
     "hiddenCount": "Đã ẩn {{count}} hoạt động công cụ đã hoàn tất",
     "hiddenCount_one": "Đã ẩn 1 hoạt động công cụ đã hoàn tất",
+    "hiddenCount_many": "Đã ẩn {{count}} hoạt động công cụ đã hoàn tất",
     "showAgain": "Hiện lại",
     "showModelReceived": "Hiện \"Mô hình đã nhận gì\"",
     "showModelReceivedDescription": "Bản ghi yêu cầu và số token theo từng lượt. Vẫn được ghi lại và có trong chi tiết phiên cùng dòng thời gian."
@@ -2035,6 +2115,7 @@
     "title": "Dòng thời gian",
     "count_one": "1 sự kiện",
     "count_other": "{{count}} sự kiện",
+    "count_many": "{{count}} sự kiện",
     "filters": "Hiện trên dòng thời gian",
     "following": "Đang theo dõi trực tiếp",
     "paused": "Đã tạm dừng: cuộn đến cuối hoặc nhấn Theo dõi trực tiếp",
@@ -2072,6 +2153,7 @@
     "resourcesUnmeasured": "Không đo được: {{reason}}",
     "resourcesCommands_one": "Đã đo {{measured}}/{{count}} lệnh",
     "resourcesCommands_other": "Đã đo {{measured}}/{{count}} lệnh",
+    "resourcesCommands_many": "Đã đo {{measured}}/{{count}} lệnh",
     "refusal": "Bị từ chối dưới dạng",
     "failure": "Lỗi",
     "fellBackFrom": "Đã chuyển từ",
@@ -2081,6 +2163,7 @@
     "truncated": "chỉ phần cuối",
     "hunks_one": "1 hunk",
     "hunks_other": "{{count}} hunk",
+    "hunks_many": "{{count}} hunk",
     "diffOversized": "Diff của chỉnh sửa này quá lớn để giữ; hiển thị số dòng.",
     "diffUnavailable": "Không có diff nào được lưu cho chỉnh sửa này.",
     "category": {
@@ -2169,12 +2252,15 @@
     "modelsTitle": "Các mô hình đã tải vào bộ nhớ trên thiết bị này",
     "modelsLoaded_one": "Đã tải {{count}} mô hình",
     "modelsLoaded_other": "Đã tải {{count}} mô hình",
+    "modelsLoaded_many": "Đã tải {{count}} mô hình",
     "runsTitle": "Các lượt chạy Cowork đang diễn ra trên mọi phiên",
     "runsActive_one": "{{count}} lượt chạy đang diễn ra",
     "runsActive_other": "{{count}} lượt chạy đang diễn ra",
+    "runsActive_many": "{{count}} lượt chạy đang diễn ra",
     "runsNone": "Không có lượt chạy nào đang diễn ra",
     "approvalsWaiting_one": "{{count}} phê duyệt đang chờ",
     "approvalsWaiting_other": "{{count}} phê duyệt đang chờ",
+    "approvalsWaiting_many": "{{count}} phê duyệt đang chờ",
     "serverTitle": "Máy chủ API cục bộ",
     "serverRunning": "API cục bộ trên {{address}}",
     "serverStarting": "API cục bộ đang khởi động",
@@ -2191,6 +2277,7 @@
     "activity": "Hoạt động",
     "approvals_one": "{{count}} phê duyệt",
     "approvals_other": "{{count}} phê duyệt",
+    "approvals_many": "{{count}} phê duyệt",
     "breadcrumb": "Đường dẫn điều hướng",
     "collapseSidebar": "Thu gọn thanh bên",
     "expandSidebar": "Hiện thanh bên",
@@ -2229,6 +2316,7 @@
     "ungrouped": "Chưa phân nhóm",
     "runs_one": "{{count}} lượt chạy",
     "runs_other": "{{count}} lượt chạy",
+    "runs_many": "{{count}} lượt chạy",
     "runsTitle": "Các lượt chạy Cowork đang diễn ra",
     "searchAnything": "Tìm mọi thứ",
     "searchChats": "Tìm cuộc trò chuyện",
@@ -2317,8 +2405,10 @@
     "meta": "{{origin}} · {{browser}} · {{date}} · {{ms}} ms",
     "consoleErrors_one": "{{count}} lỗi console",
     "consoleErrors_other": "{{count}} lỗi console",
+    "consoleErrors_many": "{{count}} lỗi console",
     "blocked_one": "{{count}} yêu cầu ngoài nguồn gốc của ứng dụng bị chặn",
     "blocked_other": "{{count}} yêu cầu ngoài nguồn gốc của ứng dụng bị chặn",
+    "blocked_many": "{{count}} yêu cầu ngoài nguồn gốc của ứng dụng bị chặn",
     "screenshotAlt": "Trang ở cuối quá trình xác minh",
     "inSummary": "Đã xác minh trong trình duyệt",
     "status": {
@@ -2421,10 +2511,13 @@
     "noChecks": "Không có kiểm tra nào chạy",
     "passed_one": "{{count}} kiểm tra đạt",
     "passed_other": "{{count}} kiểm tra đạt",
+    "passed_many": "{{count}} kiểm tra đạt",
     "failed_one": "{{count}} kiểm tra không đạt",
     "failed_other": "{{count}} kiểm tra không đạt",
+    "failed_many": "{{count}} kiểm tra không đạt",
     "pending_one": "{{count}} kiểm tra đang chạy",
     "pending_other": "{{count}} kiểm tra đang chạy",
+    "pending_many": "{{count}} kiểm tra đang chạy",
     "refresh": "Làm mới trạng thái",
     "open": "Mở pull request",
     "dismiss": "Bỏ qua",
@@ -2523,7 +2616,15 @@
     "noMatches": "Không có tham số nào khớp",
     "noneForProvider": "Nhà cung cấp này không có tham số điều chỉnh được.",
     "maybeUnsupported": "Có thể không được {{providers}} hỗ trợ",
-    "modelReports": "Mô hình: {{value}}"
+    "modelReports": "Mô hình: {{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "Ghim tiến độ phía trên cuộc trò chuyện",
@@ -2541,7 +2642,76 @@
     "restartManually": "Hãy khởi động lại Flint để bắt đầu dùng dữ liệu đã di chuyển.",
     "chooseNote": "Không có gì được sao chép cho đến khi bạn xác nhận. Dữ liệu của JAN không bao giờ bị sửa đổi hoặc xóa.",
     "copyDescription": "Sao chép các cuộc trò chuyện, cài đặt và khóa nhà cung cấp của JAN vào Flint, cho các mục bạn chọn bên dưới. Bản thân JAN không bao giờ bị thay đổi hoặc xóa.",
-    "freshDescription": "Khởi động Flint trống. Không có gì được đọc hoặc sao chép từ JAN, kể cả khóa nhà cung cấp, bây giờ hay ở các lần khởi chạy sau. Bạn vẫn có thể nhập từ Cài đặt, Thư mục dữ liệu bất cứ lúc nào."
+    "freshDescription": "Khởi động Flint trống. Không có gì được đọc hoặc sao chép từ JAN, kể cả khóa nhà cung cấp, bây giờ hay ở các lần khởi chạy sau. Bạn vẫn có thể nhập từ Cài đặt, Thư mục dữ liệu bất cứ lúc nào.",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "fileCount_many": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "conflictCount_many": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "Hình ảnh {{n}}",
@@ -2608,6 +2778,7 @@
     "writeNote": "Các token nhà cung cấp đã ghi vào bộ nhớ đệm prompt của nó. Chúng là một phần của đầu vào chưa lưu đệm và không được tính lại trong tổng.",
     "requests_one": "{{count}} yêu cầu",
     "requests_other": "{{count}} yêu cầu",
+    "requests_many": "{{count}} yêu cầu",
     "reusedOn": " · bộ nhớ đệm được dùng lại ở {{count}}",
     "didNotReport": " · {{count}} không báo cáo bộ nhớ đệm",
     "clamped": "Nhà cung cấp báo cáo số liệu bộ nhớ đệm không nhất quán{{detail}}; các giá trị ở trên đã bị giới hạn theo đầu vào.",
@@ -2630,6 +2801,7 @@
       "theReplies": "các câu trả lời",
       "replies_one": "{{count}} câu trả lời",
       "replies_other": "{{count}} câu trả lời",
+      "replies_many": "{{count}} câu trả lời",
       "ofRequests": " trên {{requests}} yêu cầu"
     },
     "cost": {
@@ -2667,6 +2839,7 @@
     "noPriceNote": "Mô hình này chưa có giá. Hãy thêm giá cho mô hình trong cài đặt nhà cung cấp (đầu vào và đầu ra, cộng đầu vào đã lưu đệm và ghi bộ đệm nếu nhà cung cấp tính phí khác).",
     "memoryCount_one": "{{count}} ký ức",
     "memoryCount_other": "{{count}} ký ức",
+    "memoryCount_many": "{{count}} ký ức",
     "memoryHeading": "Bộ nhớ trong yêu cầu này",
     "noMemory": "Không có bộ nhớ nào được gửi.",
     "withheld": "Bị giữ lại vì mâu thuẫn: {{ids}}",
@@ -2723,13 +2896,19 @@
     "noVision": "Mô hình này không đọc được ảnh",
     "details": "Chi tiết về {{name}}",
     "previewLoading": "Đang tải bản xem trước…",
-    "previewNone": "Không có bản xem trước"
+    "previewNone": "Không có bản xem trước",
+    "pagesAsImages": "Gửi các trang dưới dạng hình ảnh",
+    "pagesAsImagesHint": "Gửi các trang của PDF này dưới dạng hình ảnh để mô hình thấy bản quét, biểu đồ và bố cục",
+    "pdfPagesCut": "Đã gửi {{sent}} trên {{total}} trang đầu của {{name}} dưới dạng hình ảnh",
+    "pdfScannedAsImages": "{{name}} không có văn bản nên các trang đã được gửi dưới dạng hình ảnh"
   },
   "fileViewer": {
     "openFull": "Mở bản xem trước đầy đủ",
     "loadMore": "Tải thêm",
     "showingFirst": "Đang hiển thị {{loaded}} đầu tiên trong {{total}}",
     "lines_other": "{{count}} dòng",
+    "lines_one": "{{count}} dòng",
+    "lines_many": "{{count}} dòng",
     "wrap": "Ngắt dòng",
     "copy": "Sao chép",
     "copied": "Đã sao chép",
@@ -2768,6 +2947,8 @@
     "pasteFailed": "Không thể đọc bộ nhớ tạm",
     "clear": "Xóa",
     "characters_other": "{{count}} ký tự",
+    "characters_one": "{{count}} ký tự",
+    "characters_many": "{{count}} ký tự",
     "translating": "Đang dịch…",
     "retry": "Thử lại",
     "shortcut": "Dịch (Ctrl/Cmd+Enter)",
@@ -2808,6 +2989,8 @@
     "import": "Nhập",
     "export": "Xuất",
     "imported_other": "Đã thêm {{count}} lời nhắc",
+    "imported_one": "Đã thêm {{count}} lời nhắc",
+    "imported_many": "Đã thêm {{count}} lời nhắc",
     "importedNone": "Không tìm thấy prompt mới",
     "search": "Tìm lời nhắc",
     "empty": "Chưa có lời nhắc nào.",
@@ -2903,6 +3086,8 @@
     "summaryHint": "Bản tóm tắt do mô hình viết, tối đa khoảng {{tokens}} token",
     "needsModel": "Tải một mô hình để dùng bản tóm tắt thay thế",
     "totals_other": "{{count}} tin nhắn · ~{{tokens}} token được đưa vào",
+    "totals_one": "{{count}} tin nhắn · ~{{tokens}} token được đưa vào",
+    "totals_many": "{{count}} tin nhắn · ~{{tokens}} token được đưa vào",
     "readOnly": "Được gửi dưới dạng ngữ cảnh trích dẫn, chỉ đọc. Mô hình không thể thay đổi cuộc trò chuyện đó.",
     "tooLarge": "Phần này vượt quá một phần tư cửa sổ ngữ cảnh của mô hình.",
     "useSummary": "Dùng bản tóm tắt",
@@ -2918,7 +3103,11 @@
       "assistant": "Trợ lý"
     },
     "messagesCount_other": "{{count}} tin nhắn",
+    "messagesCount_one": "{{count}} tin nhắn",
+    "messagesCount_many": "{{count}} tin nhắn",
     "compact_other": "{{count}} lượt nhắc · {{mode}}",
+    "compact_one": "{{count}} lượt nhắc · {{mode}}",
+    "compact_many": "{{count}} lượt nhắc · {{mode}}",
     "mixed": "Hỗn hợp"
   },
   "campaignList": {
@@ -2964,10 +3153,20 @@
   },
   "nesting": {
     "more_other": "thêm {{count}} mục lồng",
+    "more_one": "thêm {{count}} mục lồng",
+    "more_many": "thêm {{count}} mục lồng",
     "new_other": "{{count}} mới",
+    "new_one": "{{count}} mới",
+    "new_many": "{{count}} mới",
     "working_other": "{{count}} đang chạy",
+    "working_one": "{{count}} đang chạy",
+    "working_many": "{{count}} đang chạy",
     "waiting_other": "{{count}} đang chờ",
+    "waiting_one": "{{count}} đang chờ",
+    "waiting_many": "{{count}} đang chờ",
     "count_other": "{{count}} mục lồng",
+    "count_one": "{{count}} mục lồng",
+    "count_many": "{{count}} mục lồng",
     "fewer": "Thu gọn mục lồng"
   },
   "diffReview": {
@@ -3000,7 +3199,8 @@
     "report": {
       "clean": "Đã dừng. Đã dừng {{stopped}}, {{already}} đã dừng từ trước, không còn gì đang chạy.",
       "partial_one": "Đã dừng {{stopped}}, nhưng còn {{count}} tiến trình đang chạy. Việc dọn dẹp chưa hoàn tất.",
-      "partial_other": "Đã dừng {{stopped}}, nhưng còn {{count}} tiến trình đang chạy. Việc dọn dẹp chưa hoàn tất."
+      "partial_other": "Đã dừng {{stopped}}, nhưng còn {{count}} tiến trình đang chạy. Việc dọn dẹp chưa hoàn tất.",
+      "partial_many": "Đã dừng {{stopped}}, nhưng còn {{count}} tiến trình đang chạy. Việc dọn dẹp chưa hoàn tất."
     },
     "error": "Không thể dừng: {{error}}",
     "cancel": "Hủy",
@@ -3045,6 +3245,8 @@
     },
     "reviewed": "Tôi đã xem xét những gì thay đổi",
     "moreLines_other": "… thêm {{count}} dòng",
+    "moreLines_one": "… thêm {{count}} dòng",
+    "moreLines_many": "… thêm {{count}} dòng",
     "lines": "Dòng {{from}}–{{to}}",
     "sensitive": "Có vẻ chứa thông tin xác thực nên sẽ không bao giờ được áp dụng.",
     "wholeBinary": "Nhị phân: áp dụng nguyên vẹn hoặc bỏ qua.",
@@ -3052,7 +3254,11 @@
     "noWorktree": "không có bản ghi worktree nào để đề xuất",
     "nothingSelected": "Chưa chọn gì. Hãy từ chối đề xuất để bỏ nó.",
     "applied_other": "Đã áp dụng {{count}} tệp.",
+    "applied_one": "Đã áp dụng {{count}} tệp.",
+    "applied_many": "Đã áp dụng {{count}} tệp.",
     "appliedPartial_other": "Đã áp dụng {{count}} tệp; phần còn lại bị bỏ qua.",
+    "appliedPartial_one": "Đã áp dụng {{count}} tệp; phần còn lại bị bỏ qua.",
+    "appliedPartial_many": "Đã áp dụng {{count}} tệp; phần còn lại bị bỏ qua.",
     "rejected": "Đã từ chối. Không có gì trong thư mục của bạn thay đổi.",
     "heading": "{{title}} vào {{root}}",
     "defaultTitle": "Các thay đổi được đề xuất",
@@ -3068,5 +3274,78 @@
     "reject": "Từ chối",
     "applying": "Đang áp dụng…",
     "applySelected": "Áp dụng mục đã chọn"
+  },
+  "chatRules": "Quy tắc",
+  "chatRuleForThisChat": "Dùng quy tắc này trong cuộc trò chuyện này",
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
+  },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   }
 }

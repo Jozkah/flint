@@ -44,6 +44,9 @@
     "description": "正在為附加的檔案建立索引，以便可以搜尋和引用。對於大型文件可能需要一些時間。"
   },
   "actions": {
+    "readAloud": "朗讀",
+    "stopReading": "停止朗讀",
+    "codeOmitted": "已省略程式碼",
     "copy": "複製",
     "regenerate": "重新生成回覆",
     "continue": "繼續生成",
@@ -261,5 +264,14 @@
     "reasoningLabel": "推理：{{state}}",
     "thinkingBudget": "思考預算",
     "stopGenerating": "停止生成"
+  },
+  "errorBanner": {
+    "oomReduceContext": "Reduce context size (ctx-size)",
+    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
+    "oomSmallerModel": "Use a smaller / more quantized model",
+    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "regenerate": "Regenerate",
+    "reload": "Reload"
   }
 }

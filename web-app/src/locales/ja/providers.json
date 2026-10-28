@@ -250,5 +250,9 @@
     "remove": "削除",
     "replace": "保存済み。入力すると置き換えます。",
     "enter": "未設定"
-  }
+  },
+  "skippedLinkedTitle": "スキップされたモデル: {{count}}",
+  "skippedLinkedBody": "これらのモデルは Flint のデータフォルダーの外を指すリンク経由で保存されているため、Flint は読み込みませんでした:",
+  "skippedLinkedHowTo": "使うには、GGUF ファイルをパスでインポートするか (ファイルはその場所のまま使われます)、ファイルをモデルフォルダーに戻してください。",
+  "skippedLinkedDismiss": "閉じる"
 }

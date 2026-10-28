@@ -86,7 +86,7 @@ describe('Settings > Network proxy', () => {
   it('shows an inline error for an unusable proxy address', () => {
     h.state.proxyUrl = 'ftp://proxy'
     render(<Page />)
-    expect(screen.getByRole('alert')).toHaveTextContent(/http and https/i)
+    expect(screen.getByRole('alert')).toHaveTextContent(/http, https, socks5 and socks5h/i)
     expect(screen.getByLabelText('Proxy URL')).toHaveAttribute(
       'aria-invalid',
       'true'

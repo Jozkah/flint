@@ -15,16 +15,27 @@ import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
 import { VisualizeSettings } from '@/containers/VisualizeSettings'
+import { ChatRulesCard } from '@/containers/ChatRulesCard'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
+import {
+  REASONING_DEFAULTS,
+  isReasoningDefault,
+  type ReasoningDefault,
+} from '@/lib/reasoningDefault'
 import { toast } from 'sonner'
+import { Textarea } from '@/components/ui/textarea'
+import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { useTitleSettings } from '@/hooks/useTitleSettings'
+import { DEFAULT_TITLE_PROMPT } from '@/lib/thread-title-summarizer'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.chat as any)({
+ 
+export const Route = createFileRoute(route.settings.chat)({
   component: ChatSettings,
 })
 
@@ -43,7 +54,9 @@ function ChatSettings() {
         'settings-chat-reply-language',
         'settings-chat-auto-title',
         'settings-chat-strip-reasoning',
+        'settings-chat-reasoning-default',
         'settings-chat-web-preview',
+        'settings-chat-rules',
       ],
     },
     {
@@ -80,11 +93,12 @@ function ChatSettings() {
           />
         }
         // Slots count hidden groups, so each tab keeps its own columns.
-        layout={[0, 1, 1, 0, 1, 1, 1]}
+        layout={[0, 1, 1, 2, 0, 1, 1, 1]}
       >
         {tab === 'input' && <ComposerCard />}
         {tab === 'input' && <RepliesCard />}
         {tab === 'input' && <LinksCard />}
+        {tab === 'input' && <ChatRulesCard />}
         {tab === 'display' && <TranscriptCard />}
         {tab === 'display' && <ArtifactsCard />}
         {tab === 'display' && <VisualizeSettings />}
@@ -201,6 +215,7 @@ function RepliesCard() {
           />
         }
       />
+      {autoGenerateTitle && <TitleModelAndPrompt />}
       <CardItem
         anchor="settings-chat-strip-reasoning"
         title={t('provider:stripReasoning')}
@@ -213,7 +228,117 @@ function RepliesCard() {
           />
         }
       />
+      <CardItem
+        anchor="settings-chat-reasoning-default"
+        title={t('settings:chat.reasoningDefault')}
+        description={t('settings:chat.reasoningDefaultDesc')}
+        actions={<ReasoningDefaultPicker />}
+      />
     </Card>
+  )
+}
+
+function ReasoningDefaultPicker() {
+  const { t } = useTranslation()
+  const value = useGeneralSetting((s) => s.reasoningDefault)
+  const setValue = useGeneralSetting((s) => s.setReasoningDefault)
+  const label: Record<ReasoningDefault, string> = {
+    model: t('settings:chat.reasoningDefaultModel'),
+    on: t('settings:chat.reasoningDefaultOn'),
+    off: t('settings:chat.reasoningDefaultOff'),
+  }
+  return (
+    <RadioGroup
+      value={value ?? 'model'}
+      onValueChange={(v) => isReasoningDefault(v) && setValue(v)}
+      aria-label={t('settings:chat.reasoningDefault')}
+      data-testid="reasoning-default-picker"
+      className="flex flex-wrap gap-3"
+    >
+      {REASONING_DEFAULTS.map((mode) => {
+        const id = `reasoning-default-${mode}`
+        return (
+          <label
+            key={mode}
+            htmlFor={id}
+            className="flex cursor-pointer items-center gap-1.5 text-sm"
+          >
+            <RadioGroupItem id={id} value={mode} />
+            {label[mode]}
+          </label>
+        )
+      })}
+    </RadioGroup>
+  )
+}
+
+/** Which model writes automatic titles, and with what prompt (janhq/jan#8345). */
+function TitleModelAndPrompt() {
+  const { t } = useTranslation()
+  const providers = useModelProvider((s) => s.providers)
+  const titleModelProvider = useTitleSettings((s) => s.titleModelProvider)
+  const titleModelId = useTitleSettings((s) => s.titleModelId)
+  const titlePrompt = useTitleSettings((s) => s.titlePrompt)
+  const setTitleModel = useTitleSettings((s) => s.setTitleModel)
+  const setTitlePrompt = useTitleSettings((s) => s.setTitlePrompt)
+  const usesChatModel = !titleModelProvider || !titleModelId
+  return (
+    <>
+      <CardItem
+        anchor="settings-chat-title-model"
+        title={t('settings:interface.titleModel')}
+        description={t('settings:interface.titleModelDesc')}
+        actions={
+          <div className="flex items-center gap-2">
+            {!usesChatModel && (
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => setTitleModel('', '')}
+              >
+                {t('settings:interface.titleModelDefault')}
+              </Button>
+            )}
+            <McpRouterModelPicker
+              ariaLabel={t('settings:interface.titleModel')}
+              providers={providers}
+              selectedProvider={titleModelProvider}
+              selectedModelId={titleModelId}
+              onSelect={setTitleModel}
+              placeholder={t('settings:interface.titleModelDefault')}
+              searchPlaceholder={t('settings:interface.titleModelSearch')}
+              emptyListMessage={t('settings:interface.titleModelEmpty')}
+              formatEmptySearch={(q) =>
+                t('settings:interface.titleModelEmptySearch', { query: q })
+              }
+            />
+          </div>
+        }
+      />
+      <CardItem
+        anchor="settings-chat-title-prompt"
+        title={t('settings:interface.titlePrompt')}
+        description={t('settings:interface.titlePromptDesc')}
+        actions={
+          titlePrompt.trim() ? (
+            <Button variant="link" size="sm" onClick={() => setTitlePrompt('')}>
+              {t('settings:interface.titlePromptReset')}
+            </Button>
+          ) : undefined
+        }
+      />
+      <Textarea
+        aria-label={t('settings:interface.titlePrompt')}
+        value={titlePrompt || DEFAULT_TITLE_PROMPT}
+        onChange={(e) =>
+          setTitlePrompt(
+            e.target.value === DEFAULT_TITLE_PROMPT ? '' : e.target.value
+          )
+        }
+        rows={3}
+        className="mb-2 text-sm"
+      />
+    </>
   )
 }
 

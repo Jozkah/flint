@@ -542,10 +542,7 @@ function AgentRuns() {
                       (c === 'model' || c === 'started') && 'hidden @min-[560px]/runs:table-cell'
                     )}
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      {t(`overview:col.${c}`)}
-                      <Icon name="sort" size={12} className="opacity-60" />
-                    </span>
+                    {t(`overview:col.${c}`)}
                   </th>
                 ))}
                 <th className="h-9 w-10 rounded-r-lg bg-secondary" />
@@ -561,7 +558,19 @@ function AgentRuns() {
                     onClick={() => open(r.id)}
                   >
                     <td className="border-b border-border/60 px-3 font-medium text-cell tabular-nums">#{1000 + r.index + 1}</td>
-                    <td className="w-full max-w-0 min-w-28 truncate border-b border-border/60 px-3 font-medium text-cell group-hover/row:text-foreground" title={r.title}>{r.title}</td>
+                    <td className="w-full max-w-0 min-w-28 truncate border-b border-border/60 px-3 font-medium text-cell group-hover/row:text-foreground" title={r.title}>
+                      {/* The row opens on click; this is its keyboard entry. */}
+                      <button
+                        type="button"
+                        className="block w-full truncate rounded-sm text-left focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          open(r.id)
+                        }}
+                      >
+                        {r.title}
+                      </button>
+                    </td>
                     <td className="hidden border-b border-border/60 px-3 text-cell whitespace-nowrap @min-[560px]/runs:table-cell">
                       <span className="inline-flex items-center gap-1.5">
                         <BrandMark logo={modelLogo(r.model)} name={r.model} size={16} tone="bare" />
@@ -635,7 +644,10 @@ function Overview() {
   const navigate = useNavigate()
   const [usageOpen, setUsageOpen] = useState(false)
   const [range, setRange] = useState<Range>(7)
-  const now = Date.now()
+  // Re-read the clock when the data or range changes, not on every render, so
+  // the summaries below stay memoised.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => Date.now(), [days, range])
   const greeting = t(greetingKey(new Date(now)))
   const current = useMemo(() => summarize(days, range, now), [days, range, now])
   const previous = useMemo(() => summarize(days, range, now - range * 86_400_000), [days, range, now])

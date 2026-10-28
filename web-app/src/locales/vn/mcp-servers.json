@@ -89,6 +89,7 @@
     "notListedAfterStart": "Máy chủ đã khởi động nhưng không được liệt kê là đã kết nối.",
     "toolsAvailable_one": "{{count}} công cụ khả dụng: {{names}}",
     "toolsAvailable_other": "{{count}} công cụ khả dụng: {{names}}",
+    "toolsAvailable_many": "{{count}} công cụ khả dụng: {{names}}",
     "toolsNone": "Đã kết nối, nhưng máy chủ này không cung cấp công cụ nào.",
     "toolsLoading": "Đang tải danh sách công cụ...",
     "toolsWhenConnected": "Các công cụ của nó sẽ khả dụng sau khi kết nối.",
@@ -228,6 +229,7 @@
     "scopeAll": "Tất cả máy chủ",
     "targetCount_one": "{{count}} máy chủ sẽ được mô tả.",
     "targetCount_other": "{{count}} máy chủ sẽ được mô tả.",
+    "targetCount_many": "{{count}} máy chủ sẽ được mô tả.",
     "review": "Xem lại",
     "current": "Hiện tại: {{text}}",
     "editLabel": "Mô tả đã tạo cho {{serverName}}",
@@ -241,6 +243,7 @@
     "cancelled": "đã hủy",
     "save_one": "Lưu {{count}}",
     "save_other": "Lưu {{count}}",
+    "save_many": "Lưu {{count}}",
     "skippedNoTools": "chưa biết công cụ; hãy bật máy chủ một lần để Flint đọc được chúng",
     "status": {
       "queued": "Đang chờ",

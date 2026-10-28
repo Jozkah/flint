@@ -249,5 +249,9 @@
     "remove": "Hapus",
     "replace": "Tersimpan. Ketik untuk menggantinya.",
     "enter": "Belum diatur"
-  }
+  },
+  "skippedLinkedTitle": "Model dilewati: {{count}}",
+  "skippedLinkedBody": "Model ini disimpan melalui tautan yang mengarah ke luar folder data Flint, jadi Flint tidak memuatnya:",
+  "skippedLinkedHowTo": "Untuk memakai salah satunya, impor file GGUF-nya lewat path (Flint membiarkan file di tempatnya), atau pindahkan file kembali ke folder model.",
+  "skippedLinkedDismiss": "Tutup"
 }
