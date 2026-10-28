@@ -7,6 +7,8 @@
  * stops tool use before the step budget is wasted.
  */
 
+import { uiText } from '@/lib/uiText'
+
 export type LoopReason =
   | 'repeated-call'
   | 'equivalent-call'
@@ -737,12 +739,19 @@ export function loopStopNotice(
 ): string {
   const detail = verdict.detail.charAt(0).toUpperCase() + verdict.detail.slice(1)
   return (
-    `${detail}, so Flint stopped the run. The last reply says what it was ` +
-    'trying to do and what got in the way. Answer it, or change the request, ' +
-    'to carry on.' +
+    uiText(
+      'tools:loopStop.notice',
+      '{{detail}}, so Flint stopped the run. The last reply says what it was ' +
+        'trying to do and what got in the way. Answer it, or change the request, ' +
+        'to carry on.',
+      { detail }
+    ) +
     (verdict.hint
-      ? ' The attached project folder is read by absolute path; relative paths ' +
-        'point into the run scratch workspace.'
+      ? uiText(
+          'tools:loopStop.pathHint',
+          ' The attached project folder is read by absolute path; relative paths ' +
+            'point into the run scratch workspace.'
+        )
       : '')
   )
 }
