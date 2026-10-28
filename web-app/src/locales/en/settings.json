@@ -264,7 +264,13 @@
     "caBundleNone": "Only the platform's certificate authorities are trusted.",
     "caBundleInUse": "Trusting {{count}} certificate(s) from this bundle as well as the platform's.",
     "caBundleBroken": "This bundle cannot be used ({{kind}}): outbound HTTPS trusts nothing until it is fixed or removed.",
-    "ignoreSslScope": "Applies to all proxied traffic. A single provider can also allow invalid certificates for its own address, on its page under Model Providers."
+    "ignoreSslScope": "Applies to all proxied traffic. A single provider can also allow invalid certificates for its own address, on its page under Model Providers.",
+    "proxyUrlInvalid": "This does not look like a proxy address. Use host:port or http://host:port.",
+    "proxyUrlScheme": "Only http and https proxies are supported.",
+    "ignoreSslConfirmTitle": "Ignore SSL certificates?",
+    "ignoreSslConfirmBody": "Flint will accept self-signed, expired or mismatched certificates for all proxied traffic, so anyone on the path could read or alter it. Only continue if you trust the proxy and the network.",
+    "ignoreSslConfirm": "Ignore certificates",
+    "ignoreSslActiveWarning": "Certificate checks are off for all proxied traffic."
   },
   "webSearch": {
     "showKey": "Show key",

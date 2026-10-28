@@ -9,6 +9,16 @@ import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { validateProxyUrl } from '@/lib/proxyUrl'
 import { EyeOff, Eye } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
@@ -41,6 +51,9 @@ function HTTPSProxyContent() {
     setCaBundlePath,
   } = useProxyConfig()
   const [caStatus, setCaStatus] = useState<CaBundleState | null>(null)
+  const [confirmIgnoreSsl, setConfirmIgnoreSsl] = useState(false)
+  const proxyCheck = validateProxyUrl(proxyUrl)
+  const proxyUrlProblem = proxyCheck === 'invalid' || proxyCheck === 'scheme'
 
   // AH-190: what the bundle would do, checked by the backend as it is typed.
   useEffect(() => {
@@ -101,9 +114,27 @@ function HTTPSProxyContent() {
                   placeholder={t(
                     'settings:httpsProxy.proxyUrlPlaceholder'
                   )}
+                  aria-label={t('settings:httpsProxy.proxyUrl')}
+                  aria-invalid={proxyUrlProblem || undefined}
+                  aria-describedby={
+                    proxyUrlProblem ? 'proxy-url-error' : undefined
+                  }
                   value={proxyUrl}
                   onChange={(e) => setProxyUrl(e.target.value)}
                 />
+                {proxyUrlProblem && (
+                  <p
+                    id="proxy-url-error"
+                    role="alert"
+                    className="text-xs text-destructive"
+                  >
+                    {t(
+                      proxyCheck === 'scheme'
+                        ? 'settings:httpsProxy.proxyUrlScheme'
+                        : 'settings:httpsProxy.proxyUrlInvalid'
+                    )}
+                  </p>
+                )}
               </div>
             }
           />
@@ -116,6 +147,8 @@ function HTTPSProxyContent() {
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
                     placeholder={t('settings:httpsProxy.username')}
+                    aria-label={t('settings:httpsProxy.username')}
+                    autoComplete="off"
                     value={proxyUsername}
                     onChange={(e) => setProxyUsername(e.target.value)}
                   />
@@ -123,6 +156,8 @@ function HTTPSProxyContent() {
                     <Input
                       type={showPassword ? 'text' : 'password'}
                       placeholder={t('settings:httpsProxy.password')}
+                      aria-label={t('settings:httpsProxy.password')}
+                      autoComplete="new-password"
                       className="pr-12"
                       value={proxyPassword}
                       onChange={(e) => setProxyPassword(e.target.value)}
@@ -163,6 +198,7 @@ function HTTPSProxyContent() {
                   placeholder={t(
                     'settings:httpsProxy.noProxyPlaceholder'
                   )}
+                  aria-label={t('settings:httpsProxy.noProxy')}
                   value={noProxy}
                   onChange={(e) => setNoProxy(e.target.value)}
                 />
@@ -182,6 +218,7 @@ function HTTPSProxyContent() {
                   className="w-full font-mono"
                   data-testid="ca-bundle-path"
                   placeholder={t('settings:httpsProxy.caBundlePlaceholder')}
+                  aria-label={t('settings:httpsProxy.caBundlePath')}
                   value={caBundlePath}
                   onChange={(e) => setCaBundlePath(e.target.value)}
                 />
@@ -197,21 +234,58 @@ function HTTPSProxyContent() {
             description={
               <>
                 {t('settings:httpsProxy.ignoreSslDesc')}{' '}
-                {t('settings:httpsProxy.ignoreSslScope', {
-                  defaultValue:
-                    'Applies to all proxied traffic. A single provider can also allow invalid certificates for its own address, on its page under Model Providers.',
-                })}
+                {t('settings:httpsProxy.ignoreSslScope')}
+                {proxyIgnoreSSL && (
+                  <span
+                    role="note"
+                    className="mt-2 block text-xs text-warning"
+                  >
+                    {t('settings:httpsProxy.ignoreSslActiveWarning')}
+                  </span>
+                )}
               </>
             }
             actions={
               <Switch
+                aria-label={t('providers:tlsTrust.title')}
                 checked={proxyIgnoreSSL}
-                onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
+                onCheckedChange={(checked) => {
+                  // Turning verification off is confirmed; turning it back on
+                  // is the safe direction and needs no question.
+                  if (checked) setConfirmIgnoreSsl(true)
+                  else setProxyIgnoreSSL(false)
+                }}
               />
             }
           />
         </Card>
       </SettingsPageBody>
+      <Dialog open={confirmIgnoreSsl} onOpenChange={setConfirmIgnoreSsl}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t('settings:httpsProxy.ignoreSslConfirmTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings:httpsProxy.ignoreSslConfirmBody')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmIgnoreSsl(false)}>
+              {t('common:cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setProxyIgnoreSSL(true)
+                setConfirmIgnoreSsl(false)
+              }}
+            >
+              {t('settings:httpsProxy.ignoreSslConfirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
