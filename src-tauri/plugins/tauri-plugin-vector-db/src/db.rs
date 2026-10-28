@@ -1270,8 +1270,36 @@ pub fn ensure_memory_table(conn: &Connection) -> Result<(), VectorDBError> {
         )",
         [],
     )?;
+    // Per-project key -> FTS rowid map so re-indexing deletes only the row of
+    // the same (project, message), never another project's row.
+    let keys_existed: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_keys')",
+        [],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS memory_keys (
+            project_id TEXT NOT NULL,
+            msg_id TEXT NOT NULL,
+            fts_rowid INTEGER NOT NULL,
+            ts INTEGER NOT NULL,
+            PRIMARY KEY (project_id, msg_id)
+        )",
+        [],
+    )?;
+    if !keys_existed {
+        // One-time backfill for stores created before this table existed.
+        conn.execute(
+            "INSERT OR REPLACE INTO memory_keys (project_id, msg_id, fts_rowid, ts)
+             SELECT project_id, msg_id, rowid, CAST(ts AS INTEGER) FROM memories",
+            [],
+        )?;
+    }
     Ok(())
 }
+
+/// Most memories kept per project; the oldest are evicted first.
+const MEMORY_PER_PROJECT_CAP: i64 = 20_000;
 
 /// Sanitize raw user text into a safe FTS5 MATCH expression: alphanumeric terms
 /// (>=2 chars) quoted and OR-joined, so FTS5 operators in the input cannot raise
@@ -1289,8 +1317,8 @@ fn build_fts_match(query: &str) -> Option<String> {
     }
 }
 
-/// Idempotent index: delete-then-insert by `msg_id`, so re-indexing an edited
-/// message replaces its row instead of duplicating it.
+/// Idempotent index keyed by (project_id, msg_id): re-indexing an edited
+/// message replaces its row in the same project only.
 pub fn memory_index(
     conn: &Connection,
     msg_id: &str,
@@ -1299,15 +1327,75 @@ pub fn memory_index(
     role: &str,
     ts: i64,
 ) -> Result<(), VectorDBError> {
+    memory_index_capped(conn, msg_id, project_id, text, role, ts, MEMORY_PER_PROJECT_CAP)
+}
+
+fn memory_index_capped(
+    conn: &Connection,
+    msg_id: &str,
+    project_id: &str,
+    text: &str,
+    role: &str,
+    ts: i64,
+    cap: i64,
+) -> Result<(), VectorDBError> {
     ensure_memory_table(conn)?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute("DELETE FROM memories WHERE msg_id = ?1", params![msg_id])?;
-    tx.execute(
-        "INSERT INTO memories (msg_id, project_id, text, role, ts) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![msg_id, project_id, text, role, ts],
-    )?;
-    tx.commit()?;
-    Ok(())
+    // IMMEDIATE so two connections cannot interleave the read-then-write.
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| -> Result<(), VectorDBError> {
+        let old: Option<i64> = conn
+            .query_row(
+                "SELECT fts_rowid FROM memory_keys WHERE project_id = ?1 AND msg_id = ?2",
+                params![project_id, msg_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(rowid) = old {
+            conn.execute("DELETE FROM memories WHERE rowid = ?1", params![rowid])?;
+        }
+        conn.execute(
+            "INSERT INTO memories (msg_id, project_id, text, role, ts) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![msg_id, project_id, text, role, ts],
+        )?;
+        let rowid = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT OR REPLACE INTO memory_keys (project_id, msg_id, fts_rowid, ts) VALUES (?1, ?2, ?3, ?4)",
+            params![project_id, msg_id, rowid, ts],
+        )?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM memory_keys WHERE project_id = ?1",
+            params![project_id],
+            |r| r.get(0),
+        )?;
+        if count > cap {
+            let mut stmt = conn.prepare(
+                "SELECT fts_rowid FROM memory_keys WHERE project_id = ?1
+                 ORDER BY ts ASC, fts_rowid ASC LIMIT ?2",
+            )?;
+            let victims = stmt
+                .query_map(params![project_id, count - cap], |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(stmt);
+            for v in victims {
+                conn.execute("DELETE FROM memories WHERE rowid = ?1", params![v])?;
+                conn.execute(
+                    "DELETE FROM memory_keys WHERE project_id = ?1 AND fts_rowid = ?2",
+                    params![project_id, v],
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
 }
 
 /// BM25-ranked recall scoped to a single project. Best match first (bm25 is more
@@ -1351,8 +1439,14 @@ pub fn memory_search(
 pub fn memory_clear(conn: &Connection, project_id: Option<&str>) -> Result<(), VectorDBError> {
     ensure_memory_table(conn)?;
     match project_id {
-        Some(pid) => conn.execute("DELETE FROM memories WHERE project_id = ?1", params![pid])?,
-        None => conn.execute("DELETE FROM memories", [])?,
+        Some(pid) => {
+            conn.execute("DELETE FROM memories WHERE project_id = ?1", params![pid])?;
+            conn.execute("DELETE FROM memory_keys WHERE project_id = ?1", params![pid])?
+        }
+        None => {
+            conn.execute("DELETE FROM memories", [])?;
+            conn.execute("DELETE FROM memory_keys", [])?
+        }
     };
     Ok(())
 }
@@ -1429,6 +1523,76 @@ mod memory_tests {
         // Raw FTS5 operators in the query must not raise a syntax error.
         let hits = memory_search(&conn, "p1", "content AND (OR* NEAR/2 \"", 5).unwrap();
         assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn same_msg_id_in_two_projects_does_not_collide() {
+        let conn = mem_conn();
+        memory_index(&conn, "m1", "p1", "alpha content", "user", 100).unwrap();
+        memory_index(&conn, "m1", "p2", "beta content", "user", 100).unwrap();
+        assert_eq!(memory_search(&conn, "p1", "alpha", 5).unwrap().len(), 1);
+        assert_eq!(memory_search(&conn, "p2", "beta", 5).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn reindex_replaces_row_in_same_project() {
+        let conn = mem_conn();
+        memory_index(&conn, "m1", "p1", "first version", "user", 100).unwrap();
+        memory_index(&conn, "m1", "p1", "second version", "user", 200).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM memories WHERE project_id = 'p1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        assert!(memory_search(&conn, "p1", "first", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn memory_clear_clears_keys() {
+        let conn = mem_conn();
+        memory_index(&conn, "a", "p1", "content one", "user", 100).unwrap();
+        memory_index(&conn, "b", "p2", "content two", "user", 100).unwrap();
+        memory_clear(&conn, Some("p1")).unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memory_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        memory_clear(&conn, None).unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memory_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn cap_evicts_oldest() {
+        let conn = mem_conn();
+        for (i, ts) in [(1, 100), (2, 200), (3, 300), (4, 400)] {
+            memory_index_capped(&conn, &format!("m{i}"), "p1", "capped content", "user", ts, 3).unwrap();
+        }
+        let hits = memory_search(&conn, "p1", "capped", 10).unwrap();
+        assert_eq!(hits.len(), 3);
+        assert!(hits.iter().all(|h| h.msg_id != "m1"));
+    }
+
+    #[test]
+    fn backfill_populates_keys_for_existing_rows() {
+        // Legacy store: FTS table only, no memory_keys.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE VIRTUAL TABLE memories USING fts5(
+                msg_id UNINDEXED, project_id UNINDEXED, text, role UNINDEXED, ts UNINDEXED,
+                tokenize = 'porter unicode61')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memories (msg_id, project_id, text, role, ts) VALUES ('m1','p1','legacy words','user',100)",
+            [],
+        )
+        .unwrap();
+        ensure_memory_table(&conn).unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memory_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        // Re-indexing the legacy message replaces it rather than duplicating.
+        memory_index(&conn, "m1", "p1", "updated words", "user", 200).unwrap();
+        assert_eq!(memory_search(&conn, "p1", "legacy", 5).unwrap().len(), 0);
+        assert_eq!(memory_search(&conn, "p1", "updated", 5).unwrap().len(), 1);
     }
 
     #[test]
