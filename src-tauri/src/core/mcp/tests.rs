@@ -2487,8 +2487,8 @@ mod manager_bookkeeping_tests {
             .await
             .insert("edited".to_string(), monitor);
 
-        // No running service is registered, so this reports "not found"; the
-        // monitor must be stopped regardless.
+        // No running service is registered: that is now a successful no-op,
+        // and the monitor must be stopped regardless.
         let _ = super::super::commands::deactivate_mcp_server(
             handle.clone(),
             handle.state::<AppState>(),
@@ -2501,6 +2501,46 @@ mod manager_bookkeeping_tests {
             .await
             .expect("the old monitor must be aborted, not detached")
             .unwrap_err();
+    }
+
+    #[tokio::test]
+    async fn deactivate_stopped_lazy_server_succeeds_and_emits_update() {
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let result = super::super::commands::deactivate_mcp_server(
+            handle.clone(),
+            handle.state::<AppState>(),
+            "lazy-never-started".to_string(),
+        )
+        .await;
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn call_tool_unknown_tool_one_failing_server_still_finds_owner() {
+        let names = vec!["bad".to_string(), "good".to_string()];
+        let started = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = started.clone();
+        let failures = super::super::commands::start_candidates(&names, move |n| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push(n.clone());
+                if n == "bad" { Err("boom".to_string()) } else { Ok(()) }
+            }
+        })
+        .await;
+        assert_eq!(failures, vec![("bad".to_string(), "boom".to_string())]);
+        assert_eq!(started.lock().unwrap().len(), 2, "good server still started");
+    }
+
+    #[tokio::test]
+    async fn call_tool_unknown_tool_all_fail_returns_error() {
+        let names: Vec<String> = (0..6).map(|i| format!("s{i}")).collect();
+        let failures = super::super::commands::start_candidates(&names, |_| async {
+            Err("down".to_string())
+        })
+        .await;
+        assert_eq!(failures.len(), 6);
     }
 
     #[tokio::test]
