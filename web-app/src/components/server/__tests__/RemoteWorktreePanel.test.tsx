@@ -4,6 +4,8 @@ import { RemoteWorktreePanel } from '../RemoteWorktreePanel'
 import { useRemoteWorktrees } from '@/lib/remoteWorktree'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 const api = vi.hoisted(() => ({
   worktreeState: vi.fn(),
   worktreePending: vi.fn(),

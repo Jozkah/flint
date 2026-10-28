@@ -3192,5 +3192,13 @@
     "debug": "Debug",
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
   }
 }

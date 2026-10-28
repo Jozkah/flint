@@ -49,7 +49,8 @@
     "retention_one": "已封存的項目將在 {{count}} 天後被永久刪除。",
     "retention_other": "已封存的項目將在 {{count}} 天後被永久刪除。",
     "retentionForever": "已封存的項目會保留到你刪除為止。",
-    "emptyAction": "清空封存"
+    "emptyAction": "清空封存",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "操作未成功",
@@ -1360,5 +1361,13 @@
       "tickFirst": "請先勾選你已看過的被標記檔案。",
       "missing": "提議的變更已不存在。請在電腦上開啟該戰役。"
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

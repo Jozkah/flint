@@ -50,7 +50,8 @@
     "retention_many": "Els elements arxivats s'eliminen definitivament al cap de {{count}} de dies.",
     "retention_other": "Els elements arxivats s'eliminen definitivament al cap de {{count}} dies.",
     "retentionForever": "Els elements arxivats es queden fins que els eliminis.",
-    "emptyAction": "Buida l'arxiu"
+    "emptyAction": "Buida l'arxiu",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Això no ha funcionat",
@@ -1376,5 +1377,13 @@
       "tickFirst": "Marca primer els fitxers destacats que has mirat.",
       "missing": "Els canvis proposats ja no hi són. Obre la campanya a l'ordinador."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }
