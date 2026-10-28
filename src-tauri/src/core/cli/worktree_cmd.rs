@@ -41,10 +41,13 @@ fn repo_of(project: &str) -> Result<PathBuf, String> {
 }
 
 fn checkouts(repo: &Path) -> Result<Vec<Checkout>, String> {
-    let root = worktrees_root()?.join(repo_slug(repo));
+    // Compared resolved: git reports a path through a junction, a symlink or a
+    // different letter case than the one the root was built from.
+    let resolved = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let root = resolved(&worktrees_root()?.join(repo_slug(repo)));
     let mut out = Vec::new();
     for path in git::worktree_paths(repo) {
-        if path.parent().map(|p| p == root).unwrap_or(false) && path.is_dir() {
+        if path.parent().map(|p| resolved(p) == root).unwrap_or(false) && path.is_dir() {
             let id = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
             let mut branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
             // A detached checkout reports "HEAD", which from the main repo

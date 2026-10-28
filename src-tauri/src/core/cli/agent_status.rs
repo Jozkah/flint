@@ -70,8 +70,18 @@ fn settled_title(state: AgentStatusState) -> &'static str {
 /// `prompt` is the optional activity preview Orca renders on its cards; it is
 /// truncated to 160 Unicode scalar values before JSON escaping.
 pub fn agent_status_sequence(state: AgentStatusState, prompt: Option<&str>) -> String {
+    // JSON escaping covers C0 only. DEL and the C1 range (U+0085, U+009C as a
+    // string terminator on some terminals) pass through it, and bidi overrides
+    // would reorder what the host shows, so none of them are sent.
     let prompt = prompt
-        .map(|p| p.chars().take(160).collect::<String>())
+        .map(|p| {
+            p.chars()
+                .filter(|c| {
+                    !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+                })
+                .take(160)
+                .collect::<String>()
+        })
         .unwrap_or_default();
     if prompt.is_empty() {
         // Omit an empty preview.
@@ -114,7 +124,13 @@ pub struct AgentStatusReporter {
     last_state: Option<AgentStatusState>,
     last_prompt: Option<String>,
     spinner_frame: usize,
+    /// When the title frame last advanced, to hold the spinner to a few
+    /// writes a second however fast the render tick runs.
+    last_animated: Option<std::time::Instant>,
 }
+
+/// The shortest gap between two title frames (about 4 per second).
+const TITLE_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 
 impl AgentStatusReporter {
     /// Create a disabled reporter (emits nothing until enabled).
@@ -144,6 +160,7 @@ impl AgentStatusReporter {
         self.last_state = Some(state);
         self.last_prompt = prompt.map(str::to_string);
         self.spinner_frame = 0;
+        self.last_animated = None;
         Some((
             agent_status_sequence(state, prompt),
             title_sequence(state, self.spinner_frame),
@@ -170,6 +187,10 @@ impl AgentStatusReporter {
         if self.last_state != Some(AgentStatusState::Working) {
             return;
         }
+        if self.last_animated.is_some_and(|at| at.elapsed() < TITLE_FRAME_INTERVAL) {
+            return;
+        }
+        self.last_animated = Some(std::time::Instant::now());
         self.spinner_frame = (self.spinner_frame + 1) % SPINNER_FRAMES.len();
         if self.enabled {
             write_raw(&title_sequence(
@@ -204,6 +225,15 @@ mod tests {
     /// Decode the extracted OSC 9999 payload as JSON.
     fn parse_payload(seq: &str) -> serde_json::Value {
         serde_json::from_str(extract_payload(seq)).expect("payload must be valid JSON")
+    }
+
+    #[test]
+    fn prompt_preview_drops_every_control_and_bidi_character() {
+        let seq = agent_status_sequence(
+            AgentStatusState::Working,
+            Some("a\u{7f}b\u{85}c\u{9c}d\u{202e}e"),
+        );
+        assert_eq!(parse_payload(&seq)["prompt"], "abcde");
     }
 
     #[test]
