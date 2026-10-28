@@ -524,6 +524,14 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn run_end_hooks(&self, _final_text: &str) -> Option<String> {
         None
     }
+
+    /// Mail other runs sent this one since its last turn (AH-103), rendered
+    /// as one fenced block and marked delivered, or `None` when there is none
+    /// or this invoker has no mailbox. Read at every turn boundary, so a
+    /// subagent's message reaches its parent without the parent polling.
+    fn deliver_mail(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The `!cmd` command a composer put on the run body, if any.
@@ -1864,6 +1872,14 @@ impl ToolInvoker for CompositeToolInvoker {
         if let Ok(mut live) = self.live_conversation.lock() {
             *live = messages.to_vec();
         }
+    }
+
+    fn deliver_mail(&self) -> Option<String> {
+        // The same identity `message_send` stamps as the sender, so what is
+        // addressed to this run is what it reads.
+        let data = self.record_to.as_deref()?;
+        let run = tauri_plugin_agent_tools::identity::RunId::parse(self.cancel_scope.run.clone()).ok()?;
+        tauri_plugin_agent_tools::mailbox::deliver(data, &run)
     }
 
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
@@ -5283,6 +5299,13 @@ async fn run_turn_cycle(
             shells_scanned = conversation_messages.len();
         }
         if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+            shells_scanned = conversation_messages.len();
+        }
+        // AH-103: what other runs said to this one since its last turn, after
+        // the results of whatever it was doing when they wrote. Its own block,
+        // apart from subagent results, and marked read as it is shown.
+        if let Some(text) = tools.deliver_mail() {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
         }

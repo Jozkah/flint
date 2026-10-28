@@ -803,13 +803,18 @@ fn load_dir(dir: &Path, scope: SubagentScope, out: &mut Vec<SubagentDefinition>)
 /// action of the top-level agent.
 const SUBAGENT_SKILL_TOOLS: &[&str] = &["skill_list", "skill_read"];
 
+/// AH-103: the run mailbox. The child's prompt tells it to answer its parent
+/// with `message_send`, so a narrowed toolset that left these out would ask
+/// for something it cannot do. They reach only the run's own conversation.
+const SUBAGENT_MAILBOX_TOOLS: &[&str] = &["message_send", "message_check"];
+
 fn with_skill_tools(
     tools: &[String],
     parent: &ToolPermissions,
     child: &tauri_plugin_agent_tools::subject::Subject,
 ) -> Vec<String> {
     let mut out = tools.to_vec();
-    for skill in SUBAGENT_SKILL_TOOLS {
+    for skill in SUBAGENT_SKILL_TOOLS.iter().chain(SUBAGENT_MAILBOX_TOOLS) {
         if !out.iter().any(|t| t == skill) && !parent.is_denied(skill, child) {
             out.push((*skill).to_string());
         }
@@ -3925,6 +3930,8 @@ allowed_tools = [\"read\"]
                 "read".to_string(),
                 "skill_list".to_string(),
                 "skill_read".to_string(),
+                "message_send".to_string(),
+                "message_check".to_string(),
             ]),
             "skill tools survive the narrowing"
         );
@@ -3948,6 +3955,8 @@ allowed_tools = [\"read\"]
                 "read".to_string(),
                 "skill_list".to_string(),
                 "skill_read".to_string(),
+                "message_send".to_string(),
+                "message_check".to_string(),
             ])
         );
     }
@@ -3969,6 +3978,8 @@ allowed_tools = [\"read\"]
                 "read".to_string(),
                 "skill_read".to_string(),
                 "skill_list".to_string(),
+                "message_send".to_string(),
+                "message_check".to_string(),
             ]),
             "no duplicate skill_read"
         );
@@ -3987,7 +3998,12 @@ allowed_tools = [\"read\"]
         .unwrap();
         assert_eq!(
             out,
-            Some(vec!["read".to_string(), "skill_list".to_string()])
+            Some(vec![
+                "read".to_string(),
+                "skill_list".to_string(),
+                "message_send".to_string(),
+                "message_check".to_string(),
+            ])
         );
     }
 
@@ -4408,6 +4424,8 @@ auto_compact_window = 9000
                 "read".to_string(),
                 "skill_list".to_string(),
                 "skill_read".to_string(),
+                "message_send".to_string(),
+                "message_check".to_string(),
             ])
         );
     }
@@ -4438,6 +4456,8 @@ auto_compact_window = 9000
                 "read".to_string(),
                 "skill_list".to_string(),
                 "skill_read".to_string(),
+                "message_send".to_string(),
+                "message_check".to_string(),
             ])
         );
         assert_eq!(resolved.definition.system_prompt, "sp");
