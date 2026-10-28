@@ -455,11 +455,11 @@ fn supervise_launch(
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| {
-        HarnessError::new(ErrorKind::Io, format!("the job could not be started: {e}")).at(Stage::Job)
-    })?;
 
-    // The claim: what a later process checks this job against.
+    // The claim: what a later process checks this job against. It names this
+    // supervisor, not the job's process, so it can be written first: a job
+    // that is running with no claim would be judged by a missing file, and a
+    // claim that cannot be written is a job that is not started.
     let claim = Claim {
         v: CLAIM_VERSION,
         id: job.as_str().to_string(),
@@ -471,10 +471,22 @@ fn supervise_launch(
         token: token.to_string(),
         started_at_ms: now_ms(),
     };
-    let _ = std::fs::write(
-        claim_path(data_folder, job.as_str()),
-        serde_json::to_string(&claim).unwrap_or_default(),
-    );
+    let claim_text = serde_json::to_string(&claim).map_err(|e| {
+        HarnessError::new(ErrorKind::Io, format!("the job's claim could not be encoded: {e}")).at(Stage::Job)
+    })?;
+    if let Err(e) = std::fs::write(claim_path(data_folder, job.as_str()), claim_text) {
+        let why = format!("the job's claim could not be written: {e}");
+        fail_unstarted(data_folder, owner.as_str(), job.as_str(), &why);
+        return Err(HarnessError::new(ErrorKind::Io, why).at(Stage::Job));
+    }
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            let why = format!("the job could not be started: {e}");
+            fail_unstarted(data_folder, owner.as_str(), job.as_str(), &why);
+            return Err(HarnessError::new(ErrorKind::Io, why).at(Stage::Job));
+        }
+    };
     // The job is this supervisor's child, so stopping the supervisor's tree
     // stops the work -- which is what cancel does.
     if let Some(mut record) = find(data_folder, owner.as_str(), job.as_str()) {
@@ -539,6 +551,21 @@ fn supervise_launch(
     }
     let _ = std::fs::remove_file(claim_path(data_folder, job.as_str()));
     Ok(state)
+}
+
+/// A job whose process never started: its record says so (a record left as
+/// started would be read as interrupted later) and its claim goes.
+fn fail_unstarted(data_folder: &Path, owner: &str, id: &str, why: &str) {
+    let _ = std::fs::remove_file(claim_path(data_folder, id));
+    if let Some(mut record) = find(data_folder, owner, id) {
+        if !record.state.is_ended() {
+            record.state = JobState::Failed;
+            record.ended_at_ms = Some(now_ms());
+            record.identity = ProcessIdentity::default();
+            record.note = why.to_string();
+            let _ = crate::job_record::save(data_folder, &record);
+        }
+    }
 }
 
 /// One job of one owner, by id.
@@ -914,6 +941,26 @@ mod tests {
         let text = std::fs::read_to_string(output_path(&d, id)).unwrap();
         assert!(text.contains("out-line"), "{text:?}");
         assert!(text.contains("err-line"), "{text:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A claim that cannot be written means nothing was started, and the
+    /// record says failed rather than being left to read as interrupted.
+    #[test]
+    fn an_unwritable_claim_fails_the_job_before_it_starts() {
+        let d = dir("noclaim");
+        let owner = "s";
+        let id = "job-3-noclaim1";
+        let record = JobRecord::started(id, owner, "x", ProcessIdentity::default());
+        crate::job_record::save(&d, &record).unwrap();
+        // A directory where the claim file goes makes the write fail.
+        std::fs::create_dir_all(claim_path(&d, id)).unwrap();
+        let cmd = if cfg!(windows) { "echo ran> ran.txt" } else { "echo ran > ran.txt" };
+        assert!(supervise(&d, id, owner, "t", cmd).is_err());
+        let after = find(&d, owner, id).unwrap();
+        assert_eq!(after.state, JobState::Failed);
+        assert!(after.note.contains("claim"), "{}", after.note);
+        assert!(!output_path(&d, id).exists(), "the job must not have started");
         let _ = std::fs::remove_dir_all(&d);
     }
 
