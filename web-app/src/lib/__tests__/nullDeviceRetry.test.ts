@@ -208,6 +208,26 @@ describe('allow NUL reruns for this conversation', () => {
       expect(commandProgram({ command }), command).toBeUndefined()
   })
 
+  it('has no program for build tools and runners that run arbitrary commands', () => {
+    for (const command of [
+      'npm run build',
+      'make all',
+      'cargo run',
+      'find . -exec rm {} +',
+      'awk "BEGIN{system(1)}"',
+      'ssh host ls',
+      'git -c alias.x=!rm status',
+    ])
+      expect(commandProgram({ command }), command).toBeUndefined()
+  })
+
+  it('names a quoted program path with spaces', () => {
+    expect(
+      commandProgram({ command: '"C:\\Program Files\\Go\\bin\\go.exe" test' })
+    ).toBe('go')
+    expect(commandProgram({ command: 'git status' })).toBe('git')
+  })
+
   it('offers the conversation scope only for a rerun with a program', () => {
     expect(
       scopesFor({ toolName: 'bash', alwaysAsk: true, conversationProgram: 'go' })
