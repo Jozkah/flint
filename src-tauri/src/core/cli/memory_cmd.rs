@@ -34,7 +34,7 @@ fn access(project: &str, session: Option<&str>) -> (Access, PathBuf) {
     let root = Path::new(project).canonicalize().ok().filter(|r| r.is_dir() && r.parent().is_some());
     // A project folder overlapping the data folder would write memory into it.
     let (project_id, project_store, refused) = match root {
-        Some(r) if !(r.starts_with(&data) || data.starts_with(&r)) => (
+        Some(r) if !super::pathnorm::overlaps(&r, &data) => (
             Some(identity::project_id_read_only(&r)),
             Some(workspace::project_store(&r)),
             None,
