@@ -120,5 +120,8 @@
     "remote": "Cloud providers",
     "remoteHint": "messages leave this computer",
     "inUse": "In use here: {{model}} · {{provider}}"
+  },
+  "metalBudget": {
+    "warning": "This model may be too big for the GPU on this Mac: it needs about {{required}}, and macOS lets the GPU use about {{budget}} by default. It may load and then fail on the first message. Lower the context size, offload fewer GPU layers, or choose a smaller quantization."
   }
 }
