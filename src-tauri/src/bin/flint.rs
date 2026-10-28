@@ -5176,10 +5176,10 @@ mod tests {
     #[test]
     fn api_key_dash_reads_stdin_trimmed() {
         let key = super::resolve_api_key(Some("-".into()), None, || Ok("  sk-from-stdin\n".into()));
-        assert_eq!(key.as_deref(), Ok(Some("sk-from-stdin")));
+        assert_eq!(key, Ok(Some("sk-from-stdin".to_string())));
         assert!(super::resolve_api_key(Some("-".into()), None, || Ok("\n".into())).is_err());
         let inline = super::resolve_api_key(Some("sk-inline".into()), None, || panic!("stdin must not be read"));
-        assert_eq!(inline.as_deref(), Ok(Some("sk-inline")));
+        assert_eq!(inline, Ok(Some("sk-inline".to_string())));
         assert_eq!(super::resolve_api_key(None, None, || panic!("no")), Ok(None));
     }
 
