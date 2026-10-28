@@ -1218,6 +1218,7 @@
       "updated": "Обновлено {{when}}",
       "loading": "Загрузка кампаний",
       "loadFailed": "Не удалось загрузить кампании.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Пропущена {{count}} нечитаемая запись кампании. Файлы остались на месте.",
       "skipped_few": "Пропущено {{count}} нечитаемые записи кампаний. Файлы остались на месте.",
       "skipped_other": "Пропущено {{count}} нечитаемых записей кампаний. Файлы остались на месте.",

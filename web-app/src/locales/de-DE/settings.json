@@ -1188,6 +1188,7 @@
       "updated": "Aktualisiert {{when}}",
       "loading": "Kampagnen werden geladen",
       "loadFailed": "Kampagnen konnten nicht geladen werden.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} nicht lesbarer Kampagneneintrag übersprungen. Die Dateien blieben an ihrem Platz.",
       "skipped_other": "{{count}} nicht lesbare Kampagneneinträge übersprungen. Die Dateien blieben an ihrem Platz.",
       "retry": "Wiederholen",

@@ -1188,6 +1188,7 @@
       "updated": "{{when}}更新",
       "loading": "正在加载战役",
       "loadFailed": "无法加载战役。",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "已跳过 {{count}} 条无法读取的战役记录。文件保持原样。",
       "skipped_other": "已跳过 {{count}} 条无法读取的战役记录。文件保持原样。",
       "retry": "重试",
