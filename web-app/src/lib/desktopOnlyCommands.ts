@@ -310,6 +310,8 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'app_token',
       'bedrock_credential_status',
       'bedrock_set_credential',
+      'cli_bridge_connect',
+      'cli_bridge_status',
       'delete_provider_keys',
       'get_provider_keys',
       'export_provider_keys_for_backup',

@@ -44,6 +44,7 @@
   ],
   "agent_campaign_create": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -59,6 +60,7 @@
   ],
   "agent_campaign_decisions_append": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -74,6 +76,7 @@
   ],
   "agent_campaign_integrate": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -89,6 +92,7 @@
   ],
   "agent_campaign_list_with_skipped": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -104,6 +108,7 @@
   ],
   "agent_campaign_merge_task": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -119,6 +124,7 @@
   ],
   "agent_campaign_next_actions": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -134,6 +140,7 @@
   ],
   "agent_campaign_notified": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -149,6 +156,7 @@
   ],
   "agent_campaign_skipped": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -164,6 +172,7 @@
   ],
   "agent_campaign_task_settle": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -179,6 +188,7 @@
   ],
   "agent_campaign_verify_finish": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -194,6 +204,7 @@
   ],
   "agent_campaign_verify_prepare": [
     "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/BoardDialogs.tsx (via campaignApi)",
     "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
     "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
     "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
@@ -216,26 +227,31 @@
     "web-app/src/lib/extensionsStore.ts"
   ],
   "agent_checkpoint_capture": [
+    "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
     "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
     "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_forget": [
+    "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
     "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
     "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_plan": [
+    "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
     "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
     "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_preview_diff": [
+    "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
     "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
     "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_restore": [
+    "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
     "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
     "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
@@ -247,6 +263,7 @@
   ],
   "agent_copy_changes": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
@@ -273,6 +290,7 @@
   ],
   "agent_copy_discard": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
@@ -310,12 +328,12 @@
     "web-app/src/lib/chatToolGuard.ts"
   ],
   "agent_emergency_stop": [
+    "web-app/src/containers/CoworkComposerArea.tsx (via CoworkStopMenu)",
     "web-app/src/containers/CoworkStopMenu.tsx",
     "web-app/src/containers/EmergencyStop.tsx",
     "web-app/src/lib/coworkDispatch.ts (via stopBackendCall)",
     "web-app/src/lib/remote/appActions.ts",
-    "web-app/src/lib/toolCallStop.ts",
-    "web-app/src/routes/cowork.tsx (via CoworkStopMenu)"
+    "web-app/src/lib/toolCallStop.ts"
   ],
   "agent_events_export": [
     "web-app/src/containers/CoworkEventExport.tsx (via exportEvents)",
@@ -437,11 +455,11 @@
     "web-app/src/lib/extensionsStore.ts"
   ],
   "agent_prompt_snapshots": [
+    "web-app/src/containers/CoworkTranscript.tsx (via PromptSnapshotView)",
     "web-app/src/containers/PromptSnapshotView.tsx",
     "web-app/src/containers/ThreadConversation.tsx (via WhatJanIsUsingPanel)",
     "web-app/src/containers/WhatJanIsUsing.tsx",
-    "web-app/src/containers/WhatJanIsUsing.tsx (via PromptSnapshotView)",
-    "web-app/src/routes/cowork.tsx (via PromptSnapshotView)"
+    "web-app/src/containers/WhatJanIsUsing.tsx (via PromptSnapshotView)"
   ],
   "agent_prompt_snapshots_delete": [
     "web-app/src/hooks/useCoworkSessions.ts (via deletePromptSnapshots)",
@@ -492,8 +510,8 @@
     "web-app/src/routes/cowork.tsx (via applySandboxFile)"
   ],
   "agent_sandbox_apply_hunk": [
-    "web-app/src/lib/coworkSandboxApply.ts",
-    "web-app/src/routes/cowork.tsx (via applySandboxHunk)"
+    "web-app/src/containers/CoworkCodeRail.tsx (via applySandboxHunk)",
+    "web-app/src/lib/coworkSandboxApply.ts"
   ],
   "agent_sandbox_apply_probe": [
     "web-app/src/lib/coworkApplyAll.ts",
@@ -578,6 +596,7 @@
   ],
   "agent_worktree_ensure": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
@@ -600,6 +619,7 @@
   ],
   "agent_worktree_optimize": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
@@ -618,6 +638,7 @@
   ],
   "agent_worktree_resume": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
@@ -804,6 +825,7 @@
     "web-app/src/containers/ThreadConversation.tsx (via closeBrowserSession)",
     "web-app/src/lib/agentTools.ts (via closeBrowserSession)",
     "web-app/src/lib/browserTool.ts",
+    "web-app/src/lib/cowork/run/settleRun.ts (via closeBrowserSession)",
     "web-app/src/routes/cowork.tsx (via closeBrowserSession)"
   ],
   "browser_tool_describe": [
@@ -849,6 +871,14 @@
   ],
   "clear_mcp_auth": [
     "web-app/src/services/mcp/tauri.ts"
+  ],
+  "cli_bridge_connect": [
+    "web-app/src/containers/SubscriptionConnect.tsx",
+    "web-app/src/routes/settings/providers/$providerName.tsx (via SubscriptionConnect)"
+  ],
+  "cli_bridge_status": [
+    "web-app/src/containers/SubscriptionConnect.tsx",
+    "web-app/src/routes/settings/providers/$providerName.tsx (via SubscriptionConnect)"
   ],
   "confirm_exit": [
     "web-app/src/containers/dialogs/LlamacppBusyOnExitDialog.tsx"
@@ -1575,10 +1605,10 @@
   ],
   "open_session_path": [
     "web-app/src/containers/CoworkCodePanel.tsx",
+    "web-app/src/containers/CoworkCodeRail.tsx (via CoworkCodePanel)",
     "web-app/src/containers/RenderMarkdown.tsx (via InlinePathLink)",
     "web-app/src/containers/message/AgentToolWidget.tsx (via InlinePathLink)",
     "web-app/src/containers/message/InlinePathLink.tsx",
-    "web-app/src/routes/cowork.tsx (via CoworkCodePanel)",
     "web-app/src/services/opener/tauri.ts"
   ],
   "payload_usage_lookup": [
@@ -1773,10 +1803,10 @@
   "plugin:agent-tools|project_list_dir": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
     "web-app/src/containers/CoworkCodePanel.tsx (via projectListDir)",
+    "web-app/src/containers/CoworkDetailsBody.tsx (via projectListDir)",
     "web-app/src/hooks/useCompatManifest.ts (via projectListDir)",
     "web-app/src/lib/remote/appExtras.ts (via projectListDir)",
-    "web-app/src/lib/safeReferences.ts (via projectListDir)",
-    "web-app/src/routes/cowork.tsx (via projectListDir)"
+    "web-app/src/lib/safeReferences.ts (via projectListDir)"
   ],
   "plugin:agent-tools|project_read_file": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1943,7 +1973,8 @@
   ],
   "plugin:mlx|is_mlx_process_running": [
     "extensions/mlx-extension/src/index.ts",
-    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts",
+    "web-app/src/lib/mlxCrash.ts"
   ],
   "plugin:mlx|load_mlx_model": [
     "extensions/mlx-extension/src/index.ts (via loadMlxModel)",
@@ -2004,6 +2035,7 @@
   ],
   "plugin:websearch|web_fetch": [
     "src-tauri/plugins/tauri-plugin-websearch/guest-js/index.ts",
+    "web-app/src/containers/AddWebPageDialog.tsx (via webFetch)",
     "web-app/src/lib/webSearchTool.ts (via webFetch)"
   ],
   "plugin:websearch|web_search": [
