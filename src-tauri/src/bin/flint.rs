@@ -2213,6 +2213,12 @@ fn main() {
     if let Some(dir) = pre_parse_data_dir(std::env::args().skip(1)) {
         std::env::set_var("JAN_DATA_FOLDER", dir);
     }
+    // `schedule tick --data` and `schedule run-spec` need the same, plus the
+    // unattended flag; applied here, not inside the async command.
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    for (key, value) in app_lib::core::cli::schedule::process_env_for(&raw) {
+        std::env::set_var(key, value);
+    }
     let worker = std::thread::Builder::new()
         .name("jan-main".to_string())
         .stack_size(32 * 1024 * 1024)

@@ -367,5 +367,33 @@
     "none": "Ce dossier ne déclare aucun hook.",
     "error": "Le fichier de hooks n'a pas pu être lu",
     "loadFailed": "Impossible de lire les hooks"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Autoriser l'agent à modifier des fichiers dans ce dossier ?",
+        "file": "Autoriser l'agent à modifier ce fichier ?"
+      },
+      "read": {
+        "folder": "Autoriser l'agent à lire ce dossier ?",
+        "file": "Autoriser l'agent à lire ce fichier ?"
+      }
+    },
+    "asking": "{{task}} demande un accès en dehors de son espace de travail.",
+    "askingFrom": "{{origin}} dans {{task}} demande un accès en dehors de son espace de travail.",
+    "thisConversation": "cette conversation",
+    "folderLabel": "Dossier (et tout son contenu)",
+    "fileLabel": "Fichier",
+    "requestedAs": "Demandé sous la forme {{requested}}, qui correspond au chemin ci-dessus.",
+    "reason": "Raison indiquée",
+    "access": "Accès :",
+    "readWrite": "Lecture et écriture",
+    "readOnly": "Lecture seule",
+    "grantNote": "« Autoriser pour cette conversation » prend fin avec la conversation, ou après 8 heures. « Toujours autoriser » le conserve pour toutes les conversations jusqu'à ce que vous le révoquiez dans Paramètres > Autorisations > Accès aux dossiers.",
+    "moreWaiting_one": "{{count}} autre demande en attente.",
+    "moreWaiting_other": "{{count}} autres demandes en attente.",
+    "deny": "Refuser",
+    "always": "Toujours autoriser",
+    "session": "Autoriser pour cette conversation"
   }
 }

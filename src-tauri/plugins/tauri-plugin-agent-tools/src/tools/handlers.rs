@@ -4766,6 +4766,7 @@ fn truncate_line(line: &str) -> String {
 #[cfg(test)]
 mod bash_job_registry_tests {
     use super::*;
+    use serde_json::json;
 
     fn park(job_id: &str, command: &str) -> tokio::sync::oneshot::Sender<String> {
         park_with_pid(job_id, command, None)
