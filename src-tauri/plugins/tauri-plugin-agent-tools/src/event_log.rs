@@ -372,7 +372,6 @@ pub fn append_within(
     let io = |e: std::io::Error| LogError::Io(e.to_string());
     std::fs::create_dir_all(events_dir(data_folder)).map_err(io)?;
 
-    let mut states = STATE.lock().unwrap_or_else(|p| p.into_inner());
     let key = path.to_string_lossy().to_string();
     // Exclusive across processes (the CLI and the desktop can write one
     // session): held from the re-read of the tail to the end of the write.
@@ -389,10 +388,26 @@ pub fn append_within(
     // The cache is trusted only while the file is the size this process left
     // it; any other writer changes that, and the tail is re-read.
     let on_disk = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-    if states.get(&key).is_none_or(|s| s.bytes != on_disk) {
-        if states.len() >= MAX_CACHED_SESSIONS {
+    // Parsed outside the global lock: a long log read here would otherwise
+    // stall every other session's append. The session's file lock, held
+    // from here to the end of the write, keeps the file from changing
+    // between this read and the insert below.
+    let stale = STATE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&key)
+        .is_none_or(|s| s.bytes != on_disk);
+    let loaded = if stale { Some(load(&path)?) } else { None };
+    let mut states = STATE.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(loaded) = loaded {
+        if states.len() >= MAX_CACHED_SESSIONS && !states.contains_key(&key) {
             states.retain(|k, _| *k == key);
         }
+        states.insert(key.clone(), loaded);
+    }
+    // Another session's insert may have evicted this one between the two
+    // locks; the file lock still holds, so reading it here is current.
+    if !states.contains_key(&key) {
         let loaded = load(&path)?;
         states.insert(key.clone(), loaded);
     }

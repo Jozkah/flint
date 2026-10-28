@@ -3653,9 +3653,13 @@ impl App {
         if after_at.starts_with('"') {
             // rest[0] is the opening quote; the closing quote may be past the
             // cursor. A missing closing quote means the user is still typing
-            // the token, so delete through the end of the input.
+            // the token, so it ends at the cursor and whatever follows the
+            // cursor is kept.
             let rest = &self.input[at_idx + 1..];
-            let full_len = rest[1..].find('"').map(|i| i + 2).unwrap_or(rest.len());
+            let full_len = rest[1..]
+                .find('"')
+                .map(|i| i + 2)
+                .unwrap_or(self.cursor - (at_idx + 1));
             let replacement = format!("@\"{}\"", selected.path);
             let new_input = format!(
                 "{}{}{}",

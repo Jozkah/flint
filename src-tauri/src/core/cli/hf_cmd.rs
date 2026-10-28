@@ -298,13 +298,28 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
             let _ = std::fs::remove_file(&part);
             return Err("a leftover partial download could not be resumed and was deleted; run again".to_string());
         }
-        return finish(&part, &final_path, expected.as_deref(), quiet);
+        return finish_blocking(&part, &final_path, expected.as_deref(), quiet).await;
     }
     if !status.is_success() {
         return Err(failure(response).await);
     }
     // A server that ignores the range sends the whole file again: start over.
     let resumed = status == reqwest::StatusCode::PARTIAL_CONTENT;
+    // A 206 that starts anywhere but where the partial file ends would splice
+    // the wrong bytes into it; the hash check would catch it only at the end.
+    if resumed {
+        let starts_at = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("bytes "))
+            .and_then(|v| v.split(['-', '/']).next())
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        if starts_at != Some(have) {
+            let _ = std::fs::remove_file(&part);
+            return Err("the server resumed from the wrong offset; the partial file was deleted, run again".to_string());
+        }
+    }
     let total = response.content_length().map(|n| n + if resumed { have } else { 0 });
     let mut out = std::fs::OpenOptions::new()
         .create(true)
@@ -333,7 +348,19 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
     if !quiet {
         eprintln!();
     }
-    finish(&part, &final_path, expected.as_deref(), quiet)
+    finish_blocking(&part, &final_path, expected.as_deref(), quiet).await
+}
+
+/// [`finish`] off the async worker: hashing a multi-gigabyte model takes
+/// seconds of disk and CPU that would otherwise stall the runtime.
+async fn finish_blocking(part: &Path, final_path: &Path, expected: Option<&str>, quiet: bool) -> Result<PathBuf, String> {
+    if expected.is_some() && !quiet {
+        eprintln!("verifying SHA-256...");
+    }
+    let (part, final_path, expected) = (part.to_path_buf(), final_path.to_path_buf(), expected.map(str::to_string));
+    tokio::task::spawn_blocking(move || finish(&part, &final_path, expected.as_deref(), quiet))
+        .await
+        .map_err(|e| format!("verification task failed: {e}"))?
 }
 
 /// Check a finished `.part` against the SHA-256 Hugging Face listed, then move
@@ -380,10 +407,15 @@ pub fn import(data: &Path, source: &Path, id: &str) -> Result<PathBuf, String> {
         return Err(format!("a model named '{id}' already exists"));
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    std::fs::copy(source, &target).map_err(|e| {
-        let _ = std::fs::remove_dir_all(&dir);
-        format!("copy to {}: {e}", target.display())
-    })?;
+    // Copied under a `.part` name and renamed, so the server never sees a
+    // half-written `model.gguf` while a large file is still copying.
+    let staging = dir.join("model.gguf.part");
+    std::fs::copy(source, &staging)
+        .and_then(|_| std::fs::rename(&staging, &target))
+        .map_err(|e| {
+            let _ = std::fs::remove_dir_all(&dir);
+            format!("copy to {}: {e}", target.display())
+        })?;
     Ok(target)
 }
 

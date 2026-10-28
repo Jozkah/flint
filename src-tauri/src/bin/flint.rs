@@ -65,8 +65,8 @@ agents headlessly and manage threads and providers.\n\n\
 Models are served by remote providers configured in ~/.jan/config.toml\n\
 (a legacy path kept for compatibility; see `flint config set`), a project's\n\
 agent.toml, or the Flint desktop app.\n\n\
-This is a local-only build: it makes no network calls of its own and sends no\n\
-usage data.",
+It makes network calls only when a command needs one (talking to a provider,\n\
+signing in, downloading a model) and sends no usage data.",
     after_help = "Examples:\n  \
   flint                                                  # open the interactive agent console (TUI)\n  \
   flint --safe                                           # TUI that asks before writes and commands\n  \
@@ -3148,8 +3148,13 @@ fn handle_bench(cmd: BenchCommands) {
                 std::thread::spawn(move || {
                     if let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
                         if runtime.block_on(tokio::signal::ctrl_c()).is_ok() {
-                            eprintln!("  stopping: the task in flight is being ended and the report written");
+                            eprintln!("  stopping: the task in flight is being ended and the report written (Ctrl-C again to quit at once)");
                             stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                            // A task that will not end must not trap the user: the
+                            // second Ctrl-C leaves immediately.
+                            if runtime.block_on(tokio::signal::ctrl_c()).is_ok() {
+                                std::process::exit(130);
+                            }
                         }
                     }
                 });

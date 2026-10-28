@@ -384,17 +384,58 @@ fn walk(value: &Value, path: &str, found: &mut Vec<Redaction>) -> Value {
 /// be: its job is to say "this is the same payload as before" and to make a
 /// changed payload obvious, which a fast non-cryptographic hash does honestly.
 pub fn hash_payload(payload: &Value) -> String {
-    let canonical = canonical_string(payload);
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in canonical.as_bytes() {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    let mut hasher = Fnv(0xcbf2_9ce4_8422_2325);
+    // Streams the same bytes `canonical_string` would build, without holding
+    // a second copy of a payload that can be megabytes.
+    let _ = write_canonical(&mut hasher, payload);
+    format!("fnv1a64:{:016x}", hasher.0)
+}
+
+struct Fnv(u64);
+
+impl std::fmt::Write for Fnv {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        for byte in s.as_bytes() {
+            self.0 ^= *byte as u64;
+            self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        Ok(())
     }
-    format!("fnv1a64:{hash:016x}")
+}
+
+/// [`canonical_string`], written into `out` piece by piece.
+fn write_canonical(out: &mut impl std::fmt::Write, value: &Value) -> std::fmt::Result {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.write_char('{')?;
+            for (i, k) in keys.iter().enumerate() {
+                if i > 0 {
+                    out.write_char(',')?;
+                }
+                write!(out, "{:?}:", k)?;
+                write_canonical(out, &map[*k])?;
+            }
+            out.write_char('}')
+        }
+        Value::Array(items) => {
+            out.write_char('[')?;
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.write_char(',')?;
+                }
+                write_canonical(out, item)?;
+            }
+            out.write_char(']')
+        }
+        other => write!(out, "{other}"),
+    }
 }
 
 /// Serialize with object keys in a fixed order, so two equal payloads hash
 /// equally regardless of how they were built.
+#[cfg(test)]
 fn canonical_string(value: &Value) -> String {
     match value {
         Value::Object(map) => {
@@ -542,7 +583,7 @@ const SNAPSHOT_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Keep only the newest whole lines of the log that fit in `keep` bytes.
 fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
     let Ok(bytes) = std::fs::read(&path) else {
         return Ok(());
@@ -551,17 +592,23 @@ fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
         return Ok(());
     }
     let from = bytes.len() - keep as usize;
-    let start = bytes[from..]
+    let mut start = bytes[from..]
         .iter()
         .position(|b| *b == b'\n')
         .map_or(bytes.len(), |i| from + i + 1);
+    // Never trim to nothing: when the newest line alone is over the budget,
+    // that line is kept whole.
+    if start >= bytes.len() {
+        let body = bytes.strip_suffix(b"\n").unwrap_or(&bytes);
+        start = body.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    }
     crate::workspace::write_atomic(&path, &bytes[start..]).map_err(|e| e.to_string())
 }
 
 fn try_append(data_folder: &Path, snapshot: &PromptSnapshot) -> Result<(), String> {
     // Shared with compaction and deletion, so a record appended while the log
     // is being rewritten is not lost between the read and the rename.
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -599,7 +646,7 @@ pub const MAX_SNAPSHOTS: usize = 2_000;
 fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) -> Result<usize, String> {
     // The lock every append takes (Jozkah/jan#287): without it a snapshot
     // appended between the read and the rename below is lost.
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(0);
@@ -622,12 +669,7 @@ fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) ->
     if removed == 0 {
         return Ok(0);
     }
-    let temp = path.with_extension(format!("jsonl.tmp-{}", std::process::id()));
-    std::fs::write(&temp, out).map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, &path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        e.to_string()
-    })?;
+    crate::atomic_file::write_atomic(&path, out.as_bytes())?;
     Ok(removed)
 }
 
@@ -646,7 +688,7 @@ fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) ->
 /// because text that cannot be attributed must not be edited either.
 pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<usize, String> {
     // Same read-modify-rename as `rewrite`, under the same lock (Jozkah/jan#287).
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let needles: Vec<&str> = needles
         .iter()
         .copied()
@@ -660,7 +702,12 @@ pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<us
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(0);
     };
-    let marker = format!("[redacted: {why}]");
+    // Spliced into JSON text, so written as JSON string content: a `why`
+    // holding a quote or backslash must not break the payload (which would
+    // leave the text unredacted).
+    let marker = serde_json::to_string(&format!("[redacted: {why}]"))
+        .map(|s| s.trim_matches('"').to_string())
+        .unwrap_or_else(|_| "[redacted]".to_string());
     let mut out = String::with_capacity(text.len());
     let mut changed = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -698,6 +745,8 @@ pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<us
         match serde_json::from_str::<Value>(&payload) {
             Ok(redacted) => {
                 snapshot.payload = redacted;
+                // The record still verifies against its own hash.
+                snapshot.hash = hash_payload(&snapshot.payload);
                 snapshot.redactions.push(Redaction {
                     path: "payload".to_string(),
                     why: why.to_string(),
@@ -725,12 +774,7 @@ pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<us
     if changed == 0 {
         return Ok(0);
     }
-    let temp = path.with_extension(format!("jsonl.tmp-redact-{}", std::process::id()));
-    std::fs::write(&temp, out).map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, &path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        e.to_string()
-    })?;
+    crate::atomic_file::write_atomic(&path, out.as_bytes())?;
     Ok(changed)
 }
 
@@ -758,7 +802,10 @@ pub fn delete_session(data_folder: &Path, session: &str) -> Result<usize, String
 
 /// Keep only the newest `max` snapshots.
 pub fn prune(data_folder: &Path, max: usize) -> Result<usize, String> {
-    let total = read_all(data_folder).len();
+    // Counted by line, not parsed: this runs on the append path.
+    let total = std::fs::File::open(log_path(data_folder))
+        .map(|f| crate::retention::lossy_lines(f).filter(|l| !l.trim().is_empty()).count())
+        .unwrap_or(0);
     if total <= max {
         return Ok(0);
     }
@@ -1194,6 +1241,30 @@ mod tests {
             .unwrap()
             .contains("Bearer secret"));
         assert!(!snap.redactions.is_empty());
+    }
+
+    #[test]
+    fn the_streamed_hash_matches_the_canonical_string() {
+        let v = serde_json::json!({"b": [1, "x\"y", null, {"z": true, "a": 1.5}], "a": "\u{e9}"});
+        let canonical = canonical_string(&v);
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in canonical.as_bytes() {
+            h ^= *byte as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        assert_eq!(hash_payload(&v), format!("fnv1a64:{h:016x}"));
+    }
+
+    #[test]
+    fn a_line_larger_than_the_budget_is_kept_whole() {
+        let d = std::env::temp_dir().join(format!("jan-snap-trim-{}", std::process::id()));
+        let path = log_path(&d);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, format!("{{\"old\":1}}\n{{\"new\":\"{}\"}}\n", "x".repeat(100))).unwrap();
+        trim_bytes(&d, 10).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("{\"new\"") && !text.contains("old"), "{text}");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

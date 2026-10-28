@@ -252,6 +252,9 @@ impl NetworkPolicy {
         if self.allow_domains.is_empty() {
             return None;
         }
+        if self.allow_domains.iter().any(|rule| rule == crate::org_policy::DENY_ALL_DOMAINS) {
+            return Some(host);
+        }
         if self.allow_domains.iter().any(|rule| covers(rule, &host)) {
             None
         } else {
