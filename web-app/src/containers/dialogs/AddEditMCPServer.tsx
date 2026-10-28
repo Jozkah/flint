@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { MCPServerConfig } from '@/hooks/useMCPServers'
+import { useKeyValueListField, useListField } from '@/hooks/useListField'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   DndContext,
@@ -32,7 +33,6 @@ import {
 import {
   SortableContext,
   verticalListSortingStrategy,
-  arrayMove,
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -205,16 +205,37 @@ export default function AddEditMCPServer({
   const [attempted, setAttempted] = useState(false)
   const [serverName, setServerName] = useState('')
   const [command, setCommand] = useState('')
-  const [args, setArgs] = useState<string[]>([''])
+  const {
+    items: args,
+    add: handleAddArg,
+    remove: handleRemoveArg,
+    update: handleArgChange,
+    move: handleReorderArgs,
+    reset: resetArgs,
+  } = useListField()
   const [cwd, setCwd] = useState('')
-  const [envKeys, setEnvKeys] = useState<string[]>([''])
-  const [envValues, setEnvValues] = useState<string[]>([''])
+  const {
+    keys: envKeys,
+    values: envValues,
+    add: handleAddEnv,
+    remove: handleRemoveEnv,
+    updateKey: handleEnvKeyChange,
+    updateValue: handleEnvValueChange,
+    resetFrom: resetEnv,
+  } = useKeyValueListField()
   const [transportType, setTransportType] = useState<'stdio' | 'http' | 'sse'>(
     'stdio'
   )
   const [url, setUrl] = useState('')
-  const [headerKeys, setHeaderKeys] = useState<string[]>([''])
-  const [headerValues, setHeaderValues] = useState<string[]>([''])
+  const {
+    keys: headerKeys,
+    values: headerValues,
+    add: handleAddHeader,
+    remove: handleRemoveHeader,
+    updateKey: handleHeaderKeyChange,
+    updateValue: handleHeaderValueChange,
+    resetFrom: resetHeaders,
+  } = useKeyValueListField()
   const [timeout, setTimeout] = useState('')
   const [isToggled, setIsToggled] = useState(false)
   const [jsonContent, setJsonContent] = useState('')
@@ -227,7 +248,7 @@ export default function AddEditMCPServer({
       setCommand(initialData.command || '')
       setUrl(initialData.url || '')
       setTimeout(initialData.timeout ? initialData.timeout.toString() : '')
-      setArgs(initialData.args?.length > 0 ? initialData.args : [''])
+      resetArgs(initialData.args ?? [])
       setCwd(initialData.cwd || '')
       setTransportType(initialData?.type || 'stdio')
 
@@ -241,19 +262,8 @@ export default function AddEditMCPServer({
 
       // Always replace env and headers: the dialog stays mounted, and a
       // server without them must not inherit the previous server's secrets.
-      const env = initialData.env ?? {}
-      const keys = Object.keys(env)
-      setEnvKeys(keys.length > 0 ? keys : [''])
-      setEnvValues(keys.length > 0 ? keys.map((key) => env[key]) : [''])
-
-      const headers = initialData.headers ?? {}
-      const headerKeysList = Object.keys(headers)
-      setHeaderKeys(headerKeysList.length > 0 ? headerKeysList : [''])
-      setHeaderValues(
-        headerKeysList.length > 0
-          ? headerKeysList.map((key) => headers[key])
-          : ['']
-      )
+      resetEnv(initialData.env)
+      resetHeaders(initialData.headers)
       setIsToggled(false)
       setAttempted(false)
       setError(null)
@@ -261,44 +271,22 @@ export default function AddEditMCPServer({
       // Add mode - reset form
       resetForm()
     }
-  }, [open, editingKey, initialData])
+  }, [open, editingKey, initialData, resetArgs, resetEnv, resetHeaders])
 
   const resetForm = () => {
     setServerName('')
     setCommand('')
     setUrl('')
     setTimeout('')
-    setArgs([''])
+    resetArgs()
     setCwd('')
-    setEnvKeys([''])
-    setEnvValues([''])
-    setHeaderKeys([''])
-    setHeaderValues([''])
+    resetEnv()
+    resetHeaders()
     setTransportType('stdio')
     setIsToggled(false)
     setJsonContent('')
     setError(null)
     setAttempted(false)
-  }
-
-  const handleAddArg = () => {
-    setArgs([...args, ''])
-  }
-
-  const handleRemoveArg = (index: number) => {
-    const newArgs = [...args]
-    newArgs.splice(index, 1)
-    setArgs(newArgs.length > 0 ? newArgs : [''])
-  }
-
-  const handleArgChange = (index: number, value: string) => {
-    const newArgs = [...args]
-    newArgs[index] = value
-    setArgs(newArgs)
-  }
-
-  const handleReorderArgs = (oldIndex: number, newIndex: number) => {
-    setArgs(arrayMove(args, oldIndex, newIndex))
   }
 
   // Sensors for drag and drop
@@ -311,58 +299,6 @@ export default function AddEditMCPServer({
     }),
     useSensor(KeyboardSensor)
   )
-
-  const handleAddEnv = () => {
-    setEnvKeys([...envKeys, ''])
-    setEnvValues([...envValues, ''])
-  }
-
-  const handleRemoveEnv = (index: number) => {
-    const newKeys = [...envKeys]
-    const newValues = [...envValues]
-    newKeys.splice(index, 1)
-    newValues.splice(index, 1)
-    setEnvKeys(newKeys.length > 0 ? newKeys : [''])
-    setEnvValues(newValues.length > 0 ? newValues : [''])
-  }
-
-  const handleEnvKeyChange = (index: number, value: string) => {
-    const newKeys = [...envKeys]
-    newKeys[index] = value
-    setEnvKeys(newKeys)
-  }
-
-  const handleEnvValueChange = (index: number, value: string) => {
-    const newValues = [...envValues]
-    newValues[index] = value
-    setEnvValues(newValues)
-  }
-
-  const handleAddHeader = () => {
-    setHeaderKeys([...headerKeys, ''])
-    setHeaderValues([...headerValues, ''])
-  }
-
-  const handleRemoveHeader = (index: number) => {
-    const newKeys = [...headerKeys]
-    const newValues = [...headerValues]
-    newKeys.splice(index, 1)
-    newValues.splice(index, 1)
-    setHeaderKeys(newKeys.length > 0 ? newKeys : [''])
-    setHeaderValues(newValues.length > 0 ? newValues : [''])
-  }
-
-  const handleHeaderKeyChange = (index: number, value: string) => {
-    const newKeys = [...headerKeys]
-    newKeys[index] = value
-    setHeaderKeys(newKeys)
-  }
-
-  const handleHeaderValueChange = (index: number, value: string) => {
-    const newValues = [...headerValues]
-    newValues[index] = value
-    setHeaderValues(newValues)
-  }
 
   const validation = validateMcpServerForm(
     {

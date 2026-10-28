@@ -190,7 +190,6 @@ import {
   type DirectEditFacts,
 } from '@/containers/dialogs/DirectEditConfirmDialog'
 import {
-  capMode,
   isReadOnly,
   modeOf,
   type CoworkMode,
@@ -383,6 +382,8 @@ import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { createCompactRun } from '@/lib/cowork/run/compactRun'
 import { sendRemoteRequest } from '@/lib/cowork/run/remoteRequest'
 import { settleRun } from '@/lib/cowork/run/settleRun'
+import { createRunState } from '@/lib/cowork/run/runState'
+import { childRunnerOptions } from '@/lib/cowork/run/childRunnerOptions'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -479,10 +480,8 @@ import {
 } from '@/lib/coworkSubagentRegistry'
 import {
   parseSubagentRequest,
-  subagentActorId,
   SUBAGENT_RESULT_HEAD_CHARS,
 } from '@/lib/coworkSubagent'
-import { AGENT_MEMORY_TOOL_NAME } from '@/lib/coworkSubagentMemory'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { createChildRunner } from '@/lib/coworkChildRunner'
 import { DelegationNudge } from '@/lib/delegationNudge'
@@ -2940,7 +2939,7 @@ export function CoworkPage() {
     // This run's live lane. Every write names the run, so once the run is
     // stopped, replaced or its session deleted, a late write is refused
     // rather than drawn under whatever session is in view.
-    let runTurns: CoworkTurn[] = text
+    const initialTurns: CoworkTurn[] = text
       ? [
           {
             role: 'user',
@@ -2952,6 +2951,7 @@ export function CoworkPage() {
           },
         ]
       : []
+    const rs = createRunState(initialTurns)
     // The transcript row of this run's prompt (the id coworkTurnsToUIMessages
     // gives it), where a plan the run writes is recorded. A run without a
     // prompt of its own records it at the last one.
@@ -2967,16 +2967,15 @@ export function CoworkPage() {
     // so a run the app is killed under comes back as an interrupted turn.
     const runStartedAt = Date.now()
     const runBaseCount = current?.messages?.length ?? 0
-    let lastCheckpointAt: number | undefined
     const saveInFlight = (step = false) => {
       const at = Date.now()
-      if (!checkpointDue(lastCheckpointAt, at, step)) return
-      lastCheckpointAt = at
+      if (!checkpointDue(rs.lastCheckpointAt, at, step)) return
+      rs.lastCheckpointAt = at
       // Only while this run still owns the session's live lane.
       if (useCoworkRun.getState().runs[sid]?.runId !== runId) return
       useCoworkSessions
         .getState()
-        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, runTurns, at))
+        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, rs.runTurns, at))
     }
     // Text deltas publish at most once per frame: a set per token woke every
     // `useCoworkRun` subscriber and re-rendered this route per token, which is
@@ -2985,7 +2984,7 @@ export function CoworkPage() {
     const textFrame = createFrameBatch(() => publish())
     const publish = () => {
       textFrame.cancel()
-      useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
+      useCoworkRun.getState().setRunTurns(sid, runId, [...rs.runTurns])
       saveInFlight()
     }
     const pushLive = (
@@ -3003,7 +3002,7 @@ export function CoworkPage() {
           ? { ...turn, promptSnapshot: snapshot }
           : turn
       )
-      runTurns = [...runTurns, ...stamped]
+      rs.runTurns = [...rs.runTurns, ...stamped]
       publish()
       // AH-083: the memories this row's request carried now know the turn and
       // the exact snapshot they went out in. Here for the same reason as the
@@ -3023,9 +3022,9 @@ export function CoworkPage() {
       }
     }
     const mutateLive = (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
-      const next = apply(runTurns)
-      if (next === runTurns) return
-      runTurns = next
+      const next = apply(rs.runTurns)
+      if (next === rs.runTurns) return
+      rs.runTurns = next
       publish()
     }
     publish()
@@ -3067,7 +3066,7 @@ export function CoworkPage() {
       const prior = current?.messages ?? []
       useCoworkSessions.getState().commitTurns(
         sid,
-        runTurns,
+        rs.runTurns,
         text
           ? [
               ...prior,
@@ -3142,7 +3141,6 @@ export function CoworkPage() {
       folder: current?.folder ?? null,
       grantId: liveGrant?.grantId ?? null,
     })
-    let runBaseline: GitBaseline | null = null
     if (carried.readRoot) {
       let captured: GitBaseline
       try {
@@ -3159,7 +3157,7 @@ export function CoworkPage() {
         captured = unavailableBaseline(baselineBinding)
       }
       if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
-      runBaseline = acceptBaseline(captured, bindingRef.current)
+      rs.runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
     /**
@@ -3177,7 +3175,7 @@ export function CoworkPage() {
       // The tree the changes land in, frozen with the rest: every surface that
       // reports what happened reads this one answer.
       tree: carried.readRoot,
-      baseline: runBaseline,
+      baseline: rs.runBaseline,
     }
     useCoworkOrigins.getState().begin(sid, origins)
 
@@ -3357,13 +3355,12 @@ export function CoworkPage() {
     // The same facts the readiness card shows when the run reads the folder
     // on screen; read afresh for any other root (a managed worktree). Given up
     // on Stop like the rest of preparation, and never a reason not to run.
-    let runTooling: string | null = null
     if (runReadRoot) {
       const cached =
         tooling?.folder === runReadRoot ? tooling.loaded : null
       const loaded = cached ?? (await prepared(loadProjectTooling(runReadRoot)))
       if (loaded === STOPPED) return
-      runTooling = loaded.prompt
+      rs.runTooling = loaded.prompt
     }
     // A campaign coordinator or task on a window of 32K or less gets the
     // slim tool set: the full one alone would fill most of it.
@@ -3425,7 +3422,7 @@ export function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
-      projectTooling: runTooling,
+      projectTooling: rs.runTooling,
       openingInspection: inspecting,
       // What the shell can and cannot do, stated up front. Without it the
       // model learned by failing: probing the disk for runtimes, trying POSIX
@@ -3467,7 +3464,6 @@ export function CoworkPage() {
      * shared by its snapshot, its usage, its memory uses and the execution
      * events of the calls it asked for.
      */
-    let stepSnapshot: PromptSnapshotRef | undefined
     // Per-step generation timing, so a provider that reports no llama.cpp
     // `timings` (every remote model) still gets a tokens/sec figure -- the
     // provider's output tokens over the time any output (text, reasoning, tool
@@ -3489,20 +3485,20 @@ export function CoworkPage() {
     const streamedAssistantTurns = new Set<CoworkTurn>()
     const clearStreamedTurns = () => {
       if (streamedAssistantTurns.size === 0) return
-      runTurns = runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
+      rs.runTurns = rs.runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
       streamedAssistantTurns.clear()
       publish()
     }
     const sink: StreamSink = {
       onOutput: (chars) => decodeClock.tick(chars),
       onText: (delta) => {
-        const last = runTurns[runTurns.length - 1]
+        const last = rs.runTurns[rs.runTurns.length - 1]
         if (last && last.role === 'assistant' && streamedAssistantTurns.has(last)) {
           last.content += delta
           textFrame.schedule()
         } else {
           pushLive([{ role: 'assistant', content: delta }])
-          const added = runTurns[runTurns.length - 1]
+          const added = rs.runTurns[rs.runTurns.length - 1]
           if (added?.role === 'assistant') streamedAssistantTurns.add(added)
         }
       },
@@ -3513,13 +3509,13 @@ export function CoworkPage() {
       // Only a widget's arguments are kept as they stream: it is the one call
       // whose card draws from them before the call is complete.
       onToolArgsDelta: (callId, delta) => {
-        const row = runTurns.find((turn) => turn.callId === callId)
+        const row = rs.runTurns.find((turn) => turn.callId === callId)
         if (row?.name !== SHOW_WIDGET_TOOL) return
         row.argsLive = (row.argsLive ?? '') + delta
         textFrame.schedule()
       },
       onToolCall: (call) => {
-        const row = runTurns.find((turn) => turn.callId === call.toolCallId)
+        const row = rs.runTurns.find((turn) => turn.callId === call.toolCallId)
         if (row) {
           row.args = call.input
           row.argsLive = undefined
@@ -3562,7 +3558,7 @@ export function CoworkPage() {
         [
           ...(useCoworkSessions.getState().sessions.find((s) => s.id === sid)
             ?.turns ?? []),
-          ...runTurns,
+          ...rs.runTurns,
         ],
         sid
       )
@@ -3592,242 +3588,45 @@ export function CoworkPage() {
     // One hint per run, for a survey the model reads itself.
     const delegationNudge = new DelegationNudge(() => true)
     const dispatchChild = createChildRunner({
-      sessionId: sid,
-      runId,
-      run,
-      modelId: selectedModel.id,
-      providerId: selectedProvider,
-      parent: () => transport.persona(),
-      definitions: runAgents,
-      signal: controller.signal,
-      // The parent's instance: a second one would mean a second llama-server
-      // load for the same model.
-      model: () => transport.model,
-      supportsVision: () =>
-        selectedModel?.capabilities?.includes('vision') ?? false,
-      providerOptions: () => transport.reasoningProviderOptions(),
-      // A subagent's own memory is the user's to approve, write by write. Review
-      // and plan modes change nothing, so a write is refused there without asking.
-      launchGate: {
-        mode: (resolved) => {
-          const live = liveSessionMode(sid) ?? runMode
-          return capMode(live, resolved.permissionMode)
+      ...childRunnerOptions({
+        sid,
+        runId,
+        run,
+        selectedModel,
+        selectedProvider,
+        transport,
+        runAgents,
+        controller,
+        liveSessionMode,
+        runMode,
+        get messages() {
+          return messages
         },
-        ask: ({ agent, tools, model, signal }) =>
-          useToolApprovalRequests
-            .getState()
-            .requestApproval(`agent-launch:${agent}:${Date.now()}`, 'task', sid, undefined, {
-              input: { agent, tools, model },
-              alwaysAsk: true,
-              taskContext: `Run subagent "${agent}" with ${tools.join(', ')} on ${model}? It will ask before each change as usual; this is asked once for this session.`,
-              origin: agent,
-              signal,
-            }),
-      },
-      // A forked subagent starts from the conversation this turn began with.
-      fork: {
-        history: () => messages,
-        system: () => transport.forkSystemPrompt(messages),
-      },
-      approveMemoryWrite: async ({ agent, scope, content, signal }) => {
-        const live = liveSessionMode(sid) ?? runMode
-        if (isReadOnly(live)) return false
-        return useToolApprovalRequests
-          .getState()
-          .requestApproval(`agent-memory:${agent}:${Date.now()}`, AGENT_MEMORY_TOOL_NAME, sid, undefined, {
-            input: { agent, scope, content },
-            alwaysAsk: true,
-            taskContext: `${agent} wants to replace its ${scope} memory (MEMORY.md)`,
-            preview: content,
-            origin: agent,
-            signal,
-          })
-      },
-      parentTools: () => transport.childToolSet,
-      anchorMessageId,
-      lane: {
-        queue: (callId, name, waiting) =>
-          useCoworkRun.getState().queueSubagent(sid, callId, name, waiting),
-        start: (callId, name) =>
-          useCoworkRun.getState().startSubagent(sid, callId, name),
-        inner: (callId, event) =>
-          useCoworkRun.getState().routeIntoSubagent(sid, callId, event),
-        turns: (callId) =>
-          (useCoworkRun.getState().subagents[sid] ?? []).find(
-            (one) => one.runId === callId
-          )?.turns,
-        end: (callId, usage) =>
-          useCoworkRun.getState().endSubagent(sid, callId, usage),
-        attach: (callId, output) =>
-          useCoworkRun.getState().attachSubagentOutput(sid, callId, output),
-      },
-      setup: (resolved, destination, spawn) => {
-        const childFolder = destination?.path ?? runReadRoot
-        const childGrant = destination ? destination.grantId : runGrant
-        // A child in the run's own tree shares its extra folders; one given an
-        // isolated checkout holds a grant for that checkout alone.
-        const childExtras = destination ? [] : runExtraFolders
-        const childOwner = destination?.ownerId ?? sid
-        const identity = {
-          session: sid,
-          run: runId,
-          agent: resolved.name,
-          // AH-110: what a change it makes is attributed to. A role Flint
-          // ships is a role; anything else is an agent by that name.
-          agentId: subagentActorId(resolved),
-          parentAgent: 'agent',
-          project: workspacePath ?? '',
-        }
-        return {
-          activity: () => identity,
-          system: {
-            workspacePath,
-            readOnlyFolder: childFolder,
-            extraFolders: childExtras,
-            writableExtraFolders: destination ? [] : runWritableExtraFolders,
-            bashAvailable: sandboxEnforces(),
-            // The parent's frozen answers, handed down unchanged: a child never
-            // resolves its own access or its own instructions.
-            folderAccess: destination
-              ? promptFolderAccess(origins)
-              : withMainFolderMark(promptFolderAccess(origins), current),
-            worktreeBranch: worktree?.branch ?? null,
-            projectInstructions,
-            compatInstructions: compatInstructionBlocks(runCompat),
-            platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
-            shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
-            runnable: toolchains?.runnable,
-            unavailable: toolchains?.unavailable,
-            networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
-            mcpServers: [],
-          },
-          // A child never gets `todo`/`ask`/`task`, so these refuse rather than
-          // execute: a model can still emit a call to a tool that was never
-          // advertised.
-          dispatch: (call, toolSignal) =>
-          dispatchCoworkTool(call, {
-            // Recorded under the parent's run and this child's own name, so
-            // the timeline shows which agent did a thing without splitting
-            // the run it belongs to.
-            activity: {
-              session: sid,
-              run: runId,
-              agent: resolved.name,
-              agentId: subagentActorId(resolved),
-              parentAgent: 'agent',
-              project: workspacePath ?? '',
-            },
-            // The owner the grant was issued to, not the run's session: an
-            // isolated child's authority is its own, and the backend refuses a
-            // grant presented under any other id.
-            sessionId: childOwner,
-            // The parent's model: a child runs on the same instance.
-            modelId: selectedModel?.id,
-            readOnlyFolder: childFolder,
-            extraFolders: childExtras,
-            // The definition may ask for a stricter mode, never a looser one: the
-            // run's mode, live or frozen, is the ceiling.
-            mode: capMode(runMode, resolved.permissionMode),
-            liveMode: () => {
-              const live = liveSessionMode(sid)
-              return live ? capMode(live, resolved.permissionMode) : undefined
-            },
-            readFailures: runReadFailures,
-            writeGrant: childGrant,
-            // A child in its own checkout is a managed-worktree run of its
-            // own, consented to under its own owner id. Inheriting the
-            // parent's answers here would have the gate check a tree the
-            // child is not in.
-            access: destination ? 'managed-worktree' : effective.access,
-            accessCapability: runCapability,
-            editConsent: destination
-              ? { sessionId: destination.ownerId, folder: destination.path }
-              : runConsent,
-            worktreePath: destination ? destination.path : runWorktreePath,
-            // Snapshotted with the run: a skill the user asked for and did
-            // not get stops changes. Inspection still proceeds.
-            unresolvedSkills: unresolvedSkills(runSkills),
-            // The root this run is bound to, re-checked before every
-            // filesystem call: detaching or switching folders mid-run must
-            // not leave the run reading the folder that was taken away.
-            bindingIntact: () =>
-              (useCoworkSessions
-                .getState()
-                .sessions.find((one) => one.id === sid)?.folder ?? null) ===
-              (current?.folder ?? null),
-            webSearch,
-            // A subagent's mutations are the session's mutations, so
-            // they go through the same prompt rather than around it --
-            // shown on its own, because the child's calls are not parts of
-            // any message on screen.
-            onApprove: (callId, toolName, input, preview, signal, forced) =>
-              useToolApprovalRequests
-                .getState()
-                .requestApproval(callId, toolName, sid, undefined, {
-                  input,
-                  ...(forced
-                    ? {
-                        alwaysAsk: true,
-                        taskContext: forced.reason,
-                        conversationProgram: forced.conversationProgram,
-                        onDecision: forced.onDecision,
-                      }
-                    : {}),
-                  workspaceLabel:
-                    (destination ? destination.path : current?.folder) ??
-                    undefined,
-                  preview,
-                  origin: destination
-                    ? `${resolved.name} (its own checkout)`
-                    : resolved.name,
-                  signal,
-                }),
-            trackShell: () =>
-              useCoworkActiveWork.getState().acquire({
-                sessionId: sid,
-                kind: 'shell',
-                authority: runAuthority,
-              }),
-            // The same resolver and the same tracker the parent
-            // uses: one repository, one manifest, one set of rules.
-            scopedInstructions: scopedInstructionsFor,
-            onTodo: async () => ({
-              output:
-                'The todo list belongs to the agent that dispatched you.',
-              isError: true,
-            }),
-            onAsk: async () => ({
-              output:
-                'You cannot ask the user questions. Decide, and say what you assumed.',
-              isError: true,
-            }),
-            // Nesting is off unless Settings > Subagents raises the depth: then a
-            // child below the limit runs its `task` as a child one level down,
-            // under the same caps. At the limit it is refused as before.
-            onTask: async (nestedCallId, input) => {
-              if (!spawn || spawn.depth >= spawn.maxDepth) {
-                return { output: 'A subagent cannot dispatch subagents.', isError: true }
-              }
-              const nested = parseSubagentRequest(input)
-              if (typeof nested === 'string') {
-                return { output: `ERROR: ${nested}`, isError: true }
-              }
-              if (nested.fork) {
-                return { output: 'A subagent cannot fork.', isError: true }
-              }
-              return dispatchChild(
-                nestedCallId,
-                nested,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                spawn.depth
-              )
-            },
-          }, toolSignal),
-        }
-      },
+        anchorMessageId,
+        runReadRoot,
+        runGrant,
+        runExtraFolders,
+        workspacePath,
+        runWritableExtraFolders,
+        origins,
+        current,
+        worktree,
+        projectInstructions,
+        runCompat,
+        toolchains,
+        runReadFailures,
+        effective,
+        runCapability,
+        runConsent,
+        runWorktreePath,
+        runSkills,
+        webSearch,
+        runAuthority,
+        scopedInstructionsFor,
+        get dispatchChild() {
+          return dispatchChild
+        },
+      }),
     })
 
     const messages = text
@@ -3871,13 +3670,12 @@ export function CoworkPage() {
     // A model with no configured window is unmeasurable until a server refuses a
     // request and names it; that number is used for the rest of this run, and
     // remembered so the next run plans against it from the start.
-    let learnedWindow: number | null = null
     const summarizeRun = modelSummarizer({
       provider: selectedProvider,
       modelId: selectedModel.id,
       session: sid,
       maxOutputTokens: compactionPolicy.summaryMaxTokens,
-      window: () => runWindow ?? learnedWindow,
+      window: () => runWindow ?? rs.learnedWindow,
       model: () => transport.model,
     })
     const compactRun = createCompactRun({
@@ -3890,9 +3688,9 @@ export function CoworkPage() {
       selectedModelId: selectedModel.id,
       transport,
       summarize: summarizeRun,
-      getLearnedWindow: () => learnedWindow,
+      getLearnedWindow: () => rs.learnedWindow,
       setLearnedWindow: (tokens) => {
-        learnedWindow = tokens
+        rs.learnedWindow = tokens
       },
       setCompacting,
       pushLive: (turns) => pushLive(turns),
@@ -3958,19 +3756,15 @@ export function CoworkPage() {
      * construction and its tools are frozen, so the accepted step cannot run
      * here: it runs in a new request under the session's stored mode.
      */
-    let continueWith: string | null = null
     // The folder offer is made once per run, so a declined one is not repeated.
-    let folderOffered = false
     // Subagents this run started with `task background:true`.
     const backgroundTasks = new BackgroundTasks(SUBAGENT_RESULT_HEAD_CHARS)
-    let outcome: RunOutcome | null = null
-    let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
       // Raised here rather than returned earlier so the turn is torn down the
       // way every other ending is: the user's own message is committed, the
       // run is closed and nothing is left running.
       if (overflow) throw overflow
-      outcome = await runTurn({
+      rs.outcome = await runTurn({
         messages,
         signal: controller.signal,
         /**
@@ -4018,7 +3812,7 @@ export function CoworkPage() {
                   session: sid,
                   run: runId,
                   agent: 'main',
-                  invocation: stepSnapshot?.invocation,
+                  invocation: rs.stepSnapshot?.invocation,
                 },
                 sessionId: sid,
                 modelId: selectedModel?.id,
@@ -4064,8 +3858,8 @@ export function CoworkPage() {
                 // folder is fixed once it starts, so on yes the pick is held
                 // and the run ends; it restarts when the folder is applied.
                 onNeedFolder: async ({ signal }) => {
-                  if (folderOffered) return 'declined'
-                  folderOffered = true
+                  if (rs.folderOffered) return 'declined'
+                  rs.folderOffered = true
                   const ok = await useToolApprovalRequests
                     .getState()
                     .requestApproval(
@@ -4279,7 +4073,7 @@ export function CoworkPage() {
                         answers &&
                         acceptsProposal(parsed, answers)
                       ) {
-                        continueWith = continuationInstruction(
+                        rs.continueWith = continuationInstruction(
                           proposal.question,
                           answers
                         )
@@ -4312,7 +4106,7 @@ export function CoworkPage() {
                             duration: 12000,
                           })
                         }
-                        continueWith = PLAN_EXECUTE_INSTRUCTION
+                        rs.continueWith = PLAN_EXECUTE_INSTRUCTION
                       }
                       resolve(
                         review === 'none'
@@ -4491,7 +4285,7 @@ export function CoworkPage() {
                         })
                       : fn
                   try {
-                    const outcome = await runTeam(tasks, {
+                    const teamOutcome = await runTeam(tasks, {
                       // The turn's controller: stopping the run stops the team,
                       // and every child hangs off a signal chained to this one.
                       signal: teamSignal,
@@ -4660,29 +4454,29 @@ export function CoworkPage() {
                       })),
                     })
                     await runLog?.settled()
-                    if (!outcome.ok) {
+                    if (!teamOutcome.ok) {
                       useCoworkActivity.getState().patchTask(teamTaskId, {
                         status: 'error',
-                        output: outcome.refusal,
+                        output: teamOutcome.refusal,
                         endedAt: Date.now(),
                       })
                       return {
-                        output: `ERROR: ${outcome.refusal}`,
+                        output: `ERROR: ${teamOutcome.refusal}`,
                         isError: true,
                       }
                     }
                     const where = describeDestinations(plan.byTask)
                     const rendered = [
-                      renderTeamReport(outcome.report) +
-                        (outcome.decision === 'window-elapsed' ||
-                        outcome.decision === 'not-retried'
-                          ? `\n\n${renderNotRetried(outcome.report)}`
+                      renderTeamReport(teamOutcome.report) +
+                        (teamOutcome.decision === 'window-elapsed' ||
+                        teamOutcome.decision === 'not-retried'
+                          ? `\n\n${renderNotRetried(teamOutcome.report)}`
                           : ''),
                       where
                         ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
                         : '',
                       runLog?.summary() ?? '',
-                      runLog && !outcome.report.allDone
+                      runLog && !teamOutcome.report.allDone
                         ? `This run's run_id is ${runLog.runId}. Relaunch it with \`workflow {resume_run_id: "${runLog.runId}"}\`: finished agents return their saved results; the failed one and everything after it runs again.`
                         : '',
                       decided.length
@@ -4696,18 +4490,18 @@ export function CoworkPage() {
                       // partial run cannot read as a finished one at a glance.
                       status: teamSignal.aborted
                         ? ('cancelled' as const)
-                        : outcome.report.allDone
+                        : teamOutcome.report.allDone
                           ? ('done' as const)
                           : ('error' as const),
                       output: rendered,
-                      detail: teamProgress(outcome.state),
+                      detail: teamProgress(teamOutcome.state),
                       endedAt: Date.now(),
                     })
                     return {
                       output: rendered,
                       // A team where something failed is an error result, so the
                       // agent cannot read a partial run as a finished one.
-                      isError: !outcome.report.allDone,
+                      isError: !teamOutcome.report.allDone,
                     }
                   } finally {
                     useTeamControls.getState().unregister(teamTaskId)
@@ -4747,7 +4541,7 @@ export function CoworkPage() {
             // to its invocation -- its usage (counts only) and what the
             // response was made of (sizes only; the words stay in the
             // transcript). One id per invocation, so a retried record is one.
-            const stepInvocation = (stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
+            const stepInvocation = (rs.stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
             if (stepInvocation) {
               const stepUsage = fromCoworkUsage(result.usage)
               recordEvents([
@@ -4780,14 +4574,14 @@ export function CoworkPage() {
               void recordPayloadUsage({
                 session: sid,
                 run: runId,
-                snapshot: stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
+                snapshot: rs.stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
                 model: selectedModel?.id,
                 usage: result.usage,
               })
             }
             // Replace the optimistic running rows with the settled ones so the
             // transcript shows results, not spinners.
-            runTurns = runTurns.filter(
+            rs.runTurns = rs.runTurns.filter(
               (turn) =>
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
                 !streamedAssistantTurns.has(turn)
@@ -4831,7 +4625,7 @@ export function CoworkPage() {
             })
             // Reset the generation span so the next step measures its own.
             decodeClock.reset()
-            pushLive(settledTurns, stepSnapshot ?? lastSnapshotRef.current[sid])
+            pushLive(settledTurns, rs.stepSnapshot ?? lastSnapshotRef.current[sid])
             // Record this step's file work now. Ids are keyed on the tool
             // call, so the commit below re-recording the same rows is a
             // no-op rather than a duplicate.
@@ -4863,13 +4657,13 @@ export function CoworkPage() {
             }
           },
           onResponse: () => {
-            stepSnapshot = lastSnapshotRef.current[sid]
+            rs.stepSnapshot = lastSnapshotRef.current[sid]
           },
           activity: () => ({
             session: sid,
             run: runId,
             agent: 'main',
-            invocation: stepSnapshot?.invocation,
+            invocation: rs.stepSnapshot?.invocation,
           }),
           compact: compactRun,
           nextMessageId: (() => {
@@ -4952,7 +4746,7 @@ export function CoworkPage() {
       // The runner turns a failed step into an outcome, so this is the last
       // resort — a fault in the loop itself. Either way it is not a tool call,
       // and rendering it as one claimed the agent had run something.
-      thrown = isAbortLike(e, controller.signal)
+      rs.thrown = isAbortLike(e, controller.signal)
         ? { stoppedBy: 'aborted' }
         : isContextOverflow(e)
           ? // Not an error in the loop: the request was measured, found not to
@@ -4968,17 +4762,17 @@ export function CoworkPage() {
         sid,
         runId,
         handle,
-        runTurns,
+        runTurns: rs.runTurns,
         messages,
-        outcome,
-        thrown,
+        outcome: rs.outcome,
+        thrown: rs.thrown,
         origins,
         originOfPath,
         recordOrigins,
         runWorkDone,
         recordRunEnded,
         mailLedger,
-        continueWith,
+        continueWith: rs.continueWith,
         runAgain: (next) => runRequestRef.current(next),
       })
     }
