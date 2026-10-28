@@ -765,6 +765,28 @@ pub fn reject_reserved_key(key: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The generic secrets the page reads back with `get_secret`: the Hugging Face
+/// token (and its migration marker and legacy name), the web search keys, the
+/// local API server key, the proxy password, and per-provider header secrets.
+/// Anything else, a provider's API key above all, stays on the Rust side
+/// (XCUT-004): a page that can read any key can leak any key.
+pub fn is_webview_readable_secret(key: &str) -> bool {
+    const EXACT: &[&str] = &[
+        "general:huggingface-token",
+        "general:huggingface-token-migrated",
+        "huggingface",
+        "exa-api-key",
+        "tavily-api-key",
+        "brave-api-key",
+        "serper-api-key",
+        "you-api-key",
+        "local-api-server-key",
+        "proxy-password",
+    ];
+    let key = key.trim();
+    EXACT.contains(&key) || key.starts_with("provider-headers:")
+}
+
 /// [`load_provider_keys`] for webview-facing callers: a reserved name reads as
 /// empty, exactly like an absent entry.
 pub fn load_provider_keys_guarded(provider: &str) -> Vec<String> {
@@ -877,7 +899,7 @@ pub fn use_file_secrets_only() {
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
 pub async fn get_secret(key: String) -> Option<String> {
-    if reject_reserved_key(&key).is_err() {
+    if reject_reserved_key(&key).is_err() || !is_webview_readable_secret(&key) {
         return None;
     }
     tauri::async_runtime::spawn_blocking(move || load_provider_keys(&key).into_iter().next())
@@ -890,6 +912,17 @@ pub async fn get_secret(key: String) -> Option<String> {
 mod tests {
     use super::*;
     use super::TestEnvGuard;
+
+    #[test]
+    fn get_secret_rejects_non_allowlisted_key() {
+        assert!(!is_webview_readable_secret("openai"));
+        assert!(!is_webview_readable_secret("anthropic"));
+        assert!(!is_webview_readable_secret("general:other"));
+        assert!(!is_webview_readable_secret(""));
+        assert!(is_webview_readable_secret("general:huggingface-token"));
+        assert!(is_webview_readable_secret("exa-api-key"));
+        assert!(is_webview_readable_secret("provider-headers:openai"));
+    }
 
     // Field order is drop order: `_dir` must be removed and the env restored
     // while the lock is still held, so `_guard` has to be the last field.
