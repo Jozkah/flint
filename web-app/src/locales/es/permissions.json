@@ -367,5 +367,33 @@
     "none": "Esta carpeta no declara hooks.",
     "error": "No se pudo leer el archivo de hooks",
     "loadFailed": "No se pudieron leer los hooks"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "¿Permitir que el agente modifique archivos de esta carpeta?",
+        "file": "¿Permitir que el agente modifique este archivo?"
+      },
+      "read": {
+        "folder": "¿Permitir que el agente lea esta carpeta?",
+        "file": "¿Permitir que el agente lea este archivo?"
+      }
+    },
+    "asking": "{{task}} solicita acceso fuera de su espacio de trabajo.",
+    "askingFrom": "{{origin}} en {{task}} solicita acceso fuera de su espacio de trabajo.",
+    "thisConversation": "esta conversación",
+    "folderLabel": "Carpeta (y todo lo que contiene)",
+    "fileLabel": "Archivo",
+    "requestedAs": "Solicitado como {{requested}}, que se resuelve en la ruta de arriba.",
+    "reason": "Motivo indicado",
+    "access": "Acceso:",
+    "readWrite": "Lectura y escritura",
+    "readOnly": "Solo lectura",
+    "grantNote": "«Permitir en esta conversación» termina cuando termina la conversación, o a las 8 horas. «Permitir siempre» lo mantiene en todas las conversaciones hasta que lo revoques en Ajustes > Permisos > Acceso a carpetas.",
+    "moreWaiting_one": "{{count}} solicitud más en espera.",
+    "moreWaiting_other": "{{count}} solicitudes más en espera.",
+    "deny": "Denegar",
+    "always": "Permitir siempre",
+    "session": "Permitir en esta conversación"
   }
 }

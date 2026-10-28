@@ -444,6 +444,26 @@ async fn resource_route(
                 Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete assistant"),
             }
         }
+        (Method::GET, p)
+            if p.starts_with("/api/v1/provider-keys/") && p.ends_with("/status") =>
+        {
+            let name = p["/api/v1/provider-keys/".len()..p.len() - "/status".len()].to_owned();
+            blocking(move || resources::has_provider_keys(&name).map(|has| serde_json::json!({ "has": has }))).await
+        }
+        (Method::POST, p)
+            if p.starts_with("/api/v1/provider-keys/") && p.ends_with("/backup") =>
+        {
+            let name = p["/api/v1/provider-keys/".len()..p.len() - "/backup".len()].to_owned();
+            let value = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            blocking(move || {
+                resources::export_provider_keys_for_backup(&name, &value)
+                    .map(|keys| serde_json::json!({ "keys": keys }))
+            })
+            .await
+        }
         (Method::GET, p) if p.starts_with("/api/v1/provider-keys/") => {
             let name = p["/api/v1/provider-keys/".len()..].to_owned();
             blocking(move || resources::provider_keys(&name).map(|keys| serde_json::json!({ "keys": keys }))).await

@@ -367,5 +367,33 @@
     "none": "This folder declares no hooks.",
     "error": "The hooks file could not be read",
     "loadFailed": "Could not read the hooks"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Allow the agent to change files in this folder?",
+        "file": "Allow the agent to change this file?"
+      },
+      "read": {
+        "folder": "Allow the agent to read this folder?",
+        "file": "Allow the agent to read this file?"
+      }
+    },
+    "asking": "{{task}} is asking for access outside its workspace.",
+    "askingFrom": "{{origin}} in {{task}} is asking for access outside its workspace.",
+    "thisConversation": "this conversation",
+    "folderLabel": "Folder (and everything inside it)",
+    "fileLabel": "File",
+    "requestedAs": "Requested as {{requested}}, which resolves to the path above.",
+    "reason": "Reason given",
+    "access": "Access:",
+    "readWrite": "Read and write",
+    "readOnly": "Read only",
+    "grantNote": "\"Allow for this conversation\" ends when the conversation does, or after 8 hours. \"Always allow\" keeps it for every conversation until you revoke it in Settings > Permissions > Folder access.",
+    "moreWaiting_one": "{{count}} more request waiting.",
+    "moreWaiting_other": "{{count}} more requests waiting.",
+    "deny": "Deny",
+    "always": "Always allow",
+    "session": "Allow for this conversation"
   }
 }

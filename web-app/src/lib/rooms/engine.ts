@@ -243,6 +243,20 @@ const GROWTH_SAMPLES = 4
 const MAX_SUMMARY_PASSES = 6
 const CHARS_PER_TOKEN = 3.5
 
+/** Tells a retried turn which tools already ran, so it does not repeat their effects. */
+function ranToolsInstruction(
+  base: string | null | undefined,
+  ranTools: ReadonlyArray<{ name: string; args?: unknown }>,
+  reason: string
+): string {
+  const ran = ranTools
+    .slice(0, 12)
+    .map((t) => `${t.name} ${JSON.stringify(t.args ?? {}).slice(0, 120)}`)
+    .join('; ')
+  return `${base ? `${base}
+` : ''}Earlier in this turn you already ran tools (${ran}); ${reason} Do not repeat anything that changed files or state; read again only what you still need.`
+}
+
 function modelKey(model: RoomModelRef): string {
   return `${model.provider}/${model.id}`
 }
@@ -843,6 +857,8 @@ class RoomRun {
           : undefined
 
       let shrink = false
+      // Tools that ran in earlier attempts of this turn (each attempt resets live.tools).
+      let priorTools: Array<{ name: string; args?: unknown }> = []
       let attempt = 0
       // Time spent waiting for a busy local model slot this turn.
       let busyWaitedMs = 0
@@ -874,6 +890,7 @@ class RoomRun {
         this.calls++
         attempt++
         live.text = ''
+        priorTools = [...priorTools, ...(((live as LiveTurn).tools ?? []) as typeof priorTools)]
         live.tools = undefined
         live.activity = undefined
         // Time spent actually writing: the gaps between streamed pieces of text,
@@ -998,14 +1015,13 @@ class RoomRun {
             this.learnWindow(args.model, err.contextLimit)
             // Tools that already ran lost their results with the request. Say
             // so, so the retry does not repeat work that changed something.
-            const ranTools = (live as LiveTurn).tools
-            if (ranTools?.length) {
-              const ran = ranTools
-                .slice(0, 12)
-                .map((t) => `${t.name} ${JSON.stringify(t.args ?? {}).slice(0, 120)}`)
-                .join('; ')
-              instruction = `${instruction ? `${instruction}
-` : ''}Earlier in this turn you already ran tools (${ran}); their output was dropped to fit the context window. Do not repeat anything that changed files or state; read again only what you still need.`
+            const ranTools = [...priorTools, ...(((live as LiveTurn).tools ?? []) as typeof priorTools)]
+            if (ranTools.length) {
+              instruction = ranToolsInstruction(
+                instruction,
+                ranTools,
+                'their output was dropped to fit the context window.'
+              )
             }
             built = await this.prompt(args.speaker, args.model, instruction, true, toolsInfo, live)
             continue
@@ -1075,6 +1091,8 @@ class RoomRun {
               random: this.deps.random,
             })
             if (decision.retry) {
+              // A step that already ran tools must not run them again unasked.
+              const ranTools = [...priorTools, ...(((live as LiveTurn).tools ?? []) as typeof priorTools)]
               const sleep = this.deps.sleep ?? waitFor
               const waited = await sleep(decision.delayMs, this.signal)
               if (!waited || this.signal.aborted) {
@@ -1082,6 +1100,14 @@ class RoomRun {
                   this.message({ ...base, text: '', status: 'interrupted' })
                 )
                 throw new RunAborted()
+              }
+              if (ranTools.length) {
+                instruction = ranToolsInstruction(
+                  instruction,
+                  ranTools,
+                  'the provider then failed and the request is being retried.'
+                )
+                built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo, live)
               }
               continue
             }

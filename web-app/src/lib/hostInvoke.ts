@@ -28,6 +28,19 @@ export async function hostInvoke<T = unknown>(
       const result = await browserApi<{ keys: string[] }>(keysUrl(String(args?.provider)))
       return result.keys as T
     }
+    case 'has_provider_keys': {
+      const result = await browserApi<{ has: boolean }>(
+        `${keysUrl(String(args?.provider))}/status`
+      )
+      return result.has as T
+    }
+    case 'export_provider_keys_for_backup': {
+      const result = await browserApi<{ keys: string[] }>(
+        `${keysUrl(String(args?.provider))}/backup`,
+        jsonRequest('POST', { confirm: args?.confirm === true })
+      )
+      return result.keys as T
+    }
     case 'register_provider_config': {
       const request = args?.request as RegisterRequest
       const keys = [request.api_key, ...(request.api_keys ?? [])].filter(

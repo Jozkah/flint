@@ -367,5 +367,33 @@
     "none": "Questa cartella non dichiara hook.",
     "error": "Impossibile leggere il file degli hook",
     "loadFailed": "Impossibile leggere gli hook"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Consentire all'agente di modificare i file in questa cartella?",
+        "file": "Consentire all'agente di modificare questo file?"
+      },
+      "read": {
+        "folder": "Consentire all'agente di leggere questa cartella?",
+        "file": "Consentire all'agente di leggere questo file?"
+      }
+    },
+    "asking": "{{task}} richiede l'accesso al di fuori del suo spazio di lavoro.",
+    "askingFrom": "{{origin}} in {{task}} richiede l'accesso al di fuori del suo spazio di lavoro.",
+    "thisConversation": "questa conversazione",
+    "folderLabel": "Cartella (e tutto ciò che contiene)",
+    "fileLabel": "File",
+    "requestedAs": "Richiesto come {{requested}}, che corrisponde al percorso qui sopra.",
+    "reason": "Motivo indicato",
+    "access": "Accesso:",
+    "readWrite": "Lettura e scrittura",
+    "readOnly": "Sola lettura",
+    "grantNote": "«Consenti per questa conversazione» termina con la conversazione, o dopo 8 ore. «Consenti sempre» vale per ogni conversazione finché non lo revochi in Impostazioni > Autorizzazioni > Accesso alle cartelle.",
+    "moreWaiting_one": "{{count}} altra richiesta in attesa.",
+    "moreWaiting_other": "{{count}} altre richieste in attesa.",
+    "deny": "Nega",
+    "always": "Consenti sempre",
+    "session": "Consenti per questa conversazione"
   }
 }
