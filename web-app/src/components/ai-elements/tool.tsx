@@ -1147,45 +1147,53 @@ export const ToolApprovalActions = memo(() => {
 type ToolImageProps = {
   data: string
   index: number
-  resolver: (input: string) => Promise<string>
 }
 
-const ToolImage = memo(({ data, index }: ToolImageProps) => {
+export const ToolImage = memo(({ data, index }: ToolImageProps) => {
   const { t } = useTranslation()
-  // Prepare the URL - convert base64 to data URL if needed
-  const [preparedUrl, setPreparedUrl] = useState<string | undefined>(undefined)
+  // A remote image URL can carry data to its host; never fetch one unprompted.
+  const [allowed, setAllowed] = useState(false)
+  const [failed, setFailed] = useState(false)
 
-  useEffect(() => {
-    if (data.startsWith('data:image') || data.startsWith('http')) {
-      // Already a data URL or HTTP URL
-      setPreparedUrl(data)
-    } else {
-      // Assume it's base64 encoded
-      setPreparedUrl(`data:image/png;base64,${data}`)
-    }
+  // data: URL and bare base64 render at once; https waits for a click;
+  // http: and every other scheme (javascript:, file:, blob:) never render.
+  const src = useMemo(() => {
+    if (data.startsWith('data:image/')) return data
+    if (/^https:\/\//i.test(data)) return data
+    if (/^[a-z][a-z0-9+.-]*:/i.test(data)) return undefined
+    return `data:image/png;base64,${data}`
   }, [data])
 
-  const isLoading = !preparedUrl
+  if (!src || failed) return null
 
-  if (isLoading) {
+  const remote = !src.startsWith('data:')
+  if (remote && !allowed) {
+    let host = ''
+    try {
+      host = new URL(src).hostname
+    } catch {
+      return null
+    }
     return (
-      <div className="flex justify-center">
-        <div className="flex size-24 items-center justify-center rounded-md bg-muted">
-          <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => setAllowed(true)}
+        className="block w-fit max-w-full rounded-lg border border-border/60 bg-muted px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/70"
+      >
+        {t('common:markdownImage.load', { host })}
+      </button>
     )
-  }
-
-  if (!preparedUrl) {
-    return null
   }
 
   return (
     <div key={index} className="inline-block">
       <img
-        src={preparedUrl}
+        src={src}
         alt={t('uiLeftovers:toolOutputAlt')}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
         className="max-w-full max-h-96 w-auto h-auto object-contain rounded-md border border-border"
       />
     </div>
@@ -1306,7 +1314,6 @@ export const ToolOutput = memo(
                       key={index}
                       data={item.data || ''}
                       index={index}
-                      resolver={resolver}
                     />
                   ))}
                 </div>
@@ -1347,7 +1354,6 @@ export const ToolOutput = memo(
                       key={index}
                       data={item.data ?? item.image?.url}
                       index={index}
-                      resolver={resolver}
                     />
                   ))}
               </div>
