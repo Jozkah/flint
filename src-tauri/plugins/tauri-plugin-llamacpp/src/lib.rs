@@ -10,7 +10,7 @@ use tauri::{
 #[cfg(feature = "tauri")]
 pub mod cleanup;
 pub mod commands;
-mod compat_env;
+use jan_process::compat_env;
 pub mod engine;
 pub mod error;
 pub mod gguf;

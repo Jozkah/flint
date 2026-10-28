@@ -276,20 +276,17 @@ import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
-import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
-import { CoworkReviewAction } from '@/containers/CoworkReviewAction'
+import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
   applySandboxHunk,
   isFlintInternalPath,
   planSandboxApply,
   sandboxCopyOfProjectFile,
-  sandboxRelativePath,
 } from '@/lib/coworkSandboxApply'
 import { probeSandboxFile } from '@/lib/coworkApplyAll'
 import { absoluteChangePath, shortToolPath } from '@/lib/codePathResolve'
 import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
-import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import {
   NO_USER_EDITS,
@@ -455,8 +452,6 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
-import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
-import { CoworkTurnUndo } from '@/containers/CoworkTurnUndo'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -488,8 +483,6 @@ import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
-import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
-import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
 import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
@@ -558,7 +551,6 @@ import { setRunModel } from '@/lib/remoteRunner'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import { pickServerFolder } from '@/lib/serverFolderPicker'
 import { MAX_RUN_ATTACHMENTS, type RunAttachment } from '@/lib/remoteRunner'
-import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -7231,153 +7223,31 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'diff' && (
-          <CoworkDiffPanel
-            // Going back to how things were belongs where what changed is
-            // shown: the two questions are asked in the same breath.
-            header={
-              <>
-              {/* An isolated run's work reaches the folder only through a
-                  reviewed proposal, so the review sits with the changes. */}
-              {worktree && session?.id ? (
-                <CoworkProposalReview
-                  worktree={worktree}
-                  session={session.id}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              {/* A server session's own checkout: merge, discard, review. */}
-              {session?.id && session.remote ? (
-                <RemoteWorktreePanel sessionId={session.id} />
-              ) : null}
-              {/* One-command review of the current diff: ranked findings, each
-                  checked by a second pass; fixes go through the session. */}
-              {folder && session?.id ? (
-                <CoworkReviewAction
-                  folder={folder}
-                  sessionId={session.id}
-                  onFix={(text) => widgetHost.sendPrompt(text)}
-                />
-              ) : null}
-              {/* AH-109: each isolated team child's worktree, for review. */}
-              {folder && session?.id ? (
-                <CoworkTeamReviews
-                  project={folder}
-                  session={session.id}
-                  focusTaskId={reviewFocusTaskId}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              </>
-            }
-            // After the files, as the design orders it: what each turn
-            // changed, earlier points, then bundles made elsewhere.
-            footer={
-              <>
-              {/* AH-202: each turn's own file changes, undone or redone
-                  from the turn that made them. */}
-              {session?.id ? (
-                <CoworkTurnUndo
-                  sessionId={session.id}
-                  writeGrant={liveGrant?.grantId}
-                  refreshKey={running}
-                  onChanged={() => git.refresh()}
-                />
-              ) : null}
-              <CoworkRewind
-                points={
-                  session?.id && checkpointChain
-                    ? useCoworkCheckpoints
-                        .getState()
-                        .usable(session.id, treeRoot)
-                    : []
-                }
-                onPlan={(sha) =>
-                  useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
-                }
-                onPreviewDiff={(sha) =>
-                  useCoworkCheckpoints
-                    .getState()
-                    .previewDiff(session?.id ?? '', sha)
-                }
-                // Newer edits Flint made itself are not someone else's work, so
-                // only the rest need an explicit acknowledgement.
-                janAuthored={
-                  runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
-                }
-                onSafetyCapture={async (label) => {
-                  if (!session?.id || !treeRoot)
-                    return { ok: false, reason: 'no working tree' }
-                  const saved = await useCoworkCheckpoints
-                    .getState()
-                    .captureSafety({
-                      sessionId: session.id,
-                      root: treeRoot,
-                      label,
-                      access: effective.access,
-                    })
-                  return saved.ok
-                    ? { ok: true, point: saved.entry }
-                    : saved
-                }}
-                onRestore={async (sha) => {
-                  const done = await useCoworkCheckpoints
-                    .getState()
-                    .restore(session?.id ?? '', sha)
-                  // The tree changed underneath every surface that describes
-                  // it, so the diff is re-read rather than left showing what
-                  // was there a moment ago.
-                  if (done.ok) git.refresh()
-                  return done
-                }}
-              />
-              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
-              {folder && session?.id ? (
-                <CoworkBundleImport
-                  destination={folder}
-                  session={session.id}
-                  pickFolder={async () => {
-                    const picked = await serviceHub
-                      .dialog()
-                      .open({ directory: true })
-                    return typeof picked === 'string' ? picked : null
-                  }}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              </>
-            }
-            branch={worktree?.branch ?? gitBranch}
-            projectName={folder ? basenameOf(folder) : undefined}
-            sandboxFiles={fileDiffs}
-            onOpenFile={openToolPath}
-            // Review only leaves the run's output in the sandbox; this is the
-            // explicit per-file step that brings one file into the folder.
-            // The primary and every extra folder the session holds.
-            isSandboxPath={(path) =>
-              sandboxRelativePath(workspacePath, path) !== null
-            }
-            applyPlanFor={(path) =>
-              planSandboxApply(workspacePath, applyFolders, path)
-            }
-            onApplyFile={sandboxApply?.apply}
-            applyActions={sandboxApply}
-            displayPath={displayToolPath}
-            onOpenExternal={(path, source) => {
-              const absolute = absoluteChangePath(path, source, {
-                treeRoot,
-                workspacePath,
-                resolved: resolveToolPath(path),
-              })
-              if (!absolute) return
-              void serviceHub
-                .opener()
-                .openPath(absolute, pathLinkRoots)
-                .catch((e) => toast.error(errorText(e)))
-            }}
-            // The tree the changes are in, not the one the session is
-            // attached to: a managed run's diff lives in its worktree.
-            folder={treeRoot}
+          <CoworkDiffRail
+            sessionId={session?.id}
+            sessionRemote={!!session?.remote}
+            folder={folder}
+            worktree={worktree}
             git={git}
+            onSendPrompt={(text) => widgetHost.sendPrompt(text)}
+            reviewFocusTaskId={reviewFocusTaskId}
+            writeGrant={liveGrant?.grantId}
+            running={running}
+            hasCheckpoints={!!checkpointChain}
+            treeRoot={treeRoot}
+            access={effective.access}
+            janAuthored={
+              runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
+            }
+            gitBranch={gitBranch}
+            fileDiffs={fileDiffs}
+            openToolPath={openToolPath}
+            workspacePath={workspacePath}
+            applyFolders={applyFolders}
+            sandboxApply={sandboxApply}
+            displayToolPath={displayToolPath}
+            resolveToolPath={resolveToolPath}
+            pathLinkRoots={pathLinkRoots}
             origins={runOrigins?.entries}
             focusPath={rail.focusPath}
             onClose={closeRail}
