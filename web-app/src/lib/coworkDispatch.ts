@@ -31,7 +31,7 @@ import {
 import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
-  isReviewDeniedBrowserTool,
+  isReviewDeniedTool,
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
@@ -1477,7 +1477,7 @@ async function routeCoworkTool(
     }
 
     // Review mode changes nothing: a click or a keystroke can.
-    if (isReviewDeniedBrowserTool(toolName) && isReadOnly(ctx.mode)) {
+    if (isReviewDeniedTool(toolName) && isReadOnly(ctx.mode)) {
       return planRefusal(toolName)
     }
 
