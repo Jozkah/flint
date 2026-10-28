@@ -29,7 +29,7 @@ describe('useCodeGitOverlays caches', () => {
     vi.clearAllMocks()
     __testing.headCache.clear()
     __testing.blameCache.clear()
-    loadGitHeadFile.mockResolvedValue('a')
+    loadGitHeadFile.mockResolvedValue(null)
     loadGitBlame.mockResolvedValue({ porcelain: '', webUrl: null })
   })
 
