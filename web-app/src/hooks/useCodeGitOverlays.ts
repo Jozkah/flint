@@ -46,6 +46,23 @@ const blameCache = new Map<
   Promise<{ blame: Blame | null; webUrl: string | null }>
 >()
 
+const CACHE_LIMIT = 50
+
+// Insert as most recent and drop the oldest entries beyond the limit, so a
+// long session over many files does not hold every file's text and blame.
+function boundedSet<K, V>(map: Map<K, V>, key: K, value: V, limit = CACHE_LIMIT) {
+  map.delete(key)
+  map.set(key, value)
+  while (map.size > limit) {
+    const oldest = map.keys().next()
+    if (oldest.done) break
+    map.delete(oldest.value)
+  }
+}
+
+/** Exported for tests only. */
+export const __testing = { headCache, blameCache, boundedSet }
+
 /**
  * Change hunks and blame for the file in the editor.
  *
@@ -81,7 +98,7 @@ export function useCodeGitOverlays(input: {
     const cached = headCache.get(key)
     if (cached) void cached.then((value) => alive && setHead(value))
     const fresh = loadGitHeadFile(root, path).catch(() => null)
-    headCache.set(key, fresh)
+    boundedSet(headCache, key, fresh)
     void fresh.then((value) => alive && setHead(value))
     return () => {
       alive = false
@@ -95,13 +112,22 @@ export function useCodeGitOverlays(input: {
     const key = `${root}\u0000${path}\u0000${head?.length ?? -1}\u0000${savedCount}`
     let hit = blameCache.get(key)
     if (!hit) {
+      // One blame entry per file: a newer head or save supersedes the old one.
+      const filePrefix = `${root}\u0000${path}\u0000`
+      for (const k of [...blameCache.keys()]) {
+        if (k.startsWith(filePrefix)) blameCache.delete(k)
+      }
       hit = loadGitBlame(root, path)
         .then((r) => ({
           blame: r.porcelain ? parseBlamePorcelain(r.porcelain) : null,
           webUrl: r.webUrl,
         }))
-        .catch(() => ({ blame: null, webUrl: null }))
-      blameCache.set(key, hit)
+        .catch(() => {
+          // A transient failure is retried next time, not cached.
+          if (blameCache.get(key) === hit) blameCache.delete(key)
+          return { blame: null, webUrl: null }
+        })
+      boundedSet(blameCache, key, hit)
     }
     void hit.then((value) => alive && setBlame(value))
     return () => {
