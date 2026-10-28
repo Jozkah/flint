@@ -3008,5 +3008,39 @@
     "hide": "Ẩn khóa API",
     "copy": "Sao chép khóa API",
     "copied": "Đã sao chép"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Thay đổi phụ thuộc",
+      "lockfile": "Tệp khóa",
+      "migration": "Di chuyển dữ liệu không thể hoàn tác",
+      "binary": "Tệp nhị phân",
+      "deletion": "Xóa"
+    },
+    "reviewed": "Tôi đã xem xét những gì thay đổi",
+    "moreLines_other": "… thêm {{count}} dòng",
+    "lines": "Dòng {{from}}–{{to}}",
+    "sensitive": "Có vẻ chứa thông tin xác thực nên sẽ không bao giờ được áp dụng.",
+    "wholeBinary": "Nhị phân: áp dụng nguyên vẹn hoặc bỏ qua.",
+    "wholeLarge": "Quá lớn để chia nhỏ: áp dụng nguyên vẹn hoặc bỏ qua.",
+    "noWorktree": "không có bản ghi worktree nào để đề xuất",
+    "nothingSelected": "Chưa chọn gì. Hãy từ chối đề xuất để bỏ nó.",
+    "applied_other": "Đã áp dụng {{count}} tệp.",
+    "appliedPartial_other": "Đã áp dụng {{count}} tệp; phần còn lại bị bỏ qua.",
+    "rejected": "Đã từ chối. Không có gì trong thư mục của bạn thay đổi.",
+    "heading": "{{title}} vào {{root}}",
+    "defaultTitle": "Các thay đổi được đề xuất",
+    "ownCopy": "Lượt chạy này làm việc trên bản sao riêng. Không gì đến thư mục của bạn cho đến khi bạn áp dụng.",
+    "collecting": "Đang thu thập…",
+    "review": "Xem xét thay đổi",
+    "exporting": "Đang xuất…",
+    "exportPatch": "Xuất dưới dạng bản vá",
+    "exported": "Đã ghi gói bản vá vào {{path}}",
+    "lockFiles": "Tệp khóa ({{count}}), tách khỏi các thay đổi mã nguồn ở trên",
+    "needsAck": "Để áp dụng, hãy đánh dấu đã xem xét hoặc bỏ qua: {{files}}",
+    "selectedCount": "Đã chọn {{chosen}}/{{total}} thay đổi",
+    "reject": "Từ chối",
+    "applying": "Đang áp dụng…",
+    "applySelected": "Áp dụng mục đã chọn"
   }
 }

@@ -12,6 +12,9 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...a: unknown[]) => invoke(...a),
 }))
 
+// The words are asserted below: the real hook gives keys without a provider.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 import { CoworkProposalReview } from '../CoworkProposalReview'
 import {
   approvalFor,
@@ -122,6 +125,22 @@ describe('approvalFor', () => {
 })
 
 describe('the review', () => {
+  it('words counts as plurals and never leaks a raw key', async () => {
+    invoke.mockImplementation(async (cmd: string) =>
+      cmd === 'agent_proposal_list' ? [record()] : null
+    )
+    const { container } = render(
+      <CoworkProposalReview worktree={worktree} session="s1" />
+    )
+    await screen.findAllByTestId('proposal-hunk')
+    expect(container.textContent).not.toMatch(/common:proposal\./)
+    const { default: i18n } = await import('@/i18n/setup')
+    expect(i18n.t('common:proposal.applied', { count: 1 })).toBe('Applied 1 file.')
+    expect(i18n.t('common:proposal.applied', { count: 2 })).toBe('Applied 2 files.')
+    expect(i18n.t('common:proposal.moreLines', { count: 1 })).toBe('… 1 more line')
+    expect(i18n.t('common:proposal.moreLines', { count: 3 })).toBe('… 3 more lines')
+  })
+
   it('counts the chosen changes in the review bar, leaving out a credential file', async () => {
     invoke.mockImplementation(async (cmd: string) =>
       cmd === 'agent_proposal_list' ? [record()] : null
@@ -167,7 +186,7 @@ describe('the review', () => {
       { path: 'a.txt', hunks: { kind: 'only', ids: ['0.1-bbb'] } },
     ])
     expect(await screen.findByTestId('proposal-message')).toHaveTextContent(
-      'Applied 1 file(s)'
+      'Applied 1 file'
     )
     expect(onApplied).toHaveBeenCalled()
   })
