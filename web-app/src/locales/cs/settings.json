@@ -356,7 +356,11 @@
       "confirmBody": "Tím se změní oprávnění složky níže, kde je {{program}} nainstalován, a jen této složky a toho, co je v ní: přidá se záznam, který umožní každé aplikaci Windows v sandboxu (ALL APPLICATION PACKAGES) číst a spouštět soubory v ní. Nic jiného ve vašem uživatelském profilu se neotevírá. Můžete to zde kdykoli odvolat, čímž se odebere přesně tento záznam.",
       "confirm": "Povolit",
       "needsAdmin": "Nainstalováno v {{folder}}, kterou může změnit jen správce. Vyžaduje správce: spusťte to v terminálu se zvýšenými oprávněními:",
-      "copyCommand": "Kopírovat příkaz"
+      "copyCommand": "Kopírovat příkaz",
+      "loadError": "Nepodařilo se načíst nástroje sandboxu.",
+      "retry": "Zkusit znovu",
+      "revokeTitle": "Přestat povolovat sandboxu používat {{program}}?",
+      "revokeBody": "Odebere se položka oprávnění přidaná do níže uvedené složky. Příkazy v sandboxu už z ní nebudou moci spustit {{program}}."
     },
     "title": "Nástroje agenta",
     "description": "Dejte modelům soukromý pracovní prostor pro každou konverzaci a také paměti a dovednosti uložené trvale ve vaší datové složce Flintu.",

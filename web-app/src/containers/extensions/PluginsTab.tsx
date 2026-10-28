@@ -14,6 +14,14 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -972,48 +980,50 @@ export default function PluginsTab({
         </div>
       </div>
 
-      {confirmRemove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 motion-safe:animate-fade-in">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('plugins:remove.title', { name: confirmRemove.name })}
-            className="w-full max-w-sm rounded-xl border-[0.8px] border-border bg-card p-4 shadow-pop motion-safe:animate-dlg-in"
-          >
-            <div className="text-sm font-semibold">
-              {t('plugins:remove.title', { name: confirmRemove.name })}
-            </div>
-            <p className="mt-1 break-all text-xs text-muted-foreground">
-              {t('plugins:remove.body', { path: confirmRemove.installedPath })}
-            </p>
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={removing}
-                onClick={() => setConfirmRemove(null)}
-              >
-                {t('plugins:remove.cancel')}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={removing}
-                onClick={() => void confirmRemoval()}
-              >
-                {removing && (
-                  <Loader2
-                    className="motion-safe:animate-spin"
-                    size={14}
-                    aria-hidden
-                  />
-                )}
-                {t('plugins:remove.confirm')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={confirmRemove !== null}
+        onOpenChange={(open) => {
+          if (!open && !removing) setConfirmRemove(null)
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {t('plugins:remove.title', { name: confirmRemove?.name ?? '' })}
+            </DialogTitle>
+            <DialogDescription className="break-all">
+              {t('plugins:remove.body', {
+                path: confirmRemove?.installedPath ?? '',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={removing}
+              onClick={() => setConfirmRemove(null)}
+            >
+              {t('plugins:remove.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={removing}
+              onClick={() => void confirmRemoval()}
+            >
+              {removing && (
+                <Loader2
+                  className="motion-safe:animate-spin"
+                  size={14}
+                  aria-hidden
+                />
+              )}
+              {t('plugins:remove.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
