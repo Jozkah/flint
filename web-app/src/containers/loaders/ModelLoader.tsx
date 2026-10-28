@@ -2,15 +2,11 @@ import { useSecondClock } from '@/lib/sharedClock'
 import { useRef } from 'react'
 import { AlertCircle, Check, Loader } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatElapsed } from '@/lib/runStatus'
 
 export type ModelLoaderStatus = 'loading' | 'done' | 'failed'
 
-const WORDS: Record<ModelLoaderStatus, string> = {
-  loading: 'Loading model…',
-  done: 'Loaded in',
-  failed: 'Failed after',
-}
 
 /**
  * Model load status card: spinner + label + live elapsed timer while loading,
@@ -29,6 +25,7 @@ export function ModelLoader({
   label?: string
   className?: string
 }) {
+  const { t } = useTranslation()
   const start = useRef(Date.now())
   const frozen = useRef<number | undefined>(undefined)
   useSecondClock(status === 'loading' && elapsedMs === undefined)
@@ -40,7 +37,7 @@ export function ModelLoader({
 
   const Icon =
     status === 'done' ? Check : status === 'failed' ? AlertCircle : Loader
-  const text = status === 'loading' && label ? label : WORDS[status]
+  const text = status === 'loading' && label ? label : t(`common:modelLoader.${status}`)
 
   return (
     <div

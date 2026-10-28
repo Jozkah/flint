@@ -306,7 +306,8 @@ mod permission_tests {
         let missing: Vec<_> = declared
             .iter()
             .filter(|c| {
-                let permission = format!("allow-{}", c.replace('_', "-"));
+                // Quoted, so `allow-foo` is not satisfied by `allow-foo-bar`.
+                let permission = format!("\"allow-{}\"", c.replace('_', "-"));
                 !default_toml.contains(&permission)
             })
             .collect();

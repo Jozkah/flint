@@ -45,8 +45,6 @@ const BASE = 'en'
 const PLURAL = /_(zero|one|two|few|many|other)$/
 const PLACEHOLDER = /\{\{\s*([\w.]+)\s*(?:,[^}]*)?\}\}/g
 const SHOWN = 12
-/** Locales whose plural forms are checked category by category (one/few/many/other). */
-export const PLURAL_CHECKED = ['ru', 'pl', 'cs']
 
 /**
  * Plural keys of `english` (a flat map) that lack a form `locale` needs, as
@@ -172,10 +170,16 @@ export function checkLocales(root = DEFAULT_ROOT, options = {}) {
       const theirFlat = flatten(parsed.data)
       const theirs = byBaseKey(theirFlat)
 
-      if (PLURAL_CHECKED.includes(locale)) {
+      {
         const englishFlat = flatten(readJson(join(baseDir, `${ns}.json`)).data ?? {})
         const forms = missingPluralForms(locale, englishFlat, theirFlat)
-        if (forms.length) errors.push(`${file}: ${forms.length} plural key(s) missing a form: ${list(forms)}`)
+        const keyOfForm = (f) => f.slice(0, f.indexOf(' (missing'))
+        if (forms.length) record(file, 'plurals', forms.map(keyOfForm))
+        const fresh = forms.filter((f) => !known(file, 'plurals', keyOfForm(f)))
+        if (forms.length > fresh.length) {
+          warnings.push(`${file}: ${forms.length - fresh.length} plural key(s) missing a form (in the baseline)`)
+        }
+        if (fresh.length) errors.push(`${file}: ${fresh.length} plural key(s) missing a form: ${list(fresh)}`)
       }
 
       const missing = [...english.keys()].filter((k) => !theirs.has(k))

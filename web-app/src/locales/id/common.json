@@ -1352,7 +1352,8 @@
     "binaryRefused": "{{name}} bukan file teks, apa pun kata ekstensinya",
     "chooseAgainAction": "Pilih lagi",
     "externalGone": "File ini dibuka dari luar proyek, dan aksesnya tidak bertahan. Pilih lagi untuk membukanya kembali.",
-    "oneFolderAtATime": "Hanya satu folder dalam satu waktu. \"{{name}}\" tidak ditambahkan."
+    "oneFolderAtATime": "Hanya satu folder dalam satu waktu. \"{{name}}\" tidak ditambahkan.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Cari pengaturan",
@@ -3056,5 +3057,29 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
   }
 }

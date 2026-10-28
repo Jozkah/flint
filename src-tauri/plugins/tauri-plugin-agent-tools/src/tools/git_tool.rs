@@ -253,6 +253,9 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
             while let Some(a) = it.next() {
                 let value = if a == "-s" || a == "--strategy" {
                     it.peek().map(|s| s.as_str())
+                } else if let Some(attached) = a.strip_prefix("-s").filter(|v| !v.is_empty() && !v.starts_with('-')) {
+                    // `-sours` is `-s ours`: the attached spelling gets the same check.
+                    Some(attached)
                 } else {
                     a.strip_prefix("--strategy=")
                 };
@@ -260,6 +263,22 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
                     if !strategies.contains(&v) {
                         return Err(format!("merge strategy `{v}` is not allowed"));
                     }
+                }
+            }
+        }
+        "apply" | "am" => {
+            // Both write files named by the patch: `--unsafe-paths` lifts the
+            // check that they stay in the tree, `--directory` re-roots them.
+            // Any unambiguous prefix of either works as well.
+            let end = rest.iter().position(|a| a == "--").unwrap_or(rest.len());
+            for a in &rest[..end] {
+                let lower = a.to_ascii_lowercase();
+                let name = lower.split('=').next().unwrap_or("");
+                if name.len() >= 3
+                    && name.starts_with("--")
+                    && ["--unsafe-paths", "--directory"].iter().any(|opt| opt.starts_with(name))
+                {
+                    return Err(format!("the option `{a}` is not allowed for {sub}: it moves where a patch writes"));
                 }
             }
         }
@@ -1609,7 +1628,7 @@ pub const CONFIG_OVERRIDES: &[(&str, &str)] = &[
 ];
 
 /// The argv actually run: the plan's, plus `--no-ext-diff --no-textconv`
-/// right after a diff-producing subcommand, so no diff driver runs.
+/// after the options of a diff-producing subcommand, so no diff driver runs.
 pub fn argv_for(plan: &GitPlan) -> Vec<String> {
     let mut argv = plan.args.clone();
     if plan.program == Program::Git
@@ -1618,10 +1637,10 @@ pub fn argv_for(plan: &GitPlan) -> Vec<String> {
             Some("diff" | "log" | "show")
         )
     {
-        argv.splice(
-            1..1,
-            ["--no-ext-diff".to_string(), "--no-textconv".to_string()],
-        );
+        // After the model's own options so its `--textconv` cannot win (the
+        // last one given does), and before `--` where options end.
+        let at = argv.iter().position(|a| a == "--").unwrap_or(argv.len());
+        argv.splice(at..at, ["--no-ext-diff".to_string(), "--no-textconv".to_string()]);
     }
     argv
 }
@@ -2475,6 +2494,10 @@ mod tests {
             &["rebase", "--exec=calc", "main"],
             &["grep", "-Ocalc", "x"],
             &["merge", "-s", "evil", "main"],
+            &["merge", "-sevil", "main"],
+            &["apply", "--unsafe-paths", "x.patch"],
+            &["apply", "--directory=../out", "x.patch"],
+            &["am", "--direct=../out", "x.patch"],
             &["remote", "add", "o", "file:///x"],
             &["submodule", "update"],
             &["filter-branch"],
@@ -2871,7 +2894,12 @@ mod tests {
         let plan = p("git", &["log", "-p"]).unwrap();
         assert_eq!(
             argv_for(&plan),
-            ["log", "--no-ext-diff", "--no-textconv", "-p"]
+            ["log", "-p", "--no-ext-diff", "--no-textconv"]
+        );
+        let plan = p("git", &["diff", "--textconv", "--", "f"]).unwrap();
+        assert_eq!(
+            argv_for(&plan),
+            ["diff", "--textconv", "--no-ext-diff", "--no-textconv", "--", "f"]
         );
         let plan = p("git", &["status"]).unwrap();
         assert_eq!(argv_for(&plan), ["status"]);
@@ -3063,6 +3091,7 @@ mod tests {
         assert!(p("git", &["tag", "-a", "-F", "msg.txt", "v1"]).is_ok());
         assert!(p("git", &["tag", "-a", "-m", "msg", "v1"]).is_ok());
         assert!(p("git", &["apply", "fix.patch"]).is_ok());
+        assert!(p("git", &["merge", "-sours", "feature"]).is_ok());
         assert!(p("git", &["merge", "-m", "x", "feature"]).is_ok());
     }
 

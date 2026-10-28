@@ -1364,7 +1364,8 @@
     "binaryRefused": "{{name}} 不是文字檔案，無論其副檔名如何",
     "chooseAgainAction": "重新選擇",
     "externalGone": "此檔案是從專案之外開啟的，該存取權限未能保留。請重新選擇它以再次開啟。",
-    "oneFolderAtATime": "一次只能新增一個資料夾。未新增「{{name}}」。"
+    "oneFolderAtATime": "一次只能新增一個資料夾。未新增「{{name}}」。",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "搜尋設定",
@@ -3102,5 +3103,29 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
   }
 }

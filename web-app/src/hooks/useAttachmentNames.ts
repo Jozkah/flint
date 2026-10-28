@@ -54,9 +54,9 @@ export const useAttachmentNamesStore = create<AttachmentNamesState>(
           }))
         })
         .catch(() => {
+          // Not marked loaded: the next request for this scope tries again.
           set((s) => ({
             loading: { ...s.loading, [key]: false },
-            loadedScopes: { ...s.loadedScopes, [key]: true },
           }))
         })
     },

@@ -19,7 +19,7 @@ describe('AvatarEmoji Component', () => {
     const img = screen.getByRole('img')
     expect(img).toBeDefined()
     expect(img).toHaveAttribute('src', '/images/custom-avatar.png')
-    expect(img).toHaveAttribute('alt', 'Custom avatar')
+    expect(img).toHaveAttribute('alt', 'common:customAvatar')
   })
 
   // C061: the pale Quartz crystal was ~1.5:1 on a white tile in light theme.
@@ -125,7 +125,7 @@ describe('AvatarEmoji Component', () => {
     render(<AvatarEmoji avatar="/images/user-avatar.png" />)
     
     const img = screen.getByRole('img')
-    expect(img).toHaveAttribute('alt', 'Custom avatar')
+    expect(img).toHaveAttribute('alt', 'common:customAvatar')
   })
 })
 

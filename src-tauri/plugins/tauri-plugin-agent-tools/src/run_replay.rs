@@ -75,7 +75,7 @@ fn by_run(events: Vec<Envelope>) -> (Vec<String>, BTreeMap<String, Vec<Envelope>
 }
 
 /// The run's summary when it has both a recorded start and a recorded end.
-fn summarize(run: &str, events: &[Envelope], truncated: bool) -> Option<FinishedRun> {
+fn summarize(run: &str, events: &[Envelope], markers: &[u64]) -> Option<FinishedRun> {
     let started = events.iter().find(|e| e.kind == "run.started")?;
     let ended = events.iter().rev().find(|e| e.kind == "run.ended")?;
     Some(FinishedRun {
@@ -89,12 +89,15 @@ fn summarize(run: &str, events: &[Envelope], truncated: bool) -> Option<Finished
             .unwrap_or("unknown")
             .to_string(),
         steps: events.len(),
-        truncated,
+        // Only a trim inside this run's own span marks it: one before it began or after it ended
+        // cost it nothing.
+        truncated: markers.iter().any(|&m| m > started.seq && m < ended.seq),
     })
 }
 
-fn log_truncated(all: &[Envelope]) -> bool {
-    all.iter().any(|e| e.kind == "log.truncated")
+/// Where the log was trimmed: the sequence number of every `log.truncated`.
+fn truncation_markers(all: &[Envelope]) -> Vec<u64> {
+    all.iter().filter(|e| e.kind == "log.truncated").map(|e| e.seq).collect()
 }
 
 /// Every finished run in the session, in the order they ended, so the last one
@@ -104,13 +107,13 @@ fn log_truncated(all: &[Envelope]) -> bool {
 /// error; a log that cannot be read is.
 pub fn finished_runs(data_folder: &Path, session: &str) -> Result<Vec<FinishedRun>, HarnessError> {
     let all = read(data_folder, session)?;
-    let truncated = log_truncated(&all);
+    let markers = truncation_markers(&all);
     let (order, runs) = by_run(all);
     let mut finished: Vec<(u64, FinishedRun)> = order
         .iter()
         .filter_map(|run| {
             let end = runs[run].iter().rev().find(|e| e.kind == "run.ended")?.seq;
-            Some((end, summarize(run, &runs[run], truncated)?))
+            Some((end, summarize(run, &runs[run], &markers)?))
         })
         .collect();
     finished.sort_by_key(|(end, _)| *end);
@@ -128,7 +131,7 @@ pub fn recording(data_folder: &Path, session: &str, run: &str) -> Result<RunReco
         .at(Stage::Replay));
     }
     let all = read(data_folder, session)?;
-    let truncated = log_truncated(&all);
+    let markers = truncation_markers(&all);
     let (_, mut runs) = by_run(all);
     let Some(events) = runs.remove(run) else {
         return Err(HarnessError::new(
@@ -137,7 +140,7 @@ pub fn recording(data_folder: &Path, session: &str, run: &str) -> Result<RunReco
         )
         .at(Stage::Replay));
     };
-    let Some(summary) = summarize(run, &events, truncated) else {
+    let Some(summary) = summarize(run, &events, &markers) else {
         let why = if events.iter().any(|e| e.kind == "run.started") {
             "has no recorded end: it is still running, or it was cut off before it could finish"
         } else {
@@ -229,6 +232,22 @@ mod tests {
         put(&d, "s", "agent", "e", "run.ended", json!({ "stoppedBy": "done" }));
         let runs: Vec<String> = finished_runs(&d, "s").unwrap().into_iter().map(|r| r.run).collect();
         assert_eq!(runs, ["chat", "agent"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_truncation_marks_only_the_run_it_fell_inside() {
+        let d = dir("trunc-scope");
+        put(&d, "s", "a", "a1", "run.started", json!({}));
+        put(&d, "s", "a", "a2", "run.ended", json!({ "stoppedBy": "done" }));
+        put(&d, "s", "", "t1", "log.truncated", json!({}));
+        put(&d, "s", "b", "b1", "run.started", json!({}));
+        put(&d, "s", "", "t2", "log.truncated", json!({}));
+        put(&d, "s", "b", "b2", "run.ended", json!({ "stoppedBy": "done" }));
+        let runs = finished_runs(&d, "s").unwrap();
+        let flag = |name: &str| runs.iter().find(|r| r.run == name).unwrap().truncated;
+        assert!(!flag("a"));
+        assert!(flag("b"));
         let _ = std::fs::remove_dir_all(&d);
     }
 

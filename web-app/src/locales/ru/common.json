@@ -1395,7 +1395,8 @@
     "binaryRefused": "{{name}} не является текстовым файлом, что бы ни говорило его расширение",
     "chooseAgainAction": "Выбрать снова",
     "externalGone": "Этот файл был открыт вне проекта, и доступ не сохранился. Выберите его снова, чтобы открыть заново.",
-    "oneFolderAtATime": "Можно добавить только одну папку за раз. «{{name}}» не добавлена."
+    "oneFolderAtATime": "Можно добавить только одну папку за раз. «{{name}}» не добавлена.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Поиск по настройкам",
@@ -3247,5 +3248,29 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
   }
 }

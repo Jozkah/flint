@@ -1364,7 +1364,8 @@
     "binaryRefused": "{{name}} ist keine Textdatei, was auch immer die Endung behauptet",
     "chooseAgainAction": "Erneut auswählen",
     "externalGone": "Diese Datei wurde von außerhalb des Projekts geöffnet, und dieser Zugriff blieb nicht erhalten. Wähle sie erneut aus, um sie wieder zu öffnen.",
-    "oneFolderAtATime": "Es kann nur ein Ordner auf einmal hinzugefügt werden. „{{name}}“ wurde nicht hinzugefügt."
+    "oneFolderAtATime": "Es kann nur ein Ordner auf einmal hinzugefügt werden. „{{name}}“ wurde nicht hinzugefügt.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Einstellungen durchsuchen",
@@ -3116,5 +3117,29 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
   }
 }
