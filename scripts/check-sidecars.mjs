@@ -162,8 +162,9 @@ if (probe && triple === hostTriple()) {
       timeout: 20000,
       encoding: 'utf8',
     })
-    if (out.error) {
-      failures.push({ path: entry.path, problems: [`will not start: ${out.error.message}`] })
+    if (out.error || out.signal) {
+      const why = out.error ? out.error.message : `killed by ${out.signal}`
+      failures.push({ path: entry.path, problems: [`will not start: ${why}`] })
     } else {
       entry.probe = `--version -> exit ${out.status}`
     }

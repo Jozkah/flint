@@ -54,10 +54,13 @@ export function useApiKeyDrafts({
     const newSettings = [...provider.settings]
     const apiKeySettingIndex = newSettings.findIndex((s) => s.key === 'api-key')
     if (apiKeySettingIndex !== -1) {
-      const apiKeyProps = newSettings[apiKeySettingIndex].controller_props as {
-        value: string | boolean | number
-      }
-      apiKeyProps.value = nextPrimary
+      // Replace the entry: mutating controller_props would edit the store's
+      // own object in place and skip subscribers.
+      const current = newSettings[apiKeySettingIndex]
+      newSettings[apiKeySettingIndex] = {
+        ...current,
+        controller_props: { ...current.controller_props, value: nextPrimary },
+      } as typeof current
     }
 
     const fallbacksValue = serializeApiKeyFallbacks(nextFallbacks)
@@ -65,10 +68,11 @@ export function useApiKeyDrafts({
       (s) => s.key === API_KEY_FALLBACKS_SETTING_KEY
     )
     if (fallbacksIndex !== -1) {
-      const props = newSettings[fallbacksIndex].controller_props as {
-        value: string | boolean | number
-      }
-      props.value = fallbacksValue
+      const current = newSettings[fallbacksIndex]
+      newSettings[fallbacksIndex] = {
+        ...current,
+        controller_props: { ...current.controller_props, value: fallbacksValue },
+      } as typeof current
     } else if (fallbacksValue.length > 0) {
       newSettings.push({
         key: API_KEY_FALLBACKS_SETTING_KEY,
