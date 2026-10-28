@@ -5,12 +5,12 @@ import { asJournal, makeMessage, makeRoom } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 vi.mock('@i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 
 const COPY = '[data-streamdown="code-block-copy-button"]'

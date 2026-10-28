@@ -56,9 +56,11 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
   Link: (props: any) => <a {...props} />,
 }))
-vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
-}))
+vi.mock('@/i18n/react-i18next-compat', () => {
+  const t = (k: string) => k
+  const hook = { t }
+  return { useTranslation: () => hook, i18n: { t } }
+})
 vi.mock('sonner', () => ({ toast: h.toast }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }))
 vi.mock('@janhq/tauri-plugin-agent-tools-api', async (orig) => ({

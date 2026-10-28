@@ -9,8 +9,8 @@ import { RoomUsageBar } from '../RoomUsageBar'
 import type { LiveTurn } from '@/lib/rooms/types'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }), i18n: { language: 'en', t: u.t } }
 })
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('./roomsTestUtils')

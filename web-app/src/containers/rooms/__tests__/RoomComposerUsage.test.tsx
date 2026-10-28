@@ -7,8 +7,8 @@ import { RoomComposer } from '../RoomComposer'
 import { RoomUsageBar } from '../RoomUsageBar'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }), i18n: { language: 'en', t: u.t } }
 })
 
 describe('RoomComposer', () => {
