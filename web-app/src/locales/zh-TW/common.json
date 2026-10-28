@@ -3071,5 +3071,7 @@
     "reject": "拒絕",
     "applying": "正在套用…",
     "applySelected": "套用所選"
-  }
+  },
+  "chatRules": "規則",
+  "chatRuleForThisChat": "在此對話中使用此規則"
 }

@@ -1496,7 +1496,16 @@
     "reasoningDefaultDesc": "新しいチャットで思考をオンで始めるかオフで始めるか。モデル自体の推論設定と入力欄のトグルが引き続き優先されます。思考を切り替えられないモデルはそのままです。",
     "reasoningDefaultModel": "モデルの既定",
     "reasoningDefaultOn": "オン",
-    "reasoningDefaultOff": "オフ"
+    "reasoningDefaultOff": "オフ",
+    "rulesGroup": "ルール",
+    "rulesDesc": "アシスタント自身の指示の後にチャットへ追加される常設の指示です。特定のチャットだけで無効にするには、そのチャットのオプションパネルから切り替えます。",
+    "rulesEnabled": "ルール有効",
+    "rulesRemove": "ルールを削除",
+    "rulesAllChats": "すべてのチャット",
+    "rulesNoGroups": "グループはまだありません",
+    "rulesPlaceholder": "ルールを追加（例:「メートル法で答えて」）",
+    "rulesAdd": "追加",
+    "rulesTooLong": "有効なルールは約 {{tokens}} トークンで、推奨の {{budget}} を超えています。長いルールはすべてのチャットでコンテキストを消費します。"
   },
   "data": {
     "tabStorage": "ストレージ",

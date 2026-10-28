@@ -3083,5 +3083,7 @@
     "reject": "Reject",
     "applying": "Applying…",
     "applySelected": "Apply selected"
-  }
+  },
+  "chatRules": "Rules",
+  "chatRuleForThisChat": "Use this rule in this chat"
 }

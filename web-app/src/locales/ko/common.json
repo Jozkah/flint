@@ -3068,5 +3068,7 @@
     "reject": "거부",
     "applying": "적용 중…",
     "applySelected": "선택 항목 적용"
-  }
+  },
+  "chatRules": "규칙",
+  "chatRuleForThisChat": "이 채팅에서 이 규칙 사용"
 }

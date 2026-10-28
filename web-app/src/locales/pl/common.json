@@ -3217,5 +3217,7 @@
     "reject": "Odrzuć",
     "applying": "Stosowanie…",
     "applySelected": "Zastosuj wybrane"
-  }
+  },
+  "chatRules": "Reguły",
+  "chatRuleForThisChat": "Używaj tej reguły w tym czacie"
 }

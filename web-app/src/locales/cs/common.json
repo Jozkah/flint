@@ -3216,5 +3216,7 @@
     "reject": "Zamítnout",
     "applying": "Uplatňuji…",
     "applySelected": "Uplatnit výběr"
-  }
+  },
+  "chatRules": "Pravidla",
+  "chatRuleForThisChat": "Použít toto pravidlo v tomto chatu"
 }

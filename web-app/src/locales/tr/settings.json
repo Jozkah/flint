@@ -1499,7 +1499,16 @@
     "reasoningDefaultDesc": "Yeni bir sohbette düşünmenin açık mı kapalı mı başlayacağı. Modelin kendi akıl yürütme ayarı ve yazma alanındaki anahtar yine önceliklidir. Düşünmeyi değiştiremeyen modellere dokunulmaz.",
     "reasoningDefaultModel": "Model varsayılanı",
     "reasoningDefaultOn": "Açık",
-    "reasoningDefaultOff": "Kapalı"
+    "reasoningDefaultOff": "Kapalı",
+    "rulesGroup": "Kurallar",
+    "rulesDesc": "Asistanın kendi talimatlarından sonra sohbetlere eklenen kalıcı talimatlar. Tek bir sohbette kapatmak için o sohbetin seçenekler panelini kullanın.",
+    "rulesEnabled": "Kural açık",
+    "rulesRemove": "Kuralı kaldır",
+    "rulesAllChats": "Tüm sohbetler",
+    "rulesNoGroups": "Henüz grup yok",
+    "rulesPlaceholder": "Kural ekleyin, ör. \"Metrik birimlerle yanıt ver\"",
+    "rulesAdd": "Ekle",
+    "rulesTooLong": "Etkin kurallar yaklaşık {{tokens}} token, önerilen {{budget}} sınırını aşıyor. Uzun kurallar her sohbette bağlam tüketir."
   },
   "data": {
     "tabStorage": "Depolama",

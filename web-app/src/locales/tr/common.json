@@ -3083,5 +3083,7 @@
     "reject": "Reddet",
     "applying": "Uygulanıyor…",
     "applySelected": "Seçileni uygula"
-  }
+  },
+  "chatRules": "Kurallar",
+  "chatRuleForThisChat": "Bu kuralı bu sohbette kullan"
 }

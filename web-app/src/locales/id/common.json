@@ -3025,5 +3025,7 @@
     "reject": "Tolak",
     "applying": "Menerapkan…",
     "applySelected": "Terapkan pilihan"
-  }
+  },
+  "chatRules": "Aturan",
+  "chatRuleForThisChat": "Gunakan aturan ini di obrolan ini"
 }

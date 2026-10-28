@@ -3085,5 +3085,7 @@
     "reject": "Ablehnen",
     "applying": "Wird angewendet…",
     "applySelected": "Auswahl anwenden"
-  }
+  },
+  "chatRules": "Regeln",
+  "chatRuleForThisChat": "Diese Regel in diesem Chat verwenden"
 }

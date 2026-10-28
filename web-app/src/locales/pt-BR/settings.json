@@ -1531,7 +1531,16 @@
     "reasoningDefaultDesc": "Se o raciocínio começa ativado ou desativado em um novo chat. A configuração de raciocínio do próprio modelo e o botão do editor continuam tendo prioridade. Modelos que não podem alternar o raciocínio não são alterados.",
     "reasoningDefaultModel": "Padrão do modelo",
     "reasoningDefaultOn": "Ativado",
-    "reasoningDefaultOff": "Desativado"
+    "reasoningDefaultOff": "Desativado",
+    "rulesGroup": "Regras",
+    "rulesDesc": "Instruções permanentes adicionadas às conversas depois das instruções do assistente. Desative uma para uma única conversa no painel de opções dela.",
+    "rulesEnabled": "Regra ativa",
+    "rulesRemove": "Remover regra",
+    "rulesAllChats": "Todas as conversas",
+    "rulesNoGroups": "Ainda não há grupos",
+    "rulesPlaceholder": "Adicione uma regra, ex.: \"Responda em unidades métricas\"",
+    "rulesAdd": "Adicionar",
+    "rulesTooLong": "As regras ativas somam cerca de {{tokens}} tokens, acima dos {{budget}} sugeridos. Regras longas consomem contexto em todas as conversas."
   },
   "data": {
     "tabStorage": "Armazenamento",

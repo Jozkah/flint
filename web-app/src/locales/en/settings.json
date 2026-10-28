@@ -1499,7 +1499,16 @@
     "reasoningDefaultDesc": "Whether thinking starts on or off in a new chat. A model's own Reasoning setting and the composer toggle still win. Models that cannot switch thinking are left alone.",
     "reasoningDefaultModel": "Model default",
     "reasoningDefaultOn": "On",
-    "reasoningDefaultOff": "Off"
+    "reasoningDefaultOff": "Off",
+    "rulesGroup": "Rules",
+    "rulesDesc": "Standing instructions added to chats after the assistant's own instructions. Switch one off for a single chat from that chat's options panel.",
+    "rulesEnabled": "Rule on",
+    "rulesRemove": "Remove rule",
+    "rulesAllChats": "All chats",
+    "rulesNoGroups": "No groups yet",
+    "rulesPlaceholder": "Add a rule, e.g. \"Answer in metric units\"",
+    "rulesAdd": "Add",
+    "rulesTooLong": "Active rules are about {{tokens}} tokens, over the suggested {{budget}}. Long rules use context in every chat."
   },
   "data": {
     "tabStorage": "Storage",

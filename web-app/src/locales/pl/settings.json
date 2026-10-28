@@ -1545,7 +1545,16 @@
     "reasoningDefaultDesc": "Czy myślenie w nowym czacie zaczyna się włączone, czy wyłączone. Własne ustawienie rozumowania modelu i przełącznik w polu wiadomości nadal mają pierwszeństwo. Modele, które nie mogą przełączać myślenia, pozostają bez zmian.",
     "reasoningDefaultModel": "Domyślne modelu",
     "reasoningDefaultOn": "Włączone",
-    "reasoningDefaultOff": "Wyłączone"
+    "reasoningDefaultOff": "Wyłączone",
+    "rulesGroup": "Reguły",
+    "rulesDesc": "Stałe instrukcje dodawane do czatów po instrukcjach asystenta. Wyłącz regułę dla jednego czatu w panelu opcji tego czatu.",
+    "rulesEnabled": "Reguła włączona",
+    "rulesRemove": "Usuń regułę",
+    "rulesAllChats": "Wszystkie czaty",
+    "rulesNoGroups": "Brak grup",
+    "rulesPlaceholder": "Dodaj regułę, np. „Odpowiadaj w jednostkach metrycznych”",
+    "rulesAdd": "Dodaj",
+    "rulesTooLong": "Aktywne reguły mają około {{tokens}} tokenów, więcej niż zalecane {{budget}}. Długie reguły zajmują kontekst w każdym czacie."
   },
   "data": {
     "tabStorage": "Pamięć",

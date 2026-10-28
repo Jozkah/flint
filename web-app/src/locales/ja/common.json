@@ -3066,5 +3066,7 @@
     "reject": "却下",
     "applying": "適用中…",
     "applySelected": "選択を適用"
-  }
+  },
+  "chatRules": "ルール",
+  "chatRuleForThisChat": "このチャットでこのルールを使う"
 }

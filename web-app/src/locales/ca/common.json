@@ -3135,5 +3135,7 @@
     "reject": "Rebutja",
     "applying": "Aplicant…",
     "applySelected": "Aplica la selecció"
-  }
+  },
+  "chatRules": "Regles",
+  "chatRuleForThisChat": "Fes servir aquesta regla en aquest xat"
 }

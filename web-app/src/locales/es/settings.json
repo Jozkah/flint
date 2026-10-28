@@ -1675,7 +1675,16 @@
     "reasoningDefaultDesc": "Si el razonamiento empieza activado o desactivado en un chat nuevo. El ajuste de razonamiento propio del modelo y el interruptor del editor siguen teniendo prioridad. Los modelos que no pueden cambiar el razonamiento no se modifican.",
     "reasoningDefaultModel": "Predeterminado del modelo",
     "reasoningDefaultOn": "Activado",
-    "reasoningDefaultOff": "Desactivado"
+    "reasoningDefaultOff": "Desactivado",
+    "rulesGroup": "Reglas",
+    "rulesDesc": "Instrucciones permanentes que se añaden a los chats después de las instrucciones del asistente. Desactiva una para un solo chat desde el panel de opciones de ese chat.",
+    "rulesEnabled": "Regla activa",
+    "rulesRemove": "Eliminar regla",
+    "rulesAllChats": "Todos los chats",
+    "rulesNoGroups": "Aún no hay grupos",
+    "rulesPlaceholder": "Añade una regla, p. ej. \"Responde en unidades métricas\"",
+    "rulesAdd": "Añadir",
+    "rulesTooLong": "Las reglas activas ocupan unos {{tokens}} tokens, más de los {{budget}} sugeridos. Las reglas largas consumen contexto en cada chat."
   },
   "data": {
     "tabStorage": "Almacenamiento",

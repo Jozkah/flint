@@ -1499,7 +1499,16 @@
     "reasoningDefaultDesc": "Ob das Nachdenken in einem neuen Chat ein- oder ausgeschaltet beginnt. Die eigene Reasoning-Einstellung des Modells und der Schalter im Eingabefeld haben weiterhin Vorrang. Modelle, die das Nachdenken nicht umschalten können, bleiben unverändert.",
     "reasoningDefaultModel": "Modellstandard",
     "reasoningDefaultOn": "An",
-    "reasoningDefaultOff": "Aus"
+    "reasoningDefaultOff": "Aus",
+    "rulesGroup": "Regeln",
+    "rulesDesc": "Dauerhafte Anweisungen, die nach den Anweisungen des Assistenten in Chats eingefügt werden. Im Optionsfeld eines Chats lässt sich eine Regel nur für diesen Chat ausschalten.",
+    "rulesEnabled": "Regel aktiv",
+    "rulesRemove": "Regel entfernen",
+    "rulesAllChats": "Alle Chats",
+    "rulesNoGroups": "Noch keine Gruppen",
+    "rulesPlaceholder": "Regel hinzufügen, z. B. „Antworte in metrischen Einheiten“",
+    "rulesAdd": "Hinzufügen",
+    "rulesTooLong": "Aktive Regeln umfassen etwa {{tokens}} Tokens, mehr als die empfohlenen {{budget}}. Lange Regeln belegen in jedem Chat Kontext."
   },
   "data": {
     "tabStorage": "Speicher",

@@ -3135,5 +3135,7 @@
     "reject": "Rejeter",
     "applying": "Application…",
     "applySelected": "Appliquer la sélection"
-  }
+  },
+  "chatRules": "Règles",
+  "chatRuleForThisChat": "Utiliser cette règle dans cette discussion"
 }

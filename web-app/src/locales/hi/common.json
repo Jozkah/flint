@@ -3085,5 +3085,7 @@
     "reject": "अस्वीकार करें",
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
-  }
+  },
+  "chatRules": "नियम",
+  "chatRuleForThisChat": "इस चैट में यह नियम उपयोग करें"
 }

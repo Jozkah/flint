@@ -1502,7 +1502,16 @@
     "reasoningDefaultDesc": "Indique si la réflexion démarre activée ou désactivée dans une nouvelle discussion. Le réglage de raisonnement propre au modèle et le bouton du champ de saisie restent prioritaires. Les modèles qui ne peuvent pas changer la réflexion ne sont pas modifiés.",
     "reasoningDefaultModel": "Par défaut du modèle",
     "reasoningDefaultOn": "Activé",
-    "reasoningDefaultOff": "Désactivé"
+    "reasoningDefaultOff": "Désactivé",
+    "rulesGroup": "Règles",
+    "rulesDesc": "Instructions permanentes ajoutées aux discussions après les instructions de l'assistant. Désactivez-en une pour une seule discussion depuis son panneau d'options.",
+    "rulesEnabled": "Règle active",
+    "rulesRemove": "Supprimer la règle",
+    "rulesAllChats": "Toutes les discussions",
+    "rulesNoGroups": "Aucun groupe pour l'instant",
+    "rulesPlaceholder": "Ajoutez une règle, p. ex. « Réponds en unités métriques »",
+    "rulesAdd": "Ajouter",
+    "rulesTooLong": "Les règles actives font environ {{tokens}} jetons, au-delà des {{budget}} conseillés. Les règles longues consomment du contexte dans chaque discussion."
   },
   "data": {
     "tabStorage": "Stockage",

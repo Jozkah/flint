@@ -3068,5 +3068,7 @@
     "reject": "Từ chối",
     "applying": "Đang áp dụng…",
     "applySelected": "Áp dụng mục đã chọn"
-  }
+  },
+  "chatRules": "Quy tắc",
+  "chatRuleForThisChat": "Dùng quy tắc này trong cuộc trò chuyện này"
 }

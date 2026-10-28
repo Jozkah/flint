@@ -1493,7 +1493,16 @@
     "reasoningDefaultDesc": "Apakah penalaran dimulai aktif atau nonaktif di obrolan baru. Pengaturan penalaran milik model dan sakelar di kotak tulis tetap diutamakan. Model yang tidak dapat mengubah penalaran dibiarkan apa adanya.",
     "reasoningDefaultModel": "Bawaan model",
     "reasoningDefaultOn": "Aktif",
-    "reasoningDefaultOff": "Nonaktif"
+    "reasoningDefaultOff": "Nonaktif",
+    "rulesGroup": "Aturan",
+    "rulesDesc": "Instruksi tetap yang ditambahkan ke obrolan setelah instruksi asisten. Matikan satu aturan untuk satu obrolan dari panel opsi obrolan itu.",
+    "rulesEnabled": "Aturan aktif",
+    "rulesRemove": "Hapus aturan",
+    "rulesAllChats": "Semua obrolan",
+    "rulesNoGroups": "Belum ada grup",
+    "rulesPlaceholder": "Tambahkan aturan, mis. \"Jawab dalam satuan metrik\"",
+    "rulesAdd": "Tambah",
+    "rulesTooLong": "Aturan aktif sekitar {{tokens}} token, melebihi {{budget}} yang disarankan. Aturan panjang memakai konteks di setiap obrolan."
   },
   "data": {
     "tabStorage": "Penyimpanan",
