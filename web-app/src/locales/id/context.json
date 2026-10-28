@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "gagal",
     "chatStarted": "Obrolan dimulai"
+  },
+  "promptSnapshot": {
+    "summary": "Yang diterima model",
+    "loading": "Memuat…",
+    "gone": "Snapshot itu tidak lagi ada di disk.",
+    "unavailable": "Tidak ada payload yang disimpan. {{reason}}",
+    "reason": {
+      "not-serializable": "Permintaan tidak dapat diserialisasi, jadi tidak ada yang disimpan.",
+      "disabled": "Snapshot dimatikan untuk proses ini.",
+      "too-large": "Permintaan terlalu besar untuk disimpan utuh."
+    },
+    "meta": {
+      "provider": "Penyedia",
+      "model": "Model",
+      "reasoning": "Penalaran",
+      "session": "Sesi",
+      "run": "Proses",
+      "agent": "Agen",
+      "sent": "Dikirim",
+      "hash": "Hash",
+      "redacted": "Disamarkan",
+      "nothing": "tidak ada",
+      "redactedList_one": "{{count}} bidang: {{list}}",
+      "redactedList_other": "{{count}} bidang: {{list}}"
+    },
+    "view": {
+      "label": "Lihat sebagai",
+      "tree": "Pohon",
+      "json": "JSON"
+    },
+    "copy": "Salin payload yang disamarkan",
+    "copied": "Disalin",
+    "diff": {
+      "run": "Bandingkan dengan permintaan sebelumnya",
+      "loading": "Membandingkan…",
+      "first": "Ini permintaan tersimpan pertama dalam sesi; tidak ada yang lebih awal untuk dibandingkan.",
+      "summary": "Dibanding {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} masuk",
+      "left": "{{count}} keluar",
+      "keptMessages_one": "{{count}} pesan dipertahankan",
+      "keptMessages_other": "{{count}} pesan dipertahankan",
+      "keptTools_one": "{{count}} alat dipertahankan",
+      "keptTools_other": "{{count}} alat dipertahankan",
+      "systemChanged": "prompt sistem berubah",
+      "enteredHeading": "Masuk",
+      "leftHeading": "Keluar",
+      "nothingNew": "Tidak ada yang baru.",
+      "nothingLeft": "Tidak ada yang keluar dari jendela."
+    },
+    "replay": {
+      "label": "Pemutaran ulang konteks ini",
+      "run": "Putar ulang konteks ini",
+      "hint": "Mengirim persis permintaan ini lagi. Alat yang diminta model tidak dijalankan.",
+      "needsSession": "Pemutaran ulang memerlukan sesi tempat giliran ini berada.",
+      "redactedBlock_one": "Tidak dapat diputar ulang: {{count}} bidang disamarkan sebelum disimpan, sehingga model tidak akan menerima apa yang diterimanya saat itu.",
+      "redactedBlock_other": "Tidak dapat diputar ulang: {{count}} bidang disamarkan sebelum disimpan, sehingga model tidak akan menerima apa yang diterimanya saat itu.",
+      "state": {
+        "running": "Memutar ulang…",
+        "interrupted": "Terputus: Flint berhenti saat berjalan",
+        "completed": "Selesai",
+        "failed": "Gagal",
+        "cancelled": "Dihentikan",
+        "refused": "Ditolak"
+      },
+      "matched": "Konteks sama dengan giliran (hash cocok)",
+      "differed": "Permintaan yang dikirim berbeda dari giliran",
+      "finish": "selesai: {{reason}}",
+      "stop": "Hentikan",
+      "asked": "Meminta {{tools}} (tidak dijalankan)"
+    }
   }
 }

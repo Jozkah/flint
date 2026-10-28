@@ -3028,5 +3028,49 @@
       "medium": "Media",
       "low": "Baja"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Detener",
+    "title": "Detener el trabajo en curso",
+    "description": "Elige hasta dónde llega. No se puede deshacer: el trabajo detenido no se reanuda, ni siquiera tras reiniciar.",
+    "legend": "Qué detener",
+    "stopping": "Deteniendo. Terminando los procesos propios…",
+    "report": {
+      "clean": "Detenido. {{stopped}} detenidos, {{already}} ya detenidos, no queda nada en ejecución.",
+      "partial_one": "{{stopped}} detenidos, pero {{count}} proceso sigue en ejecución. La limpieza no terminó.",
+      "partial_other": "{{stopped}} detenidos, pero {{count}} procesos siguen en ejecución. La limpieza no terminó."
+    },
+    "error": "No se pudo detener: {{error}}",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "confirmBusy": "Deteniendo…",
+    "scope": {
+      "call": {
+        "name": "Esta llamada de herramienta",
+        "desc": "Solo esta llamada de herramienta ({{id}}). Todo lo demás de la ejecución continúa.",
+        "confirm": "Detener la llamada"
+      },
+      "run": {
+        "name": "Esta ejecución",
+        "desc": "Esta ejecución ({{id}}), con sus llamadas de herramientas, comandos de shell, llamadas MCP y subagentes. Las demás ejecuciones no se tocan.",
+        "confirm": "Detener la ejecución"
+      },
+      "session": {
+        "name": "Esta sesión",
+        "desc": "Cada ejecución de esta sesión ({{id}}). Las demás sesiones no se tocan.",
+        "confirm": "Detener la sesión"
+      },
+      "application": {
+        "name": "Todo en Flint",
+        "desc": "Todo el trabajo en cualquier parte de Flint, en todas las sesiones. No se salva nada de lo que esté en ejecución.",
+        "confirm": "Detener todo"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Mostrar la clave de API",
+    "hide": "Ocultar la clave de API",
+    "copy": "Copiar la clave de API",
+    "copied": "Copiado"
   }
 }
