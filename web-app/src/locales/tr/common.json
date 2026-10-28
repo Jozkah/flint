@@ -3020,5 +3020,42 @@
     "hide": "API anahtarını gizle",
     "copy": "API anahtarını kopyala",
     "copied": "Kopyalandı"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Bağımlılık değişikliği",
+      "lockfile": "Kilit dosyası",
+      "migration": "Geri alınamaz geçiş",
+      "binary": "İkili dosya",
+      "deletion": "Silme"
+    },
+    "reviewed": "Bunun neyi değiştirdiğini inceledim",
+    "moreLines_one": "… {{count}} satır daha",
+    "moreLines_other": "… {{count}} satır daha",
+    "lines": "{{from}}–{{to}}. satırlar",
+    "sensitive": "Kimlik bilgisi içeriyor gibi, bu yüzden hiç uygulanmaz.",
+    "wholeBinary": "İkili: bütün olarak uygulanır ya da bırakılır.",
+    "wholeLarge": "Bölünemeyecek kadar büyük: bütün olarak uygulanır ya da bırakılır.",
+    "noWorktree": "öneri oluşturulabilecek bir worktree kaydı yok",
+    "nothingSelected": "Hiçbir şey seçilmedi. Atmak için öneriyi reddet.",
+    "applied_one": "{{count}} dosya uygulandı.",
+    "applied_other": "{{count}} dosya uygulandı.",
+    "appliedPartial_one": "{{count}} dosya uygulandı; gerisi dışarıda bırakıldı.",
+    "appliedPartial_other": "{{count}} dosya uygulandı; gerisi dışarıda bırakıldı.",
+    "rejected": "Reddedildi. Klasöründe hiçbir şey değişmedi.",
+    "heading": "{{title}} → {{root}}",
+    "defaultTitle": "Önerilen değişiklikler",
+    "ownCopy": "Bu çalıştırma kendi kopyasında çalışır. Sen uygulayana kadar klasörüne hiçbir şey ulaşmaz.",
+    "collecting": "Toplanıyor…",
+    "review": "Değişiklikleri incele",
+    "exporting": "Dışa aktarılıyor…",
+    "exportPatch": "Yama olarak dışa aktar",
+    "exported": "Yama paketi {{path}} konumuna yazıldı",
+    "lockFiles": "Kilit dosyaları ({{count}}), yukarıdaki kaynak değişikliklerinden ayrı tutulur",
+    "needsAck": "Uygulamak için bunları incelendi olarak işaretle ya da dışarıda bırak: {{files}}",
+    "selectedCount": "{{total}} değişiklikten {{chosen}} tanesi seçili",
+    "reject": "Reddet",
+    "applying": "Uygulanıyor…",
+    "applySelected": "Seçileni uygula"
   }
 }

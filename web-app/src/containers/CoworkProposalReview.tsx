@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, GitBranch, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 import {
   applyProposal,
@@ -34,12 +35,13 @@ import {
 } from '@/lib/proposals'
 import { Checkbox } from '@/components/ui/checkbox'
 
+/** Resolved with `t` at render, so the label follows the language. */
 const FLAG_LABEL: Record<ReviewFlag['kind'], string> = {
-  dependency: 'Dependency change',
-  lockfile: 'Lock file',
-  migration: 'Irreversible migration',
-  binary: 'Binary file',
-  deletion: 'Deletion',
+  dependency: 'common:proposal.flag.dependency',
+  lockfile: 'common:proposal.flag.lockfile',
+  migration: 'common:proposal.flag.migration',
+  binary: 'common:proposal.flag.binary',
+  deletion: 'common:proposal.flag.deletion',
 }
 
 /** A lock file is shown apart from source changes (AH-155). */
@@ -62,6 +64,7 @@ function FileFlags({
   acknowledged: boolean
   onAcknowledge: (value: boolean) => void
 }) {
+  const { t } = useTranslation()
   const flags = flagsOf(file)
   if (flags.length === 0) return null
   return (
@@ -72,7 +75,7 @@ function FileFlags({
       {flags.map((flag, i) => (
         <div key={i} data-testid="proposal-flag" data-kind={flag.kind}>
           <p className="font-medium text-warning">
-            {FLAG_LABEL[flag.kind]}: {flag.summary}
+            {t(FLAG_LABEL[flag.kind])}: {flag.summary}
           </p>
           {flag.details.length > 0 ? (
             <ul className="ml-4 list-disc text-fg-2">
@@ -92,7 +95,7 @@ function FileFlags({
           data-testid="proposal-flag-ack"
           data-path={file.path}
         />
-        I have reviewed what this changes
+        {t('common:proposal.reviewed')}
       </label>
     </div>
   )
@@ -108,6 +111,7 @@ function HunkPreview({
   removed: string[]
   added: string[]
 }) {
+  const { t } = useTranslation()
   const lines = [
     ...removed.map((l) => ({ sign: '-', text: l })),
     ...added.map((l) => ({ sign: '+', text: l })),
@@ -134,7 +138,7 @@ function HunkPreview({
         ))}
         {lines.length > shown.length ? (
           <div className="px-2 text-muted-foreground">
-            … {lines.length - shown.length} more line(s)
+            {t('common:proposal.moreLines', { count: lines.length - shown.length })}
           </div>
         ) : null}
       </div>
@@ -157,6 +161,7 @@ function FileReview({
   acknowledged: boolean
   onAcknowledge: (value: boolean) => void
 }) {
+  const { t } = useTranslation()
   const whole = file.hunks.length === 0
   const allChosen = whole
     ? chosen !== undefined
@@ -188,12 +193,13 @@ function FileReview({
       </label>
       {file.sensitive ? (
         <p className="mt-1 text-xs text-destructive">
-          Looks like it holds a credential, so it is never applied.
+          {t('common:proposal.sensitive')}
         </p>
       ) : whole ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          {file.binary ? 'Binary' : 'Too large to split'}: applied or left
-          whole.
+          {file.binary
+            ? t('common:proposal.wholeBinary')
+            : t('common:proposal.wholeLarge')}
         </p>
       ) : null}
       <FileFlags
@@ -228,7 +234,10 @@ function FileReview({
                     }}
                     data-testid="proposal-hunk-toggle"
                   />
-                  Lines {h.oldStart}–{h.oldStart + Math.max(h.oldLen, 1) - 1}
+                  {t('common:proposal.lines', {
+                    from: h.oldStart,
+                    to: h.oldStart + Math.max(h.oldLen, 1) - 1,
+                  })}
                 </label>
                 {conflict ? (
                   <p
@@ -278,6 +287,7 @@ export function CoworkProposalReview({
     approval: Approval
   ) => Promise<Outcome<{ state: ProposalState; filesWritten: number }>>
 }) {
+  const { t } = useTranslation()
   const [proposal, setProposal] = useState<ProposalRecord | null>(null)
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [acknowledged, setAcknowledged] = useState<string[]>([])
@@ -333,7 +343,7 @@ export function CoworkProposalReview({
         ? await proposeFromWorktree({ record: worktree, session, run })
         : ({
             ok: false,
-            message: 'there is no worktree record to propose from',
+            message: t('common:proposal.noWorktree'),
             conflicts: [],
           } as const)
     setBusy(null)
@@ -366,7 +376,7 @@ export function CoworkProposalReview({
   const applyOnce = async (proposal: ProposalRecord) => {
     const approval = approvalFor(proposal, selected, acknowledged)
     if (approval.files.length === 0) {
-      setError('Nothing is selected. Reject the proposal to discard it.')
+      setError(t('common:proposal.nothingSelected'))
       return
     }
     setBusy('apply')
@@ -382,9 +392,9 @@ export function CoworkProposalReview({
       return
     }
     setMessage(
-      `Applied ${out.filesWritten} file(s)${
-        out.state === 'partially-applied' ? '; the rest were left out' : ''
-      }.`
+      out.state === 'partially-applied'
+        ? t('common:proposal.appliedPartial', { count: out.filesWritten })
+        : t('common:proposal.applied', { count: out.filesWritten })
     )
     onApplied?.()
     await load()
@@ -400,7 +410,7 @@ export function CoworkProposalReview({
       setError(out.message)
       return
     }
-    setMessage('Rejected. Nothing in your folder changed.')
+    setMessage(t('common:proposal.rejected'))
     await load()
   }
 
@@ -445,7 +455,10 @@ export function CoworkProposalReview({
         <>
           <GitBranch size={14} className="mb-2 shrink-0 text-muted-foreground" />
           <p className="mb-2 min-w-0 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground">
-            {`${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`}
+            {t('common:proposal.heading', {
+              title: title ?? t('common:proposal.defaultTitle'),
+              root: worktree.sourceRoot,
+            })}
           </p>
         </>
       ) : null}
@@ -453,15 +466,11 @@ export function CoworkProposalReview({
         {!proposal ? (
           <span
             className="inline-flex shrink-0 items-center text-muted-foreground"
-            title={
-              title ??
-              'This run works in its own copy. Nothing reaches your folder until you apply it.'
-            }
+            title={title ?? t('common:proposal.ownCopy')}
           >
             <GitBranch size={14} aria-hidden />
             <span className="sr-only">
-              {title ??
-                'This run works in its own copy. Nothing reaches your folder until you apply it.'}
+              {title ?? t('common:proposal.ownCopy')}
             </span>
           </span>
         ) : null}
@@ -473,7 +482,9 @@ export function CoworkProposalReview({
             onClick={() => void create()}
             data-testid="proposal-create"
           >
-            {busy === 'create' ? 'Collecting…' : 'Review changes'}
+            {busy === 'create'
+              ? t('common:proposal.collecting')
+              : t('common:proposal.review')}
           </Button>
         ) : null}
         {exportBundle ? (
@@ -484,7 +495,9 @@ export function CoworkProposalReview({
             onClick={() => void exportBundle()}
             data-testid="worktree-export"
           >
-            {busy === 'export' ? 'Exporting…' : 'Export as patch'}
+            {busy === 'export'
+              ? t('common:proposal.exporting')
+              : t('common:proposal.exportPatch')}
           </Button>
         ) : null}
       </div>
@@ -493,7 +506,7 @@ export function CoworkProposalReview({
           className="mt-1 break-all text-xs text-fg-2"
           data-testid="worktree-export-path"
         >
-          Patch bundle written to {exported}
+          {t('common:proposal.exported', { path: exported })}
         </p>
       ) : null}
       {error ? (
@@ -557,8 +570,7 @@ export function CoworkProposalReview({
                 {locks.length > 0 ? (
                   <div className="mt-2" data-testid="proposal-lockfiles">
                     <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-                      Lock files ({locks.length}), kept apart from the source
-                      changes above
+                      {t('common:proposal.lockFiles', { count: locks.length })}
                     </p>
                     <ul className="mt-1 flex flex-col">{locks.map(row)}</ul>
                   </div>
@@ -571,7 +583,7 @@ export function CoworkProposalReview({
               className="mt-2 text-xs text-warning"
               data-testid="proposal-needs-ack"
             >
-              Mark {waiting.join(', ')} as reviewed, or leave {waiting.length === 1 ? 'it' : 'them'} out, to apply.
+              {t('common:proposal.needsAck', { files: waiting.join(', ') })}
             </p>
           ) : null}
           {/* The review bar stays in reach while the hunks scroll, with room
@@ -585,7 +597,10 @@ export function CoworkProposalReview({
               aria-live="polite"
               data-testid="proposal-selected-count"
             >
-              {selection.chosen} of {selection.total} changes selected
+              {t('common:proposal.selectedCount', {
+                chosen: selection.chosen,
+                total: selection.total,
+              })}
             </p>
             <Button
               size="sm"
@@ -596,7 +611,7 @@ export function CoworkProposalReview({
               data-testid="proposal-reject"
             >
               <X size={12} />
-              Reject
+              {t('common:proposal.reject')}
             </Button>
             <Button
               size="sm"
@@ -606,7 +621,9 @@ export function CoworkProposalReview({
               data-testid="proposal-apply"
             >
               <Check size={12} />
-              {busy === 'apply' ? 'Applying…' : 'Apply selected'}
+              {busy === 'apply'
+                ? t('common:proposal.applying')
+                : t('common:proposal.applySelected')}
             </Button>
           </div>
         </>
