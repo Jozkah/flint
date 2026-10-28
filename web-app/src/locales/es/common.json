@@ -379,8 +379,10 @@
   "sharedFolder": {
     "others_one": "{{count}} otra sesión trabaja en esta carpeta",
     "others_other": "{{count}} otras sesiones trabajan en esta carpeta",
+    "others_many": "{{count}} otras sesiones trabajan en esta carpeta",
     "waitingApproval_one": "{{count}} otra sesión espera aprobación",
     "waitingApproval_other": "{{count}} otras sesiones esperan aprobación",
+    "waitingApproval_many": "{{count}} otras sesiones esperan aprobación",
     "waitingApprovalOne": "Esperando aprobación",
     "holdEdit": "{{owner}} está editando {{target}}: se le indicó a {{session}} que le escriba",
     "holdGit": "{{owner}} trabaja en esta carpeta: {{session}} quedó retenida antes de git {{target}} y debe escribirle",
@@ -410,7 +412,8 @@
     "sharedWarning": "Carpeta compartida: los cambios de git de otra sesión pueden mover la rama y los archivos de esta. Flint retiene los comandos git arriesgados y avisa cuando dos sesiones editan un mismo archivo.",
     "gotIt": "Entendido",
     "sidebarMark_one": "Comparte una carpeta con {{count}} otra sesión",
-    "sidebarMark_other": "Comparte una carpeta con {{count}} otras sesiones"
+    "sidebarMark_other": "Comparte una carpeta con {{count}} otras sesiones",
+    "sidebarMark_many": "Comparte una carpeta con {{count}} otras sesiones"
   },
   "coworkLayout": {
     "views": "Vista de Cowork",
@@ -2064,6 +2067,7 @@
     "hideCompletedToolsDescription": "Oculta la actividad de herramientas que terminó correctamente. La actividad en ejecución, fallida, rechazada, cancelada y obsoleta siempre se muestra, y no se elimina nada.",
     "hiddenCount": "{{count}} actividades de herramientas completadas ocultas",
     "hiddenCount_one": "1 actividad de herramientas completada oculta",
+    "hiddenCount_many": "{{count}} actividades de herramientas completadas ocultas",
     "showAgain": "Mostrarlas de nuevo",
     "showModelReceived": "Mostrar «Lo que recibió el modelo»",
     "showModelReceivedDescription": "El registro por turno de la solicitud y su recuento de tokens. Se registra igualmente y sigue en los detalles de la sesión y la cronología."
@@ -2808,6 +2812,7 @@
     "showingFirst": "Se muestran los primeros {{loaded}} de {{total}}",
     "lines_one": "{{count}} línea",
     "lines_other": "{{count}} líneas",
+    "lines_many": "{{count}} líneas",
     "wrap": "Ajustar líneas",
     "copy": "Copiar",
     "copied": "Copiado",
@@ -2889,6 +2894,7 @@
     "export": "Exportar",
     "imported_one": "Se añadió {{count}} prompt",
     "imported_other": "Se añadieron {{count}} prompts",
+    "imported_many": "Se añadieron {{count}} prompts",
     "importedNone": "No se encontraron prompts nuevos",
     "search": "Buscar prompts",
     "empty": "Aún no hay prompts.",
@@ -3052,14 +3058,19 @@
   "nesting": {
     "more_one": "{{count}} anidado más",
     "more_other": "{{count}} anidados más",
+    "more_many": "{{count}} anidados más",
     "new_one": "{{count}} nuevo",
     "new_other": "{{count}} nuevos",
+    "new_many": "{{count}} nuevos",
     "working_one": "{{count}} trabajando",
     "working_other": "{{count}} trabajando",
+    "working_many": "{{count}} trabajando",
     "waiting_one": "{{count}} esperando",
     "waiting_other": "{{count}} esperando",
+    "waiting_many": "{{count}} esperando",
     "count_one": "{{count}} anidado",
     "count_other": "{{count}} anidados",
+    "count_many": "{{count}} anidados",
     "fewer": "Mostrar menos anidados"
   },
   "diffReview": {
@@ -3092,7 +3103,8 @@
     "report": {
       "clean": "Detenido. {{stopped}} detenidos, {{already}} ya detenidos, no queda nada en ejecución.",
       "partial_one": "{{stopped}} detenidos, pero {{count}} proceso sigue en ejecución. La limpieza no terminó.",
-      "partial_other": "{{stopped}} detenidos, pero {{count}} procesos siguen en ejecución. La limpieza no terminó."
+      "partial_other": "{{stopped}} detenidos, pero {{count}} procesos siguen en ejecución. La limpieza no terminó.",
+      "partial_many": "{{stopped}} detenidos, pero {{count}} procesos siguen en ejecución. La limpieza no terminó."
     },
     "error": "No se pudo detener: {{error}}",
     "cancel": "Cancelar",
@@ -3138,6 +3150,7 @@
     "reviewed": "He revisado lo que esto cambia",
     "moreLines_one": "… {{count}} línea más",
     "moreLines_other": "… {{count}} líneas más",
+    "moreLines_many": "… {{count}} líneas más",
     "lines": "Líneas {{from}}–{{to}}",
     "sensitive": "Parece contener una credencial, así que nunca se aplica.",
     "wholeBinary": "Binario: se aplica o se deja entero.",
@@ -3146,8 +3159,10 @@
     "nothingSelected": "No hay nada seleccionado. Rechaza la propuesta para descartarla.",
     "applied_one": "{{count}} archivo aplicado.",
     "applied_other": "{{count}} archivos aplicados.",
+    "applied_many": "{{count}} archivos aplicados.",
     "appliedPartial_one": "{{count}} archivo aplicado; el resto se dejó fuera.",
     "appliedPartial_other": "{{count}} archivos aplicados; el resto se dejó fuera.",
+    "appliedPartial_many": "{{count}} archivos aplicados; el resto se dejó fuera.",
     "rejected": "Rechazada. No cambió nada en tu carpeta.",
     "heading": "{{title}} a {{root}}",
     "defaultTitle": "Cambios propuestos",
@@ -3218,8 +3233,10 @@
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {

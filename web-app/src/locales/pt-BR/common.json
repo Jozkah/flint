@@ -379,8 +379,10 @@
   "sharedFolder": {
     "others_one": "{{count}} outra sessão está trabalhando nesta pasta",
     "others_other": "{{count}} outras sessões estão trabalhando nesta pasta",
+    "others_many": "{{count}} outras sessões estão trabalhando nesta pasta",
     "waitingApproval_one": "{{count}} outra sessão aguarda aprovação",
     "waitingApproval_other": "{{count}} outras sessões aguardam aprovação",
+    "waitingApproval_many": "{{count}} outras sessões aguardam aprovação",
     "waitingApprovalOne": "Aguardando aprovação",
     "holdEdit": "{{owner}} está editando {{target}}: {{session}} foi orientada a lhe enviar uma mensagem",
     "holdGit": "{{owner}} trabalha nesta pasta: {{session}} foi retida antes de git {{target}} e deve lhe enviar uma mensagem",
@@ -410,7 +412,8 @@
     "sharedWarning": "Pasta compartilhada: as mudanças de git de outra sessão podem mover a branch e os arquivos desta. O Flint retém comandos git arriscados e avisa quando duas sessões editam o mesmo arquivo.",
     "gotIt": "Entendi",
     "sidebarMark_one": "Compartilha uma pasta com {{count}} outra sessão",
-    "sidebarMark_other": "Compartilha uma pasta com {{count}} outras sessões"
+    "sidebarMark_other": "Compartilha uma pasta com {{count}} outras sessões",
+    "sidebarMark_many": "Compartilha uma pasta com {{count}} outras sessões"
   },
   "coworkLayout": {
     "views": "Visualização do Cowork",
@@ -469,6 +472,7 @@
     },
     "truncated": "Mais {{count}} linha não mostrada",
     "truncated_other": "Mais {{count}} linhas não mostradas",
+    "truncated_many": "Mais {{count}} linhas não mostradas",
     "openFile": "Abrir",
     "applyToFolder": "Aplicar à pasta",
     "applyHint": "Copiar este arquivo da sandbox da sessão para {{folder}} como {{path}}",
@@ -1110,6 +1114,7 @@
     "pullRequests": "Pull requests",
     "morePrs_one": "+{{count}} mais",
     "morePrs_other": "+{{count}} mais",
+    "morePrs_many": "+{{count}} mais",
     "noChecks": "Sem verificações",
     "empty": "Nada aqui ainda.",
     "noMessages": "Nenhuma mensagem ainda",
@@ -1615,6 +1620,7 @@
     "failed": "falhou",
     "eventCount": "{{count}} evento",
     "eventCount_other": "{{count}} eventos",
+    "eventCount_many": "{{count}} eventos",
     "filter": {
       "all": "Todos",
       "read": "Lidos",
@@ -2067,6 +2073,7 @@
     "hideCompletedToolsDescription": "Oculta a atividade de ferramentas concluída com sucesso. Atividade em execução, com falha, recusada, cancelada e obsoleta é sempre mostrada, e nada é excluído.",
     "hiddenCount": "{{count}} atividades de ferramentas concluídas ocultas",
     "hiddenCount_one": "1 atividade de ferramenta concluída oculta",
+    "hiddenCount_many": "{{count}} atividades de ferramentas concluídas ocultas",
     "showAgain": "Mostrar novamente",
     "showModelReceived": "Mostrar “O que o modelo recebeu”",
     "showModelReceivedDescription": "O registro por turno da solicitação e sua contagem de tokens. É registrado de qualquer forma e fica nos detalhes da sessão e na linha do tempo."
@@ -2804,6 +2811,7 @@
     "showingFirst": "Mostrando os primeiros {{loaded}} de {{total}}",
     "lines_one": "{{count}} linha",
     "lines_other": "{{count}} linhas",
+    "lines_many": "{{count}} linhas",
     "wrap": "Quebrar linhas",
     "copy": "Copiar",
     "copied": "Copiado",
@@ -2885,6 +2893,7 @@
     "export": "Exportar",
     "imported_one": "{{count}} prompt adicionado",
     "imported_other": "{{count}} prompts adicionados",
+    "imported_many": "{{count}} prompts adicionados",
     "importedNone": "Nenhum prompt novo encontrado",
     "search": "Buscar prompts",
     "empty": "Nenhum prompt ainda.",
@@ -3048,14 +3057,19 @@
   "nesting": {
     "more_one": "mais {{count}} aninhado",
     "more_other": "mais {{count}} aninhados",
+    "more_many": "mais {{count}} aninhados",
     "new_one": "{{count}} novo",
     "new_other": "{{count}} novos",
+    "new_many": "{{count}} novos",
     "working_one": "{{count}} em andamento",
     "working_other": "{{count}} em andamento",
+    "working_many": "{{count}} em andamento",
     "waiting_one": "{{count}} aguardando",
     "waiting_other": "{{count}} aguardando",
+    "waiting_many": "{{count}} aguardando",
     "count_one": "{{count}} aninhado",
     "count_other": "{{count}} aninhados",
+    "count_many": "{{count}} aninhados",
     "fewer": "Mostrar menos aninhados"
   },
   "diffReview": {
@@ -3088,7 +3102,8 @@
     "report": {
       "clean": "Parado. {{stopped}} parados, {{already}} já parados, nada mais em execução.",
       "partial_one": "{{stopped}} parados, mas {{count}} processo ainda está em execução. A limpeza não terminou.",
-      "partial_other": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou."
+      "partial_other": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou.",
+      "partial_many": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou."
     },
     "error": "Não foi possível parar: {{error}}",
     "cancel": "Cancelar",
@@ -3134,6 +3149,7 @@
     "reviewed": "Revisei o que isso altera",
     "moreLines_one": "… mais {{count}} linha",
     "moreLines_other": "… mais {{count}} linhas",
+    "moreLines_many": "… mais {{count}} linhas",
     "lines": "Linhas {{from}}–{{to}}",
     "sensitive": "Parece conter uma credencial, então nunca é aplicado.",
     "wholeBinary": "Binário: aplicado ou deixado inteiro.",
@@ -3142,8 +3158,10 @@
     "nothingSelected": "Nada selecionado. Rejeite a proposta para descartá-la.",
     "applied_one": "{{count}} arquivo aplicado.",
     "applied_other": "{{count}} arquivos aplicados.",
+    "applied_many": "{{count}} arquivos aplicados.",
     "appliedPartial_one": "{{count}} arquivo aplicado; o restante ficou de fora.",
     "appliedPartial_other": "{{count}} arquivos aplicados; o restante ficou de fora.",
+    "appliedPartial_many": "{{count}} arquivos aplicados; o restante ficou de fora.",
     "rejected": "Rejeitada. Nada mudou na sua pasta.",
     "heading": "{{title}} em {{root}}",
     "defaultTitle": "Alterações propostas",
@@ -3214,8 +3232,10 @@
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {

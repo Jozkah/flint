@@ -1475,7 +1475,21 @@
     "footerCount_few": "{{count}} paměti v tomto rozsahu",
     "footerCount_many": "{{count}} paměti v tomto rozsahu",
     "footerCount_other": "{{count}} pamětí v tomto rozsahu",
-    "agentNotes": "Poznámky agenta"
+    "agentNotes": "Poznámky agenta",
+    "report": {
+      "summary_one": "Importována {{count}} vzpomínka z exportu",
+      "summary_few": "Importováno {{count}} vzpomínek z exportu",
+      "summary_many": "Importováno {{count}} vzpomínek z exportu",
+      "summary_other": "Importováno {{count}} vzpomínek z exportu",
+      "duplicates_one": "{{count}} duplikát přeskočen",
+      "duplicates_few": "{{count}} duplikátů přeskočeno",
+      "duplicates_many": "{{count}} duplikátů přeskočeno",
+      "duplicates_other": "{{count}} duplikátů přeskočeno",
+      "refused_one": "{{count}} odmítnuta",
+      "refused_few": "{{count}} odmítnuto",
+      "refused_many": "{{count}} odmítnuto",
+      "refused_other": "{{count}} odmítnuto"
+    }
   },
   "chatMentions": {
     "title": "Zmínky o konverzacích",

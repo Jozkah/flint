@@ -65,6 +65,7 @@
   "confirmExpired": "Yêu cầu ghép nối này đã hết hạn.",
   "indicator_one": "Từ xa · {{count}} điện thoại",
   "indicator_other": "Từ xa · {{count}} điện thoại",
+  "indicator_many": "Từ xa · {{count}} điện thoại",
   "phone": {
     "deny": "Từ chối",
     "readFileTitle": "Flint muốn đọc một tệp bên ngoài thư mục của phiên này",

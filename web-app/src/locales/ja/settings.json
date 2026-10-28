@@ -1432,7 +1432,12 @@
     "noMatchHint": "綴りを確認するか、検索をクリアしてすべて表示してください。",
     "emptyHint": "上に書き込むか、チャット中に Flint に覚えさせてください。",
     "footerCount_other": "この範囲に {{count}} 件の記憶",
-    "agentNotes": "エージェントメモ"
+    "agentNotes": "エージェントメモ",
+    "report": {
+      "summary_other": "エクスポートから {{count}} 件のメモリをインポートしました",
+      "duplicates_other": "重複 {{count}} 件をスキップ",
+      "refused_other": "{{count}} 件を拒否"
+    }
   },
   "chatMentions": {
     "title": "会話のメンション",

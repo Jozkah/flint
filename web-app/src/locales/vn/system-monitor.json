@@ -47,6 +47,7 @@
   "noNetworks": "Không có giao diện mạng",
   "showVirtual_one": "Hiện {{count}} bộ điều hợp loopback hoặc ảo",
   "showVirtual_other": "Hiện {{count}} bộ điều hợp loopback hoặc ảo",
+  "showVirtual_many": "Hiện {{count}} bộ điều hợp loopback hoặc ảo",
   "wifi": "Wi-Fi",
   "ethernet": "Ethernet",
   "virtual": "Ảo",

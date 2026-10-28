@@ -1433,7 +1433,15 @@
     "emptyHint": "Schreiben Sie oben etwas auf, oder lassen Sie Flint beim Chatten lernen.",
     "footerCount_one": "1 Erinnerung in diesem Bereich",
     "footerCount_other": "{{count}} Erinnerungen in diesem Bereich",
-    "agentNotes": "Agent-Notizen"
+    "agentNotes": "Agent-Notizen",
+    "report": {
+      "summary_one": "{{count}} Erinnerung aus dem Export importiert",
+      "summary_other": "{{count}} Erinnerungen aus dem Export importiert",
+      "duplicates_one": "{{count}} Duplikat übersprungen",
+      "duplicates_other": "{{count}} Duplikate übersprungen",
+      "refused_one": "{{count}} abgelehnt",
+      "refused_other": "{{count}} abgelehnt"
+    }
   },
   "chatMentions": {
     "title": "Erwähnte Unterhaltungen",

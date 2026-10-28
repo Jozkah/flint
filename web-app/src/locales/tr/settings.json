@@ -1433,7 +1433,15 @@
     "emptyHint": "Yukarıya bir tane yazın ya da sohbet ederken Flint'in hatırlamasına izin verin.",
     "footerCount_one": "Bu kapsamda 1 anı",
     "footerCount_other": "Bu kapsamda {{count}} anı",
-    "agentNotes": "Ajan notları"
+    "agentNotes": "Ajan notları",
+    "report": {
+      "summary_one": "Dışa aktarmadan {{count}} anı içe aktarıldı",
+      "summary_other": "Dışa aktarmadan {{count}} anı içe aktarıldı",
+      "duplicates_one": "{{count}} yinelenen atlandı",
+      "duplicates_other": "{{count}} yinelenen atlandı",
+      "refused_one": "{{count}} reddedildi",
+      "refused_other": "{{count}} reddedildi"
+    }
   },
   "chatMentions": {
     "title": "Konuşma anmaları",

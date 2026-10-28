@@ -273,7 +273,7 @@ impl Store {
     }
 
     /// Validate and save a task, adding or replacing by id.
-    pub fn save_task(&self, mut task: Task) -> Result<Task, StoreError> {
+    pub fn save_task(&self, task: Task) -> Result<Task, StoreError> {
         task.validate()?;
         self.with_tasks_lock(|| self.save_task_locked(task))
     }

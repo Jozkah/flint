@@ -1475,7 +1475,21 @@
     "footerCount_few": "{{count}} воспоминания в этой области",
     "footerCount_many": "{{count}} воспоминаний в этой области",
     "footerCount_other": "{{count}} воспоминания в этой области",
-    "agentNotes": "Заметки агента"
+    "agentNotes": "Заметки агента",
+    "report": {
+      "summary_one": "Импортировано {{count}} воспоминание из экспорта",
+      "summary_few": "Импортировано воспоминаний из экспорта: {{count}}",
+      "summary_many": "Импортировано воспоминаний из экспорта: {{count}}",
+      "summary_other": "Импортировано воспоминаний из экспорта: {{count}}",
+      "duplicates_one": "Пропущен {{count}} дубликат",
+      "duplicates_few": "Пропущено дубликатов: {{count}}",
+      "duplicates_many": "Пропущено дубликатов: {{count}}",
+      "duplicates_other": "Пропущено дубликатов: {{count}}",
+      "refused_one": "{{count}} отклонено",
+      "refused_few": "Отклонено: {{count}}",
+      "refused_many": "Отклонено: {{count}}",
+      "refused_other": "Отклонено: {{count}}"
+    }
   },
   "chatMentions": {
     "title": "Упоминания бесед",
