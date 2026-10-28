@@ -148,11 +148,7 @@ export default function Archive() {
       <TopMain crumb={t('common.workspace')} title={t('archive.title')} />
       <div className="scroll">
         <div className="ph">
-          <h2>Archive</h2>
-          <p>
-            Deleted items wait here. Swipe one left, or press and hold it, to
-            restore it or delete it permanently.
-          </p>
+          <p>{t('archive.intro')}</p>
         </div>
         <Pills items={FILTERS} value={filter} onChange={setFilter} />
         {loading && !data && <Loading />}

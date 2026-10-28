@@ -50,7 +50,8 @@
     "retention_many": "Os itens arquivados são excluídos em definitivo após {{count}} de dias.",
     "retention_other": "Os itens arquivados são excluídos em definitivo após {{count}} dias.",
     "retentionForever": "Os itens arquivados ficam até você excluí-los.",
-    "emptyAction": "Esvaziar arquivo"
+    "emptyAction": "Esvaziar arquivo",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Isso não funcionou",
@@ -1376,5 +1377,13 @@
       "tickFirst": "Marque primeiro os arquivos sinalizados que você olhou.",
       "missing": "As alterações propostas não estão mais lá. Abra a campanha no computador."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }
