@@ -409,7 +409,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         {} as Record<string, Thread>
       )
       Object.values(updatedThreads).forEach((thread) => {
-        persistThread({ ...thread, isFavorite: false }, state.threads[thread.id])
+        persistThread(thread, state.threads[thread.id])
       })
       return { threads: updatedThreads }
     })
@@ -477,26 +477,21 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // A pick by the user means the assistant is no longer Jev's to change.
       const rest = { ...(currentThread?.metadata ?? {}) }
       delete rest.jevRoutedAssistantId
-      if (currentThread)
-        persistThread(
-          {
-            ...currentThread,
-            assistants: assistant ? [{ ...assistant, model: currentThread.model }] : [],
-            metadata: rest,
-          },
-          currentThread
-        )
+      // One object, persisted and stored, so a failed write can tell whether
+      // the thread is still the one it wrote.
+      const updatedThread = {
+        ...state.threads[state.currentThreadId as string],
+        assistants: assistant
+          ? [{ ...assistant, model: currentThread?.model }]
+          : [],
+        metadata: rest,
+        updated: Date.now() / 1000,
+      } as Thread
+      if (currentThread) persistThread(updatedThread, currentThread)
       return {
         threads: {
           ...state.threads,
-          [state.currentThreadId as string]: {
-            ...state.threads[state.currentThreadId as string],
-            assistants: assistant
-              ? [{ ...assistant, model: currentThread?.model }]
-              : [],
-            metadata: rest,
-            updated: Date.now() / 1000,
-          },
+          [state.currentThreadId as string]: updatedThread,
         },
       }
     })
@@ -520,15 +515,12 @@ export const useThreads = create<ThreadState>()((set, get) => ({
           useModelProvider.getState().getModelBy(model.id)
         )
       const thread = state.threads[threadId]
-      if (thread)
-        persistThread({ ...thread, model }, thread)
+      const updatedThread = { ...state.threads[threadId], model } as Thread
+      if (thread) persistThread(updatedThread, thread)
       return {
         threads: {
           ...state.threads,
-          [threadId]: {
-            ...state.threads[threadId],
-            model,
-          },
+          [threadId]: updatedThread,
         },
       }
     })
@@ -620,8 +612,10 @@ export const useThreads = create<ThreadState>()((set, get) => ({
 
 /**
  * Persist a thread write without an unhandled rejection. On failure the
- * optimistic state is rolled back to `prev` (if the thread still exists) and
- * the user is told, so the UI no longer shows a change the disk never got.
+ * optimistic state is rolled back to `prev`, but only while the store still
+ * holds `next`: a newer edit (or a delete) made since must not be undone.
+ * The caller therefore has to store the very object it persists. The user is
+ * told either way.
  */
 function persistThread(next: Thread, prev?: Thread) {
   Promise.resolve()
@@ -631,7 +625,7 @@ function persistThread(next: Thread, prev?: Thread) {
       toast.error(i18n.t('common:threadSaveFailed'))
       if (!prev) return
       useThreads.setState((state) =>
-        state.threads[prev.id]
+        state.threads[prev.id] === next
           ? { threads: { ...state.threads, [prev.id]: prev } }
           : state
       )
