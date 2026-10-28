@@ -2241,7 +2241,13 @@ fn resolve_json_schema(arg: &str) -> Result<serde_json::Value, String> {
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
 /// stopping at `--` so a task text can never be mistaken for it.
 fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
-    let mut args = args.take_while(|a| a != "--");
+    let args: Vec<String> = args.take_while(|a| a != "--").collect();
+    // Another command's own `--data-dir` (or a task text naming one) must not
+    // move the data folder, so only `serve` and `stop` are looked at.
+    if !matches!(args.iter().find(|a| !a.starts_with('-')).map(String::as_str), Some("serve" | "stop")) {
+        return None;
+    }
+    let mut args = args.into_iter();
     let mut found = None;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
@@ -2250,7 +2256,8 @@ fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
             found = Some(v.to_string());
         }
     }
-    found.filter(|v| !v.is_empty())
+    // A value shaped like a flag is the next option, not a directory.
+    found.filter(|v| !v.is_empty() && !v.starts_with('-'))
 }
 
 /// Whether a panic message is the standard library giving up on a write to
@@ -5082,6 +5089,14 @@ mod tests {
         assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "D"])).as_deref(), Some("D"));
         assert_eq!(super::pre_parse_data_dir(args(&["stop", "--data-dir=E"])).as_deref(), Some("E"));
         assert_eq!(super::pre_parse_data_dir(args(&["x", "--", "--data-dir", "D"])), None);
+    }
+
+    #[test]
+    fn pre_parse_data_dir_only_for_serve_and_stop() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter();
+        assert_eq!(super::pre_parse_data_dir(args(&["mcp", "add", "--data-dir", "D"])), None);
+        assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "--listen"])), None);
+        assert_eq!(super::pre_parse_data_dir(args(&["--safe-mode", "serve", "--data-dir", "D"])).as_deref(), Some("D"));
     }
 
     /// A closed stdout/stderr pipe is recognised; nothing else is.
