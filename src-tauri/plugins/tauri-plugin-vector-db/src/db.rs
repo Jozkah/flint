@@ -59,12 +59,72 @@ pub fn default_base_dir() -> PathBuf {
     base
 }
 
-pub fn collection_path(base: &Path, name: &str) -> PathBuf {
-    let mut p = base.to_path_buf();
-    let clean = name.replace(['/', '\\'], "_");
-    let filename = format!("{}.db", clean);
-    p.push(&filename);
-    p
+const RESERVED_WINDOWS_STEMS: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// Map a collection name to its `.db` file under `base`. The name is an
+/// allow-list (`[A-Za-z0-9_.-]{1,128}`, no leading dot, no Windows reserved
+/// device stem) so `C:evil`, `..`, `a/b` and `NUL` can never leave `base`.
+pub fn collection_path(base: &Path, name: &str) -> Result<PathBuf, VectorDBError> {
+    let bad = |why: &str| VectorDBError::InvalidInput(format!("invalid collection name '{name}': {why}"));
+    if name.is_empty() || name.len() > 128 {
+        return Err(bad("length must be 1-128"));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    {
+        return Err(bad("only letters, digits, '_', '.' and '-' are allowed"));
+    }
+    if name.starts_with('.') {
+        return Err(bad("must not start with '.'"));
+    }
+    let stem = name.split('.').next().unwrap_or(name);
+    if RESERVED_WINDOWS_STEMS.iter().any(|r| r.eq_ignore_ascii_case(stem)) {
+        return Err(bad("reserved device name"));
+    }
+    let path = base.join(format!("{name}.db"));
+    if path.parent() != Some(base) {
+        return Err(bad("escapes the database folder"));
+    }
+    Ok(path)
+}
+
+/// Remove a collection's database and its `-wal`, `-shm` and `-journal`
+/// sidecars. Missing files are fine; a `.db` that is still present afterwards
+/// (for example locked on Windows) is an error.
+pub fn delete_collection_files(base: &Path, name: &str) -> Result<(), VectorDBError> {
+    let db_path = collection_path(base, name)?;
+    let mut targets = vec![db_path.clone()];
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut s = db_path.clone().into_os_string();
+        s.push(suffix);
+        targets.push(PathBuf::from(s));
+    }
+    let mut last_err: Option<std::io::Error> = None;
+    for target in &targets {
+        for attempt in 0..5 {
+            match fs::remove_file(target) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < 4 {
+                        std::thread::sleep(std::time::Duration::from_millis(40));
+                    }
+                }
+            }
+        }
+    }
+    if db_path.exists() {
+        let why = last_err.map(|e| e.to_string()).unwrap_or_else(|| "file still present".into());
+        return Err(VectorDBError::DatabaseError(format!(
+            "could not delete collection '{name}': {why}"
+        )));
+    }
+    Ok(())
 }
 
 pub fn open_or_init_conn(path: &PathBuf) -> Result<Connection, VectorDBError> {
@@ -873,36 +933,120 @@ pub fn get_chunks(
 // Utility Operations
 // ============================================================================
 
-pub fn chunk_text(text: String, chunk_size: usize, chunk_overlap: usize) -> Vec<String> {
-    if chunk_size == 0 {
-        return vec![];
-    }
+pub const MAX_CHUNK_SIZE: usize = 100_000;
+pub const MAX_CHUNKS: usize = 20_000;
 
+/// Split `text` into windows of `chunk_size` characters that overlap by
+/// `chunk_overlap`. Offsets are char-boundary byte offsets; no per-char vector.
+pub fn chunk_text(
+    text: String,
+    chunk_size: usize,
+    chunk_overlap: usize,
+) -> Result<Vec<String>, VectorDBError> {
+    if chunk_size == 0 || chunk_size > MAX_CHUNK_SIZE {
+        return Err(VectorDBError::InvalidInput(format!(
+            "chunk_size must be between 1 and {MAX_CHUNK_SIZE}"
+        )));
+    }
+    if chunk_overlap >= chunk_size {
+        return Err(VectorDBError::InvalidInput(
+            "chunk_overlap must be smaller than chunk_size".into(),
+        ));
+    }
+    let step = chunk_size - chunk_overlap;
     let mut chunks = Vec::new();
-    let chars: Vec<char> = text.chars().collect();
     let mut start = 0usize;
 
-    while start < chars.len() {
-        let end = (start + chunk_size).min(chars.len());
-        let ch: String = chars[start..end].iter().collect();
-        chunks.push(ch);
-        if end >= chars.len() {
+    while start < text.len() {
+        let rest = &text[start..];
+        let (end, last) = match rest.char_indices().nth(chunk_size) {
+            Some((i, _)) => (start + i, false),
+            None => (text.len(), true),
+        };
+        if chunks.len() >= MAX_CHUNKS {
+            return Err(VectorDBError::InvalidInput(format!(
+                "text would produce more than {MAX_CHUNKS} chunks"
+            )));
+        }
+        chunks.push(text[start..end].to_string());
+        if last {
             break;
         }
-        let advance = if chunk_overlap >= chunk_size {
-            1
-        } else {
-            chunk_size - chunk_overlap
-        };
-        start += advance;
+        start += rest.char_indices().nth(step).map(|(i, _)| i).unwrap_or(rest.len());
     }
 
-    chunks
+    Ok(chunks)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_path_rejects_drive_relative_name() {
+        let base = Path::new("base");
+        for bad in ["C:evil", "..", "a/b", "a\\b", "CON", "nul.x", "", ".hidden", "a b"] {
+            assert!(collection_path(base, bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn collection_path_accepts_real_ids() {
+        let base = Path::new("base");
+        for ok in ["attachments_0a1b-2c", "project_123e4567-e89b", "__memory__", "__status__"] {
+            let p = collection_path(base, ok).unwrap();
+            assert_eq!(p.parent(), Some(base));
+            assert_eq!(p.file_name().unwrap().to_string_lossy(), format!("{ok}.db"));
+        }
+    }
+
+    #[test]
+    fn delete_collection_removes_wal_and_shm() {
+        let dir = std::env::temp_dir().join(format!("vdb-del-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        for ext in ["db", "db-wal", "db-shm", "db-journal"] {
+            fs::write(dir.join(format!("c1.{ext}")), b"x").unwrap();
+        }
+        delete_collection_files(&dir, "c1").unwrap();
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+        // Missing files are fine.
+        delete_collection_files(&dir, "c1").unwrap();
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn delete_collection_errors_when_file_locked() {
+        let dir = std::env::temp_dir().join(format!("vdb-lock-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("locked.db");
+        let _held = fs::File::create(&path).unwrap();
+        assert!(delete_collection_files(&dir, "locked").is_err());
+        drop(_held);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn chunk_text_rejects_overlap_ge_size() {
+        assert!(chunk_text("abcdef".into(), 3, 3).is_err());
+        assert!(chunk_text("abcdef".into(), 3, 9).is_err());
+        assert!(chunk_text("abcdef".into(), 0, 0).is_err());
+    }
+
+    #[test]
+    fn chunk_text_multibyte_boundaries() {
+        let out = chunk_text("héllo wörld ✓✓".into(), 4, 1).unwrap();
+        assert_eq!(out[0], "héll");
+        assert_eq!(out[1], "lo w");
+        assert!(out.iter().all(|c| c.chars().count() <= 4));
+        assert_eq!(out.last().unwrap(), "✓✓");
+    }
+
+    #[test]
+    fn chunk_text_caps_chunk_count() {
+        let text = "a".repeat(MAX_CHUNKS + 5);
+        assert!(chunk_text(text, 1, 0).is_err());
+    }
 
     #[test]
     fn static_vec0_knn_works_on_fresh_connection() {

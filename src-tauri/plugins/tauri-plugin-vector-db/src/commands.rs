@@ -35,11 +35,12 @@ where
 }
 
 #[tauri::command]
-pub async fn get_status(state: State<'_, VectorDBState>) -> Result<Status, VectorDBError> {
+pub async fn get_status(_state: State<'_, VectorDBState>) -> Result<Status, VectorDBError> {
     println!("[VectorDB] Checking ANN availability...");
-    let temp = db::collection_path(&state.base_dir, "__status__");
     let ann = blocking(move || {
-        let conn = db::open_or_init_conn(&temp)?;
+        // In-memory probe: no stray `__status__.db` left in the db folder.
+        db::register_static_vec();
+        let conn = rusqlite::Connection::open_in_memory()?;
         let ok = db::try_load_sqlite_vec_verbose(&conn);
         println!("[VectorDB] search backend: {}", db::vector_search_backend(&conn));
         Ok(ok)
@@ -57,7 +58,7 @@ pub async fn create_collection<R: tauri::Runtime>(
     name: String,
     dimension: usize,
 ) -> Result<(), VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &name);
+    let path = db::collection_path(&state.base_dir, &name)?;
     let has_ann = blocking(move || {
         let conn = db::open_or_init_conn(&path)?;
         db::create_schema(&conn, dimension)
@@ -78,15 +79,18 @@ pub async fn create_file<R: tauri::Runtime>(
     collection: String,
     file: FileInput,
 ) -> Result<AttachmentFileInfo, VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    db::create_file(
-        &conn,
-        &file.path,
-        file.name.as_deref(),
-        file.file_type.as_deref(),
-        file.size,
-    )
+    let path = db::collection_path(&state.base_dir, &collection)?;
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        db::create_file(
+            &conn,
+            &file.path,
+            file.name.as_deref(),
+            file.file_type.as_deref(),
+            file.size,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -97,7 +101,7 @@ pub async fn insert_chunks<R: tauri::Runtime>(
     file_id: String,
     chunks: Vec<MinimalChunkInput>,
 ) -> Result<(), VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
+    let path = db::collection_path(&state.base_dir, &collection)?;
     blocking(move || {
         let conn = db::open_or_init_conn(&path)?;
         let vec_loaded = db::try_load_sqlite_vec(&conn);
@@ -113,9 +117,12 @@ pub async fn delete_file<R: tauri::Runtime>(
     collection: String,
     file_id: String,
 ) -> Result<(), VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    db::delete_file(&conn, &file_id)
+    let path = db::collection_path(&state.base_dir, &collection)?;
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        db::delete_file(&conn, &file_id)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -130,7 +137,7 @@ pub async fn search_collection<R: tauri::Runtime>(
     mode: Option<String>,
     file_ids: Option<Vec<String>>,
 ) -> Result<Vec<SearchResult>, VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
+    let path = db::collection_path(&state.base_dir, &collection)?;
     blocking(move || {
         let conn = db::open_or_init_conn(&path)?;
         let vec_loaded = db::try_load_sqlite_vec(&conn);
@@ -146,9 +153,12 @@ pub async fn list_attachments<R: tauri::Runtime>(
     collection: String,
     limit: Option<usize>,
 ) -> Result<Vec<AttachmentFileInfo>, VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    db::list_attachments(&conn, limit)
+    let path = db::collection_path(&state.base_dir, &collection)?;
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        db::list_attachments(&conn, limit)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -158,9 +168,12 @@ pub async fn delete_chunks<R: tauri::Runtime>(
     collection: String,
     ids: Vec<String>,
 ) -> Result<(), VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    db::delete_chunks(&conn, ids)
+    let path = db::collection_path(&state.base_dir, &collection)?;
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        db::delete_chunks(&conn, ids)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -169,11 +182,8 @@ pub async fn delete_collection<R: tauri::Runtime>(
     state: State<'_, VectorDBState>,
     collection: String,
 ) -> Result<(), VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
-    if path.exists() {
-        std::fs::remove_file(path).ok();
-    }
-    Ok(())
+    let base = state.base_dir.clone();
+    blocking(move || db::delete_collection_files(&base, &collection)).await
 }
 
 #[tauri::command]
@@ -183,7 +193,7 @@ pub async fn chunk_text<R: tauri::Runtime>(
     chunk_size: usize,
     chunk_overlap: usize,
 ) -> Result<Vec<String>, VectorDBError> {
-    Ok(db::chunk_text(text, chunk_size, chunk_overlap))
+    blocking(move || db::chunk_text(text, chunk_size, chunk_overlap)).await
 }
 
 #[tauri::command]
@@ -195,17 +205,20 @@ pub async fn get_chunks<R: tauri::Runtime>(
     start_order: i64,
     end_order: i64,
 ) -> Result<Vec<SearchResult>, VectorDBError> {
-    let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    db::get_chunks(&conn, file_id, start_order, end_order)
+    let path = db::collection_path(&state.base_dir, &collection)?;
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        db::get_chunks(&conn, file_id, start_order, end_order)
+    })
+    .await
 }
 
 // ============================================================================
 // Project-scoped agent memory (FTS5 / BM25)
 // ============================================================================
 
-fn memory_conn(state: &VectorDBState) -> Result<rusqlite::Connection, VectorDBError> {
-    let path = db::collection_path(&state.base_dir, db::MEMORY_COLLECTION);
+fn memory_conn(base_dir: &std::path::Path) -> Result<rusqlite::Connection, VectorDBError> {
+    let path = db::collection_path(base_dir, db::MEMORY_COLLECTION)?;
     db::open_or_init_conn(&path)
 }
 
@@ -219,8 +232,12 @@ pub async fn memory_index<R: tauri::Runtime>(
     role: String,
     ts: i64,
 ) -> Result<(), VectorDBError> {
-    let conn = memory_conn(&state)?;
-    db::memory_index(&conn, &msg_id, &project_id, &text, &role, ts)
+    let base = state.base_dir.clone();
+    blocking(move || {
+        let conn = memory_conn(&base)?;
+        db::memory_index(&conn, &msg_id, &project_id, &text, &role, ts)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -231,8 +248,12 @@ pub async fn memory_search<R: tauri::Runtime>(
     query: String,
     top_k: usize,
 ) -> Result<Vec<MemoryHit>, VectorDBError> {
-    let conn = memory_conn(&state)?;
-    db::memory_search(&conn, &project_id, &query, top_k)
+    let base = state.base_dir.clone();
+    blocking(move || {
+        let conn = memory_conn(&base)?;
+        db::memory_search(&conn, &project_id, &query, top_k)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -241,6 +262,10 @@ pub async fn memory_clear<R: tauri::Runtime>(
     state: State<'_, VectorDBState>,
     project_id: Option<String>,
 ) -> Result<(), VectorDBError> {
-    let conn = memory_conn(&state)?;
-    db::memory_clear(&conn, project_id.as_deref())
+    let base = state.base_dir.clone();
+    blocking(move || {
+        let conn = memory_conn(&base)?;
+        db::memory_clear(&conn, project_id.as_deref())
+    })
+    .await
 }
