@@ -398,16 +398,14 @@ const SessionItem = memo(function SessionItem({
                 session.folder
               )
               if (out.ok) {
-                toast.success(
-                  `Handoff saved. ${out.redactions} credential(s) were left out, and the folder is named rather than located.`
-                )
+                toast.success(t('common:handoff.saved', { count: out.redactions }))
               } else if (!out.cancelled) {
-                toast.error(`The handoff could not be saved: ${out.message}`)
+                toast.error(t('common:handoff.failed', { message: out.message }))
               }
             }}
           >
             <Share2 />
-            <span>Hand off to another computer…</span>
+            <span>{t('common:handoff.menu')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

@@ -3110,5 +3110,10 @@
     "reject": "अस्वीकार करें",
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }
