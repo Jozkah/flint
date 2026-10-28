@@ -462,7 +462,10 @@
     "usageWeekAria": "1 週間あたりのトークン数",
     "usageWindow": "期間",
     "usageLimit": "上限",
-    "usageUnsaved": "未保存の変更"
+    "usageUnsaved": "未保存の変更",
+    "stopServerToEdit": "編集するにはサーバーを停止してください",
+    "trustedHostsInvalid": "無効なホスト: {{hosts}}。example.com や 192.168.1.5:3000 のようにホストまたはホスト:ポートで入力してください。",
+    "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。"
   },
   "privacy": {
     "analytics": "分析",

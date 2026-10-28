@@ -462,7 +462,10 @@
     "usageWeekAria": "주당 토큰",
     "usageWindow": "기간",
     "usageLimit": "한도",
-    "usageUnsaved": "저장되지 않은 변경"
+    "usageUnsaved": "저장되지 않은 변경",
+    "stopServerToEdit": "편집하려면 서버를 중지하세요",
+    "trustedHostsInvalid": "유효하지 않은 호스트: {{hosts}}. example.com 또는 192.168.1.5:3000처럼 호스트 또는 호스트:포트를 입력하세요.",
+    "trustedHostsUnsaved": "저장되지 않음. Enter로 저장, Escape로 되돌리기."
   },
   "privacy": {
     "analytics": "분석",

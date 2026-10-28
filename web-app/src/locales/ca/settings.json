@@ -466,7 +466,10 @@
     "usageWeekAria": "Tokens per setmana",
     "usageWindow": "Finestra",
     "usageLimit": "Límit",
-    "usageUnsaved": "Canvis sense desar"
+    "usageUnsaved": "Canvis sense desar",
+    "stopServerToEdit": "Atura el servidor per editar",
+    "trustedHostsInvalid": "No és un amfitrió vàlid: {{hosts}}. Fes servir un amfitrió o amfitrió:port, com example.com o 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Sense desar. Prem Retorn per desar, Escape per desfer."
   },
   "privacy": {
     "analytics": "Analítica",

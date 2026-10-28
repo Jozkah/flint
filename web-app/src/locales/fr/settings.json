@@ -464,7 +464,10 @@
     "usageWeekAria": "Tokens par semaine",
     "usageWindow": "Fenêtre",
     "usageLimit": "Limite",
-    "usageUnsaved": "Modifications non enregistrées"
+    "usageUnsaved": "Modifications non enregistrées",
+    "stopServerToEdit": "Arrêtez le serveur pour modifier",
+    "trustedHostsInvalid": "Hôte non valide : {{hosts}}. Utilisez un hôte ou hôte:port, comme example.com ou 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler."
   },
   "privacy": {
     "analytics": "Analytique",

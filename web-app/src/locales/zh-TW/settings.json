@@ -462,7 +462,10 @@
     "usageWeekAria": "每週的 token 數",
     "usageWindow": "時間窗",
     "usageLimit": "上限",
-    "usageUnsaved": "未儲存的變更"
+    "usageUnsaved": "未儲存的變更",
+    "stopServerToEdit": "停止伺服器後才能編輯",
+    "trustedHostsInvalid": "無效的主機：{{hosts}}。請使用主機或 主機:連接埠，例如 example.com 或 192.168.1.5:3000。",
+    "trustedHostsUnsaved": "未儲存。按 Enter 儲存，按 Escape 復原。"
   },
   "privacy": {
     "analytics": "分析",

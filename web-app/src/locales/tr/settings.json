@@ -462,7 +462,10 @@
     "usageWeekAria": "Haftalık token",
     "usageWindow": "Pencere",
     "usageLimit": "Sınır",
-    "usageUnsaved": "Kaydedilmemiş değişiklikler"
+    "usageUnsaved": "Kaydedilmemiş değişiklikler",
+    "stopServerToEdit": "Düzenlemek için sunucuyu durdurun",
+    "trustedHostsInvalid": "Geçersiz ana bilgisayar: {{hosts}}. example.com veya 192.168.1.5:3000 gibi bir ana bilgisayar ya da ana bilgisayar:bağlantı noktası kullanın.",
+    "trustedHostsUnsaved": "Kaydedilmedi. Kaydetmek için Enter, geri almak için Escape."
   },
   "privacy": {
     "analytics": "Analizler",

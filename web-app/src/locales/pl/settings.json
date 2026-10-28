@@ -466,7 +466,10 @@
     "usageWeekAria": "Tokeny na tydzień",
     "usageWindow": "Okno",
     "usageLimit": "Limit",
-    "usageUnsaved": "Niezapisane zmiany"
+    "usageUnsaved": "Niezapisane zmiany",
+    "stopServerToEdit": "Zatrzymaj serwer, aby edytować",
+    "trustedHostsInvalid": "Nieprawidłowy host: {{hosts}}. Użyj hosta lub host:port, np. example.com lub 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa."
   },
   "privacy": {
     "analytics": "Dane Analityczne",

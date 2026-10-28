@@ -462,7 +462,10 @@
     "usageWeekAria": "每周的 token 数",
     "usageWindow": "时间窗",
     "usageLimit": "上限",
-    "usageUnsaved": "未保存的更改"
+    "usageUnsaved": "未保存的更改",
+    "stopServerToEdit": "停止服务器后才能编辑",
+    "trustedHostsInvalid": "无效的主机：{{hosts}}。请使用主机或 主机:端口，例如 example.com 或 192.168.1.5:3000。",
+    "trustedHostsUnsaved": "未保存。按 Enter 保存，按 Escape 撤销。"
   },
   "privacy": {
     "analytics": "分析",

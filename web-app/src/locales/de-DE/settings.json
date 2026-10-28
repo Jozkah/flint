@@ -462,7 +462,10 @@
     "usageWeekAria": "Tokens pro Woche",
     "usageWindow": "Zeitfenster",
     "usageLimit": "Limit",
-    "usageUnsaved": "Ungespeicherte Änderungen"
+    "usageUnsaved": "Ungespeicherte Änderungen",
+    "stopServerToEdit": "Server stoppen, um zu bearbeiten",
+    "trustedHostsInvalid": "Kein gültiger Host: {{hosts}}. Verwende einen Host oder Host:Port, z. B. example.com oder 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Nicht gespeichert. Enter speichert, Escape macht rückgängig."
   },
   "privacy": {
     "analytics": "Analytik",

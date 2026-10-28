@@ -464,7 +464,10 @@
     "usageWeekAria": "Tokens por semana",
     "usageWindow": "Janela",
     "usageLimit": "Limite",
-    "usageUnsaved": "Alterações não salvas"
+    "usageUnsaved": "Alterações não salvas",
+    "stopServerToEdit": "Pare o servidor para editar",
+    "trustedHostsInvalid": "Host inválido: {{hosts}}. Use um host ou host:porta, como example.com ou 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Não salvo. Pressione Enter para salvar, Esc para desfazer."
   },
   "privacy": {
     "analytics": "Analytics",
