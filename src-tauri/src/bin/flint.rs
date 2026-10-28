@@ -1009,6 +1009,20 @@ struct ProviderArgs {
     /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY)
     #[arg(long)]
     api_key: Option<String>,
+    /// Read the API key from a file instead of the command line (trailing whitespace is dropped)
+    #[arg(long, value_name = "PATH", conflicts_with = "api_key")]
+    api_key_file: Option<std::path::PathBuf>,
+}
+
+/// The key stored in `path`, trimmed. An empty file is an error rather than an
+/// empty key.
+fn read_api_key_file(path: &std::path::Path) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("--api-key-file {}: {e}", path.display()))?;
+    let key = raw.trim();
+    if key.is_empty() {
+        return Err(format!("--api-key-file {} is empty", path.display()));
+    }
+    Ok(key.to_string())
 }
 
 impl ProviderArgs {
@@ -1019,9 +1033,23 @@ impl ProviderArgs {
         let provider = self
             .provider
             .or_else(|| app_lib::core::cli::providers::desktop_selection().provider);
+        let api_key = match (self.api_key, self.api_key_file) {
+            (Some(key), _) => {
+                eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file or JAN_API_KEY");
+                Some(key)
+            }
+            (None, Some(path)) => match read_api_key_file(&path) {
+                Ok(key) => Some(key),
+                Err(message) => {
+                    eprintln!("{message}");
+                    std::process::exit(2);
+                }
+            },
+            (None, None) => None,
+        };
         ProviderOverrides {
             provider,
-            api_key: self.api_key,
+            api_key,
             pin,
         }
         .with_env()
@@ -2241,7 +2269,13 @@ fn resolve_json_schema(arg: &str) -> Result<serde_json::Value, String> {
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
 /// stopping at `--` so a task text can never be mistaken for it.
 fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
-    let mut args = args.take_while(|a| a != "--");
+    let args: Vec<String> = args.take_while(|a| a != "--").collect();
+    // Another command's own `--data-dir` (or a task text naming one) must not
+    // move the data folder, so only `serve` and `stop` are looked at.
+    if !matches!(args.iter().find(|a| !a.starts_with('-')).map(String::as_str), Some("serve" | "stop")) {
+        return None;
+    }
+    let mut args = args.into_iter();
     let mut found = None;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
@@ -2250,7 +2284,8 @@ fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
             found = Some(v.to_string());
         }
     }
-    found.filter(|v| !v.is_empty())
+    // A value shaped like a flag is the next option, not a directory.
+    found.filter(|v| !v.is_empty() && !v.starts_with('-'))
 }
 
 /// Whether a panic message is the standard library giving up on a write to
@@ -5082,6 +5117,27 @@ mod tests {
         assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "D"])).as_deref(), Some("D"));
         assert_eq!(super::pre_parse_data_dir(args(&["stop", "--data-dir=E"])).as_deref(), Some("E"));
         assert_eq!(super::pre_parse_data_dir(args(&["x", "--", "--data-dir", "D"])), None);
+    }
+
+    #[test]
+    fn api_key_file_reads_trimmed() {
+        let path = std::env::temp_dir().join(format!("flint_key_{}.txt", std::process::id()));
+        std::fs::write(&path, "sk-test-123
+").unwrap();
+        assert_eq!(super::read_api_key_file(&path).as_deref(), Ok("sk-test-123"));
+        std::fs::write(&path, "  
+").unwrap();
+        assert!(super::read_api_key_file(&path).is_err());
+        let _ = std::fs::remove_file(&path);
+        assert!(super::read_api_key_file(&path).is_err());
+    }
+
+    #[test]
+    fn pre_parse_data_dir_only_for_serve_and_stop() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter();
+        assert_eq!(super::pre_parse_data_dir(args(&["mcp", "add", "--data-dir", "D"])), None);
+        assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "--listen"])), None);
+        assert_eq!(super::pre_parse_data_dir(args(&["--safe-mode", "serve", "--data-dir", "D"])).as_deref(), Some("D"));
     }
 
     /// A closed stdout/stderr pipe is recognised; nothing else is.
