@@ -641,7 +641,7 @@ describe('what holds a session in place while it works', () => {
       call('bash', { command: 'ls' }),
       ctx({ trackShell: shell.hook })
     )
-    expect(shell.held()).toBe(1)
+    await vi.waitFor(() => expect(shell.held()).toBe(1))
 
     gate.resolve({ content: 'ok' })
     await pending
@@ -681,7 +681,7 @@ describe('what holds a session in place while it works', () => {
       call('task', { name: 'reviewer' }),
       ctx({ trackSubagent: child.hook, onTask: () => gate.promise })
     )
-    expect(child.held()).toBe(1)
+    await vi.waitFor(() => expect(child.held()).toBe(1))
 
     gate.resolve({ output: 'done' })
     await pending
@@ -786,7 +786,7 @@ describe('what holds a session in place while it works', () => {
         call('task', { subagent_name: 'r', description: 'd', background: true }),
         ctx({ tasks, trackSubagent: child.hook, onTask: () => gate.promise })
       )
-      expect(child.held()).toBe(1)
+      await vi.waitFor(() => expect(child.held()).toBe(1))
       gate.resolve({ output: 'done' })
       await tasks.settleAll()
       expect(child.held()).toBe(0)
@@ -925,7 +925,7 @@ describe('what holds a session in place while it works', () => {
         call('task', { subagent_name: 'r', description: 'd', isolate: true }),
         ctx({ trackSubagent: child.hook, onTeam: () => gate.promise })
       )
-      expect(child.held()).toBe(1)
+      await vi.waitFor(() => expect(child.held()).toBe(1))
       gate.resolve({ output: 'done' })
       await pending
       expect(child.held()).toBe(0)

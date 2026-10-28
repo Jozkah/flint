@@ -5,12 +5,13 @@ import {
 } from '@/lib/coworkFolders'
 import { stripSessionToolImages } from '@/lib/toolOutputImages'
 import { redactingSessionStorage } from '@/lib/redactSessionStorage'
+import { shardedSessionStorage } from '@/lib/shardedSessionStorage'
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { deferredPersistStorage } from '@/lib/deferredPersistStorage'
@@ -1093,7 +1094,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // live history the model reads stays raw.
       // Written off the click path: see deferredPersistStorage.
       storage: deferredPersistStorage(
-        createJSONStorage(() => redactingSessionStorage(backendStorage))!,
+        // One key per session: a flush writes only the sessions that changed.
+        shardedSessionStorage(
+          redactingSessionStorage(backendStorage)
+        ),
         1500,
         {
           // Quiet app: write within a moment so a close loses nothing; a

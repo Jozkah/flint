@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   describeRunEnd,
   isRunEndReason,
@@ -40,5 +40,21 @@ describe('run endings', () => {
   it('treats only a plain finish as needing no attention', () => {
     expect(runEndNeedsAttention('completed')).toBe(false)
     expect(runEndNeedsAttention('turn_limit')).toBe(true)
+  })
+})
+
+describe('describeRunEnd localisation', () => {
+  it('reads the sentence from the locale file for the active language', async () => {
+    const { i18n } = await import('@/i18n/react-i18next-compat')
+    const spy = vi.spyOn(i18n, 't').mockImplementation(((key: string) => `de:${key}`) as never)
+    try {
+      expect(describeRunEnd({ reason: 'user_stop', label: '' })).toBe('de:tools:runEnd.userStop')
+      // An unknown tag still lands on the generic failure sentence.
+      expect(describeRunEnd({ reason: 'weird', label: '' })).toBe('de:tools:runEnd.error')
+      // The loop's own label always wins.
+      expect(describeRunEnd({ reason: 'user_stop', label: 'Custom.' })).toBe('Custom.')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

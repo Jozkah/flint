@@ -19,8 +19,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 const io: BackupIo = {
   get: (key) => invoke<string | null>('settings_get', { key }),
   set: (key, value) => invoke('settings_set', { key, value }),
+  // Keys leave the credential store only for a backup the user chose to put
+  // secrets in; the command refuses without the explicit confirm.
   getProviderKeys: (provider) =>
-    invoke<string[]>('get_provider_keys', { provider }),
+    invoke<string[]>('export_provider_keys_for_backup', {
+      provider,
+      confirm: true,
+    }),
   setProviderKeys: (provider, keys) =>
     invoke('settings_backup_store_provider_keys', { provider, keys }),
 }

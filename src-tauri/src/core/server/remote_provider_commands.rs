@@ -214,6 +214,31 @@ pub async fn get_provider_keys(provider: String) -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// Whether a provider has a stored key chain, without sending any key to the
+/// webview. Use this for "configured" indicators.
+#[tauri::command]
+pub async fn has_provider_keys(provider: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::core::server::provider_secrets::has_provider_keys_guarded(&provider)
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// A provider's keys for a settings backup the user chose to include secrets
+/// in. Refuses unless `confirm` is true.
+#[tauri::command]
+pub async fn export_provider_keys_for_backup(
+    provider: String,
+    confirm: bool,
+) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::core::server::provider_secrets::export_provider_keys_for_backup(&provider, confirm)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Get provider configuration by name
 #[tauri::command]
 pub async fn get_provider_config(
@@ -281,6 +306,9 @@ mod tests {
             assert!(ps::reject_reserved_key(name).is_err(), "register {name}");
             assert!(ps::store_provider_keys_guarded(name, &["evil".into()]).is_err());
         }
+        // Reserved names are never "configured" and never exportable.
+        assert!(!rt(has_provider_keys("auth:openai".into())));
+        assert!(rt(export_provider_keys_for_backup("auth:openai".into(), true)).is_err());
         // Untouched, and still readable through the internal record API.
         assert_eq!(
             ps::try_load_secret_record("bedrock-aws").unwrap().as_deref(),
@@ -290,7 +318,14 @@ mod tests {
         // Ordinary providers still work through the guarded path.
         ps::store_provider_keys_guarded("openai", &["sk-1".into()]).unwrap();
         assert_eq!(rt(get_provider_keys("openai".into())), vec!["sk-1".to_string()]);
+        assert!(rt(has_provider_keys("openai".into())));
+        assert!(rt(export_provider_keys_for_backup("openai".into(), false)).is_err());
+        assert_eq!(
+            rt(export_provider_keys_for_backup("openai".into(), true)).unwrap(),
+            vec!["sk-1".to_string()]
+        );
         rt(delete_provider_keys("openai".into())).unwrap();
+        assert!(!rt(has_provider_keys("openai".into())));
         assert!(rt(get_provider_keys("openai".into())).is_empty());
         match prev {
             Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
