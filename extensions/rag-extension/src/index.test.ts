@@ -96,6 +96,17 @@ describe('listAttachments', () => {
     expect(parsePayload(res).attachments).toEqual([])
   })
 
+  it('list_attachments_project_uses_project_id', async () => {
+    const listAttachmentsForProject = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ listAttachmentsForProject })
+    await ext.callTool('list_attachments', {
+      thread_id: 't1',
+      project_id: 'p1',
+      scope: 'project',
+    })
+    expect(listAttachmentsForProject).toHaveBeenCalledWith('p1')
+  })
+
   it('captures thrown errors', async () => {
     extMgr().get.mockReturnValue({
       listAttachments: vi.fn().mockRejectedValue(new Error('boom')),
@@ -236,6 +247,20 @@ describe('retrieve', () => {
     expect(searchCollection).toHaveBeenCalledWith('t1', [1], 3, 0.3, 'auto', undefined)
   })
 
+  it('retrieve_top_k_clamped_high_and_negative', async () => {
+    const searchCollection = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ searchCollection })
+    extMgr().getByName.mockReturnValue({
+      embed: vi.fn().mockResolvedValue({ data: [{ embedding: [1], index: 0 }] }),
+    })
+
+    await ext.callTool('retrieve', { thread_id: 't1', query: 'q', top_k: 100000 })
+    await ext.callTool('retrieve', { thread_id: 't1', query: 'q', top_k: -5 })
+
+    expect(searchCollection.mock.calls[0][2]).toBe(20)
+    expect(searchCollection.mock.calls[1][2]).toBe(1)
+  })
+
   it('captures search errors', async () => {
     extMgr().get.mockReturnValue({
       searchCollection: vi.fn().mockRejectedValue(new Error('db down')),
@@ -315,6 +340,35 @@ describe('getChunks', () => {
     })
     expect(getChunks).toHaveBeenCalledWith('t1', 'f1', 0, 0)
     expect(res.error).toBe('')
+  })
+
+  it('get_chunks_project_uses_project_id', async () => {
+    const getChunksForProject = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ getChunksForProject })
+    await ext.callTool('get_chunks', {
+      thread_id: 't1',
+      project_id: 'p1',
+      file_id: 'f1',
+      start_order: 0,
+      end_order: 1,
+      scope: 'project',
+    })
+    expect(getChunksForProject).toHaveBeenCalledWith('p1', 'f1', 0, 1)
+  })
+
+  it('get_chunks_range_capped_and_flagged', async () => {
+    const getChunks = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ getChunks })
+    const res = await ext.callTool('get_chunks', {
+      thread_id: 't1',
+      file_id: 'f1',
+      start_order: 50,
+      end_order: 5,
+    })
+    expect(getChunks).toHaveBeenCalledWith('t1', 'f1', 5, 24)
+    const payload = parsePayload(res)
+    expect(payload.truncated).toBe(true)
+    expect(payload.note).toContain('20')
   })
 
   it('uses project scope helper', async () => {
