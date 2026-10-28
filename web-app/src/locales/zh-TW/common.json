@@ -2966,5 +2966,39 @@
       "medium": "中",
       "low": "低"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "相依性變更",
+      "lockfile": "鎖定檔",
+      "migration": "無法復原的遷移",
+      "binary": "二進位檔案",
+      "deletion": "刪除"
+    },
+    "reviewed": "我已確認這會改變什麼",
+    "moreLines_other": "… 另有 {{count}} 行",
+    "lines": "第 {{from}}–{{to}} 行",
+    "sensitive": "看起來包含憑證，因此不會被套用。",
+    "wholeBinary": "二進位：整體套用或整體不套用。",
+    "wholeLarge": "太大無法拆分：整體套用或整體不套用。",
+    "noWorktree": "沒有可用來產生提案的工作樹記錄",
+    "nothingSelected": "未選取任何項目。若要捨棄，請拒絕此提案。",
+    "applied_other": "已套用 {{count}} 個檔案。",
+    "appliedPartial_other": "已套用 {{count}} 個檔案；其餘已排除。",
+    "rejected": "已拒絕。你的資料夾沒有任何變更。",
+    "heading": "{{title}}，目標 {{root}}",
+    "defaultTitle": "建議的變更",
+    "ownCopy": "此次執行在自己的副本中進行。在你套用之前，不會有任何內容進入你的資料夾。",
+    "collecting": "正在收集…",
+    "review": "檢視變更",
+    "exporting": "正在匯出…",
+    "exportPatch": "匯出為修補檔",
+    "exported": "修補檔套件已寫入 {{path}}",
+    "lockFiles": "鎖定檔（{{count}} 個），與上方原始碼變更分開顯示",
+    "needsAck": "要套用，請將它們標記為已檢視或排除：{{files}}",
+    "selectedCount": "已選取 {{chosen}} / {{total}} 項變更",
+    "reject": "拒絕",
+    "applying": "正在套用…",
+    "applySelected": "套用所選"
   }
 }

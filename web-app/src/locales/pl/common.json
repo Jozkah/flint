@@ -3101,5 +3101,48 @@
       "medium": "Średni",
       "low": "Niski"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Zmiana zależności",
+      "lockfile": "Plik blokady",
+      "migration": "Nieodwracalna migracja",
+      "binary": "Plik binarny",
+      "deletion": "Usunięcie"
+    },
+    "reviewed": "Sprawdziłem(-am), co to zmienia",
+    "moreLines_one": "… jeszcze {{count}} wiersz",
+    "moreLines_few": "… jeszcze {{count}} wiersze",
+    "moreLines_many": "… jeszcze {{count}} wierszy",
+    "moreLines_other": "… jeszcze {{count}} wiersza",
+    "lines": "Wiersze {{from}}–{{to}}",
+    "sensitive": "Wygląda na dane uwierzytelniające, więc nigdy nie jest stosowany.",
+    "wholeBinary": "Binarny: stosowany w całości albo wcale.",
+    "wholeLarge": "Za duży, by go podzielić: stosowany w całości albo wcale.",
+    "noWorktree": "brak wpisu worktree, z którego można utworzyć propozycję",
+    "nothingSelected": "Nic nie wybrano. Odrzuć propozycję, aby ją porzucić.",
+    "applied_one": "Zastosowano {{count}} plik.",
+    "applied_few": "Zastosowano {{count}} pliki.",
+    "applied_many": "Zastosowano {{count}} plików.",
+    "applied_other": "Zastosowano {{count}} pliku.",
+    "appliedPartial_one": "Zastosowano {{count}} plik; resztę pominięto.",
+    "appliedPartial_few": "Zastosowano {{count}} pliki; resztę pominięto.",
+    "appliedPartial_many": "Zastosowano {{count}} plików; resztę pominięto.",
+    "appliedPartial_other": "Zastosowano {{count}} pliku; resztę pominięto.",
+    "rejected": "Odrzucono. Nic w Twoim folderze się nie zmieniło.",
+    "heading": "{{title}} do {{root}}",
+    "defaultTitle": "Proponowane zmiany",
+    "ownCopy": "To uruchomienie pracuje na własnej kopii. Nic nie trafi do Twojego folderu, dopóki tego nie zastosujesz.",
+    "collecting": "Zbieranie…",
+    "review": "Przejrzyj zmiany",
+    "exporting": "Eksportowanie…",
+    "exportPatch": "Eksportuj jako patch",
+    "exported": "Pakiet patcha zapisano w {{path}}",
+    "lockFiles": "Pliki blokady ({{count}}), oddzielone od zmian w źródłach powyżej",
+    "needsAck": "Aby zastosować, oznacz je jako przejrzane albo pomiń: {{files}}",
+    "selectedCount": "Wybrano {{chosen}} z {{total}} zmian",
+    "reject": "Odrzuć",
+    "applying": "Stosowanie…",
+    "applySelected": "Zastosuj wybrane"
   }
 }

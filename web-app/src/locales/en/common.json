@@ -2975,5 +2975,42 @@
       "medium": "Medium",
       "low": "Low"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Dependency change",
+      "lockfile": "Lock file",
+      "migration": "Irreversible migration",
+      "binary": "Binary file",
+      "deletion": "Deletion"
+    },
+    "reviewed": "I have reviewed what this changes",
+    "moreLines_one": "… {{count}} more line",
+    "moreLines_other": "… {{count}} more lines",
+    "lines": "Lines {{from}}–{{to}}",
+    "sensitive": "Looks like it holds a credential, so it is never applied.",
+    "wholeBinary": "Binary: applied or left whole.",
+    "wholeLarge": "Too large to split: applied or left whole.",
+    "noWorktree": "there is no worktree record to propose from",
+    "nothingSelected": "Nothing is selected. Reject the proposal to discard it.",
+    "applied_one": "Applied {{count}} file.",
+    "applied_other": "Applied {{count}} files.",
+    "appliedPartial_one": "Applied {{count}} file; the rest were left out.",
+    "appliedPartial_other": "Applied {{count}} files; the rest were left out.",
+    "rejected": "Rejected. Nothing in your folder changed.",
+    "heading": "{{title}} to {{root}}",
+    "defaultTitle": "Proposed changes",
+    "ownCopy": "This run works in its own copy. Nothing reaches your folder until you apply it.",
+    "collecting": "Collecting…",
+    "review": "Review changes",
+    "exporting": "Exporting…",
+    "exportPatch": "Export as patch",
+    "exported": "Patch bundle written to {{path}}",
+    "lockFiles": "Lock files ({{count}}), kept apart from the source changes above",
+    "needsAck": "To apply, mark these as reviewed or leave them out: {{files}}",
+    "selectedCount": "{{chosen}} of {{total}} changes selected",
+    "reject": "Reject",
+    "applying": "Applying…",
+    "applySelected": "Apply selected"
   }
 }

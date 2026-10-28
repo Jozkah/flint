@@ -2977,5 +2977,42 @@
       "medium": "Mittel",
       "low": "Niedrig"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Änderung an Abhängigkeiten",
+      "lockfile": "Sperrdatei",
+      "migration": "Nicht umkehrbare Migration",
+      "binary": "Binärdatei",
+      "deletion": "Löschung"
+    },
+    "reviewed": "Ich habe geprüft, was sich dadurch ändert",
+    "moreLines_one": "… {{count}} weitere Zeile",
+    "moreLines_other": "… {{count}} weitere Zeilen",
+    "lines": "Zeilen {{from}}–{{to}}",
+    "sensitive": "Sieht nach Zugangsdaten aus und wird deshalb nie angewendet.",
+    "wholeBinary": "Binär: wird ganz übernommen oder ganz ausgelassen.",
+    "wholeLarge": "Zu groß zum Aufteilen: wird ganz übernommen oder ganz ausgelassen.",
+    "noWorktree": "es gibt keinen Worktree-Eintrag, aus dem ein Vorschlag erstellt werden könnte",
+    "nothingSelected": "Nichts ausgewählt. Lehne den Vorschlag ab, um ihn zu verwerfen.",
+    "applied_one": "{{count}} Datei angewendet.",
+    "applied_other": "{{count}} Dateien angewendet.",
+    "appliedPartial_one": "{{count}} Datei angewendet; der Rest wurde ausgelassen.",
+    "appliedPartial_other": "{{count}} Dateien angewendet; der Rest wurde ausgelassen.",
+    "rejected": "Abgelehnt. In deinem Ordner hat sich nichts geändert.",
+    "heading": "{{title}} nach {{root}}",
+    "defaultTitle": "Vorgeschlagene Änderungen",
+    "ownCopy": "Dieser Lauf arbeitet in einer eigenen Kopie. Nichts erreicht deinen Ordner, bis du es anwendest.",
+    "collecting": "Wird gesammelt…",
+    "review": "Änderungen prüfen",
+    "exporting": "Wird exportiert…",
+    "exportPatch": "Als Patch exportieren",
+    "exported": "Patch-Paket geschrieben nach {{path}}",
+    "lockFiles": "Sperrdateien ({{count}}), getrennt von den Quelländerungen oben",
+    "needsAck": "Zum Anwenden als geprüft markieren oder weglassen: {{files}}",
+    "selectedCount": "{{chosen}} von {{total}} Änderungen ausgewählt",
+    "reject": "Ablehnen",
+    "applying": "Wird angewendet…",
+    "applySelected": "Auswahl anwenden"
   }
 }

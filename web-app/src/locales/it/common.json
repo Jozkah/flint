@@ -3026,5 +3026,42 @@
       "medium": "Media",
       "low": "Bassa"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Modifica delle dipendenze",
+      "lockfile": "File di blocco",
+      "migration": "Migrazione irreversibile",
+      "binary": "File binario",
+      "deletion": "Eliminazione"
+    },
+    "reviewed": "Ho esaminato cosa cambia",
+    "moreLines_one": "… altra {{count}} riga",
+    "moreLines_other": "… altre {{count}} righe",
+    "lines": "Righe {{from}}–{{to}}",
+    "sensitive": "Sembra contenere una credenziale, quindi non viene mai applicato.",
+    "wholeBinary": "Binario: applicato o lasciato intero.",
+    "wholeLarge": "Troppo grande per essere diviso: applicato o lasciato intero.",
+    "noWorktree": "non c'è nessun record di worktree da cui proporre",
+    "nothingSelected": "Nulla è selezionato. Rifiuta la proposta per scartarla.",
+    "applied_one": "{{count}} file applicato.",
+    "applied_other": "{{count}} file applicati.",
+    "appliedPartial_one": "{{count}} file applicato; il resto è stato escluso.",
+    "appliedPartial_other": "{{count}} file applicati; il resto è stato escluso.",
+    "rejected": "Rifiutata. Nella tua cartella non è cambiato nulla.",
+    "heading": "{{title}} in {{root}}",
+    "defaultTitle": "Modifiche proposte",
+    "ownCopy": "Questa esecuzione lavora su una copia propria. Nulla arriva nella tua cartella finché non lo applichi.",
+    "collecting": "Raccolta…",
+    "review": "Rivedi le modifiche",
+    "exporting": "Esportazione…",
+    "exportPatch": "Esporta come patch",
+    "exported": "Pacchetto patch scritto in {{path}}",
+    "lockFiles": "File di blocco ({{count}}), separati dalle modifiche al sorgente qui sopra",
+    "needsAck": "Per applicare, segnali come esaminati o escludili: {{files}}",
+    "selectedCount": "{{chosen}} di {{total}} modifiche selezionate",
+    "reject": "Rifiuta",
+    "applying": "Applicazione…",
+    "applySelected": "Applica selezione"
   }
 }

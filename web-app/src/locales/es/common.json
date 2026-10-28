@@ -3028,5 +3028,42 @@
       "medium": "Media",
       "low": "Baja"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Cambio de dependencias",
+      "lockfile": "Archivo de bloqueo",
+      "migration": "Migración irreversible",
+      "binary": "Archivo binario",
+      "deletion": "Eliminación"
+    },
+    "reviewed": "He revisado lo que esto cambia",
+    "moreLines_one": "… {{count}} línea más",
+    "moreLines_other": "… {{count}} líneas más",
+    "lines": "Líneas {{from}}–{{to}}",
+    "sensitive": "Parece contener una credencial, así que nunca se aplica.",
+    "wholeBinary": "Binario: se aplica o se deja entero.",
+    "wholeLarge": "Demasiado grande para dividir: se aplica o se deja entero.",
+    "noWorktree": "no hay ningún registro de worktree desde el que proponer",
+    "nothingSelected": "No hay nada seleccionado. Rechaza la propuesta para descartarla.",
+    "applied_one": "{{count}} archivo aplicado.",
+    "applied_other": "{{count}} archivos aplicados.",
+    "appliedPartial_one": "{{count}} archivo aplicado; el resto se dejó fuera.",
+    "appliedPartial_other": "{{count}} archivos aplicados; el resto se dejó fuera.",
+    "rejected": "Rechazada. No cambió nada en tu carpeta.",
+    "heading": "{{title}} a {{root}}",
+    "defaultTitle": "Cambios propuestos",
+    "ownCopy": "Esta ejecución trabaja en su propia copia. Nada llega a tu carpeta hasta que lo apliques.",
+    "collecting": "Recopilando…",
+    "review": "Revisar cambios",
+    "exporting": "Exportando…",
+    "exportPatch": "Exportar como parche",
+    "exported": "Paquete de parche escrito en {{path}}",
+    "lockFiles": "Archivos de bloqueo ({{count}}), separados de los cambios de código de arriba",
+    "needsAck": "Para aplicar, márcalos como revisados o déjalos fuera: {{files}}",
+    "selectedCount": "{{chosen}} de {{total}} cambios seleccionados",
+    "reject": "Rechazar",
+    "applying": "Aplicando…",
+    "applySelected": "Aplicar selección"
   }
 }

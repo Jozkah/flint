@@ -3100,5 +3100,48 @@
       "medium": "Střední",
       "low": "Nízká"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Změna závislostí",
+      "lockfile": "Zamykací soubor",
+      "migration": "Nevratná migrace",
+      "binary": "Binární soubor",
+      "deletion": "Smazání"
+    },
+    "reviewed": "Zkontroloval(a) jsem, co se tím mění",
+    "moreLines_one": "… ještě {{count}} řádek",
+    "moreLines_few": "… ještě {{count}} řádky",
+    "moreLines_many": "… ještě {{count}} řádku",
+    "moreLines_other": "… ještě {{count}} řádků",
+    "lines": "Řádky {{from}}–{{to}}",
+    "sensitive": "Vypadá to, že obsahuje přihlašovací údaje, proto se nikdy neuplatní.",
+    "wholeBinary": "Binární: uplatní se celý, nebo vůbec.",
+    "wholeLarge": "Příliš velký na rozdělení: uplatní se celý, nebo vůbec.",
+    "noWorktree": "není k dispozici žádný záznam worktree, ze kterého by šlo navrhovat",
+    "nothingSelected": "Nic není vybráno. Zamítněte návrh, pokud ho chcete zahodit.",
+    "applied_one": "Uplatněn {{count}} soubor.",
+    "applied_few": "Uplatněny {{count}} soubory.",
+    "applied_many": "Uplatněno {{count}} souboru.",
+    "applied_other": "Uplatněno {{count}} souborů.",
+    "appliedPartial_one": "Uplatněn {{count}} soubor; zbytek byl vynechán.",
+    "appliedPartial_few": "Uplatněny {{count}} soubory; zbytek byl vynechán.",
+    "appliedPartial_many": "Uplatněno {{count}} souboru; zbytek byl vynechán.",
+    "appliedPartial_other": "Uplatněno {{count}} souborů; zbytek byl vynechán.",
+    "rejected": "Zamítnuto. Ve vaší složce se nic nezměnilo.",
+    "heading": "{{title}} do {{root}}",
+    "defaultTitle": "Navržené změny",
+    "ownCopy": "Tento běh pracuje na vlastní kopii. Nic se nedostane do vaší složky, dokud to neuplatníte.",
+    "collecting": "Shromažďuji…",
+    "review": "Zkontrolovat změny",
+    "exporting": "Exportuji…",
+    "exportPatch": "Exportovat jako patch",
+    "exported": "Balíček patche zapsán do {{path}}",
+    "lockFiles": "Zamykací soubory ({{count}}), oddělené od změn zdrojového kódu výše",
+    "needsAck": "Pro uplatnění je označte jako zkontrolované, nebo je vynechte: {{files}}",
+    "selectedCount": "Vybráno {{chosen}} z {{total}} změn",
+    "reject": "Zamítnout",
+    "applying": "Uplatňuji…",
+    "applySelected": "Uplatnit výběr"
   }
 }

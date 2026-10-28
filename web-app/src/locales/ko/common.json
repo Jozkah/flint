@@ -2963,5 +2963,39 @@
       "medium": "중간",
       "low": "낮음"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "의존성 변경",
+      "lockfile": "잠금 파일",
+      "migration": "되돌릴 수 없는 마이그레이션",
+      "binary": "바이너리 파일",
+      "deletion": "삭제"
+    },
+    "reviewed": "변경되는 내용을 검토했습니다",
+    "moreLines_other": "… {{count}}줄 더",
+    "lines": "{{from}}–{{to}}번째 줄",
+    "sensitive": "자격 증명으로 보여 적용되지 않습니다.",
+    "wholeBinary": "바이너리: 통째로 적용하거나 제외합니다.",
+    "wholeLarge": "나누기에는 너무 큼: 통째로 적용하거나 제외합니다.",
+    "noWorktree": "제안을 만들 워크트리 기록이 없습니다",
+    "nothingSelected": "선택한 항목이 없습니다. 버리려면 제안을 거부하세요.",
+    "applied_other": "파일 {{count}}개를 적용했습니다.",
+    "appliedPartial_other": "파일 {{count}}개를 적용했습니다. 나머지는 제외되었습니다.",
+    "rejected": "거부했습니다. 폴더는 바뀌지 않았습니다.",
+    "heading": "{{title}} → {{root}}",
+    "defaultTitle": "제안된 변경",
+    "ownCopy": "이 실행은 자체 사본에서 작업합니다. 적용하기 전에는 폴더에 아무것도 반영되지 않습니다.",
+    "collecting": "수집 중…",
+    "review": "변경 검토",
+    "exporting": "내보내는 중…",
+    "exportPatch": "패치로 내보내기",
+    "exported": "패치 번들을 {{path}}에 저장했습니다",
+    "lockFiles": "잠금 파일 {{count}}개, 위의 소스 변경과 따로 표시",
+    "needsAck": "적용하려면 검토됨으로 표시하거나 제외하세요: {{files}}",
+    "selectedCount": "변경 {{total}}개 중 {{chosen}}개 선택됨",
+    "reject": "거부",
+    "applying": "적용 중…",
+    "applySelected": "선택 항목 적용"
   }
 }

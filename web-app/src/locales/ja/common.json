@@ -2961,5 +2961,39 @@
       "medium": "中",
       "low": "低"
     }
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "依存関係の変更",
+      "lockfile": "ロックファイル",
+      "migration": "元に戻せないマイグレーション",
+      "binary": "バイナリファイル",
+      "deletion": "削除"
+    },
+    "reviewed": "変更内容を確認しました",
+    "moreLines_other": "… ほか {{count}} 行",
+    "lines": "{{from}}～{{to}} 行目",
+    "sensitive": "認証情報のようなので、適用されません。",
+    "wholeBinary": "バイナリ：丸ごと適用するか、除外します。",
+    "wholeLarge": "大きすぎて分割できません：丸ごと適用するか、除外します。",
+    "noWorktree": "提案の元になるワークツリーの記録がありません",
+    "nothingSelected": "何も選択されていません。破棄するには提案を却下してください。",
+    "applied_other": "{{count}} 個のファイルを適用しました。",
+    "appliedPartial_other": "{{count}} 個のファイルを適用しました。残りは除外されています。",
+    "rejected": "却下しました。フォルダーは何も変わっていません。",
+    "heading": "{{title}}（適用先：{{root}}）",
+    "defaultTitle": "提案された変更",
+    "ownCopy": "この実行は専用のコピーで動いています。適用するまで、フォルダーには何も反映されません。",
+    "collecting": "収集中…",
+    "review": "変更を確認",
+    "exporting": "エクスポート中…",
+    "exportPatch": "パッチとしてエクスポート",
+    "exported": "パッチバンドルを {{path}} に書き出しました",
+    "lockFiles": "ロックファイル（{{count}} 件）：上のソース変更とは別に表示",
+    "needsAck": "適用するには、確認済みにするか除外してください：{{files}}",
+    "selectedCount": "{{total}} 件中 {{chosen}} 件の変更を選択中",
+    "reject": "却下",
+    "applying": "適用中…",
+    "applySelected": "選択を適用"
   }
 }
