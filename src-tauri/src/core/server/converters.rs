@@ -1125,12 +1125,18 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
             }
         }
         log_unmapped("gemini", body, GEMINI_MAPPED);
-        if body
-            .get("reasoning_effort")
-            .and_then(|e| e.as_str())
-            .is_some()
-        {
-            gen_config["thinkingConfig"] = json!({"thinkingBudget": -1, "includeThoughts": true});
+        // "none" leaves the model default (no forced thinking); the low
+        // tiers get a small fixed budget instead of unbounded dynamic thinking.
+        match body.get("reasoning_effort").and_then(|e| e.as_str()) {
+            None | Some("none") => {}
+            Some("minimal" | "low") => {
+                gen_config["thinkingConfig"] =
+                    json!({"thinkingBudget": 1024, "includeThoughts": true});
+            }
+            Some(_) => {
+                gen_config["thinkingConfig"] =
+                    json!({"thinkingBudget": -1, "includeThoughts": true});
+            }
         }
         if gen_config.as_object().is_some_and(|o| !o.is_empty()) {
             out["generationConfig"] = gen_config;
@@ -2627,6 +2633,28 @@ mod google_generate_content_tests {
         assert_eq!(
             out["generationConfig"]["thinkingConfig"],
             json!({"thinkingBudget": -1, "includeThoughts": true})
+        );
+    }
+
+    #[test]
+    fn low_and_none_effort_do_not_force_dynamic_thinking() {
+        let req = |effort: &str| {
+            conv().convert_request(&json!({
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "user", "content": "hi"}],
+                "reasoning_effort": effort
+            }))
+        };
+        assert!(req("none")["generationConfig"].get("thinkingConfig").is_none());
+        for low in ["minimal", "low"] {
+            assert_eq!(
+                req(low)["generationConfig"]["thinkingConfig"]["thinkingBudget"],
+                json!(1024)
+            );
+        }
+        assert_eq!(
+            req("medium")["generationConfig"]["thinkingConfig"]["thinkingBudget"],
+            json!(-1)
         );
     }
 
