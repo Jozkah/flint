@@ -19,6 +19,7 @@ pub mod addon;
 pub mod addon_commands;
 pub mod commands;
 pub mod driver;
+pub mod env_policy;
 pub mod events;
 pub mod external;
 pub mod http;
