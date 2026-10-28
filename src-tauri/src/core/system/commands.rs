@@ -298,24 +298,54 @@ const JAN_ENV_MARKER: &str = "# Jan Local API Server - Claude Code Config";
 
 /// `content` without the block Jan wrote between its two marker lines, every
 /// variable in it included (custom ones too, not only `ANTHROPIC_*`). Stray
-/// marker lines and `export ANTHROPIC_` lines outside a block, left by older
-/// versions, are dropped as well. An unclosed block runs to the end of the
-/// file, since Jan always appends its block last.
+/// marker lines are dropped too. An unclosed block runs to the end of the
+/// file, since Jan always appends its block last. Only when no marker line
+/// exists is the legacy layout cleaned: a `# Jan Local API Server` header and
+/// the exact exports Flint wrote directly under it. The user's own
+/// `ANTHROPIC_*` exports are never touched.
 fn strip_jan_env_block(content: &str) -> String {
-    let mut inside = false;
-    let kept: Vec<&str> = content
-        .split('\n')
-        .filter(|line| {
+    let lines: Vec<&str> = content.split('\n').collect();
+    let has_marker = lines.iter().any(|l| l.starts_with(JAN_ENV_MARKER));
+    let mut kept: Vec<&str> = Vec::new();
+    if has_marker {
+        let mut inside = false;
+        for line in lines {
             if line.starts_with(JAN_ENV_MARKER) {
                 inside = !inside;
-                return false;
+            } else if !inside {
+                kept.push(line);
             }
-            !inside
-                && !line.starts_with("# Jan Local API Server")
-                && !line.starts_with("export ANTHROPIC_")
-        })
-        .collect();
+        }
+    } else {
+        let mut i = 0;
+        while i < lines.len() {
+            if lines[i].starts_with("# Jan Local API Server") {
+                i += 1;
+                while i < lines.len() && is_legacy_env_export(lines[i]) {
+                    i += 1;
+                }
+            } else {
+                kept.push(lines[i]);
+                i += 1;
+            }
+        }
+    }
     kept.join("\n").trim_end().to_string()
+}
+
+/// Names Flint wrote in older versions, outside any marker block.
+const LEGACY_ENV_NAMES: [&str; 5] = [
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+];
+
+fn is_legacy_env_export(line: &str) -> bool {
+    line.strip_prefix("export ")
+        .and_then(|rest| rest.split('=').next())
+        .is_some_and(|name| LEGACY_ENV_NAMES.contains(&name.trim()))
 }
 
 /// Where the names of the variables `setx` wrote on Windows are recorded, so
@@ -1223,7 +1253,8 @@ fn build_cleaned_env_content(env_file_path: &str) -> String {
 }
 
 /// Clear all Flint-written Claude Code environment variables from the shell config.
-/// Uses the same write-probe + osascript-fallback logic as `launch_claude_code_with_config`.
+/// Uses the same write-probe logic as `launch_claude_code_with_config`; when the
+/// file is not writable it returns `NEED_PERMISSION:<path>` and never escalates.
 #[tauri::command]
 pub fn clear_claude_code_env() -> Result<(), String> {
     if cfg!(target_os = "macos") {
@@ -1244,31 +1275,10 @@ pub fn clear_claude_code_env() -> Result<(), String> {
             .open(&env_file_path)
         {
             Ok(_) => {
-                std::fs::write(&env_file_path, &cleaned).map_err(|e| e.to_string())?;
+                atomic_write_preserving(&env_file_path, &cleaned)?;
                 Ok(())
             }
-            Err(_) => {
-                // Write cleaned content to a temp file, then use osascript to move it
-                let temp_path = format!("{}/.jan_env_clear.sh", home_dir);
-                std::fs::write(&temp_path, &cleaned).map_err(|e| e.to_string())?;
-
-                let script = format!(
-                    r#"do shell script "cp '{}' '{}' && rm '{}'" with administrator privileges"#,
-                    temp_path, env_file_path, temp_path
-                );
-
-                std::process::Command::new("osascript")
-                    .arg("-e")
-                    .arg(&script)
-                    .output()
-                    .map_err(|e| e.to_string())?;
-
-                log::info!(
-                    "CC env cleared from {} with admin privileges",
-                    env_file_path
-                );
-                Ok(())
-            }
+            Err(_) => Err(format!("NEED_PERMISSION:{}", env_file_path)),
         }
     } else if cfg!(target_os = "linux") {
         let home_dir = std::env::var("HOME").map_err(|e| e.to_string())?;
@@ -1635,6 +1645,54 @@ mod tests {
 
         let cleaned = build_cleaned_env_content(path.to_str().unwrap());
         assert_eq!(cleaned, "export PATH=/usr/bin\n");
+    }
+
+    #[test]
+    fn user_anthropic_export_outside_block_survives_save() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".zshenv");
+        fs::write(&path, "export ANTHROPIC_API_KEY=mine\nexport PATH=/usr/bin\n").unwrap();
+        let vars = vec![("ANTHROPIC_BASE_URL".to_string(), "http://x".to_string())];
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("export ANTHROPIC_API_KEY=mine\n"), "{written}");
+        assert_eq!(written.matches("export ANTHROPIC_BASE_URL=").count(), 1, "{written}");
+    }
+
+    #[test]
+    fn user_anthropic_export_survives_reset() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".zshenv");
+        let vars = vec![("ANTHROPIC_BASE_URL".to_string(), "http://x".to_string())];
+        fs::write(&path, "export ANTHROPIC_API_KEY=mine\n").unwrap();
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        let cleaned = build_cleaned_env_content(path.to_str().unwrap());
+        assert_eq!(cleaned, "export ANTHROPIC_API_KEY=mine\n");
+    }
+
+    #[test]
+    fn legacy_header_block_still_cleaned() {
+        let content = "a\n# Jan Local API Server\nexport ANTHROPIC_BASE_URL='x'\nexport ANTHROPIC_AUTH_TOKEN='y'\nexport ANTHROPIC_API_KEY=mine\nb\n";
+        assert_eq!(
+            strip_jan_env_block(content),
+            "a\nexport ANTHROPIC_API_KEY=mine\nb"
+        );
+    }
+
+    #[test]
+    fn unclosed_block_still_runs_to_eof() {
+        let content = format!("a\n{JAN_ENV_MARKER}\nexport FOO='bar'\nexport BAZ='1'\n");
+        assert_eq!(strip_jan_env_block(&content), "a");
+    }
+
+    #[test]
+    fn macos_clear_has_no_privileged_path() {
+        let src = include_str!("commands.rs");
+        let at = src.find("pub fn clear_claude_code_env").unwrap();
+        let body = &src[at..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(!body.contains("osascript") && !body.contains("administrator"));
     }
 
     #[test]
