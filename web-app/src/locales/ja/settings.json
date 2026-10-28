@@ -1188,7 +1188,6 @@
       "updated": "{{when}} に更新",
       "loading": "キャンペーンを読み込んでいます",
       "loadFailed": "キャンペーンを読み込めませんでした。",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "読み取れないキャンペーンの記録を {{count}} 件スキップしました。ファイルはそのまま残しています。",
       "skipped_other": "読み取れないキャンペーンの記録を {{count}} 件スキップしました。ファイルはそのまま残しています。",
       "retry": "再試行",

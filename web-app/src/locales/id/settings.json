@@ -1186,7 +1186,6 @@
       "updated": "Diperbarui {{when}}",
       "loading": "Memuat campaign",
       "loadFailed": "Campaign tidak dapat dimuat.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_other": "{{count}} catatan kampanye yang tidak terbaca dilewati. Berkas dibiarkan di tempatnya.",
       "retry": "Coba lagi",
       "needsDesktop": "Kampanye memerlukan aplikasi desktop",

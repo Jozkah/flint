@@ -1188,7 +1188,6 @@
       "updated": "Güncellendi: {{when}}",
       "loading": "Kampanyalar yükleniyor",
       "loadFailed": "Kampanyalar yüklenemedi.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Okunamayan {{count}} kampanya kaydı atlandı. Dosyalar yerinde bırakıldı.",
       "skipped_other": "Okunamayan {{count}} kampanya kaydı atlandı. Dosyalar yerinde bırakıldı.",
       "retry": "Yeniden dene",
