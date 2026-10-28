@@ -3687,6 +3687,19 @@ impl App {
         self.refresh_path_hints();
     }
 
+    /// Insert `text` at the caret in one edit (pasted text): one string insert
+    /// and one hint refresh instead of one per character.
+    fn input_insert_str(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.input.insert_str(self.cursor, text);
+        self.cursor += text.len();
+        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
+        self.reset_slash_hint();
+        self.refresh_path_hints();
+    }
+
     /// Delete the char before the caret (Backspace).
     fn input_backspace(&mut self) {
         if let Some(prev) = self.input[..self.cursor].chars().next_back() {
@@ -10113,10 +10126,30 @@ fn route_paste_event(app: &mut App, event: Event) {
     }
     // Bracketed paste of a split SGR report is the same leak as typing it
     // a character at a time; strip before the composer sees it.
-    let text = strip_sgr_mouse_reports(&text);
-    for c in text.chars() {
-        app.input_insert(c);
+    let text = normalize_paste(&strip_sgr_mouse_reports(&text));
+    app.input_insert_str(&text);
+}
+
+/// Clean pasted text for the composer: `\r\n` and lone `\r` become `\n`, tabs
+/// and newlines are kept, every other control character (ESC, BEL, ...) is
+/// dropped.
+fn normalize_paste(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\n' | '\t' => out.push(c),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
     }
+    out
 }
 
 /// Append bracketed paste to the active custom answer only.
@@ -22078,6 +22111,20 @@ mod tests {
         );
         assert_eq!(clipboard_path("/tmp/b.jpg").as_deref(), Some("/tmp/b.jpg"));
         assert_eq!(clipboard_path("   \n  "), None);
+    }
+
+    #[test]
+    fn paste_keeps_tabs_and_normalizes_cr() {
+        assert_eq!(normalize_paste("a\tb\r\nc\rd\n"), "a\tb\nc\nd\n");
+        let mut app = test_app();
+        route_paste_event(&mut app, Event::Paste("fn x() {\r\n\treturn 1;\r\n}".into()));
+        assert_eq!(app.input, "fn x() {\n\treturn 1;\n}");
+        assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn paste_strips_esc_and_bel() {
+        assert_eq!(normalize_paste("a\x1b[31mb\x07c"), "a[31mbc");
     }
 
     #[test]
