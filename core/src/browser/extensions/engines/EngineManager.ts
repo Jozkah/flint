@@ -28,6 +28,14 @@ export class EngineManager {
    * The instance of the engine manager.
    */
   static instance(): EngineManager {
-    return (window.core?.engineManager as EngineManager) ?? new EngineManager()
+    const existing = window.core?.engineManager as EngineManager | undefined
+    if (existing) return existing
+    // Remember the instance, so two callers share one registry of engines.
+    const created = new EngineManager()
+    if (window.core) {
+      const core = window.core as { engineManager?: unknown }
+      core.engineManager = created
+    }
+    return created
   }
 }

@@ -5,6 +5,7 @@ import { campaignApi } from '@/lib/campaignApi'
 import type { Campaign } from '@/lib/campaignModel'
 import { useCampaignStore } from '@/hooks/useCampaigns'
 import { errorText } from '@/lib/errorText'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 /**
  * The human gate of a campaign the server runs: the plan the server's model
@@ -21,6 +22,7 @@ export function ServerPlanApproval({
   campaign: Pick<Campaign, 'id' | 'tasks' | 'estimate'>
   allowBypass: boolean
 }) {
+  const { t } = useTranslation()
   const [access, setAccess] = useState<'worktree' | 'ask'>(
     allowBypass ? 'worktree' : 'ask'
   )
@@ -49,24 +51,26 @@ export function ServerPlanApproval({
       data-testid="server-plan-approval"
     >
       <div>
-        <h2 className="text-sm font-medium">Approve this plan to start it</h2>
+        <h2 className="text-sm font-medium">{t('server:planApproval.title')}</h2>
         <p className="text-xs text-muted-foreground">
-          {campaign.tasks.length} task{campaign.tasks.length === 1 ? '' : 's'}.
-          The server runs them on its own, with no client attached, and asks
-          again before anything reaches your folder.
+          {t('server:planApproval.summary', { count: campaign.tasks.length })}
           {campaign.estimate
-            ? ` Rough cost: ${campaign.estimate.low.toLocaleString()} to ${campaign.estimate.high.toLocaleString()} tokens.`
+            ? ' ' +
+              t('server:planApproval.cost', {
+                low: campaign.estimate.low.toLocaleString(),
+                high: campaign.estimate.high.toLocaleString(),
+              })
             : ''}
         </p>
       </div>
       <ol className="list-decimal space-y-1 pl-5 text-sm">
-        {campaign.tasks.map((t) => (
-          <li key={t.id}>
-            <span className="font-medium">{t.title}</span>
-            {t.dependsOn.length > 0 && (
+        {campaign.tasks.map((task) => (
+          <li key={task.id}>
+            <span className="font-medium">{task.title}</span>
+            {task.dependsOn.length > 0 && (
               <span className="text-xs text-muted-foreground">
                 {' '}
-                after {t.dependsOn.join(', ')}
+                {t('server:planApproval.after', { deps: task.dependsOn.join(', ') })}
               </span>
             )}
           </li>
@@ -74,7 +78,7 @@ export function ServerPlanApproval({
       </ol>
       <div className="flex flex-wrap items-center gap-2">
         <select
-          aria-label="How tasks work"
+          aria-label={t('server:planApproval.accessLabel')}
           className="rounded border bg-transparent px-2 py-1 text-xs"
           value={access}
           onChange={(e) => setAccess(e.target.value as 'worktree' | 'ask')}
@@ -82,10 +86,10 @@ export function ServerPlanApproval({
         >
           {allowBypass && (
             <option value="worktree">
-              Work on their own inside their own folder
+              {t('server:planApproval.accessWorktree')}
             </option>
           )}
-          <option value="ask">Ask for each action</option>
+          <option value="ask">{t('server:planApproval.accessAsk')}</option>
         </select>
         <Button
           size="sm"
@@ -93,7 +97,7 @@ export function ServerPlanApproval({
           data-testid="server-plan-approve"
           onClick={() => void run(() => campaignApi.approve(campaign.id, access))}
         >
-          Approve and start
+          {t('server:planApproval.approve')}
         </Button>
         <Button
           size="sm"
@@ -102,11 +106,11 @@ export function ServerPlanApproval({
           data-testid="server-plan-reject"
           onClick={() =>
             void run(() =>
-              campaignApi.cancel(campaign.id, 'the plan was not approved')
+              campaignApi.cancel(campaign.id, t('server:planApproval.rejectReason'))
             )
           }
         >
-          Reject
+          {t('server:planApproval.reject')}
         </Button>
       </div>
     </section>

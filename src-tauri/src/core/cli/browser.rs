@@ -59,7 +59,12 @@ fn launch(url: &str) -> Result<(), String> {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map(|_| ())
+        .map(|mut child| {
+            // Reap the launcher when it exits so it does not linger as a zombie.
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        })
         .map_err(|e| format!("could not launch {program}: {e}"))
 }
 

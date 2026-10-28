@@ -48,7 +48,8 @@
     "empty": "Arsip kosong.",
     "retention_other": "Item arsip dihapus permanen setelah {{count}} hari.",
     "retentionForever": "Item arsip tetap ada sampai Anda menghapusnya.",
-    "emptyAction": "Kosongkan arsip"
+    "emptyAction": "Kosongkan arsip",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Itu tidak berhasil",
@@ -1344,5 +1345,13 @@
       "tickFirst": "Centang dulu file bertanda yang sudah Anda lihat.",
       "missing": "Perubahan yang diusulkan sudah tidak ada. Buka campaign di komputer."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

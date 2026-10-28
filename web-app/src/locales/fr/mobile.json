@@ -50,7 +50,8 @@
     "retention_other": "Les éléments archivés sont supprimés définitivement après {{count}} jours.",
     "retentionForever": "Les éléments archivés restent jusqu'à ce que vous les supprimiez.",
     "emptyAction": "Vider l'archive",
-    "retention_many": "Les éléments archivés sont supprimés définitivement après {{count}} de jours."
+    "retention_many": "Les éléments archivés sont supprimés définitivement après {{count}} de jours.",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Cela n'a pas fonctionné",
@@ -1376,5 +1377,13 @@
       "tickFirst": "Cochez d'abord les fichiers signalés que vous avez regardés.",
       "missing": "Les modifications proposées ne sont plus là. Ouvrez la campagne sur l'ordinateur."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

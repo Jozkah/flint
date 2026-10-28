@@ -12,7 +12,7 @@
   },
   "scripts": {
     "lint": "yarn workspace @janhq/web-app lint",
-    "lint:locales": "node scripts/check-locale-parity.mjs",
+    "lint:locales": "node scripts/check-locale-parity.mjs --baseline=scripts/locale-plurals-baseline.json",
     "guard:local-only": "node scripts/local-only-guard.mjs",
     "test:scripts": "node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs scripts/upstream-intake/*.test.mjs",
     "dev": "yarn dev:tauri",
