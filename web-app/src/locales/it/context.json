@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "non riuscito",
     "chatStarted": "Chat iniziata"
+  },
+  "promptSnapshot": {
+    "summary": "Cosa ha ricevuto il modello",
+    "loading": "Caricamento…",
+    "gone": "Quell'istantanea non è più sul disco.",
+    "unavailable": "Nessun payload è stato salvato. {{reason}}",
+    "reason": {
+      "not-serializable": "La richiesta non ha potuto essere serializzata, quindi non è stato salvato nulla.",
+      "disabled": "Le istantanee sono disattivate per questa esecuzione.",
+      "too-large": "La richiesta era troppo grande per essere salvata intera."
+    },
+    "meta": {
+      "provider": "Provider",
+      "model": "Modello",
+      "reasoning": "Ragionamento",
+      "session": "Sessione",
+      "run": "Esecuzione",
+      "agent": "Agente",
+      "sent": "Inviato",
+      "hash": "Hash",
+      "redacted": "Oscurato",
+      "nothing": "niente",
+      "redactedList_one": "{{count}} campo: {{list}}",
+      "redactedList_other": "{{count}} campi: {{list}}"
+    },
+    "view": {
+      "label": "Visualizza come",
+      "tree": "Albero",
+      "json": "JSON"
+    },
+    "copy": "Copia il payload oscurato",
+    "copied": "Copiato",
+    "diff": {
+      "run": "Confronta con la richiesta precedente",
+      "loading": "Confronto…",
+      "first": "Questa è la prima richiesta salvata della sessione; non c'è nulla di precedente da confrontare.",
+      "summary": "Rispetto a {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} entrati",
+      "left": "{{count}} usciti",
+      "keptMessages_one": "{{count}} messaggio mantenuto",
+      "keptMessages_other": "{{count}} messaggi mantenuti",
+      "keptTools_one": "{{count}} strumento mantenuto",
+      "keptTools_other": "{{count}} strumenti mantenuti",
+      "systemChanged": "prompt di sistema modificato",
+      "enteredHeading": "Entrati",
+      "leftHeading": "Usciti",
+      "nothingNew": "Niente di nuovo.",
+      "nothingLeft": "Niente è uscito dalla finestra."
+    },
+    "replay": {
+      "label": "Riesecuzioni di questo contesto",
+      "run": "Riesegui questo contesto",
+      "hint": "Invia di nuovo esattamente questa richiesta. Gli strumenti richiesti dal modello non vengono eseguiti.",
+      "needsSession": "La riesecuzione richiede la sessione a cui appartiene questo turno.",
+      "redactedBlock_one": "Non può essere rieseguita: {{count}} campo è stato oscurato prima del salvataggio, quindi il modello non riceverebbe ciò che ricevette allora.",
+      "redactedBlock_other": "Non può essere rieseguita: {{count}} campi sono stati oscurati prima del salvataggio, quindi il modello non riceverebbe ciò che ricevette allora.",
+      "state": {
+        "running": "Riesecuzione…",
+        "interrupted": "Interrotto: Flint si è fermato durante l'esecuzione",
+        "completed": "Completato",
+        "failed": "Non riuscito",
+        "cancelled": "Fermato",
+        "refused": "Rifiutato"
+      },
+      "matched": "Stesso contesto del turno (gli hash corrispondono)",
+      "differed": "La richiesta inviata differiva da quella del turno",
+      "finish": "fine: {{reason}}",
+      "stop": "Ferma",
+      "asked": "Ha richiesto {{tools}} (non eseguito)"
+    }
   }
 }

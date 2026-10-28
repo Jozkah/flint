@@ -422,6 +422,10 @@ class RemoteRun {
   private usage: Usage | undefined
   private interruptSent = false
   private dirty = false
+  private steering = false
+  /** Resolves when the turn has been fully settled (transcript committed). */
+  readonly settled: Promise<void>
+  private resolveSettled!: () => void
 
   constructor(
     readonly sid: string,
@@ -433,6 +437,9 @@ class RemoteRun {
   ) {
     this.turns = base
     this.feed = new RustSubagentFeed({ sessionId: sid, runId })
+    this.settled = new Promise<void>((resolve) => {
+      this.resolveSettled = resolve
+    })
   }
 
   // ---- lifecycle ---------------------------------------------------------
@@ -468,12 +475,44 @@ class RemoteRun {
         for (const env of events) this.handle(env)
         this.flush()
       },
-      onGap: () => {
-        // What was missed is in the transcript the turn will end with.
-      },
+      onGap: () => void this.resync(),
+      onReset: () => void this.resetAndResync(),
     }).catch((e) => {
       if (!this.ended) this.fail(e instanceof Error ? e.message : String(e))
     })
+  }
+
+  /**
+   * Events were missed: prompts that arrived in the gap are re-raised from the
+   * session's pending lists (already known ones are skipped by request id).
+   */
+  private async resync(): Promise<void> {
+    if (this.ended) return
+    try {
+      const session = await getRemoteSession(this.sid, this.deps.fetchImpl)
+      if (this.ended) return
+      for (const rec of session.pendingApprovals ?? []) this.raisePermission(rec)
+      for (const rec of session.pendingAsks ?? []) {
+        const id = String(rec.request_id ?? rec.requestId ?? '')
+        const known = (useCoworkRun.getState().pendingAsks[this.sid] ?? []).some(
+          (a) => a.requestId === id
+        )
+        if (!id || known) continue
+        this.raiseAsk(id, (rec.request ?? rec) as { questions: unknown[] })
+      }
+      this.flush()
+    } catch {
+      // Unreachable now: the turn's end still commits the transcript.
+    }
+  }
+
+  /** The stream restarted from nothing: drop the preview and rebuild it. */
+  private async resetAndResync(): Promise<void> {
+    if (this.ended) return
+    this.turns = this.reattached ? [] : this.turns.slice(0, 1)
+    this.dirty = true
+    this.flush()
+    await this.resync()
   }
 
   /** The turn could not be started or followed. */
@@ -493,18 +532,29 @@ class RemoteRun {
   // ---- steering ----------------------------------------------------------
 
   private async steer(): Promise<void> {
-    if (this.ended) return
-    const taken = useMessageQueue.getState().takeSteering(this.sid)
-    for (const message of taken) {
-      this.turns = [...this.turns, { role: 'user', content: message.text, steered: true }]
-      this.dirty = true
-      try {
-        await steerRun(this.sid, message.text, this.deps.fetchImpl)
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : String(e))
+    if (this.ended || this.steering) return
+    this.steering = true
+    try {
+      const taken = useMessageQueue.getState().takeSteering(this.sid)
+      for (const message of taken) {
+        const turn: CoworkTurn = { role: 'user', content: message.text, steered: true }
+        this.turns = [...this.turns, turn]
+        this.dirty = true
+        try {
+          await steerRun(this.sid, message.text, this.deps.fetchImpl)
+        } catch (e) {
+          // Not delivered: take it back and keep it for the user to resend.
+          this.turns = this.turns.filter((t) => t !== turn)
+          const queue = useMessageQueue.getState()
+          queue.enqueue(this.sid, message)
+          queue.hold(this.sid, message.id)
+          toast.error(e instanceof Error ? e.message : String(e))
+        }
       }
+      this.flush()
+    } finally {
+      this.steering = false
     }
-    this.flush()
   }
 
   // ---- events ------------------------------------------------------------
@@ -757,6 +807,7 @@ class RemoteRun {
     for (const record of useCoworkRun.getState().pendingAsks[this.sid] ?? []) {
       useCoworkRun.getState().removePendingAsk(this.sid, record.requestId)
     }
+    this.resolveSettled()
   }
 
   /** The preview turns, with calls still running marked as cut short. */
@@ -790,7 +841,15 @@ export async function sendRemoteTurn(
   if (!isServerTransport() && !deps.fetchImpl) {
     throw new Error('Server sessions can only be run from a page the server serves.')
   }
-  if (live.has(sid) || useCoworkRun.getState().runs[sid]) return
+  const busy = () => live.has(sid) || !!useCoworkRun.getState().runs[sid]
+  if (busy()) {
+    // A turn that is just ending may still be committing its transcript.
+    const ending = live.get(sid)
+    if (ending) {
+      await Promise.race([ending.settled, new Promise<void>((r) => setTimeout(r, 3000))])
+    }
+    if (busy()) throw new Error('A turn is still running; wait for it to finish')
+  }
   const base: CoworkTurn[] = [{ role: 'user', content: text }]
   const run = new RemoteRun(sid, crypto.randomUUID(), base, deps)
   run.begin()

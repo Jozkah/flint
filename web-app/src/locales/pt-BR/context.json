@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "falhou",
     "chatStarted": "Chat iniciado"
+  },
+  "promptSnapshot": {
+    "summary": "O que o modelo recebeu",
+    "loading": "Carregando…",
+    "gone": "Esse instantâneo não está mais no disco.",
+    "unavailable": "Nenhuma carga útil foi armazenada. {{reason}}",
+    "reason": {
+      "not-serializable": "A requisição não pôde ser serializada, então nada foi armazenado.",
+      "disabled": "Os instantâneos estão desativados para esta execução.",
+      "too-large": "A requisição era grande demais para ser armazenada inteira."
+    },
+    "meta": {
+      "provider": "Provedor",
+      "model": "Modelo",
+      "reasoning": "Raciocínio",
+      "session": "Sessão",
+      "run": "Execução",
+      "agent": "Agente",
+      "sent": "Enviado",
+      "hash": "Hash",
+      "redacted": "Ocultado",
+      "nothing": "nada",
+      "redactedList_one": "{{count}} campo: {{list}}",
+      "redactedList_other": "{{count}} campos: {{list}}"
+    },
+    "view": {
+      "label": "Ver como",
+      "tree": "Árvore",
+      "json": "JSON"
+    },
+    "copy": "Copiar a carga útil ocultada",
+    "copied": "Copiado",
+    "diff": {
+      "run": "Comparar com a requisição anterior",
+      "loading": "Comparando…",
+      "first": "Esta é a primeira requisição armazenada da sessão; não há nada anterior para comparar.",
+      "summary": "Em relação a {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} entraram",
+      "left": "{{count}} saíram",
+      "keptMessages_one": "{{count}} mensagem mantida",
+      "keptMessages_other": "{{count}} mensagens mantidas",
+      "keptTools_one": "{{count}} ferramenta mantida",
+      "keptTools_other": "{{count}} ferramentas mantidas",
+      "systemChanged": "prompt do sistema alterado",
+      "enteredHeading": "Entraram",
+      "leftHeading": "Saíram",
+      "nothingNew": "Nada novo.",
+      "nothingLeft": "Nada saiu da janela."
+    },
+    "replay": {
+      "label": "Reproduções deste contexto",
+      "run": "Reproduzir este contexto",
+      "hint": "Envia exatamente esta requisição de novo. As ferramentas que o modelo pedir não são executadas.",
+      "needsSession": "A reprodução precisa da sessão a que este turno pertence.",
+      "redactedBlock_one": "Não pode ser reproduzida: {{count}} campo foi ocultado antes do armazenamento, então o modelo não receberia o que recebeu na época.",
+      "redactedBlock_other": "Não pode ser reproduzida: {{count}} campos foram ocultados antes do armazenamento, então o modelo não receberia o que recebeu na época.",
+      "state": {
+        "running": "Reproduzindo…",
+        "interrupted": "Interrompido: o Flint parou durante a execução",
+        "completed": "Concluído",
+        "failed": "Falhou",
+        "cancelled": "Parado",
+        "refused": "Recusado"
+      },
+      "matched": "Mesmo contexto do turno (os hashes coincidem)",
+      "differed": "A requisição enviada diferia da do turno",
+      "finish": "fim: {{reason}}",
+      "stop": "Parar",
+      "asked": "Pediu {{tools}} (não executado)"
+    }
   }
 }

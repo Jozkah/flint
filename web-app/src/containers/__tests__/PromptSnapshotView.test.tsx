@@ -6,6 +6,9 @@ import {
   type PromptSnapshot,
 } from '@/containers/PromptSnapshotView'
 
+// These tests read the words, so they use the real English strings.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 // The stored record is already redacted: `snapshot::capture` redacts before it
 // persists, so the viewer never has an unredacted form to leak.
 const snap = (over: Partial<PromptSnapshot> = {}): PromptSnapshot => ({
@@ -361,7 +364,7 @@ describe('comparing with the previous request (AH-086)', () => {
       (li) => li.dataset.reason
     )
     expect(reasons).toEqual(["the model's previous answer", 'the new request', 'offered to the model'])
-    expect(screen.getByTestId('context-diff-summary')).toHaveTextContent('3 entered, 0 left, 1 message(s) kept')
+    expect(screen.getByTestId('context-diff-summary')).toHaveTextContent('3 entered, 0 left, 1 message kept')
   })
 
   it('says so for the session\'s first request', async () => {
@@ -392,5 +395,48 @@ describe('comparing with the previous request (AH-086)', () => {
     await openIt(user)
     await user.click(await screen.findByTestId('context-diff-run'))
     expect(await screen.findByTestId('context-diff-error')).toHaveTextContent('no snapshots file')
+  })
+
+  it('words the labels and the redaction count through translations', async () => {
+    const user = userEvent.setup()
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-1"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([snap()])}
+      />
+    )
+    expect(screen.getByText('What the model received')).toBeInTheDocument()
+    await openIt(user)
+    const redactions = await screen.findByTestId('prompt-snapshot-redactions')
+    expect(redactions).toHaveTextContent(
+      '1 field: headers.authorization (auth-header)'
+    )
+    expect(screen.getByText('Copy redacted payload')).toBeInTheDocument()
+    expect(screen.getByTestId('prompt-snapshot-replay-blocked')).toHaveTextContent(
+      '1 field was redacted'
+    )
+  })
+
+  it('uses the plural for several redactions', async () => {
+    const user = userEvent.setup()
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-1"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([
+          snap({
+            redactions: [
+              { path: 'a', why: 'x' },
+              { path: 'b', why: 'y' },
+            ],
+          }),
+        ])}
+      />
+    )
+    await openIt(user)
+    expect(await screen.findByTestId('prompt-snapshot-redactions')).toHaveTextContent(
+      '2 fields: a (x), b (y)'
+    )
   })
 })
