@@ -44,6 +44,9 @@
     "description": "Mengindeks file terlampir agar dapat dicari dan dikutip. Dokumen besar mungkin butuh waktu sebentar."
   },
   "actions": {
+    "readAloud": "Bacakan",
+    "stopReading": "Berhenti membaca",
+    "codeOmitted": "kode dilewati",
     "copy": "Salin",
     "regenerate": "Buat ulang jawaban",
     "continue": "Lanjutkan pembuatan",

@@ -103,6 +103,7 @@ function HuggingFaceModelDetail() {
           setModel(exact)
           setFiles(repoFiles)
         }
+        if (cancelled) return
         setReadmeLoading(true)
         const markdown = await getHuggingFaceReadme(exact.id, token).catch(() => '')
         if (!cancelled) setReadme(markdown)

@@ -44,6 +44,9 @@
     "description": "Đang lập chỉ mục các tệp đính kèm để chúng có thể được tìm kiếm và trích dẫn. Với tài liệu lớn có thể mất một lúc."
   },
   "actions": {
+    "readAloud": "Đọc to",
+    "stopReading": "Dừng đọc",
+    "codeOmitted": "đã bỏ qua mã",
     "copy": "Sao chép",
     "regenerate": "Tạo lại câu trả lời",
     "continue": "Tiếp tục tạo",

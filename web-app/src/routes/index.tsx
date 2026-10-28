@@ -19,10 +19,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 /** Below Tailwind's `sm`: the page header has room for one button. */
 const PHONE_QUERY = '(max-width: 639px)'
 
-type ThreadModel = {
-  id: string
-  provider: string
-}
+import { parseThreadModel, type ThreadModel } from '@/lib/parseThreadModel'
 
 type SearchParams = {
   threadModel?: ThreadModel
@@ -41,7 +38,7 @@ export const Route = createFileRoute(route.home as any)({
   component: Index,
   validateSearch: (search: Record<string, unknown>): SearchParams => {
     const result: SearchParams = {
-      threadModel: search.threadModel as ThreadModel | undefined,
+      threadModel: parseThreadModel(search.threadModel),
     }
 
     return result

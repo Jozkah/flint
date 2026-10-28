@@ -108,6 +108,7 @@ import {
   type SettingWrite,
 } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { withReasoningDefault } from '@/lib/reasoningDefault'
 import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import {
   THINKING_BUDGET_LEVELS,
@@ -599,6 +600,7 @@ const ChatInput = memo(function ChatInput({
   const enterKeyInsertsNewline = useGeneralSetting(
     (state) => state.enterKeyInsertsNewline
   )
+  const reasoningDefault = useGeneralSetting((state) => state.reasoningDefault)
   const tokenCounterCompact = useGeneralSetting(
     (state) => state.tokenCounterCompact
   )
@@ -1579,11 +1581,7 @@ const ChatInput = memo(function ChatInput({
       }
 
       if (isTemporaryChat) {
-        // For temporary chat, store message and navigate to temporary thread
-        safeSessionSet(
-          SESSION_STORAGE_KEY.INITIAL_MESSAGE_TEMPORARY,
-          JSON.stringify(messagePayload)
-        )
+        // For temporary chat, flag the navigation to the temporary thread
         safeSessionSet('temp-chat-nav', 'true')
         // Not taken by a temporary chat: forget it so it cannot leak into a later one.
         useDraftSampling.getState().clearAll()
@@ -3137,7 +3135,15 @@ const ChatInput = memo(function ChatInput({
   } = effortProfile(selectedProvider, selectedModel)
   // What this chat will actually send: its own override where it has one, the
   // global model setting otherwise.
-  const resolvedForEffort = resolveModel(selectedModel, chatOverrides)
+  const resolvedForEffort = resolveModel(
+    selectedModel,
+    withReasoningDefault(
+      chatOverrides,
+      selectedProvider,
+      selectedModel,
+      reasoningDefault
+    )
+  )
   // A llama.cpp model is offered an effort only when it reasons (C052).
   const localModelWithoutReasoning =
     selectedProvider === 'llamacpp' && effortLevels.length === 0
@@ -3270,6 +3276,11 @@ const ChatInput = memo(function ChatInput({
               attachments={attachments}
               canSeeImages={visionSupported}
               onRemove={(i) => void handleRemoveAttachment(i)}
+              onTogglePdfImages={(i) =>
+                setAttachmentsForThread(attachmentsKey, (prev) =>
+                  prev.map((a, j) => (j === i ? { ...a, sendAsImages: !a.sendAsImages } : a))
+                )
+              }
               onOpenImage={(url) =>
                 setViewerAt(
                   Math.max(0, composerImages.findIndex((i) => i.url === url))
@@ -3821,13 +3832,21 @@ const ChatInput = memo(function ChatInput({
                       selectedProvider === 'gemini' ||
                       selectedProvider === 'anthropic' ||
                       selectedProvider === 'openai'
-                    const reasoningValue =
+                    const ownReasoning =
                             (selectedModel?.settings?.reasoning
                               ?.controller_props?.value as
                               | 'auto'
                               | 'on'
                               | 'off'
                               | undefined) ?? 'auto'
+                    // "Reasoning for new chats" fills in where neither the
+                    // chat nor the model has chosen.
+                    const reasoningValue =
+                      ownReasoning === 'auto' &&
+                      !isOverridden(chatOverrides, 'reasoning') &&
+                      (reasoningDefault === 'on' || reasoningDefault === 'off')
+                        ? reasoningDefault
+                        : ownReasoning
                     const setReasoning = (value: 'auto' | 'on' | 'off') =>
                       updateModelSetting(
                         'reasoning',

@@ -27,6 +27,8 @@ export type Attachment = {
   path?: string
   fileType?: string // e.g., 'pdf', 'docx'
   parseMode?: 'auto' | 'inline' | 'embeddings' | 'prompt'
+  /** A PDF the user chose to send to a vision model as page images. */
+  sendAsImages?: boolean
 
   // After processing (images uploaded, documents ingested)
   id?: string

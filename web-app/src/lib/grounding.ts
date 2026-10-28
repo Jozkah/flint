@@ -121,6 +121,9 @@ export function injectCitationMarkers(
   const sentences = Object.keys(sentenceCitations).sort(
     (a, b) => b.length - a.length
   )
+  // A placed sentence is parked behind a placeholder so a shorter cited
+  // sentence that is a substring of it cannot match inside it.
+  const placed: string[] = []
   for (const sentence of sentences) {
     const indices = sentenceCitations[sentence]
     if (!indices?.length) continue
@@ -132,8 +135,13 @@ export function injectCitationMarkers(
       .join('')
     const esc = sentence.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
     // A function, so `$$` or `$&` in the sentence (LaTeX, prices) is literal.
-    stash = stash.replace(new RegExp(esc), () => `${sentence}${marker}`)
+    stash = stash.replace(new RegExp(esc), () => {
+      placed.push(`${sentence}${marker}`)
+      return ` \u0001${placed.length - 1}\u0001 `
+    })
   }
+
+  stash = stash.replace(/ \u0001(\d+)\u0001 /g, (_, i) => placed[Number(i)])
 
   stash = stash.replace(/ §(\d+)§ /g, (_, i) => codeSpans[Number(i)])
   return stash

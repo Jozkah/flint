@@ -44,6 +44,9 @@
     "description": "Indexando os arquivos anexados para que possam ser pesquisados e citados. Pode levar um momento para documentos grandes."
   },
   "actions": {
+    "readAloud": "Ler em voz alta",
+    "stopReading": "Parar leitura",
+    "codeOmitted": "código omitido",
     "copy": "Copiar",
     "regenerate": "Gerar resposta novamente",
     "continue": "Continuar gerando",

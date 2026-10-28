@@ -48,18 +48,17 @@ Darwin)
   echo "Signed and verified $signed engine binaries"
   ;;
 MINGW* | MSYS* | CYGWIN*)
-  [ -n "${AZURE_KEY_VAULT_URI:-}" ] || give_up "AZURE_KEY_VAULT_URI is unset, so there is no certificate to sign with."
-  command -v AzureSignTool >/dev/null 2>&1 \
-    || give_up "AzureSignTool is not on PATH (dotnet tool install --global AzureSignTool)."
-  signed=0
+  # FLINT_SIGN_MODE (trusted | pfx) is set by the release workflow when signing
+  # secrets exist; see docs/code-signing.md.
+  case "${FLINT_SIGN_MODE:-}" in
+  trusted | pfx) ;;
+  *) give_up "FLINT_SIGN_MODE is unset, so there is no certificate to sign with." ;;
+  esac
+  set -- "$DEST/flint-llama-worker.exe" "$DEST"/ggml*.dll
+  [ -f "$1" ] || give_up "no engine binaries in $DEST to sign."
   # sign.ps1 is the same script tauri's signCommand runs, so the installer and
   # the binaries inside it are signed by one implementation.
-  for target in "$DEST/flint-llama-worker.exe" "$DEST"/ggml*.dll; do
-    [ -f "$target" ] || continue
-    powershell -ExecutionPolicy Bypass -File src-tauri/sign.ps1 "$target" || exit 1
-    signed=$((signed + 1))
-  done
-  [ "$signed" -gt 0 ] || give_up "no engine binaries in $DEST to sign."
-  echo "Signed $signed engine binaries"
+  powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/sign.ps1 "$@" || exit 1
+  echo "Signed the engine binaries"
   ;;
 esac

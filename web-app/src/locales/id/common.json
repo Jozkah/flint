@@ -843,7 +843,28 @@
     "openCodeFolderInCowork": "Buka folder kode di Cowork",
     "openCodeFolder": "Buka folder kode",
     "openCodeFolderDescription": "Pilih folder di komputer Anda untuk dikerjakan Flint.",
-    "setUpEmbeddingModel": "Siapkan model embedding"
+    "setUpEmbeddingModel": "Siapkan model embedding",
+    "webPage": {
+      "open": "Tambah halaman web",
+      "title": "Tambah halaman web",
+      "description": "Ambil halaman dan simpan teksnya yang dapat dibaca sebagai file proyek. Hanya alamat http dan https publik yang berfungsi.",
+      "urlLabel": "Alamat halaman",
+      "add": "Tambah halaman",
+      "refresh": "Muat ulang",
+      "added": "\"{{name}}\" ditambahkan",
+      "refreshed": "\"{{name}}\" dimuat ulang",
+      "truncated": "Halaman melebihi batas ukuran, jadi hanya bagian awalnya yang disimpan.",
+      "refreshFailed": "Gagal memuat ulang halaman",
+      "errors": {
+        "invalidUrl": "Masukkan alamat web lengkap yang diawali http:// atau https://.",
+        "blocked": "Alamat itu mengarah ke komputer ini atau jaringan pribadi, jadi tidak diambil.",
+        "timeout": "Halaman terlalu lama merespons. Coba lagi nanti.",
+        "notHtml": "Alamat itu bukan halaman web dengan teks yang dapat dibaca (misalnya PDF, gambar, atau unduhan).",
+        "tooLarge": "Halaman terlalu besar untuk diambil.",
+        "httpError": "Situs mengembalikan galat: {{message}}",
+        "failed": "Gagal mengambil halaman: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Pilih cara menyerap lampiran",
@@ -2680,7 +2701,11 @@
     "noVision": "Model ini tidak bisa membaca gambar",
     "details": "Detail untuk {{name}}",
     "previewLoading": "Memuat pratinjau…",
-    "previewNone": "Pratinjau tidak tersedia"
+    "previewNone": "Pratinjau tidak tersedia",
+    "pagesAsImages": "Kirim halaman sebagai gambar",
+    "pagesAsImagesHint": "Kirim halaman PDF ini sebagai gambar agar model dapat melihat pindaian, grafik, dan tata letak",
+    "pdfPagesCut": "{{sent}} dari {{total}} halaman pertama {{name}} dikirim sebagai gambar",
+    "pdfScannedAsImages": "{{name}} tidak memiliki teks, jadi halamannya dikirim sebagai gambar"
   },
   "fileViewer": {
     "openFull": "Buka pratinjau lengkap",

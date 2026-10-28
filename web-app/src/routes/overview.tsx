@@ -635,7 +635,10 @@ function Overview() {
   const navigate = useNavigate()
   const [usageOpen, setUsageOpen] = useState(false)
   const [range, setRange] = useState<Range>(7)
-  const now = Date.now()
+  // Re-read the clock when the data or range changes, not on every render, so
+  // the summaries below stay memoised.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => Date.now(), [days, range])
   const greeting = t(greetingKey(new Date(now)))
   const current = useMemo(() => summarize(days, range, now), [days, range, now])
   const previous = useMemo(() => summarize(days, range, now - range * 86_400_000), [days, range, now])

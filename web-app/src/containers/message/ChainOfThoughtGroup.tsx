@@ -408,8 +408,9 @@ export const ChainOfThoughtGroup = memo(
             size="icon"
             type="button"
             variant="outline"
+            aria-label={t('common:scrollToBottom')}
           >
-            <ArrowDown className="size-3" />
+            <ArrowDown className="size-3" aria-hidden />
           </Button>
         )}
       </div>
