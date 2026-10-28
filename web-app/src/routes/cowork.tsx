@@ -4,7 +4,6 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
-import { switchedFromOf } from '@/lib/assistantSwitch'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { PrBar } from '@/containers/PrBar'
@@ -24,8 +23,7 @@ import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
-import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
-import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
+import { type WidgetHost } from '@/lib/visualize/hostContext'
 import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
@@ -42,7 +40,6 @@ import { route } from '@/constants/routes'
 import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -84,8 +81,7 @@ import {
   useCoworkSessions,
   ensureCurrentSession,
   startPaneSession,
-  startPaneSessionParked,
-} from '@/hooks/useCoworkSessions'
+  } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { resolveCoworkModel } from '@/lib/coworkModelChoice'
@@ -111,7 +107,6 @@ import {
   sessionTotals,
   sessionWorkflows,
   taskIdFor,
-  workflowAnchoredAt,
   type ActivityTask,
   type WorkflowView,
 } from '@/lib/coworkActivity'
@@ -121,7 +116,6 @@ import {
   cancelWorkflow as cancelWorkflowRequest,
   patchForOutcome,
 } from '@/lib/coworkCancel'
-import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import {
@@ -140,13 +134,10 @@ import { currentDescriber, describeRunAttachments } from '@/lib/imageDescription
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
-import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import {
   appendLiveMessages,
   assistantAnchorId,
-  segmentAssistantMessage,
-  workflowSegmentIndex,
   coworkTurnsToUIMessages,
 } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
@@ -174,14 +165,8 @@ import {
   useToolCallRuntime,
   withToolTiming,
 } from '@/hooks/useToolCallRuntime'
-import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from '@/components/ai-elements/conversation'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
 import {
@@ -223,19 +208,14 @@ import {
 import { isSpawnedSession } from '@/lib/spawnSession'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
-import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
-import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
-import { samePlan } from '@/lib/todoLabels'
 import {
   CoworkPinnedProgress,
   CoworkProgressButton,
 } from '@/containers/CoworkPinnedProgress'
-import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import {
   useCoworkDisplay,
   useShowPromptSnapshot,
 } from '@/hooks/useCoworkDisplay'
-import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
 import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
@@ -252,9 +232,7 @@ import {
 } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { usageEventPayload } from '@/lib/executionTimeline'
-import { TurnUsageDetails } from '@/components/TurnUsageDetails'
 import { recordMemoryUses } from '@/lib/memoryUses'
-import type { TurnMemory } from '@/types/coworkSession'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -271,11 +249,10 @@ import {
 } from '@/lib/fileActivity'
 import { loadGitStatus } from '@/lib/coworkGit'
 import { awaitsModel } from '@/lib/agentActivity'
-import { artifactsFromParts } from '@/lib/coworkArtifacts'
-import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { configuredContextTokens } from '@/lib/coworkContextWindow'
 import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
+import { CoworkTranscript } from '@/containers/CoworkTranscript'
 import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
@@ -325,8 +302,6 @@ import {
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
-import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
-import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import type { UIMessage } from 'ai'
 import {
   compactHistory,
@@ -335,8 +310,7 @@ import {
   resolveAutoCompact,
   shouldCompact,
   DEFAULT_KEEP_RECENT,
-  type CompactionRecord,
-} from '@/lib/compaction'
+  } from '@/lib/compaction'
 import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
 import { CompactionSummaryError, estimateHistoryTokens } from '@/lib/compaction'
 import { fixedPromptTokens } from '@/lib/contextBreakdown'
@@ -346,17 +320,10 @@ import {
   DEFAULT_COMPACTION_POLICY,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
-import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
-  continueRequest,
   deriveRunOutcome,
-  shouldShowRunOutcome,
-} from '@/lib/coworkRunOutcome'
-import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
-import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
-import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
-import { CoworkSubagentQuestions } from '@/containers/CoworkSubagentQuestions'
+  } from '@/lib/coworkRunOutcome'
 import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
 import {
   executeCampaignTool,
@@ -365,16 +332,12 @@ import {
 import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
-import { askedFromParts } from '@/lib/askedSessions'
-import { SessionStopNotice } from '@/containers/SessionStopNotice'
-import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
-import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
 import {
   answerMail,
@@ -382,7 +345,6 @@ import {
   finalAnswerText,
 } from '@/lib/mailAutoReply'
 import { holdQueueThenStop } from '@/lib/chatSteering'
-import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
 import {
   COWORK_DECISION_WINDOW_MS,
   TeamControl,
@@ -476,10 +438,8 @@ import { openRunLog, withRunLog } from '@/lib/workflowRuns'
 import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
-import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
 import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
-import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import {
   beginTeamChild,
@@ -562,14 +522,11 @@ import { DelegationNudge } from '@/lib/delegationNudge'
 import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
-import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
-import { CoworkRecap } from '@/containers/CoworkRecap'
 import { runStatus } from '@/lib/runStatus'
-import { stopToolCall } from '@/lib/toolCallStop'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import { CoworkBarStack } from '@/containers/CoworkBarStack'
@@ -585,7 +542,6 @@ import { CoworkRunChip } from '@/containers/CoworkRunChip'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { workProfileAsker } from '@/lib/jev'
-import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
@@ -6317,435 +6273,69 @@ export function CoworkPage() {
               }
             />
           ) : null}
-          <div
-            ref={transcriptRef}
-            className="relative flex-1 [mask-image:linear-gradient(to_bottom,transparent,#000_14px)]"
-          >
-            {displayedTurns.length === 0 ? (
-              <CoworkEmptyState
-                folder={folder}
-                access={effective.access}
-                onPick={(text) => usePrompt.getState().setPrompt(text)}
-                onAttachFolder={() => void attachFolder()}
-              />
-            ) : (
-              <Conversation className="absolute inset-0 text-start">
-                <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
-                  <WidgetHostContext.Provider value={widgetHost}>
-                  <CodeOpenProvider
-            open={openToolPath}
-            check={checkToolPath}
-            exists={toolPathExists}
-            openDiff={openToolDiff}
-            displayPath={displayToolPath}
-            roots={pathLinkRoots}
-          >
-                    {windowStart > 0 && (
-                      <div className="flex justify-center pb-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid="show-earlier-messages"
-                          className="text-muted-foreground"
-                          onClick={() =>
-                            setEarlierShown({
-                              sid: session?.id ?? null,
-                              pages: earlierPages + 1,
-                            })
-                          }
-                        >
-                          {t('common:coworkShowEarlier', {
-                            count:
-                              windowStart -
-                              transcriptWindowStart(messageWeights, earlierPages + 1),
-                          })}
-                        </Button>
-                      </div>
-                    )}
-                    {uiMessages.slice(windowStart).map((whole, shownAt) => {
-                      const i = shownAt + windowStart
-                      // Each model round renders with its own rows beneath
-                      // it, so the newest content is always last.
-                      const segments = segmentAssistantMessage(whole)
-                      const workflow = workflowAnchoredAt(
-                        activity,
-                        session?.id,
-                        whole.id
-                      )
-                      const workflowAt = workflow
-                        ? workflowSegmentIndex(
-                            segments,
-                            workflow.tasks.map((task) => task.callId)
-                          )
-                        : -1
-                      return segments.map((message, k) => (
-                      <Fragment key={message.id}>
-                        <MessageItem
-                          message={message}
-                          isFirstMessage={i === 0 && k === 0}
-                          switchedFrom={
-                            k === 0 ? switchedFromOf(uiMessages, i) : undefined
-                          }
-                          isLastMessage={
-                            i === uiMessages.length - 1 &&
-                            k === segments.length - 1
-                          }
-                          hideActions={k < segments.length - 1 || undefined}
-                          continuation={k > 0 || undefined}
-                          midReply={k < segments.length - 1 || undefined}
-                          runParts={
-                            segments.length > 1 ? whole.parts : undefined
-                          }
-                          status={running ? 'streaming' : 'ready'}
-                          onRegenerate={handleRegenerate}
-                          reasoningContainerRef={reasoningContainerRef}
-                          isReasoningAtBottom={isReasoningAtBottom}
-                          onReasoningScroll={handleReasoningScroll}
-                          onReasoningScrollToBottom={
-                            forceScrollReasoningToBottom
-                          }
-                          // The tool calls are the work here, not scaffolding
-                          // behind an answer: they stay in the conversation
-                          // unless the display option hides the finished ones.
-                          keepToolActivity
-                        />
-                        {/* The plan as this run left it, after its prompt. */}
-                        {k === segments.length - 1 &&
-                        snapshotByAnchor.has(whole.id) &&
-                        // The pinned plan above already shows this very list.
-                        !(
-                          !session?.progressUi?.unpinned &&
-                          samePlan(snapshotByAnchor.get(whole.id), session?.todos)
-                        ) ? (
-                          <CoworkPlanStrip
-                            todos={snapshotByAnchor.get(whole.id)}
-                            defaultOpen={false}
-                            snapshot
-                          />
-                        ) : null}
-                        {/* One card per workflow, at the message its first
-                        dispatch landed under. Same store as the panel, so it
-                        is live without a copy of anything. */}
-                        {(() => {
-                          const view = k === workflowAt ? workflow : null
-                          return view ? (
-                            <CoworkWorkflowCard
-                              view={view}
-                              now={activityNow}
-                              waiting={waitingForUser}
-                              onResume={(id) =>
-                                void handleSubmit(
-                                  `Resume the stopped workflow run ${id}: call workflow with resume_run_id "${id}".`
-                                )
-                              }
-                              onOpenTask={(task) => {
-                                showTaskInPanel(task)
-                                revealOutput()
-                              }}
-                              onOpenPanel={(workflowId) => {
-                                showWorkflowInPanel(workflowId)
-                                revealOutput()
-                              }}
-                            />
-                          ) : null
-                        })()}
-                        {/* Completed tool activity the display option is
-                        filtering out. The turns are still in the session; this
-                        says how many and offers to look. */}
-                        {(() => {
-                          const part = (
-                            message.parts as { type: string; data?: unknown }[]
-                          ).find((p) => p.type === 'data-hidden-tools')
-                          const data = part?.data as
-                            | { count: number }
-                            | undefined
-                          return data ? (
-                            <CoworkHiddenTools
-                              count={data.count}
-                              onReveal={() => setRevealHiddenTools(true)}
-                            />
-                          ) : null
-                        })()}
-                        {/* Questions the run asked here, in the order they
-                        were asked. A pending one is the card; an answered,
-                        skipped or stale one collapses to what happened, and
-                        stays in the transcript. */}
-                        {(message.parts as { type: string; data?: unknown }[])
-                          .filter((p) => p.type === 'data-ask')
-                          .map((p) => {
-                            const record = p.data as AskRecord
-                            return (
-                              <CoworkAskEntry
-                                key={record.requestId}
-                                record={record}
-                                running={running}
-                                onRespond={respondAsk}
-                                plan={session?.todos}
-                              />
-                            )
-                          })}
-                        {/* The conversation was compacted here. */}
-                        {(message.parts as { type: string; data?: unknown }[])
-                          .filter((p) => p.type === 'data-compaction')
-                          .map((p) => {
-                            const record = p.data as CompactionRecord
-                            return (
-                              <CompactionDivider
-                                key={`compaction-${record.at}`}
-                                record={record}
-                              />
-                            )
-                          })}
-                        {/* Another session stopped this run, with its user's
-                        approval: who, and the reason it gave. */}
-                        {(message.parts as { type: string; data?: unknown }[])
-                          .filter((p) => p.type === 'data-session-stop')
-                          .map((p) => {
-                            const notice = p.data as SessionStopNoticeData
-                            return (
-                              <SessionStopNotice
-                                key={notice.requestId}
-                                notice={notice}
-                              />
-                            )
-                          })}
-                        {/* What the model received, at the message it
-                        produced. Collapsed, and it fetches nothing until
-                        someone opens it. */}
-                        {(() => {
-                          // AH-078. The message's own part first: it was
-                          // stamped onto the assistant row when that row was
-                          // created, so it names the dispatch that produced
-                          // this reply -- including a continuation, a retry or
-                          // a compaction, which position cannot distinguish.
-                          //
-                          // The positional map stays as the fallback for turns
-                          // already on disk, written before rows carried one.
-                          const own = (
-                            message.parts as { type: string; data?: unknown }[]
-                          ).find((part) => part.type === 'data-prompt-snapshot')
-                            ?.data as { id: string } | undefined
-                          const ref = own ?? snapshotByMessageId.get(message.id)
-                          return ref && showPromptSnapshot ? (
-                            <PromptSnapshotView
-                              snapshotId={ref.id}
-                              sessionId={session?.id}
-                            />
-                          ) : null
-                        })()}
-                        {/* This turn's own token breakdown and the memory ids
-                        its request carried (AH-211, AH-083). */}
-                        {(() => {
-                          const data = (
-                            message.parts as { type: string; data?: unknown }[]
-                          ).find((part) => part.type === 'data-turn-usage')
-                            ?.data as
-                            | { usage?: Usage; memory?: TurnMemory }
-                            | undefined
-                          return data && showPromptSnapshot ? (
-                            <TurnUsageDetails
-                              usage={fromCoworkUsage(data.usage)}
-                              memory={data.memory}
-                            />
-                          ) : null
-                        })()}
-                        {/* Derived from the message's own write parts, so nothing
-                        shared with the chat surface needs to know artifacts
-                        exist. */}
-                        {askedFromParts(message.parts).map((asked) => (
-                          <CoworkAskedCard key={asked.key} asked={asked} />
-                        ))}
-                        {artifactsFromParts(message.parts).map((artifact) => (
-                          <CoworkArtifactCard
-                            key={artifact.path}
-                            artifact={artifact}
-                            root={workspacePath}
-                            onPreview={(path) => {
-                              showPreview(path)
-                              revealOutput()
-                            }}
-                          />
-                        ))}
-                      </Fragment>
-                                          ))
-                    })}
-                  </CodeOpenProvider>
-                  </WidgetHostContext.Provider>
-                  {/* AH-109: overlapping team tasks, before either runs. */}
-                  <CoworkTeamConflicts sessionId={session?.id} />
-                  <CoworkChildApprovals sessionId={session?.id} />
-                  <CoworkSubagentQuestions sessionId={session?.id} />
-                  {/* Once the run has ended: while it goes, the header says
-                      Running and Changes shows its files, and a card growing
-                      under the transcript said it a third time. */}
-                  {(((!running && (runEnding || runOrigins?.summary)) &&
-                    // Only when the run has something of its own to report:
-                    // a write, a check, a loose end, or an ending that was
-                    // not a clean finish. A working tree that was already
-                    // dirty is not the run's work, and reporting it here left
-                    // a permanent panel over the composer listing the user's
-                    // own edits. The stop reason itself stays in the notice
-                    // below; this shows what was kept.
-                    shouldShowRunOutcome(runOutcome)) ||
-                    // A browser verification is evidence the user asked
-                    // for; it is shown even after a run with nothing else.
-                    browserReports.length > 0) && (
-                      <CoworkRunSummary
-                        outcome={runOutcome}
-                        browserChecks={browserReports}
-                        canOpenPath={() => true}
-                        onOpenPath={
-                          runOutcome.resultLocation.destination ===
-                            'repository' && treeRoot
-                            ? (path) => openSummaryPath(`${treeRoot}/${path}`)
-                            : runOutcome.resultLocation.destination ===
-                                'sandbox'
-                              ? openSummaryPath
-                              : undefined
-                        }
-                        onReviewChanges={() => openRail({ kind: 'diff' })}
-                        onRestore={() => openRail({ kind: 'diff' })}
-                        onRetry={() => void runRequest(null)}
-                        // A follow-up run under the session's current mode,
-                        // asked to retry what this one left unresolved.
-                        // Focusing the composer did nothing visible. The
-                        // request is Flint's, so it is not drawn as a user
-                        // message.
-                        onContinue={() =>
-                          void runRequest(
-                            continueRequest(runOutcome.unresolved),
-                            undefined,
-                            true
-                          )
-                        }
-                      />
-                    )}
-                  {running && !(stripMode && waitingForUser) && (
-                    // Row wrapper as in the chat route: the transcript is a
-                    // column flex, which stretches the indicator's own
-                    // `inline-flex` box across the whole column.
-                    <div className="flex flex-row items-center gap-2">
-                      <PromptProgress
-                        hideIdle={!awaitingModel}
-                        stateKey={session?.id}
-                        status={runStatusNow}
-                        onStopTool={(callId) => {
-                          if (session?.id) stopToolCall(session.id, callId)
-                        }}
-                        waitingLabel={
-                          waitingForUser ? t('common:waitingForYou') : undefined
-                        }
-                      />
-                    </div>
-                  )}
-                  {memoryProposalLocation && (
-                    <MemoryProposalList
-                      className="my-2"
-                      proposals={memoryProposals}
-                      location={memoryProposalLocation}
-                      onResolved={onMemoryProposalResolved}
-                      onOpenSettings={() =>
-                        navigateTo({ to: route.settings.memory })
-                      }
-                    />
-                  )}
-                  {stoppedBy === 'steps' && (
-                    <CoworkBudgetNotice
-                      kind="steps"
-                      max={MAX_AGENT_STEPS}
-                      onContinue={() => void handleSubmit('Continue.')}
-                    />
-                  )}
-                  {stoppedBy === 'aborted' && (
-                    <CoworkRunNotice kind="stopped" />
-                  )}
-                  {session?.id ? (
-                    <CoworkRecap sessionId={session.id} running={running} />
-                  ) : null}
-                  {session?.id ? (
-                    <CoworkInterruptedTurn
-                      sessionId={session.id}
-                      running={running}
-                      onContinue={() => void runRequestRef.current(null)}
-                    />
-                  ) : null}
-                  {session?.id ? (
-                    <CoworkHeldInput sessionId={session.id} running={running} />
-                  ) : null}
-                  {stoppedBy === 'error' && (
-                    <CoworkRunNotice
-                      kind="error"
-                      message={runError}
-                      onRetry={() => void runRequest(null)}
-                    />
-                  )}
-                  {(stoppedBy === 'deadline' ||
-                    stoppedBy === 'timeout' ||
-                    stoppedBy === 'loop') && (
-                    <CoworkRunNotice
-                      kind={stoppedBy}
-                      message={runError}
-                      onRetry={() => void runRequest(null)}
-                      onAttachFolder={
-                        stoppedBy === 'loop' && !session?.folder
-                          ? () => void attachFolder()
-                          : undefined
-                      }
-                    />
-                  )}
-                  {stoppedBy === 'tokens' && (
-                    <CoworkBudgetNotice
-                      kind="tokens"
-                      // An overflow carries its measurement; the spend cap
-                      // stops with none.
-                      cause={runError ? 'window' : 'budget'}
-                      detail={runError ?? undefined}
-                      // Compacts the session's history for real, then
-                      // resumes the run on the room that freed.
-                      onCompact={() =>
-                        void compactNow({ thenContinue: true })
-                      }
-                      compacting={compacting}
-                      onNewSession={() => {
-                        // Same rule as the sidebar's entry point: one press,
-                        // at most one session. An unsent draft is parked on
-                        // the session being left (held input) when it has
-                        // content, so the new one opens blank.
-                        const paneId = sidePaneIdRef.current
-                        const paneSid = paneSessionIdRef.current
-                        const prompts = usePrompt.getState()
-                        const scope = coworkPane?.draftScope
-                        if (paneId && paneSid && scope) {
-                          // From a pane beside the main one: judged on that
-                          // pane's session and draft, opened in that pane.
-                          const { id, parked } = startPaneSessionParked(paneSid, {
-                            running,
-                            draft: prompts.scoped[scope]?.prompt,
-                          })
-                          useSplitConversation
-                            .getState()
-                            .setPaneTarget(paneId, { kind: 'cowork', refId: id })
-                          if (parked) prompts.setScopedPrompt(scope, '')
-                          return
-                        }
-                        const store = useCoworkSessions.getState()
-                        const { id, parked } = store.startSessionParked({
-                          running,
-                          draft: prompts.prompt,
-                        })
-                        store.selectSession(id)
-                        // Cleared here, not in the store, and only when parked:
-                        // otherwise the draft would be lost.
-                        if (parked) prompts.resetPrompt()
-                      }}
-                    />
-                  )}
-                  {compacting && <CompactingIndicator />}
-                </ConversationContent>
-                <ConversationScrollButton />
-              </Conversation>
-            )}
-          </div>
+          <CoworkTranscript
+  transcriptRef={transcriptRef}
+  displayedTurns={displayedTurns}
+  folder={folder}
+  effective={effective}
+  attachFolder={attachFolder}
+  widgetHost={widgetHost}
+  openToolPath={openToolPath}
+  checkToolPath={checkToolPath}
+  toolPathExists={toolPathExists}
+  openToolDiff={openToolDiff}
+  displayToolPath={displayToolPath}
+  pathLinkRoots={pathLinkRoots}
+  windowStart={windowStart}
+  setEarlierShown={setEarlierShown}
+  session={session}
+  earlierPages={earlierPages}
+  messageWeights={messageWeights}
+  uiMessages={uiMessages}
+  activity={activity}
+  running={running}
+  handleRegenerate={handleRegenerate}
+  reasoningContainerRef={reasoningContainerRef}
+  isReasoningAtBottom={isReasoningAtBottom}
+  handleReasoningScroll={handleReasoningScroll}
+  forceScrollReasoningToBottom={forceScrollReasoningToBottom}
+  snapshotByAnchor={snapshotByAnchor}
+  activityNow={activityNow}
+  waitingForUser={waitingForUser}
+  handleSubmit={handleSubmit}
+  showTaskInPanel={showTaskInPanel}
+  revealOutput={revealOutput}
+  showWorkflowInPanel={showWorkflowInPanel}
+  setRevealHiddenTools={setRevealHiddenTools}
+  respondAsk={respondAsk}
+  snapshotByMessageId={snapshotByMessageId}
+  showPromptSnapshot={showPromptSnapshot}
+  workspacePath={workspacePath}
+  showPreview={showPreview}
+  runEnding={runEnding}
+  runOrigins={runOrigins}
+  runOutcome={runOutcome}
+  browserReports={browserReports}
+  treeRoot={treeRoot}
+  openSummaryPath={openSummaryPath}
+  openRail={openRail}
+  runRequest={runRequest}
+  stripMode={stripMode}
+  awaitingModel={awaitingModel}
+  runStatusNow={runStatusNow}
+  memoryProposalLocation={memoryProposalLocation}
+  memoryProposals={memoryProposals}
+  onMemoryProposalResolved={onMemoryProposalResolved}
+  navigateTo={navigateTo}
+  stoppedBy={stoppedBy}
+  runRequestRef={runRequestRef}
+  runError={runError}
+  compactNow={compactNow}
+  compacting={compacting}
+  sidePaneIdRef={sidePaneIdRef}
+  paneSessionIdRef={paneSessionIdRef}
+  coworkPane={coworkPane}
+/>
 
           <div className={cn('shrink-0 px-3.5 pt-2', paneChrome ? 'pb-3.5' : 'pb-1.5')}>
             <div className="mx-auto w-full max-w-[780px]">
