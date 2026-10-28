@@ -241,6 +241,8 @@
   /* Fenced code: a quiet card on the code surface, its header a muted strip
      over a dashed rule, like the tool cards around it. */
   [data-streamdown="code-block"] {
+    /* Code reads LTR even inside an RTL message (janhq/jan#9423). */
+    direction: ltr;
     border: 0.8px solid var(--color-border);
     border-radius: 10px;
     overflow: hidden;

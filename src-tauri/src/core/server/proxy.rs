@@ -961,6 +961,17 @@ fn engine_context_length(entry: &serde_json::Value) -> Option<u64> {
         .filter(|n| *n > 0)
 }
 
+/// The context window Flint configured for `model_id`: the `ctx-size` its
+/// section (or the shared `[*]` block) of `router.preset.ini` sets, which the
+/// worker loads the model with. None when unset or `0` (the model's trained
+/// default, which only the engine knows).
+fn preset_context_length(preset_ini: &str, model_id: &str) -> Option<u64> {
+    tauri_plugin_llamacpp::engine::preset::section_value(preset_ini, model_id, "ctx-size")?
+        .parse::<u64>()
+        .ok()
+        .filter(|n| *n > 0)
+}
+
 /// Engine model ids with the context window it reports for each, when known.
 pub(crate) async fn engine_list_model_entries(
     llama_state: &LlamacppState,
@@ -2306,10 +2317,20 @@ async fn proxy_request(
         (hyper::Method::GET, "/models") => {
             log::debug!("Handling GET /v1/models request");
 
+            let preset_ini = std::fs::read_to_string(
+                std::path::Path::new(&jan_data_folder)
+                    .join("llamacpp")
+                    .join("router.preset.ini"),
+            )
+            .unwrap_or_default();
             let local_models: Vec<_> = engine_list_model_entries(&llama_state, &local_client)
                 .await
                 .into_iter()
                 .map(|(id, context)| {
+                    // An unloaded model has no engine-reported window; fall
+                    // back to the configured one rather than let clients guess.
+                    let context =
+                        context.or_else(|| preset_context_length(&preset_ini, &id));
                     let mut model = serde_json::json!({
                         "id": id,
                         "object": "model",
@@ -4113,6 +4134,17 @@ mod tests {
         let mut r = ModelFieldRewriter::new("qwen".into());
         let line = b"data: {\"model\": \"qwen\", \"x\": 1}\n";
         assert_eq!(&r.push(line)[..], &line[..]);
+    }
+
+    #[test]
+    fn preset_context_length_falls_back_to_the_configured_window() {
+        use super::preset_context_length as ctx;
+        let ini = "[*]\nctx-size = 16384\n\n[qwen]\nctx-size = 65536\n\n[plain]\nmodel = x.gguf\n\n[auto]\nctx-size = 0\n";
+        assert_eq!(ctx(ini, "qwen"), Some(65536));
+        assert_eq!(ctx(ini, "plain"), Some(16384));
+        assert_eq!(ctx(ini, "auto"), None);
+        assert_eq!(ctx("[m]\nmodel = x.gguf\n", "m"), None);
+        assert_eq!(ctx("", "m"), None);
     }
 
     #[test]
