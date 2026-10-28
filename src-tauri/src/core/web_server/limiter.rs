@@ -4,7 +4,9 @@
 //! credential, so the limit is there to keep one noisy client from filling the
 //! log and to slow a distributed attempt, not to protect the secret. It must
 //! therefore not let one client lock everyone else out: attempts are counted
-//! per client, with a much higher ceiling over all of them.
+//! per client. The much higher ceiling over all of them never refuses anyone:
+//! past it a client that has not signed in lately is slowed (a capped delay),
+//! and one that has is not touched.
 
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
@@ -73,12 +75,8 @@ impl LoginLimiter {
     fn blocked_at(&self, client: IpAddr, now: Instant) -> bool {
         let client = bucket(client);
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        prune(&mut inner.overall, now);
-        // A client that signed in recently is never shut out by other
-        // clients' failures; it is still bound by its own budget below.
-        if inner.overall.len() >= OVERALL && !is_known(&inner, client, now) {
-            return true;
-        }
+        // Only the client's own failures shut it out. Other clients' failures
+        // slow it (`delay`) but cannot lock it out of its own server.
         match inner.clients.get_mut(&client) {
             Some(failures) => {
                 prune(failures, now);
@@ -93,8 +91,7 @@ impl LoginLimiter {
     }
 
     /// Remember that `client` signed in, so a flood of failures from others
-    /// cannot lock it out.
-    #[allow(dead_code)]
+    /// does not slow it either.
     pub fn record_success(&self, client: IpAddr) {
         self.record_success_at(client, Instant::now());
     }
@@ -113,7 +110,6 @@ impl LoginLimiter {
 
     /// How long to hold back a client that is over the overall ceiling,
     /// capped; zero for anyone else.
-    #[allow(dead_code)]
     pub fn delay(&self, client: IpAddr) -> Duration {
         self.delay_at(client, Instant::now())
     }
@@ -212,7 +208,7 @@ mod tests {
         }
         assert!(!limiter.blocked(ip(50)), "recent success is not shut out");
         assert_eq!(limiter.delay(ip(50)), Duration::ZERO);
-        assert!(limiter.blocked(ip(51)));
+        assert!(!limiter.blocked(ip(51)), "the overall ceiling slows, it does not refuse");
         let wait = limiter.delay(ip(51));
         assert!(wait > Duration::ZERO && wait <= MAX_TARPIT);
     }
@@ -229,12 +225,13 @@ mod tests {
     }
 
     #[test]
-    fn many_clients_together_still_hit_the_overall_ceiling() {
+    fn many_clients_together_still_hit_the_overall_tarpit() {
         let limiter = LoginLimiter::new();
         for n in 0..OVERALL {
             limiter.record_failure(IpAddr::from([10, 0, (n / 250) as u8, (n % 250) as u8]));
         }
-        assert!(limiter.blocked(ip(200)), "a stranger is held back once the ceiling is reached");
+        assert!(!limiter.blocked(ip(200)));
+        assert!(limiter.delay(ip(200)) > Duration::ZERO, "a stranger is slowed once the ceiling is reached");
     }
 
     #[test]
