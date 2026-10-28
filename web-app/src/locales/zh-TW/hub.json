@@ -60,5 +60,8 @@
       "unknownTitle": "適配度未知",
       "unknownDetail": "本機硬體或檔案大小資訊不足"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

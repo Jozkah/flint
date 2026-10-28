@@ -224,5 +224,6 @@
     "filter": "Filtr",
     "all": "Vše",
     "empty": "Zatím tu nic není. To, co vytvoříte, se zobrazí tady."
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

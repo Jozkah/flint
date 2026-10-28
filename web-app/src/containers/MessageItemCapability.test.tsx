@@ -10,7 +10,8 @@ const provider = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@/i18n/react-i18next-compat', () => ({
+vi.mock('@/i18n/react-i18next-compat', async () => ({
+  i18n: (await import('@/i18n/setup')).default,
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 const pane = vi.hoisted(() => ({ threadId: 'thread-1' as string | undefined }))

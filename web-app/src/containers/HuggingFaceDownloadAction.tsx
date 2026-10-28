@@ -194,13 +194,13 @@ export function HuggingFaceDownloadAction({
         : null
     const rate =
       task.status === 'downloading' && task.bytesPerSecond
-        ? `${formatModelBytes(task.bytesPerSecond)}/s${eta !== null ? ` · ${formatEta(eta)} left` : ''}`
+        ? `${formatModelBytes(task.bytesPerSecond)}/s${eta !== null ? ` · ${t('hub:etaLeft', { eta: formatEta(eta) })}` : ''}`
         : undefined
     const stateLabel =
       task.status === 'importing'
-        ? 'Installing…'
+        ? t('hub:downloadInstalling')
         : task.status === 'verifying'
-          ? 'Verifying…'
+          ? t('hub:downloadVerifying')
           : task.status === 'downloading' && task.retryAt
             ? <RetryCountdown retryAt={task.retryAt} />
             : null

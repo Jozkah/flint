@@ -11,16 +11,15 @@
  * bubble and the user cannot tell the turn ended.
  */
 import type { MessagePartLike } from '@/containers/message/types'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 const MAX_ERROR_CHARS = 300
 
 /** Shown for a finished turn with no text and no tool calls. */
-export const EMPTY_REPLY_FALLBACK =
-  'The model returned an empty reply. Try again or switch model.'
+const emptyReplyFallback = () => i18n.t('chat:emptyRun.emptyReply')
 
 /** Shown when the model reasoned but produced no answer and no tool calls. */
-export const THINKING_ONLY_FALLBACK =
-  'The model finished thinking without giving an answer. Continue or regenerate to try again.'
+const thinkingOnlyFallback = () => i18n.t('chat:emptyRun.thinkingOnly')
 
 function textOf(value: unknown): string | undefined {
   if (typeof value === 'string') return value.trim() || undefined
@@ -102,7 +101,7 @@ export function emptyRunFallback(parts: readonly MessagePartLike[]): string | nu
     const reasoned = parts.some(
       (p) => p.type === 'reasoning' && !!(p.text ?? '').trim()
     )
-    return reasoned ? THINKING_ONLY_FALLBACK : EMPTY_REPLY_FALLBACK
+    return reasoned ? thinkingOnlyFallback() : emptyReplyFallback()
   }
   const answered = parts
     .slice(lastTool + 1)
@@ -127,6 +126,6 @@ export function emptyRunFallback(parts: readonly MessagePartLike[]): string | nu
       break
     }
   }
-  if (!lastError) return 'The run ended without a reply.'
-  return `The run ended without a reply. Last tool error (${toolName}): ${clip(lastError)}`
+  if (!lastError) return i18n.t('chat:emptyRun.noReply')
+  return i18n.t('chat:emptyRun.noReplyToolError', { tool: toolName, error: clip(lastError) })
 }

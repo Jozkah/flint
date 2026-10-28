@@ -60,5 +60,8 @@
       "unknownTitle": "Encaix desconegut",
       "unknownDetail": "No hi ha prou informació sobre el maquinari local o la mida del fitxer"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

@@ -60,5 +60,8 @@
       "unknownTitle": "Adéquation inconnue",
       "unknownDetail": "Informations insuffisantes sur le matériel local ou la taille du fichier"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

@@ -60,5 +60,8 @@
       "unknownTitle": "Vhodnost neznámá",
       "unknownDetail": "Nedostatek informací o místním hardwaru nebo velikosti souboru"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

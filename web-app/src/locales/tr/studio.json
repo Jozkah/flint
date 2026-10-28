@@ -218,5 +218,6 @@
     "filter": "Filtre",
     "all": "Tümü",
     "empty": "Burada henüz bir şey yok. Ürettikleriniz burada görünür."
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

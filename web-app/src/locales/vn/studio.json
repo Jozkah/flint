@@ -215,5 +215,6 @@
     "filter": "Bộ lọc",
     "all": "Tất cả",
     "empty": "Chưa có gì ở đây. Những gì bạn tạo sẽ xuất hiện ở đây."
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

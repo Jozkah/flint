@@ -61,5 +61,8 @@
       "unknownDetail": "Nicht genug Informationen zur lokalen Hardware oder Dateigröße"
     }
   },
-  "editTheme": "Bearbeite Erscheinungsbild"
+  "editTheme": "Bearbeite Erscheinungsbild",
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

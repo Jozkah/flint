@@ -13,6 +13,7 @@
  */
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
 import type { GitStatus } from '@/lib/coworkGit'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 export type ChangeCounts = {
   fileCount: number
@@ -64,7 +65,7 @@ export function janAuthoredChanges(
 
 /** `3 files changed · +24 −8`, or `1 file changed · +2 −0`. */
 export function formatChangeSummary(counts: ChangeCounts): string {
-  const files = `${counts.fileCount} ${counts.fileCount === 1 ? 'file' : 'files'} changed`
+  const files = i18n.t('common:coworkHelpers.filesChanged', { count: counts.fileCount })
   // A true minus sign, not a hyphen: these sit next to each other in a
   // tabular row and the hyphen reads as a dash in a sentence.
   return `${files} · +${counts.additions} −${counts.deletions}`

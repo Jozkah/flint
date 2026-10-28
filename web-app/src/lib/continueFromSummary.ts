@@ -12,6 +12,7 @@ import { modelSummarizer } from '@/lib/compactionSummarizer'
 import { defangMentionText } from '@/lib/chatMentions'
 import { messagesToFork } from '@/lib/forkThread'
 import { convertThreadMessagesToUIMessages } from '@/lib/messages'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /**
  * Continue a chat in a new one that starts from a summary of it.
@@ -60,10 +61,11 @@ export class ContinueFromSummaryError extends Error {
 
 /** The continued chat's title: the original's, marked once however often it is continued. */
 export function continuedTitle(title: string | undefined): string {
-  const base = (title ?? '').trim() || 'New Thread'
-  return base.endsWith(SUMMARY_CONTINUE_TITLE_SUFFIX)
+  const base = (title ?? '').trim() || i18n.t('common:newThread')
+  const suffix = i18n.t('chat:continuedTitleSuffix')
+  return base.endsWith(suffix) || base.endsWith(SUMMARY_CONTINUE_TITLE_SUFFIX)
     ? base
-    : `${base}${SUMMARY_CONTINUE_TITLE_SUFFIX}`
+    : `${base}${suffix}`
 }
 
 /** The text of the one message a continued chat opens with. */

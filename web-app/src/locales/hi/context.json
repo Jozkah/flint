@@ -241,5 +241,16 @@
       "stop": "रोकें",
       "asked": "{{tools}} माँगा (चलाया नहीं गया)"
     }
+  },
+  "breakdown": {
+    "messages": "Messages",
+    "systemTools": "System tools",
+    "mcpTools": "MCP tools",
+    "skills": "Skills",
+    "memory": "Memory files",
+    "systemPrompt": "System prompt",
+    "unmeasured": "Unmeasured",
+    "more": "{{count}} more",
+    "windowUnknown": "{{used}} tokens (window unknown)"
   }
 }

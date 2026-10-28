@@ -7,6 +7,7 @@ import { restoreCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { archiveApi, type ArchivedItem } from '@/lib/archive'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useStudio } from '@/hooks/useStudio'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** Re-read the thread list after threads came back from the archive. */
 async function reloadThreads(): Promise<void> {
@@ -44,7 +45,7 @@ export async function restoreArchived(item: ArchivedItem): Promise<void> {
           restored.payload,
           restored.extra
         )
-        throw new Error('A session with this id already exists')
+        throw new Error(i18n.t('common:archiveRestore.sessionExists'))
       }
       return
     }
@@ -54,7 +55,7 @@ export async function restoreArchived(item: ArchivedItem): Promise<void> {
       if (!assistant || live) {
         // The backend already released it; put it back so nothing is lost.
         await archiveApi.put('assistant', item.id, item.title, restored.payload, restored.extra)
-        throw new Error('An assistant with this id already exists')
+        throw new Error(i18n.t('common:archiveRestore.assistantExists'))
       }
       useAssistant.getState().addAssistant(assistant)
       return

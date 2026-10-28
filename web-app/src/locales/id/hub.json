@@ -60,5 +60,8 @@
       "unknownTitle": "Kecocokan tidak diketahui",
       "unknownDetail": "Informasi perangkat keras lokal atau ukuran berkas tidak cukup"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

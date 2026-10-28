@@ -215,5 +215,6 @@
     "filter": "필터",
     "all": "전체",
     "empty": "아직 아무것도 없습니다. 만든 항목이 여기에 표시됩니다."
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

@@ -5,6 +5,7 @@
  * Members keep their current recent-activity order.
  */
 import type { SurfaceGroups } from './types'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 type LegacyFolder = { id: string; name: string; updated_at?: number }
 type LegacyThread = { id: string; updated?: number; metadata?: { project?: { id?: string } } }
@@ -21,7 +22,7 @@ export function migrateProjects(
     .map((f, position) => ({
       id: f.id,
       surface: 'home' as const,
-      name: (typeof f.name === 'string' && f.name.trim()) || 'Untitled group',
+      name: (typeof f.name === 'string' && f.name.trim()) || i18n.t('common:groups.untitled'),
       position,
       collapsed: false,
       folderBindings: [],

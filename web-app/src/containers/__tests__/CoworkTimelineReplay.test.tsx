@@ -37,7 +37,7 @@ vi.mock('@/lib/runReplay', async (importOriginal) => {
 vi.mock('@/lib/toolActivity', () => ({ loadToolDiff: vi.fn(async () => '') }))
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const i18n = (await import('@/i18n/setup')).default
-  return { useTranslation: () => ({ t: (k: string, o?: Record<string, unknown>) => i18n.t(k, o) }) }
+  return { i18n, useTranslation: () => ({ t: (k: string, o?: Record<string, unknown>) => i18n.t(k, o) }) }
 })
 vi.mock('@/containers/CoworkSidePanel', () => ({
   CoworkSidePanel: ({ children, summary, 'data-testid': id }: any) => (

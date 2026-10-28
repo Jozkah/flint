@@ -215,5 +215,6 @@
     "filter": "Filter",
     "all": "Semua",
     "empty": "Belum ada apa-apa di sini. Apa pun yang Anda buat akan muncul di sini."
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

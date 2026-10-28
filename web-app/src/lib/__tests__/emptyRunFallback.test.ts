@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import {
-  EMPTY_REPLY_FALLBACK,
-  THINKING_ONLY_FALLBACK,
-  emptyRunFallback,
-  toolPartError,
-} from '@/lib/emptyRunFallback'
+import { emptyRunFallback, toolPartError } from '@/lib/emptyRunFallback'
 import type { MessagePartLike } from '@/containers/message/types'
+
+const EMPTY_REPLY_FALLBACK =
+  'The model returned an empty reply. Try again or switch model.'
+const THINKING_ONLY_FALLBACK =
+  'The model finished thinking without giving an answer. Continue or regenerate to try again.'
 
 const tool = (extra: Partial<MessagePartLike>): MessagePartLike => ({
   type: 'tool-bash',
@@ -73,9 +73,6 @@ describe('emptyRunFallback', () => {
     expect(
       emptyRunFallback([{ type: 'reasoning', text: 'thinking' }])
     ).toBe(THINKING_ONLY_FALLBACK)
-    expect(EMPTY_REPLY_FALLBACK).toBe(
-      'The model returned an empty reply. Try again or switch model.'
-    )
   })
 })
 

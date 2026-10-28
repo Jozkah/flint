@@ -215,5 +215,6 @@
     "filter": "フィルター",
     "all": "すべて",
     "empty": "まだ何もありません。作成したものはここに表示されます。"
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

@@ -60,5 +60,8 @@
       "unknownTitle": "適合度は不明",
       "unknownDetail": "ローカルのハードウェアやファイルサイズの情報が不足しています"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

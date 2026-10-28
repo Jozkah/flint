@@ -60,5 +60,8 @@
       "unknownTitle": "Chưa rõ độ phù hợp",
       "unknownDetail": "Không đủ thông tin về phần cứng cục bộ hoặc kích thước tệp"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

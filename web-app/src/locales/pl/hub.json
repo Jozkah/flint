@@ -60,5 +60,8 @@
       "unknownTitle": "Dopasowanie nieznane",
       "unknownDetail": "Za mało informacji o lokalnym sprzęcie lub rozmiarze pliku"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

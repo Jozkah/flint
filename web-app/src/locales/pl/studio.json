@@ -224,5 +224,6 @@
     "filter": "Filtr",
     "all": "Wszystkie",
     "empty": "Na razie nic tu nie ma. To, co utworzysz, pojawi się tutaj."
-  }
+  },
+  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
 }

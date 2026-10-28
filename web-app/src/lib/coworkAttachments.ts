@@ -3,6 +3,7 @@ import type { Attachment } from '@/types/attachment'
 import { processAttachmentsForSend } from '@/lib/attachmentProcessing'
 import { shrinkImageDataUrl } from '@/lib/imageResize'
 import type { RunAttachment } from '@/lib/remoteRunner'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /**
  * Files attached to a Cowork message.
@@ -167,12 +168,12 @@ export async function prepareCoworkAttachments(
   // and any media that is not an image.
   const images = parts.filter((p) => p.mediaType.startsWith('image/'))
   const otherMedia = parts.length - images.length
-  if (otherMedia > 0) names.push(otherMedia === 1 ? '1 media file' : `${otherMedia} media files`)
+  if (otherMedia > 0) names.push(i18n.t('common:coworkHelpers.mediaFiles', { count: otherMedia }))
   const keptImages = await Promise.all(images.map((p) => shrinkImageDataUrl(p.url)))
 
   return {
     modelSuffix: doc.text,
-    shownNote: names.length ? `\n\nAttached: ${names.join(', ')}` : '',
+    shownNote: names.length ? `\n\n${i18n.t('common:coworkHelpers.attached', { names: names.join(', ') })}` : '',
     parts: [...parts],
     keptImages,
     failed,

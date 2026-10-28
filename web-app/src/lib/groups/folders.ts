@@ -7,6 +7,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { basename, canonicalKey } from './domain'
 import type { GroupFolderBinding } from './types'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 type InspectResult = { Ok?: InspectedFolder; Err?: string } | InspectedFolder | string
 type InspectedFolder = {
@@ -36,7 +37,7 @@ export async function inspectFolders(paths: string[]): Promise<FolderInspection[
   return results.map((r, i) => {
     const value = typeof r === 'object' && r && 'Ok' in r ? r.Ok : typeof r === 'object' && r && !('Err' in r) ? (r as InspectedFolder) : undefined
     if (!value) {
-      const error = typeof r === 'string' ? r : (r as { Err?: string })?.Err ?? 'Folder could not be inspected'
+      const error = typeof r === 'string' ? r : (r as { Err?: string })?.Err ?? i18n.t('common:groups.folderNotInspected')
       return { ok: false as const, path: paths[i], error }
     }
     return {

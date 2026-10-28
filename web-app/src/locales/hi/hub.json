@@ -60,5 +60,8 @@
       "unknownTitle": "फ़िट अज्ञात",
       "unknownDetail": "स्थानीय हार्डवेयर या फ़ाइल आकार की पर्याप्त जानकारी नहीं है"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

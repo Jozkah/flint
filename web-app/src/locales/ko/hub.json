@@ -60,5 +60,8 @@
       "unknownTitle": "적합도 알 수 없음",
       "unknownDetail": "로컬 하드웨어 또는 파일 크기 정보가 충분하지 않습니다"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

@@ -4,7 +4,8 @@ import { MessageItem } from './MessageItem'
 import type { UIMessage } from 'ai'
 import type { SubagentRun } from '@/types/coworkSession'
 
-vi.mock('@/i18n/react-i18next-compat', () => ({
+vi.mock('@/i18n/react-i18next-compat', async () => ({
+  i18n: (await import('@/i18n/setup')).default,
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 vi.mock('@tanstack/react-router', () => ({

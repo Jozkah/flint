@@ -4,7 +4,8 @@ import '@testing-library/jest-dom'
 
 // ---- Module mocks ----------------------------------------------------------
 
-vi.mock('@/i18n/react-i18next-compat', () => ({
+vi.mock('@/i18n/react-i18next-compat', async () => ({
+  i18n: (await import('@/i18n/setup')).default,
   useTranslation: () => ({
     t: (k: string, opts?: Record<string, unknown>) =>
       opts ? `${k} ${Object.values(opts).join(' ')}` : k,

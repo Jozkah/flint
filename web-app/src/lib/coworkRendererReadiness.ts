@@ -9,6 +9,7 @@
  * answer with a reason.
  */
 import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 export type RendererReadinessFacts = {
   /** The model this session would run, if one is selected. */
@@ -48,7 +49,7 @@ export function rendererReadinessReports(
         component: 'model',
         state: 'unavailable',
         reason: 'model-unselected',
-        message: 'No model is selected for this session.',
+        message: i18n.t('common:coworkReadiness.noModel'),
         retryable: true,
         capabilities: [],
       })
@@ -59,9 +60,12 @@ export function rendererReadinessReports(
         component: 'model',
         state: 'degraded',
         reason: 'ok',
-        message: `Tool calls failed a test of this model on ${model.observedTools.testedAt}${
-          model.observedTools.detail ? `: ${model.observedTools.detail}` : ''
-        }.`,
+        message: model.observedTools.detail
+          ? i18n.t('common:coworkReadiness.toolsFailedDetail', {
+              date: model.observedTools.testedAt,
+              detail: model.observedTools.detail,
+            })
+          : i18n.t('common:coworkReadiness.toolsFailed', { date: model.observedTools.testedAt }),
         retryable: true,
         capabilities: ['model.dispatch'],
         details: [`provider=${model.provider}`, 'observed=model-doctor'],
@@ -73,8 +77,7 @@ export function rendererReadinessReports(
         component: 'model',
         state: 'degraded',
         reason: 'ok',
-        message:
-          'The selected model cannot call tools, so Cowork can only chat with it.',
+        message: i18n.t('common:coworkReadiness.noToolSupport'),
         retryable: false,
         capabilities: ['model.dispatch'],
         details: [`provider=${model.provider}`],
@@ -87,8 +90,8 @@ export function rendererReadinessReports(
         state: 'ready',
         reason: 'ok',
         message: model.observedTools
-          ? `A model is selected. Tool calls worked in a test on ${model.observedTools.testedAt}; that is one probe, not a guarantee for every task.`
-          : 'A model is selected. Whether the provider answers is checked when a run starts.',
+          ? i18n.t('common:coworkReadiness.modelToolsWorked', { date: model.observedTools.testedAt })
+          : i18n.t('common:coworkReadiness.modelSelected'),
         retryable: false,
         capabilities: ['model.dispatch', 'model.tools'],
         details: model.observedTools
@@ -104,7 +107,7 @@ export function rendererReadinessReports(
           component: 'context',
           state: 'ready',
           reason: 'ok',
-          message: `Context window: ${facts.contextTokens.toLocaleString()} tokens.`,
+          message: i18n.t('common:coworkReadiness.contextWindow', { tokens: facts.contextTokens.toLocaleString() }),
           retryable: false,
           capabilities: ['context.known'],
         })
@@ -112,8 +115,7 @@ export function rendererReadinessReports(
           component: 'context',
           state: 'degraded',
           reason: 'context-unknown',
-          message:
-            'The context window could not be found for this model, so Flint cannot warn before it fills up.',
+          message: i18n.t('common:coworkReadiness.contextUnknown'),
           retryable: true,
           capabilities: [],
         })
@@ -125,7 +127,7 @@ export function rendererReadinessReports(
           component: 'mcp',
           state: 'ready',
           reason: 'ok',
-          message: `${facts.settingsMcpServers} MCP server${facts.settingsMcpServers === 1 ? '' : 's'} from Settings ${facts.settingsMcpServers === 1 ? 'is' : 'are'} offered to Cowork runs and connect when a message is sent.`,
+          message: i18n.t('common:coworkReadiness.mcpOffered', { count: facts.settingsMcpServers }),
           retryable: false,
           capabilities: ['mcp.offered'],
         })
@@ -133,7 +135,7 @@ export function rendererReadinessReports(
           component: 'mcp',
           state: 'blocked',
           reason: 'mcp-none-configured',
-          message: 'No MCP servers are configured.',
+          message: i18n.t('common:coworkReadiness.mcpNone'),
           retryable: false,
           capabilities: [],
         })
@@ -146,7 +148,7 @@ export function rendererReadinessReports(
           component: 'local-runtime',
           state: 'ready',
           reason: 'ok',
-          message: 'The local runtime is started when a run needs the model.',
+          message: i18n.t('common:coworkReadiness.localReady'),
           retryable: false,
           capabilities: [],
         })
@@ -154,7 +156,7 @@ export function rendererReadinessReports(
           component: 'local-runtime',
           state: 'blocked',
           reason: 'local-runtime-absent',
-          message: 'The selected model is not run locally.',
+          message: i18n.t('common:coworkReadiness.localAbsent'),
           retryable: false,
           capabilities: [],
         })

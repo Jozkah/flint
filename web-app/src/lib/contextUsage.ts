@@ -1,4 +1,5 @@
 import { formatTokenCount } from '@/lib/utils'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /**
  * How full the context window is: the one place "used / max input" is worked
@@ -57,7 +58,7 @@ export function contextUsage(
       tier: 'ok',
       share: () => 0,
       thresholdShare: null,
-      label: `${formatTokenCount(used)} tokens (window unknown)`,
+      label: i18n.t('context:breakdown.windowUnknown', { used: formatTokenCount(used) }),
     }
   }
   const whole = Math.max(window, used)

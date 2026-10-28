@@ -4,6 +4,7 @@ import { errorText } from '@/lib/errorText'
 import type { ToolImage } from '@/lib/toolOutputImages'
 import { listChatImages } from '@/lib/chatImages'
 import { studioApi } from '@/lib/studio/studio'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 const PNG_DATA_URL = /^data:image\/png;base64,(.+)$/s
 
@@ -18,7 +19,7 @@ export const canSaveToolImage = (image: ToolImage): boolean =>
  */
 export async function saveToolImage(image: ToolImage): Promise<string | null> {
   const match = PNG_DATA_URL.exec(image.dataUrl)
-  if (!match) throw new Error('This picture cannot be saved.')
+  if (!match) throw new Error(i18n.t('chat:export.pictureCannotBeSaved'))
   const report = await invoke<{ path: string } | null>('export_save_file', {
     ext: 'png',
     suggestedName: image.name.replace(/\.[a-z0-9]+$/i, ''),
@@ -31,7 +32,7 @@ export async function saveToolImage(image: ToolImage): Promise<string | null> {
 export async function saveToolImageWithToast(image: ToolImage): Promise<void> {
   try {
     const path = await saveToolImage(image)
-    if (path) toast.success(`Saved ${path}`)
+    if (path) toast.success(i18n.t('chat:export.saved', { path }))
   } catch (e) {
     toast.error(errorText(e))
   }
@@ -72,11 +73,11 @@ export async function saveChatPicturesWithToast(threadId: string): Promise<void>
     const { saved, missing, cancelled } = await saveChatPictures(threadId)
     if (saved && !cancelled) {
       toast.success(
-        `Saved ${saved} picture${saved === 1 ? '' : 's'}` +
-          (missing ? `; ${missing} no longer in the gallery` : '')
+        i18n.t('chat:export.savedPictures', { count: saved }) +
+          (missing ? i18n.t('chat:export.picturesMissing', { count: missing }) : '')
       )
     } else if (!saved && !cancelled && missing) {
-      toast.error('The pictures are no longer in the Studio gallery.')
+      toast.error(i18n.t('chat:export.picturesGone'))
     }
   } catch (e) {
     toast.error(errorText(e))

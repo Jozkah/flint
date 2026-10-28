@@ -60,5 +60,8 @@
       "unknownTitle": "Совместимость неизвестна",
       "unknownDetail": "Недостаточно данных о локальном оборудовании или размере файла"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import { estimateMessageTokens, estimateTokens, estimateToolTokens } from '@/lib/context-manager'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /**
  * Where a request's context goes, by kind: the conversation, the tools' schemas
@@ -57,15 +58,7 @@ export const SEGMENT_COLORS: Record<ContextSegment['id'], string> = {
   unmeasured: 'bg-fuchsia-400',
 }
 
-const LABELS: Record<ContextSegment['id'], string> = {
-  messages: 'Messages',
-  systemTools: 'System tools',
-  mcpTools: 'MCP tools',
-  skills: 'Skills',
-  memory: 'Memory files',
-  systemPrompt: 'System prompt',
-  unmeasured: 'Unmeasured',
-}
+const labelOf = (id: ContextSegment['id']): string => i18n.t(`context:breakdown.${id}`)
 
 /** Children listed before the rest are folded into one "N more" line. */
 const MAX_CHILDREN = 12
@@ -92,7 +85,7 @@ function childrenOf(list: ContextChild[]): ContextChild[] {
   const rest = sorted.slice(MAX_CHILDREN)
   return [
     ...sorted.slice(0, MAX_CHILDREN),
-    { label: `${rest.length} more`, tokens: rest.reduce((n, c) => n + c.tokens, 0) },
+    { label: i18n.t('context:breakdown.more', { count: rest.length }), tokens: rest.reduce((n, c) => n + c.tokens, 0) },
   ]
 }
 
@@ -132,7 +125,7 @@ export function buildContextBreakdown(input: BreakdownInput): ContextBreakdown {
     children?: ContextChild[]
   ): ContextSegment => ({
     id,
-    label: LABELS[id],
+    label: labelOf(id),
     tokens,
     color: SEGMENT_COLORS[id],
     ...(children && children.length > 0 ? { children: childrenOf(children) } : {}),
@@ -207,7 +200,7 @@ export function reconcileBreakdown(
 }
 
 function make0(id: ContextSegment['id'], tokens: number): ContextSegment {
-  return { id, label: LABELS[id], tokens, color: SEGMENT_COLORS[id] }
+  return { id, label: labelOf(id), tokens, color: SEGMENT_COLORS[id] }
 }
 
 /** What a request carries besides its messages (system prompt, tool schemas, skills, memory). */

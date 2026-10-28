@@ -60,5 +60,8 @@
       "unknownTitle": "Ajuste desconhecido",
       "unknownDetail": "Informações insuficientes sobre o hardware local ou o tamanho do arquivo"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

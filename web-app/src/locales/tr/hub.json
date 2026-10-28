@@ -60,5 +60,8 @@
       "unknownTitle": "Uyum bilinmiyor",
       "unknownDetail": "Yerel donanım veya dosya boyutu hakkında yeterli bilgi yok"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

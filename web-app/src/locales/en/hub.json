@@ -60,5 +60,8 @@
       "unknownTitle": "Fit unknown",
       "unknownDetail": "Not enough local hardware or file-size information"
     }
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }
