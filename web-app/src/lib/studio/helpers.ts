@@ -1,4 +1,5 @@
 import type { StudioFile } from '@/lib/studio/studio'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** Pure pieces of the Studio page, kept out of the component so they can be tested. */
 
@@ -138,8 +139,14 @@ export function downloadedBytes(
  * an "unknown size" next to a size that is known.
  */
 export function downloadProgressText(bytes: number, total: number, format: (n: number) => string): string {
-  if (bytes <= 0) return total > 0 ? `Starting… ${format(total)} to download` : 'Starting…'
-  return total > 0 ? `${format(bytes)} of ${format(total)}` : format(bytes)
+  if (bytes <= 0) {
+    return total > 0
+      ? i18n.t('studio:download.startingSize', { size: format(total) })
+      : i18n.t('studio:download.starting')
+  }
+  return total > 0
+    ? i18n.t('studio:download.progress', { bytes: format(bytes), total: format(total) })
+    : format(bytes)
 }
 
 /** `diffusion:z-image-turbo:2` is file 2 of that model; anything else is not ours. */
@@ -154,7 +161,7 @@ export const VIDEO_COMFORT_MB = 30 * 1024
 export function videoMemoryWarning(totalMemoryMb: number | undefined): string | null {
   if (!totalMemoryMb || totalMemoryMb >= VIDEO_COMFORT_MB) return null
   const gb = Math.round(totalMemoryMb / 1024)
-  return `This computer has about ${gb} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk.`
+  return i18n.t('studio:videoMemoryWarning', { gb })
 }
 
 type Workload = { width: number; height: number; frames: number | null; steps: number }
@@ -174,23 +181,19 @@ export function estimateVideoMs(
   return Number.isFinite(ratio) && ratio > 0 ? Math.round(previous.durationMs * ratio) : null
 }
 
-const PHASES: Record<string, string> = {
-  queued: 'Waiting',
-  encoding: 'Reading the prompt',
-  sampling: 'Drawing',
-  decoding: 'Finishing',
-  saving: 'Saving',
-}
+const PHASES = ['queued', 'encoding', 'sampling', 'decoding', 'saving']
 
 export function phaseLabel(phase: string): string {
-  return PHASES[phase] ?? 'Working'
+  return i18n.t(`studio:phase.${PHASES.includes(phase) ? phase : 'working'}`)
 }
 
 /** `3 s`, `1 min 20 s`: how long a generation took. */
 export function durationText(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000))
-  if (seconds < 60) return `${seconds} s`
+  if (seconds < 60) return i18n.t('studio:duration.s', { count: seconds })
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
-  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`
+  return rest === 0
+    ? i18n.t('studio:duration.min', { count: minutes })
+    : i18n.t('studio:duration.minS', { minutes, seconds: rest })
 }

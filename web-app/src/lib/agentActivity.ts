@@ -1,4 +1,5 @@
 import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 export type ActivityLabel = { text: string; startedAt: number } | null
 
@@ -26,42 +27,36 @@ function humanizeToolName(name: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
-const VERB_BY_TOOL: Record<string, string> = {
-  write: 'Writing',
-  edit: 'Editing',
-  bash: 'Running',
-  read: 'Reading',
-  ls: 'Listing',
-  find: 'Finding',
-  grep: 'Searching',
-}
+const VERB_TOOLS = new Set(['write', 'edit', 'bash', 'read', 'ls', 'find', 'grep'])
 
 const NO_DETAIL_TOOLS: Record<string, string> = {
-  memory_write: 'Saving memory',
-  memory_read: 'Reading memory',
-  memory_list: 'Reading memory',
+  memory_write: 'savingMemory',
+  memory_read: 'readingMemory',
+  memory_list: 'readingMemory',
 }
 
 /** Text for one tool call, given its name and args. Pure formatting, no timestamp. */
 export function toolActivityText(toolName: string, input: unknown): string {
   const fixed = NO_DETAIL_TOOLS[toolName]
-  if (fixed) return fixed
+  if (fixed) return i18n.t(`common:activity.${fixed}`)
 
   if (toolName === 'skill_read') {
     const name = stringArg(input, 'name')
-    return name ? `Reading ${name}` : 'Reading skill'
+    return name ? i18n.t('common:activity.readingSkillNamed', { name }) : i18n.t('common:activity.readingSkill')
   }
 
-  const verb = VERB_BY_TOOL[toolName]
-  if (!verb) return humanizeToolName(toolName)
+  if (!VERB_TOOLS.has(toolName)) return humanizeToolName(toolName)
+  const verb = i18n.t(`common:activity.verb.${toolName}`)
 
   if (toolName === 'bash') {
     const command = stringArg(input, 'command')
-    return command ? `${verb} ${truncate(command, MAX_COMMAND_LEN)}` : verb
+    return command
+      ? i18n.t(`common:activity.verbTarget.${toolName}`, { target: truncate(command, MAX_COMMAND_LEN) })
+      : verb
   }
 
   const path = stringArg(input, 'path')
-  return path ? `${verb} ${basename(path)}` : verb
+  return path ? i18n.t(`common:activity.verbTarget.${toolName}`, { target: basename(path) }) : verb
 }
 
 export function completedToolLabel(
@@ -71,7 +66,7 @@ export function completedToolLabel(
 ): string {
   if (toolName === 'skill_read' && state === 'output-available') {
     const name = stringArg(input, 'name')
-    return name ? `Used ${name}` : 'Used skill'
+    return name ? i18n.t('common:activity.usedSkillNamed', { name }) : i18n.t('common:activity.usedSkill')
   }
   return toolActivityText(toolName, input)
 }
@@ -112,12 +107,12 @@ export function subagentActivityLabel(subagents: SubagentRun[]): ActivityLabel {
     const activeTurn = lastRunningToolTurn(run.turns)
     const detail = activeTurn
       ? toolActivityText(activeTurn.name ?? 'tool', activeTurn.args)
-      : 'working'
+      : i18n.t('common:activity.working')
     return { text: `${run.name}: ${detail}`, startedAt: run.startedAt }
   }
 
   const startedAt = Math.min(...running.map((s) => s.startedAt))
-  return { text: `${running.length} subagents working`, startedAt }
+  return { text: i18n.t('common:activity.subagentsWorking', { count: running.length }), startedAt }
 }
 
 /**

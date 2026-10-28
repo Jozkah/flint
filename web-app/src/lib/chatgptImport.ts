@@ -1,6 +1,7 @@
 import type { ThreadMessage } from '@janhq/core'
 import { ulid } from 'ulidx'
 import { newAssistantThreadContent, newUserThreadContent } from '@/lib/completion'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** One visible turn of a ChatGPT conversation, oldest first. */
 export type ImportedMessage = {
@@ -128,7 +129,7 @@ export function parseChatGptExport(json: string): ImportedConversation[] {
     }
     if (messages.length === 0) continue
     out.push({
-      title: raw.title?.trim() || 'Imported chat',
+      title: raw.title?.trim() || i18n.t('chat:importedChatTitle'),
       createdAt: asSeconds(raw.create_time),
       updatedAt: asSeconds(raw.update_time),
       messages,

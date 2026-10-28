@@ -11,6 +11,7 @@
  */
 import type { EventEnvelope } from '@/lib/eventLog'
 import { cacheStatus, readTokenUsage, type TokenUsage } from '@/lib/tokenUsage'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 export type TimelineCategory =
   | 'messages'
@@ -197,10 +198,10 @@ function categoriesOfItem(row: TimelineRow, lifecycle: string, jobId?: string): 
 }
 
 function titleOfItem(tool: string, lifecycle: string, summary?: string): string {
-  if (lifecycle === 'steering') return 'Steering'
-  if (lifecycle === 'compaction') return 'Context compaction'
-  if (lifecycle === 'subagent') return 'Subagent'
-  if (lifecycle === 'background-job') return 'Background job'
+  if (lifecycle === 'steering') return i18n.t('common:timeline.row.steering')
+  if (lifecycle === 'compaction') return i18n.t('common:timeline.row.compaction')
+  if (lifecycle === 'subagent') return i18n.t('common:timeline.row.subagent')
+  if (lifecycle === 'background-job') return i18n.t('common:timeline.row.backgroundJob')
   if (lifecycle) return lifecycle
   return summary ? `${tool}: ${summary}` : tool
 }
@@ -326,7 +327,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           ...base,
           primary: 'usage',
           categories: ['usage'],
-          title: 'Token usage',
+          title: i18n.t('common:timeline.row.tokenUsage'),
           status: 'completed',
           usage,
         })
@@ -342,8 +343,11 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
             ...base,
             primary: 'run',
             categories: ['run'],
-            title: 'Provider fell back',
-            detail: `${str(p.from) ?? 'the model'} did not answer; trying ${str(p.to) ?? 'the next provider'}`,
+            title: i18n.t('common:timeline.row.fellBack'),
+            detail: i18n.t('common:timeline.row.fellBackDetail', {
+              from: str(p.from) ?? i18n.t('common:timeline.row.theModel'),
+              to: str(p.to) ?? i18n.t('common:timeline.row.nextProvider'),
+            }),
             status: 'failed',
             errorKind: str(p.failureKind),
             fallback: {
@@ -363,7 +367,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
             ...base,
             primary: 'run',
             categories: ['run'],
-            title: 'Request failed',
+            title: i18n.t('common:timeline.row.requestFailed'),
             detail: str(p.detail),
             status: 'failed',
             errorKind:
@@ -374,14 +378,14 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
         const text = num(p.textChars) ?? 0
         const reasoning = num(p.reasoningChars) ?? 0
         const calls = num(p.toolCalls) ?? 0
-        const parts = [`${text} characters`]
-        if (reasoning > 0) parts.push(`${reasoning} characters of reasoning`)
-        if (calls > 0) parts.push(`${calls} tool ${calls === 1 ? 'call' : 'calls'}`)
+        const parts = [i18n.t('common:timeline.row.characters', { count: text })]
+        if (reasoning > 0) parts.push(i18n.t('common:timeline.row.reasoningCharacters', { count: reasoning }))
+        if (calls > 0) parts.push(i18n.t('common:timeline.row.toolCalls', { count: calls }))
         rows.set(e.id, {
           ...base,
           primary: 'messages',
           categories: reasoning > 0 ? ['messages', 'reasoning'] : ['messages'],
-          title: 'Response',
+          title: i18n.t('common:timeline.row.response'),
           detail: parts.join(' · '),
           status: 'completed',
         })
@@ -392,7 +396,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           ...base,
           primary: 'run',
           categories: ['run', 'messages'],
-          title: 'Run started',
+          title: i18n.t('common:timeline.row.runStarted'),
           detail: str(p.model),
           status: 'completed',
         })
@@ -403,7 +407,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           ...base,
           primary: 'run',
           categories: ['run'],
-          title: 'Run ended',
+          title: i18n.t('common:timeline.row.runEnded'),
           detail: by === 'done' || by === 'unknown' ? undefined : by,
           resources: resourcesOf(p.resources),
           status:
@@ -417,7 +421,12 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           ...base,
           primary: 'subagents',
           categories: ['subagents'],
-          title: e.kind === 'agent.dispatched' ? `Dispatched ${str(p.agent) ?? 'an agent'}` : 'Agent ended',
+          title:
+            e.kind === 'agent.dispatched'
+              ? i18n.t('common:timeline.row.dispatched', {
+                  agent: str(p.agent) ?? i18n.t('common:timeline.row.anAgent'),
+                })
+              : i18n.t('common:timeline.row.agentEnded'),
           agent: str(p.agent),
           status: 'completed',
         })
@@ -428,7 +437,10 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           ...base,
           primary: 'background',
           categories: ['background'],
-          title: e.kind === 'job.started' ? 'Background job started' : 'Background job ended',
+          title:
+            e.kind === 'job.started'
+              ? i18n.t('common:timeline.row.jobStarted')
+              : i18n.t('common:timeline.row.jobEnded'),
           status:
             e.kind === 'job.started'
               ? 'completed'

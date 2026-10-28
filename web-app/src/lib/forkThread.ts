@@ -4,6 +4,7 @@ import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
 import { activePathOf } from '@/lib/message-branching'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /**
  * Fork a chat: a new conversation that starts as a copy of this one, up to a
@@ -27,12 +28,14 @@ export function forkParentOf(thread: Pick<Thread, 'metadata'> | undefined): stri
   return typeof from === 'string' && from ? from : null
 }
 
+/** The English suffix, kept so titles forked before it was translated still count as forks. */
 export const FORK_TITLE_SUFFIX = ' (fork)'
 
 /** The forked chat's title: the original's, marked once however often it is forked. */
 export function forkTitle(title: string | undefined): string {
-  const base = (title ?? '').trim() || 'New Thread'
-  return base.endsWith(FORK_TITLE_SUFFIX) ? base : `${base}${FORK_TITLE_SUFFIX}`
+  const base = (title ?? '').trim() || i18n.t('common:newThread')
+  const suffix = i18n.t('chat:fork.titleSuffix')
+  return base.endsWith(suffix) || base.endsWith(FORK_TITLE_SUFFIX) ? base : `${base}${suffix}`
 }
 
 /** The message to fork from is not on the branch the user is viewing. */
