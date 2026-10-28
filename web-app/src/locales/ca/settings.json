@@ -1192,7 +1192,6 @@
       "updated": "Actualitzada {{when}}",
       "loading": "Carregant les campanyes",
       "loadFailed": "No s'han pogut carregar les campanyes.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "S'ha omès {{count}} registre de campanya il·legible. Els fitxers s'han deixat al seu lloc.",
       "skipped_other": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
       "skipped_many": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
