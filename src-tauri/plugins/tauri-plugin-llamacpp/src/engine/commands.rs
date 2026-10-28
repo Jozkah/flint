@@ -237,7 +237,7 @@ pub async fn start_engine<R: tauri::Runtime>(
         return Ok(EngineInfo::from(existing));
     }
 
-    let mut envs = envs;
+    let mut envs = super::env_policy::sanitize_envs(envs);
     let api_key = generate_worker_key();
     // Filled from the handshake, after the worker is up; a fault before then
     // is worded without it.
@@ -491,7 +491,7 @@ pub async fn engine_devices<R: tauri::Runtime>(
     envs: HashMap<String, String>,
 ) -> Result<Vec<EngineDevice>, String> {
     let exe = resolve_worker_exe(&app_handle)?;
-    let mut envs = envs;
+    let mut envs = super::env_policy::sanitize_envs(envs);
     super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);

@@ -84,7 +84,7 @@ pub fn apply_worker_env<R: tauri::Runtime>(
     worker_exe: &Path,
     envs: &mut HashMap<String, String>,
 ) -> Option<PathBuf> {
-    if bundled_cuda(Some(worker_exe)) || envs.contains_key(addon::WORKER_ADDON_ENV) {
+    if bundled_cuda(Some(worker_exe)) {
         return None;
     }
     let exp = expect_for(None)?;
