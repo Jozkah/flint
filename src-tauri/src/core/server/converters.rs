@@ -29,8 +29,14 @@ pub struct SseEvent {
 #[derive(Debug, Default)]
 pub struct SseAccumulator {
     buf: String,
+    /// Bytes at the front of `buf` already scanned and known to hold no
+    /// event terminator, so each chunk is scanned once, not rescanned whole.
+    scanned: usize,
     utf8: Utf8ChunkDecoder,
 }
+
+/// Largest event the accumulator will hold while waiting for its blank line.
+const MAX_SSE_EVENT_BYTES: usize = 4 * 1024 * 1024;
 
 /// Decodes a byte stream as UTF-8 one network chunk at a time, holding back
 /// a multi-byte character split across a chunk boundary until the rest of it
@@ -98,11 +104,32 @@ impl SseAccumulator {
         // Normalize CRLF so boundary detection only has to look for "\n\n".
         self.buf.push_str(&chunk.replace("\r\n", "\n"));
         let mut events = Vec::new();
-        while let Some(idx) = self.buf.find("\n\n") {
+        loop {
+            // Resume one byte early: a terminator can straddle two chunks.
+            let mut from = self.scanned.saturating_sub(1).min(self.buf.len());
+            while !self.buf.is_char_boundary(from) {
+                from -= 1;
+            }
+            let Some(rel) = self.buf[from..].find("\n\n") else {
+                self.scanned = self.buf.len();
+                break;
+            };
+            let idx = from + rel;
             let raw: String = self.buf.drain(..idx + 2).collect();
+            self.scanned = 0;
             if let Some(ev) = parse_event(&raw) {
                 events.push(ev);
             }
+        }
+        if self.buf.len() > MAX_SSE_EVENT_BYTES {
+            // No terminator in 4 MiB: not an SSE stream worth buffering.
+            self.buf.clear();
+            self.scanned = 0;
+            events.push(SseEvent {
+                event: "error".to_string(),
+                data: r#"{"type":"error","error":{"message":"upstream sent an event larger than 4 MiB"}}"#
+                    .to_string(),
+            });
         }
         events
     }
@@ -113,6 +140,7 @@ impl SseAccumulator {
         let tail = self.utf8.finish();
         self.buf.push_str(&tail.replace("\r\n", "\n"));
         let raw = std::mem::take(&mut self.buf);
+        self.scanned = 0;
         parse_event(&raw)
     }
 }
@@ -464,6 +492,12 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                         }));
                     }
                     "assistant" if msg.get("tool_calls").is_some() => {
+                        // The turn's text comes before its calls, as the model
+                        // produced them.
+                        let text = message_text(&content);
+                        if !text.is_empty() {
+                            input_items.push(json!({"role": "assistant", "content": text}));
+                        }
                         if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
                             for call in calls {
                                 let func = call.get("function");
@@ -474,10 +508,6 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                                     "arguments": func.and_then(|f| f.get("arguments")).cloned().unwrap_or(Value::String(String::new())),
                                 }));
                             }
-                        }
-                        let text = message_text(&content);
-                        if !text.is_empty() {
-                            input_items.push(json!({"role": "assistant", "content": text}));
                         }
                     }
                     _ => {
@@ -496,6 +526,9 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             out["instructions"] = json!(instructions.join("\n\n"));
         }
         out["input"] = json!(input_items);
+        // The full history is sent every turn, so nothing needs storing
+        // server side.
+        out["store"] = json!(false);
 
         for (src, dst) in [
             ("max_tokens", "max_output_tokens"),
@@ -713,7 +746,11 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                     .unwrap_or("")
                     .to_string();
                 if let Some(delta) = data.get("delta").and_then(|d| d.as_str()) {
-                    let idx = *state.tool_index.get(&key).unwrap_or(&0);
+                    // An id never announced must not be glued onto call 0.
+                    let Some(&idx) = state.tool_index.get(&key) else {
+                        log::warn!("responses stream: argument delta for unknown item `{key}` dropped");
+                        return out;
+                    };
                     out.push(chunk_str(
                         state,
                         json!({"tool_calls": [{
@@ -1825,7 +1862,10 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                             .and_then(|v| v.as_i64())
                             .unwrap_or(0)
                             .to_string();
-                        let idx = *state.tool_index.get(&block_index).unwrap_or(&0);
+                        let Some(&idx) = state.tool_index.get(&block_index) else {
+                            log::warn!("anthropic stream: input delta for unknown block {block_index} dropped");
+                            return out;
+                        };
                         if let Some(partial) = delta
                             .and_then(|d| d.get("partial_json"))
                             .and_then(|t| t.as_str())
@@ -3563,6 +3603,41 @@ mod anthropic_messages_tests {
             json!({"format": {"type": "json_schema", "name": "out", "schema": {"type": "object"}, "strict": true}})
         );
         assert_eq!(out["parallel_tool_calls"], json!(false));
+    }
+
+    #[test]
+    fn responses_request_is_stateless_and_keeps_text_before_calls() {
+        let body = json!({
+            "model": "gpt-5",
+            "messages": [
+                {"role": "user", "content": "go"},
+                {"role": "assistant", "content": "checking", "tool_calls": [
+                    {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+                ]}
+            ]
+        });
+        let out = OpenAIResponsesConverter::new().convert_request(&body);
+        assert_eq!(out["store"], json!(false));
+        let input = out["input"].as_array().unwrap();
+        assert_eq!(input[1]["role"], "assistant");
+        assert_eq!(input[1]["content"], "checking");
+        assert_eq!(input[2]["type"], "function_call");
+    }
+
+    #[test]
+    fn sse_accumulator_bounds_an_unterminated_event() {
+        let mut acc = SseAccumulator::new();
+        let chunk = "x".repeat(1024 * 1024);
+        let mut events = Vec::new();
+        for _ in 0..5 {
+            events.extend(acc.push(&chunk));
+        }
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event, "error");
+        // A terminator split over two chunks still ends an event.
+        let mut acc = SseAccumulator::new();
+        assert!(acc.push("data: 1\n").is_empty());
+        assert_eq!(acc.push("\ndata: 2\n\n").len(), 2);
     }
 
     #[test]

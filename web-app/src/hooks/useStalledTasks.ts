@@ -31,6 +31,8 @@ export function stalledTaskIds(
   return out
 }
 
+const NONE: string[] = []
+
 /** Re-evaluated every 2 s and whenever the tasks or the live runs change. */
 export function useStalledTasks(
   tasks: readonly TaskLike[],
@@ -45,11 +47,20 @@ export function useStalledTasks(
     return () => clearInterval(timer)
   }, [enabled])
   void tick
-  if (!enabled) return []
-  return stalledTaskIds(
+  const last = useRef<string[]>(NONE)
+  if (!enabled) return NONE
+  const next = stalledTaskIds(
     tasks,
     new Set(Object.keys(runs)),
     seen.current,
     Date.now()
   )
+  // The same ids keep the same array, so a consumer that memoizes on it (or
+  // lists it in an effect) is not re-run by every 2 s tick.
+  const prev = last.current
+  if (next.length === prev.length && next.every((id, i) => id === prev[i])) {
+    return prev
+  }
+  last.current = next
+  return next
 }

@@ -112,6 +112,7 @@ describe('useThreadManagement', () => {
     const newFolder = { id: 'p-new', name: 'New Folder', updated_at: 7, assistantId: 'assistant-1' }
     mockCreateGroup.mockResolvedValue('p-new')
     mockGetProjects.mockResolvedValue([newFolder])
+    mockAddProject.mockResolvedValue(newFolder)
 
     const { result } = renderHook(() => useThreadManagement())
 
@@ -121,7 +122,8 @@ describe('useThreadManagement', () => {
     })
 
     expect(mockCreateGroup).toHaveBeenCalledWith('home', 'New Folder')
-    expect(mockSetProjects).toHaveBeenCalledWith([newFolder])
+    expect(mockAddProject).toHaveBeenCalledWith('New Folder', 'assistant-1', undefined, 'p-new')
+    expect(mockSetProjects).not.toHaveBeenCalled()
     expect(returned).toEqual(newFolder)
     expect(result.current.folders).toEqual([newFolder])
   })

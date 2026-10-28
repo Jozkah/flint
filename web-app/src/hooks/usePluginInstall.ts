@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { errorText } from '@/lib/errorText'
 import {
   checkGitUrl,
   type InstallSource,
@@ -24,11 +25,16 @@ export function usePluginInstallForm() {
   const [fieldError, setFieldError] = useState<string | null>(null)
 
   const chooseFolder = async () => {
-    const picked = await serviceHub.dialog().open({ directory: true })
-    const path = Array.isArray(picked) ? picked[0] : picked
-    if (path) {
-      setLocalPath(path)
-      setFieldError(null)
+    try {
+      const picked = await serviceHub.dialog().open({ directory: true })
+      const path = Array.isArray(picked) ? picked[0] : picked
+      if (path) {
+        setLocalPath(path)
+        setFieldError(null)
+      }
+    } catch (e) {
+      // A failing picker used to be an unhandled rejection with no feedback.
+      setFieldError(errorText(e))
     }
   }
 

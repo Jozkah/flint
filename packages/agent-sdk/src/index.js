@@ -794,6 +794,9 @@ export class JanRuntime {
           stderr: this.#stderr,
         }),
       )
+      // The stream is out of step and nothing reads it as it should: stop the
+      // child rather than leave it running against a failed client.
+      this.close({ force: true }).catch(() => {})
       return
     }
     if (frame.method === undefined) {

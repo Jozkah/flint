@@ -6,11 +6,20 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
   const en = (await import('@/locales/en/common.json')).default as any
   return {
     useTranslation: () => ({
-      t: (key: string) =>
-        key
-          .replace(/^common:/, '')
-          .split('.')
-          .reduce((o: any, k) => o?.[k], en) ?? key,
+      t: (key: string, opts?: Record<string, unknown>) => {
+        const path = key.replace(/^common:/, '').split('.')
+        const look = (k: string[]) => k.reduce((o: any, x) => o?.[x], en)
+        let raw = look(path)
+        if (raw === undefined && typeof opts?.count === 'number') {
+          const last = path[path.length - 1]
+          raw = look([
+            ...path.slice(0, -1),
+            `${last}_${opts.count === 1 ? 'one' : 'other'}`,
+          ])
+        }
+        if (typeof raw !== 'string') return key
+        return raw.replace(/\{\{(\w+)\}\}/g, (_m, n) => String(opts?.[n] ?? ''))
+      },
     }),
   }
 })

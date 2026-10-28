@@ -47,7 +47,8 @@
     "memoriesSent": "送信されたメモリ",
     "withheld": "矛盾のため保留: {{ids}}",
     "perSec": "{{n}} トークン/秒",
-    "count": "{{n}} トークン"
+    "count": "{{n}} トークン",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "サーバーホストを編集"

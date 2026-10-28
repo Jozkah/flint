@@ -47,7 +47,8 @@
     "memoriesSent": "Gönderilen anılar",
     "withheld": "Çeliştiği için alıkonuldu: {{ids}}",
     "perSec": "{{n}} token/sn",
-    "count": "{{n}} token"
+    "count": "{{n}} token",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Sunucu ana makinesini düzenle"

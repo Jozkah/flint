@@ -225,12 +225,33 @@ describe('ProjectFiles', () => {
     )
   })
 
-  it('falls back to empty list when the extension throws', async () => {
-    listAttachmentsForProjectMock.mockRejectedValue(new Error('boom'))
+  it('shows a load error with retry when the extension throws', async () => {
+    listAttachmentsForProjectMock.mockRejectedValueOnce(new Error('boom'))
+    render(<ProjectFiles projectId="p1" lng="en" />)
+    await waitFor(() =>
+      expect(screen.getByText('common:projects.filesLoadFailed')).toBeInTheDocument()
+    )
+    listAttachmentsForProjectMock.mockResolvedValue([])
+    fireEvent.click(screen.getByText('common:projects.retryLoad'))
+    await waitFor(() =>
+      expect(screen.getByText('common:projects.filesDescription')).toBeInTheDocument()
+    )
+  })
+
+  it('lets the keyboard open the empty drop zone', async () => {
+    dialogOpenMock.mockResolvedValue(null)
+    extMock.listAttachmentsForProject = listAttachmentsForProjectMock
+    listAttachmentsForProjectMock.mockResolvedValue([])
     render(<ProjectFiles projectId="p1" lng="en" />)
     await waitFor(() =>
       expect(screen.getByText('common:projects.filesDescription')).toBeInTheDocument()
     )
+    const zone = screen
+      .getByText('common:projects.filesDescription')
+      .closest('[role="button"]') as HTMLElement
+    expect(zone).toHaveAttribute('tabindex', '0')
+    fireEvent.keyDown(zone, { key: 'Enter' })
+    await waitFor(() => expect(dialogOpenMock).toHaveBeenCalled())
   })
 
   it('shows an info toast when upload is clicked while attachments are disabled', async () => {

@@ -202,6 +202,8 @@ export const ImportLlamacppModelDialog = ({
   const [modelTokenizerInfo, setModelTokenizerInfo] =
     useState<TokenizerInfo | null>(null)
 
+  const { t } = useTranslation()
+
   const validateGgufFile = useCallback(
     async (filePath: string, fileType: 'model' | 'mmproj' | 'draft'): Promise<void> => {
       if (fileType === 'model') {
@@ -258,8 +260,7 @@ export const ImportLlamacppModelDialog = ({
               }
 
               if (architecture === 'clip') {
-                const errorMessage =
-                  'This model has CLIP architecture and cannot be imported as a text generation model. CLIP models are designed for vision tasks and require different handling.'
+                const errorMessage = t('sweep:llamaImport.clipModel')
                 setValidationError(errorMessage)
                 console.error(
                   'CLIP architecture detected in model file:',
@@ -269,7 +270,9 @@ export const ImportLlamacppModelDialog = ({
             }
 
             if (!result.isValid) {
-              setValidationError(result.error || 'Model validation failed')
+              setValidationError(
+                result.error || t('sweep:llamaImport.modelValidationFailed')
+              )
               console.error('Model validation failed:', result.error)
             }
           }
@@ -281,7 +284,9 @@ export const ImportLlamacppModelDialog = ({
             const architecture = meta?.['general.architecture']
 
             if (architecture !== 'clip') {
-              const errorMessage = `This MMProj file has "${architecture}" architecture but should have "clip" architecture. MMProj files must be CLIP models for vision or audio processing.`
+              const errorMessage = t('sweep:llamaImport.mmprojWrongArch', {
+                architecture: String(architecture),
+              })
               setMmprojValidationError(errorMessage)
               setDetectedModalities(null)
               console.error(
@@ -302,11 +307,12 @@ export const ImportLlamacppModelDialog = ({
               'Failed to validate mmproj file directly:',
               directError
             )
-            const errorMessage = `Failed to read MMProj metadata: ${
-              directError instanceof Error
-                ? directError.message
-                : 'Unknown error'
-            }`
+            const errorMessage = t('sweep:llamaImport.mmprojReadFailed', {
+              error:
+                directError instanceof Error
+                  ? directError.message
+                  : t('sweep:llamaImport.unknownError'),
+            })
             setMmprojValidationError(errorMessage)
           }
         } else {
@@ -319,12 +325,10 @@ export const ImportLlamacppModelDialog = ({
               result.metadata?.metadata?.['general.architecture']
 
             if (architecture === 'clip') {
-              setDraftValidationError(
-                'This file has CLIP architecture and cannot be used as a draft model.'
-              )
+              setDraftValidationError(t('sweep:llamaImport.draftClip'))
             } else if (!result.isValid) {
               setDraftValidationError(
-                result.error || 'Draft model validation failed'
+                result.error || t('sweep:llamaImport.draftValidationFailed')
               )
             } else if (modelTokenizerInfo) {
               const mismatch = findTokenizerMismatch(
@@ -333,7 +337,7 @@ export const ImportLlamacppModelDialog = ({
               )
               if (mismatch) {
                 setDraftValidationError(
-                  `Draft model is not compatible with the main model: ${mismatch}.`
+                  t('sweep:llamaImport.draftMismatch', { mismatch })
                 )
               }
             }
@@ -341,7 +345,13 @@ export const ImportLlamacppModelDialog = ({
         }
       } catch (error) {
         console.error(`Failed to validate ${fileType} file:`, error)
-        const errorMessage = `Failed to read ${fileType} metadata: ${error instanceof Error ? error.message : 'Unknown error'}`
+        const errorMessage = t('sweep:llamaImport.readFailed', {
+          fileType: t(`sweep:llamaImport.fileType.${fileType}`),
+          error:
+            error instanceof Error
+              ? error.message
+              : t('sweep:llamaImport.unknownError'),
+        })
 
         if (fileType === 'model') {
           setValidationError(errorMessage)
@@ -360,7 +370,7 @@ export const ImportLlamacppModelDialog = ({
         }
       }
     },
-    [serviceHub, modelTokenizerInfo]
+    [serviceHub, modelTokenizerInfo, t]
   )
 
   const validateModelFile = useCallback(
@@ -418,7 +428,6 @@ export const ImportLlamacppModelDialog = ({
     | { status: 'failed'; message: string }
   >({ status: 'idle' })
 
-  const { t } = useTranslation()
   const modelFolders = useModelLibrary((s) => s.folders)
   const addModelFolder = useModelLibrary((s) => s.addFolder)
   const removeModelFolder = useModelLibrary((s) => s.removeFolder)
@@ -585,10 +594,9 @@ export const ImportLlamacppModelDialog = ({
                 <Sparkles size={16}className="text-muted-foreground" />
               </div>
               <div className="flex-1">
-                <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">Multimodal Support</h3>
+                <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">{t('sweep:llamaImport.multimodalTitle')}</h3>
                 <p className="text-sm text-muted-foreground leading-normal">
-                  Enable if your model uses an mmproj for image or audio input.
-                  Modalities are detected from the projector file.
+                  {t('sweep:llamaImport.multimodalHint')}
                 </p>
               </div>
               <Switch
@@ -615,11 +623,9 @@ export const ImportLlamacppModelDialog = ({
                 <Zap size={16}className="text-muted-foreground" />
               </div>
               <div className="flex-1">
-                <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">Draft Model Support</h3>
+                <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">{t('sweep:llamaImport.draftTitle')}</h3>
                 <p className="text-sm text-muted-foreground leading-normal">
-                  Attach a smaller draft model (including MTP draft heads) for
-                  speculative decoding. The draft model must share the main
-                  model&apos;s tokenizer and vocabulary.
+                  {t('sweep:llamaImport.draftHint')}
                 </p>
               </div>
               <Switch
@@ -644,7 +650,7 @@ export const ImportLlamacppModelDialog = ({
             <div className="rounded-md bg-muted px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Model will be saved as:
+                  {t('sweep:llamaImport.savedAs')}
                 </span>
               </div>
               <p className="text-sm font-mono mt-1">
@@ -659,10 +665,10 @@ export const ImportLlamacppModelDialog = ({
             <div className="border border-border rounded-lg p-3 space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
-                  Model File (GGUF)
+                  {t('sweep:llamaImport.modelFile')}
                 </h3>
                 <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
-                  Required
+                  {t('sweep:llamaImport.required')}
                 </span>
               </div>
 
@@ -694,7 +700,7 @@ export const ImportLlamacppModelDialog = ({
                         onClick={() => handleFileSelect('model')}
                         disabled={importing || isValidating}
                       >
-                        Change
+                        {t('sweep:llamaImport.change')}
                       </Button>
                     </div>
                   </div>
@@ -709,7 +715,7 @@ export const ImportLlamacppModelDialog = ({
                         />
                         <div>
                           <p className="text-sm font-medium text-destructive">
-                            Model Validation Error
+                            {t('sweep:llamaImport.modelValidationError')}
                           </p>
                           <p className="text-sm text-foreground mt-1 break-words">
                             {validationError}
@@ -728,7 +734,7 @@ export const ImportLlamacppModelDialog = ({
                           className="text-fg-2 motion-safe:animate-spin"
                         />
                         <p className="text-sm text-fg-2">
-                          Validating model file...
+                          {t('sweep:llamaImport.validatingModel')}
                         </p>
                       </div>
                     </div>
@@ -739,11 +745,10 @@ export const ImportLlamacppModelDialog = ({
                       <FileCode size={16} className="mt-0.5 shrink-0" />
                       <div>
                         <p className="text-sm font-medium">
-                          Embedding model detected
+                          {t('sweep:llamaImport.embeddingDetected')}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          This model will be imported for embeddings only.
-                          Multimodal options are disabled.
+                          {t('sweep:llamaImport.embeddingHint')}
                         </p>
                       </div>
                     </div>
@@ -757,7 +762,7 @@ export const ImportLlamacppModelDialog = ({
                   disabled={importing}
                   className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
                 >
-                  Select GGUF File
+                  {t('sweep:llamaImport.selectGguf')}
                 </Button>
               )}
 
@@ -776,7 +781,7 @@ export const ImportLlamacppModelDialog = ({
                         className="mr-2 motion-safe:animate-spin"
                       />
                     ) : null}
-                    Find models already on this computer
+                    {t('sweep:llamaImport.findModels')}
                   </Button>
                   <p className="text-xs text-muted-foreground">
                     {t('providers:importScanHint')}
@@ -826,7 +831,7 @@ export const ImportLlamacppModelDialog = ({
                   {scanState.status === 'done' &&
                     scanState.models.length === 0 && (
                       <p className="text-sm text-muted-foreground">
-                        No models found in those apps' usual folders.
+                        {t('sweep:llamaImport.noneFound')}
                       </p>
                     )}
                   {scanState.status === 'done' &&
@@ -877,9 +882,9 @@ export const ImportLlamacppModelDialog = ({
             {isMultimodal && (
               <div className="border border-border rounded-lg p-3 space-y-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">MMPROJ File</h3>
+                  <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">{t('sweep:llamaImport.mmprojFile')}</h3>
                   <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
-                    Required for Multimodal
+                    {t('sweep:llamaImport.requiredMultimodal')}
                   </span>
                 </div>
 
@@ -911,7 +916,7 @@ export const ImportLlamacppModelDialog = ({
                           onClick={() => handleFileSelect('mmproj')}
                           disabled={importing || isValidatingMmproj}
                         >
-                          Change
+                          {t('sweep:llamaImport.change')}
                         </Button>
                       </div>
                       {!isValidatingMmproj &&
@@ -919,18 +924,18 @@ export const ImportLlamacppModelDialog = ({
                         detectedModalities && (
                           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                             <span className="text-xs text-muted-foreground">
-                              Detected:
+                              {t('sweep:llamaImport.detected')}
                             </span>
                             {detectedModalities.vision && (
                               <span className="inline-flex items-center gap-1 text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                                 <Image size={12} />
-                                Vision
+                                {t('sweep:llamaImport.vision')}
                               </span>
                             )}
                             {detectedModalities.audio && (
                               <span className="inline-flex items-center gap-1 text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                                 <Mic size={12} />
-                                Audio
+                                {t('sweep:llamaImport.audio')}
                               </span>
                             )}
                           </div>
@@ -947,7 +952,7 @@ export const ImportLlamacppModelDialog = ({
                           />
                           <div>
                             <p className="text-sm font-medium text-destructive">
-                              MMProj Validation Error
+                              {t('sweep:llamaImport.mmprojValidationError')}
                             </p>
                             <p className="text-sm text-foreground mt-1 break-words">
                               {mmprojValidationError}
@@ -966,7 +971,7 @@ export const ImportLlamacppModelDialog = ({
                             className="text-fg-2 motion-safe:animate-spin"
                           />
                           <p className="text-sm text-fg-2">
-                            Validating MMProj file...
+                            {t('sweep:llamaImport.validatingMmproj')}
                           </p>
                         </div>
                       </div>
@@ -980,7 +985,7 @@ export const ImportLlamacppModelDialog = ({
                     disabled={importing}
                     className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
                   >
-                    Select MMPROJ File
+                    {t('sweep:llamaImport.selectMmproj')}
                   </Button>
                 )}
               </div>
@@ -989,9 +994,9 @@ export const ImportLlamacppModelDialog = ({
             {isDraftModel && (
               <div className="border border-border rounded-lg p-3 space-y-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">Draft Model File (GGUF)</h3>
+                  <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">{t('sweep:llamaImport.draftFile')}</h3>
                   <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
-                    Required for Draft Model
+                    {t('sweep:llamaImport.requiredDraft')}
                   </span>
                 </div>
 
@@ -1020,7 +1025,7 @@ export const ImportLlamacppModelDialog = ({
                           onClick={() => handleFileSelect('draft')}
                           disabled={importing || isValidatingDraft}
                         >
-                          Change
+                          {t('sweep:llamaImport.change')}
                         </Button>
                       </div>
                     </div>
@@ -1034,7 +1039,7 @@ export const ImportLlamacppModelDialog = ({
                           />
                           <div>
                             <p className="text-sm font-medium text-destructive">
-                              Draft Model Validation Error
+                              {t('sweep:llamaImport.draftValidationError')}
                             </p>
                             <p className="text-sm text-foreground mt-1 break-words">
                               {draftValidationError}
@@ -1052,7 +1057,7 @@ export const ImportLlamacppModelDialog = ({
                             className="text-fg-2 motion-safe:animate-spin"
                           />
                           <p className="text-sm text-fg-2">
-                            Validating draft model file...
+                            {t('sweep:llamaImport.validatingDraft')}
                           </p>
                         </div>
                       </div>
@@ -1066,7 +1071,7 @@ export const ImportLlamacppModelDialog = ({
                     disabled={importing}
                     className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
                   >
-                    Select Draft GGUF File
+                    {t('sweep:llamaImport.selectDraftFile')}
                   </Button>
                 )}
               </div>
@@ -1081,7 +1086,7 @@ export const ImportLlamacppModelDialog = ({
             onClick={() => handleOpenChange(false)}
             disabled={importing}
           >
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button
             onClick={handleImport}

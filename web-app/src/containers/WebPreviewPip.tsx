@@ -44,6 +44,10 @@ export function WebPreviewPip({
   const { t } = useTranslation()
   const [rect, setRect] = useState<PipRect>(initialRect)
   const drag = useRef<{ dx: number; dy: number } | null>(null)
+  // Tears down the drag or resize in flight, if any (unmount, pointercancel).
+  const stopGesture = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => stopGesture.current?.(), [])
 
   useEffect(() => {
     const onResize = () => setRect((r) => clampPipRect(r, vp()))
@@ -54,6 +58,12 @@ export function WebPreviewPip({
   const onDragDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault()
+      stopGesture.current?.()
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId)
+      } catch {
+        // Capture is a nicety; window listeners below still track the drag.
+      }
       drag.current = { dx: e.clientX - rect.x, dy: e.clientY - rect.y }
       const move = (ev: PointerEvent) => {
         // Read the offset now: the updater runs later, after a pointerup may
@@ -66,11 +76,15 @@ export function WebPreviewPip({
       }
       const up = () => {
         drag.current = null
+        stopGesture.current = null
         window.removeEventListener('pointermove', move)
         window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
       }
+      stopGesture.current = up
       window.addEventListener('pointermove', move)
       window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', up)
     },
     [rect.x, rect.y]
   )
@@ -79,6 +93,12 @@ export function WebPreviewPip({
     (edge: ResizeEdge) => (e: React.PointerEvent) => {
       e.preventDefault()
       e.stopPropagation()
+      stopGesture.current?.()
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId)
+      } catch {
+        // See onDragDown.
+      }
       const start = { sx: e.clientX, sy: e.clientY, ...rect }
       const move = (ev: PointerEvent) => {
         const dx = ev.clientX - start.sx
@@ -98,14 +118,33 @@ export function WebPreviewPip({
         setRect(clampPipRect({ x, y, w, h }, v, MIN_W, MIN_H))
       }
       const up = () => {
+        stopGesture.current = null
         window.removeEventListener('pointermove', move)
         window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
       }
+      stopGesture.current = up
       window.addEventListener('pointermove', move)
       window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', up)
     },
     [rect]
   )
+
+  // Arrow keys move the window from its title bar; Shift+arrows resize it.
+  const onBarKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return
+    const step = e.altKey ? 1 : 16
+    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+    const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+    if (!dx && !dy) return
+    e.preventDefault()
+    setRect((r) =>
+      e.shiftKey
+        ? clampPipRect({ ...r, w: r.w + dx, h: r.h + dy }, vp(), MIN_W, MIN_H)
+        : clampPipRect({ ...r, x: r.x + dx, y: r.y + dy }, vp())
+    )
+  }
 
   return (
     <div
@@ -122,6 +161,9 @@ export function WebPreviewPip({
       <div
         data-testid="pip-drag"
         onPointerDown={onDragDown}
+        onKeyDown={onBarKeyDown}
+        tabIndex={0}
+        role="group"
         aria-label={t('common:webPreview.pipDrag')}
         className="flex h-9 shrink-0 cursor-move items-center gap-2 border-b border-border px-2 text-sm font-medium"
       >

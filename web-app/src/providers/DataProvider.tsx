@@ -275,11 +275,14 @@ export function DataProvider() {
   useEffect(() => {
     void useBedrockCredentials.getState().refresh()
   }, [])
-  const { setProviders, getProviderByName } =
-    useModelProvider()
+  // Actions only: the whole store would re-render this provider on every
+  // provider edit and model-list change.
+  const setProviders = useModelProvider((s) => s.setProviders)
+  const getProviderByName = useModelProvider((s) => s.getProviderByName)
 
-  const { setServers, setSettings } = useMCPServers()
-  const { setAssistants } = useAssistant()
+  const setServers = useMCPServers((s) => s.setServers)
+  const setSettings = useMCPServers((s) => s.setSettings)
+  const setAssistants = useAssistant((s) => s.setAssistants)
   const setThreads = useThreads((s) => s.setThreads)
   const setThreadsLoading = useThreads((s) => s.setThreadsLoading)
   // The thread fetch re-runs on extension re-registration; the sandbox sweep

@@ -21,11 +21,15 @@ const modelProviderState = {
 }
 
 vi.mock('../useModelProvider', () => ({
-  useModelProvider: () => ({
-    selectedModel: modelProviderState.selectedModel,
-    selectedProvider: modelProviderState.selectedProvider,
-    getProviderByName: () => ({ settings: [] }),
-  }),
+  useModelProvider: (sel?: (s: unknown) => unknown) => {
+    const s = {
+      selectedModel: modelProviderState.selectedModel,
+      selectedProvider: modelProviderState.selectedProvider,
+      providers: [],
+      getProviderByName: () => ({ settings: [] }),
+    }
+    return sel ? sel(s) : s
+  },
 }))
 
 function makeMessage(

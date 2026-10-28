@@ -21,8 +21,6 @@ import {
   migrationDismiss,
   ALL_CATEGORIES,
   MODE_LABELS,
-  MODE_DESCRIPTIONS,
-  CATEGORY_LABELS,
   CONFLICT_LABELS,
   formatBytes,
   type Category,
@@ -37,6 +35,19 @@ import { Select } from '@/components/ui/select'
 type Step = 'detect' | 'nolegacy' | 'choose' | 'review' | 'running' | 'result'
 
 const COPY_LIKE: MigrationMode[] = ['copy', 'move']
+
+/** Render a translated sentence with `path` shown in a monospace span. */
+function withPath(text: string, path: string) {
+  const parts = text.split(path)
+  if (parts.length !== 2) return text
+  return (
+    <>
+      {parts[0]}
+      <span className="font-mono break-all">{path}</span>
+      {parts[1]}
+    </>
+  )
+}
 
 /**
  * First-launch JAN -> Flint migration assistant.
@@ -140,7 +151,10 @@ export function MigrationAssistant() {
       ? t('common:migration.copyDescription')
       : m === 'fresh'
         ? t('common:migration.freshDescription')
-        : MODE_DESCRIPTIONS[m]
+        : t(`common:migration.modes.${m}.description`)
+  const modeLabel = (m: MigrationMode) => t(`common:migration.modes.${m}.label`)
+  const categoryLabel = (c: Category) => t(`common:migration.categories.${c}`)
+  const conflictLabel = (c: Conflict) => t(`common:migration.conflicts.${c}`)
 
   const toggleCategory = (c: Category) => {
     setSelected((prev) => {
@@ -286,11 +300,11 @@ export function MigrationAssistant() {
         }}
       >
         <DialogHeader>
-          <DialogTitle>Migrate from JAN</DialogTitle>
+          <DialogTitle>{t('common:migration.title')}</DialogTitle>
           <DialogDescription>
             {step === 'nolegacy'
-              ? 'Bring your existing JAN data into Flint.'
-              : 'Flint found an existing JAN installation. Choose how to bring your data across.'}
+              ? t('common:migration.descriptionNoLegacy')
+              : t('common:migration.descriptionFound')}
           </DialogDescription>
         </DialogHeader>
 
@@ -303,14 +317,13 @@ export function MigrationAssistant() {
         {step === 'detect' && (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
             <IconLoader size={16} className="animate-spin" />
-            Looking for an existing JAN installation…
+            {t('common:migration.detecting')}
           </div>
         )}
 
         {step === 'nolegacy' && (
           <div className="py-4 text-sm text-muted-foreground">
-            No JAN data was found on this machine. There is nothing to migrate —
-            you can start using Flint right away.
+            {t('common:migration.noData')}
           </div>
         )}
 
@@ -318,11 +331,13 @@ export function MigrationAssistant() {
           <div className="flex flex-col gap-4">
             {detect?.legacy && (
               <div className="rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 text-xs text-muted-foreground">
-                Found JAN data at{' '}
-                <span className="font-mono break-all">
-                  {detect.legacy.source.data_folder}
-                </span>{' '}
-                ({formatBytes(detect.legacy.total_size_bytes)}).
+                {withPath(
+                  t('common:migration.foundAt', {
+                    path: detect.legacy.source.data_folder,
+                    size: formatBytes(detect.legacy.total_size_bytes),
+                  }),
+                  detect.legacy.source.data_folder
+                )}
               </div>
             )}
 
@@ -345,7 +360,7 @@ export function MigrationAssistant() {
                       : 'border-foreground/10 hover:bg-foreground/5')
                   }
                 >
-                  <div className="text-sm font-medium">{MODE_LABELS[m]}</div>
+                  <div className="text-sm font-medium">{modeLabel(m)}</div>
                   <div className="text-xs text-muted-foreground">
                     {modeDescription(m)}
                   </div>
@@ -356,7 +371,7 @@ export function MigrationAssistant() {
             {COPY_LIKE.includes(mode) && (
               <div className="flex flex-col gap-2">
                 <div className="text-xs font-medium text-muted-foreground">
-                  What to bring across
+                  {t('common:migration.whatToBring')}
                 </div>
                 {legacyCategories.map(({ id, report }) => (
                   <label
@@ -364,33 +379,35 @@ export function MigrationAssistant() {
                     className="flex items-center justify-between gap-3 text-sm"
                   >
                     <span className="flex flex-col">
-                      <span>{CATEGORY_LABELS[id]}</span>
+                      <span>{categoryLabel(id)}</span>
                       <span className="text-xs text-muted-foreground">
                         {formatBytes(report?.size_bytes ?? 0)} ·{' '}
-                        {report?.file_count ?? 0} files
+                        {t('common:migration.fileCount', {
+                          count: report?.file_count ?? 0,
+                        })}
                       </span>
                     </span>
                     <Switch
                       checked={selected.has(id)}
                       onCheckedChange={() => toggleCategory(id)}
-                      aria-label={CATEGORY_LABELS[id]}
+                      aria-label={categoryLabel(id)}
                     />
                   </label>
                 ))}
 
                 <label className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>If an item already exists in Flint</span>
+                  <span>{t('common:migration.existsInFlint')}</span>
                   <Select
                     className="rounded-md border border-foreground/15 bg-transparent px-2 py-1 text-xs"
                     value={defaultConflict}
                     onChange={(e) =>
                       setDefaultConflict(e.target.value as Conflict)
                     }
-                    aria-label="Conflict resolution"
+                    aria-label={t('common:migration.conflictAria')}
                   >
                     {(Object.keys(CONFLICT_LABELS) as Conflict[]).map((c) => (
                       <option key={c} value={c}>
-                        {CONFLICT_LABELS[c]}
+                        {conflictLabel(c)}
                       </option>
                     ))}
                   </Select>
@@ -404,26 +421,25 @@ export function MigrationAssistant() {
           <div className="flex flex-col gap-3">
             {!plan.compatible && (
               <p role="alert" className="text-xs text-destructive">
-                The JAN data reports a schema this Flint build does not fully
-                support. Review the warnings before continuing.
+                {t('common:migration.incompatible')}
               </p>
             )}
             <div className="rounded-md border border-foreground/10 px-3 py-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Mode</span>
-                <span className="font-medium">{MODE_LABELS[plan.mode]}</span>
+                <span className="text-muted-foreground">{t('common:migration.mode')}</span>
+                <span className="font-medium">{modeLabel(plan.mode)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Items</span>
+                <span className="text-muted-foreground">{t('common:migration.items')}</span>
                 <span>{plan.items.length}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Estimated size</span>
+                <span className="text-muted-foreground">{t('common:migration.estimatedSize')}</span>
                 <span>{formatBytes(plan.estimated_bytes)}</span>
               </div>
               {plan.reuse_path && (
                 <div className="flex justify-between gap-2">
-                  <span className="text-muted-foreground">Reuse path</span>
+                  <span className="text-muted-foreground">{t('common:migration.reusePath')}</span>
                   <span className="font-mono text-xs break-all">
                     {plan.reuse_path}
                   </span>
@@ -435,8 +451,9 @@ export function MigrationAssistant() {
               <div className="rounded-md border border-foreground/10 px-3 py-2">
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-xs font-medium">
-                    {conflicts.length} conflict
-                    {conflicts.length === 1 ? '' : 's'}
+                    {t('common:migration.conflictCount', {
+                      count: conflicts.length,
+                    })}
                   </span>
                   <Select
                     className="rounded-md border border-foreground/15 bg-transparent px-2 py-1 text-xs"
@@ -447,11 +464,11 @@ export function MigrationAssistant() {
                       // Re-plan so the resolution is applied and re-reviewed.
                       void buildPlan(c)
                     }}
-                    aria-label="Resolve conflicts"
+                    aria-label={t('common:migration.resolveAria')}
                   >
                     {(Object.keys(CONFLICT_LABELS) as Conflict[]).map((c) => (
                       <option key={c} value={c}>
-                        {CONFLICT_LABELS[c]}
+                        {conflictLabel(c)}
                       </option>
                     ))}
                   </Select>
@@ -461,7 +478,7 @@ export function MigrationAssistant() {
                     <li key={i.destination} className="truncate">
                       {i.name}
                       {i.conflict?.flint_is_newer
-                        ? ' — Flint copy is newer (kept)'
+                        ? ` — ${t('common:migration.flintIsNewer')}`
                         : ''}
                     </li>
                   ))}
@@ -482,7 +499,7 @@ export function MigrationAssistant() {
         {step === 'running' && (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
             <IconLoader size={16} className="animate-spin" />
-            Migrating your data… do not close Flint.
+            {t('common:migration.running')}
           </div>
         )}
 
@@ -491,59 +508,69 @@ export function MigrationAssistant() {
             {result && result.status === 'complete' && !result.error ? (
               <>
                 <div className="font-medium text-green-600 dark:text-green-500">
-                  Migration complete.
+                  {t('common:migration.complete')}
                 </div>
                 <ul className="text-xs text-muted-foreground">
                   {result.per_category.map((c) => (
                     <li key={c.category}>
-                      {CATEGORY_LABELS[c.category]}: {c.ok_count} ok
-                      {c.skipped_count ? `, ${c.skipped_count} skipped` : ''}
-                      {c.failed_count ? `, ${c.failed_count} failed` : ''}
+                      {t('common:migration.categoryOk', {
+                        name: categoryLabel(c.category),
+                        count: c.ok_count,
+                      })}
+                      {c.skipped_count
+                        ? `, ${t('common:migration.categorySkipped', { count: c.skipped_count })}`
+                        : ''}
+                      {c.failed_count
+                        ? `, ${t('common:migration.categoryFailed', { count: c.failed_count })}`
+                        : ''}
                     </li>
                   ))}
                 </ul>
                 {result.backup_path && (
                   <div className="text-xs text-muted-foreground">
-                    A backup of your JAN data was kept at{' '}
-                    <span className="font-mono break-all">
-                      {result.backup_path}
-                    </span>
-                    .
+                    {withPath(
+                      t('common:migration.backupKept', {
+                        path: result.backup_path,
+                      }),
+                      result.backup_path
+                    )}
                   </div>
                 )}
                 {result.restart_required && (
                   <div className="text-xs text-muted-foreground">
-                    Restart Flint to start using this data.
+                    {t('common:migration.restartNeeded')}
                   </div>
                 )}
                 {result.reuse_path && (
                   <div className="text-xs text-muted-foreground">
-                    Flint is now using your JAN data in place at{' '}
-                    <span className="font-mono break-all">
-                      {result.reuse_path}
-                    </span>
-                    .
+                    {withPath(
+                      t('common:migration.reuseInPlace', {
+                        path: result.reuse_path,
+                      }),
+                      result.reuse_path
+                    )}
                   </div>
                 )}
               </>
             ) : (
               <>
                 <div className="font-medium text-destructive">
-                  Migration did not complete.
+                  {t('common:migration.failed')}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {result?.error || error || 'An unknown error occurred.'}
+                  {result?.error || error || t('common:migration.unknownError')}
                   {result?.rolled_back || rolledBack
-                    ? ' Your data was rolled back to its previous state.'
+                    ? ` ${t('common:migration.rolledBackNote')}`
                     : ''}
                 </div>
                 {result?.quarantine_dir && (
                   <div className="text-xs text-muted-foreground">
-                    Partial data was quarantined at{' '}
-                    <span className="font-mono break-all">
-                      {result.quarantine_dir}
-                    </span>
-                    .
+                    {withPath(
+                      t('common:migration.quarantined', {
+                        path: result.quarantine_dir,
+                      }),
+                      result.quarantine_dir
+                    )}
                   </div>
                 )}
               </>
@@ -556,7 +583,7 @@ export function MigrationAssistant() {
             {step === 'choose' && !openedManually && (
               <>
                 <Button variant="ghost" size="sm" onClick={onNotNow} disabled={busy}>
-                  Not now
+                  {t('common:migration.notNow')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -564,7 +591,7 @@ export function MigrationAssistant() {
                   onClick={onNeverAsk}
                   disabled={busy}
                 >
-                  Don&apos;t ask again
+                  {t('common:migration.dontAskAgain')}
                 </Button>
               </>
             )}
@@ -575,7 +602,7 @@ export function MigrationAssistant() {
                 onClick={() => setStep('choose')}
                 disabled={busy}
               >
-                Back
+                {t('common:migration.back')}
               </Button>
             )}
           </div>
@@ -583,7 +610,7 @@ export function MigrationAssistant() {
           <div className="flex gap-2">
             {step === 'nolegacy' && (
               <Button size="sm" onClick={closeAssistant}>
-                Close
+                {t('common:migration.close')}
               </Button>
             )}
             {step === 'choose' && (
@@ -596,7 +623,9 @@ export function MigrationAssistant() {
                 }
               >
                 {busy ? <IconLoader size={14} className="animate-spin" /> : null}
-                {mode === 'fresh' ? 'Start fresh' : 'Continue'}
+                {mode === 'fresh'
+                  ? t('common:migration.startFresh')
+                  : t('common:migration.continue')}
               </Button>
             )}
             {step === 'review' && plan && (

@@ -47,7 +47,8 @@
     "memoriesSent": "Memories sent",
     "withheld": "Withheld as conflicting: {{ids}}",
     "perSec": "{{n}} tokens/sec",
-    "count": "{{n}} tokens"
+    "count": "{{n}} tokens",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Edit Server Host"

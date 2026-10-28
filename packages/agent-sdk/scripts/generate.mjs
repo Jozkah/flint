@@ -413,7 +413,8 @@ if (check) {
       stale.push(`${path} (missing)`)
       continue
     }
-    if (actual !== expected) stale.push(path)
+    // A Windows checkout may have turned LF into CRLF; that is not drift.
+    if (actual.replace(/\r\n/g, '\n') !== expected.replace(/\r\n/g, '\n')) stale.push(path)
   }
   if (stale.length) {
     console.error('generated SDK types are out of date with protocol/rpc-schema.json:')

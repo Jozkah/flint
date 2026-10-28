@@ -49,7 +49,7 @@ impl std::fmt::Debug for ProxySettings {
 }
 
 /// Whether `host` is this machine.
-fn is_loopback_host(host: &str) -> bool {
+pub(crate) fn is_loopback_host(host: &str) -> bool {
     let host = host.trim_matches(|c| c == '[' || c == ']');
     host.eq_ignore_ascii_case("localhost")
         || host

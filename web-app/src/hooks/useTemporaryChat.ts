@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { i18n } from '@/i18n/react-i18next-compat'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useThreads } from '@/hooks/useThreads'
@@ -186,7 +187,7 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
       // written like any other thread.
       const created = await threads.createThread(
         temporary.model,
-        titleForKeptChat(firstUserText, 'Kept chat'),
+        titleForKeptChat(firstUserText, i18n.t('common:keptChat')),
         temporary.assistants?.[0]
       )
       if (!created?.id || created.id === TEMPORARY_CHAT_ID) {

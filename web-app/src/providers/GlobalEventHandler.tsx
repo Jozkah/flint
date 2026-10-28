@@ -15,7 +15,7 @@ import { isPlatformTauri } from '@/lib/platform/utils'
  * This provider should be mounted at the root level to ensure all screens can benefit from global event handling
  */
 export function GlobalEventHandler() {
-  const { setProviders } = useModelProvider()
+  const setProviders = useModelProvider((s) => s.setProviders)
   const serviceHub = useServiceHub()
   const setHardwareData = useHardware((state) => state.setHardwareData)
 

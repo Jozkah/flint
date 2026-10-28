@@ -432,7 +432,9 @@ export const useThreads = create<ThreadState>()((set, get) => ({
   ) => {
     const newThread: Thread = {
       id: isTemporary ? TEMPORARY_CHAT_ID : ulid(),
-      title: title ?? (isTemporary ? 'Temporary Chat' : 'New Thread'),
+      title:
+        title ??
+        i18n.t(isTemporary ? 'common:temporaryChat' : 'common:newThread'),
       model,
       updated: Date.now() / 1000,
       assistants: assistant ? [assistant] : [],

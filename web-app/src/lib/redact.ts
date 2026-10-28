@@ -24,7 +24,6 @@ const SECRET_KEY_PARTS = [
   'apikey',
   'api_key',
   'authorization',
-  'auth',
   'credential',
   'private_key',
   'access_key',
@@ -57,7 +56,10 @@ export function namesASecret(key: string): boolean {
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/-/g, '_')
     .toLowerCase()
-  return SECRET_KEY_PARTS.some((needle) => k.includes(needle))
+  if (SECRET_KEY_PARTS.some((needle) => k.includes(needle))) return true
+  // `auth` only as a whole word of the name: `auth_token` and `api_auth`
+  // are credentials, `author`, `authority` and `oauth_scope` are not.
+  return k.split('_').includes('auth')
 }
 
 function looksLikeAToken(word: string): boolean {
@@ -73,6 +75,16 @@ function looksLikeAToken(word: string): boolean {
   if (!/^[A-Za-z0-9_\-+=]+$/.test(bare)) return false
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((re) => re.test(bare))
   return classes.length >= 3
+}
+
+/**
+ * Whether the word after `Bearer` / `Basic` is a credential: 16 or more
+ * characters, or 8 or more with a digit or a token separator in it. A plain
+ * word of letters ("authentication") is prose.
+ */
+function schemeCredential(word: string): boolean {
+  if (word.length >= 16) return true
+  return word.length >= 8 && /[0-9\-._~+/=]/.test(word)
 }
 
 function redactWord(word: string): string {
@@ -117,10 +129,20 @@ export function redactSecrets(text: string): string {
       /([?&][^=&\s#]*(?:token|key|secret|password|auth|sig|signature)[^=&\s#]*=)[^&\s#]+/gi,
       `$1${REDACTED}`
     )
-    // `Authorization: Bearer <token>`: the secret is the word after the scheme.
-    .replace(/\b(Bearer|Basic|Token)\s+([^\s"']+)/gi, (_m, scheme: string) => {
-      return `${scheme} ${REDACTED}`
-    })
+    // `Authorization: Bearer <token>`: the value of an authorization header is
+    // a credential whatever its length.
+    .replace(
+      /\b((?:Proxy-)?Authorization:\s*)(Bearer|Basic|Token)\s+([^\s"']+)/gi,
+      (_m, head: string, scheme: string) => `${head}${scheme} ${REDACTED}`
+    )
+    // `Bearer <token>` / `Basic <token>` anywhere else: only a word shaped like
+    // a credential, so "Basic setup" and "bearer of this note" read as prose.
+    // The Rust redactor makes the same call (`redacted_word`).
+    .replace(
+      /\b(Bearer|Basic)\s+([^\s"']{8,})/gi,
+      (m, scheme: string, word: string) =>
+        schemeCredential(word) ? `${scheme} ${REDACTED}` : m
+    )
     // JWTs
     .replace(/\beyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*/g, REDACTED)
     // JSON-style `"accessToken": "value"`
