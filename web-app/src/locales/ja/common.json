@@ -847,7 +847,28 @@
     "openCodeFolderInCowork": "コードフォルダーを Cowork で開く",
     "openCodeFolder": "コードフォルダーを開く",
     "openCodeFolderDescription": "Flint が作業するフォルダーをコンピューターから選択してください。",
-    "setUpEmbeddingModel": "埋め込みモデルを設定"
+    "setUpEmbeddingModel": "埋め込みモデルを設定",
+    "webPage": {
+      "open": "Webページを追加",
+      "title": "Webページを追加",
+      "description": "ページを取得し、読み取れるテキストをプロジェクトファイルとして保存します。公開されている http / https のアドレスのみ使えます。",
+      "urlLabel": "ページのアドレス",
+      "add": "ページを追加",
+      "refresh": "更新",
+      "added": "「{{name}}」を追加しました",
+      "refreshed": "「{{name}}」を更新しました",
+      "truncated": "ページがサイズ上限を超えていたため、先頭部分のみ保存しました。",
+      "refreshFailed": "ページを更新できませんでした",
+      "errors": {
+        "invalidUrl": "http:// または https:// で始まる完全なアドレスを入力してください。",
+        "blocked": "このアドレスはこのコンピューターまたはプライベートネットワークを指しているため、取得しませんでした。",
+        "timeout": "ページの応答に時間がかかりすぎました。後でもう一度お試しください。",
+        "notHtml": "このアドレスは読み取れるテキストのある Web ページではありません（PDF、画像、ダウンロードなど）。",
+        "tooLarge": "ページが大きすぎて取得できません。",
+        "httpError": "サイトがエラーを返しました: {{message}}",
+        "failed": "ページを取得できませんでした: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "添付ファイルの取り込み方法を選択",
@@ -2721,7 +2742,11 @@
     "noVision": "このモデルは画像を読み取れません",
     "details": "{{name}} の詳細",
     "previewLoading": "プレビューを読み込んでいます…",
-    "previewNone": "プレビューはありません"
+    "previewNone": "プレビューはありません",
+    "pagesAsImages": "ページを画像として送信",
+    "pagesAsImagesHint": "この PDF のページを画像として送信し、モデルがスキャン・グラフ・レイアウトを読めるようにします",
+    "pdfPagesCut": "{{name}} の全 {{total}} ページのうち最初の {{sent}} ページを画像として送信しました",
+    "pdfScannedAsImages": "{{name}} にはテキストがないため、ページを画像として送信しました"
   },
   "fileViewer": {
     "openFull": "完全なプレビューを開く",

@@ -120,5 +120,8 @@
     "none": "No layers run on the GPU: the model is running on the CPU.",
     "unknown": "The engine did not say how many layers it offloaded.",
     "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+  },
+  "metalBudget": {
+    "warning": "Bu model bu Mac'in GPU'su için fazla büyük olabilir: yaklaşık {{required}} gerekiyor, macOS ise varsayılan olarak GPU'nun yaklaşık {{budget}} kullanmasına izin veriyor. Yüklenip ilk mesajda başarısız olabilir. Bağlam boyutunu düşürün, GPU'ya daha az katman aktarın veya daha küçük bir niceleme seçin."
   }
 }

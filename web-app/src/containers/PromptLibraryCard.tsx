@@ -105,8 +105,11 @@ export function PromptLibraryCard() {
     const a = document.createElement('a')
     a.href = url
     a.download = 'flint-prompts.json'
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(url)
+    a.remove()
+    // Revoking at once can cancel the download in some webviews.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 
   const importFile = async (file: File | undefined) => {

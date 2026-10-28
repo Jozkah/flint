@@ -3,6 +3,8 @@ import type { SpecDraftKind } from '@janhq/core'
  * Default Models Service - Web implementation
  */
 
+import { warnIfOverMetalBudget } from '@/lib/metalBudgetWarning'
+import { useHardware } from '@/hooks/useHardware'
 import {
   AIEngine,
   EngineManager,
@@ -20,6 +22,7 @@ import type {
   EmbeddingModelReport,
   GpuOffloadReport,
   EngineVersionInfo,
+  SkippedLinkedModel,
 } from './types'
 import {
   extractToolContextFromContent,
@@ -147,6 +150,16 @@ export class DefaultModelsService implements ModelsService {
           ])
         )
       : undefined
+
+    if (provider.provider === 'llamacpp') {
+      // Not awaited: the warning shows while the load runs, never delays it.
+      void warnIfOverMetalBudget({
+        modelId: model,
+        hardware: useHardware.getState().hardwareData,
+        settings,
+        fetchModels: () => this.fetchModels(),
+      })
+    }
 
     return engine
       .load(model, settings, false, bypassAutoUnload)
@@ -493,6 +506,13 @@ export class DefaultModelsService implements ModelsService {
    * The caller renders nothing rather than a half-filled panel: an unknown
    * engine version is worse than no claim about it.
    */
+  async getSkippedLinkedModels(): Promise<SkippedLinkedModel[]> {
+    const engine = this.getEngine('llamacpp') as
+      | (AIEngine & { getSkippedModels?: () => SkippedLinkedModel[] })
+      | undefined
+    return engine?.getSkippedModels?.() ?? []
+  }
+
   async getEngineVersion(): Promise<EngineVersionInfo | null> {
     try {
       const engine = this.getEngine('llamacpp') as AIEngine & {

@@ -852,7 +852,28 @@
     "openCodeFolderInCowork": "Abrir carpeta de código en Cowork",
     "openCodeFolder": "Abrir carpeta de código",
     "openCodeFolderDescription": "Elige una carpeta de tu equipo en la que Flint trabajará.",
-    "setUpEmbeddingModel": "Configurar un modelo de embeddings"
+    "setUpEmbeddingModel": "Configurar un modelo de embeddings",
+    "webPage": {
+      "open": "Añadir página web",
+      "title": "Añadir una página web",
+      "description": "Descarga una página y guarda su texto legible como archivo del proyecto. Solo funcionan direcciones públicas http y https.",
+      "urlLabel": "Dirección de la página",
+      "add": "Añadir página",
+      "refresh": "Actualizar",
+      "added": "Se añadió \"{{name}}\"",
+      "refreshed": "Se actualizó \"{{name}}\"",
+      "truncated": "La página superaba el límite de tamaño, así que solo se guardó la primera parte.",
+      "refreshFailed": "No se pudo actualizar la página",
+      "errors": {
+        "invalidUrl": "Escribe una dirección web completa que empiece por http:// o https://.",
+        "blocked": "Esa dirección apunta a este equipo o a una red privada, así que no se descargó.",
+        "timeout": "La página tardó demasiado en responder. Inténtalo más tarde.",
+        "notHtml": "Esa dirección no es una página web con texto legible (por ejemplo, un PDF, una imagen o una descarga).",
+        "tooLarge": "La página es demasiado grande.",
+        "httpError": "El sitio devolvió un error: {{message}}",
+        "failed": "No se pudo descargar la página: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Elige cómo procesar los adjuntos",
@@ -2773,7 +2794,11 @@
     "noVision": "Este modelo no puede leer imágenes",
     "details": "Detalles de {{name}}",
     "previewLoading": "Cargando la vista previa…",
-    "previewNone": "No hay vista previa disponible"
+    "previewNone": "No hay vista previa disponible",
+    "pagesAsImages": "Enviar páginas como imágenes",
+    "pagesAsImagesHint": "Envía las páginas de este PDF como imágenes para que el modelo vea escaneos, gráficos y diseño",
+    "pdfPagesCut": "Se enviaron las primeras {{sent}} de {{total}} páginas de {{name}} como imágenes",
+    "pdfScannedAsImages": "{{name}} no tiene texto, así que sus páginas se enviaron como imágenes"
   },
   "fileViewer": {
     "openFull": "Abrir vista previa completa",
