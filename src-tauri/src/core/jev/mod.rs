@@ -34,7 +34,10 @@
 //! any fallback reason -- never the key, and never the message or passage
 //! text (only lengths, counts and skill names).
 
+pub mod backend;
 pub mod client;
+
+pub use backend::Backend;
 
 use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex};
@@ -149,7 +152,10 @@ pub struct Receipt {
     pub at: String,
     pub feature: Feature,
     pub mode: Mode,
-    /// The model version TypeSafe says answered, when a request was made.
+    /// Which backend was asked: `jev` or `open_model`.
+    pub backend: &'static str,
+    /// The model that answered, when a request was made: the version TypeSafe
+    /// reports, or `open:<provider>/<model>` for an open model.
     pub model: Option<String>,
     /// What Jev decided, without private text: a skill name or "none", or
     /// how the shortlist moved.
@@ -223,7 +229,8 @@ fn persist(b: &(String, u64)) {
 
 fn record(receipt: Receipt) {
     log::info!(
-        "jev: feature={:?} mode={:?} model={} decision={} latency_ms={} input_tokens={} output_tokens={} fallback={:?}",
+        "jev: backend={} feature={:?} mode={:?} model={} decision={} latency_ms={} input_tokens={} output_tokens={} fallback={:?}",
+        receipt.backend,
         receipt.feature,
         receipt.mode,
         receipt.model.as_deref().unwrap_or("-"),
@@ -500,6 +507,8 @@ fn movement(before: &[Candidate], after: &[String], k: usize) -> String {
 /// What a decision needs besides its inputs; a seam so tests can stand in
 /// for the network and the secret store.
 pub struct Deps<'a> {
+    /// Who answers. Only labels the receipts here: `post` is what reaches it.
+    pub backend: Backend,
     pub modes: Modes,
     pub key: Option<String>,
     pub post: &'a (dyn Fn(Value, String, Duration) -> futures_util::future::BoxFuture<'static, Result<SystemOneResponse, CallError>>
@@ -549,6 +558,7 @@ async fn ask(deps: &Deps<'_>, mode: Mode, body: Value, timeout: Duration) -> Out
 }
 
 fn receipt(
+    backend: &Backend,
     feature: Feature,
     mode: Mode,
     o: &Outcome,
@@ -558,16 +568,19 @@ fn receipt(
     sent_items: usize,
 ) -> Receipt {
     let usage = o.resp.as_ref().map(|r| r.usage.clone()).unwrap_or_default();
+    // An open model has no list price Flint knows; its cost is not estimated.
+    let usd_per_m = if *backend == Backend::Jev { USD_PER_M_INPUT_TOKENS } else { 0.0 };
     Receipt {
         at: chrono::Utc::now().to_rfc3339(),
         feature,
         mode,
+        backend: backend.label(),
         model: o.resp.as_ref().map(|r| r.model.clone()),
         decision,
         latency_ms: o.latency_ms,
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
-        cost_usd: usage.input_tokens as f64 * USD_PER_M_INPUT_TOKENS / 1_000_000.0,
+        cost_usd: usage.input_tokens as f64 * usd_per_m / 1_000_000.0,
         fallback,
         sent_chars,
         sent_items: if o.resp.is_some() || o.reserved > 0 { sent_items } else { 0 },
@@ -592,7 +605,7 @@ pub async fn suggest_skill(deps: &Deps<'_>, message: &str, skills: &[SkillOption
     };
     if let Some(f) = early {
         if mode != Mode::Off {
-            record(receipt(Feature::Skill, mode, &Outcome { resp: None, fallback: Some(f), latency_ms: 0, reserved: 0 }, "none".into(), Some(f), 0, 0));
+            record(receipt(&deps.backend, Feature::Skill, mode, &Outcome { resp: None, fallback: Some(f), latency_ms: 0, reserved: 0 }, "none".into(), Some(f), 0, 0));
         }
         return quick(f);
     }
@@ -612,7 +625,7 @@ pub async fn suggest_skill(deps: &Deps<'_>, message: &str, skills: &[SkillOption
         (Mode::Shadow, None) => (None, Some(Fallback::Shadow)),
         (_, f) => (skill.filter(|_| f.is_none()), f),
     };
-    record(receipt(Feature::Skill, mode, &o, decision, fallback, sent_chars, skills.len()));
+    record(receipt(&deps.backend, Feature::Skill, mode, &o, decision, fallback, sent_chars, skills.len()));
     SkillDecision { skill, probability, fallback, model: o.resp.map(|r| r.model) }
 }
 
@@ -636,7 +649,7 @@ pub async fn suggest_model(
     };
     if let Some(f) = early {
         if mode != Mode::Off {
-            record(receipt(Feature::Model, mode, &Outcome { resp: None, fallback: Some(f), latency_ms: 0, reserved: 0 }, "none".into(), Some(f), 0, 0));
+            record(receipt(&deps.backend, Feature::Model, mode, &Outcome { resp: None, fallback: Some(f), latency_ms: 0, reserved: 0 }, "none".into(), Some(f), 0, 0));
         }
         return quick(f);
     }
@@ -656,7 +669,7 @@ pub async fn suggest_model(
         (Mode::Shadow, None) => (None, Some(Fallback::Shadow)),
         (_, f) => (picked.filter(|_| f.is_none()), f),
     };
-    record(receipt(Feature::Model, mode, &o, decision, fallback, sent_chars, models.len()));
+    record(receipt(&deps.backend, Feature::Model, mode, &o, decision, fallback, sent_chars, models.len()));
     SkillDecision { skill: picked, probability, fallback, model: o.resp.map(|r| r.model) }
 }
 
@@ -692,7 +705,7 @@ pub async fn rerank(deps: &Deps<'_>, query: &str, candidates: &[Candidate], k: u
         (Mode::Shadow, None) => (None, Some(Fallback::Shadow)),
         (_, f) => (order.filter(|_| f.is_none()), f),
     };
-    record(receipt(Feature::Rerank, mode, &o, decision, fallback, sent_chars, shortlist.len()));
+    record(receipt(&deps.backend, Feature::Rerank, mode, &o, decision, fallback, sent_chars, shortlist.len()));
     RerankDecision { order, fallback, model: o.resp.map(|r| r.model) }
 }
 
@@ -769,8 +782,12 @@ pub fn read_gate_answer(resp: &SystemOneResponse) -> Result<Verdict, Fallback> {
     if choice == "ask" || p < GATE_MIN_PROBABILITY {
         return Ok(Verdict::Ask);
     }
+    let who = match resp.model.strip_prefix(backend::OPEN_PREFIX) {
+        Some(m) => m.to_string(),
+        None => "Jev".to_string(),
+    };
     Ok(Verdict::Deny {
-        reason: format!("a second-opinion model (Jev) judged that {reason}"),
+        reason: format!("a second-opinion model ({who}) judged that {reason}"),
     })
 }
 
@@ -788,26 +805,29 @@ pub async fn review_call(deps: &Deps<'_>, input: &JudgeInput) -> Result<Verdict,
         Ok(Verdict::Ask) | Err(_) => "ask".to_string(),
         Ok(Verdict::Deny { .. }) => "deny".to_string(),
     };
-    record(receipt(Feature::Gate, Mode::On, &o, decision, verdict.as_ref().err().copied(), sent_chars, 1));
+    record(receipt(&deps.backend, Feature::Gate, Mode::On, &o, decision, verdict.as_ref().err().copied(), sent_chars, 1));
     verdict
 }
 
-/// The Jev judge for `[auto_mode] judge = "jev"`. Uses the TypeSafe key
-/// stored under Settings; with none stored it is unavailable and every call
-/// goes on to its prompt as if no judge were set.
+/// The judge for `[auto_mode] judge = "jev"`. Asks the decision backend chosen
+/// under Settings: Jev with the stored TypeSafe key, or the chosen open model.
+/// With neither available it is unavailable and every call goes on to its
+/// prompt as if no judge were set.
 pub struct JevJudge;
 
 #[async_trait::async_trait]
 impl Classifier for JevJudge {
     async fn judge(&self, input: &JudgeInput) -> Result<Verdict, JudgeError> {
-        let key = tokio::task::spawn_blocking(load_key).await.ok().flatten();
-        if key.is_none() {
-            return Err(JudgeError::Unavailable(
-                "no TypeSafe API key is stored (Settings, Jev)".into(),
-            ));
-        }
-        let post = live_post();
-        let deps = Deps { modes: Modes::default(), key, post: &post };
+        let backend = current_backend();
+        let Some(live) = live_deps(&backend, true).await else {
+            return Err(JudgeError::Unavailable(match backend {
+                Backend::Jev => "no TypeSafe API key is stored (Settings, Jev)".into(),
+                Backend::OpenModel { .. } => {
+                    "the chosen decision model is not configured or loaded (Settings, Jev)".into()
+                }
+            }));
+        };
+        let deps = Deps { backend, modes: Modes::default(), key: Some(live.key), post: &*live.post };
         review_call(&deps, input)
             .await
             .map_err(|f| JudgeError::Failed(format!("{f:?}")))
@@ -822,13 +842,27 @@ pub struct Status {
     pub rerank_mode: Mode,
     pub key_configured: bool,
     pub model: &'static str,
+    /// The chosen decision backend (`{"kind":"jev"}` or an open model).
+    pub backend: Backend,
     pub tokens_used_today: u64,
     pub daily_token_budget: u64,
 }
 
-fn current_modes() -> Modes {
-    modes_from_settings(crate::core::app::settings_store::settings_get(SETTINGS_KEY.to_string()).as_deref())
+fn settings_raw() -> Option<String> {
+    crate::core::app::settings_store::settings_get(SETTINGS_KEY.to_string())
 }
+
+fn current_modes() -> Modes {
+    modes_from_settings(settings_raw().as_deref())
+}
+
+fn current_backend() -> Backend {
+    backend::backend_from_settings(settings_raw().as_deref())
+}
+
+type PostFn = dyn Fn(Value, String, Duration) -> futures_util::future::BoxFuture<'static, Result<SystemOneResponse, CallError>>
+    + Send
+    + Sync;
 
 fn live_post() -> impl Fn(Value, String, Duration) -> futures_util::future::BoxFuture<'static, Result<SystemOneResponse, CallError>>
        + Send
@@ -836,11 +870,60 @@ fn live_post() -> impl Fn(Value, String, Duration) -> futures_util::future::BoxF
     |body, key, timeout| Box::pin(async move { client::post(ENDPOINT, &key, &body, timeout).await })
 }
 
+/// The open-model transport: the System One body becomes one constrained
+/// chat-completions call, read back strictly. The `key` argument is unused --
+/// the upstream's own credentials were resolved with it.
+fn open_post(up: backend::Upstream) -> Box<PostFn> {
+    Box::new(move |body, _key, timeout| {
+        let up = up.clone();
+        Box::pin(async move {
+            let req = backend::chat_request(&up.model, &body)?;
+            let key = up.keys.first().map(String::as_str);
+            let completion = client::post_chat(&up.url, key, &up.headers, &req, timeout).await?;
+            backend::parse_chat_answer(&body, &completion, &up.label)
+        })
+    })
+}
+
+/// The app handle, kept once a command has run, so the judge (which has none)
+/// can reach the provider configs and the local engines.
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+struct Live {
+    /// The Jev key, or empty for an open model whose credentials are inside
+    /// `post`. Never logged or returned.
+    key: String,
+    post: Box<PostFn>,
+}
+
+/// What a live call needs, or `None` when it cannot be made (no key, model
+/// not configured or loaded). Nothing is looked up unless `needed`.
+async fn live_deps(backend: &Backend, needed: bool) -> Option<Live> {
+    if !needed {
+        return None;
+    }
+    match backend {
+        Backend::Jev => {
+            let key = tokio::task::spawn_blocking(load_key).await.ok().flatten()?;
+            Some(Live { key, post: Box::new(live_post()) })
+        }
+        Backend::OpenModel { provider, model } => {
+            let app = APP.get()?;
+            let up = backend::resolve(app, provider, model).await?;
+            for k in &up.keys {
+                crate::core::secret_values::register(k);
+            }
+            Some(Live { key: String::new(), post: open_post(up) })
+        }
+    }
+}
+
 pub mod commands {
     use super::*;
 
-    /// Name the budget file in the data folder, once.
+    /// Name the budget file in the data folder, once, and keep the handle.
     fn budget_file(app: &tauri::AppHandle) {
+        let _ = APP.set(app.clone());
         if BUDGET_FILE.get().is_none() {
             let data = crate::core::app::commands::get_jan_data_folder_path(app.clone());
             use_budget_file(data.join("jev_budget.json"));
@@ -868,6 +951,7 @@ pub mod commands {
             rerank_mode: modes.rerank,
             key_configured,
             model: MODEL,
+            backend: current_backend(),
             tokens_used_today: tokens_used_today(),
             daily_token_budget: DAILY_TOKEN_BUDGET,
         }
@@ -878,11 +962,13 @@ pub mod commands {
         receipts()
     }
 
-    async fn deps_key(modes: Modes, needed: Mode) -> Option<String> {
-        if needed == Mode::Off || modes == Modes::default() {
-            return None;
+    /// Live deps for an opt-in whose mode is `needed`. Off means nothing is
+    /// looked up, and `ask` makes no request.
+    async fn live_for(backend: &Backend, needed: Mode) -> (Option<String>, Box<PostFn>) {
+        match live_deps(backend, needed != Mode::Off).await {
+            Some(l) => (Some(l.key), l.post),
+            None => (None, Box::new(live_post())),
         }
-        tokio::task::spawn_blocking(load_key).await.ok().flatten()
     }
 
     /// A suggested skill for the message, or none. Never touches tools.
@@ -893,9 +979,9 @@ pub mod commands {
         skills: Vec<SkillOption>,
     ) -> SkillDecision {
         budget_file(&app);
-        let modes = current_modes();
-        let post = live_post();
-        let deps = Deps { modes, key: deps_key(modes, modes.skills).await, post: &post };
+        let (modes, backend) = (current_modes(), current_backend());
+        let (key, post) = live_for(&backend, modes.skills).await;
+        let deps = Deps { backend, modes, key, post: &*post };
         suggest_skill(&deps, &message, &skills).await
     }
 
@@ -909,9 +995,9 @@ pub mod commands {
         models: Vec<SkillOption>,
     ) -> SkillDecision {
         budget_file(&app);
-        let modes = current_modes();
-        let post = live_post();
-        let deps = Deps { modes, key: deps_key(modes, modes.skills).await, post: &post };
+        let (modes, backend) = (current_modes(), current_backend());
+        let (key, post) = live_for(&backend, modes.skills).await;
+        let deps = Deps { backend, modes, key, post: &*post };
         suggest_model(&deps, &message, &current, &models).await
     }
 
@@ -924,9 +1010,9 @@ pub mod commands {
         k: usize,
     ) -> RerankDecision {
         budget_file(&app);
-        let modes = current_modes();
-        let post = live_post();
-        let deps = Deps { modes, key: deps_key(modes, modes.rerank).await, post: &post };
+        let (modes, backend) = (current_modes(), current_backend());
+        let (key, post) = live_for(&backend, modes.rerank).await;
+        let deps = Deps { backend, modes, key, post: &*post };
         rerank(&deps, &query, &candidates, k).await
     }
 }
