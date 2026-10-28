@@ -211,12 +211,14 @@ mod tests {
         let dst = tmp.path().join("dst");
         write_file(&src.join("keep.txt"), "k");
         write_file(&src.join("node_modules/skip.txt"), "s");
+        write_file(&src.join("nested/node_modules/deep.txt"), "d");
 
         copy_dir_recursive(&src, &dst, &["node_modules"]).unwrap();
 
         assert!(dst.join("keep.txt").exists());
         assert!(!dst.join("node_modules").exists());
-        assert!(dst.join("nested").exists());
+        // Excludes apply to the top level only.
+        assert!(dst.join("nested/node_modules/deep.txt").exists());
     }
 
     #[test]
