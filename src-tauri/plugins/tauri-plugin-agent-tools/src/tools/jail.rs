@@ -3081,8 +3081,10 @@ mod tests {
             .spawn()
             .unwrap();
         let pid = child.id();
+        // SAFETY: OpenProcess takes plain values; a null result is tolerated by creation_time and CloseHandle.
         let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         let created = super::super::proc::creation_time(root);
+        // SAFETY: `root` was opened above (or is null, which CloseHandle rejects harmlessly) and is not used after this.
         unsafe { CloseHandle(root) };
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         let shells = loop {
@@ -3110,6 +3112,7 @@ mod tests {
             GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         };
         const STILL_ACTIVE: u32 = 259;
+        // SAFETY: the handle is checked for null, `code` is a local out-pointer, and the handle is closed once before returning.
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if handle.is_null() {

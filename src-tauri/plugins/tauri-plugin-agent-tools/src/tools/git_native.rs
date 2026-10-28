@@ -219,6 +219,7 @@ fn reg_read_string(root: &str, subkey: &str, value: &str) -> Option<String> {
     let sub = wide(subkey);
     let val = wide(value);
     let mut len: u32 = 0;
+    // SAFETY: `sub` and `val` are NUL-terminated wide strings alive for the call; a null data pointer asks only for the size, written to the local `len`.
     let rc = unsafe {
         RegGetValueW(
             hkey,
@@ -235,6 +236,7 @@ fn reg_read_string(root: &str, subkey: &str, value: &str) -> Option<String> {
     }
     let mut buf = vec![0u16; (len as usize) / 2 + 1];
     let mut len2 = (buf.len() * 2) as u32;
+    // SAFETY: `buf` holds `len2` bytes (sized from the first call plus one wide char) and `len2` says so, so the call cannot write past it.
     let rc = unsafe {
         RegGetValueW(
             hkey,

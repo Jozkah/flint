@@ -96,3 +96,7 @@ ashpd = { version = "=0.11.1", default-features = false, features = ["tokio"] }
 [dev-dependencies]
 # `start_paused` tests need the virtual clock; production builds do not.
 tokio = { version = "1", features = ["test-util"] }
+
+[lints.clippy]
+# Every unsafe block and impl states why it is sound (audit STD-003).
+undocumented_unsafe_blocks = "deny"
