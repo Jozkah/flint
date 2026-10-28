@@ -1488,7 +1488,12 @@
     "composerGroup": "Komposer",
     "repliesGroup": "Balasan",
     "linksGroup": "Tautan",
-    "artifactsGroup": "Artefak dan widget"
+    "artifactsGroup": "Artefak dan widget",
+    "reasoningDefault": "Penalaran untuk obrolan baru",
+    "reasoningDefaultDesc": "Apakah penalaran dimulai aktif atau nonaktif di obrolan baru. Pengaturan penalaran milik model dan sakelar di kotak tulis tetap diutamakan. Model yang tidak dapat mengubah penalaran dibiarkan apa adanya.",
+    "reasoningDefaultModel": "Bawaan model",
+    "reasoningDefaultOn": "Aktif",
+    "reasoningDefaultOff": "Nonaktif"
   },
   "data": {
     "tabStorage": "Penyimpanan",

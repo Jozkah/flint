@@ -1491,7 +1491,12 @@
     "composerGroup": "入力欄",
     "repliesGroup": "返信",
     "linksGroup": "リンク",
-    "artifactsGroup": "アーティファクトとウィジェット"
+    "artifactsGroup": "アーティファクトとウィジェット",
+    "reasoningDefault": "新しいチャットの推論",
+    "reasoningDefaultDesc": "新しいチャットで思考をオンで始めるかオフで始めるか。モデル自体の推論設定と入力欄のトグルが引き続き優先されます。思考を切り替えられないモデルはそのままです。",
+    "reasoningDefaultModel": "モデルの既定",
+    "reasoningDefaultOn": "オン",
+    "reasoningDefaultOff": "オフ"
   },
   "data": {
     "tabStorage": "ストレージ",
