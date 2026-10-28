@@ -191,7 +191,63 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
         result["stop"] = stop.clone();
     }
 
+    // Ask the backend for a trailing usage chunk so the stream reports real
+    // token counts.
+    if stream {
+        result["stream_options"] = serde_json::json!({"include_usage": true});
+    }
+
+    if let Some(choice) = body.get("tool_choice") {
+        let kind = choice.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        let mapped = match kind {
+            "auto" => Some(serde_json::json!("auto")),
+            "any" => Some(serde_json::json!("required")),
+            "none" => Some(serde_json::json!("none")),
+            "tool" => choice.get("name").and_then(|n| n.as_str()).map(|name| {
+                serde_json::json!({"type": "function", "function": {"name": name}})
+            }),
+            _ => None,
+        };
+        if let Some(m) = mapped {
+            result["tool_choice"] = m;
+        }
+        if choice
+            .get("disable_parallel_tool_use")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+        {
+            result["parallel_tool_calls"] = serde_json::json!(false);
+        }
+    }
+
     Some(result)
+}
+
+/// OpenAI `finish_reason` as an Anthropic `stop_reason`.
+fn anthropic_stop_reason(finish_reason: &str) -> &'static str {
+    match finish_reason {
+        "length" => "max_tokens",
+        "tool_calls" | "function_call" => "tool_use",
+        "content_filter" => "refusal",
+        _ => "end_turn",
+    }
+}
+
+/// OpenAI `usage` as an Anthropic `usage` object.
+fn anthropic_usage(usage: &serde_json::Value) -> serde_json::Value {
+    let get = |k: &str| usage.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+    let mut out = serde_json::json!({
+        "input_tokens": get("prompt_tokens"),
+        "output_tokens": get("completion_tokens"),
+    });
+    if let Some(cached) = usage
+        .get("prompt_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64())
+    {
+        out["cache_read_input_tokens"] = serde_json::json!(cached);
+    }
+    out
 }
 
 /// Strips the `x-anthropic-billing-header:` attribution that Claude Code
@@ -761,12 +817,7 @@ pub(crate) fn transform_openai_response_to_anthropic(
         .and_then(|fr| fr.as_str())
         .unwrap_or("end_turn");
 
-    let stop_reason = match finish_reason {
-        "stop" => "end_turn",
-        "length" => "max_tokens",
-        "tool_calls" => "tool_use",
-        _ => finish_reason,
-    };
+    let stop_reason = anthropic_stop_reason(finish_reason);
 
     serde_json::json!({
         "id": response.get("id").unwrap_or(&serde_json::json!("")).clone(),
@@ -776,10 +827,7 @@ pub(crate) fn transform_openai_response_to_anthropic(
         "model": response.get("model").unwrap_or(&serde_json::json!("")).clone(),
         "stop_reason": stop_reason,
         "stop_sequence": serde_json::Value::Null,
-        "usage": response.get("usage").cloned().unwrap_or(serde_json::json!({
-            "input_tokens": 0,
-            "output_tokens": 0
-        }))
+        "usage": anthropic_usage(response.get("usage").unwrap_or(&serde_json::Value::Null))
     })
 }
 
@@ -3464,8 +3512,13 @@ async fn transform_and_forward_stream<S>(
     // `data:` line is cut in half (#195).
     let mut utf8 = Utf8ChunkDecoder::default();
     let mut pending_lines = String::new();
+    // The finish chunk only closes the blocks; the closing events wait for
+    // `[DONE]` / EOF so a trailing usage chunk can still be read.
+    let mut stop_reason: Option<&'static str> = None;
+    let mut usage: Option<serde_json::Value> = None;
+    let mut transport_error = false;
 
-    loop {
+    'outer: loop {
         // When the stream ends (or errors), whatever is still buffered is the
         // final line, even without a trailing newline -- e.g. a bare
         // `data: [DONE]` -- so it is processed before stopping.
@@ -3480,6 +3533,7 @@ async fn transform_and_forward_stream<S>(
             end => {
                 if let Some(Err(e)) = end {
                     log::error!("Stream error: {e}");
+                    transport_error = true;
                 }
                 pending_lines.push_str(&utf8.finish());
                 if pending_lines.is_empty() {
@@ -3496,55 +3550,19 @@ async fn transform_and_forward_stream<S>(
             let data = line.trim_start_matches("data:").trim();
 
             if data == "[DONE]" {
-                // Close any remaining open blocks
-                if let Some(idx) = text_block_index.take() {
-                    let stop =
-                        serde_json::json!({"type": "content_block_stop", "index": idx});
-                    if sender.send_data(sse_event(&stop)).await.is_err() {
-                        return;
-                    }
-                }
-                let mut tool_indices: Vec<usize> = tool_blocks.values().copied().collect();
-                tool_indices.sort();
-                for idx in tool_indices {
-                    let stop =
-                        serde_json::json!({"type": "content_block_stop", "index": idx});
-                    if sender.send_data(sse_event(&stop)).await.is_err() {
-                        return;
-                    }
-                }
-
-                let stop_reason = if tool_blocks.is_empty() {
-                    "end_turn"
-                } else {
-                    "tool_use"
-                };
-                let output_tokens = accumulated_content.split_whitespace().count() as u64;
-
-                let delta_event = serde_json::json!({
-                    "type": "message_delta",
-                    "delta": {
-                        "stop_reason": stop_reason,
-                        "stop_sequence": serde_json::Value::Null
-                    },
-                    "usage": { "output_tokens": output_tokens }
-                });
-                if sender.send_data(sse_event(&delta_event)).await.is_err() {
-                    return;
-                }
-
-                let final_stop = serde_json::json!({"type": "message_stop"});
-                if sender.send_data(sse_event(&final_stop)).await.is_err() {
-                    return;
-                }
-                log::debug!("Sent Anthropic final events");
-                return;
+                break 'outer;
             }
 
             let json_chunk = match serde_json::from_str::<serde_json::Value>(data) {
                 Ok(v) => v,
                 Err(_) => continue,
             };
+
+            // The backend's real usage, on a trailing chunk (empty `choices`)
+            // or on the finish chunk itself.
+            if let Some(u) = json_chunk.get("usage").filter(|u| u.is_object()) {
+                usage = Some(u.clone());
+            }
 
             let choice = json_chunk
                 .get("choices")
@@ -3718,40 +3736,94 @@ async fn transform_and_forward_stream<S>(
                     }
                 }
 
-                let reason = finish_reason
-                    .and_then(|fr| fr.as_str())
-                    .unwrap_or("end_turn");
-                let stop_reason = match reason {
-                    "stop" => "end_turn",
-                    "length" => "max_tokens",
-                    "tool_calls" => "tool_use",
-                    _ => reason,
-                };
-                let output_tokens = accumulated_content.split_whitespace().count() as u64;
-
-                let delta_event = serde_json::json!({
-                    "type": "message_delta",
-                    "delta": {
-                        "stop_reason": stop_reason,
-                        "stop_sequence": serde_json::Value::Null
-                    },
-                    "usage": { "output_tokens": output_tokens }
-                });
-                if sender.send_data(sse_event(&delta_event)).await.is_err() {
-                    return;
-                }
-
-                let final_stop = serde_json::json!({"type": "message_stop"});
-                if sender.send_data(sse_event(&final_stop)).await.is_err() {
-                    return;
-                }
-                return;
+                stop_reason = Some(anthropic_stop_reason(
+                    finish_reason.and_then(|fr| fr.as_str()).unwrap_or("stop"),
+                ));
+                tool_blocks.clear();
+                // `message_delta` / `message_stop` follow at `[DONE]` / EOF,
+                // after any trailing usage chunk.
             }
         }
         if stream_ended {
             break;
         }
     }
+
+    // No `message_start` yet: the stream carried nothing usable.
+    if is_first {
+        if transport_error {
+            let err = serde_json::json!({
+                "type": "error",
+                "error": {"type": "api_error", "message": "upstream stream failed"}
+            });
+            let _ = sender.send_data(sse_event(&err)).await;
+            return;
+        }
+        let start_event = serde_json::json!({
+            "type": "message_start",
+            "message": {
+                "id": "", "type": "message", "role": "assistant", "content": [],
+                "model": "", "stop_reason": serde_json::Value::Null,
+                "stop_sequence": serde_json::Value::Null,
+                "usage": { "input_tokens": 0, "output_tokens": 0 }
+            }
+        });
+        if sender.send_data(sse_event(&start_event)).await.is_err() {
+            return;
+        }
+    }
+
+    // Close blocks still open (the stream ended before a finish chunk).
+    let mut open: Vec<usize> = tool_blocks.values().copied().collect();
+    open.extend(text_block_index.take());
+    open.sort();
+    for idx in open {
+        let stop = serde_json::json!({"type": "content_block_stop", "index": idx});
+        if sender.send_data(sse_event(&stop)).await.is_err() {
+            return;
+        }
+    }
+
+    // A connection that broke before the model finished is an error, not a
+    // normal end of turn.
+    if transport_error && stop_reason.is_none() {
+        let err = serde_json::json!({
+            "type": "error",
+            "error": {"type": "api_error", "message": "upstream stream interrupted"}
+        });
+        let _ = sender.send_data(sse_event(&err)).await;
+        return;
+    }
+
+    let stop_reason = stop_reason.unwrap_or(if tool_blocks.is_empty() {
+        "end_turn"
+    } else {
+        "tool_use"
+    });
+    let usage_json = match &usage {
+        Some(u) => anthropic_usage(u),
+        None => {
+            // The backend sent no usage: estimate from the text, as before.
+            log::debug!("backend sent no usage; estimating output tokens");
+            serde_json::json!({
+                "input_tokens": 0,
+                "output_tokens": accumulated_content.split_whitespace().count() as u64
+            })
+        }
+    };
+    let delta_event = serde_json::json!({
+        "type": "message_delta",
+        "delta": {
+            "stop_reason": stop_reason,
+            "stop_sequence": serde_json::Value::Null
+        },
+        "usage": usage_json
+    });
+    if sender.send_data(sse_event(&delta_event)).await.is_err() {
+        return;
+    }
+    let final_stop = serde_json::json!({"type": "message_stop"});
+    let _ = sender.send_data(sse_event(&final_stop)).await;
     log::debug!("Streaming complete (Anthropic format)");
 }
 
@@ -3942,6 +4014,101 @@ mod tests {
         let out = String::from_utf8_lossy(&out);
         assert!(out.contains("\"text_delta\""), "{out}");
         assert!(out.contains("\"message_stop\""), "{out}");
+    }
+
+    async fn anthropic_stream_out(chunks: Vec<&'static str>) -> String {
+        use http_body_util::BodyExt;
+        use hyper::body::Bytes;
+        let chunks: Vec<Result<Bytes, reqwest::Error>> = chunks
+            .into_iter()
+            .map(|c| Ok(Bytes::from_static(c.as_bytes())))
+            .collect();
+        let (sender, body) = super::body_channel();
+        super::transform_and_forward_stream(futures_util::stream::iter(chunks), sender, "/v1/messages")
+            .await;
+        let out = body.collect().await.unwrap().to_bytes();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    #[test]
+    fn anthropic_tool_choice_maps_auto_any_none_and_named() {
+        let req = |tc: serde_json::Value| {
+            super::transform_anthropic_to_openai(&serde_json::json!({
+                "model": "m", "messages": [{"role": "user", "content": "hi"}],
+                "tool_choice": tc
+            }))
+            .unwrap()
+        };
+        assert_eq!(req(serde_json::json!({"type": "auto"}))["tool_choice"], "auto");
+        assert_eq!(req(serde_json::json!({"type": "any"}))["tool_choice"], "required");
+        assert_eq!(req(serde_json::json!({"type": "none"}))["tool_choice"], "none");
+        let named = req(serde_json::json!({"type": "tool", "name": "get_weather"}));
+        assert_eq!(named["tool_choice"]["function"]["name"], "get_weather");
+        assert_eq!(named["tool_choice"]["type"], "function");
+        let serial = req(serde_json::json!({"type": "auto", "disable_parallel_tool_use": true}));
+        assert_eq!(serial["parallel_tool_calls"], false);
+    }
+
+    #[test]
+    fn anthropic_streaming_request_asks_for_usage() {
+        let body = |stream: bool| {
+            super::transform_anthropic_to_openai(&serde_json::json!({
+                "model": "m", "messages": [{"role": "user", "content": "hi"}], "stream": stream
+            }))
+            .unwrap()
+        };
+        assert_eq!(body(true)["stream_options"]["include_usage"], true);
+        assert!(body(false).get("stream_options").is_none());
+    }
+
+    #[test]
+    fn anthropic_response_usage_is_anthropic_shape() {
+        let out = super::transform_openai_response_to_anthropic(&serde_json::json!({
+            "id": "x", "model": "m",
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "content_filter"}],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18,
+                      "prompt_tokens_details": {"cached_tokens": 4}}
+        }));
+        assert_eq!(out["usage"]["input_tokens"], 11);
+        assert_eq!(out["usage"]["output_tokens"], 7);
+        assert_eq!(out["usage"]["cache_read_input_tokens"], 4);
+        assert!(out["usage"].get("prompt_tokens").is_none());
+        assert_eq!(out["stop_reason"], "refusal");
+
+        let unknown = super::transform_openai_response_to_anthropic(&serde_json::json!({
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "weird"}]
+        }));
+        assert_eq!(unknown["stop_reason"], "end_turn");
+        assert_eq!(unknown["usage"]["output_tokens"], 0);
+    }
+
+    #[tokio::test]
+    async fn anthropic_stream_reports_trailing_usage_chunk() {
+        let out = anthropic_stream_out(vec![
+            "data: {\"id\":\"m1\",\"model\":\"x\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"m1\",\"model\":\"x\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"id\":\"m1\",\"model\":\"x\",\"choices\":[],\"usage\":{\"prompt_tokens\":42,\"completion_tokens\":9}}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+        assert!(out.contains("\"input_tokens\":42"), "{out}");
+        assert!(out.contains("\"output_tokens\":9"), "{out}");
+        assert!(out.contains("\"stop_reason\":\"end_turn\""), "{out}");
+        let delta = out.find("message_delta").expect("message_delta");
+        let stop = out.find("message_stop").expect("message_stop");
+        assert!(delta < stop, "{out}");
+        assert_eq!(out.matches("message_stop").count(), 2, "{out}"); // event name + type
+    }
+
+    #[tokio::test]
+    async fn anthropic_stream_without_finish_ends_cleanly_with_stop() {
+        let out = anthropic_stream_out(vec![
+            "data: {\"id\":\"m1\",\"model\":\"x\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n",
+        ])
+        .await;
+        assert!(out.contains("content_block_stop"), "{out}");
+        assert!(out.contains("\"stop_reason\":\"end_turn\""), "{out}");
+        assert!(out.contains("\"type\":\"message_stop\""), "{out}");
     }
 
     /// #144: the "Verbose Server Logs" switch reaches the server, and the
