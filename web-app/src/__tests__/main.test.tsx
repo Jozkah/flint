@@ -14,7 +14,8 @@ vi.mock('react-dom/client', () => ({
 // Mock router
 vi.mock('@tanstack/react-router', () => ({
   RouterProvider: ({ router }: { router: any }) => `<RouterProvider router={router} />`,
-  createRouter: vi.fn().mockReturnValue('mocked-router'),
+  // main.tsx subscribes to route changes (settings back button return target).
+  createRouter: vi.fn().mockReturnValue({ subscribe: vi.fn() }),
   createRootRoute: vi.fn(),
 }))
 
