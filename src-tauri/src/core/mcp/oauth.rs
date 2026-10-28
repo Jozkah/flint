@@ -782,13 +782,28 @@ fn spawn_refresher(
     });
 }
 
+/// The HTTP client for OAuth discovery, client registration and the code
+/// exchange: the same DNS and redirect guard as the MCP transport, Flint's
+/// custom-CA trust, and timeouts so a stalled provider cannot hang a sign-in.
+fn oauth_http_client() -> Result<reqwest13::Client, reqwest13::Error> {
+    crate::core::net::tls::apply13(
+        super::netguard::guard13(reqwest13::Client::builder())
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30)),
+    )
+    .build()
+}
+
 /// Whether the server at `url` advertises OAuth, used to turn a failed connect
 /// into `needs authentication` rather than a generic transport error. Metadata
 /// discovery is exactly the probe the MCP spec defines for this, so a `true`
 /// here is the server saying so rather than us pattern-matching an error
 /// string.
 pub async fn advertises_oauth(url: &str) -> bool {
-    let Ok(state) = OAuthState::new(url.to_string(), None).await else {
+    let Ok(client) = oauth_http_client() else {
+        return false;
+    };
+    let Ok(state) = OAuthState::new(url.to_string(), Some(client)).await else {
         return false;
     };
     let OAuthState::Unauthorized(manager) = state else {
@@ -836,7 +851,9 @@ pub async fn begin(server: &str, url: &str, scopes: &[String]) -> Result<Pending
     // hostname form in a loopback redirect, and both resolve to this listener.
     let redirect_uri = format!("http://localhost:{port}/callback");
 
-    let mut state = OAuthState::new(url.to_string(), None)
+    let client = oauth_http_client()
+        .map_err(|e| format!("could not build the OAuth HTTP client: {e}"))?;
+    let mut state = OAuthState::new(url.to_string(), Some(client))
         .await
         .map_err(|e| {
             redact_url(
@@ -1639,6 +1656,18 @@ mod tests {
             advertised,
             "advertises_oauth must resolve the authorization-server metadata"
         );
+    }
+
+    /// The discovery client is the guarded, time-bounded one: it builds, and an
+    /// unreachable server is reported as "no OAuth" instead of hanging.
+    #[test]
+    fn oauth_discovery_uses_guarded_client() {
+        assert!(oauth_http_client().is_ok());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let advertised = runtime().block_on(advertises_oauth(&format!("http://127.0.0.1:{port}/mcp")));
+        assert!(!advertised, "a closed port must not advertise OAuth");
     }
 
     /// Protected-resource discovery fallback. rmcp 0.8.5 treated a 200+HTML
