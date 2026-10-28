@@ -4055,7 +4055,18 @@ impl App {
             let marker = "@";
             let path = &selected.path;
             let trailing = if selected.is_dir { "/" } else { "" };
-            let replacement = format!("{marker}{path}{trailing}");
+            // A path with whitespace or a character the unquoted form stops at
+            // would be cut short, so it goes in quotes. A directory keeps the
+            // quote open so the user can keep drilling in.
+            let needs_quotes = path
+                .chars()
+                .any(|c| c.is_whitespace() || ",;:!?'\"`[](){}<>".contains(c));
+            let replacement = if needs_quotes {
+                let close = if selected.is_dir { "" } else { "\"" };
+                format!("{marker}\"{path}{trailing}{close}")
+            } else {
+                format!("{marker}{path}{trailing}")
+            };
             let new_input = format!("{}{}{}", &self.input[..at_idx], replacement, after);
             self.input = new_input;
             self.cursor = at_idx + replacement.len();
@@ -34645,6 +34656,21 @@ mod tests {
         }];
         app.accept_path_hint();
         assert_eq!(app.input, r#"use @"notes/report.md""#);
+    }
+
+    #[test]
+    fn accept_completion_with_space_quotes() {
+        let mut app = test_app();
+        app.input = "use @rep".into();
+        app.cursor = app.input.len();
+        app.path_hints = vec![super::PathHintItem {
+            path: "my docs/report.md".into(),
+            name: "report.md".into(),
+            is_dir: false,
+        }];
+        app.accept_path_hint();
+        assert_eq!(app.input, "use @\"my docs/report.md\"");
+        assert_eq!(app.cursor, app.input.len());
     }
 
     #[test]
