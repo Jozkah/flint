@@ -238,7 +238,7 @@ pub fn run(
         )
         .at(Stage::Startup));
     }
-    let mut cmd = std::process::Command::new(&plan.program);
+    let mut cmd = std::process::Command::new(crate::core::mcp::launch::launchable_program(&plan.program));
     cmd.args(&plan.args).envs(plan.env.iter().map(|(k, v)| (k, v)));
     match cmd.status() {
         Ok(status) => std::process::exit(status.code().unwrap_or(1)),
@@ -268,6 +268,12 @@ mod tests {
         let t = target_from_settings(&raw, "k");
         assert_eq!((t.origin().as_str(), t.prefix.as_str(), t.api_key.as_str()), ("http://127.0.0.1:8080", "/api", "k"));
         assert_eq!(target_from_settings("not json", "").port, 1337);
+    }
+
+    #[test]
+    fn an_unresolvable_program_is_left_as_written() {
+        let name = "flint-launch-no-such-tool";
+        assert_eq!(crate::core::mcp::launch::launchable_program(name), std::ffi::OsString::from(name));
     }
 
     #[test]
