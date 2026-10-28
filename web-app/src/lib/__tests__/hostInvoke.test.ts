@@ -44,6 +44,25 @@ describe('hostInvoke through the Flint server', () => {
     expect(tauriInvoke).not.toHaveBeenCalled()
   })
 
+  it('answers key presence and backup export without the plain key route', async () => {
+    enableServerTransport()
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(ok(200, { has: true }))
+      .mockResolvedValueOnce(ok(200, { keys: ['k1'] }))
+    vi.stubGlobal('fetch', fetch)
+
+    expect(await hostInvoke('has_provider_keys', { provider: 'openai' })).toBe(true)
+    expect(fetch.mock.calls[0][0]).toBe('/api/v1/provider-keys/openai/status')
+
+    expect(
+      await hostInvoke('export_provider_keys_for_backup', { provider: 'openai', confirm: true })
+    ).toEqual(['k1'])
+    expect(fetch.mock.calls[1][0]).toBe('/api/v1/provider-keys/openai/backup')
+    expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'POST' })
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ confirm: true })
+  })
+
   it('treats desktop-only registry commands as no-ops', async () => {
     enableServerTransport()
     vi.stubGlobal('fetch', vi.fn())

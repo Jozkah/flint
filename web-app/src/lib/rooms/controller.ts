@@ -511,7 +511,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     model:
       m?.model === undefined
         ? (prev?.model ?? null)
-        : m.model
+        : m.model && typeof m.model.provider === 'string' && typeof m.model.id === 'string'
           ? { provider: m.model.provider, id: m.model.id }
           : null,
   })
@@ -763,7 +763,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         validateParticipants(participants)
         const updated: Room = {
           ...room,
-          title: patch.title !== undefined ? patch.title.trim().slice(0, 200) || room.title : room.title,
+          title: typeof patch.title === 'string' ? patch.title.trim().slice(0, 200) || room.title : room.title,
           objective: patch.objective !== undefined ? patch.objective.trim() : room.objective,
           mode: patch.mode ?? room.mode,
           ...(patch.compareRun === 'one-by-one' ||

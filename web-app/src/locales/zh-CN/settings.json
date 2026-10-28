@@ -352,7 +352,11 @@
       "confirmBody": "这会更改下方文件夹（{{program}} 的安装位置）的权限，且仅限该文件夹及其中的内容：它会添加一个条目，允许每个沙盒 Windows 应用（ALL APPLICATION PACKAGES）读取和运行其中的文件。你的用户配置文件中的其他任何内容都不会被打开。你可以随时在此撤销，这会精确移除该条目。",
       "confirm": "允许",
       "needsAdmin": "安装在 {{folder}} 中，只有管理员才能更改。需要管理员权限：请在提升权限的终端中运行：",
-      "copyCommand": "复制命令"
+      "copyCommand": "复制命令",
+      "loadError": "无法读取沙盒工具链。",
+      "retry": "重试",
+      "revokeTitle": "不再允许沙盒使用 {{program}}？",
+      "revokeBody": "这将移除添加到下方文件夹的权限条目。沙盒中的命令将无法再从该文件夹运行 {{program}}。"
     },
     "title": "智能体工具",
     "description": "为每个对话提供私有的临时工作区，以及永久保存在你的 Flint 数据文件夹中的记忆和技能。",

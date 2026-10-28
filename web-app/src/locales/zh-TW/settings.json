@@ -352,7 +352,11 @@
       "confirmBody": "這會變更下方資料夾（{{program}} 的安裝位置）的權限，且僅限該資料夾及其中的內容：它會新增一個項目，允許每個沙箱 Windows 應用程式（ALL APPLICATION PACKAGES）讀取和執行其中的檔案。你的使用者設定檔中的其他任何內容都不會被開啟。你可以隨時在此撤銷，這會精確移除該項目。",
       "confirm": "允許",
       "needsAdmin": "安裝在 {{folder}} 中，只有系統管理員才能變更。需要系統管理員權限：請在提升權限的終端機中執行：",
-      "copyCommand": "複製指令"
+      "copyCommand": "複製指令",
+      "loadError": "無法讀取沙箱工具鏈。",
+      "retry": "重試",
+      "revokeTitle": "不再允許沙箱使用 {{program}}？",
+      "revokeBody": "這會移除加入下方資料夾的權限項目。沙箱中的命令將無法再從該資料夾執行 {{program}}。"
     },
     "title": "代理程式工具",
     "description": "為每個對話提供私人的暫存工作區，以及永久保存在你的 Flint 資料夾中的記憶和技能。",

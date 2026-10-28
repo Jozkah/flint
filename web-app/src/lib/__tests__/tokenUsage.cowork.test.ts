@@ -166,13 +166,21 @@ describe('Cowork session persistence', () => {
     // was on disk, which is what a restart would find.
     // The store writes once, a moment after the change, not on every set.
     await vi.waitFor(
-      () => expect(disk.get(localStorageKey.coworkSessions)).toContain('cached_prompt_tokens'),
+      () =>
+        expect(
+          [...disk.entries()]
+            .filter(([key]) => key.startsWith(localStorageKey.coworkSessions))
+            .map(([, value]) => value)
+            .join('')
+        ).toContain('cached_prompt_tokens'),
       { timeout: 4000 }
     )
-    const saved = disk.get(localStorageKey.coworkSessions)!
+    // Sessions are saved one key each: keep every key of the list.
+    const saved = new Map(disk)
     useCoworkSessions.setState({ sessions: [], currentId: null })
     await flushDeferredStores()
-    disk.set(localStorageKey.coworkSessions, saved)
+    disk.clear()
+    saved.forEach((value, key) => disk.set(key, value))
 
     await useCoworkSessions.persist.rehydrate()
 

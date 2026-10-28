@@ -39,7 +39,8 @@ export type RoomStatus =
  * at once, each answers on its own without seeing the others' answers, and the
  * transcript shows the answers side by side.
  */
-export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected' | 'compare'
+export const SPEAKING_MODES = ['round-robin', 'user-selected', 'moderator-selected', 'compare'] as const
+export type SpeakingMode = (typeof SPEAKING_MODES)[number]
 
 /**
  * Tool access per participant. Only the user sets it. `read` runs Flint's Cowork

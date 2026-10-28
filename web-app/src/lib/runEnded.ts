@@ -6,6 +6,8 @@
  * through. The Rust side sends its own `label`; this keeps the same sentences
  * for a surface that only has the tag, such as a stored run record.
  */
+import { uiText } from '@/lib/uiText'
+
 export type RunEndReason =
   | 'completed'
   | 'user_stop'
@@ -40,9 +42,20 @@ export const isRunEndReason = (tag: string): tag is RunEndReason =>
  * tag (a newer loop) falls back to its label, then to the generic failure
  * sentence rather than to nothing.
  */
+const END_KEYS: Record<RunEndReason, string> = {
+  completed: 'completed',
+  user_stop: 'userStop',
+  budget: 'budget',
+  turn_limit: 'turnLimit',
+  refusal: 'refusal',
+  error: 'error',
+  lease_lost: 'leaseLost',
+}
+
 export function describeRunEnd(event: Pick<RunEndedEvent, 'reason' | 'label'>): string {
   if (event.label.trim()) return event.label
-  return isRunEndReason(event.reason) ? LABELS[event.reason] : LABELS.error
+  const reason: RunEndReason = isRunEndReason(event.reason) ? event.reason : 'error'
+  return uiText(`tools:runEnd.${END_KEYS[reason]}`, LABELS[reason])
 }
 
 /** A run that ended any way but completing needs the person's attention. */
