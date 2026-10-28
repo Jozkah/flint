@@ -17,6 +17,9 @@ on:
       - '.github/workflows/installer-ui.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   windows-installer:
     runs-on: windows-latest

@@ -20,6 +20,9 @@ concurrency:
   group: cowork-sandbox-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   linux-bubblewrap:
     name: Linux (bubblewrap)
