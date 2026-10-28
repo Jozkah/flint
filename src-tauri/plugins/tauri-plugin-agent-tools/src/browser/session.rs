@@ -748,6 +748,7 @@ pub fn close_for(id: &str) -> usize {
 pub fn close_all() {
     let all: Vec<Arc<Session>> = SESSIONS.lock().map(|m| m.values().cloned().collect()).unwrap_or_default();
     for s in all {
+        s.announce_closed("the app is closing");
         s.ctl.kill_detached("the app is closing");
     }
 }
