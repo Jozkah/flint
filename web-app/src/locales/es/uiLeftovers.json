@@ -47,7 +47,8 @@
     "memoriesSent": "Recuerdos enviados",
     "withheld": "Retenidos por contradictorios: {{ids}}",
     "perSec": "{{n}} tokens/s",
-    "count": "{{n}} tokens"
+    "count": "{{n}} tokens",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Editar host del servidor"

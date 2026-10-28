@@ -36,6 +36,7 @@ import { MarkdownTable } from '@/components/MarkdownTable'
 import { MarkdownImage } from '@/components/MarkdownImage'
 import { rehypeSafeInlineHtml } from '@/lib/rehypeSafeInlineHtml'
 import { rehypeStripFlankingZwsp } from '@/lib/rehypeStripFlankingZwsp'
+import { rehypeBlockDir } from '@/lib/rehypeBlockDir'
 import { decodeWebCiteHref } from '@/lib/webUrl'
 import { mermaidConfigFor } from '@/lib/mermaidTheme'
 import { useTheme } from '@/hooks/useTheme'
@@ -85,6 +86,7 @@ const REHYPE_PLUGINS_USER = [
   rehypeStripFlankingZwsp,
   rehypeKatex,
   defaultRehypePlugins.harden,
+  rehypeBlockDir,
 ]
 // Model output may carry inline HTML (e.g. <span style="color:...">); it is
 // parsed, then cut down to an allowlist before KaTeX/harden run. User text stays
@@ -95,6 +97,7 @@ const REHYPE_PLUGINS_MODEL = [
   rehypeStripFlankingZwsp,
   rehypeKatex,
   defaultRehypePlugins.harden,
+  rehypeBlockDir,
 ]
 const STREAMDOWN_PLUGINS = { code: guardCodePlugin(code), mermaid, cjk }
 const STREAMDOWN_CONTROLS = { mermaid: { fullscreen: false } }

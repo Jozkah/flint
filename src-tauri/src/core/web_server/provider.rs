@@ -65,6 +65,7 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
     }
     let (tx, rx) = mpsc::channel::<Bytes>(QUEUE_LINES);
     let keepalive = tx.downgrade();
+    let keepalive_stream = request.stream_id.clone();
     let sink = LineSink {
         tx,
         stream_id: request.stream_id.clone(),
@@ -83,6 +84,11 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
             if let Err(mpsc::error::TrySendError::Closed(_)) =
                 tx.try_send(Bytes::from_static(b"{\"kind\":\"ping\"}\n"))
             {
+                // The browser went away while the model was silent: stop the
+                // upstream request too instead of letting it run on.
+                if let Some(id) = &keepalive_stream {
+                    transport::cancel_stream(id);
+                }
                 break;
             }
         }

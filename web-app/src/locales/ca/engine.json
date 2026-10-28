@@ -140,6 +140,7 @@
     "tabRouting": "Encaminament i límits",
     "toolsCount_one": "{{count}} eina",
     "toolsCount_other": "{{count}} eines",
+    "toolsCount_many": "{{count}} eines",
     "filterLabel": "Mostra els servidors",
     "filterAll": "Tots",
     "filterOn": "Activats",

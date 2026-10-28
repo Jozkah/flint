@@ -134,15 +134,23 @@ export default function PluginsTab({
   // cards render without it.
   const [matrix, setMatrix] = useState<ExtensionsMatrix | null>(null)
   const [projects, setProjects] = useState<ProjectEntry[]>([])
+  const matrixLoadId = useRef(0)
   const refreshMatrix = useCallback(() => {
+    const id = ++matrixLoadId.current
     Promise.all([getMatrix(), listProjects()])
       .then(([m, list]) => {
+        if (id !== matrixLoadId.current) return
         setMatrix(m)
         setProjects(list)
       })
       .catch(() => {})
   }, [])
-  useEffect(() => refreshMatrix(), [refreshMatrix])
+  useEffect(() => {
+    refreshMatrix()
+    return () => {
+      matrixLoadId.current++
+    }
+  }, [refreshMatrix])
 
   const select = (id: string) => {
     setMode('list')

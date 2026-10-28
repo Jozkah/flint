@@ -193,7 +193,8 @@
       "redacted": "Ocultat",
       "nothing": "res",
       "redactedList_one": "{{count}} camp: {{list}}",
-      "redactedList_other": "{{count}} camps: {{list}}"
+      "redactedList_other": "{{count}} camps: {{list}}",
+      "redactedList_many": "{{count}} camps: {{list}}"
     },
     "view": {
       "label": "Mostra com",
@@ -212,8 +213,10 @@
       "left": "{{count}} han sortit",
       "keptMessages_one": "{{count}} missatge conservat",
       "keptMessages_other": "{{count}} missatges conservats",
+      "keptMessages_many": "{{count}} missatges conservats",
       "keptTools_one": "{{count}} eina conservada",
       "keptTools_other": "{{count}} eines conservades",
+      "keptTools_many": "{{count}} eines conservades",
       "systemChanged": "prompt del sistema modificat",
       "enteredHeading": "Han entrat",
       "leftHeading": "Han sortit",
@@ -227,6 +230,7 @@
       "needsSession": "La reproducció necessita la sessió a la qual pertany aquest torn.",
       "redactedBlock_one": "No es pot reproduir: {{count}} camp es va ocultar abans de desar-la, així que el model no rebria el que va rebre llavors.",
       "redactedBlock_other": "No es pot reproduir: {{count}} camps es van ocultar abans de desar-la, així que el model no rebria el que va rebre llavors.",
+      "redactedBlock_many": "No es pot reproduir: {{count}} camps es van ocultar abans de desar-la, així que el model no rebria el que va rebre llavors.",
       "state": {
         "running": "Reproduint…",
         "interrupted": "Interromput: Flint s'ha aturat durant l'execució",

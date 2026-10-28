@@ -26,6 +26,8 @@ export interface AttachmentFileInfo {
   type?: string
   size?: number
   chunk_count: number
+  /** Source file's modification time (seconds) when indexed; null for older rows. */
+  mtime?: number | null
 }
 
 // High-level input types for file ingestion

@@ -274,7 +274,7 @@
     "caBundleBroken": "Bundel ini tidak dapat dipakai ({{kind}}): HTTPS keluar tidak mempercayai apa pun sampai diperbaiki atau dihapus.",
     "ignoreSslScope": "Berlaku untuk semua lalu lintas proksi. Satu penyedia juga dapat mengizinkan sertifikat tidak valid untuk alamatnya sendiri, di halamannya pada Penyedia Model.",
     "proxyUrlInvalid": "Ini tidak terlihat seperti alamat proxy. Gunakan host:port atau http://host:port.",
-    "proxyUrlScheme": "Hanya proxy http dan https yang didukung.",
+    "proxyUrlScheme": "Hanya proxy http, https, socks5, dan socks5h yang didukung.",
     "ignoreSslConfirmTitle": "Abaikan sertifikat SSL?",
     "ignoreSslConfirmBody": "Flint akan menerima sertifikat yang ditandatangani sendiri, kedaluwarsa, atau tidak cocok untuk semua lalu lintas proxy, sehingga siapa pun di jalur tersebut dapat membaca atau mengubahnya. Lanjutkan hanya jika Anda memercayai proxy dan jaringannya.",
     "ignoreSslConfirm": "Abaikan sertifikat",
@@ -548,6 +548,15 @@
     "closeToTrayDesc": "Menutup jendela akan menyembunyikan Flint ke baki sistem alih-alih keluar. Keluar lewat menu baki.",
     "downloadLimit": "Batas kecepatan unduhan",
     "downloadLimitDesc": "Batasi unduhan model hingga sekian MB per detik. 0 berarti tanpa batas.",
+    "hfEndpoint": "Endpoint Hugging Face",
+    "hfEndpointDesc": "Tujuan pencarian dan unduhan model. Pilih mirror jika huggingface.co diblokir atau lambat di tempat Anda.",
+    "hfEndpointDefault": "Bawaan (huggingface.co)",
+    "hfEndpointCustom": "URL kustom",
+    "hfEndpointSave": "Simpan",
+    "hfEndpointSaved": "Endpoint Hugging Face disimpan",
+    "hfEndpointEnvOverride": "Variabel lingkungan HF_ENDPOINT bernilai {{value}} dan mengesampingkan pengaturan ini.",
+    "hfEndpointSendToken": "Kirim token saya ke mirror ini",
+    "hfEndpointSendTokenDesc": "Mati secara bawaan: token Hugging Face Anda hanya dikirim ke huggingface.co. Nyalakan hanya jika Anda memercayai mirror ini.",
     "exportLogs": "Ekspor log (disamarkan)",
     "exportLogsDesc": "Simpan log aplikasi dengan kunci API dan token yang dikenal telah dihapus, untuk dilampirkan ke laporan bug. Tinjau sebelum dibagikan.",
     "importChatGpt": "Impor ekspor ChatGPT",
@@ -694,6 +703,9 @@
     "title": "Pemadatan konteks",
     "auto": "Padatkan otomatis",
     "autoDescription": "Beri ruang sebelum percakapan melampaui jendela konteks model. Dipakai bersama oleh Obrolan, Cowork, dan CLI.",
+    "compactAt": "Padatkan pada",
+    "compactAtDescription": "Saat percakapan mencapai bagian jendela konteks ini, pesan lama diringkas terlebih dahulu. Otomatis mempertahankan titik bawaan. Berjalan sebelum pergeseran konteks llama.cpp membuang apa pun.",
+    "compactAtAuto": "Otomatis",
     "reserveTokens": "Token cadangan",
     "reserveDescription": "Ruang longgar yang dijaga kosong: pemadatan dimulai begitu percakapan memakai lebih dari jendela dikurangi ini.",
     "keepRecent": "Pesan terbaru dipertahankan",
@@ -1429,7 +1441,12 @@
     "noMatchHint": "Periksa ejaannya, atau hapus pencarian untuk melihat semuanya.",
     "emptyHint": "Tulis satu di atas, atau biarkan Flint mengingat saat Anda mengobrol.",
     "footerCount_other": "{{count}} memori dalam cakupan ini",
-    "agentNotes": "Catatan agen"
+    "agentNotes": "Catatan agen",
+    "report": {
+      "summary_other": "{{count}} memori diimpor dari ekspor",
+      "duplicates_other": "{{count}} duplikat dilewati",
+      "refused_other": "{{count}} ditolak"
+    }
   },
   "chatMentions": {
     "title": "Sebutan percakapan",
@@ -1511,7 +1528,16 @@
     "reasoningDefaultDesc": "Apakah penalaran dimulai aktif atau nonaktif di obrolan baru. Pengaturan penalaran milik model dan sakelar di kotak tulis tetap diutamakan. Model yang tidak dapat mengubah penalaran dibiarkan apa adanya.",
     "reasoningDefaultModel": "Bawaan model",
     "reasoningDefaultOn": "Aktif",
-    "reasoningDefaultOff": "Nonaktif"
+    "reasoningDefaultOff": "Nonaktif",
+    "rulesGroup": "Aturan",
+    "rulesDesc": "Instruksi tetap yang ditambahkan ke obrolan setelah instruksi asisten. Matikan satu aturan untuk satu obrolan dari panel opsi obrolan itu.",
+    "rulesEnabled": "Aturan aktif",
+    "rulesRemove": "Hapus aturan",
+    "rulesAllChats": "Semua obrolan",
+    "rulesNoGroups": "Belum ada grup",
+    "rulesPlaceholder": "Tambahkan aturan, mis. \"Jawab dalam satuan metrik\"",
+    "rulesAdd": "Tambah",
+    "rulesTooLong": "Aturan aktif sekitar {{tokens}} token, melebihi {{budget}} yang disarankan. Aturan panjang memakai konteks di setiap obrolan."
   },
   "data": {
     "tabStorage": "Penyimpanan",
@@ -1530,6 +1556,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

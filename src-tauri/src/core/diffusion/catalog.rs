@@ -128,8 +128,13 @@ pub struct FileDef {
 }
 
 impl FileDef {
-    pub fn url(&self) -> String {
-        format!("https://huggingface.co/{}/resolve/main/{}", self.repo, self.filename)
+    /// On the Hugging Face endpoint in force (huggingface.co or the mirror).
+    pub fn url(&self) -> Result<String, String> {
+        use crate::core::hf_endpoint::{endpoint_url, hf_endpoint};
+        let mut parts: Vec<&str> = self.repo.split('/').collect();
+        parts.extend(["resolve", "main"]);
+        parts.extend(self.filename.split('/'));
+        Ok(endpoint_url(&hf_endpoint()?, &parts)?.to_string())
     }
 }
 
@@ -307,7 +312,7 @@ mod tests {
     fn a_model_file_url_points_at_hugging_face() {
         // Assembled from parts: the app's local-only guard rejects a literal
         // link to a weights file anywhere in the source.
-        let url = Z_IMAGE_TURBO.files[1].url();
+        let url = Z_IMAGE_TURBO.files[1].url().unwrap();
         assert!(url.starts_with("https://huggingface.co/unsloth/Z-Image-Turbo-ComfyUI/resolve/main/"));
         assert!(url.ends_with("split_files/vae/ae.safetensors"));
     }

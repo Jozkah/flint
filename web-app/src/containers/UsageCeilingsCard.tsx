@@ -65,6 +65,7 @@ function Meter({
   noLimit: string
   resets: (wait: string) => string
 }) {
+  const { i18n } = useTranslation()
   if (!standing) {
     return <p className="text-xs text-muted-foreground">{noLimit}</p>
   }
@@ -75,8 +76,8 @@ function Meter({
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="usage-meter">
       <p className="text-xs tabular-nums text-foreground">
-        {standing.used.toLocaleString('en-US')} /{' '}
-        {standing.limit.toLocaleString('en-US')}
+        {standing.used.toLocaleString(i18n?.language)} /{' '}
+        {standing.limit.toLocaleString(i18n?.language)}
       </p>
       <Progress
         value={share}

@@ -247,6 +247,7 @@
     "failed": "No se pudo confiar en la carpeta",
     "kept_one": "Se mantuvieron los hooks activados en {{count}} carpeta que ya usas. Revísala en Ajustes > Permisos > Carpetas de confianza.",
     "kept_other": "Se mantuvieron los hooks activados en {{count}} carpetas que ya usas. Revísalos en Ajustes > Permisos > Carpetas de confianza.",
+    "kept_many": "Se mantuvieron los hooks activados en {{count}} carpetas que ya usas. Revísalos en Ajustes > Permisos > Carpetas de confianza.",
     "summaryHooks": "¿Confiar en esta carpeta? Sus hooks ejecutan comandos",
     "summarySubagents": "¿Confiar en esta carpeta? Sus definiciones de agentes pueden ejecutarse",
     "summaryBoth": "¿Confiar en esta carpeta? Sus hooks y agentes pueden ejecutarse",
@@ -392,6 +393,7 @@
     "grantNote": "«Permitir en esta conversación» termina cuando termina la conversación, o a las 8 horas. «Permitir siempre» lo mantiene en todas las conversaciones hasta que lo revoques en Ajustes > Permisos > Acceso a carpetas.",
     "moreWaiting_one": "{{count}} solicitud más en espera.",
     "moreWaiting_other": "{{count}} solicitudes más en espera.",
+    "moreWaiting_many": "{{count}} solicitudes más en espera.",
     "deny": "Denegar",
     "always": "Permitir siempre",
     "session": "Permitir en esta conversación"
