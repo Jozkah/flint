@@ -2907,6 +2907,21 @@
     "load": "{{host}}에서 이미지 불러오기"
   },
   "messageSaveFailed": "메시지를 저장하지 못했습니다. 다시 시작하면 사라질 수 있습니다.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "이 스레드의 변경 사항을 저장하지 못해 되돌렸습니다.",
   "attachmentsProcessFailed": "첨부 파일을 준비하지 못해 메시지를 보내지 않았습니다",
   "attachmentMissingFile": "첨부 파일을 더 이상 찾을 수 없습니다. 삭제한 뒤 다시 첨부하세요. 메시지는 입력창에 그대로 있습니다.",

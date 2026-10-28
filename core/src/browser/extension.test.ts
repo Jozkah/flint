@@ -199,4 +199,35 @@ describe('BaseExtension', () => {
     setItemSpy.mockRestore()
     localStorage.clear()
   })
+
+  it('partial patch keeps the full saved list and notifies only changed keys', async () => {
+    const saved = [
+      { key: 'a', controllerProps: { value: 1 } },
+      { key: 'b', controllerProps: { value: 2 } },
+    ]
+    vi.spyOn(baseExtension, 'getSettings').mockResolvedValue(saved as any)
+    const setItem = vi.spyOn(localStorage, 'setItem')
+    const notify = vi.spyOn(baseExtension, 'onSettingUpdate')
+
+    await baseExtension.updateSettings([
+      { key: 'a', controllerProps: { value: 9 } } as any,
+    ])
+
+    const [, payload] = setItem.mock.calls[setItem.mock.calls.length - 1]
+    expect(JSON.parse(payload).map((s: any) => s.key)).toEqual(['a', 'b'])
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledWith('a', 9)
+  })
+
+  it('registerSettings heals a corrupt blob and skips entries without controllerProps', async () => {
+    localStorage.setItem('TestExtension', '{"not":"an array"}')
+    const fresh: any[] = [
+      { key: 'x', controllerProps: { value: 'v' } },
+      { key: 'broken' },
+    ]
+    await expect(baseExtension.registerSettings(fresh)).resolves.toBeUndefined()
+    const stored = JSON.parse(localStorage.getItem('TestExtension') as string)
+    expect(stored.find((s: any) => s.key === 'x').controllerProps.value).toBe('v')
+    localStorage.clear()
+  })
 })

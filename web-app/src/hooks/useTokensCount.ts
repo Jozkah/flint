@@ -186,14 +186,18 @@ export const useTokensCount = (
   messages: ThreadMessage[] = [],
   source?: TokenUsageSource
 ) => {
-  const global = useModelProvider()
-  const { getProviderByName } = global
+  const getProviderByName = useModelProvider((s) => s.getProviderByName)
+  const globalSelectedModel = useModelProvider((s) => s.selectedModel)
+  const globalSelectedProvider = useModelProvider((s) => s.selectedProvider)
+  // The provider list itself: a key or URL edit has to re-render the remote
+  // window probe below, which reads it through getProviderByName.
+  useModelProvider((s) => s.providers)
   const selectedModel = source?.selection
     ? source.selection.selectedModel
-    : global.selectedModel
+    : globalSelectedModel
   const selectedProvider = source?.selection
     ? source.selection.selectedProvider
-    : global.selectedProvider
+    : globalSelectedProvider
   const [modelProps, setModelProps] = useState<ModelProps | undefined>(
     undefined
   )
@@ -247,6 +251,9 @@ export const useTokensCount = (
   )
 
   useEffect(() => {
+    // Every pass supersedes the one before it, including the passes that
+    // bail out: an older request must not land after a model switch.
+    const id = ++reqId.current
     if (!modelId) {
       setModelProps(undefined)
       setLoading(false)
@@ -255,9 +262,9 @@ export const useTokensCount = (
     const ext = getLocalPropsExtension(selectedProvider)
     if (!ext?.getModelProps) {
       setModelProps(undefined)
+      setLoading(false)
       return
     }
-    const id = ++reqId.current
     setLoading(true)
     ext
       .getModelProps(modelId)

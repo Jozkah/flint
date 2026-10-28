@@ -2967,6 +2967,21 @@
     "load": "Carrega la imatge de {{host}}"
   },
   "messageSaveFailed": "No s'ha pogut desar el missatge. Es pot perdre després de reiniciar.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit.",
   "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat",
   "attachmentMissingFile": "Un fitxer adjunt ja no està disponible. Elimina'l i torna'l a adjuntar; el missatge continua al quadre.",

@@ -2968,6 +2968,21 @@
     "load": "Cargar imagen de {{host}}"
   },
   "messageSaveFailed": "No se pudo guardar el mensaje. Puede perderse tras reiniciar.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "No se pudo guardar el cambio en este hilo. Se revirtió.",
   "attachmentsProcessFailed": "No se pudieron preparar los adjuntos, así que el mensaje no se envió",
   "attachmentMissingFile": "Un archivo adjunto ya no está disponible. Quítalo y adjúntalo de nuevo; tu mensaje sigue en el cuadro.",
