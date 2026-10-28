@@ -17,16 +17,13 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Directory names never copied: dependency caches, build output, virtual
+/// Directory names never copied wherever they sit: dependency caches, virtual
 /// environments and version-control metadata. Regenerable, usually large, and
 /// not the session's to change.
 pub const EXCLUDED_DIRS: &[&str] = &[
     "node_modules",
-    "target",
     ".venv",
     "venv",
-    "dist",
-    "build",
     ".git",
     ".hg",
     ".svn",
@@ -35,6 +32,32 @@ pub const EXCLUDED_DIRS: &[&str] = &[
     ".turbo",
     ".cache",
 ];
+
+/// Names that are build output only next to a project manifest (or at the
+/// root of the copied folder). `src/build` or `docs/dist` is source.
+const GENERATED_DIRS: &[&str] = &["target", "dist", "build"];
+
+/// Files that mark a folder as a project whose `target`/`dist`/`build` is
+/// generated.
+const PROJECT_MARKERS: &[&str] = &[
+    "Cargo.toml",
+    "package.json",
+    "CMakeLists.txt",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "Makefile",
+    "setup.py",
+    "pyproject.toml",
+    "go.mod",
+    "pubspec.yaml",
+];
+
+fn skips_dir(parent: &Path, name: &str, parent_is_root: bool) -> bool {
+    EXCLUDED_DIRS.contains(&name)
+        || (GENERATED_DIRS.contains(&name)
+            && (parent_is_root || PROJECT_MARKERS.iter().any(|m| parent.join(m).is_file())))
+}
 
 /// Where copies live, inside Flint's worktrees folder.
 pub fn copies_dir(worktrees_root: &Path) -> PathBuf {
@@ -53,6 +76,10 @@ pub struct CopyRecord {
     pub created_at: u64,
     /// How many files were copied.
     pub file_count: usize,
+    /// Folders left out of the copy (relative, forward slashes): dependency
+    /// caches and build output.
+    #[serde(default)]
+    pub skipped: Vec<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -60,6 +87,11 @@ struct Manifest {
     record: Option<CopyRecord>,
     /// Relative path (forward slashes) to the SHA-256 of the file as copied.
     files: BTreeMap<String, String>,
+    /// `(size, mtime in ns)` of the copy's file when its hash was recorded; a
+    /// file whose stat still matches is not hashed again. Absent in older
+    /// manifests, which are re-hashed once.
+    #[serde(default)]
+    stats: BTreeMap<String, (u64, u128)>,
 }
 
 /// One file that differs between a copy and what it was copied from.
@@ -124,7 +156,20 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
+#[cfg(test)]
+thread_local! {
+    static HASHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn stat_of(path: &Path) -> Option<(u64, u128)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let nanos = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+    Some((meta.len(), nanos))
+}
+
 fn hash_file(path: &Path) -> Option<String> {
+    #[cfg(test)]
+    HASHES.with(|h| h.set(h.get() + 1));
     // Streamed: a project can hold multi-gigabyte files (model weights).
     let mut file = std::fs::File::open(path).ok()?;
     let mut hasher = Sha256::new();
@@ -132,10 +177,11 @@ fn hash_file(path: &Path) -> Option<String> {
     Some(format!("{:x}", hasher.finalize()))
 }
 
-/// Every regular file under `root`, relative with forward slashes, skipping
-/// [`EXCLUDED_DIRS`] and never following links.
-fn walk(root: &Path) -> Vec<String> {
+/// Every regular file under `root`, relative with forward slashes, and the
+/// folders skipped on the way. Never follows links.
+fn walk_with_skips(root: &Path) -> (Vec<String>, Vec<String>) {
     let mut out = Vec::new();
+    let mut skipped = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -151,7 +197,11 @@ fn walk(root: &Path) -> Vec<String> {
             }
             if kind.is_dir() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if !EXCLUDED_DIRS.contains(&name.as_str()) {
+                if skips_dir(&dir, &name, dir == root) {
+                    if let Ok(rel) = path.strip_prefix(root) {
+                        skipped.push(rel.to_string_lossy().replace('\\', "/"));
+                    }
+                } else {
                     stack.push(path);
                 }
             } else if kind.is_file() {
@@ -162,7 +212,12 @@ fn walk(root: &Path) -> Vec<String> {
         }
     }
     out.sort();
-    out
+    skipped.sort();
+    (out, skipped)
+}
+
+fn walk(root: &Path) -> Vec<String> {
+    walk_with_skips(root).0
 }
 
 /// A relative path from IPC that stays inside its root.
@@ -219,14 +274,20 @@ pub fn create(
     let staging = root.join(format!("{}.partial", short_id(session_id)));
     let _ = std::fs::remove_dir_all(&staging);
     let mut files = BTreeMap::new();
-    for rel in walk(&source) {
+    let mut stats = BTreeMap::new();
+    let (listed, skipped) = walk_with_skips(&source);
+    for rel in listed {
         let from = source.join(&rel);
         let to = staging.join(&rel);
         if let Some(parent) = to.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         std::fs::copy(&from, &to).map_err(|e| format!("could not copy {rel}: {e}"))?;
+        let stat = stat_of(&to);
         if let Some(h) = hash_file(&to) {
+            if let Some(stat) = stat {
+                stats.insert(rel.clone(), stat);
+            }
             files.insert(rel, h);
         }
     }
@@ -240,12 +301,14 @@ pub fn create(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0),
         file_count: files.len(),
+        skipped,
     };
     write_manifest(
         &copy,
         &Manifest {
             record: Some(record.clone()),
             files,
+            stats,
         },
     )?;
     Ok(record)
@@ -277,7 +340,11 @@ pub fn changes(record: &CopyRecord) -> Result<Vec<CopyChange>, String> {
     let mut out = Vec::new();
     for rel in paths {
         let copied = manifest.files.get(&rel);
-        let now_copy = hash_file(&copy.join(&rel));
+        let copy_file = copy.join(&rel);
+        let now_copy = match (copied, manifest.stats.get(&rel), stat_of(&copy_file)) {
+            (Some(hash), Some(was), Some(now)) if *was == now => Some(hash.clone()),
+            _ => hash_file(&copy_file),
+        };
         if now_copy.as_ref() == copied {
             continue;
         }
@@ -356,6 +423,7 @@ pub fn apply(record: &CopyRecord, paths: &[String], force: bool) -> Result<Apply
                 Err(e) => return Err(format!("could not delete {rel}: {e}")),
             }
             manifest.files.remove(rel);
+            manifest.stats.remove(rel);
         } else {
             let bytes = std::fs::read(copy.join(&checked))
                 .map_err(|e| format!("could not read {rel} from the copy: {e}"))?;
@@ -366,6 +434,10 @@ pub fn apply(record: &CopyRecord, paths: &[String], force: bool) -> Result<Apply
             manifest
                 .files
                 .insert(rel.clone(), format!("{:x}", Sha256::digest(&bytes)));
+            match stat_of(&copy.join(&checked)) {
+                Some(stat) => manifest.stats.insert(rel.clone(), stat),
+                None => manifest.stats.remove(rel),
+            };
         }
         outcome.applied.push(rel.clone());
     }
@@ -434,6 +506,64 @@ mod tests {
         assert_eq!(create(&f.src, &f.roots, "s1").unwrap().path, r.path);
         assert_ne!(create(&f.src, &f.roots, "s2").unwrap().path, r.path);
         assert_eq!(load(&copy, &f.roots).unwrap(), r);
+    }
+
+    #[test]
+    fn nested_src_build_dir_is_copied() {
+        let f = fixture();
+        std::fs::create_dir_all(f.src.join("src/build")).unwrap();
+        std::fs::write(f.src.join("src/build/gen.rs"), "source").unwrap();
+        std::fs::create_dir_all(f.src.join("crates/x/target")).unwrap();
+        std::fs::write(f.src.join("crates/x/Cargo.toml"), "[package]").unwrap();
+        std::fs::write(f.src.join("crates/x/target/out.o"), "junk").unwrap();
+        let r = create(&f.src, &f.roots, "s1").unwrap();
+        let copy = PathBuf::from(&r.path);
+        assert!(copy.join("src/build/gen.rs").exists());
+        assert!(!copy.join("crates/x/target").exists());
+        assert!(r.skipped.contains(&"crates/x/target".to_string()), "{:?}", r.skipped);
+        assert!(!r.skipped.iter().any(|s| s.starts_with("src")));
+    }
+
+    #[test]
+    fn root_node_modules_still_excluded() {
+        let f = fixture();
+        std::fs::create_dir_all(f.src.join("build")).unwrap();
+        std::fs::write(f.src.join("build/x.o"), "junk").unwrap();
+        let r = create(&f.src, &f.roots, "s1").unwrap();
+        let copy = PathBuf::from(&r.path);
+        assert!(!copy.join("node_modules").exists() && !copy.join("build").exists());
+        assert!(r.skipped.contains(&"node_modules".to_string()) && r.skipped.contains(&"build".to_string()));
+    }
+
+    #[test]
+    fn unchanged_files_are_not_rehashed() {
+        let f = fixture();
+        let r = create(&f.src, &f.roots, "s1").unwrap();
+        let copy = PathBuf::from(&r.path);
+        HASHES.with(|h| h.set(0));
+        assert!(changes(&r).unwrap().is_empty());
+        assert_eq!(HASHES.with(|h| h.get()), 0);
+        std::fs::write(copy.join("a.txt"), "changed content").unwrap();
+        let c = changes(&r).unwrap();
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].path, "a.txt");
+    }
+
+    #[test]
+    fn legacy_manifest_still_loads() {
+        let f = fixture();
+        let r = create(&f.src, &f.roots, "s1").unwrap();
+        let copy = PathBuf::from(&r.path);
+        // A manifest written before stats and skipped existed.
+        let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(manifest_path(&copy)).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("stats");
+        v["record"].as_object_mut().unwrap().remove("skipped");
+        std::fs::write(manifest_path(&copy), v.to_string()).unwrap();
+        let loaded = load(&copy, &f.roots).unwrap();
+        assert!(loaded.skipped.is_empty());
+        assert!(changes(&loaded).unwrap().is_empty());
+        std::fs::write(copy.join("a.txt"), "now different").unwrap();
+        assert_eq!(changes(&loaded).unwrap().len(), 1);
     }
 
     #[test]

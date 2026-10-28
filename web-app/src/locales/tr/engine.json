@@ -182,7 +182,7 @@
     "kpiArtifacts": "Çıktılar",
     "kpiArtifactsSub": "bu hafta {{count}} yeni",
     "kpiSessions": "Cowork'ten",
-    "kpiSessionsSub": "{{count}} oturum genelinde",
+    "kpiSessionsSub": "kayıtlı yapıtlarla",
     "kpiDisk": "Diskte",
     "kpiDiskSub": "oturum korumalı alanlarında",
     "kindCode": "Kod",

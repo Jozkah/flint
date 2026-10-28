@@ -170,5 +170,76 @@
     "toolOk": "correcte",
     "toolFailed": "ha fallat",
     "chatStarted": "Xat iniciat"
+  },
+  "promptSnapshot": {
+    "summary": "El que ha rebut el model",
+    "loading": "Carregant…",
+    "gone": "Aquesta instantània ja no és al disc.",
+    "unavailable": "No s'ha desat cap càrrega útil. {{reason}}",
+    "reason": {
+      "not-serializable": "La sol·licitud no s'ha pogut serialitzar, així que no s'ha desat res.",
+      "disabled": "Les instantànies estan desactivades per a aquesta execució.",
+      "too-large": "La sol·licitud era massa gran per desar-la sencera."
+    },
+    "meta": {
+      "provider": "Proveïdor",
+      "model": "Model",
+      "reasoning": "Raonament",
+      "session": "Sessió",
+      "run": "Execució",
+      "agent": "Agent",
+      "sent": "Enviat",
+      "hash": "Hash",
+      "redacted": "Ocultat",
+      "nothing": "res",
+      "redactedList_one": "{{count}} camp: {{list}}",
+      "redactedList_other": "{{count}} camps: {{list}}"
+    },
+    "view": {
+      "label": "Mostra com",
+      "tree": "Arbre",
+      "json": "JSON"
+    },
+    "copy": "Copia la càrrega útil ocultada",
+    "copied": "Copiat",
+    "diff": {
+      "run": "Compara amb la sol·licitud anterior",
+      "loading": "Comparant…",
+      "first": "Aquesta és la primera sol·licitud desada de la sessió; no hi ha res anterior per comparar.",
+      "summary": "En relació amb {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} han entrat",
+      "left": "{{count}} han sortit",
+      "keptMessages_one": "{{count}} missatge conservat",
+      "keptMessages_other": "{{count}} missatges conservats",
+      "keptTools_one": "{{count}} eina conservada",
+      "keptTools_other": "{{count}} eines conservades",
+      "systemChanged": "prompt del sistema modificat",
+      "enteredHeading": "Han entrat",
+      "leftHeading": "Han sortit",
+      "nothingNew": "Res de nou.",
+      "nothingLeft": "No ha sortit res de la finestra."
+    },
+    "replay": {
+      "label": "Reproduccions d'aquest context",
+      "run": "Reprodueix aquest context",
+      "hint": "Envia exactament aquesta sol·licitud una altra vegada. Les eines que demani el model no s'executen.",
+      "needsSession": "La reproducció necessita la sessió a la qual pertany aquest torn.",
+      "redactedBlock_one": "No es pot reproduir: {{count}} camp es va ocultar abans de desar-la, així que el model no rebria el que va rebre llavors.",
+      "redactedBlock_other": "No es pot reproduir: {{count}} camps es van ocultar abans de desar-la, així que el model no rebria el que va rebre llavors.",
+      "state": {
+        "running": "Reproduint…",
+        "interrupted": "Interromput: Flint s'ha aturat durant l'execució",
+        "completed": "Completat",
+        "failed": "Ha fallat",
+        "cancelled": "Aturat",
+        "refused": "Rebutjat"
+      },
+      "matched": "Mateix context que el torn (els hashos coincideixen)",
+      "differed": "La sol·licitud enviada difereix de la del torn",
+      "finish": "final: {{reason}}",
+      "stop": "Atura",
+      "asked": "Ha demanat {{tools}} (no s'ha executat)"
+    }
   }
 }

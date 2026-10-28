@@ -366,5 +366,33 @@
     "none": "Folder ini tidak mendeklarasikan hook.",
     "error": "File hook tidak dapat dibaca",
     "loadFailed": "Hook tidak dapat dibaca"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Izinkan agen mengubah file di folder ini?",
+        "file": "Izinkan agen mengubah file ini?"
+      },
+      "read": {
+        "folder": "Izinkan agen membaca folder ini?",
+        "file": "Izinkan agen membaca file ini?"
+      }
+    },
+    "asking": "{{task}} meminta akses di luar ruang kerjanya.",
+    "askingFrom": "{{origin}} di {{task}} meminta akses di luar ruang kerjanya.",
+    "thisConversation": "percakapan ini",
+    "folderLabel": "Folder (dan seluruh isinya)",
+    "fileLabel": "File",
+    "requestedAs": "Diminta sebagai {{requested}}, yang mengarah ke jalur di atas.",
+    "reason": "Alasan yang diberikan",
+    "access": "Akses:",
+    "readWrite": "Baca dan tulis",
+    "readOnly": "Hanya baca",
+    "grantNote": "\"Izinkan untuk percakapan ini\" berakhir saat percakapan berakhir, atau setelah 8 jam. \"Selalu izinkan\" berlaku untuk setiap percakapan sampai Anda mencabutnya di Pengaturan > Izin > Akses folder.",
+    "moreWaiting_one": "{{count}} permintaan lagi menunggu.",
+    "moreWaiting_other": "{{count}} permintaan lagi menunggu.",
+    "deny": "Tolak",
+    "always": "Selalu izinkan",
+    "session": "Izinkan untuk percakapan ini"
   }
 }

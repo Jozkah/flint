@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "fehlgeschlagen",
     "chatStarted": "Chat gestartet"
+  },
+  "promptSnapshot": {
+    "summary": "Was das Modell erhalten hat",
+    "loading": "Wird geladen…",
+    "gone": "Dieser Snapshot ist nicht mehr auf dem Datenträger.",
+    "unavailable": "Es wurde keine Nutzlast gespeichert. {{reason}}",
+    "reason": {
+      "not-serializable": "Die Anfrage ließ sich nicht serialisieren, daher wurde nichts gespeichert.",
+      "disabled": "Snapshots sind für diesen Lauf ausgeschaltet.",
+      "too-large": "Die Anfrage war zu groß, um sie vollständig zu speichern."
+    },
+    "meta": {
+      "provider": "Anbieter",
+      "model": "Modell",
+      "reasoning": "Reasoning",
+      "session": "Sitzung",
+      "run": "Lauf",
+      "agent": "Agent",
+      "sent": "Gesendet",
+      "hash": "Hash",
+      "redacted": "Geschwärzt",
+      "nothing": "nichts",
+      "redactedList_one": "{{count}} Feld: {{list}}",
+      "redactedList_other": "{{count}} Felder: {{list}}"
+    },
+    "view": {
+      "label": "Ansicht",
+      "tree": "Baum",
+      "json": "JSON"
+    },
+    "copy": "Geschwärzte Nutzlast kopieren",
+    "copied": "Kopiert",
+    "diff": {
+      "run": "Mit der vorherigen Anfrage vergleichen",
+      "loading": "Vergleiche…",
+      "first": "Das ist die erste gespeicherte Anfrage der Sitzung; es gibt nichts Früheres zum Vergleichen.",
+      "summary": "Gegenüber {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} neu",
+      "left": "{{count}} entfallen",
+      "keptMessages_one": "{{count}} Nachricht behalten",
+      "keptMessages_other": "{{count}} Nachrichten behalten",
+      "keptTools_one": "{{count}} Tool behalten",
+      "keptTools_other": "{{count}} Tools behalten",
+      "systemChanged": "Systemprompt geändert",
+      "enteredHeading": "Neu hinzugekommen",
+      "leftHeading": "Entfallen",
+      "nothingNew": "Nichts Neues.",
+      "nothingLeft": "Nichts ist aus dem Fenster gefallen."
+    },
+    "replay": {
+      "label": "Wiederholungen dieses Kontexts",
+      "run": "Diesen Kontext wiederholen",
+      "hint": "Sendet genau diese Anfrage erneut. Angeforderte Tools werden nicht ausgeführt.",
+      "needsSession": "Das Wiederholen braucht die Sitzung, zu der dieser Zug gehört.",
+      "redactedBlock_one": "Kann nicht wiederholt werden: {{count}} Feld wurde vor dem Speichern geschwärzt, das Modell würde also nicht erhalten, was es damals erhalten hat.",
+      "redactedBlock_other": "Kann nicht wiederholt werden: {{count}} Felder wurden vor dem Speichern geschwärzt, das Modell würde also nicht erhalten, was es damals erhalten hat.",
+      "state": {
+        "running": "Wird wiederholt…",
+        "interrupted": "Unterbrochen: Flint wurde während des Laufs beendet",
+        "completed": "Abgeschlossen",
+        "failed": "Fehlgeschlagen",
+        "cancelled": "Gestoppt",
+        "refused": "Abgelehnt"
+      },
+      "matched": "Gleicher Kontext wie der Zug (Hashes stimmen überein)",
+      "differed": "Die gesendete Anfrage wich von der des Zugs ab",
+      "finish": "Ende: {{reason}}",
+      "stop": "Stopp",
+      "asked": "Hat {{tools}} angefordert (nicht ausgeführt)"
+    }
   }
 }
