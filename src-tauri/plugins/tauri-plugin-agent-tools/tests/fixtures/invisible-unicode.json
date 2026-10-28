@@ -65,6 +65,21 @@
     "expected": "Summary done"
   },
   {
+    "name": "variation selectors stripped",
+    "input": "a\ufe00b\ufe0dc\udb40\udd00d\udb40\uddefe",
+    "expected": "abcde"
+  },
+  {
+    "name": "emoji presentation selectors kept",
+    "input": "\u2764\ufe0f \u2764\ufe0e",
+    "expected": "\u2764\ufe0f \u2764\ufe0e"
+  },
+  {
+    "name": "soft hyphen and marks",
+    "input": "co\u00adop\u061cx\u180ey",
+    "expected": "coopxy"
+  },
+  {
     "name": "empty",
     "input": "",
     "expected": ""
