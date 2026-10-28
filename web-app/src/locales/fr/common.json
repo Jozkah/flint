@@ -2837,6 +2837,10 @@
   "threadSaveFailed": "Impossible d'enregistrer la modification de cette conversation. Elle a été annulée.",
   "attachmentsProcessFailed": "Impossible de préparer les pièces jointes, le message n'a donc pas été envoyé",
   "attachmentMissingFile": "Un fichier joint n'est plus disponible. Retirez-le et joignez-le de nouveau ; votre message est toujours dans la zone de saisie.",
+  "factoryResetIncomplete": {
+    "title": "Réinitialisation incomplète",
+    "description": "{{count}} élément(s) n'ont pas pu être supprimés et sont toujours sur le disque :\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Le fichier de paramètres n'a pas pu être lu",
     "withBackup": "{{file}} était endommagé, donc Flint a démarré avec les paramètres par défaut. Le fichier endommagé a été conservé sous le nom {{backup}}.",

@@ -2895,6 +2895,10 @@
   "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena.",
   "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána",
   "attachmentMissingFile": "Přiložený soubor už není dostupný. Odeberte ho a připojte znovu; zpráva zůstala v poli.",
+  "factoryResetIncomplete": {
+    "title": "Obnovení není úplné",
+    "description": "Nepodařilo se odstranit položky ({{count}}); zůstávají na disku:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Soubor nastavení se nepodařilo přečíst",
     "withBackup": "Soubor {{file}} byl poškozen, proto Flint spustil s výchozím nastavením. Poškozený soubor byl uložen jako {{backup}}.",

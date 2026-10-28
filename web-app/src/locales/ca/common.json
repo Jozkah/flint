@@ -2837,6 +2837,10 @@
   "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit.",
   "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat",
   "attachmentMissingFile": "Un fitxer adjunt ja no està disponible. Elimina'l i torna'l a adjuntar; el missatge continua al quadre.",
+  "factoryResetIncomplete": {
+    "title": "Restabliment incomplet",
+    "description": "No s'han pogut eliminar {{count}} element(s); encara són al disc:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "No s'ha pogut llegir el fitxer de configuració",
     "withBackup": "{{file}} estava malmès, així que Flint ha començat amb la configuració per defecte. El fitxer malmès s'ha conservat com a {{backup}}.",

@@ -2783,6 +2783,10 @@
   "threadSaveFailed": "このスレッドの変更を保存できませんでした。元に戻しました。",
   "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした",
   "attachmentMissingFile": "添付ファイルが見つかりません。削除して添付し直してください。メッセージは入力欄に残っています。",
+  "factoryResetIncomplete": {
+    "title": "初期化が完了しませんでした",
+    "description": "{{count}} 件の項目を削除できず、ディスク上に残っています:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "設定ファイルを読み取れませんでした",
     "withBackup": "{{file}} が破損していたため、Flint は既定の設定で起動しました。破損したファイルは {{backup}} として保存されています。",
