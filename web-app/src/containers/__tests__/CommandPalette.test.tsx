@@ -149,5 +149,24 @@ describe('CommandPalette', () => {
     )
     expect(screen.queryAllByTestId('command-palette-item')).toHaveLength(0)
     expect(screen.getByText('empty')).toBeInTheDocument()
+    // The empty message is a status outside the listbox, not a fake option.
+    expect(screen.getByRole('status')).toHaveTextContent('empty')
+    expect(screen.getByRole('listbox')).not.toContainElement(
+      screen.getByText('empty')
+    )
+    expect(screen.getByTestId('command-palette-input')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
+
+  it('labels each section as a group inside the listbox', async () => {
+    render(<CommandPalette />)
+    await screen.findAllByTestId('command-palette-item')
+    const groups = screen.getAllByRole('group')
+    expect(groups.length).toBeGreaterThan(1)
+    for (const g of groups) {
+      expect(g).toHaveAccessibleName()
+    }
   })
 })

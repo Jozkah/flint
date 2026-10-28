@@ -47,7 +47,8 @@
     "memoriesSent": "Ký ức đã gửi",
     "withheld": "Bị giữ lại do mâu thuẫn: {{ids}}",
     "perSec": "{{n}} token/giây",
-    "count": "{{n}} token"
+    "count": "{{n}} token",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Sửa máy chủ lưu trữ của server"

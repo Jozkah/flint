@@ -478,6 +478,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
 
   const [files, setFiles] = useState<ProjectFile[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     () => new Set()
@@ -554,6 +555,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   const loadProjectFiles = useCallback(async () => {
     const id = ++loadRequest.current
     setLoading(true)
+    setLoadFailed(false)
     try {
       const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
         ExtensionTypeEnum.VectorDB
@@ -569,6 +571,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     } catch {
       if (id !== loadRequest.current) return
       setFiles([])
+      setLoadFailed(true)
     } finally {
       if (id === loadRequest.current) setLoading(false)
     }
@@ -967,6 +970,18 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         <div className="flex items-center justify-center py-8">
           <Loader2 className="size-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
         </div>
+      ) : isEmpty && loadFailed ? (
+        <div
+          role="alert"
+          className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-destructive/40 px-4 py-6 text-center"
+        >
+          <p className="text-sm text-destructive">
+            {t('common:projects.filesLoadFailed')}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => void loadProjectFiles()}>
+            {t('common:projects.retryLoad')}
+          </Button>
+        </div>
       ) : isEmpty ? (
         <div
           className={cn(
@@ -975,6 +990,16 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
               ? 'bg-acc-tint border-acc'
               : 'bg-muted/60 border-border-strong hover:bg-muted'
           )}
+          role="button"
+          tabIndex={0}
+          aria-label={t('common:projects.processButton')}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleUpload()
+            }
+          }}
           onClick={handleUpload}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -1004,6 +1029,16 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
               ? 'bg-acc-tint border-acc'
               : 'bg-muted/60 border-border-strong hover:bg-muted'
           )}
+          role="button"
+          tabIndex={0}
+          aria-label={t('common:projects.processButton')}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleUpload()
+            }
+          }}
           onClick={handleUpload}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}

@@ -47,7 +47,8 @@
     "memoriesSent": "Souvenirs envoyés",
     "withheld": "Écartés car contradictoires : {{ids}}",
     "perSec": "{{n}} jetons/s",
-    "count": "{{n}} jetons"
+    "count": "{{n}} jetons",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Modifier l’hôte du serveur"

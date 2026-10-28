@@ -1703,6 +1703,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

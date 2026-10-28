@@ -47,7 +47,8 @@
     "memoriesSent": "भेजी गई यादें",
     "withheld": "टकराव के कारण रोकी गईं: {{ids}}",
     "perSec": "{{n}} टोकन/सेकंड",
-    "count": "{{n}} टोकन"
+    "count": "{{n}} टोकन",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "सर्वर होस्ट बदलें"
