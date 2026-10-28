@@ -3003,17 +3003,36 @@ pub fn cli_policy_import(
         return Ok(change);
     }
     let root = resolve_project_root(project);
-    let path = agent_dir_for(&root).join("agent.toml");
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let path = crate::core::agent::project::agent_toml_path(&root);
+    // Only a missing file starts empty. Any other read failure (permissions,
+    // invalid UTF-8) must stop here: treating it as empty would rewrite the
+    // file with the `[tools]` section alone and lose the model, budget and
+    // skills settings.
+    let existing = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            return Err(HarnessError::new(
+                ErrorKind::MalformedState,
+                format!("{} cannot be read, so the policy was not changed: {e}", path.display()),
+            )
+            .at(Stage::Persistence));
+        }
+    };
     let rewritten = crate::core::agent::project::replace_tools_section(&existing, &to_toml(&document));
     std::fs::create_dir_all(agent_dir_for(&root)).map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("the project's config directory is not writable: {e}"))
             .at(Stage::Persistence)
     })?;
-    std::fs::write(&path, rewritten).map_err(|e| {
-        HarnessError::new(ErrorKind::Io, format!("the policy could not be written: {e}"))
-            .at(Stage::Persistence)
-    })?;
+    // Temp file then rename, so an interrupted write leaves the old file whole.
+    let tmp = path.with_extension("toml.flint-tmp");
+    std::fs::write(&tmp, rewritten)
+        .and_then(|()| std::fs::rename(&tmp, &path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            HarnessError::new(ErrorKind::Io, format!("the policy could not be written: {e}"))
+                .at(Stage::Persistence)
+        })?;
     Ok(change)
 }
 
@@ -6158,5 +6177,49 @@ mod tests {
         std::fs::create_dir_all(&agent).unwrap();
         std::fs::write(agent.join("agent.toml"), "this is = = not toml").unwrap();
         assert!(super::cli_policy_export(dir.path().to_str().unwrap()).is_err());
+    }
+
+    const NARROW_POLICY: &str = r#"{"v":1,"default":"deny","allow":[],"deny":[],"allowWrite":[]}"#;
+
+    /// An import rewrites `[tools]` and nothing else.
+    #[test]
+    fn policy_import_preserves_other_sections() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = dir.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        std::fs::write(
+            agent.join("agent.toml"),
+            "model = \"keep-me\"\n\n[tools]\ndefault = \"allow\"\n",
+        )
+        .unwrap();
+        super::cli_policy_import(dir.path().to_str().unwrap(), NARROW_POLICY, true)
+            .expect("import applies");
+        let text = std::fs::read_to_string(agent.join("agent.toml")).unwrap();
+        assert!(text.contains("model = \"keep-me\""), "other settings kept: {text}");
+        assert!(text.contains("default = \"deny\""), "policy replaced: {text}");
+        assert!(!agent.join("agent.toml.flint-tmp").exists());
+    }
+
+    /// An agent.toml that cannot be read is left exactly as it is.
+    #[test]
+    fn policy_import_refuses_non_utf8_agent_toml_and_leaves_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = dir.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        let bytes: &[u8] = b"model = \"x\"\n\xff\xfe\n";
+        std::fs::write(agent.join("agent.toml"), bytes).unwrap();
+        assert!(super::cli_policy_import(dir.path().to_str().unwrap(), NARROW_POLICY, true).is_err());
+        assert_eq!(std::fs::read(agent.join("agent.toml")).unwrap(), bytes);
+    }
+
+    /// No agent.toml yet: the import creates one holding the policy.
+    #[test]
+    fn policy_import_missing_file_creates_tools_only() {
+        let dir = tempfile::tempdir().unwrap();
+        super::cli_policy_import(dir.path().to_str().unwrap(), NARROW_POLICY, true)
+            .expect("import applies");
+        let path = crate::core::agent::project::agent_toml_path(dir.path());
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.contains("[tools]") && text.contains("default = \"deny\""), "{text}");
     }
 }
