@@ -1665,7 +1665,8 @@
       "empty": "This file is empty",
       "needs-file-dialog": "Use “Attach file” for documents — a dropped copy has no path for the reader",
       "sensitive": "Looks like credentials or a key, so it was not read",
-      "binary": "This is not a text file, whatever its extension says"
+      "binary": "This is not a text file, whatever its extension says",
+      "unreadable": "Could not read this file"
     },
     "addFiles": "Add files",
     "addFilesOrImages": "Add files or images",
