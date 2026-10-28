@@ -3046,10 +3046,16 @@ fn origin_is_trusted(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
     is_trusted_origin(origin, trusted_hosts)
 }
 
-/// True when the process looks like a leftover Flint/Jan server or llama worker.
+/// True when the process is a leftover Flint/Jan app or llama worker. Matched
+/// on the exact executable name, so an unrelated program whose name merely
+/// contains "jan" or "llama" is not called a leftover.
 fn is_leftover_flint_process(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
-    ["flint", "jan", "llama"].iter().any(|k| n.contains(k))
+    let stem = n.strip_suffix(".exe").unwrap_or(&n);
+    matches!(
+        stem,
+        "flint" | "jan" | "flint-llama-worker" | "jan-llama-worker" | "llama-server"
+    )
 }
 
 /// Look up which process holds `port`. It shells out (netstat/lsof), so it
@@ -4267,6 +4273,17 @@ mod tests {
                 msg.contains("(PID 4242)") && msg.contains("leftover Flint"),
                 "{msg}"
             );
+        }
+    }
+
+    #[test]
+    fn addr_in_use_does_not_call_a_lookalike_name_a_leftover() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        for name in ["janitor.exe", "ollama", "llamafile.exe"] {
+            let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "in use");
+            let owner = fake_owner(name);
+            let msg = map_bind_error(addr, err, Some(&owner)).to_string();
+            assert!(!msg.contains("leftover Flint"), "{msg}");
         }
     }
 
