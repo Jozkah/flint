@@ -50,9 +50,6 @@ pub use files::with_read_success;
 mod bash;
 #[allow(unused_imports)]
 use bash::*;
-pub(crate) use bash::test_deadline;
-pub(crate) use bash::native_fallback_note;
-pub(crate) use bash::unsandboxed_shell;
 pub use bash::direct_edit_shell_start;
 pub use bash::working_folder;
 pub use bash::rebase_relative_paths;
