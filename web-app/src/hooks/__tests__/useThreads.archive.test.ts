@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const archiveEnabled = vi.fn()
 const cleanupThreadWorkspace = vi.fn()
+const deleteCollection = vi.fn()
+
+vi.mock('@/lib/extension', () => ({
+  ExtensionManager: {
+    getInstance: () => ({ get: () => ({ deleteCollection }) }),
+  },
+}))
 
 vi.mock('@/lib/archive', () => ({
   archiveEnabled: () => archiveEnabled(),
@@ -49,5 +56,12 @@ describe('deleting a thread with the archive on', () => {
     useThreads.getState().deleteThread('t1')
     await flush()
     expect(cleanupThreadWorkspace).toHaveBeenCalledWith('t1')
+  })
+
+  it('passes the bare thread id to the vector db, which adds its own prefix', async () => {
+    archiveEnabled.mockResolvedValue(false)
+    useThreads.getState().deleteThread('t1')
+    await flush()
+    expect(deleteCollection).toHaveBeenCalledWith('t1')
   })
 })
