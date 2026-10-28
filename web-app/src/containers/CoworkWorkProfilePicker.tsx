@@ -61,7 +61,9 @@ export function CoworkWorkProfilePicker({
   const manual = choice?.manual ? choice.id : null
   const picked = choice ? workProfile(choice.id) : null
   const Icon = manual ? ICONS[manual] : WandSparkles
-  const label = manual ? workProfile(manual).label : t('common:jev.profilesAuto')
+  const profileLabel = (id: WorkProfileId) =>
+    t(`common:workProfileLabels.${id}`, { defaultValue: workProfile(id).label })
+  const label = manual ? profileLabel(manual) : t('common:jev.profilesAuto')
 
   return (
     <DropdownMenu>
@@ -73,7 +75,7 @@ export function CoworkWorkProfilePicker({
           aria-label={`${t('common:jev.profilesTitle')}: ${label}`}
           title={
             !manual && picked
-              ? t('common:jev.profilesAutoPicked', { profile: picked.label })
+              ? t('common:jev.profilesAutoPicked', { profile: profileLabel(picked.id) })
               : t('common:jev.profilesTitle')
           }
           className={cn(
@@ -86,12 +88,12 @@ export function CoworkWorkProfilePicker({
           <Icon aria-hidden className="size-3.5 shrink-0" />
           {quiet ? (
             // One word: the profile in use. The wand says Auto chose it.
-            <span>{picked ? picked.label : label}</span>
+            <span>{picked ? profileLabel(picked.id) : label}</span>
           ) : (
             <>
               {/* Auto: the wand icon plus the profile it picked. Manual: the profile's own icon and label. */}
               <span className="@max-2xl/ctx:sr-only">
-                {manual ? label : picked ? picked.label : label}
+                {manual ? label : picked ? profileLabel(picked.id) : label}
               </span>
               <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
             </>
@@ -109,7 +111,7 @@ export function CoworkWorkProfilePicker({
           label={t('common:jev.profilesAuto')}
           description={
             picked && !manual
-              ? `${t('common:jev.profilesAutoPicked', { profile: picked.label })}. ${t('common:jev.profilesAutoDesc')}`
+              ? `${t('common:jev.profilesAutoPicked', { profile: profileLabel(picked.id) })}. ${t('common:jev.profilesAutoDesc')}`
               : t('common:jev.profilesAutoDesc')
           }
           selected={!manual}
@@ -121,7 +123,7 @@ export function CoworkWorkProfilePicker({
           <Option
             key={p.id}
             icon={ICONS[p.id]}
-            label={p.label}
+            label={profileLabel(p.id)}
             description={p.description}
             selected={manual === p.id}
             onSelect={() => onChoose(p.id)}
