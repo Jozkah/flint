@@ -1247,6 +1247,7 @@
     "btwFailed": "Could not answer the side question."
   },
   "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set Max Context Tokens for this model so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
+  "ollamaWindowTruncating": "Ollama runs {{model}} with a {{tokens}}-token context and silently drops the oldest messages beyond it. Flint now compacts against that size. To keep more history, raise it on the Ollama server: set OLLAMA_CONTEXT_LENGTH, or add PARAMETER num_ctx to the model's Modelfile.",
   "compaction": {
     "working": "Compacting the conversation…",
     "divider_one": "Context compacted — {{count}} earlier message summarized",

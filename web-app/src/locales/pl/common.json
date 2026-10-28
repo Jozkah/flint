@@ -1231,6 +1231,7 @@
     "btwFailed": "Nie udało się odpowiedzieć na pytanie poboczne."
   },
   "autoCompactNeedsWindow": "Automatyczne kompaktowanie wymaga rozmiaru kontekstu, a {{model}} nie ma żadnego, który Flint potrafiłby znaleźć. Ustaw Maks. tokeny kontekstu dla tego modelu, aby długie czaty były kompaktowane, zanim go zapełnią. Jeśli dostawca odrzuci żądanie z powodu jego długości, Flint skompaktuje i spróbuje raz jeszcze.",
+  "ollamaWindowTruncating": "Ollama uruchamia {{model}} z kontekstem {{tokens}} tokenów i po cichu odrzuca najstarsze wiadomości ponad ten limit. Flint kompaktuje teraz według tego rozmiaru. Aby zachować więcej historii, zwiększ go na serwerze Ollama: ustaw OLLAMA_CONTEXT_LENGTH lub dodaj PARAMETER num_ctx do Modelfile modelu.",
   "compaction": {
     "working": "Kompaktowanie rozmowy…",
     "divider_one": "Kontekst skompaktowany — podsumowano {{count}} wcześniejszą wiadomość",

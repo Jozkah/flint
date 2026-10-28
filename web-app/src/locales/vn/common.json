@@ -1202,6 +1202,7 @@
     "btwFailed": "Không thể trả lời câu hỏi phụ."
   },
   "autoCompactNeedsWindow": "Tự động nén cần kích thước ngữ cảnh, và {{model}} không có kích thước nào Flint tìm được. Hãy đặt Số token ngữ cảnh tối đa cho mô hình này để các cuộc trò chuyện dài được nén trước khi đầy. Nếu nhà cung cấp từ chối một yêu cầu vì độ dài, Flint nén và thử lại một lần.",
+  "ollamaWindowTruncating": "Ollama chạy {{model}} với ngữ cảnh {{tokens}} token và âm thầm bỏ các tin nhắn cũ nhất vượt quá mức đó. Flint giờ sẽ nén theo kích thước này. Để giữ nhiều lịch sử hơn, hãy tăng nó trên máy chủ Ollama: đặt OLLAMA_CONTEXT_LENGTH hoặc thêm PARAMETER num_ctx vào Modelfile của mô hình.",
   "compaction": {
     "working": "Đang nén cuộc trò chuyện…",
     "divider_one": "Đã nén ngữ cảnh — đã tóm tắt {{count}} tin nhắn trước đó",

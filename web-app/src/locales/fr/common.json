@@ -1210,6 +1210,7 @@
     "btwFailed": "Impossible de répondre à la question annexe."
   },
   "autoCompactNeedsWindow": "Le compactage automatique nécessite une taille de contexte, et Flint n'en trouve aucune pour {{model}}. Définissez le nombre maximal de jetons de contexte pour ce modèle afin que les longues conversations soient compactées avant de le saturer. Si le fournisseur refuse une requête à cause de sa longueur, Flint compacte et réessaie une fois.",
+  "ollamaWindowTruncating": "Ollama exécute {{model}} avec un contexte de {{tokens}} jetons et supprime silencieusement les messages les plus anciens au-delà. Flint compacte désormais selon cette taille. Pour conserver plus d'historique, augmentez-la sur le serveur Ollama : définissez OLLAMA_CONTEXT_LENGTH ou ajoutez PARAMETER num_ctx au Modelfile du modèle.",
   "compaction": {
     "working": "Compactage de la conversation…",
     "divider_one": "Contexte compacté — {{count}} message précédent résumé",

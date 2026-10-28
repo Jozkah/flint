@@ -1205,6 +1205,7 @@
     "btwFailed": "無法回答旁支問題。"
   },
   "autoCompactNeedsWindow": "自動壓縮需要上下文大小，而 Flint 找不到 {{model}} 的上下文大小。請為此模型設定最大上下文 Token 數，以便長聊天在填滿之前被壓縮。如果供應商因長度拒絕請求，Flint 會壓縮並重試一次。",
+  "ollamaWindowTruncating": "Ollama 以 {{tokens}} token 的上下文執行 {{model}}，並會靜默丟棄超出部分中最早的訊息。Flint 現在會依此大小進行壓縮。若要保留更多歷史，請在 Ollama 伺服器上調大：設定 OLLAMA_CONTEXT_LENGTH，或在模型的 Modelfile 中加入 PARAMETER num_ctx。",
   "compaction": {
     "working": "正在壓縮對話…",
     "divider_one": "上下文已壓縮 — 已摘要 {{count}} 則較早的訊息",
