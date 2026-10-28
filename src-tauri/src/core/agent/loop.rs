@@ -3170,7 +3170,19 @@ fn thresholds_for(
     use crate::core::agent::compaction_policy as cpol;
     let ctx_window = configured.or(learned);
     let reserve = Some(compaction.effective_reserve(ctx_window.unwrap_or(128_000)));
-    let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
+    let mut window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
+    // The user's "compact at N% of the window" (0 = the built-in trigger). It
+    // is a share of the whole window, so it lands below where llama.cpp's
+    // context shift would start dropping content; `thresholds` caps it at the
+    // effective window.
+    let pct = tauri_plugin_agent_tools::compaction_policy::clamp_compact_at_percent(
+        compaction.compact_at_percent,
+    );
+    if pct > 0 {
+        window_cfg = window_cfg.with_override(Some(cpol::CompactionOverride::Window(
+            (window_cfg.context_window * pct as u64 / 100).max(1),
+        )));
+    }
     match cpol::thresholds(&window_cfg) {
         Ok(resolved) => Ok(resolved),
         Err(e) if learned.is_some() => {
