@@ -54,7 +54,15 @@ fn scrub_one(appdir: &str, var: &str, value: &str) -> Option<Option<String>> {
         .split(':')
         .filter(|e| !e.is_empty() && !under(e))
         .collect();
-    Some((!kept.is_empty()).then(|| kept.join(":")))
+    if kept.is_empty() {
+        // Removing PATH outright leaves the child with no search path at all;
+        // fall back to the standard host directories instead.
+        if var == "PATH" {
+            return Some(Some("/usr/local/bin:/usr/bin:/bin".to_string()));
+        }
+        return Some(None);
+    }
+    Some(Some(kept.join(":")))
 }
 
 /// For each inherited variable that has an entry under `appdir`, the value to
@@ -157,6 +165,15 @@ mod tests {
                 ("LD_LIBRARY_PATH", Some("/opt/cuda/lib".to_string())),
                 ("PYTHONHOME", None),
             ]
+        );
+    }
+
+    #[test]
+    fn path_wholly_inside_appdir_falls_back_to_default_not_removed() {
+        let get = |k: &str| (k == "PATH").then(|| "/tmp/.mount_x/usr/bin".to_string());
+        assert_eq!(
+            env_scrubs("/tmp/.mount_x", get),
+            vec![("PATH", Some("/usr/local/bin:/usr/bin:/bin".to_string()))]
         );
     }
 
