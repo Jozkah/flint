@@ -339,97 +339,132 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     [getProviderByName, updateProvider, serviceHub]
   )
 
-  // Initialize model provider - avoid race conditions with manual selections
+  // Initialize model provider - avoid race conditions with manual selections.
+  //
+  // The effect reads the store and the helpers through `latestRef`, so it
+  // re-runs only when what it decides on changes (the target model, whether it
+  // exists yet, whether any model has loaded) and not on every providers
+  // write. A capability probe writes back through `updateProvider`; re-running
+  // on that re-probed the same model with fresh IPC calls each time.
+  const latestRef = useRef({
+    model,
+    checkModelExists,
+    getProviderByName,
+    updateProvider,
+    checkAndUpdateModelVisionCapability,
+    selectModelProvider,
+    serviceHub,
+  })
+  latestRef.current = {
+    model,
+    checkModelExists,
+    getProviderByName,
+    updateProvider,
+    checkAndUpdateModelVisionCapability,
+    selectModelProvider,
+    serviceHub,
+  }
+  const probedModelsRef = useRef<Set<string>>(new Set())
+  const targetProvider = model?.provider
+  const targetId = model?.id
+  const targetExists = model
+    ? Boolean(checkModelExists(model.provider, model.id))
+    : false
+  const anyModelLoaded = providers.some((p) => p.active && p.models.length > 0)
+  const paneSplit = pane?.isSplit
+  const paneActive = pane?.isActive
+
   useEffect(() => {
+    let cancelled = false
     const initializeModel = async () => {
+      const h = latestRef.current
+      const target = h.model
       // A split pane the user is not working in leaves the global picker to
       // the pane they are; it becomes the one deciding when it is activated.
-      if (pane?.isSplit && !pane.isActive) return
+      if (paneSplit && !paneActive) return
+      // Probe a model's mmproj and vision support once per mount.
+      const probe = async (provider: string, id: string) => {
+        if (provider !== 'llamacpp') return
+        const key = `${provider}:${id}`
+        if (probedModelsRef.current.has(key)) return
+        probedModelsRef.current.add(key)
+        await h.serviceHub
+          .models()
+          .checkMmprojExistsAndUpdateOffloadMMprojSetting(
+            id,
+            h.updateProvider,
+            h.getProviderByName
+          )
+        if (cancelled) return
+        // Also check vision capability
+        await h.checkAndUpdateModelVisionCapability(id)
+      }
       // Auto select model when existing thread is passed
-      if (model) {
+      if (target) {
         // A caller that owns its model shows it from the prop; the global
         // selection is not the place to record it.
         if (drivesGlobalSelection) {
-          selectModelProvider(model?.provider as string, model?.id as string)
-          if (!checkModelExists(model.provider, model.id)) {
-            selectModelProvider('', '')
+          h.selectModelProvider(target.provider as string, target.id as string)
+          if (!h.checkModelExists(target.provider, target.id)) {
+            h.selectModelProvider('', '')
           }
         }
         // Check mmproj existence for llamacpp models
-        if (model?.provider === 'llamacpp') {
-          await serviceHub
-            .models()
-            .checkMmprojExistsAndUpdateOffloadMMprojSetting(
-              model.id as string,
-              updateProvider,
-              getProviderByName
-            )
-          // Also check vision capability
-          await checkAndUpdateModelVisionCapability(model.id as string)
-        }
+        await probe(target.provider as string, target.id as string)
       } else if (useLastUsedModel) {
-        // Initialise, never re-decide. This effect re-runs on every change to
-        // `providers` -- a model list refreshing, a capability probe writing
-        // back through `updateProvider` -- and re-deciding each time cleared a
-        // model the user had just picked whenever it was momentarily missing
-        // from an active provider's list. The picker kept showing it (that is
-        // local display state), while the composer's selection was empty and
-        // it refused to send: no run, no turn, nothing in the transcript.
-        // An existing selection stays. If the model really is gone, sending
-        // fails with an error the user can act on, which is better than a
-        // composer that silently does nothing.
+        // Initialise, never re-decide. This effect used to re-run on every
+        // change to `providers` -- a model list refreshing, a capability probe
+        // writing back through `updateProvider` -- and re-deciding each time
+        // cleared a model the user had just picked whenever it was momentarily
+        // missing from an active provider's list. The picker kept showing it
+        // (that is local display state), while the composer's selection was
+        // empty and it refused to send: no run, no turn, nothing in the
+        // transcript. An existing selection stays. If the model really is
+        // gone, sending fails with an error the user can act on, which is
+        // better than a composer that silently does nothing.
         if (useModelProvider.getState().selectedModel) return
         // A default the user set wins over whatever was used last; when it is
         // no longer available, the last-used model applies as before.
         const preferred = useModelEvidence.getState().preferredModel
         const lastUsed =
-          preferred && checkModelExists(preferred.provider, preferred.model)
+          preferred && h.checkModelExists(preferred.provider, preferred.model)
             ? preferred
             : getLastUsedModel()
-        if (lastUsed && checkModelExists(lastUsed.provider, lastUsed.model)) {
-          selectModelProvider(lastUsed.provider, lastUsed.model)
-          if (lastUsed.provider === 'llamacpp') {
-            await serviceHub
-              .models()
-              .checkMmprojExistsAndUpdateOffloadMMprojSetting(
-                lastUsed.model,
-                updateProvider,
-                getProviderByName
-              )
-            // Also check vision capability
-            await checkAndUpdateModelVisionCapability(lastUsed.model)
-          }
+        if (lastUsed && h.checkModelExists(lastUsed.provider, lastUsed.model)) {
+          h.selectModelProvider(lastUsed.provider, lastUsed.model)
+          await probe(lastUsed.provider, lastUsed.model)
         } else {
           // Fallback: auto-select first llamacpp model if available
-          const llamacppProvider = providers.find(
-            (p) => p.provider === 'llamacpp' && p.active && p.models.length > 0
-          )
+          const llamacppProvider = useModelProvider
+            .getState()
+            .providers.find(
+              (p) => p.provider === 'llamacpp' && p.active && p.models.length > 0
+            )
           if (llamacppProvider && llamacppProvider.models.length > 0) {
             const firstModel = llamacppProvider.models[0]
-            selectModelProvider('llamacpp', firstModel.id)
+            h.selectModelProvider('llamacpp', firstModel.id)
             setLastUsedModel('llamacpp', firstModel.id)
           } else {
-            selectModelProvider('', '')
+            h.selectModelProvider('', '')
           }
         }
       }
     }
 
-    initializeModel()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    model,
-    selectModelProvider,
-    updateCurrentThreadModel,
-    providers,
-    checkModelExists,
-    updateProvider,
-    getProviderByName,
-    checkAndUpdateModelVisionCapability,
-    drivesGlobalSelection,
-    pane,
-
+    void initializeModel()
+    return () => {
+      cancelled = true
+    }
     // selectedModel and selectedProvider intentionally excluded to prevent race conditions
+  }, [
+    targetProvider,
+    targetId,
+    targetExists,
+    anyModelLoaded,
+    drivesGlobalSelection,
+    useLastUsedModel,
+    paneSplit,
+    paneActive,
   ])
 
   // The chat's or session's own model, when its provider (or the model) is

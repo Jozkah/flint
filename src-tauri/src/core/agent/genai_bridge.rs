@@ -1007,10 +1007,7 @@ pub(crate) async fn stream_chat_completions(
                 Err(AttemptError::Upstream(err)) => {
                     let (status, err_body, headers) = http_parts(&err);
                     let described = describe_error(&err);
-                    last_err = match status {
-                        Some(s) => format!("Upstream returned HTTP {s}: {described}"),
-                        None => format!("Upstream request failed: {described}"),
-                    };
+                    last_err = upstream_failure_message(status, &described);
                     // A context overflow is not a transport problem: the caller
                     // compacts and retries the turn itself, so mark it and stop.
                     let overflow_text = err_body.unwrap_or(described.as_str());
@@ -1045,10 +1042,7 @@ pub(crate) async fn stream_chat_completions(
                                     ));
                                 }
                             }
-                            let timed_out = {
-                                let d = described.to_ascii_lowercase();
-                                d.contains("timed out") || d.contains("timeout")
-                            };
+                            let timed_out = is_timeout_text(&described);
                             if timed_out {
                                 timeouts += 1;
                             }
@@ -1141,6 +1135,22 @@ pub(crate) async fn stream_chat_completions(
     }
 
     Err(last_err)
+}
+
+/// The error text kept for a failed attempt: the HTTP status when the provider
+/// answered, otherwise the transport failure.
+fn upstream_failure_message(status: Option<u16>, described: &str) -> String {
+    match status {
+        Some(s) => format!("Upstream returned HTTP {s}: {described}"),
+        None => format!("Upstream request failed: {described}"),
+    }
+}
+
+/// Whether a transport error is a timeout, as opposed to a refused connection
+/// or a dropped stream (those retry without counting toward the timeout cap).
+fn is_timeout_text(described: &str) -> bool {
+    let d = described.to_ascii_lowercase();
+    d.contains("timed out") || d.contains("timeout")
 }
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
@@ -1356,6 +1366,24 @@ async fn run_once(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_message_names_the_status_or_the_transport() {
+        assert_eq!(upstream_failure_message(Some(503), "overloaded"), "Upstream returned HTTP 503: overloaded");
+        assert_eq!(upstream_failure_message(None, "connection refused"), "Upstream request failed: connection refused");
+    }
+
+    #[test]
+    fn only_timeouts_count_as_timeouts() {
+        for (text, expected) in [
+            ("operation timed out", true),
+            ("Request TIMEOUT after 30s", true),
+            ("connection refused", false),
+            ("stream closed before the first event", false),
+        ] {
+            assert_eq!(is_timeout_text(text), expected, "{text}");
+        }
+    }
     use genai::chat::{Binary, BinarySource};
     use serde_json::json;
 

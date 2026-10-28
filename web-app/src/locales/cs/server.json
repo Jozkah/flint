@@ -20,6 +20,7 @@
   "auto": "Otevřít při spuštění",
   "autoDesc": "Otevře server při spuštění aplikace, po několika sekundách, během nichž můžete místo toho zvolit toto zařízení.",
   "opening": "Otevírá se {{host}} za {{seconds}} s",
+  "openingNotice": "Za chvíli se otevře {{host}}. Stisknutím Esc zůstanete v tomto zařízení.",
   "useDevice": "Použít toto zařízení",
   "limitsTitle": "Co kde běží",
   "limits": "Chat, místnosti, modely a nástroje běží na serveru. Relace Cowork a kampaně potřebují agenta, který běží na počítači s otevřeným Flintem: k tomuto počítači se dostanete přes vzdálený přístup a mobilní aplikaci. Server bez obrazovky umí kampaně vypsat a kontrolovat návrhy, ale relace nespouští."

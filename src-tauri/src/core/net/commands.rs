@@ -36,13 +36,28 @@ pub struct EndpointDiagnostics {
     pub responded: Option<String>,
 }
 
-struct ChannelSink(Channel<StreamChunk>);
+struct ChannelSink(Channel<tauri::ipc::InvokeResponseBody>);
 
 impl ChunkSink for ChannelSink {
     fn send(&self, chunk: StreamChunk) {
         // A closed channel means the webview navigated away mid-stream; there
         // is nothing to do about it and nothing worth failing the request for.
-        let _ = self.0.send(chunk);
+        let _ = self.0.send(encode_chunk(chunk));
+    }
+
+    fn supports_raw(&self) -> bool {
+        true
+    }
+}
+
+/// The message a chunk travels as: raw bytes for body data the consumer asked
+/// to receive raw, the same JSON the typed channel produced for everything else.
+fn encode_chunk(chunk: StreamChunk) -> tauri::ipc::InvokeResponseBody {
+    match chunk {
+        StreamChunk::Raw { bytes } => tauri::ipc::InvokeResponseBody::Raw(bytes),
+        other => tauri::ipc::InvokeResponseBody::Json(
+            serde_json::to_string(&other).unwrap_or_else(|_| r#"{"kind":"end"}"#.to_string()),
+        ),
     }
 }
 
@@ -178,7 +193,7 @@ pub async fn provider_http_request<R: Runtime>(
 #[tauri::command]
 pub async fn provider_http_stream(
     request: ProviderRequest,
-    channel: Channel<StreamChunk>,
+    channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), String> {
     transport::send_stream(request, ChannelSink(channel)).await
 }
@@ -255,5 +270,29 @@ pub fn network_ca_check(path: String) -> serde_json::Value {
             "path": error.path.display().to_string(),
             "message": error.message,
         }),
+    }
+}
+
+#[cfg(test)]
+mod stream_encoding_tests {
+    use super::*;
+    use tauri::ipc::InvokeResponseBody;
+
+    #[test]
+    fn raw_body_travels_as_binary_and_the_rest_as_the_same_json() {
+        match encode_chunk(StreamChunk::Raw { bytes: vec![1, 2, 3] }) {
+            InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, vec![1, 2, 3]),
+            other => panic!("expected raw, got {other:?}"),
+        }
+        match encode_chunk(StreamChunk::End) {
+            InvokeResponseBody::Json(text) => assert_eq!(text, r#"{"kind":"end"}"#),
+            other => panic!("expected json, got {other:?}"),
+        }
+        match encode_chunk(StreamChunk::Data { b64: "aGk=".into() }) {
+            InvokeResponseBody::Json(text) => {
+                assert_eq!(text, r#"{"kind":"data","b64":"aGk="}"#)
+            }
+            other => panic!("expected json, got {other:?}"),
+        }
     }
 }

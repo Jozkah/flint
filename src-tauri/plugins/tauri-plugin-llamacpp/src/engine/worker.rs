@@ -561,6 +561,23 @@ pub struct WorkerHandle {
 }
 
 impl WorkerHandle {
+    /// A handle around any child process, for tests of code that only moves
+    /// handles around.
+    #[cfg(test)]
+    pub(crate) fn for_test(child: Child, port: u16) -> Self {
+        Self {
+            port,
+            pid: child.id().unwrap_or_default(),
+            api_key: format!("key-{port}"),
+            models: Vec::new(),
+            cuda_toolkit: None,
+            child,
+            stderr_tail: StderrTail::default(),
+            #[cfg(windows)]
+            _job: None,
+        }
+    }
+
     /// SIGTERM, then SIGKILL after a grace period, reusing the same helper the
     /// router path uses so there is one kill policy in the crate.
     /// Stops the worker, gracefully on every platform.
@@ -732,16 +749,7 @@ pub async fn spawn_with_offload(
     // worker's own directory, which is where the bundled modules already live,
     // removes the attacker-writable entry from that list.
     //
-    // Absolute only: `current_dir` also changes how the OS resolves a *relative*
-    // program path, so doing this unconditionally would make a dev's
-    // `--bin build/flint-llama-worker` be looked up inside `build/`. Every shipped
-    // path is absolute (`resource_dir()`, or `sidecar_path` off
-    // `current_exe`), so the hardening lands exactly where it matters.
-    if exe.is_absolute() {
-        if let Some(dir) = exe.parent() {
-            cmd.current_dir(dir);
-        }
-    }
+    pin_cwd(&mut cmd, exe);
     if clear_vk_fallback {
         cmd.env_remove(VK_SYSMEM_FALLBACK_ENV);
     }
@@ -898,6 +906,30 @@ fn spawn_stderr_drain(
     })
 }
 
+/// Pins a spawned engine's working directory to its own directory, so ggml's
+/// backend scan cannot pick up a module planted in an inherited cwd (see
+/// `spawn`).
+///
+/// Absolute only: `current_dir` also changes how the OS resolves a *relative*
+/// program path, so doing this unconditionally would make a dev's
+/// `--bin build/flint-llama-worker` be looked up inside `build/`. Every shipped
+/// path is absolute (`resource_dir()`, or `sidecar_path` off `current_exe`), so
+/// the hardening lands exactly where it matters.
+pub(crate) fn pin_cwd(cmd: &mut Command, exe: &Path) {
+    if exe.is_absolute() {
+        if let Some(dir) = exe.parent() {
+            cmd.current_dir(dir);
+        }
+    }
+}
+
+/// The client that probes a child's loopback `/health`. It never goes through
+/// a proxy: an `HTTP_PROXY` in the environment would otherwise carry the
+/// bearer key to the proxy, or make every probe fail.
+fn readiness_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder().timeout(Duration::from_secs(2)).no_proxy().build()
+}
+
 /// Starts a user-supplied `llama-server` in router mode in place of the worker.
 ///
 /// The router prints no handshake, so the port is chosen here (bind port 0,
@@ -935,9 +967,7 @@ pub async fn spawn_external(
     jan_utils::system::setup_windows_process_flags(&mut cmd);
     // The user's build loads its ggml backends from its own directory, the
     // same reason the worker's cwd is pinned to its directory.
-    if let Some(dir) = exe.parent().filter(|_| exe.is_absolute()) {
-        cmd.current_dir(dir);
-    }
+    pin_cwd(&mut cmd, exe);
     if clear_vk_fallback {
         cmd.env_remove(VK_SYSMEM_FALLBACK_ENV);
     }
@@ -972,10 +1002,7 @@ pub async fn spawn_external(
         });
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .map_err(|e| WorkerError::Spawn(e.to_string()))?;
+    let client = readiness_client().map_err(|e| WorkerError::Spawn(e.to_string()))?;
     let url = format!("http://127.0.0.1:{port}/health");
     let deadline = tokio::time::Instant::now() + HANDSHAKE_TIMEOUT;
     loop {
@@ -1081,6 +1108,47 @@ fn with_engine_env_defaults(mut envs: HashMap<String, String>) -> (HashMap<Strin
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn pin_cwd_sets_parent_for_absolute_exe() {
+        let exe = std::env::current_exe().unwrap();
+        let mut cmd = Command::new(&exe);
+        pin_cwd(&mut cmd, &exe);
+        assert_eq!(cmd.as_std().get_current_dir(), exe.parent());
+    }
+
+    #[test]
+    fn pin_cwd_skips_relative_exe() {
+        let mut cmd = Command::new("build/flint-llama-worker");
+        pin_cwd(&mut cmd, Path::new("build/flint-llama-worker"));
+        assert_eq!(cmd.as_std().get_current_dir(), None);
+    }
+
+    #[tokio::test]
+    async fn readiness_client_ignores_proxy_env() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let server = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = server.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            if let Ok((mut sock, _)) = server.accept().await {
+                let mut buf = [0u8; 512];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                    .await;
+            }
+        });
+        // A proxy that nothing listens on: a client that honoured it would fail.
+        let dead = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let dead_port = dead.local_addr().unwrap().port();
+        drop(dead);
+        std::env::set_var("HTTP_PROXY", format!("http://127.0.0.1:{dead_port}"));
+        std::env::set_var("http_proxy", format!("http://127.0.0.1:{dead_port}"));
+        let client = readiness_client().unwrap();
+        let ok = client.get(format!("http://127.0.0.1:{port}/health")).send().await.is_ok_and(|r| r.status().is_success());
+        std::env::remove_var("HTTP_PROXY");
+        std::env::remove_var("http_proxy");
+        assert!(ok, "the probe must reach the child directly");
+    }
     use super::*;
 
     #[test]
