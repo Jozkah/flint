@@ -696,3 +696,30 @@ fn compact_plugin_list_omits_long_metadata() {
     assert!(!output.contains("long description"));
     assert!(!output.contains("example.com"));
 }
+
+#[test]
+fn the_command_tree_passes_clap_debug_asserts() {
+    Cli::command().debug_assert();
+}
+
+#[test]
+fn every_subcommand_answers_help() {
+    fn walk(cmd: &clap::Command, path: &mut Vec<String>, seen: &mut usize) {
+        path.push(cmd.get_name().to_string());
+        let mut args = path.clone();
+        args.push("--help".to_string());
+        let err = Cli::command()
+            .try_get_matches_from(&args)
+            .expect_err("--help always stops parsing");
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp, "{args:?}");
+        *seen += 1;
+        for sub in cmd.get_subcommands() {
+            walk(sub, path, seen);
+        }
+        path.pop();
+    }
+    let root = Cli::command();
+    let mut seen = 0;
+    walk(&root, &mut Vec::new(), &mut seen);
+    assert!(seen > 30, "walked only {seen} commands");
+}
