@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import {
   inspectDependencyNames,
   inspectSourceText,
+  isScannableFile,
   runLocalOnlyGuard,
 } from './local-only-guard.mjs'
 
@@ -98,5 +99,42 @@ describe('the repository itself', () => {
         .map((v) => `${v.file}:${v.line}: ${v.detail} — ${v.why}`)
         .join('\n')
     )
+  })
+})
+
+describe('which files are scanned', () => {
+  it('scans scripts and config formats, not only app source', () => {
+    for (const file of [
+      'scripts/tool.mjs',
+      'scripts/tool.cjs',
+      'src-tauri/tauri.conf.json',
+      'src-tauri/Cargo.toml',
+      'web-app/index.html',
+      'web-app/src/index.css',
+    ]) {
+      assert.equal(isScannableFile(file), true, file)
+    }
+  })
+
+  it('flags a forbidden host in a .mjs file', () => {
+    assert.equal(
+      isScannableFile('scripts/x.mjs') &&
+        inspectSourceText("fetch('https://eu.posthog.com/e')", 'x.mjs').length,
+      1
+    )
+  })
+
+  it('flags a forbidden host in a .json file', () => {
+    assert.equal(
+      isScannableFile('src-tauri/tauri.conf.json') &&
+        inspectSourceText('{"url":"https://api.jan.ai/v1"}', 'c.json').length,
+      1
+    )
+  })
+
+  it('ignores locale json and test files', () => {
+    assert.equal(isScannableFile('web-app/src/locales/en/common.json'), false)
+    assert.equal(isScannableFile('scripts/a.test.mjs'), false)
+    assert.equal(isScannableFile('scripts/readme.md'), false)
   })
 })

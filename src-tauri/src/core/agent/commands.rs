@@ -1146,7 +1146,8 @@ pub async fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> 
 /// works end to end; the editor/terminal/diff tools require a live window and
 /// are served by the desktop window layer's own UI implementation.
 #[tauri::command]
-pub fn agent_desktop_bridge(
+pub fn agent_desktop_bridge<R: tauri::Runtime>(
+    window: tauri::Window<R>,
     data_folder: String,
     session_id: String,
     conversation_id: String,
@@ -1168,9 +1169,11 @@ pub fn agent_desktop_bridge(
     } else {
         FileSettingsUi::new(settings_path)
     };
-    let mut bridge = DesktopBridge::new(ui);
+    // One diff-id registry for the process: an id issued by one call is
+    // accepted by a later call of the same session, and by nobody else.
+    let mut bridge = DesktopBridge::with_registry(ui, crate::core::agent::desktop_bridge::shared_diff_registry());
     let ctx = RequestContext {
-        window_id: String::new(),
+        window_id: window.label().to_string(),
         workspace_root: std::path::PathBuf::from(&workspace),
         conversation_id,
         session_id,

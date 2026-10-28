@@ -109,11 +109,21 @@ export function exportFileName(
 // Text helpers
 // ---------------------------------------------------------------------------
 
-// A Windows drive path, or a path under a well-known POSIX root. Anchored to a
-// boundary so a URL's path (`https://host/home/x`) is never touched.
-const WIN_ABS = /(^|[^A-Za-z0-9])([A-Za-z]:[\\/](?:[^\s"'`<>|*?\\/]+[\\/])*[^\s"'`<>|*?\\/]*)/g
+// A Windows drive path, or a path under a well-known POSIX root, or any other
+// deep absolute path. Anchored to a boundary so a URL's path
+// (`https://host/home/x`) is never touched.
+// Directory segments of a Windows path may hold a few single-spaced words
+// (`C:\Users\John Smith\proj\a.ts`); the last segment never does, so prose
+// after the path is left alone.
+const WIN_ABS = /(^|[^A-Za-z0-9])([A-Za-z]:[\\/](?:[^\s"'`<>|*?\\/]+(?: [^\s"'`<>|*?\\/]+){0,3}[\\/])*[^\s"'`<>|*?\\/]*)/g
 const POSIX_ABS =
-  /(^|[^A-Za-z0-9_.:/\\-])(\/(?:home|Users|root|var|tmp|opt|etc|mnt|private|srv|usr)\/(?:[^\s"'`<>|*?/]+\/)*[^\s"'`<>|*?/]*)/g
+  /(^|[^A-Za-z0-9_.:/\\-])(\/(?:home|Users|root|var|tmp|opt|etc|mnt|private|srv|usr|app|workspace|data|Volumes|Applications|Library|media|run|repo)\/(?:[^\s"'`<>|*?/]+\/)*[^\s"'`<>|*?/]*)/g
+// Any other absolute path of three or more segments, at the start of a token.
+// A URL never gets here: its path follows a host, not whitespace or a quote.
+const POSIX_DEEP = /(^|[\s"'`=])(\/(?:[A-Za-z0-9._-]+\/){2,}[^\s"'`<>|*?]*)/g
+// A path in quotes may hold spaces anywhere in it.
+const QUOTED_ABS =
+  /(["'`])((?:[A-Za-z]:[\\/]|\/(?:home|Users|root|var|tmp|opt|etc|mnt|private|srv|usr|app|workspace|data|Volumes|Applications|Library|media|run|repo)\/)[^"'`\n]*|\/[^"'`\n/]+(?:\/[^"'`\n/]+){2,})\1/g
 
 /** Cut an absolute path down to its last segment: `C:\a\b\c.ts` becomes `c.ts`. */
 export function stripAbsolutePaths(text: string): string {
@@ -122,7 +132,11 @@ export function stripAbsolutePaths(text: string): string {
     return last && !/^[A-Za-z]:$/.test(last) ? last : '[path]'
   }
   const keep = (_m: string, pre: string, path: string) => pre + base(path)
-  return text.replace(WIN_ABS, keep).replace(POSIX_ABS, keep)
+  return text
+    .replace(QUOTED_ABS, (_m, q: string, path: string) => q + base(path) + q)
+    .replace(WIN_ABS, keep)
+    .replace(POSIX_ABS, keep)
+    .replace(POSIX_DEEP, keep)
 }
 
 /** A fence long enough that nothing inside can close it. */

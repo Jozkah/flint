@@ -194,7 +194,7 @@
     "kpiArtifacts": "Artefakty",
     "kpiArtifactsSub": "{{count}} nových tento týden",
     "kpiSessions": "Z Coworku",
-    "kpiSessionsSub": "napříč {{count}} relacemi",
+    "kpiSessionsSub": "s uloženými artefakty",
     "kpiDisk": "Na disku",
     "kpiDiskSub": "v sandboxech relací",
     "kindCode": "Kód",

@@ -108,7 +108,7 @@ campaign's integration branch; tasks that depend on it start after that merge.",
                                 "paths": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Repository-relative files or folders the task will change.",
+                                    "description": "Repository-relative files or folders the task will change. Required for every task except kind \"check\".",
                                 },
                                 "depends_on": {
                                     "type": "array",

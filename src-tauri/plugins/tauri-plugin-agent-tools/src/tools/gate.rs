@@ -828,6 +828,28 @@ pub fn resolve_decision(
             Err(_) => Decision::Allow,
         };
     }
+    // Some host_query kinds read private data (every app's registry settings,
+    // window titles, which program talks to which host, scheduled task command
+    // lines, startup entries, env var names): asked about every time. The
+    // plain machine facts (system, disks, ports, processes, ...) stay free.
+    if tool.name == "host_query" {
+        return match args.get("query").and_then(|q| q.as_str()) {
+            Some(q) if crate::tools::host_read::is_private_query(q) => {
+                Decision::Prompt(PromptKind::Ask)
+            }
+            _ => Decision::Allow,
+        };
+    }
+    // Any loopback port can hold an admin or credentialed API (Docker, Ollama,
+    // a dev server's file endpoints): asked about every time, with the address
+    // in the call the user sees. The admin ports themselves are refused by the
+    // tool.
+    if tool.name == "local_http" {
+        return match crate::tools::local_http::parse(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
     // winget: looking is free, changing a program is asked about every time.
     if tool.name == "host_package" {
         return match crate::tools::host_package::plan(args) {
@@ -1365,6 +1387,15 @@ mod tests {
         assert_eq!(simple("clipboard", json!({"action": "read"})), ask);
         assert_eq!(simple("clipboard", json!({"action": "write", "text": "x"})), ask);
         assert_eq!(simple("clipboard", json!({"action": "clear"})), Decision::Allow);
+        // host_query: private kinds prompt, plain machine facts stay free.
+        for q in ["registry", "windows", "network", "scheduled_tasks", "env_names", "startup_items"] {
+            assert_eq!(simple("host_query", json!({"query": q})), ask, "{q}");
+        }
+        for q in ["system", "disks", "ports", "processes"] {
+            assert_eq!(simple("host_query", json!({"query": q})), Decision::Allow, "{q}");
+        }
+        assert_eq!(simple("local_http", json!({"url": "http://localhost:5173/"})), ask);
+        assert_eq!(simple("local_http", json!({})), Decision::Allow);
         assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
         assert_eq!(simple("open_path", json!({})), Decision::Allow);
         assert_eq!(simple("host_powershell", json!({"script": "Get-Date"})), ask);

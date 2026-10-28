@@ -136,6 +136,23 @@ pub(crate) fn parse_models(value: &serde_json::Value) -> Vec<String> {
     ids
 }
 
+/// The first listed model that can hold a chat: embedding, speech, image,
+/// moderation and legacy completion models are skipped. `None` leaves the
+/// default unset, so the user picks one with `/model` rather than inheriting a
+/// model that cannot answer.
+fn pick_default_model(ids: &[String]) -> Option<String> {
+    const NOT_CHAT: [&str; 11] = [
+        "embed", "whisper", "tts", "dall-e", "moderation", "babbage", "davinci", "-instruct", "image", "audio",
+        "rerank",
+    ];
+    ids.iter()
+        .find(|id| {
+            let lower = id.to_ascii_lowercase();
+            !NOT_CHAT.iter().any(|marker| lower.contains(marker))
+        })
+        .cloned()
+}
+
 /// Write the verified key + model list. Secret first, then non-secret
 /// configuration; a failed config write rolls back the secret.
 fn persist(
@@ -178,9 +195,9 @@ fn persist(
     // Adopt the first discovered model as the default only when the user has
     // none; an explicit choice is never overwritten. A failure here is not
     // fatal: the sign-in itself is complete and the config is valid.
-    let default_model = match models.first() {
-        Some(first) => match set_default_model_if_unset(first) {
-            Ok(true) => Some(first.clone()),
+    let default_model = match pick_default_model(models) {
+        Some(first) => match set_default_model_if_unset(&first) {
+            Ok(true) => Some(first),
             _ => None,
         },
         None => None,
@@ -197,6 +214,20 @@ fn persist(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pick_default_skips_embeddings() {
+        let ids = ["text-embedding-3-small", "whisper-1", "gpt-4o", "gpt-4o-mini"].map(String::from);
+        assert_eq!(pick_default_model(&ids).as_deref(), Some("gpt-4o"));
+    }
+
+    #[test]
+    fn pick_default_none_leaves_unset() {
+        let ids = ["text-embedding-3-small", "tts-1"].map(String::from);
+        assert_eq!(pick_default_model(&ids), None);
+        assert_eq!(pick_default_model(&[]), None);
+    }
+
     use crate::core::agent::global_config::{load_global_config, with_temp_home};
     use crate::core::cli::auth::provider_by_id;
     use crate::core::server::provider_secrets::TEST_ENV_LOCK;
