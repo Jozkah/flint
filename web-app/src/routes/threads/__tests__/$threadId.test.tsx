@@ -1225,6 +1225,9 @@ describe('ThreadDetail route', () => {
   // janhq/jan#8760: raising ctx_len for a server-owned window changed nothing
   // that was sent, so the button promised a fix that could not work.
   it('offers Increase Context Size only where Jan sets the window', () => {
+    // Both strings are translated; the test's t() may return the key.
+    const increaseLabel =
+      /^(Increase Context Size|common:outOfContextError\.increaseContextSize)$/
     // The banner is driven by a context error stamped on the thread.
     h.messagesState.messages = {
       'thread-1': [
@@ -1239,7 +1242,7 @@ describe('ThreadDetail route', () => {
     try {
       h.modelProviderState.selectedProvider = 'openai'
       const remote = renderComponent()
-      expect(screen.queryByText('Increase Context Size')).toBeNull()
+      expect(screen.queryByText(increaseLabel)).toBeNull()
       // The banner text is translated; the test's t() may return the key.
       expect(
         screen.getByText(/set by its server|errorBanner\.serverContext/)
@@ -1248,7 +1251,7 @@ describe('ThreadDetail route', () => {
 
       h.modelProviderState.selectedProvider = 'llamacpp'
       renderComponent()
-      expect(screen.getByText('Increase Context Size')).toBeInTheDocument()
+      expect(screen.getByText(increaseLabel)).toBeInTheDocument()
     } finally {
       delete h.messagesState.messages
     }
