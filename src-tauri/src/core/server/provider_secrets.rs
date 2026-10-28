@@ -142,6 +142,10 @@ struct CrossProcessLock {
 
 impl CrossProcessLock {
     fn acquire(name: &str) -> Result<Self, String> {
+        Self::acquire_within(name, XLOCK_WAIT)
+    }
+
+    fn acquire_within(name: &str, wait: std::time::Duration) -> Result<Self, String> {
         let path = resolve_jan_data_folder().join(name);
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
@@ -164,13 +168,13 @@ impl CrossProcessLock {
                     return Err(format!("Cannot take secrets lock {}: {e}", path.display()));
                 }
             }
-            if started.elapsed() >= XLOCK_WAIT {
+            if started.elapsed() >= wait {
                 // Writing without the lock could interleave with another
                 // process's read-modify-write and drop its secret.
                 return Err(format!(
                     "Secrets lock {} still held after {:?}",
                     path.display(),
-                    XLOCK_WAIT
+                    wait
                 ));
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -1356,7 +1360,7 @@ mod tests {
                 }
             })
         };
-        let got = CrossProcessLock::acquire(name);
+        let got = CrossProcessLock::acquire_within(name, std::time::Duration::from_secs(1));
         stop.store(true, Ordering::SeqCst);
         toucher.join().unwrap();
         assert!(got.is_err(), "acquired a lock another writer holds");
