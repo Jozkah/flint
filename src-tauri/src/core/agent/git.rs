@@ -310,8 +310,10 @@ pub(crate) fn snapshot(
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| EMPTY_TREE.to_string());
         run(repo, Some(idx), &["read-tree", &base_tree])?;
-        if let Ok(dirty) = run(repo, None, &["diff", "--name-only", "HEAD"]) {
-            for rel in dirty.lines().filter(|l| !l.is_empty()) {
+        // `-z`: names come back raw, not C-quoted ("caf\303\251.txt"), which
+        // would stage a path that does not exist and drop the dirty edit.
+        if let Ok(dirty) = run_untrimmed(repo, None, &["diff", "--name-only", "-z", "HEAD"]) {
+            for rel in dirty.split('\0').filter(|l| !l.is_empty()) {
                 stage_path(repo, idx, Path::new(rel), true)?;
             }
         }
@@ -1807,27 +1809,32 @@ pub(crate) fn worktree_prune(repo: &Path) {
 }
 
 /// Paths changed in a worktree relative to its own `HEAD`, staged, unstaged and
-/// untracked alike (`status --porcelain`, whose status letters are stripped).
-/// This is the "what has the agent done in there" summary, not a diff.
+/// untracked alike. This is the "what has the agent done in there" summary, not
+/// a diff.
 ///
-/// The status field is split off at its first space rather than by a fixed
-/// width: `run` trims the output, so the leading space of an unstaged-only
-/// line (` M a.txt`) is gone by the time this sees it and a fixed offset would
-/// eat the first character of that one path.
+/// Reads NUL-separated porcelain v2 so names are never quoted or escaped (a
+/// non-ASCII, space or ` -> ` name comes back verbatim) and untracked
+/// directories are expanded to their files. A rename yields both the new path
+/// and the old one: the caller stages each, and the old one no longer exists, so
+/// staging it records the delete.
 #[cfg(feature = "cli")]
 pub(crate) fn changed_paths(worktree: &Path) -> Vec<String> {
-    run(worktree, None, &["status", "--porcelain"])
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.trim_start().split_once(' '))
-        // A rename reads `R old -> new`; the new name is the path on disk, and
-        // the old one no longer exists, so staging it would be a delete.
-        .map(|(_, path)| match path.trim().split_once(" -> ") {
-            Some((_, to)) => to.to_string(),
-            None => path.trim().to_string(),
-        })
-        .filter(|s| !s.is_empty())
-        .collect()
+    let raw = run_untrimmed(
+        worktree,
+        None,
+        &["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+    )
+    .unwrap_or_default();
+    let (_, records) = parse_status_v2(&raw);
+    let mut out = Vec::new();
+    for r in records {
+        if let Some(old) = r.orig_path {
+            out.push(old);
+        }
+        out.push(r.path);
+    }
+    out.retain(|s| !s.is_empty());
+    out
 }
 
 #[cfg(all(test, feature = "cli"))]
@@ -2169,6 +2176,55 @@ mod tests {
         );
 
         cleanup_snapshot_index(thread_id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn base_snapshot_picks_up_dirty_non_ascii_tracked_file() {
+        let Some(root) = init_repo() else { return };
+        let thread_id = "test-thread-dirty-non-ascii";
+        cleanup_snapshot_index(thread_id);
+
+        std::fs::write(root.join("café.txt"), "one\n").unwrap();
+        run(&root, None, &["add", "-A"]).unwrap();
+        run(&root, None, &["commit", "-q", "-m", "cafe", "--no-gpg-sign"]).unwrap();
+        std::fs::write(root.join("café.txt"), "dirty-at-start\n").unwrap();
+
+        let base = snapshot(&root, None, "base", thread_id, &[]).expect("base snapshot");
+        let blob = run(&root, None, &["show", &format!("{base}:café.txt")]).unwrap();
+        assert_eq!(blob, "dirty-at-start");
+
+        cleanup_snapshot_index(thread_id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn changed_paths_returns_unquoted_non_ascii_space_and_arrow_names() {
+        let Some(root) = init_repo() else { return };
+        std::fs::write(root.join("old.txt"), "rename me\nrename me\nrename me\n").unwrap();
+        run(&root, None, &["add", "-A"]).unwrap();
+        run(&root, None, &["commit", "-q", "-m", "old", "--no-gpg-sign"]).unwrap();
+
+        std::fs::write(root.join("café.txt"), "x\n").unwrap();
+        std::fs::write(root.join("a b.txt"), "x\n").unwrap();
+        std::fs::write(root.join("a -> b.txt"), "x\n").unwrap();
+        std::fs::create_dir_all(root.join("newdir").join("sub")).unwrap();
+        std::fs::write(root.join("newdir").join("sub").join("f.txt"), "x\n").unwrap();
+        run(&root, None, &["mv", "old.txt", "renamed.txt"]).unwrap();
+
+        let mut got = changed_paths(&root);
+        got.sort();
+        for want in [
+            "café.txt",
+            "a b.txt",
+            "a -> b.txt",
+            "old.txt",
+            "renamed.txt",
+            "newdir/sub/f.txt",
+        ] {
+            assert!(got.iter().any(|g| g == want), "missing {want:?} in {got:?}");
+        }
+
         let _ = std::fs::remove_dir_all(&root);
     }
 
