@@ -84,11 +84,12 @@ export const useProjectUploads = create<ProjectUploadsState>((set, get) => ({
       },
     }))
 
-    let currentFileName: string | undefined
+    let firstError: unknown
+    let firstFailedName: string | undefined
+    let failedCount = 0
     try {
       for (let i = 0; i < attachments.length; i++) {
         const att = attachments[i]
-        currentFileName = att.name
 
         set((s) => {
           const existing = s.progress[projectId]
@@ -105,12 +106,40 @@ export const useProjectUploads = create<ProjectUploadsState>((set, get) => ({
           }
         })
 
-        const result = await ingestFn(projectId, att)
-        if (!result.id) throw new Error('Failed to ingest file')
+        // One bad file must not stop the files after it.
+        let failure: unknown
+        let failed = false
+        try {
+          const result = await ingestFn(projectId, att)
+          if (!result.id) throw new Error('Failed to ingest file')
+        } catch (error) {
+          failed = true
+          failure = error
+        }
+
+        if (failed) {
+          failedCount++
+          if (failedCount === 1) {
+            firstError = failure
+            firstFailedName = att.name
+          }
+          const fileName = att.name
+          set((s) => ({
+            failures: {
+              ...s.failures,
+              [projectId]: [
+                ...(s.failures[projectId] ?? []).filter(
+                  (f) => f.fileName !== fileName
+                ),
+                { fileName, error: failure },
+              ],
+            },
+          }))
+        }
 
         set((s) => {
           const existing = s.progress[projectId]
-          const nextTick = (s.completedTick[projectId] ?? 0) + 1
+          const nextTick = (s.completedTick[projectId] ?? 0) + (failed ? 0 : 1)
           return {
             progress: existing
               ? {
@@ -122,23 +151,8 @@ export const useProjectUploads = create<ProjectUploadsState>((set, get) => ({
           }
         })
       }
-      handlers.onSuccess()
-    } catch (error) {
-      if (currentFileName) {
-        const fileName = currentFileName
-        set((s) => ({
-          failures: {
-            ...s.failures,
-            [projectId]: [
-              ...(s.failures[projectId] ?? []).filter(
-                (f) => f.fileName !== fileName
-              ),
-              { fileName, error },
-            ],
-          },
-        }))
-      }
-      handlers.onError(error, currentFileName)
+      if (failedCount === 0) handlers.onSuccess()
+      else handlers.onError(firstError, firstFailedName)
     } finally {
       set((s) => {
         const next = { ...s.progress }
