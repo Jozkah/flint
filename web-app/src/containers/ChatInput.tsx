@@ -131,7 +131,6 @@ import {
 import {
   TEMPORARY_CHAT_ID,
   TEMPORARY_CHAT_QUERY_ID,
-  SESSION_STORAGE_KEY,
   SESSION_STORAGE_PREFIX,
 } from '@/constants/chat'
 import { resolveThreadModelId } from '@/lib/models'
@@ -1581,11 +1580,7 @@ const ChatInput = memo(function ChatInput({
       }
 
       if (isTemporaryChat) {
-        // For temporary chat, store message and navigate to temporary thread
-        safeSessionSet(
-          SESSION_STORAGE_KEY.INITIAL_MESSAGE_TEMPORARY,
-          JSON.stringify(messagePayload)
-        )
+        // For temporary chat, flag the navigation to the temporary thread
         safeSessionSet('temp-chat-nav', 'true')
         // Not taken by a temporary chat: forget it so it cannot leak into a later one.
         useDraftSampling.getState().clearAll()
@@ -3280,6 +3275,11 @@ const ChatInput = memo(function ChatInput({
               attachments={attachments}
               canSeeImages={visionSupported}
               onRemove={(i) => void handleRemoveAttachment(i)}
+              onTogglePdfImages={(i) =>
+                setAttachmentsForThread(attachmentsKey, (prev) =>
+                  prev.map((a, j) => (j === i ? { ...a, sendAsImages: !a.sendAsImages } : a))
+                )
+              }
               onOpenImage={(url) =>
                 setViewerAt(
                   Math.max(0, composerImages.findIndex((i) => i.url === url))

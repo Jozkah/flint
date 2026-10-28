@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { TopBack } from '../shell/TopBar'
 import { Empty, Loading } from '../ui/bits'
 import { I } from '../ui/icons'
@@ -8,16 +7,14 @@ import { useRpc } from '../state/rpc'
 import { RemoteCallError } from '../api/client'
 import { headlineOf, headlineText, modelOf, sortCampaigns } from '../state/campaigns'
 import { t } from '../i18n'
+import { usePollWhileVisible } from '../ui/hooks'
 
 const POLL_MS = 5_000
 
 export default function Campaigns() {
   const list = useRpc('campaigns.list', {})
   const { reload } = list
-  useEffect(() => {
-    const timer = setInterval(reload, POLL_MS)
-    return () => clearInterval(timer)
-  }, [reload])
+  usePollWhileVisible(reload, POLL_MS)
   const campaigns = sortCampaigns(list.data?.campaigns ?? [])
   const old = list.error instanceof RemoteCallError && ['unknown_method', 'not_implemented'].includes(list.error.code)
   return (

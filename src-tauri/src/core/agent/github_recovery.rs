@@ -79,9 +79,10 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
 
     // Scheme form: strip `scheme://`, then any `user@`, then split host / path.
     let after_scheme = s.split_once("://").map(|(_, rest)| rest)?;
-    let after_userinfo = after_scheme.rsplit('@').next().unwrap_or(after_scheme);
-    let (authority, path) = match after_userinfo.split_once('/') {
-        Some((a, p)) => (a, p),
+    // Split authority from path first; userinfo is only valid inside the
+    // authority, so `github.com/x@evil.com/..` cannot pose as a github host.
+    let (authority, path) = match after_scheme.split_once('/') {
+        Some((a, p)) => (a.rsplit('@').next().unwrap_or(a), p),
         None => return None,
     };
     let host = authority.split(':').next().unwrap_or(authority).to_ascii_lowercase();
@@ -469,6 +470,12 @@ fn has_word(hay: &str, needle: &str) -> bool {
 mod tests {
     use super::*;
     use std::process::Command;
+
+    #[test]
+    fn userinfo_trick_in_path_is_not_a_github_host() {
+        assert!(parse_github_repo("https://evil.com/github.com@x/o/r").is_none());
+        assert!(parse_github_repo("https://user@github.com/o/r").is_some());
+    }
 
     #[test]
     fn status_match_respects_word_boundaries() {

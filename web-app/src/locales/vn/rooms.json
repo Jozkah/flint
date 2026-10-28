@@ -646,5 +646,6 @@
     "ranTools": "Trước đó trong lượt này bạn đã chạy các công cụ ({{ran}}); {{reason}} Đừng lặp lại bất cứ việc gì đã thay đổi tệp hoặc trạng thái; chỉ đọc lại những gì bạn còn cần.",
     "ranToolsDropped": "đầu ra của chúng đã bị loại bỏ để vừa với cửa sổ ngữ cảnh.",
     "ranToolsRetry": "sau đó nhà cung cấp gặp lỗi và yêu cầu đang được thử lại."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

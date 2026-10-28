@@ -66,7 +66,12 @@ export const ImportMlxModelDialog = ({
 
     // Validate model name - only allow alphanumeric, underscore, hyphen, and dot
     //eslint-disable-next-line
-    if (!/^[a-zA-Z0-9/_.\-]+$/.test(modelName)) {
+    if (
+      !/^[a-zA-Z0-9/_.-]+$/.test(modelName) ||
+      modelName.startsWith('/') ||
+      modelName.endsWith('/') ||
+      modelName.split('/').some((seg) => seg === '..' || seg === '')
+    ) {
       toast.error(t('sweep:mlxImport.invalidName'))
       return
     }
@@ -86,7 +91,6 @@ export const ImportMlxModelDialog = ({
     setImporting(true)
 
     try {
-      console.log('[MLX Import] Starting import:', { modelName, selectedPath })
 
       // Get the MLX engine and call its import method
       const engine = ExtensionManager.getInstance().getEngine('mlx')
@@ -94,11 +98,9 @@ export const ImportMlxModelDialog = ({
         throw new Error('MLX engine not found')
       }
 
-      console.log('[MLX Import] Calling engine.import()...')
       await engine.import(modelName, {
         modelPath: selectedPath,
       })
-      console.log('[MLX Import] Import completed')
 
       toast.success(t('sweep:modelImport.success'), {
         description: t('sweep:modelImport.hasBeenImported', { name: modelName }),
@@ -158,10 +160,14 @@ export const ImportMlxModelDialog = ({
         <div className="space-y-4">
           {/* Model Name Input */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-fg-2">
+            <label
+              htmlFor="mlx-import-model-name"
+              className="text-xs font-medium text-fg-2"
+            >
               {t('sweep:mlxImport.modelName')}
             </label>
             <input
+              id="mlx-import-model-name"
               type="text"
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}

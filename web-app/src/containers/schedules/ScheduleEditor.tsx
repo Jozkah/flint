@@ -100,7 +100,7 @@ function modelRef(value: string, providers: { provider: string }[]) {
 }
 
 export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const serviceHub = useServiceHub()
   const uid = useId()
   const providers = useModelProvider((s) => s.providers)
@@ -292,7 +292,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
                               })
                             }
                           >
-                            {weekdayName(day)}
+                            {weekdayName(day, i18n?.language)}
                           </button>
                         )
                       })}
@@ -353,7 +353,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
               ) : (
                 <ol className="text-xs text-muted-foreground">
                   {preview.fires.map((f) => (
-                    <li key={f}>{formatWhen(f)}</li>
+                    <li key={f}>{formatWhen(f, i18n?.language)}</li>
                   ))}
                 </ol>
               )}

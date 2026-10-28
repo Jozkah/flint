@@ -30,8 +30,8 @@ export type ChangeCounts = {
  * which a bare basename comparison would.
  */
 export function pathsMatch(gitPath: string, writtenPath: string): boolean {
-  const a = gitPath.replace(/\\/g, '/').replace(/^\.\//, '')
-  const b = writtenPath.replace(/\\/g, '/').replace(/^\.\//, '')
+  const a = gitPath.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()
+  const b = writtenPath.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()
   if (a === b) return true
   return a.endsWith(`/${b}`) || b.endsWith(`/${a}`)
 }

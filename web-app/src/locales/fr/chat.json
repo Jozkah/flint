@@ -44,6 +44,9 @@
     "description": "Indexation des fichiers joints pour qu'ils puissent être recherchés et cités. Cela peut prendre un moment pour les gros documents."
   },
   "actions": {
+    "readAloud": "Lire à voix haute",
+    "stopReading": "Arrêter la lecture",
+    "codeOmitted": "code omis",
     "copy": "Copier",
     "regenerate": "Régénérer la réponse",
     "continue": "Continuer la génération",

@@ -147,6 +147,8 @@ export function CoworkRewind(props: RewindProps) {
       const planned = await props.onPlan(point.sha)
       if (!planned.ok) setFailure(planned.reason)
       else setOpen({ point, plan: planned.plan })
+    } catch (e) {
+      setFailure(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
@@ -186,6 +188,8 @@ export function CoworkRewind(props: RewindProps) {
       }
       setNotice(t('results:rewind.restored', { label: safety.point.label }))
       close()
+    } catch (e) {
+      setFailure(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }

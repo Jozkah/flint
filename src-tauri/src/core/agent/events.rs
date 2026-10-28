@@ -521,11 +521,15 @@ impl Usage {
             if let Some(input) = num(usage.get("input_tokens")) {
                 // Anthropic's convention: cache is reported outside input.
                 prompt = Some(
-                    input + cache_read_native.unwrap_or(0) + cache_write.unwrap_or(0),
+                    input
+                        .saturating_add(cache_read_native.unwrap_or(0))
+                        .saturating_add(cache_write.unwrap_or(0)),
                 );
                 completion_tokens = completion_tokens.or_else(|| num(usage.get("output_tokens")));
                 if total.is_none() {
-                    total = Some(prompt.unwrap_or(0) + completion_tokens.unwrap_or(0));
+                    total = Some(
+                        prompt.unwrap_or(0).saturating_add(completion_tokens.unwrap_or(0)),
+                    );
                 }
             }
         }

@@ -251,5 +251,9 @@
     "remove": "Rimuovi",
     "replace": "Salvata. Digita per sostituirla.",
     "enter": "Non impostata"
-  }
+  },
+  "skippedLinkedTitle": "Modelli saltati: {{count}}",
+  "skippedLinkedBody": "Questi modelli sono salvati tramite un collegamento che punta fuori dalla cartella dati di Flint, quindi Flint non li ha caricati:",
+  "skippedLinkedHowTo": "Per usarne uno, importa il suo file GGUF dal percorso (Flint lo lascia dov'è) oppure sposta di nuovo i file nella cartella dei modelli.",
+  "skippedLinkedDismiss": "Chiudi"
 }

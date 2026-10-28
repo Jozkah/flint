@@ -44,6 +44,9 @@
     "description": "Indicizzazione dei file allegati perché possano essere cercati e citati. Per documenti grandi può volerci un po'."
   },
   "actions": {
+    "readAloud": "Leggi ad alta voce",
+    "stopReading": "Interrompi lettura",
+    "codeOmitted": "codice omesso",
     "copy": "Copia",
     "regenerate": "Rigenera risposta",
     "continue": "Continua a generare",

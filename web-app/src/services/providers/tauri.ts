@@ -182,7 +182,13 @@ export class TauriProvidersService extends DefaultProvidersService {
       applyCustomHeaders(headers, provider)
       ensureAnthropicHeaders(provider, headers)
       for (const url of modelsUrlCandidates(provider.base_url)) {
-        const response = await fetchTauri(url, { method: 'GET', headers })
+        let response: Response
+        try {
+          response = await fetchTauri(url, { method: 'GET', headers })
+        } catch {
+          // This address failed to connect; try the next one.
+          continue
+        }
         if (response.status === 404) continue
         if ([401, 402, 403, 429].includes(response.status)) break
         if (!response.ok) return null

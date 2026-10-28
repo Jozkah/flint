@@ -251,5 +251,9 @@
     "remove": "Supprimer",
     "replace": "Enregistré. Saisissez pour le remplacer.",
     "enter": "Non défini"
-  }
+  },
+  "skippedLinkedTitle": "Modèles ignorés : {{count}}",
+  "skippedLinkedBody": "Ces modèles sont stockés via un lien qui pointe hors du dossier de données de Flint, donc Flint ne les a pas chargés :",
+  "skippedLinkedHowTo": "Pour en utiliser un, importez son fichier GGUF par chemin (Flint le laisse où il est) ou remettez les fichiers dans le dossier des modèles.",
+  "skippedLinkedDismiss": "Ignorer"
 }
