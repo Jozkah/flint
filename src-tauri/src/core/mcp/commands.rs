@@ -227,16 +227,6 @@ mod transport_error_tests {
     }
 }
 
-async fn cleanup_cancellation_token(
-    state: &State<'_, AppState>,
-    cancellation_token: &Option<String>,
-) {
-    if let Some(token) = cancellation_token {
-        let mut cancellations = state.tool_call_cancellations.lock().await;
-        cancellations.remove(token);
-    }
-}
-
 #[tauri::command]
 pub async fn activate_mcp_server<R: Runtime>(
     app: tauri::AppHandle<R>,

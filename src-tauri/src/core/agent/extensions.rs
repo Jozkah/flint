@@ -101,10 +101,13 @@ fn extensions_path() -> Option<PathBuf> {
 
 /// Serializes every load-mutate-save cycle on the matrix in this process, so
 /// two overlapping toggles cannot each save a matrix missing the other's change.
+// Only the desktop toggles (agent::commands) mutate the matrix.
+#[cfg(any(test, not(feature = "cli")))]
 static MATRIX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Runs `mutate` on the freshly loaded matrix and saves it, all under
 /// [`MATRIX_LOCK`]. Returns the saved matrix, or why it could not be saved.
+#[cfg(any(test, not(feature = "cli")))]
 pub(crate) fn update(mutate: impl FnOnce(&mut Matrix)) -> Result<Matrix, String> {
     let _guard = MATRIX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut matrix = Matrix::load_for_update()?;
