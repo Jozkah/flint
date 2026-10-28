@@ -313,26 +313,21 @@ fn check_segment(
 
     match cmd.as_str() {
         "rm" | "unlink" | "shred" | "remove-item" | "ri" => {
-            let (recursive, targets) = deletion_flags(args, false);
-            let reach = recursive || cmd == "shred";
-            if reach {
-                if let Some(t) = targets.iter().find(|t| outside_workspace(t, workspace)) {
-                    return Some(format!(
-                        "`{}` deletes `{t}`, outside the workspace",
-                        words.join(" ")
-                    ));
-                }
-            }
-            None
+            // Recursive or not, a target outside the workspace is asked about.
+            let (_recursive, targets) = deletion_flags(args, false);
+            targets
+                .iter()
+                .find(|t| outside_workspace(t, workspace))
+                .map(|t| format!("`{}` deletes `{t}`, outside the workspace", words.join(" ")))
         }
         "del" | "erase" => {
             if lower_args.iter().any(|a| a == "/s") {
                 return Some("`del /s` deletes recursively".into());
             }
-            let (recursive, targets) = deletion_flags(args, true);
-            recursive
-                .then(|| targets.iter().find(|t| outside_workspace(t, workspace)))
-                .flatten()
+            let (_recursive, targets) = deletion_flags(args, true);
+            targets
+                .iter()
+                .find(|t| outside_workspace(t, workspace))
                 .map(|t| format!("`{}` deletes `{t}`, outside the workspace", words.join(" ")))
         }
         "rd" | "rmdir" => {
@@ -542,11 +537,18 @@ fn is_drive(a: &str) -> bool {
     b.len() == 2 && b[0].is_ascii_alphabetic() && b[1] == b':'
 }
 
+/// Whether `s` starts with a drive letter and a colon (`C:`). Byte-based, so
+/// a multibyte character after the first byte cannot split a str slice.
+fn drive_prefix(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':'
+}
+
 /// Whether a `/`-separated path is absolute: `/...` (POSIX, UNC as `//`) or a
 /// drive with a separator (`C:/...`), on every host, so the shared vectors give
 /// the same verdicts on Windows and POSIX.
 fn is_absolute_str(path: &str) -> bool {
-    path.starts_with('/') || (path.len() >= 3 && is_drive(&path[..2]) && &path[2..3] == "/")
+    path.starts_with('/') || (drive_prefix(path) && path.as_bytes().get(2) == Some(&b'/'))
 }
 
 /// A resolved path in the one form roots and targets are compared in: `/`
@@ -561,7 +563,7 @@ fn comparable(path: &str) -> String {
     };
     let path = path.replace('\\', "/");
     let path = path.trim_end_matches('/');
-    if cfg!(windows) || (path.len() >= 2 && is_drive(&path[..2])) {
+    if cfg!(windows) || drive_prefix(path) {
         path.to_ascii_lowercase()
     } else {
         path.to_string()
@@ -638,7 +640,7 @@ fn outside_workspace(target: &str, scope: &Scope) -> bool {
     }
     let norm = t.replace('\\', "/");
     // `C:foo` is relative to that drive's current directory, which is unknown.
-    if norm.len() >= 2 && is_drive(&norm[..2]) && !is_absolute_str(&norm) {
+    if drive_prefix(&norm) && !is_absolute_str(&norm) {
         return true;
     }
     if !is_absolute_str(&norm) {
@@ -845,6 +847,35 @@ mod tests {
             }
         }
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    #[test]
+    fn non_ascii_delete_target_does_not_panic() {
+        let ws = Path::new("/home/me/project");
+        for cmd in ["rm -rf é", "rm -rf aé", "rm -rf 中", "Remove-Item -Recurse 中"] {
+            assert!(destructive_reason(cmd, ws).is_none(), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn rm_of_file_outside_workspace_asks() {
+        let ws = Path::new("/home/me/project");
+        for cmd in [
+            "rm ~/.ssh/id_ed25519",
+            "rm /etc/hosts",
+            r"del %APPDATA%\x",
+            r"Remove-Item C:\Users\me\a.txt",
+        ] {
+            assert!(destructive_reason(cmd, ws).is_some(), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn rm_relative_inside_workspace_still_allowed() {
+        let ws = Path::new("/home/me/project");
+        for cmd in ["rm notes.txt", "rm src/a.txt", "del file.txt"] {
+            assert!(destructive_reason(cmd, ws).is_none(), "{cmd}");
+        }
     }
 
     #[test]

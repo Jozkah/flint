@@ -433,16 +433,15 @@ function checkSegment(
     case 'shred':
     case 'remove-item':
     case 'ri': {
-      const { recursive, targets } = deletionFlags(args, false)
-      if (!(recursive || cmd === 'shred')) return null
+      // Recursive or not, a target outside the workspace is asked about.
+      const { targets } = deletionFlags(args, false)
       const t = targets.find((x) => outside(x, workspace))
       return t ? outsideReason(words, t, 'deletes') : null
     }
     case 'del':
     case 'erase': {
       if (lower.includes('/s')) return '`del /s` deletes recursively'
-      const { recursive, targets } = deletionFlags(args, true)
-      if (!recursive) return null
+      const { targets } = deletionFlags(args, true)
       const t = targets.find((x) => outside(x, workspace))
       return t ? outsideReason(words, t, 'deletes') : null
     }
