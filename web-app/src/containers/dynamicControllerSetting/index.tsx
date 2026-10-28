@@ -109,6 +109,7 @@ function renderControl(
     return (
       <CheckboxControl
         checked={controllerProps.value as boolean}
+        title={title}
         onChange={(newValue) => onChange(newValue)}
       />
     )
@@ -149,6 +150,7 @@ function renderControl(
   return (
     <CheckboxControl
       checked={!!controllerProps.value}
+      title={title}
       onChange={(newValue) => onChange(newValue)}
     />
   )

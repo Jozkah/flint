@@ -15,7 +15,10 @@ export const useTools = () => {
   const { isDefaultsInitialized, setDisabledTools, markDefaultsAsInitialized } = useToolAvailable()
 
   useEffect(() => {
+    // Only the newest call may write: a slow older one must not overwrite it.
+    let latest = 0
     async function setTools() {
+      const mine = ++latest
       try {
         // A server connect/disconnect/tools-refresh fired this (mcp-update);
         // the orchestrator's per-request tool cache would otherwise only
@@ -35,6 +38,8 @@ export const useTools = () => {
           getServiceHub().mcp().getTools(),
           getServiceHub().rag().getToolNames?.() ?? Promise.resolve([]),
         ])
+
+        if (mine !== latest) return
 
         // Update MCP tools
         updateTools(mcpTools)
@@ -56,8 +61,8 @@ export const useTools = () => {
           const defaultDisabled = await mcpExtension.getDefaultDisabledTools()
           if (defaultDisabled.length > 0) {
             setDisabledTools(defaultDisabled)
-            markDefaultsAsInitialized()
           }
+          markDefaultsAsInitialized()
         }
       } catch (error) {
         console.error('Failed to fetch MCP tools:', error)

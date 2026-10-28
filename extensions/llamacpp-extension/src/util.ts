@@ -123,7 +123,7 @@ export async function getProxyConfig(): Promise<Record<
 
     logger.info('Using proxy configuration:', {
       url: proxyState.proxyUrl,
-      hasAuth: !!(proxyState.proxyUsername && proxyState.proxyPassword),
+      hasAuth: !!(proxyConfig.username && proxyConfig.password),
       noProxyCount: proxyConfig.no_proxy
         ? (proxyConfig.no_proxy as string[]).length
         : 0,

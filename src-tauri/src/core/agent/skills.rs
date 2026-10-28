@@ -641,6 +641,7 @@ pub(crate) fn read_raw(root: &Path, name: &str) -> Result<String, String> {
 pub(crate) fn parse_invocation(text: &str) -> Option<(String, String)> {
     let trimmed = text.trim_start();
     if let Some(rest) = trimmed.strip_prefix("/skill:") {
+        let rest = rest.trim_start();
         let name = rest.split_whitespace().next()?;
         if name.is_empty() {
             return None;
@@ -893,6 +894,13 @@ mod tests {
         let (name, args) = parse_invocation("/skill:deploy harden").unwrap();
         assert_eq!(name, "deploy");
         assert_eq!(args, "harden");
+    }
+
+    #[test]
+    fn parse_invocation_tolerates_space_after_prefix() {
+        let (name, args) = parse_invocation("/skill: deploy staging").unwrap();
+        assert_eq!(name, "deploy");
+        assert_eq!(args, "staging");
     }
 
     #[test]

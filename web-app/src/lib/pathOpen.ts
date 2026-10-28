@@ -58,6 +58,21 @@ export const EXECUTABLE_EXTS: ReadonlySet<string> = new Set([
   'library-ms',
   'msp',
   'gadget',
+  'docm',
+  'xlsm',
+  'pptm',
+  'chm',
+  'jnlp',
+  'ws',
+  'wsc',
+  'sct',
+  'job',
+  'diagcab',
+  'xll',
+  'iso',
+  'img',
+  'ps2',
+  'vhd',
 ])
 
 export type InlinePath = {

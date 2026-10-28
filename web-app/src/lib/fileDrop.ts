@@ -343,7 +343,17 @@ export function inlineDroppedTexts(
       skipped.push(name)
       continue
     }
-    const fence = text.includes('```') ? '~~~~' : '```'
+    // Backticks unless the text has a run of three; then tildes, one longer
+    // than the longest tilde run in the text.
+    const longestRun = (ch: string) =>
+      (text.match(new RegExp(`${ch}+`, 'g')) ?? []).reduce(
+        (n, run) => Math.max(n, run.length),
+        0
+      )
+    const fence =
+      longestRun('`') >= 3
+        ? '~'.repeat(Math.max(4, longestRun('~') + 1))
+        : '```'
     const head = name + '\n' + fence + '\n'
     const tail = '\n' + fence
     const room = budget - used - head.length - tail.length - 2
@@ -351,7 +361,11 @@ export function inlineDroppedTexts(
       skipped.push(name)
       continue
     }
-    const body = text.length > room ? text.slice(0, room) : text
+    let body = text.length > room ? text.slice(0, room) : text
+    // Never end on half of a surrogate pair.
+    if (body.length < text.length && /[\uD800-\uDBFF]$/.test(body)) {
+      body = body.slice(0, -1)
+    }
     const block = head + body + tail
     blocks.push(block)
     used += block.length + 2

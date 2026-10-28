@@ -7,7 +7,8 @@ import type { CoreService, InvokeArgs } from './types'
 
 export class DefaultCoreService implements CoreService {
   async invoke<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
-    console.log('Core invoke called:', { command, args })
+    void args
+    console.log('Core invoke called:', command)
     throw new Error('Core invoke not implemented')
   }
 
