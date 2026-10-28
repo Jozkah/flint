@@ -3,8 +3,8 @@ import {
   hasToolImageSentinel,
   stripToolImageSentinels,
 } from '@/lib/tool-image-sentinel'
-import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
-import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
+import { pluginInventoryLine } from '@/lib/pluginInventory'
+import { skillCatalogBlock } from '@/lib/skillCatalog'
 import {
   encodeAudioAttachments,
   encodeVideoAttachments,
@@ -49,18 +49,7 @@ import { toast } from 'sonner'
 import { replyCost, resolvePricing } from '@/lib/modelPricing'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
-import {
-  convertToModelMessages,
-  streamText,
-  type ChatRequestOptions,
-  type ChatTransport,
-  type LanguageModel,
-  type UIMessageChunk,
-  type Tool,
-  type LanguageModelUsage,
-  jsonSchema,
-  InvalidToolInputError,
-} from 'ai'
+import { convertToModelMessages, streamText, type ChatRequestOptions, type ChatTransport, type LanguageModel, type UIMessageChunk, type Tool, type LanguageModelUsage, InvalidToolInputError } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
 import {
@@ -71,40 +60,16 @@ import {
 import { ReasoningLoopGuard } from './reasoningLoopGuard'
 import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
-import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { deadTools } from '@/lib/deadTools'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
-import { useAttachments } from '@/hooks/useAttachments'
-import { useMCPServers } from '@/hooks/useMCPServers'
-import { webSearchOnFor } from '@/hooks/useWebSearchChoice'
-import {
-  WEB_SEARCH_DESCRIPTION,
-  WEB_SEARCH_INPUT_SCHEMA,
-  WEB_FETCH_DESCRIPTION,
-  WEB_FETCH_INPUT_SCHEMA,
-  IMAGE_SEARCH_DESCRIPTION,
-  IMAGE_SEARCH_INPUT_SCHEMA,
-} from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
-import {
-  getAgentToolSchemas,
-  SHELL_TOOL_NAME,
-} from '@/lib/agentTools'
+import { SHELL_TOOL_NAME } from '@/lib/agentTools'
 import { useChatShell } from '@/hooks/useChatShell'
 import { routeRefusedToolCalls } from '@/lib/disabledToolCalls'
-import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
-import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
-import { isImageTool } from '@/lib/chatImageTools'
-import { studioApi } from '@/lib/studio/studio'
-import { visualizeSchemas } from '@/lib/visualize/tools'
-import { chatReadSchema } from '@/lib/chatReadTool'
-import { chatReadWanted } from '@/lib/chatMentionSources'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
-import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
 import { errorText } from '@/lib/errorText'
 import {
   memoryRetrieve,
@@ -135,7 +100,6 @@ import {
 import { engineFailure } from '@/lib/engineError'
 import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { replyLanguageLine } from '@/lib/replyLanguage'
-import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import { clampThinkingBudget } from '@/lib/thinkingBudget'
 import {
@@ -153,11 +117,7 @@ import {
 import { resolveModel } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { threadToolsGranted } from '@/hooks/useThreadToolGrants'
-import {
-  ExtensionTypeEnum,
-  VectorDBExtension,
-  type MCPTool,
-} from '@janhq/core'
+import { type MCPTool } from '@janhq/core'
 import {
   trimMessages,
   estimateTokens,
@@ -206,23 +166,6 @@ import {
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
-import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
-import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
-import {
-  announceMcpChange,
-  announceMcpWithheld,
-  mcpAvailability,
-  diffMcpSnapshots,
-  enabledMcpServers,
-  getMcpGeneration,
-  loadLiveMcpTools,
-  mcpChangeNote,
-  mcpStartingNote,
-  readMcpBaseline,
-  snapshotMcpTools,
-  syncMcpStore,
-  writeMcpBaseline,
-} from '@/lib/mcpLiveTools'
 import { hasAudioSentinel } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import {
@@ -245,10 +188,11 @@ import { OPENROUTER_PARAM_KEYS, paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { recordGeneration } from '@/stores/engine-activity-store'
-import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
+import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
+import { BUILTIN_WEB_TOOLS, recordMcpSet, refreshTools, type ToolRefreshHost } from '@/lib/chat/transport/toolRefresh'
+export { isValidToolName, normalizeToolInputSchema }
 
 // Built-ins advertised through the websearch plugin.
-const BUILTIN_WEB_TOOLS = new Set(['web_search', 'web_fetch', 'image_search'])
 /** Flint's own chat tools that only read or render: none can change anything. */
 const READ_ONLY_CHAT_TOOLS = new Set([
   ...BUILTIN_WEB_TOOLS,
@@ -307,19 +251,6 @@ export type ServiceHub = {
     >
   }
 }
-
-const SCHEMA_PRIMITIVE_TYPES =new Set([
-  'string',
-  'number',
-  'integer',
-  'boolean',
-  'null',
-  'array',
-  'object',
-])
-
-const SCHEMA_NODE_MAP_KEYS = new Set(['properties', 'patternProperties', 'definitions', '$defs'])
-const SCHEMA_NODE_LIST_KEYS = new Set(['anyOf', 'oneOf', 'allOf', 'prefixItems'])
 
 // Per-model sidebar keys forwarded into each chat-completion request body as
 // defaults. These *are* also written into the model's own preset section, so
@@ -449,120 +380,6 @@ export function effectiveContextWindow(
   return cappedContextWindow(configured, live) ?? 0
 }
 
-
-/**
- * Coerce a schema-node slot into a valid sub-schema. Some tool generators
- * emit shorthand like `{ "properties": { "foo": "string" } }` instead of
- * `{ "properties": { "foo": { "type": "string" } } }`. llama.cpp's
- * json-schema-to-grammar rejects the former with
- * `Unrecognized schema: "string"`. We expand the shorthand here so the
- * grammar generator sees a well-formed schema.
- */
-function coerceSchemaNode(value: unknown): unknown {
-  if (typeof value === 'string' && SCHEMA_PRIMITIVE_TYPES.has(value)) {
-    return normalizeToolInputSchemaValue({ type: value })
-  }
-  return normalizeToolInputSchemaValue(value)
-}
-
-function normalizeToolInputSchemaValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(normalizeToolInputSchemaValue)
-  }
-
-  if (!value || typeof value !== 'object') {
-    return value
-  }
-
-  const normalized = Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, childValue]) => {
-      // Schema-node containers: their direct children are sub-schemas, so a
-      // bare-string primitive type name should expand to `{ type: <name> }`.
-      if (
-        SCHEMA_NODE_MAP_KEYS.has(key) &&
-        childValue &&
-        typeof childValue === 'object' &&
-        !Array.isArray(childValue)
-      ) {
-        return [
-          key,
-          Object.fromEntries(
-            Object.entries(childValue as Record<string, unknown>).map(
-              ([propKey, propVal]) => [propKey, coerceSchemaNode(propVal)]
-            )
-          ),
-        ]
-      }
-      if (SCHEMA_NODE_LIST_KEYS.has(key) && Array.isArray(childValue)) {
-        return [key, childValue.map(coerceSchemaNode)]
-      }
-      if (key === 'items') {
-        if (Array.isArray(childValue)) return [key, childValue.map(coerceSchemaNode)]
-        return [key, coerceSchemaNode(childValue)]
-      }
-      // Literal data, not sub-schemas: leave untouched.
-      if (SCHEMA_LITERAL_KEYS.has(key)) return [key, childValue]
-      return [key, normalizeToolInputSchemaValue(childValue)]
-    })
-  )
-
-  const hasDescription = Object.prototype.hasOwnProperty.call(normalized, 'description')
-  const hasType = Object.prototype.hasOwnProperty.call(normalized, 'type')
-  const hasNestedSchemaKeywords =
-    Object.prototype.hasOwnProperty.call(normalized, 'properties') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'items') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'anyOf') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'oneOf') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'allOf') ||
-    Object.prototype.hasOwnProperty.call(normalized, '$ref')
-
-  if (normalized.type === 'object' && !Object.prototype.hasOwnProperty.call(normalized, 'properties')) {
-    normalized.properties = {}
-  }
-
-  if (hasDescription && !hasType && !hasNestedSchemaKeywords) {
-    normalized.type = 'string'
-  }
-
-  // Bounded repetition (`char{0,10000}`, 100-item arrays) explodes llama.cpp's
-  // grammar compiler; the model keeps `type` and `description`.
-  for (const keyword of LLAMACPP_BOUNDED_KEYWORDS) delete normalized[keyword]
-
-  // llama.cpp's json-schema-to-grammar emits PCRE `\d` for these formats,
-  // which GBNF rejects; the failed grammar silently disables tool-call JSON.
-  if (
-    typeof normalized.format === 'string' &&
-    LLAMACPP_BROKEN_STRING_FORMATS.has(normalized.format as string)
-  ) {
-    delete normalized.format
-  }
-
-  // `pattern` is the same PCRE-to-GBNF trap as `format`: any pattern that
-  // uses `\d`, `\w`, or `\s` (extremely common in date/time/uuid regexes)
-  // fails GBNF compilation. The model still has `type` and `description`.
-  if (
-    typeof normalized.pattern === 'string' &&
-    PCRE_SHORTHAND.test(normalized.pattern as string)
-  ) {
-    delete normalized.pattern
-  }
-
-  return normalized
-}
-
-const LLAMACPP_BROKEN_STRING_FORMATS = new Set(['date', 'time', 'date-time'])
-const LLAMACPP_BOUNDED_KEYWORDS = [
-  'minLength',
-  'maxLength',
-  'minItems',
-  'maxItems',
-  'minProperties',
-  'maxProperties',
-  'minContains',
-  'maxContains',
-]
-const SCHEMA_LITERAL_KEYS = new Set(['examples', 'example', 'default', 'enum', 'const'])
-const PCRE_SHORTHAND = /\\[dDwWsS]/
 
 /**
  * Returns true when an assistant message carries no content the model would
@@ -968,20 +785,6 @@ export function hasGenuineUserQuery(messages: UIMessage[]): boolean {
       .trim()
     return text.length > 0 && !TOOL_RESPONSE_ONLY.test(text)
   })
-}
-
-type ToolInputSchema = Record<string, unknown>
-
-// Keep this behavior aligned with `normalize_openai_tool_parameters_schema` in Rust.
-export function normalizeToolInputSchema(
-  schema: ToolInputSchema
-): ToolInputSchema {
-  return normalizeToolInputSchemaValue(schema) as ToolInputSchema
-}
-
-/** Provider tool names must be non-empty strings; reject malformed discovery data. */
-export function isValidToolName(name: unknown): name is string {
-  return typeof name === 'string' && name.trim().length > 0
 }
 
 /** Text from the most recent user message (for MCP server routing). */
@@ -1727,371 +1530,47 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   }
 
   async refreshTools(abortSignal?: AbortSignal, useCache = false) {
-    if (!this.serviceHub) {
-      this.tools = {}
-      this.toolsCacheKey = null
-      return
+    return refreshTools(this.toolRefreshHost(), abortSignal, useCache)
+  }
+
+  /** The class state tool listing reads and writes; see `chat/transport/toolRefresh.ts`. */
+  private toolRefreshHost(): ToolRefreshHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
+    return {
+      get serviceHub() { return self.serviceHub },
+      get threadId() { return self.threadId },
+      get lastUserMessage() { return self.lastUserMessage },
+      get hasDocuments() { return self.hasDocuments },
+      get ragFeatureAvailable() { return self.ragFeatureAvailable },
+      get modelSupportsTools() { return self.modelSupportsTools },
+      get model() { return self.model },
+      get routerModel() { return self.routerModel },
+      set routerModel(v) { self.routerModel = v },
+      get routerModelKey() { return self.routerModelKey },
+      set routerModelKey(v) { self.routerModelKey = v },
+      get tools() { return self.tools },
+      set tools(v) { self.tools = v },
+      get loadedTools() { return self.loadedTools },
+      set loadedTools(v) { self.loadedTools = v },
+      get toolsCacheKey() { return self.toolsCacheKey },
+      set toolsCacheKey(v) { self.toolsCacheKey = v },
+      get toolServers() { return self.toolServers },
+      set toolServers(v) { self.toolServers = v },
+      get delegationNames() { return self.delegationNames },
+      set delegationNames(v) { self.delegationNames = v },
+      get frozenRoutedTools() { return self.frozenRoutedTools },
+      set frozenRoutedTools(v) { self.frozenRoutedTools = v },
+      get frozenRoutedSig() { return self.frozenRoutedSig },
+      set frozenRoutedSig(v) { self.frozenRoutedSig = v },
+      get mcpStartingText() { return self.mcpStartingText },
+      set mcpStartingText(v) { self.mcpStartingText = v },
+      get mcpChangeText() { return self.mcpChangeText },
+      set mcpChangeText(v) { self.mcpChangeText = v },
+      getModelSelection: () => self.getModelSelection(),
+      chatShellWithheld: () => self.chatShellWithheld(),
+      recordMcpSet: (advertised, listed) => self.recordMcpSet(advertised, listed),
     }
-
-    const toolsRecord: Record<string, Tool> = {}
-    const toolServers = new Map<string, string>()
-    // A failed MCP listing is not kept: the next send asks again.
-    let mcpLoadFailed = false
-
-    // Tool availability is global (shared across all chats).
-    const disabledToolKeys = useToolAvailable.getState().getDisabledTools()
-    const isToolDisabled = (serverName: string, toolName: string): boolean => {
-      const toolKey = `${serverName}::${toolName}`
-      return disabledToolKeys.includes(toolKey)
-    }
-
-    const selectedModel = this.getModelSelection().selectedModel
-    const modelSupportsTools =
-      (selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools) ||
-      threadToolsGranted(this.threadId)
-    // Whether there are documents is read live, before the cache check: a
-    // file attached to the thread's project mid-thread changes nothing else
-    // in the key, and `this.hasDocuments` is only refreshed by the thread
-    // view, so a key built from it kept the RAG tools away (#128).
-    let hasDocuments = this.hasDocuments
-    let ragFeatureAvailable = this.ragFeatureAvailable
-    if (modelSupportsTools) {
-      if (!hasDocuments && this.threadId) {
-        const thread = useThreads.getState().threads[this.threadId]
-        const hasThreadDocuments = Boolean(thread?.metadata?.hasDocuments)
-
-        const projectId = thread?.metadata?.project?.id
-        if (projectId) {
-          try {
-            const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
-              ExtensionTypeEnum.VectorDB
-            )
-            if (ext?.listAttachmentsForProject) {
-              const projectFiles = await ext.listAttachmentsForProject(projectId)
-              hasDocuments = hasThreadDocuments || projectFiles.length > 0
-            }
-          } catch (error) {
-            console.warn('Failed to check project files:', error)
-            hasDocuments = hasThreadDocuments
-          }
-        } else {
-          hasDocuments = hasThreadDocuments
-        }
-      }
-
-      if (!ragFeatureAvailable) {
-        ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
-      }
-    }
-    // The MCP tools that exist right now. Without it a server installed or
-    // activated after the chat opened never reached the chat: every send
-    // found the old key and kept the old tool list, so it took a new chat.
-    const mcpNames: unknown = useAppState.getState?.()?.mcpToolNames
-    const mcpFingerprint =
-      mcpNames instanceof Set || Array.isArray(mcpNames)
-        ? [...(mcpNames as Iterable<string>)].sort()
-        : []
-    const cacheKey = JSON.stringify({
-      mcpFingerprint,
-      routedQuery: useMCPServers.getState().settings.enableSmartToolRouting
-        ? this.lastUserMessage
-        : undefined,
-      // A server switched on after the chat began has no tools until it is
-      // started, so the fingerprint alone cannot see it.
-      mcpGeneration: getMcpGeneration(),
-      mcpEnabled: enabledMcpServers(),
-      model: selectedModel?.id ?? '',
-      modelSupportsTools,
-      hasDocuments,
-      ragFeatureAvailable,
-      disabledToolKeys,
-      deadTools: deadTools(this.threadId),
-      webSearchEnabled: webSearchOnFor(this.threadId),
-      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
-      chatShellWithheld: this.chatShellWithheld(),
-      chatDelegation: chatDelegationEnabled(),
-      visualizeEnabled: useVisualizeConfig.getState().enabled,
-    })
-    if (useCache && this.toolsCacheKey === cacheKey) {
-      if (this.loadedTools) this.tools = this.loadedTools
-      return
-    }
-
-    // Only load tools if model supports them
-    if (modelSupportsTools) {
-      // Load RAG tools if documents are available
-      if (hasDocuments && ragFeatureAvailable) {
-        try {
-          const ragTools = await this.serviceHub.rag().getTools()
-          if (Array.isArray(ragTools) && ragTools.length > 0) {
-            // Convert RAG tools to AI SDK format, filtering out disabled tools
-            ragTools.forEach((tool) => {
-              if (!isValidToolName(tool.name)) return
-              // RAG tools use MCPTool interface with server field
-              const serverName =
-                (tool as { server?: string }).server || 'unknown'
-              if (!isToolDisabled(serverName, tool.name)) {
-                toolsRecord[tool.name] = {
-                  description: tool.description,
-                  inputSchema: jsonSchema(
-                    normalizeToolInputSchema(tool.inputSchema as Record<string, unknown>)
-                  ),
-                } as Tool
-              }
-            })
-          }
-        } catch (error) {
-          console.warn('Failed to load RAG tools:', error)
-        }
-      }
-
-      // Load MCP tools — route through the orchestrator when available so only
-      // relevant servers are queried instead of all of them.
-      try {
-        const mcpService = this.serviceHub.mcp()
-        let mcpTools: MCPTool[]
-        let mcpStarting: string[] = []
-        // Smart routing lists a subset; only a full listing may refresh the
-        // store the tool picker and the call dispatcher read.
-        let fullListing = false
-        const mcpSettings = useMCPServers.getState().settings
-        const routingEnabled = mcpSettings.enableSmartToolRouting
-
-        if (
-          routingEnabled &&
-          mcpService.getToolsForServers &&
-          mcpService.getServerSummaries
-        ) {
-          const summaries = await mcpService.getServerSummaries!()
-          const routedSig = JSON.stringify({
-            // Tool identities, not only server names: a server that gains
-            // tools must re-route rather than keep the frozen subset.
-            tools: mcpFingerprint,
-            servers: summaries.map((s) => s.name).sort(),
-            disabled: [...disabledToolKeys].sort(),
-            query: this.lastUserMessage,
-          })
-          if (this.frozenRoutedTools && this.frozenRoutedSig === routedSig) {
-            mcpTools = this.frozenRoutedTools
-          } else {
-            const routerModel =
-              mcpSettings.useLightweightRouterModel &&
-              mcpSettings.routerModelProvider.trim() &&
-              mcpSettings.routerModelId.trim()
-                ? (await this.resolveRouterModel(mcpSettings)) ?? this.model
-                : this.model
-            mcpTools = await mcpOrchestrator.getRelevantTools(
-              this.lastUserMessage,
-              {
-                // The router decides from server summaries, then only the
-                // servers it selects are started (on demand).
-                getTools: () => mcpService.getTools({ start: true }),
-                getToolsForServers: (names) =>
-                  mcpService.getToolsForServers!(names, { start: true }),
-                getServerSummaries: () => Promise.resolve(summaries),
-              },
-              disabledToolKeys,
-              {
-                routerModel,
-                abortSignal,
-              }
-            )
-            this.frozenRoutedTools = mcpTools
-            this.frozenRoutedSig = routedSig
-          }
-        } else {
-          // A send that uses tools starts enabled servers on demand, waiting
-          // a bounded time for ones still starting.
-          const live = await loadLiveMcpTools(mcpService)
-          mcpTools = live.tools
-          mcpStarting = live.starting
-          fullListing = true
-        }
-        this.mcpStartingText = mcpStartingNote(mcpStarting)
-
-        if (Array.isArray(mcpTools) && mcpTools.length > 0) {
-          const seenBy = new Map<string, string>()
-          mcpTools.forEach((tool) => {
-            if (!isValidToolName(tool.name)) return
-            const serverName = tool.server || 'unknown'
-            if (isToolDisabled(serverName, tool.name)) return
-            // A tool that approves the server's own held commands is never
-            // offered: Flint's prompt is the only approval, and the model
-            // looped on approve/execute pairs when it had one.
-            if (isSelfApprovalTool(tool.name)) return
-            // A server must not shadow a built-in: its tool would be routed to
-            // the server instead of the app's own implementation.
-            if (BUILTIN_WEB_TOOLS.has(tool.name)) {
-              console.warn(
-                `[tools] MCP tool "${tool.name}" from "${serverName}" ignored: the name belongs to a built-in web tool.`
-              )
-              return
-            }
-            const prevServer = seenBy.get(tool.name)
-            if (prevServer && prevServer !== serverName) {
-              console.warn(
-                `[tools] MCP tool name collision: "${tool.name}" exposed by both "${prevServer}" and "${serverName}". Using "${serverName}".`
-              )
-            }
-            seenBy.set(tool.name, serverName)
-            toolServers.set(tool.name, serverName)
-            toolsRecord[tool.name] = {
-              description: tool.description,
-              inputSchema: jsonSchema(
-                normalizeToolInputSchema(tool.inputSchema as Record<string, unknown>)
-              ),
-            } as Tool
-          })
-        }
-        if (fullListing) {
-          // Enabled servers that offered nothing are said so, to the model and
-          // to the person, instead of being left out without a word.
-          const availability = mcpAvailability(
-            mcpTools,
-            snapshotMcpTools(
-              [...toolServers].map(([name, server]) => ({ name, server }))
-            ),
-            mcpStarting,
-            isToolDisabled
-          )
-          this.mcpStartingText =
-            [this.mcpStartingText, availability.note]
-              .filter((s): s is string => Boolean(s))
-              .join(' ') || null
-          announceMcpWithheld(availability.withheld)
-        }
-        this.recordMcpSet(
-          [...toolServers].map(([name, server]) => ({ name, server })),
-          fullListing ? mcpTools : undefined
-        )
-      } catch (error) {
-        console.warn('Failed to load MCP tools:', error)
-        mcpLoadFailed = true
-      }
-
-      // Native web tools, provided by the websearch plugin (not an MCP server).
-      // Advertised whenever the user has web search enabled.
-      if (webSearchOnFor(this.threadId)) {
-        toolsRecord['web_search'] = {
-          description: WEB_SEARCH_DESCRIPTION,
-          inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
-        } as Tool
-        toolsRecord['web_fetch'] = {
-          description: WEB_FETCH_DESCRIPTION,
-          inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
-        } as Tool
-        toolsRecord['image_search'] = {
-          description: IMAGE_SEARCH_DESCRIPTION,
-          inputSchema: jsonSchema(IMAGE_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
-        } as Tool
-      }
-
-      // Inline widgets are the renderer's own and need no workspace, so they
-      // are offered whether or not the agent tools are on.
-      if (useVisualizeConfig.getState().enabled) {
-        for (const schema of visualizeSchemas()) {
-          toolsRecord[schema.function.name] = {
-            description: schema.function.description,
-            inputSchema: jsonSchema(schema.function.parameters),
-          } as Tool
-        }
-      }
-
-      // Read more of a conversation the user mentioned (docs/CHAT_MENTIONS.md).
-      // Offered only once this chat has a mention (or the user allows reading
-      // any conversation), so an ordinary chat's tool list is unchanged.
-      if (this.threadId && chatReadWanted(this.threadId)) {
-        const schema = chatReadSchema()
-        toolsRecord[schema.function.name] = {
-          description: schema.function.description,
-          inputSchema: jsonSchema(schema.function.parameters),
-        } as Tool
-      }
-
-      // Picture tools, offered only while Studio has an image model loaded: they
-      // never load one, so without it every call would just fail.
-      try {
-        const studio = await studioApi.status()
-        if (studio.supported && studio.resident?.kind === 'image') {
-          for (const schema of await getAgentToolSchemas()) {
-            if (!isImageTool(schema.function?.name)) continue
-            toolsRecord[schema.function.name] = {
-              description: schema.function.description,
-              inputSchema: jsonSchema(schema.function.parameters),
-            } as Tool
-          }
-        }
-      } catch {
-        // Studio is not available here (no desktop engine): no picture tools.
-      }
-
-      // Built-in agent tools (filesystem reads plus skills/memory), provided by
-      // the agent-tools plugin. Schemas come from Rust so they are never
-      // re-typed here.
-      // Plugin state is Flint's own, not a workspace tool, so it is read and
-      // `list_plugins` offered whether or not the agent tools are on: without
-      // it a model asked "is <plugin> enabled?" goes digging through shells.
-      // Read before the system prompt is assembled, which names the enabled
-      // plugins from this cache.
-      await refreshPluginInventory()
-      await refreshSkillCatalog()
-      if (!useAgentToolsConfig.getState().agentToolsEnabled) {
-        try {
-          const listPlugins = (await getAgentToolSchemas()).find(
-            (s) => s.function?.name === 'list_plugins'
-          )
-          if (listPlugins) {
-            toolsRecord.list_plugins = {
-              description: listPlugins.function.description,
-              inputSchema: jsonSchema(listPlugins.function.parameters),
-            } as Tool
-          }
-        } catch (error) {
-          console.warn('Failed to load list_plugins:', error)
-        }
-      }
-      if (useAgentToolsConfig.getState().agentToolsEnabled) {
-        try {
-          for (const schema of await getAgentToolSchemas()) {
-            if (!isValidToolName(schema.function?.name)) continue
-            // Session-scope tools: a chat thread has no mailbox identity.
-            if (SESSION_MESSAGING_TOOLS.has(schema.function.name)) continue
-            toolsRecord[schema.function.name] = {
-              description: schema.function.description,
-              inputSchema: jsonSchema(schema.function.parameters),
-            } as Tool
-          }
-        } catch (error) {
-          console.warn('Failed to load agent tools:', error)
-        }
-        // A job handed to a subagent: the Cowork `task` family on the chat's
-        // own footing, behind its own setting.
-        try {
-          const offered = await chatDelegationTools()
-          Object.assign(toolsRecord, offered.tools)
-          this.delegationNames = offered.names
-        } catch (error) {
-          console.warn('Failed to load delegation tools:', error)
-        }
-      }
-    }
-
-    // A tool its server does not implement is no longer offered in this
-    // conversation (transcript audit #11).
-    for (const name of deadTools(this.threadId)) delete toolsRecord[name]
-    // Chat's own shell switch (Cowork does not read it).
-    if (this.chatShellWithheld()) delete toolsRecord[SHELL_TOOL_NAME]
-    // Sorted by name: the tool list is part of the prompt, and a server that
-    // reconnects in a different order would otherwise change the prefix and
-    // throw away the model's prompt cache.
-    this.tools = Object.fromEntries(
-      Object.entries(toolsRecord).sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0
-      )
-    )
-    this.toolServers = toolServers
-    this.loadedTools = this.tools
-    this.toolsCacheKey = mcpLoadFailed ? null : cacheKey
   }
 
   /**
@@ -2103,74 +1582,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     advertised: { name: string; server?: string }[],
     listed?: MCPTool[]
   ): void {
-    const next = snapshotMcpTools(advertised)
-    const key = this.threadId ?? ''
-    const before = readMcpBaseline(key)
-    let note = before?.note ?? null
-    if (listed) syncMcpStore(listed)
-    if (before) {
-      const change = diffMcpSnapshots(before.snapshot, next)
-      const changed = mcpChangeNote(change)
-      if (changed) {
-        note = changed
-        announceMcpChange(change)
-      }
-    }
-    writeMcpBaseline(key, next, note)
-    this.mcpChangeText = note
+    recordMcpSet(this.toolRefreshHost(), advertised, listed)
   }
 
   protected mcpPromptNotes(): string[] {
     return [this.mcpChangeText, this.mcpStartingText].filter(
       (s): s is string => typeof s === 'string' && s.length > 0
     )
-  }
-
-  private async resolveRouterModel(settings: {
-    useLightweightRouterModel: boolean
-    routerModelProvider: string
-    routerModelId: string
-  }): Promise<LanguageModel | null> {
-    if (!settings.useLightweightRouterModel) return null
-    const providerName = settings.routerModelProvider.trim()
-    const modelId = settings.routerModelId.trim()
-    if (!providerName || !modelId) return null
-
-    const key = `${providerName}::${modelId}`
-    if (this.routerModel && this.routerModelKey === key) {
-      return this.routerModel
-    }
-
-    const provider = useModelProvider.getState().getProviderByName(providerName)
-    if (!provider) {
-      console.warn(
-        `[MCP] Router model provider '${providerName}' not found; using chat model for routing.`
-      )
-      return null
-    }
-
-    const catalogModel = provider.models.find((m) => m.id === modelId)
-    if (!catalogModel || !isRouterModelSelectable(provider, catalogModel)) {
-      console.warn(
-        `[MCP] Router model '${key}' is not allowed for routing (use a lightweight model with API access); using chat model for routing.`
-      )
-      return null
-    }
-
-    try {
-      const model = await ModelFactory.createModel(modelId, provider, {})
-      this.routerModel = model
-      this.routerModelKey = key
-      return model
-    } catch (error) {
-      console.warn(
-        `[MCP] Failed to create router model '${key}'; using chat model for routing.`,
-        error
-      )
-      this.routerModel = null
-      this.routerModelKey = ''
-      return null
-    }
   }
 
   /**
