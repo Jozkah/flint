@@ -147,7 +147,7 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
     if crate::core::net::tls::allows_invalid_certs(host, port) {
         builder = builder.danger_accept_invalid_certs(true);
     }
-    let client = crate::core::net::tls::apply12(
+    let mut builder = crate::core::net::tls::apply12(
         builder
             .dns_resolver(Arc::new(EndpointResolver {
                 port,
@@ -165,13 +165,71 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
             // generation stream; the agent client does the same.
             .tcp_keepalive(Duration::from_secs(30))
             .redirect(same_origin_redirects()),
-    )
+    );
+    // A remote server that goes quiet mid-body must not hold a request open
+    // forever. Local engines are exempt: prompt processing can be silent for
+    // minutes.
+    if !resolver::is_local_hostname(host) {
+        builder = builder.read_timeout(REMOTE_IDLE_TIMEOUT);
+    }
+    let client = builder
     .build()
         .map_err(|e| format!("could not build an HTTP client for {host}:{port}: {e}"))?;
     if let Ok(mut cache) = clients().lock() {
         cache.insert(key, client.clone());
     }
     Ok(client)
+}
+
+/// Longest a remote server may send nothing before the request is abandoned.
+const REMOTE_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Total time allowed for a non-streaming request to a remote server when the
+/// caller set none.
+const DEFAULT_TOTAL_TIMEOUT_SECS: u64 = 120;
+
+/// Largest response body `send` and a failed stream will buffer.
+const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+/// Image-generation responses carry the picture inline.
+const MAX_IMAGE_BODY_BYTES: usize = 128 * 1024 * 1024;
+
+fn body_cap(url: &str) -> usize {
+    if url.contains("/images/") {
+        MAX_IMAGE_BODY_BYTES
+    } else {
+        MAX_BODY_BYTES
+    }
+}
+
+/// The total timeout for a non-streaming request: the caller's, else a default
+/// for remote hosts. Local hosts keep no total limit, since a slow local model
+/// is expected.
+fn effective_timeout(requested: Option<u64>, host: &str) -> Option<u64> {
+    match requested {
+        Some(secs) => Some(secs),
+        None if resolver::is_local_hostname(host) => None,
+        None => Some(DEFAULT_TOTAL_TIMEOUT_SECS),
+    }
+}
+
+enum BodyError {
+    TooLarge(usize),
+    Net(reqwest::Error),
+}
+
+/// Read a body as text, giving up once it passes `cap` bytes.
+async fn read_capped(response: reqwest::Response, cap: usize) -> Result<String, BodyError> {
+    let mut stream = response.bytes_stream();
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(item) = stream.next().await {
+        let bytes = item.map_err(BodyError::Net)?;
+        if buf.len() + bytes.len() > cap {
+            return Err(BodyError::TooLarge(cap));
+        }
+        buf.extend_from_slice(&bytes);
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 /// How many redirects a request may follow, as reqwest's default allowed.
@@ -629,8 +687,9 @@ fn redact_error_body(status: reqwest::StatusCode, body: String) -> String {
 }
 
 /// Send a provider request and read the whole response.
-pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
+pub async fn send(mut req: ProviderRequest) -> Result<ProviderResponse, String> {
     let (host, port) = endpoint_of(&req.url)?;
+    req.timeout_secs = effective_timeout(req.timeout_secs, &host);
     // Taken from the request as it stands here, at the last point before it
     // leaves the process.
     let snapshot = capture_snapshot(&req);
@@ -642,10 +701,17 @@ pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
     let status = response.status();
     let status_text = status.canonical_reason().unwrap_or("").to_string();
     let headers = header_map(&response);
-    let body = response
-        .text()
+    let body = read_capped(response, body_cap(&req.url))
         .await
-        .map_err(|e| format!("{host}:{port} answered but the body could not be read: {e}"))?;
+        .map_err(|e| match e {
+            BodyError::TooLarge(cap) => format!(
+                "{host}:{port} answered with a body larger than {} MB",
+                cap / (1024 * 1024)
+            ),
+            BodyError::Net(e) => {
+                format!("{host}:{port} answered but the body could not be read: {e}")
+            }
+        })?;
     let body = redact_error_body(status, body);
 
     Ok(ProviderResponse {
@@ -666,10 +732,29 @@ pub trait ChunkSink: Send + 'static {
 
 /// Send a provider request and hand the body back a chunk at a time.
 pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<(), String> {
-    let (host, port) = endpoint_of(&req.url)?;
+    // Every failure before the head is reported to the consumer as an error
+    // chunk too, or a stream that never started would look like one that hung.
+    let (host, port) = match endpoint_of(&req.url) {
+        Ok(endpoint) => endpoint,
+        Err(message) => {
+            sink.send(StreamChunk::Error {
+                message: message.clone(),
+            });
+            return Err(message);
+        }
+    };
     let snapshot = capture_snapshot(&req);
     let guard = StreamGuard::new(req.stream_id.clone());
-    let response = match send_once_retrying(&host, port, &req).await? {
+    let attempt = match send_once_retrying(&host, port, &req).await {
+        Ok(attempt) => attempt,
+        Err(message) => {
+            sink.send(StreamChunk::Error {
+                message: message.clone(),
+            });
+            return Err(message);
+        }
+    };
+    let response = match attempt {
         Ok(r) => r,
         Err(e) => {
             let message = transport_failed(&host, port, &e);
@@ -696,10 +781,16 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
     // both. Error bodies are small; a chunk-by-chunk redaction could miss a
     // value split across two chunks.
     if !status.is_success() {
-        let body = match response.text().await {
+        let body = match read_capped(response, body_cap(&req.url)).await {
             Ok(body) => redact_error_body(status, body),
             Err(e) => {
-                let message = transport_failed(&host, port, &e);
+                let message = match e {
+                    BodyError::TooLarge(cap) => format!(
+                        "{host}:{port} sent an error body larger than {} MB",
+                        cap / (1024 * 1024)
+                    ),
+                    BodyError::Net(e) => transport_failed(&host, port, &e),
+                };
                 sink.send(StreamChunk::Error {
                     message: message.clone(),
                 });
@@ -1063,6 +1154,61 @@ mod tests {
         assert_eq!(req.run.as_deref(), Some("req-9"));
         assert_eq!(req.provider.as_deref(), Some("groq"));
         assert_eq!(req.invocation_id.as_deref(), Some("inv-1"));
+    }
+
+    #[tokio::test]
+    async fn send_caps_response_body() {
+        let (port, _requests) = serve(OK_JSON, 2);
+        let get = || async {
+            reqwest::Client::new()
+                .get(format!("http://127.0.0.1:{port}/v1/models"))
+                .send()
+                .await
+                .unwrap()
+        };
+        // The body is 31 bytes.
+        assert!(matches!(
+            read_capped(get().await, 10).await,
+            Err(BodyError::TooLarge(10))
+        ));
+        let body = read_capped(get().await, 1000).await.ok().unwrap();
+        assert!(body.contains("qwen3.8-27b"), "{body}");
+    }
+
+    #[test]
+    fn send_default_timeout_applies() {
+        assert_eq!(effective_timeout(None, "api.openai.com"), Some(120));
+        assert_eq!(effective_timeout(Some(5), "api.openai.com"), Some(5));
+        // A slow local model is not cut off.
+        assert_eq!(effective_timeout(None, "llm-host"), None);
+        assert_eq!(effective_timeout(None, "127.0.0.1"), None);
+        assert!(
+            body_cap("https://x/v1/images/generations") > body_cap("https://x/v1/chat/completions")
+        );
+    }
+
+    #[tokio::test]
+    async fn send_stream_bad_url_emits_error_chunk() {
+        struct Collect(mpsc::Sender<StreamChunk>);
+        impl ChunkSink for Collect {
+            fn send(&self, chunk: StreamChunk) {
+                let _ = self.0.send(chunk);
+            }
+        }
+        let (tx, chunks) = mpsc::channel();
+        let err = send_stream(
+            ProviderRequest {
+                url: "not a url".into(),
+                ..Default::default()
+            },
+            Collect(tx),
+        )
+        .await
+        .unwrap_err();
+        match chunks.try_recv() {
+            Ok(StreamChunk::Error { message }) => assert_eq!(message, err),
+            other => panic!("expected an error chunk, got {other:?}"),
+        }
     }
 
     #[test]
