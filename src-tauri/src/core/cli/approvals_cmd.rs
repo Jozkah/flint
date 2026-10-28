@@ -66,16 +66,16 @@ fn print_one(d: &Deferred) {
         "{}  {}  {}  session {}\n    {}\n    asked {}, answer by {}",
         d.id,
         status_word(d.status),
-        d.tool,
+        super::display_safe::display_safe(&d.tool),
         if d.session.is_empty() { "-" } else { &d.session },
-        d.summary,
+        super::display_safe::display_safe(&d.summary),
         stamp(d.created_at),
         stamp(d.expires_at),
     );
     // What is being approved in full: the digest binds these arguments.
     if !d.detail.is_empty() {
         for line in d.detail.lines() {
-            println!("      | {line}");
+            println!("      | {}", super::display_safe::display_safe(line));
         }
     }
 }
