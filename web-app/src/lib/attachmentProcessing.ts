@@ -188,6 +188,40 @@ export const applyIngestionChoices = (
     return mode ? { ...att, parseMode: mode } : att
   })
 
+/**
+ * Whether a document goes into the prompt or into the retrieval index. Pure:
+ * everything it needs (a parse that happened, a token count) is passed in.
+ * A model that cannot call the retrieval tool always gets the document inline;
+ * project files are always embedded; `auto` and `prompt` take the user's
+ * per-file choice, then the fallback, and `auto` alone compares the document's
+ * size with the context threshold when there was no choice.
+ */
+export const resolveDocumentMode = (input: {
+  preference: ParsePreference | undefined
+  projectId?: string
+  needsInline: boolean
+  userChoice?: IngestionChoice
+  autoFallbackMode?: IngestionChoice
+  tokenCount?: number
+  contextThreshold?: number
+}): IngestionChoice => {
+  if (input.needsInline) return 'inline'
+  if (input.projectId) return 'embeddings'
+  if (input.preference === 'auto' || input.preference === 'prompt') {
+    const base = input.userChoice ?? input.autoFallbackMode ?? 'embeddings'
+    if (
+      input.preference === 'auto' &&
+      !input.userChoice &&
+      typeof input.tokenCount === 'number' &&
+      input.contextThreshold
+    ) {
+      return input.tokenCount <= input.contextThreshold ? 'inline' : 'embeddings'
+    }
+    return base
+  }
+  return input.preference === 'inline' ? 'inline' : 'embeddings'
+}
+
 export const processAttachmentsForSend = async (
   options: AttachmentProcessingOptions
 ): Promise<AttachmentProcessingResult> => {
@@ -240,6 +274,14 @@ export const processAttachmentsForSend = async (
       NonNullable<AttachmentProcessingOptions['updateAttachmentProcessing']>
     >
   ) => updateAttachmentProcessing?.(...args)
+  /**
+   * The updated attachment is built once: the same patch is what the send
+   * carries and what the UI is told, so the two cannot drift apart.
+   */
+  const completeAttachment = (att: Attachment, patch: Partial<Attachment>) => {
+    processedAttachments.push({ ...att, ...patch })
+    notifyUpdate(att.name, 'done', patch)
+  }
 
   // Images: ingest before sending
   const images = attachments.filter((a) => a.type === 'image')
@@ -254,13 +296,7 @@ export const processAttachmentsForSend = async (
         notifyUpdate(img.name, 'processing')
 
         const res = await serviceHub.uploads().ingestImage(threadId, img)
-        processedAttachments.push({
-          ...img,
-          id: res.id,
-          processed: true,
-          processing: false,
-        })
-        notifyUpdate(img.name, 'done', {
+        completeAttachment(img, {
           id: res.id,
           processed: true,
           processing: false,
@@ -341,19 +377,11 @@ export const processAttachmentsForSend = async (
       notifyUpdate(doc.name, 'processing')
 
       const targetPreference = doc.parseMode ?? parsePreference
-      let targetMode: 'inline' | 'embeddings' =
-        targetPreference === 'inline' ? 'inline' : 'embeddings'
       let parsedContent: string | undefined
 
       // A model that cannot call the retrieval tool can only use a document
       // that is in its prompt, whatever the preference or the document's size.
       const needsInline = options.modelSupportsTools === false
-
-      // Project files use embeddings, never inline, unless the model cannot
-      // reach an embedded copy.
-      if (projectId && !needsInline) {
-        targetMode = 'embeddings'
-      }
 
       const canInline =
         (needsInline || (!projectId && targetPreference !== 'embeddings')) && !!doc.path
@@ -368,26 +396,22 @@ export const processAttachmentsForSend = async (
         }
       }
 
-      if (needsInline) {
+      if (needsInline && !parsedContent) {
         // An embedded copy would be unreachable, so a document that could not
         // be read as text fails the send rather than going without its content.
-        if (!parsedContent) {
-          throw new Error(
-            `Couldn't read ${doc.name} as text. This model can't search files, so the document can't be added.`
-          )
-        }
-        targetMode = 'inline'
-      } else if (targetPreference === 'auto') {
-        // Check if user made a per-file choice for this document
-        const userChoice = perFileChoices?.get(doc.path || '')
-        // Project files always use embeddings
-        const effectiveMode = projectId ? 'embeddings' : (userChoice ?? autoFallbackMode ?? 'embeddings')
-        targetMode = effectiveMode
+        throw new Error(
+          `Couldn't read ${doc.name} as text. This model can't search files, so the document can't be added.`
+        )
+      }
 
-        // Only do auto-detection if no user choice was made and not project file
-        if (!projectId && !userChoice && parsedContent && estimateTokens) {
+      // Check if user made a per-file choice for this document
+      const userChoice = perFileChoices?.get(doc.path || '')
+      let tokenCount: number | undefined
+      // Only estimate when nothing else decides it (auto, no choice, not a project file).
+      if (!needsInline && targetPreference === 'auto' && !projectId && !userChoice) {
+        if (parsedContent && estimateTokens) {
           const estimatedTokens = await estimateTokens(parsedContent)
-          const tokenCount =
+          tokenCount =
             typeof estimatedTokens === 'number' &&
             Number.isFinite(estimatedTokens) &&
             estimatedTokens > 0
@@ -395,42 +419,36 @@ export const processAttachmentsForSend = async (
               : undefined
           if (!effectiveContextThreshold) {
             console.debug(
-              `Attachment ${doc.name}: no context threshold available; defaulting to ${targetMode}`
+              `Attachment ${doc.name}: no context threshold available; using the default mode`
             )
-          } else if (typeof tokenCount === 'number') {
-            targetMode =
-              tokenCount <= effectiveContextThreshold ? 'inline' : 'embeddings'
-          } else {
+          } else if (tokenCount === undefined) {
             console.debug(
-              `Attachment ${doc.name}: token estimate unavailable or non-positive; defaulting to ${targetMode}`
+              `Attachment ${doc.name}: token estimate unavailable or non-positive; using the default mode`
             )
           }
-        } else if (!projectId && !userChoice && !parsedContent) {
+        } else if (!parsedContent) {
           console.debug(
-            `Attachment ${doc.name}: parsed content unavailable for token estimation; defaulting to ${targetMode}`
+            `Attachment ${doc.name}: parsed content unavailable for token estimation; using the default mode`
           )
-        } else if (!projectId && !userChoice) {
+        } else {
           console.debug(
-            `Attachment ${doc.name}: token estimator unavailable; defaulting to ${targetMode}`
+            `Attachment ${doc.name}: token estimator unavailable; using the default mode`
           )
         }
-      } else if (targetPreference === 'prompt') {
-        // Check if user made a per-file choice for this document
-        const userChoice = perFileChoices?.get(doc.path || '')
-        // Project files always use embeddings
-        targetMode = projectId ? 'embeddings' : (userChoice ?? autoFallbackMode ?? 'embeddings')
       }
 
-      if (targetMode === 'inline' && parsedContent) {
-        processedAttachments.push({
-          ...doc,
-          processing: false,
-          processed: true,
-          inlineContent: parsedContent,
-          injectionMode: 'inline',
-        })
+      const targetMode = resolveDocumentMode({
+        preference: targetPreference,
+        projectId,
+        needsInline,
+        userChoice,
+        autoFallbackMode,
+        tokenCount,
+        contextThreshold: effectiveContextThreshold,
+      })
 
-        notifyUpdate(doc.name, 'done', {
+      if (targetMode === 'inline' && parsedContent) {
+        completeAttachment(doc, {
           processing: false,
           processed: true,
           inlineContent: parsedContent,
@@ -449,8 +467,7 @@ export const processAttachmentsForSend = async (
         ? await serviceHub.uploads().ingestFileAttachmentForProject(projectId, doc)
         : await serviceHub.uploads().ingestFileAttachment(threadId, doc)
 
-      processedAttachments.push({
-        ...doc,
+      completeAttachment(doc, {
         id: res.id,
         size: res.size ?? doc.size,
         chunkCount: res.chunkCount ?? doc.chunkCount,
@@ -459,15 +476,6 @@ export const processAttachmentsForSend = async (
         injectionMode: 'embeddings',
       })
       hasEmbeddedDocuments = true
-
-      notifyUpdate(doc.name, 'done', {
-        id: res.id,
-        size: res.size ?? doc.size,
-        chunkCount: res.chunkCount ?? doc.chunkCount,
-        processing: false,
-        processed: true,
-        injectionMode: 'embeddings',
-      })
       bumpIngest()
     } catch (err) {
       console.error(`Failed to ingest ${doc.name}:`, err)
