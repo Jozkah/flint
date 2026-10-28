@@ -138,6 +138,12 @@ fn runs_a_program(key: &str, value: &str) -> bool {
                 | "core.hookspath"
         )
         || (key.starts_with("credential.") && last == "helper")
+        || (key.starts_with("trailer.") && last == "command")
+        || (key.starts_with("remote.") && matches!(last, "vcs" | "uploadpack" | "receivepack"))
+        || (key.starts_with("submodule.") && last == "update" && value.trim_start().starts_with('!'))
+        || (key.starts_with("difftool.") && last == "cmd")
+        || (key.starts_with("mergetool.") && matches!(last, "cmd" | "path"))
+        || (key.starts_with("pager.") && !boolean)
         || key.starts_with("alias.") && value.trim_start().starts_with('!')
 }
 
@@ -1311,7 +1317,13 @@ pub fn rebase_start(repo: &Path, onto: &str) -> Result<HistoryOp, VcsError> {
         }
     }
     let backup = write_backup(repo, "rebase", &branch)?;
-    let _ = git_no_editor(repo, &["rebase", "--no-autostash", &onto]);
+    if let Err(e) = git_no_editor(repo, &["rebase", "--no-autostash", &onto]) {
+        // A failure that left no stopped rebase is an error, not a conflict.
+        if in_progress(repo).is_none() {
+            let _ = git(repo, &["update-ref", "-d", &backup]);
+            return Err(e);
+        }
+    }
     op_state(
         repo,
         "rebase",
@@ -1328,7 +1340,12 @@ pub fn cherry_pick(repo: &Path, commit: &str) -> Result<HistoryOp, VcsError> {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("{commit}^{{commit}}")])
         .map_err(|_| VcsError::new(VcsErrorKind::NoBranch, format!("`{commit}` is not a commit here")))?;
     let backup = write_backup(repo, "cherry-pick", &branch)?;
-    let _ = git_no_editor(repo, &["cherry-pick", "-x", &commit]);
+    if let Err(e) = git_no_editor(repo, &["cherry-pick", "-x", &commit]) {
+        if in_progress(repo).is_none() {
+            let _ = git(repo, &["update-ref", "-d", &backup]);
+            return Err(e);
+        }
+    }
     op_state(
         repo,
         "cherry-pick",
@@ -2198,6 +2215,45 @@ mod tests {
         assert_eq!(abort_op(&work, &again.backup).unwrap_err().kind, VcsErrorKind::WouldDiscard);
         assert_eq!(head(&work), here);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn cherry_pick_of_merge_commit_reports_git_failure_not_done() {
+        let (base, work) = pair("pick-merge");
+        run(&work, &["switch", "-q", "-c", "side"]);
+        commit(&work, "side.txt", "side\n", "side change");
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "main.txt", "main\n", "main change");
+        run(&work, &["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+        let merge = head(&work);
+        run(&work, &["switch", "-q", "-c", "target", "HEAD~1"]);
+        let before = head(&work);
+        let err = cherry_pick(&work, &merge).unwrap_err();
+        assert_eq!(err.kind, VcsErrorKind::GitFailed, "{}", err.message);
+        assert_eq!(head(&work), before);
+        let listed = Command::new("git").arg("-C").arg(&work).args(["for-each-ref", "refs/flint/"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&listed.stdout).trim().is_empty(), "the failed pick left a backup");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn more_config_keys_that_run_a_program_are_refused() {
+        for (key, value) in [
+            ("trailer.x.command", "evil"),
+            ("remote.origin.vcs", "evil"),
+            ("remote.origin.uploadpack", "evil"),
+            ("remote.origin.receivepack", "evil"),
+            ("submodule.s.update", "!evil"),
+            ("difftool.x.cmd", "evil"),
+            ("mergetool.x.cmd", "evil"),
+            ("mergetool.x.path", "evil"),
+            ("pager.log", "evil"),
+        ] {
+            assert!(runs_a_program(key, value), "{key}");
+        }
+        assert!(!runs_a_program("pager.log", "true"));
+        assert!(!runs_a_program("submodule.s.update", "checkout"));
+        assert!(!runs_a_program("remote.origin.url", "https://example.com/r.git"));
     }
 
     /// A repository's own config can name programs git runs while it reads
