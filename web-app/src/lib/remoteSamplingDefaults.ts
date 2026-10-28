@@ -31,9 +31,19 @@ export function isOwnServer(baseUrl: string | undefined): boolean {
   if (
     host.endsWith('.local') ||
     host.endsWith('.lan') ||
-    host.endsWith('.internal')
+    host.endsWith('.internal') ||
+    host.endsWith('.home.arpa')
   )
     return true
+  // IPv6: loopback, unique local (fc00::/7) and link-local (fe80::/10).
+  if (host.startsWith('[')) {
+    const v6 = host.slice(1, -1)
+    return (
+      v6 === '::1' ||
+      /^f[cd][0-9a-f]{2}:/.test(v6) ||
+      /^fe[89ab][0-9a-f]:/.test(v6)
+    )
+  }
   // A bare name such as v100.
   if (!host.includes('.') && !host.includes(':')) return true
   const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(host)
@@ -43,6 +53,7 @@ export function isOwnServer(baseUrl: string | undefined): boolean {
   return (
     a === 10 ||
     a === 127 ||
+    (a === 169 && b === 254) ||
     (a === 192 && b === 168) ||
     (a === 172 && b >= 16 && b <= 31)
   )

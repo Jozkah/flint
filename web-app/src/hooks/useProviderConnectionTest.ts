@@ -1,8 +1,7 @@
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { applyCustomHeaders } from '@/lib/customHeaders'
-import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
+import { buildProviderListRequest } from '@/lib/providerListRequest'
 import { toast } from 'sonner'
 import { useCallback, useState } from 'react'
 import { describeEndpointFailure, isLocalEndpoint } from '@/lib/endpointDiagnostics'
@@ -55,10 +54,13 @@ export function useProviderConnectionTest({
         const key = keyDraftLines[i]
         const keyIndex = i + 1
         if (!key) continue
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        }
-        applyProviderAuthHeader(provider, headers, key)
+        // The same request the model list sends, so the key is tested the
+        // way a real request authenticates (Anthropic's `x-api-key` and
+        // `anthropic-version`, Azure's `api-key`). janhq/jan#9440.
+        const { headers, urls } = buildProviderListRequest(
+          { ...provider, base_url: provider.base_url },
+          key
+        )
         // Loopback and LAN endpoints are local engines, not remote services.
         // The old check matched the literal strings "localhost:" and
         // "127.0.0.1:", so a server on the LAN or on a Tailscale address was
@@ -66,15 +68,14 @@ export function useProviderConnectionTest({
         if (isLocalEndpoint(provider.base_url)) {
           headers['Origin'] = 'tauri://localhost'
         }
-        // What a real request sends, so a gateway that needs its own header
-        // does not fail the test for want of it. janhq/jan#8208.
-        applyCustomHeaders(headers, provider)
+        let url = urls[0]
 
         try {
-          const response = await fetchImpl(`${provider.base_url}/models`, {
-            method: 'GET',
-            headers,
-          })
+          let response = await fetchImpl(url, { method: 'GET', headers })
+          if (response.status === 404 && urls.length > 1) {
+            url = urls[1]
+            response = await fetchImpl(url, { method: 'GET', headers })
+          }
 
           let status = 'http_error'
           if (response.ok) status = 'ok'
@@ -93,7 +94,7 @@ export function useProviderConnectionTest({
               ? `${response.status} ${response.statusText}`
               : describeEndpointFailure({
                   provider: provider.provider,
-                  url: `${provider.base_url}/models`,
+                  url,
                   method: 'GET',
                   status: response.status,
                   statusText: response.statusText,
@@ -107,7 +108,7 @@ export function useProviderConnectionTest({
             status: 'network_error',
             detail: describeEndpointFailure({
               provider: provider.provider,
-              url: `${provider.base_url}/models`,
+              url,
               method: 'GET',
               cause: err,
             }),

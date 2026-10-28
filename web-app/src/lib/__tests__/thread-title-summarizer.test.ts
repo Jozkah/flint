@@ -4,6 +4,7 @@ import {
   fallbackTitle,
   generateThreadTitle,
   resetTitleGuards,
+  DEFAULT_TITLE_PROMPT,
 } from '../thread-title-summarizer'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
 
@@ -38,6 +39,15 @@ let mockProviders: Array<{ provider: string; models: Array<{ id: string }> }> = 
 let mockFallbackModels: string[] = []
 vi.mock('@/hooks/useGeneralSetting', () => ({
   useGeneralSetting: { getState: () => ({ fallbackModels: mockFallbackModels }) },
+}))
+
+let mockTitleSettings = {
+  titleModelProvider: '',
+  titleModelId: '',
+  titlePrompt: '',
+}
+vi.mock('@/hooks/useTitleSettings', () => ({
+  useTitleSettings: { getState: () => mockTitleSettings },
 }))
 
 describe('cleanTitle', () => {
@@ -353,5 +363,70 @@ describe('fallbackTitle', () => {
     expect(fallbackTitle('hello there')).toBe('hello there')
     expect(fallbackTitle('  ')).toBeNull()
     expect(fallbackTitle('a'.repeat(100))!.length).toBeLessThanOrEqual(60)
+  })
+})
+
+describe('generateThreadTitle title model and prompt settings', () => {
+  const signal = () => new AbortController().signal
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetTitleGuards()
+    mockSelectedProvider = 'test-provider'
+    mockFallbackModels = []
+    mockGetProviderByName.mockImplementation((name: string) => ({
+      provider: name,
+      models: [],
+    }))
+    mockCreateModel.mockImplementation(async (id: string) => ({ id }))
+    mockProviders = [
+      { provider: 'test-provider', models: [{ id: 'test-model' }] },
+      { provider: 'cheap', models: [{ id: 'tiny' }] },
+    ]
+    mockTitleSettings = { titleModelProvider: '', titleModelId: '', titlePrompt: '' }
+  })
+
+  it('uses the chat model and the default prompt when nothing is set', async () => {
+    mockGenerateText.mockResolvedValue({ text: 'Default Title' })
+    expect(await generateThreadTitle('hello', signal(), 't1')).toBe('Default Title')
+    expect(mockCreateModel.mock.calls.map((c) => c[0])).toEqual(['test-model'])
+    const prompt = mockGenerateText.mock.calls[0][0].messages[0].content
+    expect(prompt.startsWith(DEFAULT_TITLE_PROMPT)).toBe(true)
+    expect(prompt).toContain('Conversation:\nhello')
+  })
+
+  it('uses the chosen title model and prompt', async () => {
+    mockTitleSettings = {
+      titleModelProvider: 'cheap',
+      titleModelId: 'tiny',
+      titlePrompt: 'Name this chat in three words.',
+    }
+    mockGenerateText.mockResolvedValue({ text: 'Tiny Title' })
+    expect(await generateThreadTitle('hello', signal(), 't2')).toBe('Tiny Title')
+    expect(mockCreateModel.mock.calls.map((c) => c[0])).toEqual(['tiny'])
+    const prompt = mockGenerateText.mock.calls[0][0].messages[0].content
+    expect(prompt.startsWith('Name this chat in three words.')).toBe(true)
+    expect(prompt).not.toContain(DEFAULT_TITLE_PROMPT)
+  })
+
+  it('falls back to the chat model when the title model fails', async () => {
+    mockTitleSettings = { titleModelProvider: 'cheap', titleModelId: 'tiny', titlePrompt: '' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockGenerateText
+      .mockRejectedValueOnce(Object.assign(new Error('Bad Request'), { statusCode: 400 }))
+      .mockResolvedValueOnce({ text: 'Chat Model Title' })
+    expect(await generateThreadTitle('hello', signal(), 't3')).toBe('Chat Model Title')
+    expect(mockCreateModel.mock.calls.map((c) => c[0])).toEqual(['tiny', 'test-model'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('uses the chat model when the title model is no longer configured', async () => {
+    mockTitleSettings = { titleModelProvider: 'gone', titleModelId: 'x', titlePrompt: '' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockGenerateText.mockResolvedValue({ text: 'Chat Model Title' })
+    expect(await generateThreadTitle('hello', signal(), 't4')).toBe('Chat Model Title')
+    expect(mockCreateModel.mock.calls.map((c) => c[0])).toEqual(['test-model'])
+    warn.mockRestore()
   })
 })

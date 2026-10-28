@@ -1,8 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 interface GlobalErrorProps {
   error: Error | unknown
+}
+
+function truncateStack(stack: string | undefined) {
+  if (!stack || stack.length <= 200) return stack
+  const cut = stack.slice(0, 200)
+  const nl = cut.lastIndexOf('\n')
+  return nl > 0 ? `${cut.slice(0, nl)}\n...` : cut
 }
 
 /**
@@ -10,7 +17,9 @@ interface GlobalErrorProps {
  * provider or i18n, so it relies only on the base tokens and fixed copy.
  */
 export default function GlobalError({ error }: GlobalErrorProps) {
-  console.error('Error in root route:', error)
+  useEffect(() => {
+    console.error('Error in root route:', error)
+  }, [error])
   const [showFull, setShowFull] = useState(false)
 
   return (
@@ -27,7 +36,7 @@ export default function GlobalError({ error }: GlobalErrorProps) {
             <p className="mt-1 text-sm leading-relaxed text-fg-2">
               Flint hit an error it could not recover from. Try to{' '}
               <button
-                rel="noopener noreferrer"
+                type="button"
                 className="cursor-pointer rounded-sm font-medium text-acc-text hover:underline"
                 onClick={() => window.location.reload()}
               >
@@ -61,11 +70,12 @@ export default function GlobalError({ error }: GlobalErrorProps) {
               {error instanceof Error
                 ? showFull
                   ? error.stack
-                  : error.stack?.slice(0, 200)
+                  : truncateStack(error.stack)
                 : String(error)}
             </code>
           </pre>
           <button
+            type="button"
             onClick={() => setShowFull(!showFull)}
             className="mt-1.5 cursor-pointer rounded-sm text-sm text-destructive underline underline-offset-2 pointer-coarse:min-h-11"
           >
