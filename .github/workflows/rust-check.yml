@@ -9,6 +9,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   # The desktop and CLI feature sets are mutually exclusive configs of the same
   # crate, so neither one alone proves the other compiles.
