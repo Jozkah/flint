@@ -53,6 +53,10 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
   let current: DiffHunk | null = null
   let oldLine = 0
   let newLine = 0
+  // Lines the current hunk header still promises on each side. Once both are
+  // spent, a `--- ` / `+++ ` line is the next file's header, not content.
+  let oldLeft = 0
+  let newLeft = 0
   let additions = 0
   let deletions = 0
 
@@ -67,13 +71,18 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
       hunks.push(current)
       oldLine = Number(match[1])
       newLine = Number(match[3])
+      oldLeft = match[2] === undefined ? 1 : Number(match[2])
+      newLeft = match[4] === undefined ? 1 : Number(match[4])
       continue
     }
 
     // Before the first hunk: file headers, which belong to no hunk.
     if (!current) continue
 
+    if (oldLeft <= 0 && newLeft <= 0 && FILE_HEADER.test(line)) continue
+
     if (line.startsWith('+')) {
+      newLeft--
       additions++
       current.lines.push({
         kind: 'add',
@@ -81,6 +90,7 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
         newNumber: newLine++,
       })
     } else if (line.startsWith('-')) {
+      oldLeft--
       deletions++
       current.lines.push({
         kind: 'remove',
@@ -94,6 +104,8 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
     } else if (FILE_HEADER.test(line)) {
       continue
     } else {
+      oldLeft--
+      newLeft--
       current.lines.push({
         kind: 'context',
         content: line.startsWith(' ') ? line.slice(1) : line,
