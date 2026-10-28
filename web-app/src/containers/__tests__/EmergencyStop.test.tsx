@@ -3,6 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EmergencyStop, type StopReport } from '@/containers/EmergencyStop'
 
+// These tests read the words, so they use the real English strings.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 const clean = (over: Partial<StopReport> = {}): StopReport => ({
   stopped: 2,
   already_stopped: 0,
@@ -119,9 +122,39 @@ describe('EmergencyStop', () => {
     await user.click(screen.getByTestId('emergency-stop-confirm'))
 
     const report = await screen.findByTestId('emergency-stop-report')
-    expect(report).toHaveTextContent(/2 process\(es\) are still running/i)
+    expect(report).toHaveTextContent(/2 processes are still running/i)
     expect(report).toHaveTextContent(/did not finish/i)
     expect(report).not.toHaveTextContent(/nothing left running/i)
+  })
+
+  it('uses the singular for one surviving process', async () => {
+    const user = userEvent.setup()
+    render(
+      <EmergencyStop
+        sessionId="s1"
+        runId="r1"
+        onStop={vi
+          .fn()
+          .mockResolvedValue(
+            clean({ stopped: 1, live_children: 1, complete: false })
+          )}
+      />
+    )
+    await user.click(screen.getByTestId('emergency-stop-trigger'))
+    await user.click(screen.getByTestId('emergency-stop-confirm'))
+    const report = await screen.findByTestId('emergency-stop-report')
+    expect(report).toHaveTextContent(/1 process is still running/i)
+  })
+
+  it('renders the dialog copy from translations, not literals', async () => {
+    const user = userEvent.setup()
+    render(<EmergencyStop sessionId="s1" runId="r1" onStop={vi.fn()} />)
+    await user.click(screen.getByTestId('emergency-stop-trigger'))
+    expect(screen.getByText('Stop running work')).toBeInTheDocument()
+    expect(screen.getByText('What to stop')).toBeInTheDocument()
+    expect(screen.getByTestId('emergency-stop-confirm')).toHaveTextContent(
+      'Stop run'
+    )
   })
 
   it('cannot be pressed twice while it is stopping', async () => {
@@ -190,7 +223,7 @@ describe('EmergencyStop', () => {
     render(<EmergencyStop sessionId="s1" runId="r1" onStop={onStop} />)
 
     const trigger = screen.getByTestId('emergency-stop-trigger')
-    expect(trigger).toHaveAccessibleName('common:a11y.emergencyStop')
+    expect(trigger).toHaveAccessibleName('Emergency stop')
 
     trigger.focus()
     await user.keyboard('{Enter}')

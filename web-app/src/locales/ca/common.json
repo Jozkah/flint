@@ -3027,5 +3027,43 @@
       "medium": "Mitjana",
       "low": "Baixa"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Atura",
+    "title": "Atura el treball en curs",
+    "description": "Tria fins on arriba. No es pot desfer: el treball aturat no es reprèn, ni tan sols després de reiniciar.",
+    "legend": "Què s'ha d'aturar",
+    "stopping": "Aturant. Tancant els processos propis…",
+    "report": {
+      "clean": "Aturat. {{stopped}} aturats, {{already}} ja aturats, no queda res en execució.",
+      "partial_one": "{{stopped}} aturats, però {{count}} procés encara s'executa. La neteja no ha acabat.",
+      "partial_other": "{{stopped}} aturats, però {{count}} processos encara s'executen. La neteja no ha acabat."
+    },
+    "error": "No s'ha pogut aturar: {{error}}",
+    "cancel": "Cancel·la",
+    "close": "Tanca",
+    "confirmBusy": "Aturant…",
+    "scope": {
+      "call": {
+        "name": "Aquesta crida d'eina",
+        "desc": "Només aquesta crida d'eina ({{id}}). Tota la resta de l'execució continua.",
+        "confirm": "Atura la crida"
+      },
+      "run": {
+        "name": "Aquesta execució",
+        "desc": "Aquesta execució ({{id}}), amb les crides d'eines, ordres de shell, crides MCP i subagents. Les altres execucions no es toquen.",
+        "confirm": "Atura l'execució"
+      },
+      "session": {
+        "name": "Aquesta sessió",
+        "desc": "Totes les execucions d'aquesta sessió ({{id}}). Les altres sessions no es toquen.",
+        "confirm": "Atura la sessió"
+      },
+      "application": {
+        "name": "Tot a Flint",
+        "desc": "Tot el treball a tot arreu de Flint, en totes les sessions. No s'estalvia res del que s'executa.",
+        "confirm": "Atura-ho tot"
+      }
+    }
   }
 }

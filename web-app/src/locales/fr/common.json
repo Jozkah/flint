@@ -3027,5 +3027,43 @@
       "medium": "Moyenne",
       "low": "Basse"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Arrêter",
+    "title": "Arrêter le travail en cours",
+    "description": "Choisissez la portée. Action irréversible : le travail arrêté n'est pas repris, même après un redémarrage.",
+    "legend": "Quoi arrêter",
+    "stopping": "Arrêt en cours. Fin des processus appartenant à Flint…",
+    "report": {
+      "clean": "Arrêté. {{stopped}} arrêtés, {{already}} déjà arrêtés, plus rien en cours.",
+      "partial_one": "{{stopped}} arrêtés, mais {{count}} processus tourne encore. Le nettoyage n'est pas terminé.",
+      "partial_other": "{{stopped}} arrêtés, mais {{count}} processus tournent encore. Le nettoyage n'est pas terminé."
+    },
+    "error": "Impossible d'arrêter : {{error}}",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "confirmBusy": "Arrêt en cours…",
+    "scope": {
+      "call": {
+        "name": "Cet appel d'outil",
+        "desc": "Cet appel d'outil uniquement ({{id}}). Tout le reste de l'exécution continue.",
+        "confirm": "Arrêter l'appel d'outil"
+      },
+      "run": {
+        "name": "Cette exécution",
+        "desc": "Cette exécution ({{id}}), avec ses appels d'outils, commandes shell, appels MCP et sous-agents. Les autres exécutions ne sont pas touchées.",
+        "confirm": "Arrêter l'exécution"
+      },
+      "session": {
+        "name": "Cette session",
+        "desc": "Chaque exécution de cette session ({{id}}). Les autres sessions ne sont pas touchées.",
+        "confirm": "Arrêter la session"
+      },
+      "application": {
+        "name": "Tout dans Flint",
+        "desc": "Tout le travail partout dans Flint, dans chaque session. Rien de ce qui tourne n'est épargné.",
+        "confirm": "Tout arrêter"
+      }
+    }
   }
 }
