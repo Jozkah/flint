@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
 } from 'react'
 import { Eye, Info, X } from 'lucide-react'
 import { fs } from '@janhq/core'
@@ -49,6 +50,57 @@ import { studioLibraryEntries } from '@/lib/studio/library'
 import type { GalleryItem } from '@/lib/studio/studio'
 import { ImageViewer } from '@/components/ImageViewer'
 import { VideoDialog } from '@/containers/studio/StudioPage'
+
+/**
+ * Modal behaviour for the details drawer: focus moves into it, Tab stays
+ * inside, Escape closes it, and focus goes back to where it came from.
+ */
+function useModalDrawer(
+  active: boolean,
+  ref: RefObject<HTMLElement | null>,
+  onClose: () => void
+) {
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    const node = ref.current
+    if (!active || !node) return
+    const opener = document.activeElement as HTMLElement | null
+    node.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        closeRef.current()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'
+        )
+      )
+      if (items.length === 0) {
+        e.preventDefault()
+        return
+      }
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const at = document.activeElement
+      if (e.shiftKey && (at === first || at === node)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && at === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    node.addEventListener('keydown', onKey)
+    return () => {
+      node.removeEventListener('keydown', onKey)
+      if (opener && document.contains(opener)) opener.focus()
+    }
+  }, [active, ref])
+}
 
 export const Route = createFileRoute(route.artifacts)({
   beforeLoad: () => ensureCoworkEnabled(),
@@ -341,6 +393,10 @@ function ArtifactsPage() {
     [rows, selectedKey]
   )
   const inspected = useDeferredValue(selected)
+  // As a drawer over the grid the details behave as a modal dialog.
+  const drawerRef = useRef<HTMLDivElement | null>(null)
+  const closeInspector = useCallback(() => setSelectedKey(null), [])
+  useModalDrawer(Boolean(selected && inspected && !sideColumn), drawerRef, closeInspector)
   const kindsPresent = KINDS.filter(
     (k) => k !== 'video' || rows.some((r) => r.kind === k)
   )
@@ -526,7 +582,16 @@ function ArtifactsPage() {
 
               {selected && inspected && (
                 <div
+                  ref={drawerRef}
                   data-testid="artifact-inspector-slot"
+                  {...(sideColumn
+                    ? {}
+                    : {
+                        role: 'dialog',
+                        'aria-modal': true,
+                        'aria-label': t('common:artifactDetails'),
+                        tabIndex: -1,
+                      })}
                   className={cn(
                     'min-w-0',
                     sideColumn
