@@ -1037,7 +1037,7 @@ mod tests {
             &crate::core::agent::extensions::Surface::Rooms,
             true,
         );
-        matrix.save();
+        matrix.save().unwrap();
         let block = load_skills(project.path());
         let absent = match &block {
             None => true,
