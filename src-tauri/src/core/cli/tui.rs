@@ -363,9 +363,20 @@ struct Pending {
     /// Name of the subagent that requested this, when the call originated inside
     /// a nested subagent run; `None` for the parent agent's own calls.
     subagent: Option<String>,
+    /// When the prompt arrived. Decision keys are ignored for a short settle
+    /// window so a key typed for something else cannot answer it.
+    shown_at: Instant,
 }
 
+/// How long a new permission prompt ignores decision keys (y/a/n/Enter).
+const PERMISSION_SETTLE: Duration = Duration::from_millis(400);
+
 impl Pending {
+    /// True once the prompt has been on screen long enough to take a decision.
+    fn settled(&self) -> bool {
+        self.shown_at.elapsed() >= PERMISSION_SETTLE
+    }
+
     /// One-line summary for the transcript decision record.
     fn summary(&self) -> String {
         let target = self
@@ -3442,6 +3453,20 @@ impl App {
     /// Must mirror the guard list at the top of `handle_key`: a dock that takes
     /// every keystroke but leaves a cursor blinking in the composer promises a
     /// field that is not there.
+    /// True while a permission or ask prompt is queued: it is the single owner
+    /// of the screen and keyboard, ahead of any picker.
+    fn prompt_owns_screen(&self) -> bool {
+        !self.pending_queue.is_empty() || !self.ask_queue.is_empty()
+    }
+
+    /// Close any open picker when a prompt arrives, so `draw` and `handle_key`
+    /// agree on who owns the screen. Live inspectors reopen from their command.
+    fn yield_screen_to_prompt(&mut self) {
+        self.model_picker = None;
+        self.picker = None;
+        self.agent_detail = None;
+    }
+
     fn blocking_dock(&self) -> Option<&'static str> {
         if self.login.is_some() {
             Some("sign in in the dock above")
@@ -5485,7 +5510,9 @@ impl App {
                     prompt_kind,
                     selected: 0,
                     subagent: None,
+                    shown_at: Instant::now(),
                 });
+                self.yield_screen_to_prompt();
                 self.publish_agent_status();
             }
             StreamEvent::AskRequest {
@@ -5499,6 +5526,7 @@ impl App {
                     request,
                     timeout_secs.map(std::time::Duration::from_secs),
                 ));
+                self.yield_screen_to_prompt();
                 self.publish_agent_status();
             }
             // Host tools belong to a headless run driven by a host process.
@@ -5775,7 +5803,9 @@ impl App {
                     prompt_kind,
                     selected: 0,
                     subagent: Some(name.to_string()),
+                    shown_at: Instant::now(),
                 });
+                self.yield_screen_to_prompt();
                 self.publish_agent_status();
             }
             // Each child request bumps its counter, so the panel shows work
@@ -10393,6 +10423,10 @@ async fn handle_key(
             .pending_queue
             .front_mut()
             .expect("checked non-empty above");
+        // Decision keys are plain keystrokes (Ctrl-A / Alt-N / Ctrl-Y are not
+        // answers) and wait out the settle window; arrows and Esc stay live.
+        let plain = !ctrl && !alt && !sup;
+        let settled = pending.settled();
         let decision = match key.code {
             KeyCode::Up => {
                 pending.move_selection(-1);
@@ -10402,14 +10436,19 @@ async fn handle_key(
                 pending.move_selection(1);
                 None
             }
-            KeyCode::Enter => Some(pending.options()[pending.selected].0),
-            KeyCode::Char('y') | KeyCode::Char('Y') => Some(PermissionDecision::AllowOnce),
-            KeyCode::Char('a') | KeyCode::Char('A') if pending.offers_always => {
+            KeyCode::Enter if !newline && settled => Some(pending.options()[pending.selected].0),
+            KeyCode::Char('y') | KeyCode::Char('Y') if plain && settled => {
+                Some(PermissionDecision::AllowOnce)
+            }
+            KeyCode::Char('a') | KeyCode::Char('A')
+                if plain && settled && pending.offers_always =>
+            {
                 Some(PermissionDecision::AllowAlways)
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            KeyCode::Char('n') | KeyCode::Char('N') if plain && settled => {
                 Some(PermissionDecision::Deny)
             }
+            KeyCode::Esc => Some(PermissionDecision::Deny),
             _ => None,
         };
         if let Some(d) = decision {
@@ -16193,7 +16232,8 @@ fn draw(f: &mut Frame, app: &mut App) {
     // stale width would mis-size the frame a resize lands on. The body spans
     // the full frame width (its border is top-only).
     app.view_width = f.area().width.max(1);
-    if let Some(picker) = app.model_picker.as_ref() {
+    let prompt_owns = app.prompt_owns_screen();
+    if let Some(picker) = app.model_picker.as_ref().filter(|_| !prompt_owns) {
         draw_model_picker(f, f.area(), picker, &app.model);
         return;
     }
@@ -16272,7 +16312,7 @@ fn draw(f: &mut Frame, app: &mut App) {
         }
     }
 
-    if let Some(picker) = &app.picker {
+    if let Some(picker) = app.picker.as_ref().filter(|_| !prompt_owns) {
         app.row_index.clear();
         let toml_path = app.agent_dir.join("agent.toml");
         draw_picker(
@@ -19313,6 +19353,10 @@ mod tests {
             prompt_kind: "exec".into(),
             selected: 0,
             subagent: None,
+            // Backdated past the settle window so key tests answer at once.
+            shown_at: Instant::now()
+                .checked_sub(Duration::from_secs(5))
+                .unwrap_or_else(Instant::now),
         }
     }
 
@@ -20055,6 +20099,89 @@ mod tests {
         assert_eq!(p.selected, 0);
         p.move_selection(1);
         assert_eq!(p.selected, 1);
+    }
+
+    async fn prompt_key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        let registry: PermissionRegistry = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let mut current: Option<CurrentRun> = None;
+        handle_key(app, KeyEvent::new(code, mods), &registry, &mut current, &no_mcp()).await;
+    }
+
+    #[tokio::test]
+    async fn ctrl_a_does_not_allow_always() {
+        let mut app = test_app();
+        app.pending_queue.push_back(pending(true));
+        prompt_key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL).await;
+        assert_eq!(app.pending_queue.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn ctrl_y_alt_n_leave_request_queued() {
+        let mut app = test_app();
+        app.pending_queue.push_back(pending(true));
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL).await;
+        prompt_key(&mut app, KeyCode::Char('n'), KeyModifiers::ALT).await;
+        assert_eq!(app.pending_queue.len(), 1);
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE).await;
+        assert!(app.pending_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn decision_keys_ignored_within_settle_window() {
+        let mut app = test_app();
+        let mut p = pending(true);
+        p.shown_at = Instant::now();
+        app.pending_queue.push_back(p);
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE).await;
+        prompt_key(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
+        assert_eq!(app.pending_queue.len(), 1, "decision inside the window");
+        app.pending_queue.front_mut().unwrap().shown_at =
+            Instant::now().checked_sub(Duration::from_millis(500)).unwrap();
+        prompt_key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE).await;
+        assert!(app.pending_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn esc_denies_inside_settle_window() {
+        let mut app = test_app();
+        let mut p = pending(true);
+        p.shown_at = Instant::now();
+        app.pending_queue.push_back(p);
+        prompt_key(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.pending_queue.is_empty());
+    }
+
+    #[test]
+    fn permission_closes_open_picker() {
+        let mut app = test_app();
+        open_config_screen(&mut app);
+        assert!(app.picker.is_some());
+        app.apply(StreamEvent::PermissionRequest {
+            request_id: "p1".into(),
+            tool_name: "bash".into(),
+            capability: "exec".into(),
+            path: None,
+            command: Some("ls".into()),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".into(),
+            offers_always: true,
+            reason: None,
+            args_digest: None,
+            call_id: None,
+        });
+        assert!(app.picker.is_none());
+        assert!(app.prompt_owns_screen());
+    }
+
+    #[test]
+    fn draw_renders_permission_over_picker() {
+        let mut app = test_app();
+        open_config_screen(&mut app);
+        assert!(app.picker.is_some());
+        app.pending_queue.push_back(pending(true));
+        let rows = render_rows(&mut app, 100, 30).join("\n");
+        assert!(rows.contains("Deny"), "{rows}");
     }
 
     // ---- full repaint (janhq/jan#8804, #8780, adapted from #8806) ----------
