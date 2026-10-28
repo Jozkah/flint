@@ -208,4 +208,19 @@ describe('RemotePairingConfirm', () => {
     fireEvent.keyDown(screen.getByTestId('remote-confirm-dialog'), { key: 'Escape' })
     await waitFor(() => expect(api.confirmPairing).toHaveBeenCalledWith('q1', false))
   })
+
+  it('ignores a click outside the dialog', () => {
+    const api = makeApi(status())
+    act(() => {
+      useRemoteAccess.setState({
+        pairingRequest: { requestId: 'q1', deviceName: 'Pixel 9', confirmNumber: '482913' },
+      })
+    })
+    render(<RemotePairingConfirm api={api} />)
+    fireEvent.pointerDown(document.body)
+    fireEvent.mouseDown(document.body)
+    fireEvent.click(document.body)
+    expect(api.confirmPairing).not.toHaveBeenCalled()
+    expect(screen.getByTestId('remote-confirm-dialog')).toBeInTheDocument()
+  })
 })
