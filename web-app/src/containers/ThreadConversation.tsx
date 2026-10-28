@@ -65,6 +65,7 @@ import {
   stampContextErrorOnThread,
   writeDetailsOpen,
 } from '@/lib/chat/threadHelpers'
+import { requestAlwaysAskApproval, requestToolApproval } from '@/lib/chat/requestToolApproval'
 import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { BRANCH_CHANGED_EVENT, repairActiveRoot, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
 import { useMessageErrors } from '@/stores/message-errors'
@@ -1048,40 +1049,15 @@ export function ThreadConversation({
             const approved = !needsApproval
               ? true
               : forced
-                ? await useToolApprovalRequests
-                    .getState()
-                    .requestApproval(
-                      toolCall.toolCallId,
-                      toolName,
-                      threadId,
-                      undefined,
-                      {
-                        input: toolCall.input,
-                        alwaysAsk: true,
-                        taskContext: forced.reason,
-                        // Checked above through the filesystem, with the
-                        // thread's real workspace.
-                        destructiveChecked: true,
-                        threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                        signal,
-                      }
-                    )
+                ? await requestAlwaysAskApproval(
+                    { ...toolCall, toolName },
+                    threadId,
+                    { taskContext: forced.reason, signal }
+                  )
                 : await (toolApprovalPromises.current.get(
                     toolCall.toolCallId
                   ) ??
-                    useToolApprovalRequests
-                      .getState()
-                      .requestApproval(
-                        toolCall.toolCallId,
-                        toolName,
-                        threadId,
-                        serverForTool(toolName),
-                        {
-                          input: toolCall.input,
-                          threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                          autoApproveStreak: threadId,
-                        }
-                      ))
+                    requestToolApproval({ ...toolCall, toolName }, threadId))
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             openPermission = null
@@ -1229,23 +1205,11 @@ export function ThreadConversation({
                   failureResources: rest.resources,
                   program: commandProgram(toolCall.input),
                   ask: () =>
-                    useToolApprovalRequests
-                      .getState()
-                      .requestApproval(
-                        toolCall.toolCallId,
-                        toolName,
-                        threadId,
-                        undefined,
-                        {
-                          input: toolCall.input,
-                          alwaysAsk: true,
-                          taskContext: NULL_DEVICE_RETRY_REASON,
-                          ...nullRerunApprovalScope(threadId, toolCall.input),
-                          destructiveChecked: true,
-                          threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                          signal,
-                        }
-                      ),
+                    requestAlwaysAskApproval({ ...toolCall, toolName }, threadId, {
+                      taskContext: NULL_DEVICE_RETRY_REASON,
+                      scope: nullRerunApprovalScope(threadId, toolCall.input),
+                      signal,
+                    }),
                 })
                 if (settled.firstAttempt) {
                   useToolCallRuntime
@@ -1549,19 +1513,7 @@ export function ThreadConversation({
       ) {
         toolApprovalPromises.current.set(
           toolCall.toolCallId,
-          useToolApprovalRequests
-            .getState()
-            .requestApproval(
-              toolCall.toolCallId,
-              toolCall.toolName,
-              threadId,
-              serverForTool(toolCall.toolName),
-              {
-                input: toolCall.input,
-                threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                autoApproveStreak: threadId,
-              }
-            )
+          requestToolApproval(toolCall, threadId)
         )
       }
     },
