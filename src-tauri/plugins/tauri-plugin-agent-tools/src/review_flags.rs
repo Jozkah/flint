@@ -209,6 +209,22 @@ fn parse_manifest(name: &str, text: &str) -> Option<Deps> {
                     }
                 }
             }
+            // Overrides swap the version or source of a package anywhere in
+            // the tree, including one that is not listed above at all.
+            let pnpm = doc.get("pnpm").and_then(|p| p.get("overrides"));
+            for (section, table) in [
+                ("overrides", doc.get("overrides")),
+                ("resolutions", doc.get("resolutions")),
+                ("pnpm.overrides", pnpm),
+            ] {
+                if let Some(map) = table.and_then(Value::as_object) {
+                    for (dep, v) in map {
+                        // Nested overrides (`{ "a": { ".": "1", "b": "2" } }`) are kept whole.
+                        let shown = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
+                        deps.insert(format!("{dep} ({section})"), shown);
+                    }
+                }
+            }
         }
         "cargo.toml" => {
             let doc: toml::Value = text.parse().ok()?;
@@ -512,6 +528,16 @@ mod tests {
         let d = details("Cargo.toml", Some(before), Some(after));
         assert!(d.iter().any(|x| x.starts_with("serde (patch.crates-io) added at git https://example.com/serde")), "{d:?}");
         assert!(d.iter().any(|x| x.starts_with("tokio:1.0.0 (replace) added at path ../t")), "{d:?}");
+    }
+
+    #[test]
+    fn package_json_overrides_and_resolutions_flagged() {
+        let before = "{\"dependencies\":{\"a\":\"1\"}}";
+        let after = "{\"dependencies\":{\"a\":\"1\"},\"overrides\":{\"lodash\":\"git+https://example.com/l.git\"},\"resolutions\":{\"x\":\"2\"},\"pnpm\":{\"overrides\":{\"y\":\"3\"}}}";
+        let d = details("package.json", Some(before), Some(after));
+        for expected in ["lodash (overrides) added", "x (resolutions) added", "y (pnpm.overrides) added"] {
+            assert!(d.iter().any(|x| x.starts_with(expected)), "{expected}: {d:?}");
+        }
     }
 
     #[test]
