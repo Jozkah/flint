@@ -44,6 +44,9 @@
     "description": "S'estan indexant els fitxers adjunts perquè es puguin cercar i citar. Pot trigar una mica amb documents grans."
   },
   "actions": {
+    "readAloud": "Llegeix en veu alta",
+    "stopReading": "Atura la lectura",
+    "codeOmitted": "codi omès",
     "copy": "Copia",
     "regenerate": "Regenera la resposta",
     "continue": "Continua generant",

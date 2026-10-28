@@ -682,5 +682,6 @@
     "ranTools": "Dříve v tomto tahu jsi už spustil nástroje ({{ran}}); {{reason}} Neopakuj nic, co změnilo soubory nebo stav; znovu čti jen to, co ještě potřebuješ.",
     "ranToolsDropped": "jejich výstup byl vyřazen, aby se vešel do kontextového okna.",
     "ranToolsRetry": "poskytovatel pak selhal a požadavek se opakuje."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

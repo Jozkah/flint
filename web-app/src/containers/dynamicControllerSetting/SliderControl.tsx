@@ -20,7 +20,7 @@ interface SliderControlProps {
 
 export function SliderControl({
   value,
-  key,
+  id,
   title,
   min = 0,
   max = 100,
@@ -83,7 +83,7 @@ export function SliderControl({
             {min}
           </span>
           <Slider
-            id={key}
+            id={id}
             min={min}
             max={max}
             step={step}
@@ -107,11 +107,13 @@ export function SliderControl({
               : 'text-foreground'
           }`}
           value={inputValue}
+          aria-label={title}
+          aria-invalid={isExceedingMax || undefined}
           onChange={handleInputChange}
         />
       </div>
       {isExceedingMax && (
-        <p className="text-xs text-destructive mt-1">
+        <p role="alert" className="text-xs text-destructive mt-1">
           Maximum value allowed is <span className="font-medium">{max}</span>
         </p>
       )}

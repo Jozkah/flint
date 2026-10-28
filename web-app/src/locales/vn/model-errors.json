@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Mô hình này dùng kiểu lượng tử hóa mà backend GPU không chạy được. Hãy tải một bản lượng tử hóa khác như Q4_K_M, hoặc tắt chuyển tải sang GPU.",
     "ENGINE_STOPPED": "Engine đã dừng đột ngột. Hãy tải lại mô hình để khởi động lại; nếu vẫn tiếp diễn, đầu ra cuối cùng của engine bên dưới sẽ cho biết lý do.",
     "OUT_OF_MEMORY": "Không đủ bộ nhớ để chạy mô hình này. Thường thì dùng mô hình nhỏ hơn hoặc kích thước ngữ cảnh nhỏ hơn sẽ giúp ích.",
+    "PROMPT_OUT_OF_MEMORY": "Mô hình đã hết bộ nhớ GPU với lời nhắc này nên máy chủ của nó đã dừng. Hãy thử ngữ cảnh ngắn hơn hoặc mô hình nhỏ hơn; tin nhắn tiếp theo sẽ khởi động lại máy chủ.",
     "INVALID_ARGUMENT": "Một trong các cài đặt của mô hình không hợp lệ.",
     "IO_ERROR": "Không thể đọc hoặc ghi một tệp khi khởi động mô hình.",
     "INTERNAL_ERROR": "Đã xảy ra lỗi bên trong Flint khi khởi động mô hình."
@@ -38,5 +39,8 @@
   "serverStartModelFailed": "Không thể khởi động mô hình",
   "serverStartFailed": "Không thể khởi động máy chủ",
   "azureEndpointMissing": "Chưa cấu hình endpoint cho {{provider}}. Hãy đặt Base URL trong Cài đặt > Nhà cung cấp mô hình.",
-  "emptyReply": "Mô hình đã kết thúc mà không trả về phản hồi. Hãy thử tạo lại hoặc kiểm tra cài đặt nhà cung cấp."
+  "emptyReply": "Mô hình đã kết thúc mà không trả về phản hồi. Hãy thử tạo lại hoặc kiểm tra cài đặt nhà cung cấp.",
+  "gpuCrashCpuFallbackTitle": "Trình điều khiển GPU bị lỗi",
+  "gpuCrashCpuFallbackQuestion": "Trình điều khiển GPU bị lỗi khi tải mô hình này. Tải trên CPU thay thế? Sẽ chạy chậm hơn.",
+  "gpuCrashCpuFallbackConfirm": "Tải trên CPU"
 }

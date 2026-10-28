@@ -646,5 +646,6 @@
     "ranTools": "在本輪稍早你已經執行過工具({{ran}});{{reason}}不要重複任何更動過檔案或狀態的操作;只重新讀取你仍然需要的內容。",
     "ranToolsDropped": "它們的輸出已被捨棄,以符合上下文視窗。",
     "ranToolsRetry": "隨後供應商發生錯誤,請求正在重試。"
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

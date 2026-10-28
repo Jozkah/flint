@@ -107,9 +107,14 @@ export async function previewMentions(
 /** The prompt with one mention token taken out, and the gap it leaves closed. */
 export function removeMention(text: string, token: string): string {
   const escaped = token.replace(/[.*+?^${}()|[\]\\#]/g, '\\$&')
-  return text
-    .replace(new RegExp(`(^|[^A-Za-z0-9_])@${escaped}(?![A-Za-z0-9_.-])[ \\t]?`, 'g'), '$1')
-    .replace(/[ \t]+$/gm, '')
+  const tail = token.endsWith('#summary') ? '' : '#'
+  return text.replace(
+    new RegExp(
+      `(^|[^A-Za-z0-9_])@${escaped}(?![A-Za-z0-9_.${tail}-])[ \\t]?`,
+      'g'
+    ),
+    '$1'
+  )
 }
 
 /** The prompt with one mention switched between excerpt and `#summary`. */

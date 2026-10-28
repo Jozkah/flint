@@ -126,7 +126,9 @@ pub(crate) fn resolve() -> Result<ResolvedEndpoint, String> {
 pub(crate) fn token_for<'a>(endpoint: &ResolvedEndpoint, token: Option<&'a str>) -> Option<&'a str> {
     let token = token.map(str::trim).filter(|t| !t.is_empty())?;
     let official = endpoint.url.scheme() == "https" && endpoint.url.host_str() == Some(DEFAULT_HF_HOST);
-    (official || endpoint.send_token_to_mirror).then_some(token)
+    // Never over plain http, even to an opted-in mirror (ENG-024).
+    let secure = token_allowed_for(&endpoint.url);
+    (secure && (official || endpoint.send_token_to_mirror)).then_some(token)
 }
 
 /// `token` filtered for the endpoint in force now.
@@ -162,6 +164,12 @@ pub(crate) fn hf_endpoint() -> Result<Url, String> {
     Ok(resolve()?.url)
 }
 
+/// Whether the access token may be sent to `endpoint`: only over https, so a
+/// plain-http mirror never sees it (ENG-024).
+pub(crate) fn token_allowed_for(endpoint: &Url) -> bool {
+    endpoint.scheme() == "https"
+}
+
 /// `base` with `parts` appended as path segments.
 pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
     let mut url = base.clone();
@@ -180,6 +188,14 @@ pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_only_goes_to_https_endpoints() {
+        let https = parse_endpoint(Some("https://huggingface.co")).unwrap();
+        let http = parse_endpoint(Some("http://mirror.lan")).unwrap();
+        assert!(token_allowed_for(&https));
+        assert!(!token_allowed_for(&http));
+    }
 
     #[test]
     fn endpoint_defaults_and_normalises() {

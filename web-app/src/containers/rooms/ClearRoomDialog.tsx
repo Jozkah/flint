@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Label } from '@/components/ui/label'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CLEAR_SCOPES, type ClearScope } from '@/lib/rooms/clearRoom'
 
@@ -59,9 +58,9 @@ export function ClearRoomDialog({
             >
               <RadioGroupItem id={`clear-${s}`} value={s} aria-label={t(`rooms:clear.${s}`)} />
               <span className="flex min-w-0 flex-col gap-0.5">
-                <Label htmlFor={`clear-${s}`} className="cursor-pointer">
+                <span className="cursor-pointer text-sm font-medium leading-none">
                   {t(`rooms:clear.${s}`)}
-                </Label>
+                </span>
                 <span className="text-xs text-muted-foreground">{t(`rooms:clear.${s}Hint`)}</span>
               </span>
             </label>

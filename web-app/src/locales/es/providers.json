@@ -251,5 +251,9 @@
     "remove": "Quitar",
     "replace": "Guardado. Escribe para reemplazarlo.",
     "enter": "Sin definir"
-  }
+  },
+  "skippedLinkedTitle": "Modelos omitidos: {{count}}",
+  "skippedLinkedBody": "Estos modelos están guardados a través de un enlace que apunta fuera de la carpeta de datos de Flint, así que Flint no los cargó:",
+  "skippedLinkedHowTo": "Para usar uno, importa su archivo GGUF por ruta (Flint lo deja donde está) o vuelve a mover los archivos a la carpeta de modelos.",
+  "skippedLinkedDismiss": "Descartar"
 }

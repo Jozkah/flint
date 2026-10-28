@@ -29,6 +29,24 @@ describe('GlobalError Component', () => {
     expect(stackTrace).toBeDefined()
   })
 
+  it('logs the error once per error, not on every render', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = new Error('once')
+    const { rerender } = render(<GlobalError error={error} />)
+    rerender(<GlobalError error={error} />)
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('cuts the collapsed stack on a line boundary', () => {
+    const error = new Error('x')
+    error.stack = ['line one', 'b'.repeat(300)].join('\n')
+    render(<GlobalError error={error} />)
+    expect(screen.getByText(/line one/).textContent).toBe(
+      ['line one', '...'].join('\n')
+    )
+  })
+
   it('should toggle between truncated and full stack trace', () => {
     const error = new Error('Test error')
     error.stack = 'a'.repeat(300)

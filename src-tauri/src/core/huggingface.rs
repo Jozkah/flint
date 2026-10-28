@@ -234,7 +234,7 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface"),
     );
-    // A mirror only gets the token when the user opted in.
+    // Token only over https, and to a mirror only when the user opted in.
     if let Some(token) = crate::core::hf_endpoint::hub_token(token)? {
         let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "Invalid Hugging Face token".to_string())?;

@@ -852,7 +852,28 @@
     "openCodeFolderInCowork": "Abrir pasta de código no Cowork",
     "openCodeFolder": "Abrir pasta de código",
     "openCodeFolderDescription": "Escolha uma pasta no seu computador para o Flint trabalhar.",
-    "setUpEmbeddingModel": "Configurar um modelo de embedding"
+    "setUpEmbeddingModel": "Configurar um modelo de embedding",
+    "webPage": {
+      "open": "Adicionar página web",
+      "title": "Adicionar uma página web",
+      "description": "Busca uma página e guarda o texto legível como arquivo do projeto. Só funcionam endereços públicos http e https.",
+      "urlLabel": "Endereço da página",
+      "add": "Adicionar página",
+      "refresh": "Atualizar",
+      "added": "\"{{name}}\" adicionado",
+      "refreshed": "\"{{name}}\" atualizado",
+      "truncated": "A página passou do limite de tamanho, então só a primeira parte foi guardada.",
+      "refreshFailed": "Não foi possível atualizar a página",
+      "errors": {
+        "invalidUrl": "Digite um endereço web completo que comece com http:// ou https://.",
+        "blocked": "Esse endereço aponta para este computador ou para uma rede privada, então não foi buscado.",
+        "timeout": "A página demorou demais para responder. Tente de novo mais tarde.",
+        "notHtml": "Esse endereço não é uma página web com texto legível (por exemplo, um PDF, imagem ou download).",
+        "tooLarge": "A página é grande demais.",
+        "httpError": "O site retornou um erro: {{message}}",
+        "failed": "Não foi possível buscar a página: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Escolha como ingerir os anexos",
@@ -2769,7 +2790,11 @@
     "noVision": "Este modelo não consegue ler imagens",
     "details": "Detalhes de {{name}}",
     "previewLoading": "Carregando pré-visualização…",
-    "previewNone": "Nenhuma pré-visualização disponível"
+    "previewNone": "Nenhuma pré-visualização disponível",
+    "pagesAsImages": "Enviar páginas como imagens",
+    "pagesAsImagesHint": "Envie as páginas deste PDF como imagens para que o modelo veja digitalizações, gráficos e layout",
+    "pdfPagesCut": "As primeiras {{sent}} de {{total}} páginas de {{name}} foram enviadas como imagens",
+    "pdfScannedAsImages": "{{name}} não tem texto, então suas páginas foram enviadas como imagens"
   },
   "fileViewer": {
     "openFull": "Abrir prévia completa",
@@ -3132,5 +3157,10 @@
     "reject": "Rejeitar",
     "applying": "Aplicando…",
     "applySelected": "Aplicar seleção"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }
