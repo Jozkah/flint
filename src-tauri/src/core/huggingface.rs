@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use url::Url;
 
-use crate::core::hf_endpoint::{endpoint_url, hf_endpoint};
+use crate::core::hf_endpoint::{endpoint_url, hf_endpoint, token_allowed_for};
 /// Results per search when the caller names no limit, and the most it may ask
 /// for (the Hub refuses larger pages).
 const DEFAULT_SEARCH_RESULTS: u32 = 50;
@@ -205,7 +205,12 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface"),
     );
-    if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
+    // Never put the token on a plain-http mirror.
+    let token_ok = hf_endpoint().map(|ep| token_allowed_for(&ep)).unwrap_or(false);
+    if let Some(token) = token
+        .map(str::trim)
+        .filter(|token| !token.is_empty() && token_ok)
+    {
         let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);

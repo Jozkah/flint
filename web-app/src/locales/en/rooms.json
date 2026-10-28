@@ -652,5 +652,6 @@
     "ranTools": "Earlier in this turn you already ran tools ({{ran}}); {{reason}} Do not repeat anything that changed files or state; read again only what you still need.",
     "ranToolsDropped": "their output was dropped to fit the context window.",
     "ranToolsRetry": "the provider then failed and the request is being retried."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

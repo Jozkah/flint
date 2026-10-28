@@ -177,6 +177,8 @@ export const useStudio = create<StudioState>((set, get) => ({
   unload: async () => {
     try {
       await studioApi.unload()
+    } catch (error) {
+      set({ error: message(error) })
     } finally {
       await get().refresh()
     }

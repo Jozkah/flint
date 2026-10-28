@@ -174,6 +174,8 @@ export interface ModelsService {
   getTokensCount(modelId: string, messages: ThreadMessage[]): Promise<number>
   startEngineSetup(): Promise<void>
   getEngineVersion(): Promise<EngineVersionInfo | null>
+  /** Models the last listing left out because they resolve outside the data folder. */
+  getSkippedLinkedModels(): Promise<SkippedLinkedModel[]>
   verifyEmbeddingModel(): Promise<EmbeddingModelReport>
   verifyGpuOffload(): Promise<GpuOffloadReport>
 }
@@ -244,4 +246,11 @@ export interface GpuOffloadReport extends ReadinessReport {
   reason?: GpuOffloadReason
   /** Set only for `missingLibrary`; names are not translatable. */
   missingLibraries?: string[]
+}
+
+/** A model folder reached through a link that points outside the data folder. */
+export interface SkippedLinkedModel {
+  id: string
+  path: string
+  reason: 'outside_data_folder'
 }

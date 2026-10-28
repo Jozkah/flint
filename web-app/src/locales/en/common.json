@@ -575,6 +575,7 @@
   "threadImage": "Thread image",
   "editMessage": "Edit Message",
   "deleteMessage": "Delete Message",
+  "deleteMessageDescription": "Are you sure you want to delete this message? This action cannot be undone.",
   "deleteThread": "Delete Thread",
   "renameThread": "Rename Thread",
   "threadTitle": "Thread Title",
@@ -891,7 +892,28 @@
     "openCodeFolderInCowork": "Open code folder in Cowork",
     "openCodeFolder": "Open code folder",
     "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in.",
-    "setUpEmbeddingModel": "Set up an embedding model"
+    "setUpEmbeddingModel": "Set up an embedding model",
+    "webPage": {
+      "open": "Add web page",
+      "title": "Add a web page",
+      "description": "Fetch a page and keep its readable text as a project file. Only public http and https addresses work.",
+      "urlLabel": "Page address",
+      "add": "Add page",
+      "refresh": "Refresh",
+      "added": "Added \"{{name}}\"",
+      "refreshed": "Refreshed \"{{name}}\"",
+      "truncated": "The page was longer than the size limit, so only the first part was kept.",
+      "refreshFailed": "Could not refresh the page",
+      "errors": {
+        "invalidUrl": "Enter a full web address that starts with http:// or https://.",
+        "blocked": "That address points to this computer or a private network, so it was not fetched.",
+        "timeout": "The page took too long to respond. Try again later.",
+        "notHtml": "That address is not a web page with readable text (for example a PDF, image or download).",
+        "tooLarge": "The page is too large to fetch.",
+        "httpError": "The site returned an error: {{message}}",
+        "failed": "Could not fetch the page: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Choose how to ingest attachments",
@@ -2809,7 +2831,11 @@
     "noVision": "This model can't read images",
     "details": "Details for {{name}}",
     "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "previewNone": "No preview available",
+    "pagesAsImages": "Send pages as images",
+    "pagesAsImagesHint": "Send this PDF's pages as images, so the model sees scans, charts and layout",
+    "pdfPagesCut": "Sent the first {{sent}} of {{total}} pages of {{name}} as images",
+    "pdfScannedAsImages": "{{name}} has no text, so its pages were sent as images"
   },
   "fileViewer": {
     "openFull": "Open full preview",
@@ -3085,5 +3111,10 @@
     "applySelected": "Apply selected"
   },
   "chatRules": "Rules",
-  "chatRuleForThisChat": "Use this rule in this chat"
+  "chatRuleForThisChat": "Use this rule in this chat",
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
+  }
 }

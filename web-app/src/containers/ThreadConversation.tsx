@@ -2102,6 +2102,7 @@ export function ThreadConversation({
             serviceHub,
             selectedProvider,
             modelSupportsTools: toolsEnabled,
+            modelSupportsVision: !!selectedModel?.capabilities?.includes('vision'),
             parsePreference,
             contextThreshold,
             estimateTokens: estimateAttachmentTokens,

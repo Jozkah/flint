@@ -272,7 +272,14 @@ impl PromptSnapshot {
 /// Matched on the key, because an auth header's value is opaque: it may be a
 /// long random string or the word `Bearer` followed by one, and no
 /// value-shaped heuristic catches both reliably.
-const CREDENTIAL_KEYS: [(&str, &str); 9] = [
+const CREDENTIAL_KEYS: [(&str, &str); 16] = [
+    ("refresh_token", "token"),
+    ("id_token", "token"),
+    ("session_token", "token"),
+    ("client_secret", "secret-field"),
+    ("x-auth-token", "token"),
+    ("x-amz-security-token", "token"),
+    ("x-csrf-token", "token"),
     ("authorization", "auth-header"),
     ("proxy-authorization", "auth-header"),
     ("cookie", "cookie"),
@@ -296,6 +303,19 @@ fn credential_reason(key: &str) -> Option<&'static str> {
                 .iter()
                 .any(|needle| lower.contains(needle))
                 .then_some("secret-field")
+        })
+        .or_else(|| {
+            // Any other `*token*` name, except the counters models report.
+            const COUNTERS: [&str; 6] = [
+                "max_tokens",
+                "tokens",
+                "token_count",
+                "tokens_used",
+                "max_output_tokens",
+                "max_completion_tokens",
+            ];
+            (lower.contains("token") && !lower.ends_with("tokens") && !COUNTERS.contains(&lower.as_str()))
+                .then_some("token")
         })
 }
 
@@ -768,6 +788,16 @@ pub fn by_session(data_folder: &Path, session: &str) -> Vec<PromptSnapshot> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn token_named_credentials_are_redacted_and_token_counters_kept() {
+        for key in ["refresh_token", "id_token", "X-CSRF-Token", "x-amz-security-token", "client_secret", "my_token"] {
+            assert!(credential_reason(key).is_some(), "{key}");
+        }
+        for key in ["max_tokens", "tokens", "token_count", "tokens_used", "prompt_tokens"] {
+            assert!(credential_reason(key).is_none(), "{key}");
+        }
+    }
 
     /// Jozkah/jan#282: a log past the byte threshold with few (large)
     /// records is trimmed on the next append, so the one after that does

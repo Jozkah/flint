@@ -66,7 +66,10 @@ fn fold_case(text: String) -> String {
 fn spelled(folder: &Path) -> String {
     let canonical = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let mut text = canonical.to_string_lossy().replace('\\', "/");
-    if let Some(rest) = text.strip_prefix("//?/") {
+    // `\\?\UNC\server\share` is `\\server\share`; `\\?\C:\x` is `C:\x`.
+    if let Some(rest) = text.strip_prefix("//?/UNC/") {
+        text = format!("//{rest}");
+    } else if let Some(rest) = text.strip_prefix("//?/") {
         text = rest.to_string();
     }
     while text.len() > 1 && text.ends_with('/') {
@@ -256,8 +259,24 @@ pub fn broad_folder(folder: &Path) -> Option<&'static str> {
         return Some("a drive or filesystem root");
     }
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from);
-    if home.is_some_and(|h| key(&h) == key(&canonical)) {
-        return Some("your home folder");
+    if let Some(home) = home {
+        let (h, c) = (key(&home), key(&canonical));
+        if h == c {
+            return Some("your home folder");
+        }
+        // Trust covers everything below, so an ancestor of home (`C:\Users`,
+        // `/home`) trusts every account's folders.
+        if h.starts_with(&format!("{}/", c.trim_end_matches('/'))) {
+            return Some("a folder that contains your home folder");
+        }
+        for bulk in ["Desktop", "Documents", "Downloads"] {
+            if key(&home.join(bulk)) == c {
+                return Some("a folder that holds many unrelated projects");
+            }
+        }
+    }
+    if key(&std::env::temp_dir()) == key(&canonical) {
+        return Some("the temp folder");
     }
     None
 }
@@ -361,12 +380,24 @@ pub fn carries(folder: &Path) -> Carries {
 /// Whether this is the first time `run` is told that `folder`'s hooks are off.
 /// Used to say so once per run, not on every tool call.
 pub fn first_notice(run: &str, folder: &Path) -> bool {
-    use std::collections::HashSet;
+    use std::collections::{HashSet, VecDeque};
     use std::sync::Mutex;
-    static TOLD: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+    /// Most runs remembered; the oldest is forgotten first.
+    const MAX_TOLD: usize = 1000;
+    static TOLD: Mutex<Option<(HashSet<String>, VecDeque<String>)>> = Mutex::new(None);
     let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
-    told.get_or_insert_with(HashSet::new)
-        .insert(format!("{run}\u{1f}{}", key(folder)))
+    let (seen, order) = told.get_or_insert_with(|| (HashSet::new(), VecDeque::new()));
+    let id = format!("{run}\u{1f}{}", key(folder));
+    if !seen.insert(id.clone()) {
+        return false;
+    }
+    order.push_back(id);
+    while order.len() > MAX_TOLD {
+        if let Some(old) = order.pop_front() {
+            seen.remove(&old);
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -576,6 +607,26 @@ mod tests {
         assert!(broad_folder(root).is_some());
         let dir = temp();
         assert!(broad_folder(&dir.path().join("proj")).is_none());
+    }
+
+    #[test]
+    fn ancestors_of_home_and_the_temp_folder_are_too_broad_to_trust() {
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from);
+        if let Some(parent) = home.as_deref().and_then(Path::parent) {
+            assert!(broad_folder(parent).is_some(), "{parent:?}");
+        }
+        assert!(broad_folder(&std::env::temp_dir()).is_some());
+    }
+
+    #[test]
+    fn the_told_set_stays_bounded() {
+        let dir = temp();
+        for i in 0..1500 {
+            assert!(first_notice(&format!("bound-run-{i}"), dir.path()));
+        }
+        // The newest is still remembered, the oldest was forgotten.
+        assert!(!first_notice("bound-run-1499", dir.path()));
+        assert!(first_notice("bound-run-0", dir.path()));
     }
 
     #[test]

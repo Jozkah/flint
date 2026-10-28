@@ -252,5 +252,9 @@
     "remove": "Odebrat",
     "replace": "Uloženo. Pro nahrazení pište.",
     "enter": "Nenastaveno"
-  }
+  },
+  "skippedLinkedTitle": "Přeskočené modely: {{count}}",
+  "skippedLinkedBody": "Tyto modely jsou uložené přes odkaz, který vede mimo datovou složku Flintu, proto je Flint nenačetl:",
+  "skippedLinkedHowTo": "Chcete-li některý použít, importujte jeho soubor GGUF podle cesty (Flint ho nechá na místě), nebo soubory přesuňte zpět do složky modelů.",
+  "skippedLinkedDismiss": "Zavřít"
 }
