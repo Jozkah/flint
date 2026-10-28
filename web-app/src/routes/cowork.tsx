@@ -83,12 +83,9 @@ import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
   runTitle,
   recordAgentDispatch,
-  recordJobCollected,
-  recordShellOutcome,
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
 import {
-  collectedJobId,
   finishedJobPatch,
 } from '@/lib/coworkTasks'
 import {
@@ -115,8 +112,6 @@ import {
 import {
   agentAttribution,
   drainIdleSession,
-  takeClaimed,
-  hasLiveSteering,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -149,10 +144,8 @@ import {
 } from '@/lib/toolActivity'
 import { createStreamSink } from '@/lib/cowork/run/streamSink'
 import { createLiveLane } from '@/lib/cowork/run/liveLane'
-import {
-  useToolCallRuntime,
-  withToolTiming,
-} from '@/hooks/useToolCallRuntime'
+import { createStepHandlers } from '@/lib/cowork/run/stepHandlers'
+import { withToolTiming } from '@/hooks/useToolCallRuntime'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
@@ -207,25 +200,21 @@ import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
-import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
-import { createDecodeClock, generationSpeed, speedStats } from '@/lib/tokenSpeed'
+import { createDecodeClock, speedStats } from '@/lib/tokenSpeed'
 import {
   prepareCoworkAttachments,
   type CoworkAttachmentInput,
   type SubmittedFile,
 } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
-import { usageEventPayload } from '@/lib/executionTimeline'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
   useCoworkView,
   type CoworkRail,
 } from '@/hooks/useCoworkView'
-import { useFileActivity } from '@/hooks/useFileActivity'
 import {
-  deriveFromTurns,
   isChange,
   type FileActivityEvent,
   type FileOrigin,
@@ -305,7 +294,6 @@ import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
   deriveRunOutcome,
   } from '@/lib/coworkRunOutcome'
-import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
 import {
   executeCampaignTool,
   isCoordinatorEligible,
@@ -3647,6 +3635,22 @@ export function CoworkPage() {
       // way every other ending is: the user's own message is committed, the
       // run is closed and nothing is left running.
       if (overflow) throw overflow
+      const stepHandlers = createStepHandlers({
+        rs,
+        sid,
+        runId,
+        run,
+        modelId: selectedModel?.id,
+        runDeadline,
+        transport,
+        decodeClock,
+        streamed: streamedAssistantTurns,
+        mailLedger,
+        latestSnapshot: () => lastSnapshotRef.current[sid],
+        originOfPath,
+        saveInFlight,
+        pushLive,
+      })
       rs.outcome = await runTurn({
         messages,
         signal: controller.signal,
@@ -4398,227 +4402,16 @@ export function CoworkPage() {
               }, toolSignal)
             ),
           sink,
-          onStep: ({ step, result, turns, outcomes }) => {
-            if (result.usage)
-              useCoworkRun.getState().setUsage(sid, result.usage)
-            saveInFlight(true)
-            // Persisted as it goes, not at the end: a run killed mid-flight
-            // must not come back with its steps unspent. AH-018.
-            useCoworkSessions.getState().setRunBudget(sid, {
-              runId,
-              steps: step,
-              maxSteps: MAX_AGENT_STEPS,
-              deadlineAt: runDeadline.at,
-              deadlineBudgetMs: runDeadline.budgetMs,
-            })
-            /**
-             * Bind the provider's own count to the payload it counted.
-             * AH-073.
-             *
-             * The snapshot the transport just took carries the invocation, so
-             * the exact number and the exact bytes name the same model call.
-             * Without that the count is "the last request", which is a
-             * different thing on every step of a long turn.
-             */
-            // AH-172: the request's own events in the canonical log, bound
-            // to its invocation -- its usage (counts only) and what the
-            // response was made of (sizes only; the words stay in the
-            // transcript). One id per invocation, so a retried record is one.
-            const stepInvocation = (rs.stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
-            if (stepInvocation) {
-              const stepUsage = fromCoworkUsage(result.usage)
-              recordEvents([
-                ...(stepUsage
-                  ? [
-                      {
-                        id: `usage:${stepInvocation}`,
-                        session: sid,
-                        run: runId,
-                        invocation: stepInvocation,
-                        kind: 'usage.reported' as const,
-                        payload: usageEventPayload(stepUsage),
-                      },
-                    ]
-                  : []),
-                {
-                  id: `message:${stepInvocation}`,
-                  session: sid,
-                  run: runId,
-                  invocation: stepInvocation,
-                  kind: 'message.completed' as const,
-                  payload: {
-                    textChars: result.text.length,
-                    toolCalls: result.toolCalls.length,
-                  },
-                },
-              ])
-            }
-            if (result.usage) {
-              void recordPayloadUsage({
-                session: sid,
-                run: runId,
-                snapshot: rs.stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
-                model: selectedModel?.id,
-                usage: result.usage,
-              })
-            }
-            // Replace the optimistic running rows with the settled ones so the
-            // transcript shows results, not spinners.
-            rs.runTurns = rs.runTurns.filter(
-              (turn) =>
-                !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
-                !streamedAssistantTurns.has(turn)
-            )
-            streamedAssistantTurns.clear()
-            const liveStats = useAppState.getState().liveTokenStatsByThread[sid]
-            // Prefer llama.cpp's reported generation speed; otherwise derive it
-            // from output tokens over the streaming span, so remote providers
-            // (pxa-27b and every other non-llama.cpp model) still show a
-            // tokens/sec figure -- matching what the Chat transport does.
-            decodeClock.endStep()
-            const stepOutputTokens =
-              liveStats?.completionTokens ??
-              fromCoworkUsage(result.usage)?.outputTokens ??
-              0
-            const generation = generationSpeed({
-              serverTokensPerSecond: liveStats?.tokensPerSecond,
-              outputTokens: stepOutputTokens,
-              ...decodeClock.result(),
-            })
-            const answeredBy = transport.answering()
-            const settledTurns = turns.map((turn0) => {
-              const turn =
-                answeredBy && turn0.role === 'assistant' && !turn0.assistant
-                  ? { ...turn0, assistant: answeredBy }
-                  : turn0
-              return turn.role === 'assistant' &&
-              turn.content === result.text &&
-              generation
-                ? {
-                    ...turn,
-                    tokenSpeed: {
-                      tokenSpeed: generation.tokenSpeed,
-                      promptSpeed: liveStats?.promptPerSecond ?? undefined,
-                      tokenCount: generation.tokenCount,
-                      durationMs: generation.durationMs,
-                      source: generation.source,
-                    },
-                  }
-                : turn
-            })
-            // Reset the generation span so the next step measures its own.
-            decodeClock.reset()
-            pushLive(settledTurns, rs.stepSnapshot ?? lastSnapshotRef.current[sid])
-            // Record this step's file work now. Ids are keyed on the tool
-            // call, so the commit below re-recording the same rows is a
-            // no-op rather than a duplicate.
-            useFileActivity
-              .getState()
-              .record(sid, deriveFromTurns(turns, originOfPath, Date.now()))
-            for (const [callId, outcome] of outcomes) {
-              if (outcome.diff) {
-                useToolCallRuntime.getState().recordDiff(callId, outcome.diff)
-              }
-              const turn = turns.find(
-                (one) => one.role === 'tool' && one.callId === callId
-              )
-              if (turn?.name !== 'bash') continue
-              // A collecting call settles the command it collects, which is a
-              // different row; a plain call settles its own.
-              const collecting = collectedJobId(turn.args)
-              if (collecting) recordJobCollected(sid, collecting, outcome)
-              else recordShellOutcome(run, callId, outcome)
-              recordEvents([
-                {
-                  id: `job:${collecting ?? callId}:ended:${callId}`,
-                  session: sid,
-                  run: runId,
-                  kind: 'job.ended',
-                  payload: { tool: 'bash', status: outcome.isError ? 'failed' : 'succeeded' },
-                },
-              ])
-            }
-          },
-          onResponse: () => {
-            rs.stepSnapshot = lastSnapshotRef.current[sid]
-          },
-          activity: () => ({
-            session: sid,
-            run: runId,
-            agent: 'main',
-            invocation: rs.stepSnapshot?.invocation,
-          }),
+          onStep: stepHandlers.onStep,
+          onResponse: stepHandlers.onResponse,
+          activity: stepHandlers.activity,
           compact: compactRun,
           nextMessageId: (() => {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
           })(),
-          // janhq/jan#8864. What the user chose to steer with from this
-          // session's composer while the run worked (Steer now, Ctrl+Enter),
-          // taken at the runner's safe boundaries. Only this
-          // session's queue: input typed in another session never reaches
-          // this run, whichever session is in view. Shown in the transcript
-          // where it entered the conversation, marked as steering.
-          hasSteering: () => hasLiveSteering(sid),
-          takeSteering: async () => {
-            // Mail a tool already consumed (wait_for_reply, read_messages)
-            // is dropped here, so it is never injected a second time.
-            const taken = await takeClaimed(sid, () =>
-              // Only what the user chose to steer with (and mail). Plain
-              // queued input waits and goes as its own turn after the run.
-              useMessageQueue.getState().takeSteering(sid)
-            )
-            // App notices (a background subagent finished or asked) ride along
-            // at the same boundary, as one fenced block.
-            const notices = takeNotices(sid)
-            const noticeMessages = notices.length
-              ? [
-                  {
-                    id: `${sid}-notice-${Date.now().toString(36)}`,
-                    role: 'user',
-                    parts: [{ type: 'text', text: renderNotices(notices) }],
-                  } as any,
-                ]
-              : []
-            if (taken.length === 0) return noticeMessages
-            for (const m of taken) mailLedger.note(m.from)
-            // Into this run's execution record, in sequence with its calls:
-            // steering changes what the model works from. The words stay in
-            // the transcript; the record says only that input was delivered.
-            for (const m of taken) {
-              void recordLifecycle(
-                { session: sid, run: runId, source: 'cowork' },
-                {
-                  id: `steer:${runId}:${m.id}`,
-                  lifecycle: 'steering',
-                  phase: 'succeeded',
-                  summary: 'Input delivered to the running agent',
-                }
-              )
-            }
-            pushLive(
-              taken.map((m) => ({
-                role: 'user' as const,
-                content: m.text,
-                steered: true,
-                at: m.createdAt ?? Date.now(),
-                // A mailbox message keeps its sender, so the transcript can
-                // say who it came from and offer a reply.
-                ...(m.from ? { from: agentAttribution(m.from) } : {}),
-              }))
-            )
-            return [
-              ...noticeMessages,
-              ...taken.map(
-                (m) =>
-                  ({
-                    id: `${sid}-steer-${m.id}`,
-                    role: 'user',
-                    parts: [{ type: 'text', text: m.text }],
-                  }) as any
-              ),
-            ]
-          },
+          hasSteering: stepHandlers.hasSteering,
+          takeSteering: stepHandlers.takeSteering,
         },
       })
       // Children the model started in the background and never collected:
