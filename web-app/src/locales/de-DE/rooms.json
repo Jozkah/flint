@@ -652,5 +652,6 @@
     "ranTools": "Früher in diesem Zug hast du bereits Werkzeuge ausgeführt ({{ran}}); {{reason}} Wiederhole nichts, was Dateien oder den Zustand verändert hat; lies nur noch einmal, was du noch brauchst.",
     "ranToolsDropped": "ihre Ausgabe wurde verworfen, damit sie ins Kontextfenster passt.",
     "ranToolsRetry": "der Anbieter ist danach ausgefallen und die Anfrage wird erneut versucht."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }

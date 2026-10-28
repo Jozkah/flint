@@ -13,6 +13,24 @@ export function useStickToBottom(dep: unknown) {
   return ref
 }
 
+/**
+ * Calls `reload` every `ms` while the page is visible, and once as soon as it
+ * becomes visible again, so a hidden tab costs no requests.
+ */
+export function usePollWhileVisible(reload: () => void, ms: number) {
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'hidden') reload()
+    }
+    const timer = setInterval(tick, ms)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [reload, ms])
+}
+
 /** Follows a conversation's live events while mounted. */
 export function useFollow(kind: SessionKind, id: string) {
   useEffect(() => followThread(kind, id), [kind, id])

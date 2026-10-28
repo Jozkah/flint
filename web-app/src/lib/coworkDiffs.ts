@@ -59,7 +59,13 @@ function addOperation(
   const operation: CoworkDiffOperation = sourceName
     ? { diff: turn.diff, source, sourceName }
     : { diff: turn.diff, source }
-  const current = files.get(path)
+  // One row per file however it was spelled; the first spelling is shown.
+  const key = path
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^[a-zA-Z]:/, (d) => d.toLowerCase())
+  const current = files.get(key)
 
   if (current) {
     current.additions += additions
@@ -68,7 +74,7 @@ function addOperation(
     return
   }
 
-  files.set(path, { path, additions, deletions, operations: [operation] })
+  files.set(key, { path, additions, deletions, operations: [operation] })
 }
 
 export function collectCodeFileDiffs(

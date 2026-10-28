@@ -411,7 +411,15 @@ export function readNotificationPrefs(device: string): NotificationPrefs | null 
 
 function writeNotificationPrefs(device: string, prefs: NotificationPrefs) {
   try {
-    const all = JSON.parse(localStorage.getItem(NOTIFY_KEY) ?? '{}') as Record<string, NotificationPrefs>
+    let all: Record<string, NotificationPrefs> = {}
+    try {
+      const parsed = JSON.parse(localStorage.getItem(NOTIFY_KEY) ?? '{}')
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        all = parsed as Record<string, NotificationPrefs>
+      }
+    } catch {
+      // Corrupt stored value: start over so this write still lands.
+    }
     all[device] = prefs
     localStorage.setItem(NOTIFY_KEY, JSON.stringify(all))
   } catch {

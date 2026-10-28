@@ -14,9 +14,15 @@ pub struct SessionInfo {
     pub api_key: String,
 }
 
+/// The last lines the server wrote to stderr, kept for as long as it runs so
+/// a crash after the load (a Metal out-of-memory on a long prompt, say) can
+/// still be explained.
+pub type StderrTail = Arc<std::sync::Mutex<std::collections::VecDeque<String>>>;
+
 pub struct MlxBackendSession {
     pub child: Child,
     pub info: SessionInfo,
+    pub stderr_tail: StderrTail,
 }
 
 /// MLX plugin state
