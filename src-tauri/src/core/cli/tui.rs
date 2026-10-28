@@ -1937,6 +1937,9 @@ struct App {
     /// In-progress assistant text for the current turn, flushed on the next
     /// step/tool/terminal event.
     assistant_buf: String,
+    /// How far `assistant_buf` has been scanned for `<think>` tags, so each
+    /// streamed token costs the new text, not the whole answer so far.
+    think_scan: std::cell::RefCell<ThinkScan>,
     /// Reasoning streamed natively via `StreamEvent::Reasoning` since the last
     /// flush, each segment anchored to the `assistant_buf` offset it arrived at.
     /// Kept apart from `assistant_buf` so it is never wrapped into the wire
@@ -2575,6 +2578,7 @@ impl App {
             journal_writer: None,
             thread_saver: None,
             assistant_buf: String::new(),
+            think_scan: Default::default(),
             reasoning_segs: Vec::new(),
             tool_group: None,
             grouped_ids: std::collections::HashSet::new(),
@@ -3511,7 +3515,7 @@ impl App {
     /// (`reasoning_content` providers). The tail check is what closes the window
     /// when prose starts, since native segments live on until the next flush.
     fn reasoning_open(&self) -> bool {
-        thinking_open(&self.assistant_buf)
+        self.think_scan.borrow_mut().state(&self.assistant_buf).0
             || self
                 .reasoning_segs
                 .last()
@@ -5298,7 +5302,7 @@ impl App {
                 // it lands above the streaming response. Reasoning tokens must
                 // not trigger this, or every call by a reasoning model splits
                 // into its own row.
-                if self.tool_group.is_some() && has_answer_text(&self.assistant_buf) {
+                if self.tool_group.is_some() && self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
                     self.finalize_tool_group();
                 }
             }
@@ -5324,7 +5328,7 @@ impl App {
                 // has produced answer prose; a turn that only reasoned or only
                 // called tools keeps the group open so the next turn's calls
                 // keep folding into one summary row instead of a row per turn.
-                if has_answer_text(&self.assistant_buf) {
+                if self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
                     self.flush_assistant();
                 }
                 self.starting.clear();
@@ -8097,6 +8101,72 @@ fn has_answer_text(buf: &str) -> bool {
     split_reasoning(buf)
         .iter()
         .any(|(reasoning, seg)| !reasoning && !seg.trim().is_empty())
+}
+
+/// Incremental form of [`thinking_open`] and [`has_answer_text`] over a buffer
+/// that only grows by appending: the part already scanned is never read again.
+///
+/// A tag can be cut by a token boundary (`<thi` then `nk>`), so the scan stops
+/// at the last `<` that could still become one and resumes there. Replaced or
+/// shortened buffers are detected and rescanned from the start.
+#[derive(Default, Debug)]
+struct ThinkScan {
+    /// Everything before this byte has been consumed.
+    pos: usize,
+    /// Inside an unclosed think block as of `pos`.
+    open: bool,
+    /// Answer prose seen outside think blocks before `pos`.
+    prose: bool,
+    /// The bytes just before `pos`, to notice a buffer that was swapped out.
+    window: Vec<u8>,
+}
+
+impl ThinkScan {
+    const WINDOW: usize = 32;
+
+    /// `(thinking_open(buf), has_answer_text(buf))`, scanning only new text.
+    fn state(&mut self, buf: &str) -> (bool, bool) {
+        if !think_tags_parsed() {
+            *self = Self::default();
+            return (false, buf.chars().any(|c| !c.is_whitespace()));
+        }
+        let intact = self.pos <= buf.len()
+            && buf.is_char_boundary(self.pos)
+            && buf.as_bytes()[self.pos.saturating_sub(Self::WINDOW)..self.pos] == self.window[..];
+        if !intact {
+            *self = Self::default();
+        }
+        self.advance(buf);
+        // What is held back as a possible partial tag still reads as prose to a
+        // full scan until the tag completes.
+        let tail_prose = !self.open && buf[self.pos..].chars().any(|c| !c.is_whitespace());
+        (self.open, self.prose || tail_prose)
+    }
+
+    fn advance(&mut self, buf: &str) {
+        let region = &buf[self.pos..];
+        let mut last_end = 0;
+        let mut in_think = self.open;
+        for m in think_re().find_iter(region) {
+            if !in_think && region[last_end..m.start()].chars().any(|c| !c.is_whitespace()) {
+                self.prose = true;
+            }
+            in_think = !m.as_str().starts_with("</");
+            last_end = m.end();
+        }
+        let tail = &region[last_end..];
+        let hold = tail
+            .rfind('<')
+            .filter(|&i| tail[i + 1..].trim_start_matches('/').chars().all(|c| c.is_ascii_alphabetic() || c == ':'))
+            .unwrap_or(tail.len());
+        if !in_think && tail[..hold].chars().any(|c| !c.is_whitespace()) {
+            self.prose = true;
+        }
+        self.open = in_think;
+        self.pos += last_end + hold;
+        let from = self.pos.saturating_sub(Self::WINDOW);
+        self.window = buf.as_bytes()[from..self.pos].to_vec();
+    }
 }
 
 /// `text` with its reasoning removed, for the copy that goes into `history`.
@@ -20936,6 +21006,60 @@ mod tests {
                 (false, "after".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn incremental_matches_full_scan_over_every_split() {
+        let texts = [
+            "<think>plan</think>answer",
+            "  <think>a</think>\n <thinking>b</thinking>x",
+            "pre <think> unterminated",
+            "<think></think>  ",
+            "a<b>c</think>d<think",
+            "<unsloth:think>\u{e9}</unsloth:think>\u{fc}<think>",
+            "x < y and a<b",
+            "",
+        ];
+        for text in texts {
+            for step in 1..=7usize {
+                let mut scan = super::ThinkScan::default();
+                let mut buf = String::new();
+                let mut at = 0;
+                while at < text.len() {
+                    let mut to = (at + step).min(text.len());
+                    while !text.is_char_boundary(to) {
+                        to += 1;
+                    }
+                    buf.push_str(&text[at..to]);
+                    at = to;
+                    assert_eq!(
+                        scan.state(&buf),
+                        (thinking_open(&buf), has_answer_text(&buf)),
+                        "{text:?} step {step} after {buf:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tag_split_across_tokens() {
+        let mut app = test_app();
+        app.assistant_buf.push_str("<thi");
+        assert!(!app.reasoning_open());
+        app.assistant_buf.push_str("nk>pondering");
+        assert!(app.reasoning_open());
+        app.assistant_buf.push_str("</think>done");
+        assert!(!app.reasoning_open());
+    }
+
+    #[test]
+    fn a_replaced_buffer_is_rescanned() {
+        let mut app = test_app();
+        app.assistant_buf = "<think>weighing options".to_string();
+        assert!(app.reasoning_open());
+        app.assistant_buf = "here is the answer, which is longer than before".to_string();
+        assert!(!app.reasoning_open());
     }
 
     #[test]
