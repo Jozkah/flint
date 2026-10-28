@@ -1836,6 +1836,19 @@ mod tests {
             &EnsureOptions { title: Some("campaign it".into()), base: None },
         )
         .unwrap();
+        // A plan must now declare paths; these tests are about what happens to a
+        // task that declares none, so the paths are cleared again after create.
+        let mut blank = Vec::new();
+        let tasks: Vec<PlanTask> = tasks
+            .into_iter()
+            .map(|mut t| {
+                if t.paths.is_empty() && t.kind != campaign::KIND_CHECK {
+                    blank.push(t.id.clone());
+                    t.paths = vec![format!("__fixture__{}", t.id)];
+                }
+                t
+            })
+            .collect();
         let c = create(
             &data,
             CreateInput {
@@ -1854,6 +1867,13 @@ mod tests {
                 driver: None,
             },
         )
+        .unwrap();
+        let (c, ()) = campaign::update(&data, "c1", |c| {
+            for id in &blank {
+                c.task_mut(id)?.paths.clear();
+            }
+            Ok(((), vec![]))
+        })
         .unwrap();
         Fx { data, roots, src, id: c.id, integration }
     }
