@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Check,
@@ -52,6 +53,7 @@ export function StudioDiscover({
   query: string
   token?: string
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const status = useStudio((s) => s.status)
   const refresh = useStudio((s) => s.refresh)
@@ -154,11 +156,11 @@ export function StudioDiscover({
 
   const add = async (model: HuggingFaceModel, file: HuggingFaceFile) => {
     if (!status?.supported) {
-      toast.error('Local image generation needs Windows x64 or Linux x64.')
+      toast.error(t('studio:discover.unsupportedToast'))
       return
     }
     const chosen = family[model.id]
-    if (!chosen) return toast.error('Pick what kind of model this is first.')
+    if (!chosen) return toast.error(t('studio:discover.pickKindFirst'))
     setAdding(`${model.id}/${file.name}`)
     try {
       const added = await studioApi.addCustomModel({
@@ -171,9 +173,9 @@ export function StudioDiscover({
         token,
       })
       await refresh()
-      toast.success(`${added.display_name} added to Studio`, {
+      toast.success(t('studio:discover.added', { name: added.display_name }), {
         action: {
-          label: 'Open Studio',
+          label: t('studio:discover.openStudio'),
           onClick: () => navigate({ to: route.studio }),
         },
       })
@@ -189,13 +191,11 @@ export function StudioDiscover({
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
         {status && !status.supported && (
           <div role="status" className="rounded-xl border border-border bg-muted px-4 py-3 text-sm">
-            Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.
+            {t('studio:discover.unsupportedArch')}
           </div>
         )}
         <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">
-          Picture models in the GGUF format that Studio can run. Pick a weights
-          file and what kind of model it is; the text encoder and VAE it needs
-          are downloaded with it and checked like every other download.
+          {t('studio:discover.intro')}
         </p>
 
         {familiesError && (
@@ -203,14 +203,16 @@ export function StudioDiscover({
             role="alert"
             className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
-            <span>Could not load the model kinds: {familiesError}</span>
+            <span>
+              {t('studio:discover.familiesError', { error: familiesError })}
+            </span>
             <Button
               size="sm"
               variant="outline"
               data-testid="studio-families-retry"
               onClick={() => void loadFamilies()}
             >
-              Retry
+              {t('studio:discover.retry')}
             </Button>
           </div>
         )}
@@ -241,8 +243,8 @@ export function StudioDiscover({
         {!loading && !error && models.length === 0 && (
           <EmptyState
             icon={<Search />}
-            title="No picture models found"
-            description="Try a broader search, for example qwen image, flux or z-image."
+            title={t('studio:discover.emptyTitle')}
+            description={t('studio:discover.emptyDescription')}
             className="min-h-72 rounded-2xl border border-dashed border-border"
           />
         )}
@@ -274,7 +276,7 @@ export function StudioDiscover({
                       {restricted && <Chip tone="warn">{license}</Chip>}
                       {model.gated && (
                         <Chip tone="warn">
-                          <LockKeyhole /> Gated
+                          <LockKeyhole /> {t('studio:discover.gated')}
                         </Chip>
                       )}
                     </div>
@@ -298,7 +300,9 @@ export function StudioDiscover({
                   aria-expanded={opened}
                 >
                   <ImageIcon className="size-3.5" />
-                  {opened ? 'Hide files' : 'Choose a file'}
+                  {opened
+                    ? t('studio:discover.hideFiles')
+                    : t('studio:discover.chooseFile')}
                   <ChevronDown
                     className={cn(
                       'size-3.5 transition-transform duration-200',
@@ -311,7 +315,7 @@ export function StudioDiscover({
               {opened && (
                 <div className="border-t border-border bg-muted/40 p-3 motion-safe:animate-rise-in">
                   <label className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    What kind of model is this?
+                    {t('studio:discover.whatKind')}
                     <Select
                       className={SELECT}
                       value={family[model.id] ?? ''}
@@ -321,9 +325,9 @@ export function StudioDiscover({
                           [model.id]: e.target.value,
                         }))
                       }
-                      aria-label="Model family"
+                      aria-label={t('studio:discover.modelFamily')}
                     >
-                      <option value="">Pick one…</option>
+                      <option value="">{t('studio:discover.pickOne')}</option>
                       {families.map((f) => (
                         <option key={f.id} value={f.id}>
                           {f.label}
@@ -344,19 +348,23 @@ export function StudioDiscover({
                       role="alert"
                       className="flex flex-wrap items-center gap-2 text-xs text-destructive"
                     >
-                      <span>Could not list the files: {filesError[model.id]}</span>
+                      <span>
+                        {t('studio:discover.filesError', {
+                          error: filesError[model.id],
+                        })}
+                      </span>
                       <Button
                         size="sm"
                         variant="outline"
                         data-testid="studio-files-retry"
                         onClick={() => void loadFiles(model.id)}
                       >
-                        Retry
+                        {t('studio:discover.retry')}
                       </Button>
                     </div>
                   ) : list.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      No weights files (.gguf) in this repository.
+                      {t('studio:discover.noWeights')}
                     </p>
                   ) : (
                     <ul className="flex flex-col gap-1.5">
@@ -382,7 +390,7 @@ export function StudioDiscover({
                             </div>
                             {status && !status.supported ? (
                               <Button size="sm" variant="outline" disabled>
-                                Unsupported system
+                                {t('studio:discover.unsupportedSystem')}
                               </Button>
                             ) : isAdded ? (
                               <Button
@@ -390,7 +398,7 @@ export function StudioDiscover({
                                 variant="outline"
                                 onClick={() => navigate({ to: route.studio })}
                               >
-                                <Check className="size-3.5" /> In Studio
+                                <Check className="size-3.5" /> {t('studio:discover.inStudio')}
                               </Button>
                             ) : (
                               <Button
@@ -399,7 +407,9 @@ export function StudioDiscover({
                                 onClick={() => void add(model, file)}
                               >
                                 <Plus className="size-3.5" />
-                                {adding === key ? 'Adding…' : 'Add to Studio'}
+                                {adding === key
+                                  ? t('studio:discover.adding')
+                                  : t('studio:discover.addToStudio')}
                               </Button>
                             )}
                           </li>

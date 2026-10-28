@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::state::ProviderConfig;
 
-const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
+const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Flint Agent global provider config.
 # Applies to every project unless overridden by that project's
 # .jan/agent/agent.toml [provider] section.
 #
@@ -462,6 +462,36 @@ pub(crate) fn wave_glyph() -> Option<String> {
     }
 }
 
+#[cfg(test)]
+mod root_keys_tests {
+    #[test]
+    fn root_keys_lists_every_top_level_field() {
+        let value = serde_json::to_value(super::GlobalConfigToml {
+            default_model: Some(String::new()),
+            smol_model: Some(String::new()),
+            advisor_model: Some(String::new()),
+            mouse: Some(true),
+            sandbox: Some(true),
+            worktree: Some(true),
+            think_tags: Some(true),
+            stream_reasoning: Some(true),
+            theme: Some(String::new()),
+            ask_timeout_secs: Some(1),
+            terminal_hint: Some(true),
+            hide_secrets: Some(true),
+            wave: Some(String::new()),
+            ca_bundle: Some(String::new()),
+            forge_api: Some(String::new()),
+            embeddings_model: Some(String::new()),
+            ..Default::default()
+        })
+        .unwrap();
+        for key in value.as_object().unwrap().keys() {
+            assert!(super::ROOT_KEYS.contains(&key.as_str()), "{key} missing from ROOT_KEYS");
+        }
+    }
+}
+
 /// Root-level (non-`[providers.*]`) keys of `~/.jan/config.toml`, used to spot
 /// the one mistake this file invites: appending a top-level key to the end of
 /// the file, where it silently lands inside whichever `[providers.*]` table
@@ -472,6 +502,11 @@ const ROOT_KEYS: &[&str] = &[
     "advisor_model",
     "mouse",
     "sandbox",
+    "worktree",
+    "hide_secrets",
+    "ca_bundle",
+    "forge_api",
+    "embeddings_model",
     "think_tags",
     "stream_reasoning",
     "theme",
@@ -1238,7 +1273,7 @@ mod tests {
 
             set_global_key("wave", Some(toml_edit::value("~"))).expect("set");
             let raw = std::fs::read_to_string(&path).unwrap();
-            assert!(raw.contains("Jan Agent global provider config"), "{raw}");
+            assert!(raw.contains("Flint Agent global provider config"), "{raw}");
             assert_eq!(wave_glyph().as_deref(), Some("~"));
         });
     }

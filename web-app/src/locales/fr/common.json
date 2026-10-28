@@ -3171,5 +3171,33 @@
   "imageLoadFailed": "This image could not be loaded.",
   "attachedImage": "Attached image {{n}}",
   "saveChanges": "Save changes",
-  "savingEllipsis": "Saving…"
+  "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
+  },
+  "citations": {
+    "toggleSnippet": "Toggle snippet",
+    "documents_one": "{{count}} document citation",
+    "documents_other": "{{count}} document citations",
+    "web_one": "{{count}} web source",
+    "web_other": "{{count}} web sources",
+    "forQuery": "for “{{query}}”"
+  }
 }

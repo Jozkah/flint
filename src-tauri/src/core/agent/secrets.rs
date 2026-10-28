@@ -161,41 +161,74 @@ fn load_key() -> [u8; 32] {
 /// platform resolves the home directory (`HOME` is ignored on Windows).
 fn load_key_at(path: Option<&std::path::Path>) -> [u8; 32] {
     if let Some(path) = path {
-        if let Ok(text) = std::fs::read_to_string(path) {
-            if let Ok(bytes) = hex::decode(text.trim()) {
-                if let Ok(key) = <[u8; 32]>::try_from(bytes.as_slice()) {
-                    return key;
-                }
+        if let Some(key) = read_key(path) {
+            return key;
+        }
+        // A file that exists but does not parse may be another process mid-write;
+        // look again before replacing it.
+        if path.exists() {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if let Some(key) = read_key(path) {
+                return key;
             }
         }
     }
     let mut key = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut key);
     if let Some(path) = path {
-        if let Err(e) = save_key(path, &key) {
-            log::warn!(
+        match save_key(path, &key) {
+            Ok(winner) => return winner,
+            Err(e) => log::warn!(
                 "hide_secrets: could not save {}: {e}; placeholders will change on restart",
                 path.display()
-            );
+            ),
         }
     }
     key
 }
 
+fn read_key(path: &std::path::Path) -> Option<[u8; 32]> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let bytes = hex::decode(text.trim()).ok()?;
+    <[u8; 32]>::try_from(bytes.as_slice()).ok()
+}
+
 /// Write the key with mode 0600 from the first byte, so it is never readable by
 /// others even briefly.
-fn save_key(path: &std::path::Path, key: &[u8; 32]) -> std::io::Result<()> {
+///
+/// Written to a private temp file and then linked into place, so a reader never
+/// sees a half-written key and two first-time creators cannot both win: the
+/// loser gets the winner's key back.
+fn save_key(path: &std::path::Path, key: &[u8; 32]) -> std::io::Result<[u8; 32]> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let mut tmp_name = path.as_os_str().to_owned();
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    tmp_name.push(format!(".{}.{seq}.tmp", std::process::id()));
+    let tmp = std::path::PathBuf::from(tmp_name);
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    options.open(path)?.write_all(hex::encode(key).as_bytes())
+    let _ = std::fs::remove_file(&tmp);
+    options.open(&tmp)?.write_all(hex::encode(key).as_bytes())?;
+    let linked = std::fs::hard_link(&tmp, path);
+    let result = match linked {
+        Ok(()) => Ok(*key),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => match read_key(path) {
+            Some(existing) => Ok(existing),
+            // Present but unparseable (e.g. truncated): replace it.
+            None => std::fs::rename(&tmp, path).map(|()| *key),
+        },
+        Err(e) => Err(e),
+    };
+    let _ = std::fs::remove_file(&tmp);
+    result
 }
 
 fn is_secret_name(name: &str) -> bool {
@@ -643,6 +676,23 @@ mod tests {
         assert_eq!(out["messages"][2]["content"], Value::Null);
         assert_eq!(out["tools"], request["tools"], "tool schemas are not part of the pass");
         assert_eq!(request["messages"][3]["content"], "tok-1234567890abc", "the input is not mutated");
+    }
+
+    #[test]
+    fn concurrent_first_creation_yields_one_key() {
+        let dir = std::env::temp_dir().join(format!("flint-key-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("secret-placeholder.key");
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let p = path.clone();
+                std::thread::spawn(move || load_key_at(Some(&p)))
+            })
+            .collect();
+        let keys: Vec<[u8; 32]> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        assert!(keys.windows(2).all(|w| w[0] == w[1]), "every creator sees one key");
+        assert_eq!(load_key_at(Some(&path)), keys[0]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The cache rule: a request that extends an earlier one keeps the earlier

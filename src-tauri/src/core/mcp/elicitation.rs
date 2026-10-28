@@ -86,7 +86,17 @@ pub enum ElicitRequest {
     },
 }
 
+/// Most fields one form may ask for, and the longest message shown.
+const MAX_FORM_FIELDS: usize = 20;
+const MAX_MESSAGE_CHARS: usize = 2000;
+
 impl ElicitRequest {
+    pub fn server(&self) -> &str {
+        match self {
+            ElicitRequest::Form { server, .. } | ElicitRequest::Url { server, .. } => server,
+        }
+    }
+
     pub fn id(&self) -> &str {
         match self {
             ElicitRequest::Form { id, .. } | ElicitRequest::Url { id, .. } => id,
@@ -293,6 +303,11 @@ pub async fn handle_request(
         ElicitRequestParams::FormElicitationParams { message, requested_schema, .. } => {
             let schema = serde_json::to_value(&requested_schema).unwrap_or(Value::Null);
             let fields = fields_from_schema(&schema);
+            if fields.len() > MAX_FORM_FIELDS {
+                log::warn!("MCP server '{server}' asked for {} fields; declined", fields.len());
+                return decline();
+            }
+            let message: String = message.chars().take(MAX_MESSAGE_CHARS).collect();
             let reply = ui
                 .ask(ElicitRequest::Form {
                     id: next_id(),
@@ -347,7 +362,8 @@ pub async fn handle_request(
 
 // ---- desktop: ask through the web app --------------------------------------
 
-type Pending = Mutex<HashMap<String, oneshot::Sender<ElicitReply>>>;
+/// Request id -> (asking server, answer channel).
+type Pending = Mutex<HashMap<String, (String, oneshot::Sender<ElicitReply>)>>;
 
 fn pending() -> &'static Pending {
     static P: OnceLock<Pending> = OnceLock::new();
@@ -363,7 +379,7 @@ pub fn set_ui_ready(ready: bool) {
     if !ready {
         // Whatever was waiting on a window that is gone is cancelled.
         let waiting: Vec<_> = pending().lock().unwrap_or_else(|p| p.into_inner()).drain().collect();
-        for (_, tx) in waiting {
+        for (_, (_, tx)) in waiting {
             let _ = tx.send(ElicitReply::cancel());
         }
     }
@@ -374,7 +390,7 @@ pub fn set_ui_ready(ready: bool) {
 pub fn respond(id: &str, reply: ElicitReply) -> bool {
     let tx = pending().lock().unwrap_or_else(|p| p.into_inner()).remove(id);
     match tx {
-        Some(tx) => tx.send(reply).is_ok(),
+        Some((_, tx)) => tx.send(reply).is_ok(),
         None => false,
     }
 }
@@ -400,7 +416,16 @@ impl ElicitationUi for EventUi {
         }
         let id = request.id().to_string();
         let (tx, rx) = oneshot::channel();
-        pending().lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone(), tx);
+        {
+            // One open question per server: a chatty server cannot stack cards.
+            let mut open = pending().lock().unwrap_or_else(|p| p.into_inner());
+            let server = request.server().to_string();
+            if open.values().any(|(s, _)| *s == server) {
+                log::warn!("MCP elicitation from '{server}' declined: it already has a question open");
+                return ElicitReply { action: ReplyAction::Decline, content: None };
+            }
+            open.insert(id.clone(), (server, tx));
+        }
         (self.emit)(&request);
         match tokio::time::timeout(self.timeout, rx).await {
             Ok(Ok(reply)) => reply,
@@ -601,6 +626,20 @@ mod tests {
         ui.timeout = Duration::from_millis(30);
         assert_eq!(ui.ask(url_req("t-2")).await.action, ReplyAction::Cancel);
         assert!(!respond("t-2", ElicitReply::cancel()));
+
+        // One open question per server: a second is declined while the first waits.
+        ui.timeout = Duration::from_secs(5);
+        let ui = Arc::new(ui);
+        let first = tokio::spawn({
+            let ui = ui.clone();
+            async move { ui.ask(url_req("t-3")).await }
+        });
+        while !seen.lock().unwrap().iter().any(|i| i == "t-3") {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(ui.ask(url_req("t-4")).await.action, ReplyAction::Decline);
+        assert!(respond("t-3", ElicitReply::cancel()));
+        assert_eq!(first.await.unwrap().action, ReplyAction::Cancel);
         set_ui_ready(false);
     }
 }

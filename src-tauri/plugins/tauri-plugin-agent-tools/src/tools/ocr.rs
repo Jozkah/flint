@@ -88,6 +88,41 @@ pub fn valid_language(tag: &str) -> bool {
         && parts[0].chars().all(|c| c.is_ascii_alphabetic())
 }
 
+/// A BCP-47 tag as the three-letter name Tesseract uses; a tag it has no entry
+/// for goes through unchanged and fails loudly in the engine.
+fn tesseract_language(tag: &str) -> String {
+    let primary = tag.split('-').next().unwrap_or(tag).to_ascii_lowercase();
+    let script_hant = tag.to_ascii_lowercase().contains("hant") || tag.eq_ignore_ascii_case("zh-tw");
+    let name = match primary.as_str() {
+        "en" => "eng",
+        "de" => "deu",
+        "fr" => "fra",
+        "es" => "spa",
+        "pt" => "por",
+        "it" => "ita",
+        "nl" => "nld",
+        "ja" => "jpn",
+        "zh" if script_hant => "chi_tra",
+        "zh" => "chi_sim",
+        other => return other.to_string(),
+    };
+    name.to_string()
+}
+
+/// The path without a Windows verbatim prefix (`\\?\C:\x` is `C:\x`): the WinRT
+/// file API does not accept it. A UNC share keeps its leading slashes.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn plain_path(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => path.to_path_buf(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Engine {
     WindowsMedia,
@@ -160,7 +195,7 @@ async fn windows_ocr(path: &Path, kind: Kind, pages: &[u32], lang: &str) -> Resu
     let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, utf16);
     let mut cmd = tokio::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &encoded])
-        .env("FLINT_OCR_PATH", path)
+        .env("FLINT_OCR_PATH", plain_path(path))
         .env("FLINT_OCR_KIND", if kind == Kind::Pdf { "pdf" } else { "image" })
         .env("FLINT_OCR_LANG", lang)
         .env("FLINT_OCR_PAGES", pages.iter().map(u32::to_string).collect::<Vec<_>>().join(","))
@@ -202,7 +237,7 @@ async fn tesseract_ocr(program: &Path, path: &Path, lang: &str) -> Result<Recogn
     cmd.arg(path).arg("stdout");
     if !lang.is_empty() {
         // Tesseract names languages with three letters; a tag it does not know fails loudly below.
-        cmd.arg("-l").arg(lang.split('-').next().unwrap_or(lang));
+        cmd.arg("-l").arg(tesseract_language(lang));
     }
     cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     #[cfg(windows)]
@@ -306,6 +341,18 @@ mod tests {
         for bad in ["0", "a", "3-1", "1-", "1-99", "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21"] {
             assert!(parse_pages(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn tags_map_to_tesseract_names_and_verbatim_prefixes_go() {
+        assert_eq!(tesseract_language("de"), "deu");
+        assert_eq!(tesseract_language("en-US"), "eng");
+        assert_eq!(tesseract_language("zh-Hans-CN"), "chi_sim");
+        assert_eq!(tesseract_language("zh-Hant"), "chi_tra");
+        assert_eq!(tesseract_language("deu"), "deu");
+        assert_eq!(plain_path(Path::new(r"\\?\C:\x\a.png")), PathBuf::from(r"C:\x\a.png"));
+        assert_eq!(plain_path(Path::new(r"\\?\UNC\srv\share\a.png")), PathBuf::from(r"\\srv\share\a.png"));
+        assert_eq!(plain_path(Path::new("/tmp/a.png")), PathBuf::from("/tmp/a.png"));
     }
 
     #[test]

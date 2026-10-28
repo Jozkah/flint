@@ -68,6 +68,7 @@ export const useLlamacppDevices = create<LlamacppDevicesStore>((set, get) => ({
   },
 
   setActivations: async (updates: Record<string, boolean>) => {
+    const previous = get().devices
     set((state) => ({
       devices: state.devices.map((device) =>
         updates[device.id] === undefined
@@ -98,7 +99,15 @@ export const useLlamacppDevices = create<LlamacppDevicesStore>((set, get) => ({
         return setting
       })
 
-      await getServiceHub().providers().updateSettings('llamacpp', updatedSettings)
+      try {
+        await getServiceHub()
+          .providers()
+          .updateSettings('llamacpp', updatedSettings)
+      } catch (error) {
+        // The write failed: put the toggles back as they were.
+        set({ devices: previous })
+        throw error
+      }
       updateProvider('llamacpp', {
         settings: updatedSettings,
       })

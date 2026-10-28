@@ -252,7 +252,8 @@ async fn repeated_limits_grow_and_a_success_resets() {
 fn rate_limit_variants_are_recognised() {
     assert!(api_http_error("X", 429, None, "").contains(MARKER));
     assert!(api_http_error("X", 503, None, "").contains(MARKER));
-    assert!(api_http_error("X", 403, None, "Rate limit exceeded").contains(MARKER));
+    assert!(!api_http_error("X", 403, None, "Rate limit exceeded").contains(MARKER));
+    assert!(!api_http_error("X", 401, None, "Rate limit exceeded").contains(MARKER));
     assert!(api_http_error("X", 400, None, "{\"error\":\"Too Many Requests\"}").contains(MARKER));
     assert!(!api_http_error("X", 404, None, "not found").contains(MARKER));
     assert_eq!(

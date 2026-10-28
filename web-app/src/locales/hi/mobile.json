@@ -49,7 +49,8 @@
     "retention_one": "आर्काइव किए गए आइटम {{count}} दिन बाद हमेशा के लिए हटा दिए जाते हैं।",
     "retention_other": "आर्काइव किए गए आइटम {{count}} दिन बाद हमेशा के लिए हटा दिए जाते हैं।",
     "retentionForever": "आर्काइव किए गए आइटम तब तक रहते हैं जब तक आप उन्हें हटा नहीं देते।",
-    "emptyAction": "आर्काइव खाली करें"
+    "emptyAction": "आर्काइव खाली करें",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "यह काम नहीं किया",
@@ -1360,5 +1361,13 @@
       "tickFirst": "पहले चिह्नित की गई जिन फ़ाइलों को आपने देखा है, उन पर टिक लगाएँ।",
       "missing": "सुझाए गए बदलाव अब मौजूद नहीं हैं। कंप्यूटर पर कैंपेन खोलें।"
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }
