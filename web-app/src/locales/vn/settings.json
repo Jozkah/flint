@@ -1203,7 +1203,6 @@
       "updated": "Cập nhật {{when}}",
       "loading": "Đang tải chiến dịch",
       "loadFailed": "Không thể tải chiến dịch.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Đã bỏ qua {{count}} bản ghi chiến dịch không đọc được. Các tệp vẫn được giữ nguyên.",
       "skipped_other": "Đã bỏ qua {{count}} bản ghi chiến dịch không đọc được. Các tệp vẫn được giữ nguyên.",
       "skipped_many": "Đã bỏ qua {{count}} bản ghi chiến dịch không đọc được. Các tệp vẫn được giữ nguyên.",
@@ -1447,7 +1446,7 @@
     "noMatchHint": "Kiểm tra chính tả, hoặc xóa tìm kiếm để xem tất cả.",
     "emptyHint": "Viết một ký ức ở trên, hoặc để Flint ghi nhớ khi bạn trò chuyện.",
     "footerCount_other": "{{count}} ký ức trong phạm vi này",
-    "footerCount_one": "{{count}} ký ức trong phạm vi này",
+    "footerCount_one": "1 ký ức trong phạm vi này",
     "footerCount_many": "{{count}} ký ức trong phạm vi này",
     "agentNotes": "Ghi chú của agent"
   },
