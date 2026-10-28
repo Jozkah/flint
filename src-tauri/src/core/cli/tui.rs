@@ -9883,7 +9883,7 @@ async fn handle_ask_key(
     if key.kind == KeyEventKind::Release {
         return true;
     }
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = key_is_ctrl(&key);
     // A docked ask runs before `handle_key`, so the repaint key is honoured
     // here too -- otherwise a broadcast landing during a question stays on
     // screen until it is answered. Consumed, never typed into the answer.
@@ -10384,6 +10384,20 @@ fn resume_hint(thread_id: &str) -> String {
     let id: String = thread_id.chars().take(8).collect();
     format!("\x1b[2m[session {id} - resume with `flint --resume={id}`]\x1b[0m")
 }
+/// True when the key is a Ctrl chord. On Windows, AltGr arrives as Ctrl+Alt, so
+/// Ctrl+Alt with a character that is not an ASCII letter or digit is text
+/// (`@`, `{`, a non-ASCII letter), not a chord.
+fn key_is_ctrl(key: &KeyEvent) -> bool {
+    let mods = key.modifiers;
+    if !mods.contains(KeyModifiers::CONTROL) {
+        return false;
+    }
+    let altgr_text = cfg!(windows)
+        && mods.contains(KeyModifiers::ALT)
+        && matches!(key.code, KeyCode::Char(c) if !c.is_ascii_alphanumeric() && !c.is_ascii_control());
+    !altgr_text
+}
+
 async fn handle_key(
     app: &mut App,
     key: KeyEvent,
@@ -10395,7 +10409,7 @@ async fn handle_key(
         return;
     }
 
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = key_is_ctrl(&key);
     // Ctrl-L is the readline/less spelling of "redraw". It sits ahead of every
     // mode guard below because the screen can be damaged at any moment,
     // including while a prompt or picker owns the keyboard. It changes only
@@ -22838,6 +22852,25 @@ mod tests {
         let mut s = app.input.clone();
         s.insert(app.cursor, '|');
         s
+    }
+
+    #[test]
+    fn ctrl_a_still_command() {
+        assert!(super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)));
+        assert!(super::key_is_ctrl(&KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT
+        )));
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn altgr_at_sign_inserted_on_windows_style_event() {
+        let both = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('@'), both)));
+        let accented = char::from_u32(0x105).unwrap();
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char(accented), both)));
     }
 
     #[tokio::test]
