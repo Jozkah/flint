@@ -21,6 +21,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "Questo modello usa un tipo di quantizzazione che il backend GPU non può eseguire. Scarica un'altra quantizzazione, come Q4_K_M, oppure disattiva lo scarico sulla GPU.",
     "ENGINE_STOPPED": "Il motore si è arrestato in modo imprevisto. Carica di nuovo il modello per riavviarlo; se continua a succedere, l'ultimo output del motore qui sotto ne indica il motivo.",
     "OUT_OF_MEMORY": "Non c'è abbastanza memoria per eseguire questo modello. Un modello più piccolo o una dimensione di contesto minore di solito aiutano.",
+    "PROMPT_OUT_OF_MEMORY": "Il modello ha esaurito la memoria GPU con questo prompt e il suo server si è fermato. Prova un contesto più breve o un modello più piccolo; il prossimo messaggio riavvia il server.",
     "INVALID_ARGUMENT": "Una delle impostazioni del modello non è valida.",
     "IO_ERROR": "Non è stato possibile leggere o scrivere un file durante l'avvio del modello.",
     "INTERNAL_ERROR": "Qualcosa è andato storto all'interno di Flint durante l'avvio del modello."

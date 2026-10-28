@@ -22,6 +22,7 @@
     "MODEL_QUANT_NOT_SUPPORTED": "This model uses a quantization type the GPU backend cannot run. Download a different quantization such as Q4_K_M, or turn GPU offload off.",
     "ENGINE_STOPPED": "The engine stopped unexpectedly. Load the model again to restart it; if it keeps happening, the engine's last output below says why.",
     "OUT_OF_MEMORY": "There is not enough memory to run this model. A smaller model or a smaller context size usually helps.",
+    "PROMPT_OUT_OF_MEMORY": "The model ran out of GPU memory on this prompt, so its server stopped. Try a shorter context or a smaller model; your next message starts the server again.",
     "INVALID_ARGUMENT": "One of the model's settings is not valid.",
     "IO_ERROR": "A file could not be read or written while starting the model.",
     "INTERNAL_ERROR": "Something went wrong inside Flint while starting the model."
