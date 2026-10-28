@@ -119,6 +119,24 @@ pub struct LoadTicket {
     spec: LoadSpec,
     events: EventBus,
     done: tokio::sync::watch::Sender<bool>,
+    /// Set by `finish_load`. A ticket dropped without it (a task that died)
+    /// would otherwise leave the model in `loading` forever.
+    settled: bool,
+    abandoned: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl Drop for LoadTicket {
+    fn drop(&mut self) {
+        if self.settled {
+            return;
+        }
+        // No async lock here: park the id for the registry to collect and
+        // wake the waiters so they do not hang.
+        if let Ok(mut v) = self.abandoned.lock() {
+            v.push(self.model_id.clone());
+        }
+        self.done.send_replace(true);
+    }
 }
 
 impl LoadTicket {
@@ -242,6 +260,8 @@ pub struct Registry {
     /// methods -- has to forget them before it hands one of their slot ids to
     /// another thread. `take_dropped` is drained where occupancy is claimed.
     dropped: Vec<String>,
+    /// Loads whose ticket was dropped unsettled; drained by `drain_abandoned`.
+    abandoned: Arc<std::sync::Mutex<Vec<String>>>,
     /// 0 means unlimited, matching llama.cpp's `--models-max`.
     models_max: usize,
     /// How long a resident model may sit unused before the sweeper unloads it.
@@ -265,6 +285,7 @@ impl Registry {
             failures: HashMap::new(),
             loading: HashMap::new(),
             dropped: Vec::new(),
+            abandoned: Arc::new(std::sync::Mutex::new(Vec::new())),
             models_max,
             idle_timeout: None,
             clock,
@@ -404,6 +425,7 @@ impl Registry {
     /// slot and returns a ticket whose `run` the caller executes *without*
     /// holding this registry, then settles with `finish_load`.
     pub fn begin_acquire(&mut self, model_id: &str) -> Result<AcquireStep, RegistryError> {
+        self.drain_abandoned();
         // A model awaiting retirement keeps serving until its in-flight
         // requests drain. Loading the new spec alongside it would put two
         // engines under one id and split the inflight count, so a late request
@@ -437,17 +459,38 @@ impl Registry {
             spec,
             events: self.events.clone(),
             done: tx,
+            settled: false,
+            abandoned: Arc::clone(&self.abandoned),
         }))
+    }
+
+    /// Clears loads whose ticket vanished without settling and records them as
+    /// failed, so waiters and later requests get an error instead of a ghost
+    /// `loading` entry that holds a `models_max` slot.
+    pub fn drain_abandoned(&mut self) {
+        let ids: Vec<String> = match self.abandoned.lock() {
+            Ok(mut v) => std::mem::take(&mut *v),
+            Err(_) => return,
+        };
+        for id in ids {
+            if self.loading.remove(&id).is_some() {
+                self.failures
+                    .insert(id.clone(), "the load was abandoned".to_string());
+                self.events
+                    .emit(&id, Transition::Unloaded { exit_code: 1 });
+            }
+        }
     }
 
     /// Settles a ticket: records the engine (with `inflight` requests) or the
     /// failure, and wakes everyone waiting on this load.
     pub fn finish_load(
         &mut self,
-        ticket: LoadTicket,
+        mut ticket: LoadTicket,
         result: Result<Engine, EngineError>,
         inflight: usize,
     ) -> Result<Arc<Engine>, RegistryError> {
+        ticket.settled = true;
         let model_id = ticket.model_id.clone();
         self.loading.remove(&model_id);
         let out = match result {
@@ -1021,6 +1064,29 @@ mod tests {
 
     fn advance(now: &std::sync::atomic::AtomicU64, ms: u64) {
         now.fetch_add(ms, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn dropping_ticket_unblocks_waiters_with_error() {
+        let mut r = reg(1, &["a"]);
+        let ticket = match r.begin_acquire("a").unwrap() {
+            AcquireStep::Start(t) => t,
+            _ => panic!("expected a ticket"),
+        };
+        let rx = match r.begin_acquire("a").unwrap() {
+            AcquireStep::Wait(rx) => rx,
+            _ => panic!("expected to wait"),
+        };
+        drop(ticket);
+        assert!(*rx.borrow());
+        r.drain_abandoned();
+        assert!(!r.loading.contains_key("a"));
+        assert_eq!(r.failure_of("a"), Some("the load was abandoned"));
+        // The slot is free again: a new request can start a load.
+        assert!(matches!(
+            r.begin_acquire("a").unwrap(),
+            AcquireStep::Start(_)
+        ));
     }
 
     #[cfg(not(feature = "engine"))]
