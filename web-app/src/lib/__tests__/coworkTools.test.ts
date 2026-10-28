@@ -10,6 +10,7 @@ import {
   coworkToolSignature,
   allowedToolNames,
   PLAN_DENIED_TOOLS,
+  REVIEW_DENIED_TOOLS,
   TODO_TOOL_NAME,
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
@@ -55,6 +56,17 @@ describe('buildCoworkTools', () => {
     expect(tools.read).toBeDefined()
     expect(tools[TODO_TOOL_NAME]).toBeDefined()
     expect(tools[ASK_TOOL_NAME]).toBeDefined()
+  })
+
+  it('withholds command-running tools in review mode only', async () => {
+    const names = [...REVIEW_DENIED_TOOLS]
+    getAgentToolSchemas.mockResolvedValue([...ALL, ...names].map(schema))
+    const review = await buildCoworkTools(opts({ planMode: true }))
+    for (const n of names) expect(review[n]).toBeUndefined()
+    expect(review.read).toBeDefined()
+    expect(review.grep).toBeDefined()
+    const open = await buildCoworkTools(opts({ planMode: false }))
+    for (const n of names) expect(open[n]).toBeDefined()
   })
 
   it('asks for the session scope, where the messaging tools are offered', async () => {
