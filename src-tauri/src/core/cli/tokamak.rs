@@ -137,11 +137,12 @@ pub async fn login(api_key: &str) -> Result<Login, String> {
 /// first model as `default_model` when the user has none (otherwise the agent
 /// would still start with "no model specified" right after signing in).
 fn persist(api_key: &str, models: Vec<String>) -> Result<Login, String> {
+    store_key(api_key)?;
     let config_path = set_provider(
         PROVIDER,
         ProviderUpdate {
-            api_key: Some(api_key.to_string()),
-            clear_api_key: false,
+            api_key: None,
+            clear_api_key: true,
             base_url: Some(base_url()),
             models: Some(models.clone()),
             api_type: None,
@@ -162,6 +163,16 @@ fn persist(api_key: &str, models: Vec<String>) -> Result<Login, String> {
         // who the key belongs to.
         account: None,
     })
+}
+
+/// The key goes to the credential store (OS keyring, else the restricted
+/// file), never into `config.toml`, which is plain text that gets copied,
+/// synced and committed. A failure to store is an error: signing in must not
+/// quietly end up with the key on disk in the clear.
+fn store_key(api_key: &str) -> Result<(), String> {
+    use super::auth::{Credential, CredentialStore};
+    CredentialStore::store(PROVIDER, &Credential::ApiKey(api_key.to_string()))
+        .map_err(|e| format!("could not store the Tokamak API key: {e}"))
 }
 
 /// Point `default_model` at the first model when the stored default is missing
@@ -202,11 +213,12 @@ fn persist_minted(
     minted: &super::device_auth::Minted,
     models: Vec<String>,
 ) -> Result<Login, String> {
+    store_key(&minted.api_key)?;
     let config_path = set_provider(
         PROVIDER,
         ProviderUpdate {
-            api_key: Some(minted.api_key.clone()),
-            clear_api_key: false,
+            api_key: None,
+            clear_api_key: true,
             base_url: Some(base_url()),
             models: Some(models.clone()),
             api_type: None,
@@ -261,6 +273,7 @@ pub async fn logout() -> Result<Logout, String> {
     };
 
     remove_provider(PROVIDER)?;
+    let _ = super::auth::CredentialStore::delete(PROVIDER);
     Ok(match revoked {
         true => Logout::ClearedAndRevoked,
         false => Logout::ClearedOnly,
@@ -269,11 +282,23 @@ pub async fn logout() -> Result<Logout, String> {
 
 pub(crate) fn stored_api_key() -> Option<String> {
     use crate::core::agent::global_config::load_global_config;
-    load_global_config()
+    if let Ok(Some(credential)) = super::auth::CredentialStore::load(PROVIDER) {
+        if let Some(key) = credential.as_api_key().filter(|k| !k.is_empty()) {
+            return Some(key.to_string());
+        }
+    }
+    // A key written inline by an earlier version: still honoured, and moved to
+    // the credential store the first time it is read so it stops sitting in the
+    // config file. Left where it is if the move fails.
+    let inline = load_global_config()
         .ok()?
         .get(PROVIDER)
         .and_then(|c| c.api_key.clone())
-        .filter(|k| !k.is_empty())
+        .filter(|k| !k.is_empty())?;
+    if store_key(&inline).is_ok() {
+        let _ = set_provider(PROVIDER, ProviderUpdate { clear_api_key: true, ..Default::default() });
+    }
+    Some(inline)
 }
 
 /// The API root the stored key was issued for, so the key is never sent to a
@@ -458,8 +483,24 @@ pub fn open_api_keys_page() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::agent::global_config::{load_global_config, with_temp_home};
+    use crate::core::agent::global_config::load_global_config;
     use serde_json::json;
+
+    /// `with_temp_home` plus a private secret store, so a test that signs in
+    /// never writes to the developer's real keyring.
+    fn with_temp_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev = std::env::var("JAN_DATA_FOLDER").ok();
+        std::env::set_var("JAN_DATA_FOLDER", data.path());
+        crate::core::server::provider_secrets::force_file_secrets();
+        let result = crate::core::agent::global_config::with_temp_home(f);
+        match &prev {
+            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
+        }
+        result
+    }
 
     #[test]
     fn sanitize_trims_and_rejects_unusable_input() {
@@ -514,7 +555,8 @@ mod tests {
 
             let configs = load_global_config().expect("load");
             let cfg = configs.get(PROVIDER).expect("tokamak present");
-            assert_eq!(cfg.api_key.as_deref(), Some("tk-1"));
+            assert_eq!(cfg.api_key, None, "the key is in the credential store, not config.toml");
+            assert_eq!(stored_api_key().as_deref(), Some("tk-1"));
             assert_eq!(cfg.base_url.as_deref(), Some(BASE_URL));
             assert_eq!(cfg.models, vec!["m-a".to_string(), "m-b".to_string()]);
             assert!(super::super::providers::is_cli_reachable(cfg));
@@ -571,11 +613,7 @@ mod tests {
             let login = persist("tk-1", Vec::new()).expect("persist");
             assert!(login.models.is_empty());
             assert_eq!(login.default_model, None);
-            let configs = load_global_config().expect("load");
-            assert_eq!(
-                configs.get(PROVIDER).unwrap().api_key.as_deref(),
-                Some("tk-1")
-            );
+            assert_eq!(stored_api_key().as_deref(), Some("tk-1"));
         });
     }
 
@@ -586,7 +624,7 @@ mod tests {
             persist("tk-new", vec!["m-c".into()]).expect("second");
             let configs = load_global_config().expect("load");
             let cfg = configs.get(PROVIDER).unwrap();
-            assert_eq!(cfg.api_key.as_deref(), Some("tk-new"));
+            assert_eq!(stored_api_key().as_deref(), Some("tk-new"));
             assert_eq!(cfg.models, vec!["m-c".to_string()]);
         });
     }
@@ -614,11 +652,40 @@ mod tests {
 
             let configs = load_global_config().expect("load");
             let cfg = configs.get(PROVIDER).unwrap();
-            assert_eq!(cfg.api_key.as_deref(), Some("sk_live_x"));
+            assert_eq!(cfg.api_key, None, "the key is not written to config.toml");
+            assert_eq!(stored_api_key().as_deref(), Some("sk_live_x"));
 
             let meta = provider_key_meta(PROVIDER).expect("meta");
             assert_eq!(meta.key_id.as_deref(), Some("k-1"));
             assert_eq!(meta.key_expires_at, Some(1700000000));
+        });
+    }
+
+    #[test]
+    fn persist_does_not_write_key_to_config_toml() {
+        with_temp_home(|_| {
+            persist("tk-secret-1", vec!["m".into()]).expect("persist");
+            assert_eq!(stored_api_key().as_deref(), Some("tk-secret-1"));
+            assert_eq!(load_global_config().unwrap().get(PROVIDER).unwrap().api_key, None);
+        });
+    }
+
+    #[test]
+    fn legacy_inline_key_migrates() {
+        with_temp_home(|_| {
+            set_provider(
+                PROVIDER,
+                ProviderUpdate {
+                    api_key: Some("tk-legacy".into()),
+                    base_url: Some(base_url()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(load_global_config().unwrap().get(PROVIDER).unwrap().api_key.as_deref(), Some("tk-legacy"));
+            assert_eq!(stored_api_key().as_deref(), Some("tk-legacy"));
+            assert_eq!(load_global_config().unwrap().get(PROVIDER).unwrap().api_key, None, "moved out of config");
+            assert_eq!(stored_api_key().as_deref(), Some("tk-legacy"), "and still readable");
         });
     }
 

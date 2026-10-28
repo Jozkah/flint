@@ -170,5 +170,76 @@
     "toolOk": "성공",
     "toolFailed": "실패",
     "chatStarted": "채팅 시작됨"
+  },
+  "promptSnapshot": {
+    "summary": "모델이 받은 내용",
+    "loading": "불러오는 중…",
+    "gone": "해당 스냅샷이 더 이상 디스크에 없습니다.",
+    "unavailable": "페이로드가 저장되지 않았습니다. {{reason}}",
+    "reason": {
+      "not-serializable": "요청을 직렬화할 수 없어 아무것도 저장되지 않았습니다.",
+      "disabled": "이 실행에서는 스냅샷이 꺼져 있습니다.",
+      "too-large": "요청이 너무 커서 전체를 저장하지 못했습니다."
+    },
+    "meta": {
+      "provider": "공급자",
+      "model": "모델",
+      "reasoning": "추론",
+      "session": "세션",
+      "run": "실행",
+      "agent": "에이전트",
+      "sent": "전송됨",
+      "hash": "해시",
+      "redacted": "가림",
+      "nothing": "없음",
+      "redactedList_one": "필드 {{count}}개: {{list}}",
+      "redactedList_other": "필드 {{count}}개: {{list}}"
+    },
+    "view": {
+      "label": "보기 방식",
+      "tree": "트리",
+      "json": "JSON"
+    },
+    "copy": "가린 페이로드 복사",
+    "copied": "복사됨",
+    "diff": {
+      "run": "이전 요청과 비교",
+      "loading": "비교하는 중…",
+      "first": "세션에서 처음 저장된 요청입니다. 비교할 이전 요청이 없습니다.",
+      "summary": "{{id}}와 비교: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}}개 추가",
+      "left": "{{count}}개 제외",
+      "keptMessages_one": "메시지 {{count}}개 유지",
+      "keptMessages_other": "메시지 {{count}}개 유지",
+      "keptTools_one": "도구 {{count}}개 유지",
+      "keptTools_other": "도구 {{count}}개 유지",
+      "systemChanged": "시스템 프롬프트 변경됨",
+      "enteredHeading": "추가됨",
+      "leftHeading": "제외됨",
+      "nothingNew": "새로운 항목이 없습니다.",
+      "nothingLeft": "창에서 빠진 항목이 없습니다."
+    },
+    "replay": {
+      "label": "이 컨텍스트의 재실행",
+      "run": "이 컨텍스트 재실행",
+      "hint": "정확히 이 요청을 다시 보냅니다. 모델이 요청한 도구는 실행되지 않습니다.",
+      "needsSession": "재실행에는 이 턴이 속한 세션이 필요합니다.",
+      "redactedBlock_one": "재실행할 수 없음: 필드 {{count}}개가 저장 전에 가려져 모델이 당시 받은 내용과 같지 않게 됩니다.",
+      "redactedBlock_other": "재실행할 수 없음: 필드 {{count}}개가 저장 전에 가려져 모델이 당시 받은 내용과 같지 않게 됩니다.",
+      "state": {
+        "running": "재실행 중…",
+        "interrupted": "중단됨: 실행 중 Flint가 멈췄습니다",
+        "completed": "완료됨",
+        "failed": "실패",
+        "cancelled": "중지됨",
+        "refused": "거부됨"
+      },
+      "matched": "턴과 같은 컨텍스트(해시 일치)",
+      "differed": "보낸 요청이 턴의 요청과 달랐습니다",
+      "finish": "종료: {{reason}}",
+      "stop": "중지",
+      "asked": "{{tools}} 요청함(실행 안 됨)"
+    }
   }
 }

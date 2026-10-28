@@ -367,5 +367,33 @@
     "none": "Dieser Ordner deklariert keine Hooks.",
     "error": "Die Hooks-Datei konnte nicht gelesen werden",
     "loadFailed": "Hooks konnten nicht gelesen werden"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Dem Agenten erlauben, Dateien in diesem Ordner zu ändern?",
+        "file": "Dem Agenten erlauben, diese Datei zu ändern?"
+      },
+      "read": {
+        "folder": "Dem Agenten erlauben, diesen Ordner zu lesen?",
+        "file": "Dem Agenten erlauben, diese Datei zu lesen?"
+      }
+    },
+    "asking": "{{task}} bittet um Zugriff außerhalb des eigenen Arbeitsbereichs.",
+    "askingFrom": "{{origin}} in {{task}} bittet um Zugriff außerhalb des eigenen Arbeitsbereichs.",
+    "thisConversation": "diese Unterhaltung",
+    "folderLabel": "Ordner (und alles darin)",
+    "fileLabel": "Datei",
+    "requestedAs": "Angefragt als {{requested}}, was auf den obigen Pfad aufgelöst wird.",
+    "reason": "Angegebener Grund",
+    "access": "Zugriff:",
+    "readWrite": "Lesen und Schreiben",
+    "readOnly": "Nur lesen",
+    "grantNote": "„Für diese Unterhaltung erlauben“ endet mit der Unterhaltung oder nach 8 Stunden. „Immer erlauben“ gilt für jede Unterhaltung, bis du es unter Einstellungen > Berechtigungen > Ordnerzugriff widerrufst.",
+    "moreWaiting_one": "{{count}} weitere Anfrage wartet.",
+    "moreWaiting_other": "{{count}} weitere Anfragen warten.",
+    "deny": "Ablehnen",
+    "always": "Immer erlauben",
+    "session": "Für diese Unterhaltung erlauben"
   }
 }

@@ -163,6 +163,9 @@ export function nextSpeaker(input: {
       }
       return { kind: 'speaker', participant: chosen, via: 'moderator' }
     }
+    // A stored mode this build does not know degrades instead of throwing.
+    default:
+      return { kind: 'none', note: 'This room has an unknown speaking mode.' }
   }
 }
 

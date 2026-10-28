@@ -38,6 +38,38 @@ pub(super) fn store_err(e: crate::core::schedule::store::StoreError) -> HarnessE
     HarnessError::new(ErrorKind::Io, e.message).at(Stage::Startup)
 }
 
+/// Environment a `schedule tick --data D` or `schedule run-spec --spec F`
+/// process needs, computed from the raw arguments so `main` can apply it before
+/// any thread exists. Empty for every other command.
+pub fn process_env_for(args: &[String]) -> Vec<(&'static str, String)> {
+    let args: Vec<&str> = args.iter().map(String::as_str).take_while(|a| *a != "--").collect();
+    let value_of = |from: usize, flag: &str| -> Option<String> {
+        let rest = &args[from..];
+        let prefix = format!("{flag}=");
+        rest.iter().enumerate().find_map(|(i, a)| {
+            if *a == flag {
+                rest.get(i + 1).filter(|v| !v.starts_with('-')).map(|v| v.to_string())
+            } else {
+                a.strip_prefix(prefix.as_str()).map(str::to_string)
+            }
+        })
+    };
+    let Some(at) = args.windows(2).position(|w| w[0] == "schedule" && matches!(w[1], "tick" | "run-spec")) else {
+        return Vec::new();
+    };
+    let from = at + 2;
+    if args[at + 1] == "tick" {
+        return value_of(from, "--data").map(|d| vec![("JAN_DATA_FOLDER", d)]).unwrap_or_default();
+    }
+    let mut out = vec![(crate::core::agent::auto_mode::UNATTENDED_ENV, "1".to_string())];
+    if let Some(file) = value_of(from, "--spec") {
+        if let Ok(spec) = runner::read_spec(Path::new(&file)) {
+            out.push(("JAN_DATA_FOLDER", spec.data_folder));
+        }
+    }
+    out
+}
+
 pub(super) fn data_folder() -> PathBuf {
     crate::core::app::commands::resolve_jan_data_folder()
 }
@@ -83,10 +115,10 @@ pub fn list(json: bool) -> Result<(), HarnessError> {
 /// OS-scheduler entry runs this. It takes the same tick lock as the app, so
 /// when the app is open and ticking too, whichever gets the lock starts the
 /// run and the other does nothing.
-pub fn tick(data: Option<&str>, json: bool) -> Result<(), HarnessError> {
-    if let Some(dir) = data {
-        std::env::set_var("JAN_DATA_FOLDER", dir);
-    }
+///
+/// `--data` has already been applied to `JAN_DATA_FOLDER` by `process_env_for`
+/// in `main`, before any thread existed; this never touches the environment.
+pub fn tick(_data: Option<&str>, json: bool) -> Result<(), HarnessError> {
     let data = data_folder();
     let store = Store::new(&data);
     let report = runner::tick(&store, &data, &SupervisorLauncher, chrono::Utc::now());
@@ -191,8 +223,9 @@ pub async fn run_task(task: crate::core::schedule::spec::Task, wait: bool) -> Re
 /// it. Always writes its ending into the run record, whatever happened.
 pub async fn run_spec(spec_file: &Path) -> Result<(), HarnessError> {
     let spec = runner::read_spec(spec_file).map_err(invalid)?;
-    std::env::set_var("JAN_DATA_FOLDER", &spec.data_folder);
-    std::env::set_var(crate::core::agent::auto_mode::UNATTENDED_ENV, "1");
+    // The data folder and the unattended flag were set by `process_env_for`
+    // in `main`, before the runtime existed. Mutating the environment here,
+    // under running threads, is not sound.
     let data = PathBuf::from(&spec.data_folder);
     let store = Store::new(&data);
     let mut record = store
@@ -419,4 +452,44 @@ fn save_app_copy(
     let Ok(mut thread) = serde_json::from_str::<serde_json::Value>(&text) else { return };
     thread["title"] = serde_json::json!(format!("{} - {when}", spec.task.name));
     let _ = crate::core::threads::helpers::update_thread_metadata(data, session_id, &thread);
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    fn a(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn tick_data_flag_becomes_data_folder_env() {
+        assert_eq!(
+            process_env_for(&a(&["cli", "schedule", "tick", "--data", "D"])),
+            vec![("JAN_DATA_FOLDER", "D".to_string())]
+        );
+        assert_eq!(
+            process_env_for(&a(&["cli", "schedule", "tick", "--data=E"])),
+            vec![("JAN_DATA_FOLDER", "E".to_string())]
+        );
+    }
+
+    #[test]
+    fn run_spec_child_is_marked_unattended() {
+        let env = process_env_for(&a(&["cli", "schedule", "run-spec", "--spec", "no-such-file.json"]));
+        assert_eq!(env, vec![(crate::core::agent::auto_mode::UNATTENDED_ENV, "1".to_string())]);
+    }
+
+    #[test]
+    fn other_commands_set_nothing() {
+        assert!(process_env_for(&a(&["cli", "schedule", "list"])).is_empty());
+        assert!(process_env_for(&a(&["agent", "run", "--", "schedule", "tick", "--data", "D"])).is_empty());
+    }
+
+    #[test]
+    fn run_spec_source_never_mutates_env() {
+        let src = include_str!("schedule.rs");
+        let body = src.split("pub async fn run_spec").nth(1).unwrap().split("async fn execute").next().unwrap();
+        assert!(!body.contains("set_var"));
+    }
 }

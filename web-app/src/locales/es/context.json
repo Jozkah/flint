@@ -170,5 +170,76 @@
     "toolOk": "correcto",
     "toolFailed": "fallido",
     "chatStarted": "Chat iniciado"
+  },
+  "promptSnapshot": {
+    "summary": "Lo que recibió el modelo",
+    "loading": "Cargando…",
+    "gone": "Esa instantánea ya no está en el disco.",
+    "unavailable": "No se guardó ninguna carga útil. {{reason}}",
+    "reason": {
+      "not-serializable": "La solicitud no se pudo serializar, así que no se guardó nada.",
+      "disabled": "Las instantáneas están desactivadas para esta ejecución.",
+      "too-large": "La solicitud era demasiado grande para guardarla entera."
+    },
+    "meta": {
+      "provider": "Proveedor",
+      "model": "Modelo",
+      "reasoning": "Razonamiento",
+      "session": "Sesión",
+      "run": "Ejecución",
+      "agent": "Agente",
+      "sent": "Enviado",
+      "hash": "Hash",
+      "redacted": "Ocultado",
+      "nothing": "nada",
+      "redactedList_one": "{{count}} campo: {{list}}",
+      "redactedList_other": "{{count}} campos: {{list}}"
+    },
+    "view": {
+      "label": "Ver como",
+      "tree": "Árbol",
+      "json": "JSON"
+    },
+    "copy": "Copiar la carga útil ocultada",
+    "copied": "Copiado",
+    "diff": {
+      "run": "Comparar con la solicitud anterior",
+      "loading": "Comparando…",
+      "first": "Esta es la primera solicitud guardada de la sesión; no hay nada anterior con qué compararla.",
+      "summary": "Frente a {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} entraron",
+      "left": "{{count}} salieron",
+      "keptMessages_one": "{{count}} mensaje conservado",
+      "keptMessages_other": "{{count}} mensajes conservados",
+      "keptTools_one": "{{count}} herramienta conservada",
+      "keptTools_other": "{{count}} herramientas conservadas",
+      "systemChanged": "prompt del sistema modificado",
+      "enteredHeading": "Entraron",
+      "leftHeading": "Salieron",
+      "nothingNew": "Nada nuevo.",
+      "nothingLeft": "Nada salió de la ventana."
+    },
+    "replay": {
+      "label": "Repeticiones de este contexto",
+      "run": "Repetir este contexto",
+      "hint": "Envía exactamente esta solicitud otra vez. Las herramientas que pida el modelo no se ejecutan.",
+      "needsSession": "Repetir necesita la sesión a la que pertenece este turno.",
+      "redactedBlock_one": "No se puede repetir: {{count}} campo se ocultó antes de guardarla, así que el modelo no recibiría lo que recibió entonces.",
+      "redactedBlock_other": "No se puede repetir: {{count}} campos se ocultaron antes de guardarla, así que el modelo no recibiría lo que recibió entonces.",
+      "state": {
+        "running": "Repitiendo…",
+        "interrupted": "Interrumpido: Flint se detuvo durante la ejecución",
+        "completed": "Completado",
+        "failed": "Fallido",
+        "cancelled": "Detenido",
+        "refused": "Rechazado"
+      },
+      "matched": "Mismo contexto que el turno (los hashes coinciden)",
+      "differed": "La solicitud enviada difería de la del turno",
+      "finish": "fin: {{reason}}",
+      "stop": "Detener",
+      "asked": "Pidió {{tools}} (no se ejecutó)"
+    }
   }
 }

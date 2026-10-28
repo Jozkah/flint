@@ -432,6 +432,13 @@ pub fn cli_save_thread(
             if let Some(calls) = record.get_mut("tool_calls") {
                 secrets::scrub_json(calls);
             }
+            // Images ride next to the text in the shape the desktop already
+            // stores (`image_url` content entries), so a resume still shows
+            // them to the model. Not scrubbed: a data URL is not a secret and
+            // the redactor must not touch its bytes.
+            if let Some(parts) = record["content"].as_array_mut() {
+                parts.extend(image_parts(m.get("content")));
+            }
             if reuse {
                 match previous.get(position) {
                     Some(old) if same_message(old, &record) => {
@@ -527,6 +534,7 @@ pub(crate) fn rebuild_wire_history(messages: &[serde_json::Value]) -> Vec<serde_
     for m in messages {
         let role = m.get("role").and_then(|v| v.as_str()).unwrap_or_default();
         let text = thread_message_text(m);
+        let images = image_parts(m.get("content"));
         if role == "tool" {
             let id = m
                 .get("tool_call_id")
@@ -551,10 +559,18 @@ pub(crate) fn rebuild_wire_history(messages: &[serde_json::Value]) -> Vec<serde_
         let calls = m
             .get("tool_calls")
             .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()));
-        if text.is_empty() && calls.is_none() {
+        if text.is_empty() && calls.is_none() && images.is_empty() {
             continue;
         }
         let mut msg = serde_json::json!({ "role": role, "content": text });
+        if !images.is_empty() {
+            let mut parts = Vec::new();
+            if !text.is_empty() {
+                parts.push(serde_json::json!({ "type": "text", "text": text }));
+            }
+            parts.extend(images);
+            msg["content"] = serde_json::Value::Array(parts);
+        }
         if let Some(calls) = calls {
             msg["tool_calls"] = calls.clone();
             open = calls
@@ -785,6 +801,21 @@ pub(crate) fn thread_message_text(msg: &serde_json::Value) -> String {
             .join(""),
         _ => String::new(),
     }
+}
+
+/// The `image_url` parts of a message `content` array, as `{type, image_url}`
+/// entries (the form both the wire and the desktop's stored messages use).
+/// Anything else, and an image part with no URL, is left out.
+fn image_parts(content: Option<&serde_json::Value>) -> Vec<serde_json::Value> {
+    let Some(serde_json::Value::Array(parts)) = content else {
+        return Vec::new();
+    };
+    parts
+        .iter()
+        .filter(|p| p.get("type").and_then(|v| v.as_str()) == Some("image_url"))
+        .filter(|p| p.get("image_url").and_then(|i| i.get("url")).and_then(|u| u.as_str()).is_some())
+        .map(|p| serde_json::json!({ "type": "image_url", "image_url": p["image_url"].clone() }))
+        .collect()
 }
 
 /// Text of an OpenAI-shaped message `content`: the string as-is, or the joined
@@ -3803,12 +3834,25 @@ impl Density {
     }
 }
 
+/// Model and tool text bound for a terminal: control, bidi and C1 characters
+/// shown as visible escapes, so streamed output cannot move the cursor, clear
+/// lines or retitle the window. A pipe or file gets the text untouched -- it is
+/// data there, and the stream-json writer is a different sink entirely.
+fn sink_safe(text: &str, is_terminal: bool) -> std::borrow::Cow<'_, str> {
+    if is_terminal {
+        display_safe::display_safe(text)
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
 async fn print_event(
     ev: StreamEvent,
     registry: &PermissionRegistry,
     density: Density,
     duplex: bool,
 ) {
+    use std::io::IsTerminal;
     match ev {
         // AH-078. The snapshot is already written to the data folder by the
         // dispatcher; this event only says one exists. Headless stdout is the
@@ -3821,7 +3865,7 @@ async fn print_event(
         // something to draw. The stream-json writer serializes the event itself.
         StreamEvent::RequestProvenance { .. } => {}
         StreamEvent::Token { text } => {
-            print!("{text}");
+            print!("{}", sink_safe(&text, std::io::stdout().is_terminal()));
             let _ = std::io::stdout().flush();
         }
         // A command's live output is progress, not answer: it goes to stderr so a
@@ -3832,7 +3876,7 @@ async fn print_event(
             // Live command output is the noisiest thing a run produces, and
             // the whole of it arrives again with the tool result.
             if density != Density::Compact {
-                eprint!("{}", color::paint("2", format_args!("{delta}")));
+                eprint!("{}", color::paint("2", format_args!("{}", sink_safe(&delta, std::io::stderr().is_terminal()))));
                 let _ = std::io::stderr().flush();
             }
         }
@@ -3840,7 +3884,7 @@ async fn print_event(
         // yields only the real completion.
         StreamEvent::Reasoning { text } => {
             if density != Density::Compact {
-                eprint!("{}", color::paint("2", format_args!("{text}")));
+                eprint!("{}", color::paint("2", format_args!("{}", sink_safe(&text, std::io::stderr().is_terminal()))));
                 let _ = std::io::stderr().flush();
             }
         }
@@ -3884,7 +3928,10 @@ async fn print_event(
                 "2",
                 format_args!(
                     "[tool] {}",
-                    crate::core::agent::events::describe_tool_call(&name, &args),
+                    sink_safe(
+                        &crate::core::agent::events::describe_tool_call(&name, &args),
+                        std::io::stderr().is_terminal()
+                    ),
                 ),
             ),
         ),
@@ -3899,7 +3946,10 @@ async fn print_event(
             // A failure is never quiet: a compact run drops results, not the
             // news that something did not work.
             if density != Density::Compact || is_error {
-                eprintln!("{}", color::paint("2", format_args!("[{tag}] {content}")));
+                eprintln!(
+                    "{}",
+                    color::paint("2", format_args!("[{tag}] {}", sink_safe(&content, std::io::stderr().is_terminal())))
+                );
             }
         }
         StreamEvent::SubagentStart { name, .. } => {
@@ -5340,6 +5390,49 @@ mod tests {
             default_thread_title(history.as_array().unwrap()),
             "Explain the buffer logic"
         );
+    }
+
+    #[test]
+    fn image_part_survives_save_and_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = "data:image/png;base64,QUJD";
+        let history = vec![
+            serde_json::json!({ "role": "user", "content": [
+                { "type": "text", "text": "what is this" },
+                { "type": "image_url", "image_url": { "url": url, "detail": "high" } },
+            ]}),
+            serde_json::json!({ "role": "assistant", "content": "a picture" }),
+        ];
+        let id = cli_save_thread(dir.path(), None, "m", &history, None).unwrap();
+        let (records, _) = cli_read_messages_lenient(dir.path(), &id).unwrap();
+        let stored = records[0]["content"].as_array().unwrap();
+        assert_eq!(stored[0]["type"], "text");
+        assert_eq!(stored[1]["type"], "image_url");
+        assert_eq!(stored[1]["image_url"]["url"], url);
+        let rebuilt = rebuild_wire_history(&records);
+        assert_eq!(rebuilt[0]["content"][0], serde_json::json!({ "type": "text", "text": "what is this" }));
+        assert_eq!(rebuilt[0]["content"][1]["image_url"]["url"], url);
+        assert_eq!(rebuilt[1]["content"], "a picture");
+    }
+
+    #[test]
+    fn image_only_message_is_not_dropped_on_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = vec![serde_json::json!({ "role": "user", "content": [
+            { "type": "image_url", "image_url": { "url": "data:image/png;base64,QUJD" } },
+        ]})];
+        let id = cli_save_thread(dir.path(), None, "m", &history, None).unwrap();
+        let (records, _) = cli_read_messages_lenient(dir.path(), &id).unwrap();
+        let rebuilt = rebuild_wire_history(&records);
+        assert_eq!(rebuilt.len(), 1);
+        assert_eq!(rebuilt[0]["content"][0]["type"], "image_url");
+    }
+
+    #[test]
+    fn sink_safe_escapes_only_for_a_terminal() {
+        assert_eq!(sink_safe("a\u{1b}]0;pwned\u{7}b", true), "a^[]0;pwned^Gb");
+        assert!(matches!(sink_safe("a\u{1b}[2Jb", false), std::borrow::Cow::Borrowed(_)));
+        assert_eq!(sink_safe("line one\n\tline two", true), "line one\n\tline two");
     }
 
     #[test]
