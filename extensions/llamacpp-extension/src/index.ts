@@ -51,6 +51,8 @@ import {
   ggufFirstShardPath,
   assertSha256Matches,
   setDefaultEmbeddingModelId,
+  isValidModelId,
+  isSafeModelRef,
   type EmbedBatchResult,
 } from './util'
 import {
@@ -2092,6 +2094,13 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * @param model
    */
   async update(modelId: string, model: Partial<modelInfo>): Promise<void> {
+    if (!isSafeModelRef(modelId)) throw new Error(`Invalid modelId: ${modelId}`)
+    // Nothing to rename; without this the folder became "undefined".
+    if (model.id === undefined) return
+    if (!isValidModelId(model.id))
+      throw new Error(
+        `Invalid modelId: ${model.id}. Only alphanumeric and / _ - . characters are allowed.`
+      )
     const modelFolderPath = await joinPath([
       await this.getProviderPath(),
       'models',
@@ -2110,9 +2119,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       throw new Error(`Model with ID ${model.id} already exists`)
     }
     const newModelConfigPath = await joinPath([newFolderPath, 'model.yml'])
-    await fs.mv(modelFolderPath, newFolderPath).then(() =>
+    await fs.mv(modelFolderPath, newFolderPath)
+    try {
       // now replace what values have previous model name with format
-      invoke('write_yaml', {
+      await invoke('write_yaml', {
         data: {
           ...modelConfig,
           model_path: modelConfig?.model_path?.replace(
@@ -2126,7 +2136,18 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         },
         savePath: newModelConfigPath,
       })
-    )
+    } catch (e) {
+      // Put the folder back so the model is not left half-renamed.
+      try {
+        await fs.mv(newFolderPath, modelFolderPath)
+      } catch (rollbackError) {
+        logger.error(
+          `Rename rollback failed (${newFolderPath} -> ${modelFolderPath})`,
+          rollbackError
+        )
+      }
+      throw e
+    }
 
     // The router's preset still references the old model id until we
     // regenerate; without this a `POST /models/load <new-id>` would 404.
@@ -2160,23 +2181,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   private async runImport(modelId: string, opts: ImportOptions): Promise<void> {
-    const isValidModelId = (id: string) => {
-      // only allow alphanumeric, underscore, hyphen, and dot characters in modelId
-      if (!/^[a-zA-Z0-9/_\-\.]+$/.test(id)) return false
-
-      // check for empty parts or path traversal
-      const parts = id.split('/')
-      // Trailing dots/spaces and Windows device names collide or fail on NTFS.
-      return parts.every(
-        (s) =>
-          s !== '' &&
-          s !== '.' &&
-          s !== '..' &&
-          !s.endsWith('.') &&
-          !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(s)
-      )
-    }
-
     if (!isValidModelId(modelId))
       throw new Error(
         `Invalid modelId: ${modelId}. Only alphanumeric and / _ - . characters are allowed.`
@@ -2413,6 +2417,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * @param modelId The model ID to delete
    */
   private async deleteModelFolder(modelId: string): Promise<void> {
+    if (!isSafeModelRef(modelId)) {
+      logger.warn(`Refusing to delete model folder for unsafe id: ${modelId}`)
+      return
+    }
     try {
       const modelDir = await joinPath([
         await this.getProviderPath(),
@@ -3031,6 +3039,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   override async delete(modelId: string): Promise<void> {
+    if (!isSafeModelRef(modelId)) throw new Error(`Invalid modelId: ${modelId}`)
     const modelDir = await joinPath([
       await this.getProviderPath(),
       'models',

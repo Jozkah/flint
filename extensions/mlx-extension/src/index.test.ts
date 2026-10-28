@@ -453,3 +453,58 @@ describe('isToolSupported', () => {
     expect(await ext.isToolSupported('foo')).toBe(false)
   })
 })
+
+describe('model id validation', () => {
+  const mockMv = vi.mocked(fs.mv)
+
+  it('abortImport rejects a traversal id without touching fs', async () => {
+    const ext = newExt()
+    mockExistsSync.mockResolvedValue(true)
+    await ext.abortImport('../../x')
+    expect(mockRm).not.toHaveBeenCalled()
+  })
+
+  it('delete rejects a traversal id', async () => {
+    const ext = newExt()
+    await expect(ext.delete('a/../../b')).rejects.toThrow('Invalid modelId')
+    expect(mockRm).not.toHaveBeenCalled()
+  })
+
+  it('delete allows a legacy name with a space', async () => {
+    const ext = newExt()
+    mockExistsSync.mockResolvedValue(true)
+    mockInvoke.mockResolvedValue({ model_path: '/abs/m' })
+    mockRm.mockResolvedValue(undefined)
+    await ext.delete('old model')
+    expect(mockRm).toHaveBeenCalledWith('/data/mlx/models/old model')
+  })
+
+  it('update rejects an invalid new id', async () => {
+    const ext = newExt()
+    await expect(ext.update('foo', { id: '../evil' })).rejects.toThrow(
+      'Invalid modelId'
+    )
+    expect(mockMv).not.toHaveBeenCalled()
+  })
+
+  it('update without a new id is a no-op', async () => {
+    const ext = newExt()
+    await ext.update('foo', {})
+    expect(mockMv).not.toHaveBeenCalled()
+  })
+
+  it('update moves the folder back when the yaml write fails', async () => {
+    const ext = newExt()
+    mockExistsSync.mockResolvedValue(false)
+    mockMv.mockResolvedValue(undefined)
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'write_yaml') throw new Error('disk full')
+      return { model_path: 'mlx/models/foo/m' }
+    })
+    await expect(ext.update('foo', { id: 'bar' })).rejects.toThrow('disk full')
+    expect(mockMv).toHaveBeenLastCalledWith(
+      '/data/mlx/models/bar',
+      '/data/mlx/models/foo'
+    )
+  })
+})
