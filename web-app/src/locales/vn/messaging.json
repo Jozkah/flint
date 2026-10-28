@@ -85,10 +85,13 @@
   "waitingNotice": "Tin nhắn từ {{name}} đang chờ",
   "heldBanner_one": "{{count}} tin nhắn từ phiên khác đang chờ bạn",
   "heldBanner_other": "{{count}} tin nhắn từ các phiên khác đang chờ bạn",
+  "heldBanner_many": "{{count}} tin nhắn từ các phiên khác đang chờ bạn",
   "waitingCount_one": "{{count}} tin nhắn đang chờ",
   "waitingCount_other": "{{count}} tin nhắn đang chờ",
+  "waitingCount_many": "{{count}} tin nhắn đang chờ",
   "waitingIn_one": "{{count}} tin nhắn trong {{session}}",
   "waitingIn_other": "{{count}} tin nhắn trong {{session}}",
+  "waitingIn_many": "{{count}} tin nhắn trong {{session}}",
   "held": {
     "title": "Messages waiting for approval",
     "banner": "Waiting for your approval ({{count}})",

@@ -379,8 +379,10 @@
   "sharedFolder": {
     "others_one": "{{count}} autre session travaille dans ce dossier",
     "others_other": "{{count}} autres sessions travaillent dans ce dossier",
+    "others_many": "{{count}} autres sessions travaillent dans ce dossier",
     "waitingApproval_one": "{{count}} autre session attend une approbation",
     "waitingApproval_other": "{{count}} autres sessions attendent une approbation",
+    "waitingApproval_many": "{{count}} autres sessions attendent une approbation",
     "waitingApprovalOne": "En attente d’approbation",
     "holdEdit": "{{owner}} modifie {{target}} : {{session}} a reçu pour consigne de lui écrire",
     "holdGit": "{{owner}} travaille dans ce dossier : {{session}} a été retenue avant git {{target}} et doit lui écrire",
@@ -410,7 +412,8 @@
     "sharedWarning": "Dossier partagé : les changements git d’une autre session peuvent déplacer la branche et les fichiers de celle-ci. Flint retient les commandes git risquées et avertit quand deux sessions modifient un même fichier.",
     "gotIt": "Compris",
     "sidebarMark_one": "Partage un dossier avec {{count}} autre session",
-    "sidebarMark_other": "Partage un dossier avec {{count}} autres sessions"
+    "sidebarMark_other": "Partage un dossier avec {{count}} autres sessions",
+    "sidebarMark_many": "Partage un dossier avec {{count}} autres sessions"
   },
   "coworkLayout": {
     "views": "Vue Cowork",
@@ -2061,6 +2064,7 @@
     "hideCompletedToolsDescription": "Masque l'activité des outils terminée avec succès. L'activité en cours, en échec, refusée, annulée et obsolète est toujours affichée, et rien n'est supprimé.",
     "hiddenCount": "{{count}} activités d'outils terminées masquées",
     "hiddenCount_one": "1 activité d'outil terminée masquée",
+    "hiddenCount_many": "{{count}} activités d'outils terminées masquées",
     "showAgain": "Les afficher à nouveau",
     "showModelReceived": "Afficher « Ce que le modèle a reçu »",
     "showModelReceivedDescription": "L’enregistrement de la requête et son nombre de jetons à chaque tour. Il est enregistré dans tous les cas et reste dans les détails de la session et la chronologie."
@@ -2807,6 +2811,7 @@
     "showingFirst": "Affichage des premiers {{loaded}} sur {{total}}",
     "lines_one": "{{count}} ligne",
     "lines_other": "{{count}} lignes",
+    "lines_many": "{{count}} lignes",
     "wrap": "Retour à la ligne",
     "copy": "Copier",
     "copied": "Copié",
@@ -2888,6 +2893,7 @@
     "export": "Exporter",
     "imported_one": "{{count}} invite ajoutée",
     "imported_other": "{{count}} invites ajoutées",
+    "imported_many": "{{count}} invites ajoutées",
     "importedNone": "Aucun nouveau prompt trouvé",
     "search": "Rechercher des invites",
     "empty": "Aucune invite pour l'instant.",
@@ -3051,14 +3057,19 @@
   "nesting": {
     "more_one": "{{count}} autre imbriqué",
     "more_other": "{{count}} autres imbriqués",
+    "more_many": "{{count}} autres imbriqués",
     "new_one": "{{count}} nouveau",
     "new_other": "{{count}} nouveaux",
+    "new_many": "{{count}} nouveaux",
     "working_one": "{{count}} en cours",
     "working_other": "{{count}} en cours",
+    "working_many": "{{count}} en cours",
     "waiting_one": "{{count}} en attente",
     "waiting_other": "{{count}} en attente",
+    "waiting_many": "{{count}} en attente",
     "count_one": "{{count}} imbriqué",
     "count_other": "{{count}} imbriqués",
+    "count_many": "{{count}} imbriqués",
     "fewer": "Afficher moins d’imbriqués"
   },
   "diffReview": {
@@ -3091,7 +3102,8 @@
     "report": {
       "clean": "Arrêté. {{stopped}} arrêtés, {{already}} déjà arrêtés, plus rien en cours.",
       "partial_one": "{{stopped}} arrêtés, mais {{count}} processus tourne encore. Le nettoyage n'est pas terminé.",
-      "partial_other": "{{stopped}} arrêtés, mais {{count}} processus tournent encore. Le nettoyage n'est pas terminé."
+      "partial_other": "{{stopped}} arrêtés, mais {{count}} processus tournent encore. Le nettoyage n'est pas terminé.",
+      "partial_many": "{{stopped}} arrêtés, mais {{count}} processus tournent encore. Le nettoyage n'est pas terminé."
     },
     "error": "Impossible d'arrêter : {{error}}",
     "cancel": "Annuler",
@@ -3137,6 +3149,7 @@
     "reviewed": "J'ai examiné ce que cela change",
     "moreLines_one": "… {{count}} ligne de plus",
     "moreLines_other": "… {{count}} lignes de plus",
+    "moreLines_many": "… {{count}} lignes de plus",
     "lines": "Lignes {{from}}–{{to}}",
     "sensitive": "Semble contenir un identifiant, donc jamais appliqué.",
     "wholeBinary": "Binaire : appliqué ou laissé en entier.",
@@ -3145,8 +3158,10 @@
     "nothingSelected": "Rien n'est sélectionné. Rejetez la proposition pour l'abandonner.",
     "applied_one": "{{count}} fichier appliqué.",
     "applied_other": "{{count}} fichiers appliqués.",
+    "applied_many": "{{count}} fichiers appliqués.",
     "appliedPartial_one": "{{count}} fichier appliqué ; le reste a été écarté.",
     "appliedPartial_other": "{{count}} fichiers appliqués ; le reste a été écarté.",
+    "appliedPartial_many": "{{count}} fichiers appliqués ; le reste a été écarté.",
     "rejected": "Rejetée. Rien n'a changé dans votre dossier.",
     "heading": "{{title}} vers {{root}}",
     "defaultTitle": "Modifications proposées",
@@ -3192,12 +3207,35 @@
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
   },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
   "citations": {
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   }
 }

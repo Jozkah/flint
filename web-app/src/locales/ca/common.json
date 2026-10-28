@@ -379,8 +379,10 @@
   "sharedFolder": {
     "others_one": "{{count}} altra sessió treballa en aquesta carpeta",
     "others_other": "{{count}} altres sessions treballen en aquesta carpeta",
+    "others_many": "{{count}} altres sessions treballen en aquesta carpeta",
     "waitingApproval_one": "{{count}} altra sessió espera aprovació",
     "waitingApproval_other": "{{count}} altres sessions esperen aprovació",
+    "waitingApproval_many": "{{count}} altres sessions esperen aprovació",
     "waitingApprovalOne": "Esperant aprovació",
     "holdEdit": "{{owner}} està editant {{target}}: s’ha indicat a {{session}} que li escrigui",
     "holdGit": "{{owner}} treballa en aquesta carpeta: {{session}} ha quedat retinguda abans de git {{target}} i li ha d’escriure",
@@ -410,7 +412,8 @@
     "sharedWarning": "Carpeta compartida: els canvis de git d’una altra sessió poden moure la branca i els fitxers d’aquesta. Flint reté les ordres git arriscades i avisa quan dues sessions editen un mateix fitxer.",
     "gotIt": "Entesos",
     "sidebarMark_one": "Comparteix una carpeta amb {{count}} altra sessió",
-    "sidebarMark_other": "Comparteix una carpeta amb {{count}} altres sessions"
+    "sidebarMark_other": "Comparteix una carpeta amb {{count}} altres sessions",
+    "sidebarMark_many": "Comparteix una carpeta amb {{count}} altres sessions"
   },
   "coworkLayout": {
     "views": "Vista de Cowork",
@@ -2065,6 +2068,7 @@
     "hideCompletedToolsDescription": "Amaga l'activitat d'eines que ha acabat correctament. L'activitat en execució, fallida, refusada, cancel·lada o obsoleta es mostra sempre, i no se suprimeix res.",
     "hiddenCount": "{{count}} activitats d'eines completades amagades",
     "hiddenCount_one": "1 activitat d'eina completada amagada",
+    "hiddenCount_many": "{{count}} activitats d'eines completades amagades",
     "showAgain": "Torna-les a mostrar",
     "showModelReceived": "Mostra «Què ha rebut el model»",
     "showModelReceivedDescription": "El registre per torn de la sol·licitud i el seu recompte de tokens. Es registra igualment i es manté als detalls de la sessió i a la cronologia."
@@ -2807,6 +2811,7 @@
     "showingFirst": "Es mostren els primers {{loaded}} de {{total}}",
     "lines_one": "{{count}} línia",
     "lines_other": "{{count}} línies",
+    "lines_many": "{{count}} línies",
     "wrap": "Ajusta les línies",
     "copy": "Copia",
     "copied": "Copiat",
@@ -2888,6 +2893,7 @@
     "export": "Exporta",
     "imported_one": "S'ha afegit {{count}} consigna",
     "imported_other": "S'han afegit {{count}} consignes",
+    "imported_many": "S'han afegit {{count}} consignes",
     "importedNone": "No s'han trobat indicacions noves",
     "search": "Cerca consignes",
     "empty": "Encara no hi ha consignes.",
@@ -3051,14 +3057,19 @@
   "nesting": {
     "more_one": "{{count}} més imbricat",
     "more_other": "{{count}} més imbricats",
+    "more_many": "{{count}} més imbricats",
     "new_one": "{{count}} nou",
     "new_other": "{{count}} nous",
+    "new_many": "{{count}} nous",
     "working_one": "{{count}} treballant",
     "working_other": "{{count}} treballant",
+    "working_many": "{{count}} treballant",
     "waiting_one": "{{count}} en espera",
     "waiting_other": "{{count}} en espera",
+    "waiting_many": "{{count}} en espera",
     "count_one": "{{count}} imbricat",
     "count_other": "{{count}} imbricats",
+    "count_many": "{{count}} imbricats",
     "fewer": "Mostra menys imbricats"
   },
   "diffReview": {
@@ -3091,7 +3102,8 @@
     "report": {
       "clean": "Aturat. {{stopped}} aturats, {{already}} ja aturats, no queda res en execució.",
       "partial_one": "{{stopped}} aturats, però {{count}} procés encara s'executa. La neteja no ha acabat.",
-      "partial_other": "{{stopped}} aturats, però {{count}} processos encara s'executen. La neteja no ha acabat."
+      "partial_other": "{{stopped}} aturats, però {{count}} processos encara s'executen. La neteja no ha acabat.",
+      "partial_many": "{{stopped}} aturats, però {{count}} processos encara s'executen. La neteja no ha acabat."
     },
     "error": "No s'ha pogut aturar: {{error}}",
     "cancel": "Cancel·la",
@@ -3137,6 +3149,7 @@
     "reviewed": "He revisat què canvia això",
     "moreLines_one": "… {{count}} línia més",
     "moreLines_other": "… {{count}} línies més",
+    "moreLines_many": "… {{count}} línies més",
     "lines": "Línies {{from}}–{{to}}",
     "sensitive": "Sembla que conté una credencial, així que mai s'aplica.",
     "wholeBinary": "Binari: s'aplica o es deixa sencer.",
@@ -3145,8 +3158,10 @@
     "nothingSelected": "No hi ha res seleccionat. Rebutja la proposta per descartar-la.",
     "applied_one": "{{count}} fitxer aplicat.",
     "applied_other": "{{count}} fitxers aplicats.",
+    "applied_many": "{{count}} fitxers aplicats.",
     "appliedPartial_one": "{{count}} fitxer aplicat; la resta s'ha deixat fora.",
     "appliedPartial_other": "{{count}} fitxers aplicats; la resta s'ha deixat fora.",
+    "appliedPartial_many": "{{count}} fitxers aplicats; la resta s'ha deixat fora.",
     "rejected": "Rebutjada. No ha canviat res a la teva carpeta.",
     "heading": "{{title}} a {{root}}",
     "defaultTitle": "Canvis proposats",
@@ -3192,12 +3207,35 @@
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
   },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
   "citations": {
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   }
 }

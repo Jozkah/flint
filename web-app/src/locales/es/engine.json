@@ -140,6 +140,7 @@
     "tabRouting": "Enrutamiento y límites",
     "toolsCount_one": "{{count}} herramienta",
     "toolsCount_other": "{{count}} herramientas",
+    "toolsCount_many": "{{count}} herramientas",
     "filterLabel": "Mostrar servidores",
     "filterAll": "Todos",
     "filterOn": "Activados",

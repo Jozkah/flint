@@ -1361,6 +1361,7 @@
       "updated": "अपडेट किया गया {{when}}",
       "loading": "कैंपेन लोड हो रहे हैं",
       "loadFailed": "कैंपेन लोड नहीं हो सके।",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} अपठनीय अभियान रिकॉर्ड छोड़ा गया। फ़ाइलें अपनी जगह पर रहने दी गईं।",
       "skipped_other": "{{count}} अपठनीय अभियान रिकॉर्ड छोड़े गए। फ़ाइलें अपनी जगह पर रहने दी गईं।",
       "retry": "दोबारा कोशिश करें",
