@@ -179,4 +179,38 @@ describe('ProviderCustomHeaders', () => {
       })
     )
   })
+
+  it('keeps a blank row the user just added when the store echoes a save', async () => {
+    const one = [{ header: 'X-Tenant', value: 'acme' }]
+    const { rerender } = render(<ProviderCustomHeaders provider={provider(one)} />)
+    fireEvent.click(screen.getByTestId('custom-header-add'))
+    type('custom-header-value-0', 'acme2')
+    await waitFor(() => expect(h.updateProvider).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('custom-header-add'))
+    expect(screen.getByTestId('custom-header-name-1')).toBeInTheDocument()
+    // The store echoes the first save back while the blank row is still open.
+    rerender(
+      <ProviderCustomHeaders
+        provider={provider([{ header: 'X-Tenant', value: 'acme2' }])}
+      />
+    )
+    expect(screen.getByTestId('custom-header-name-1')).toBeInTheDocument()
+  })
+
+  it('removing a middle row leaves the other rows in place', () => {
+    render(
+      <ProviderCustomHeaders
+        provider={provider([
+          { header: 'X-A', value: '1' },
+          { header: 'X-B', value: '2' },
+          { header: 'X-C', value: '3' },
+        ])}
+      />
+    )
+    const third = screen.getByTestId('custom-header-name-2')
+    fireEvent.click(screen.getByTestId('custom-header-remove-1'))
+    // Same DOM node: the row was kept by id, not re-created by position.
+    expect(screen.getByTestId('custom-header-name-1')).toBe(third)
+    expect((third as HTMLInputElement).value).toBe('X-C')
+  })
 })
