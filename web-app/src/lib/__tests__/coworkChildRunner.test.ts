@@ -191,6 +191,22 @@ describe('createChildRunner', () => {
     expect(seen?.aborted).toBe(true)
   })
 
+  it('removes its listener from a team signal when the child finishes', async () => {
+    const team = new AbortController()
+    const add = vi.spyOn(team.signal, 'addEventListener')
+    const remove = vi.spyOn(team.signal, 'removeEventListener')
+    runSubagent.mockImplementation(async () => ({
+      output: 'x',
+      isError: false,
+      usage: null,
+      sessionTokens: 0,
+    }))
+    await createChildRunner(env())('c3', { subagent_name: 'explorer', description: 'd' }, team.signal)
+    const added = add.mock.calls.find((c) => c[0] === 'abort')
+    expect(added).toBeDefined()
+    expect(remove).toHaveBeenCalledWith('abort', added![1])
+  })
+
   it('records a queued child with its position, and reports usage to a surface that keeps a budget', async () => {
     const onUsage = vi.fn()
     runSubagent.mockImplementation(async (opts: { events: SubagentEvents }) => {
