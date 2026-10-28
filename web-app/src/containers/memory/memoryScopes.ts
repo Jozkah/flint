@@ -1,4 +1,4 @@
-import type { MemoryScope } from '@janhq/tauri-plugin-agent-tools-api'
+import type { MemoryRecall, MemoryScope } from '@janhq/tauri-plugin-agent-tools-api'
 
 /**
  * The scopes, in the order a user thinks about them: this conversation first,
@@ -30,3 +30,10 @@ export function formatWhen(
     timeStyle: 'short',
   }).format(new Date(seconds * 1000))
 }
+
+/** The recall switch a tab's scope is governed by. */
+export const recallKey = (scope: MemoryScope): keyof MemoryRecall =>
+  scope === 'chat' ? 'session' : scope === 'project' ? 'project' : 'user'
+
+/** How many rows one request fetches. The backend clamps this too. */
+export const PAGE_SIZE = 50
