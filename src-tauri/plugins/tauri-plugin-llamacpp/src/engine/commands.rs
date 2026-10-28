@@ -530,6 +530,23 @@ pub async fn engine_devices<R: tauri::Runtime>(
     let exe = resolve_worker_exe(&app_handle)?;
     let mut envs = super::env_policy::sanitize_envs(envs);
     super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
+    let key = super::device_cache::device_key(&exe, &envs);
+    static CACHE: std::sync::OnceLock<super::device_cache::DeviceCache<Vec<EngineDevice>>> =
+        std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(super::device_cache::DeviceCache::new)
+        .get_or_run(key, std::time::Instant::now(), super::device_cache::DEVICE_TTL, || {
+            list_devices(exe, envs)
+        })
+        .await
+}
+
+/// Runs the worker with `--list-devices` once.
+#[cfg(feature = "tauri")]
+async fn list_devices(
+    exe: PathBuf,
+    envs: HashMap<String, String>,
+) -> Result<Vec<EngineDevice>, String> {
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);
     // Same cwd pin as a running worker: --list-devices loads every backend.
