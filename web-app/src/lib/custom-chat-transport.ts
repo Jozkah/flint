@@ -5,6 +5,21 @@ import {
 } from '@/lib/tool-image-sentinel'
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
+import {
+  encodeAudioAttachments,
+  encodeVideoAttachments,
+  mapUserInlineAttachments,
+} from '@/lib/chat/transport/attachmentEncoding'
+import {
+  SHELL_ROUTING_GUIDANCE,
+  SHELL_ROUTING_GUIDANCE_NO_BASH,
+  buildAgentToolsSystemInstruction,
+  buildColorOutputInstruction,
+  buildFilesSystemInstruction,
+  buildWebSearchSystemInstruction,
+} from '@/lib/chat/transport/promptBuilder'
+
+export { SHELL_ROUTING_GUIDANCE, SHELL_ROUTING_GUIDANCE_NO_BASH }
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
@@ -62,7 +77,6 @@ import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
-import { chatFoldersOf } from '@/lib/chatFolders'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { webSearchOnFor } from '@/hooks/useWebSearchChoice'
@@ -77,7 +91,6 @@ import {
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import {
   getAgentToolSchemas,
-  sandboxEnforces,
   SHELL_TOOL_NAME,
 } from '@/lib/agentTools'
 import { useChatShell } from '@/hooks/useChatShell'
@@ -219,11 +232,7 @@ import {
   syncMcpStore,
   writeMcpBaseline,
 } from '@/lib/mcpLiveTools'
-import {
-  encodeAudioSentinel,
-  hasAudioSentinel,
-  parseAudioDataUrl,
-} from '@/lib/audio-sentinel'
+import { hasAudioSentinel } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import {
   imageLimitFor,
@@ -239,11 +248,7 @@ import {
   screenshotsToAttach,
 } from '@/lib/toolScreenshots'
 import { transcodeWebpImages } from '@/lib/imageTranscode'
-import {
-  encodeVideoSentinel,
-  hasVideoSentinel,
-  parseVideoDataUrl,
-} from '@/lib/video-sentinel'
+import { hasVideoSentinel } from '@/lib/video-sentinel'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { OPENROUTER_PARAM_KEYS, paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
@@ -311,27 +316,6 @@ export type ServiceHub = {
     >
   }
 }
-
-/**
- * Which shell to reach for, in order. Third-party shell MCPs (super-shell and
- * the like) have their own whitelists and program/args shapes, and a model
- * offered them beside bash and git kept picking them and failing.
- */
-export const SHELL_ROUTING_GUIDANCE = [
-  'Choosing a shell: use the git tool for every git and gh command, the',
-  'built-in bash tool for sandboxed commands when offered. Use host_powershell',
-  'when offered and the user explicitly names it or the command needs host',
-  'access, with approval.',
-  'Use an MCP shell or terminal only when the user names it or asks for it.',
-].join(' ')
-
-/** The same guidance once Chat's shell is switched off: bash is not mentioned. */
-export const SHELL_ROUTING_GUIDANCE_NO_BASH = [
-  'Choosing a shell: use the git tool for every git and gh command. Use',
-  'host_powershell when offered and the user explicitly names it or the command',
-  'needs host access, with approval.',
-  'Use an MCP shell or terminal only when the user names it or asks for it.',
-].join(' ')
 
 const SCHEMA_PRIMITIVE_TYPES =new Set([
   'string',
@@ -1590,19 +1574,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
   }
 
-  /** Static: tells the model that inline HTML colors render in chat. */
   buildColorOutputInstruction(): string {
-    // Decoration, not a rule: a small window does not carry it.
-    if (this.smallContext) return ''
-    return [
-      '# Color',
-      'Chat renders inline HTML color, so use it sparingly where it carries',
-      'meaning: <span style="color:#22c55e">ok</span>,',
-      '<span style="color:#ef4444">fault</span>, or',
-      '<span style="color:#f59e0b">warning</span> on status words, readings and',
-      'pass/fail results. Only color and font styles on span/div work; do not',
-      'color ordinary prose, and never put it inside code blocks.',
-    ].join(' ')
+    return buildColorOutputInstruction(this.smallContext)
   }
 
   protected buildSystemPrompt(messages: UIMessage[]): string | undefined {
@@ -4120,318 +4093,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return null
   }
 
-  // Replace audio `file` parts on user messages with sentinel-bearing `text`
-  // parts. The `@ai-sdk/openai-compatible` provider rejects non-image file
-  // parts in its converter; the matching fetch wrapper in model-factory.ts
-  // decodes these sentinels back into OpenAI `input_audio` content parts on
-  // the outgoing wire, which llama-server's chat-completions endpoint accepts.
   encodeAudioAttachments(messages: UIMessage[]): UIMessage[] {
-    return messages.map((message) => {
-      if (message.role !== 'user' || !Array.isArray(message.parts)) return message
-      let touched = false
-      const nextParts = message.parts.map((part) => {
-        if (
-          part?.type === 'file' &&
-          typeof (part as { mediaType?: string }).mediaType === 'string' &&
-          (part as { mediaType: string }).mediaType.startsWith('audio/') &&
-          typeof (part as { url?: string }).url === 'string'
-        ) {
-          const parsed = parseAudioDataUrl((part as { url: string }).url)
-          if (!parsed) return part
-          touched = true
-          return { type: 'text' as const, text: encodeAudioSentinel(parsed.format, parsed.data) }
-        }
-        return part
-      })
-      if (!touched) return message
-      return { ...message, parts: nextParts } as UIMessage
-    })
+    return encodeAudioAttachments(messages)
   }
 
-  // Replace video `file` parts on user messages with sentinel-bearing `text`
-  // parts, same mechanism as encodeAudioAttachments. The fetch wrapper in
-  // model-factory.ts decodes these into llama-server `input_video` content
-  // parts (frames decoded via the vision encoder + ffmpeg on the server).
   encodeVideoAttachments(messages: UIMessage[]): UIMessage[] {
-    return messages.map((message) => {
-      if (message.role !== 'user' || !Array.isArray(message.parts)) return message
-      let touched = false
-      const nextParts = message.parts.map((part) => {
-        if (
-          part?.type === 'file' &&
-          typeof (part as { mediaType?: string }).mediaType === 'string' &&
-          (part as { mediaType: string }).mediaType.startsWith('video/') &&
-          typeof (part as { url?: string }).url === 'string'
-        ) {
-          const parsed = parseVideoDataUrl((part as { url: string }).url)
-          if (!parsed) return part
-          touched = true
-          return { type: 'text' as const, text: encodeVideoSentinel(parsed.data) }
-        }
-        return part
-      })
-      if (!touched) return message
-      return { ...message, parts: nextParts } as UIMessage
-    })
+    return encodeVideoAttachments(messages)
   }
 
-  /**
-   * [ATTACHED_FILES] blocks stay on the user message that carries them (see
-   * fileMetadata.ts injectFilesIntoPrompt) so the model reads file_ids in the
-   * turn they belong to. Only a static, file-independent instruction is added
-   * to the system prompt - it never varies per attachment, so it doesn't
-   * defeat prompt caching.
-   */
   buildFilesSystemInstruction(messages: UIMessage[]): string {
-    const hasAttachedFiles = messages.some(
-      (message) =>
-        message.role === 'user' &&
-        Array.isArray(message.parts) &&
-        message.parts.some(
-          (part) =>
-            part?.type === 'text' &&
-            typeof (part as { text?: string }).text === 'string' &&
-            (part as { text: string }).text.includes('[ATTACHED_FILES]')
-        )
-    )
-    if (!hasAttachedFiles) return ''
-    // Files sent inline are already in the message: there is nothing to
-    // retrieve, and on a small model the note is wasted context.
-    const allInline = messages.every(
-      (message) =>
-        message.role !== 'user' ||
-        !Array.isArray(message.parts) ||
-        message.parts.every((part) => {
-          const text = (part as { text?: unknown })?.text
-          if (part?.type !== 'text' || typeof text !== 'string' || !text.includes('[ATTACHED_FILES]')) {
-            return true
-          }
-          const modes = [...text.matchAll(/\bmode:\s*([\w-]+)/g)].map((m) => m[1])
-          return modes.length > 0 && modes.every((mode) => mode === 'inline')
-        })
-    )
-    if (allInline) return ''
-    return [
-      'Some user messages contain an [ATTACHED_FILES] block listing files',
-      'attached to that turn (file_id, name, type, size, chunk count, mode).',
-      'Use the available retrieval tools with those file_ids when their',
-      'contents are relevant to the request.',
-    ].join(' ')
+    return buildFilesSystemInstruction(messages)
   }
 
-  /**
-   * Static instruction teaching the model to use the native web tools and cite
-   * sources inline with [[cite:URL]] markers (rendered as favicon chips). Only
-   * added when web search is enabled so it doesn't affect prompt caching for
-   * users who keep it off, and only when this request really offers a web tool:
-   * a model without them was taught to cite pages it never read (C051).
-   */
   buildWebSearchSystemInstruction(): string {
-    if (!webSearchOnFor(this.threadId)) return ''
-    if (!this.tools || !('web_search' in this.tools || 'web_fetch' in this.tools))
-      return ''
-    if (this.smallContext) {
-      return [
-        '# Web Access',
-        'Use web_search and web_fetch for current, external or verifiable information.',
-        'Cite each source you rely on inline, right after the statement, as [[cite:URL]]',
-        '(the full URL from web_search); no separate references section.',
-      ].join(' ')
-    }
-    return [
-      '# Web Access',
-      'You can search the web with web_search and read pages with web_fetch.',
-      ...(this.tools && 'image_search' in this.tools
-        ? ['Use image_search for a cover, product or place photo when it helps.']
-        : []),
-      'Use them whenever the request needs current, external, or verifiable',
-      'information, then base your answer on what you find. When a statement',
-      'relies on a web source, cite it inline immediately after that statement',
-      'using the exact marker [[cite:URL]], where URL is the full source URL',
-      'from a web_search result (for example: [[cite:https://example.com/page]]).',
-      'Cite each distinct source you rely on; do not add a separate references',
-      'or sources section.',
-    ].join(' ')
-  }
-
-  /**
-   * Static instruction describing the isolated agent workspace the built-in
-   * tools operate in. Only added when the toolset is enabled so it doesn't
-   * affect prompt caching for users who keep it off.
-   */
-  /**
-   * The workspace note for small-context mode: the same rules (isolated
-   * workspace, read-only folders, shell routing, sandbox limits, request_access,
-   * git through the git tool), without the explanations.
-   */
-  private buildCompactAgentToolsInstruction(): string {
-    const parts = [
-      '# Workspace',
-      'read, ls, find, grep, write and edit act on an isolated scratch workspace (relative paths,',
-      'deleted with this chat), not the whole filesystem. memory_write/memory_list/memory_read',
-      'keep facts across chats; skill_write records a repeatable procedure.',
-    ]
-    const folders = this.threadId
-      ? chatFoldersOf(useThreads.getState().threads[this.threadId])
-      : []
-    if (folders.length > 0) {
-      parts.push(
-        'Attached folders (READ-ONLY, absolute paths; writes are refused):',
-        ...folders.map((folder) => `- \`${folder}\``)
-      )
-    }
-    const skills = skillCatalogBlock(undefined, undefined, true)
-    if (skills) parts.push('', skills, '')
-    // Switched off: no word about bash, so the model is not told of a tool it
-    // lacks. The git tool and request_access are separate tools and stay.
-    const bashOff = this.chatShellWithheld()
-    parts.push(bashOff ? SHELL_ROUTING_GUIDANCE_NO_BASH : SHELL_ROUTING_GUIDANCE)
-    if (sandboxEnforces()) {
-      parts.push(
-        ...(bashOff
-          ? []
-          : [
-              'bash runs sandboxed in the workspace: writes only there, no reading of the home',
-              'directory.',
-            ]),
-        'For a path outside the workspace, after a refusal, call request_access with the narrowest',
-        'absolute path, a one-sentence',
-        'reason and access_mode "write" when needed; if denied, do not ask again for that path.',
-        ...(bashOff
-          ? []
-          : [
-              useAgentToolsConfig.getState().bashNetworkEnabled
-                ? 'It has network access.'
-                : 'It has no network access.',
-            ]),
-        bashOff
-          ? 'For all Git and GitHub work call the git tool (it asks before anything changes or reaches a remote); never use an MCP shell for git.'
-          : 'git and Git Bash cannot run in the sandbox: for all Git and GitHub work call the git tool (it asks before anything changes or reaches a remote); never use an MCP shell for git.',
-        'If a GitHub URL names no repository, ask which one before cloning.'
-      )
-    }
-    return parts.join(' ')
+    return buildWebSearchSystemInstruction({
+      threadId: this.threadId,
+      tools: this.tools,
+      smallContext: this.smallContext,
+    })
   }
 
   buildAgentToolsSystemInstruction(): string {
-    if (!useAgentToolsConfig.getState().agentToolsEnabled) return ''
-    if (this.smallContext) return this.buildCompactAgentToolsInstruction()
-    const parts = [
-      '# Workspace',
-      'read, ls, find, grep, write and edit operate on an isolated agent',
-      "workspace, not the user's whole filesystem. Paths are relative to that",
-      'workspace root and cannot escape it. The workspace is scratch space for',
-      'this conversation only and is deleted with it, so do not keep anything',
-      'there that should last. Use memory_write to persist facts worth remembering',
-      'across conversations, and memory_list/memory_read to recall them. Skills',
-      'are reusable instructions: list and read them before a task they cover,',
-      'and record a repeatable procedure with skill_write.',
-    ]
-    // Folders the user attached to this chat (directly or from its group):
-    // passed to the tools read-only, as Cowork passes its extra folders.
-    const folders = this.threadId
-      ? chatFoldersOf(useThreads.getState().threads[this.threadId])
-      : []
-    if (folders.length > 0) {
-      parts.push(
-        'The user attached these folders to this chat:',
-        ...folders.map((folder) => `- \`${folder}\``),
-        'They are READ-ONLY: read, search and list inside them, but writes there will',
-        'be refused. Use absolute paths for them.'
-      )
-    }
-    const skills = skillCatalogBlock(undefined, undefined, this.smallContext)
-    if (skills) parts.push('', skills, '')
-    // Stating the limits up front is cheaper than letting the model discover
-    // them by having a command refused. Only when bash is actually offered.
-    // Switched off: no word about bash (see the compact instruction above).
-    const bashOff = this.chatShellWithheld()
-    parts.push(bashOff ? SHELL_ROUTING_GUIDANCE_NO_BASH : SHELL_ROUTING_GUIDANCE)
-    if (sandboxEnforces()) {
-      if (!bashOff) {
-        parts.push(
-          'bash runs commands in that workspace under an OS sandbox: it starts',
-          'there, can only write there, and cannot read files in the',
-          "user's home directory."
-        )
-      }
-      parts.push(
-        'This limit applies only to these built-in tools.'
-      )
-      parts.push(
-        'When a file or folder outside the workspace is needed and a tool was',
-        'refused for it, call request_access with the narrowest absolute path and',
-        'a one-sentence reason (access_mode "write" when you must create or change',
-        'files there, e.g. after a write or "Access is denied" failure); the user',
-        'decides. Ask instead of reporting the folder as read-only. If it is granted, retry the',
-        'refused call. If it is denied, do not ask again for that path: offer',
-        'another way (the user pastes or attaches it, or another source).'
-      )
-      if (!bashOff) {
-        parts.push(
-          useAgentToolsConfig.getState().bashNetworkEnabled
-            ? 'It has network access.'
-            : 'It has no network access, so commands that download or upload will fail.'
-        )
-      }
-      parts.push(
-        bashOff
-          ? 'For all Git and'
-          : 'git and Git Bash cannot run inside the bash sandbox. For all Git and',
-        'GitHub work (status, commit, branch, push, pull requests, clone) call the',
-        'git tool, which runs the real git and gh outside the sandbox and asks the',
-        'user before anything changes or reaches a remote. Never use an MCP shell',
-        'or terminal tool for git: it bypasses that approval. If a GitHub URL names',
-        'only a user or organization and no repository, ask the user which',
-        'repository to clone before cloning.'
-      )
-    }
-    return parts.join(' ')
+    return buildAgentToolsSystemInstruction({
+      threadId: this.threadId,
+      smallContext: this.smallContext,
+      shellWithheld: () => this.chatShellWithheld(),
+    })
   }
 
   mapUserInlineAttachments(messages: UIMessage[]): UIMessage[] {
-    return messages.map((message) => {
-      if (message.role === 'user') {
-        const metadata = message.metadata as
-          | {
-              inline_file_contents?: Array<{ name?: string; content?: string }>
-            }
-          | undefined
-        const inlineFileContents = Array.isArray(metadata?.inline_file_contents)
-          ? metadata.inline_file_contents.filter((f) => f?.content)
-          : []
-        // Tool messages have content as array of ToolResultPart
-        if (inlineFileContents.length > 0) {
-          const buildInlineText = (base: string) => {
-            if (!inlineFileContents.length) return base
-            const formatted = inlineFileContents
-              .map((f) => `File: ${f.name || 'attachment'}\n${f.content ?? ''}`)
-              .join('\n\n')
-            return base ? `${base}\n\n${formatted}` : formatted
-          }
-
-          if (message.parts.length > 0) {
-            // Return a fresh message with fresh text parts rather than
-            // overwriting `message.parts` in place. Mutating the input would
-            // both leak into the persisted transcript and, on a second mapping
-            // of the same array, append the inline content a second time
-            // (jan#9022). Non-text parts and metadata are carried over by
-            // reference without being touched.
-            const parts = message.parts.map((part) => {
-              if (part.type === 'text') {
-                return {
-                  type: 'text' as const,
-                  text: buildInlineText(part.text ?? ''),
-                }
-              }
-              return part
-            })
-            return { ...message, parts }
-          }
-        }
-      }
-
-      return message
-    })
+    return mapUserInlineAttachments(messages)
   }
 }

@@ -354,7 +354,11 @@
       "confirmBody": "Esto cambia los permisos de la carpeta de abajo, donde está instalado {{program}}, y solo de esa carpeta y de lo que contiene: añade una entrada que permite a todas las aplicaciones de Windows en sandbox (ALL APPLICATION PACKAGES) leer y ejecutar los archivos que hay dentro. No se abre nada más de tu perfil de usuario. Puedes revocarlo aquí en cualquier momento, lo que elimina exactamente esa entrada.",
       "confirm": "Permitir",
       "needsAdmin": "Instalado en {{folder}}, que solo puede cambiar un administrador. Requiere administrador: ejecuta esto en un terminal con privilegios elevados:",
-      "copyCommand": "Copiar comando"
+      "copyCommand": "Copiar comando",
+      "loadError": "No se pudieron leer las herramientas del sandbox.",
+      "retry": "Reintentar",
+      "revokeTitle": "¿Dejar de permitir que el sandbox use {{program}}?",
+      "revokeBody": "Esto elimina la entrada de permiso añadida a la carpeta de abajo. Los comandos del sandbox ya no podrán ejecutar {{program}} desde ella."
     },
     "title": "Herramientas del agente",
     "description": "Da a los modelos un espacio de trabajo temporal privado para cada conversación, además de memorias y skills guardadas de forma permanente en tu carpeta de datos de Flint.",

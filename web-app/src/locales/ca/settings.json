@@ -356,7 +356,11 @@
       "confirmBody": "Això canvia els permisos de la carpeta de sota, on és instal·lat {{program}}, i només d'aquesta carpeta i del que hi ha dins: afegeix una entrada que permet que totes les aplicacions aïllades de Windows (ALL APPLICATION PACKAGES) llegeixin i executin els fitxers de dins. No s'obre res més del teu perfil d'usuari. Ho pots revocar aquí en qualsevol moment, cosa que elimina exactament aquesta entrada.",
       "confirm": "Permet",
       "needsAdmin": "Instal·lada a {{folder}}, que només pot canviar un administrador. Cal administrador: executa això en un terminal amb privilegis elevats:",
-      "copyCommand": "Copia l'ordre"
+      "copyCommand": "Copia l'ordre",
+      "loadError": "No s'han pogut llegir les eines del sandbox.",
+      "retry": "Torna-ho a provar",
+      "revokeTitle": "Vols que el sandbox deixi d'usar {{program}}?",
+      "revokeBody": "Això elimina l'entrada de permís afegida a la carpeta següent. Les ordres del sandbox ja no podran executar {{program}} des d'allà."
     },
     "title": "Eines de l'agent",
     "description": "Dona als models un espai de treball privat per a cada conversa, a més de memòries i habilitats que es conserven permanentment a la carpeta de dades de Flint.",
