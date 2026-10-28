@@ -76,10 +76,7 @@ impl Default for RemoteConfig {
 
 impl RemoteConfig {
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default()
+        super::auth::read_json_or_quarantine(path).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
