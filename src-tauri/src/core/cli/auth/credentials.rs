@@ -90,6 +90,13 @@ impl CredentialStore {
             .map_err(|e| format!("stored credential is unreadable: {e}"))
     }
 
+    /// Whether a credential is stored for `provider`, without reading it. Answers
+    /// from the secret store's presence index, so it never touches the OS
+    /// keyring (and never costs a keychain prompt).
+    pub fn has(provider: &str) -> bool {
+        provider_secrets::has_stored_key(&format!("auth:{}", secret_key(provider)))
+    }
+
     /// Remove the stored credential for `provider`. Missing entries are not an
     /// error.
     pub fn delete(provider: &str) -> Result<(), String> {

@@ -3013,5 +3013,11 @@
         "confirm": "Hepsini durdur"
       }
     }
+  },
+  "apiKey": {
+    "show": "API anahtarını göster",
+    "hide": "API anahtarını gizle",
+    "copy": "API anahtarını kopyala",
+    "copied": "Kopyalandı"
   }
 }

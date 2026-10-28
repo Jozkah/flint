@@ -1937,6 +1937,9 @@ struct App {
     /// In-progress assistant text for the current turn, flushed on the next
     /// step/tool/terminal event.
     assistant_buf: String,
+    /// How far `assistant_buf` has been scanned for `<think>` tags, so each
+    /// streamed token costs the new text, not the whole answer so far.
+    think_scan: std::cell::RefCell<ThinkScan>,
     /// Reasoning streamed natively via `StreamEvent::Reasoning` since the last
     /// flush, each segment anchored to the `assistant_buf` offset it arrived at.
     /// Kept apart from `assistant_buf` so it is never wrapped into the wire
@@ -2017,6 +2020,11 @@ struct App {
     slash_matches_cache: RefCell<Option<(String, Vec<SlashMatch>)>>,
     /// File-path hint entries matching the current `@query` in the input buffer.
     path_hints: Vec<PathHintItem>,
+    /// An edit asked for fresh hints. The search runs at most once per tick,
+    /// off the render loop, instead of once per keystroke on it.
+    path_hints_dirty: bool,
+    /// Bumped by every edit; a search result for an older number is dropped.
+    path_hint_gen: u64,
     /// Highlighted row in the path-hint popup (clamped to matches).
     path_hint_selected: usize,
     /// Set by Esc to dismiss the path-hint popup; cleared on next char edit.
@@ -2575,6 +2583,7 @@ impl App {
             journal_writer: None,
             thread_saver: None,
             assistant_buf: String::new(),
+            think_scan: Default::default(),
             reasoning_segs: Vec::new(),
             tool_group: None,
             grouped_ids: std::collections::HashSet::new(),
@@ -2600,6 +2609,8 @@ impl App {
             slash_matches_cache: RefCell::new(None),
             slash_catalog,
             path_hints: Vec::new(),
+            path_hints_dirty: false,
+            path_hint_gen: 0,
             path_hint_selected: 0,
             path_hint_dismissed: false,
             status: Status::Idle,
@@ -3511,7 +3522,7 @@ impl App {
     /// (`reasoning_content` providers). The tail check is what closes the window
     /// when prose starts, since native segments live on until the next flush.
     fn reasoning_open(&self) -> bool {
-        thinking_open(&self.assistant_buf)
+        self.think_scan.borrow_mut().state(&self.assistant_buf).0
             || self
                 .reasoning_segs
                 .last()
@@ -3996,23 +4007,47 @@ impl App {
         Some(after_at.to_string())
     }
 
-    /// Refresh path hints from the input buffer: detect `@query`, search files.
+    /// An edit happened: note that the hints need refreshing. Cheap -- the
+    /// directory search itself is [`App::take_path_hint_request`] plus
+    /// [`search_path_hints`], run off the loop once per tick. Clearing is
+    /// immediate, so a popup never outlives its `@` token.
     fn refresh_path_hints(&mut self) {
-        if self.path_hint_dismissed || self.status != Status::Idle {
+        if self.path_hint_dismissed || self.status != Status::Idle || self.path_hint_query().is_none() {
             self.path_hints.clear();
+            self.path_hints_dirty = false;
+            self.path_hint_gen += 1;
             return;
         }
-        let Some(query) = self.path_hint_query() else {
-            self.path_hints.clear();
-            return;
-        };
+        self.path_hints_dirty = true;
+        self.path_hint_gen += 1;
+    }
 
-        let entries = path_refs::search_files_sync(self.work_root(), &query, 30);
-        self.path_hints = entries
-            .into_iter()
-            .map(|(path, name, is_dir)| PathHintItem { path, name, is_dir })
-            .collect();
+    /// The search an edit is owed, if any: `(generation, root, query)`. Taking
+    /// it clears the flag, so a burst of edits becomes one search per tick.
+    fn take_path_hint_request(&mut self) -> Option<(u64, PathBuf, String)> {
+        if !std::mem::take(&mut self.path_hints_dirty) {
+            return None;
+        }
+        let query = self.path_hint_query()?;
+        Some((self.path_hint_gen, self.work_root().to_path_buf(), query))
+    }
+
+    /// Install a finished search, unless the buffer has moved on since.
+    fn apply_path_hints(&mut self, generation: u64, items: Vec<PathHintItem>) {
+        if generation != self.path_hint_gen || self.path_hint_dismissed || self.status != Status::Idle {
+            return;
+        }
+        self.path_hints = items;
         self.path_hint_selected = 0;
+    }
+
+    /// Search now and install the result (tests, and callers with no loop).
+    #[cfg(test)]
+    fn flush_path_hints(&mut self) {
+        if let Some((generation, root, query)) = self.take_path_hint_request() {
+            let items = search_path_hints(&root, &query);
+            self.apply_path_hints(generation, items);
+        }
     }
 
     /// Accept the highlighted path hint: replace the `@query` token with the
@@ -5298,7 +5333,7 @@ impl App {
                 // it lands above the streaming response. Reasoning tokens must
                 // not trigger this, or every call by a reasoning model splits
                 // into its own row.
-                if self.tool_group.is_some() && has_answer_text(&self.assistant_buf) {
+                if self.tool_group.is_some() && self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
                     self.finalize_tool_group();
                 }
             }
@@ -5324,7 +5359,7 @@ impl App {
                 // has produced answer prose; a turn that only reasoned or only
                 // called tools keeps the group open so the next turn's calls
                 // keep folding into one summary row instead of a row per turn.
-                if has_answer_text(&self.assistant_buf) {
+                if self.think_scan.borrow_mut().state(&self.assistant_buf).1 {
                     self.flush_assistant();
                 }
                 self.starting.clear();
@@ -8099,6 +8134,72 @@ fn has_answer_text(buf: &str) -> bool {
         .any(|(reasoning, seg)| !reasoning && !seg.trim().is_empty())
 }
 
+/// Incremental form of [`thinking_open`] and [`has_answer_text`] over a buffer
+/// that only grows by appending: the part already scanned is never read again.
+///
+/// A tag can be cut by a token boundary (`<thi` then `nk>`), so the scan stops
+/// at the last `<` that could still become one and resumes there. Replaced or
+/// shortened buffers are detected and rescanned from the start.
+#[derive(Default, Debug)]
+struct ThinkScan {
+    /// Everything before this byte has been consumed.
+    pos: usize,
+    /// Inside an unclosed think block as of `pos`.
+    open: bool,
+    /// Answer prose seen outside think blocks before `pos`.
+    prose: bool,
+    /// The bytes just before `pos`, to notice a buffer that was swapped out.
+    window: Vec<u8>,
+}
+
+impl ThinkScan {
+    const WINDOW: usize = 32;
+
+    /// `(thinking_open(buf), has_answer_text(buf))`, scanning only new text.
+    fn state(&mut self, buf: &str) -> (bool, bool) {
+        if !think_tags_parsed() {
+            *self = Self::default();
+            return (false, buf.chars().any(|c| !c.is_whitespace()));
+        }
+        let intact = self.pos <= buf.len()
+            && buf.is_char_boundary(self.pos)
+            && buf.as_bytes()[self.pos.saturating_sub(Self::WINDOW)..self.pos] == self.window[..];
+        if !intact {
+            *self = Self::default();
+        }
+        self.advance(buf);
+        // What is held back as a possible partial tag still reads as prose to a
+        // full scan until the tag completes.
+        let tail_prose = !self.open && buf[self.pos..].chars().any(|c| !c.is_whitespace());
+        (self.open, self.prose || tail_prose)
+    }
+
+    fn advance(&mut self, buf: &str) {
+        let region = &buf[self.pos..];
+        let mut last_end = 0;
+        let mut in_think = self.open;
+        for m in think_re().find_iter(region) {
+            if !in_think && region[last_end..m.start()].chars().any(|c| !c.is_whitespace()) {
+                self.prose = true;
+            }
+            in_think = !m.as_str().starts_with("</");
+            last_end = m.end();
+        }
+        let tail = &region[last_end..];
+        let hold = tail
+            .rfind('<')
+            .filter(|&i| tail[i + 1..].trim_start_matches('/').chars().all(|c| c.is_ascii_alphabetic() || c == ':'))
+            .unwrap_or(tail.len());
+        if !in_think && tail[..hold].chars().any(|c| !c.is_whitespace()) {
+            self.prose = true;
+        }
+        self.open = in_think;
+        self.pos += last_end + hold;
+        let from = self.pos.saturating_sub(Self::WINDOW);
+        self.window = buf.as_bytes()[from..self.pos].to_vec();
+    }
+}
+
 /// `text` with its reasoning removed, for the copy that goes into `history`.
 /// Reasoning never belongs in `content`; it rides along on the message's
 /// `reasoning_content` instead (see `on_done`), and the display journal is what
@@ -8355,6 +8456,7 @@ fn assistant_runs(prose: &str, segs: &[ReasoningSeg]) -> Vec<(bool, String)> {
 /// True if `text` ends inside an unclosed ` think>` block (an opening tag whose
 /// matching close has not yet streamed). Used to show `[thinking]` while
 /// reasoning streams. Re-uses the same tag matcher as `split_reasoning`.
+#[cfg(test)]
 fn thinking_open(text: &str) -> bool {
     if !think_tags_parsed() {
         return false;
@@ -8695,6 +8797,35 @@ async fn await_login_begin(
 /// restart. Cheap (`rev-parse --abbrev-ref HEAD`) but still shells out, so this
 /// is a poll, not every tick.
 const BRANCH_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// The hint rows for an `@query`, from a blocking directory read. A query that
+/// climbs out of the project (`..`) gets none: hints are for the project.
+fn search_path_hints(root: &std::path::Path, query: &str) -> Vec<PathHintItem> {
+    if query.split(['/', '\\']).any(|part| part == "..") {
+        return Vec::new();
+    }
+    path_refs::search_files_sync(root, query, 30)
+        .into_iter()
+        .map(|(path, name, is_dir)| PathHintItem { path, name, is_dir })
+        .collect()
+}
+
+type PathHintTask = tokio::task::JoinHandle<(u64, Vec<PathHintItem>)>;
+
+fn spawn_path_hint_search(generation: u64, root: PathBuf, query: String) -> PathHintTask {
+    tokio::task::spawn_blocking(move || (generation, search_path_hints(&root, &query)))
+}
+
+/// Await the in-flight hint search once, clearing the slot. Same cancel-safe
+/// borrow as `await_branch_poll`; pends forever when idle.
+async fn await_path_hints(task: &mut Option<PathHintTask>) -> Option<(u64, Vec<PathHintItem>)> {
+    let joined = match task.as_mut() {
+        Some(h) => h.await,
+        None => return pending().await,
+    };
+    *task = None;
+    joined.ok()
+}
 
 /// Re-read the current git branch off-loop (a blocking `git` call), only when
 /// no poll is already in flight. A no-op when the project isn't a git repo.
@@ -9177,6 +9308,8 @@ async fn chat_loop<B: Backend>(
     let mut branch_task: Option<tokio::task::JoinHandle<Option<String>>> = None;
     let mut branch_poll = tokio::time::interval(BRANCH_POLL_INTERVAL);
     branch_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // `@path` hints: edits mark them dirty, the 50 ms tick starts one search.
+    let mut hint_task: Option<PathHintTask> = None;
 
     // Nothing to say when there is no seed message: the splash already invites
     // the first one (`Banner::awaiting_first_message`).
@@ -9430,6 +9563,9 @@ async fn chat_loop<B: Backend>(
 
         tokio::select! {
             _ = ticker.tick() => {
+                if let Some((generation, root, query)) = app.take_path_hint_request() {
+                    hint_task = Some(spawn_path_hint_search(generation, root, query));
+                }
                 // Advance the throbber at its own fixed cadence, catching up
                 // whole frames if a tick stalled (a burst of deltas / slow term).
                 app.advance_spinner(Instant::now());
@@ -9479,6 +9615,11 @@ async fn chat_loop<B: Backend>(
             }
             branch = await_branch_poll(&mut branch_task) => {
                 app.git_branch = branch;
+            }
+            found = await_path_hints(&mut hint_task) => {
+                if let Some((generation, items)) = found {
+                    app.apply_path_hints(generation, items);
+                }
             }
             outcome = await_mcp(&mut mcp_task) => {
                 mcp_ready = true;
@@ -16816,22 +16957,26 @@ fn draw(f: &mut Frame, app: &mut App) {
     app.last_scroll = scroll;
     app.row_index = row_index;
 
-    // Keep the cursor row visible when the input outgrows the box.
-    let input_scroll =
-        if app.status == Status::Idle && app.picker.is_none() && app.blocking_dock().is_none() {
-            let visible = chunks[2].height.saturating_sub(1);
-            let total = Paragraph::new(input_content_lines(&app.input, app.cursor))
-                .wrap(Wrap { trim: false })
-                .line_count(chunks[2].width.saturating_sub(2).max(1))
-                .min(u16::MAX as usize) as u16;
-            total.saturating_sub(visible)
-        } else {
-            0
-        };
+    // Keep the caret row visible when the input outgrows the box, wherever the
+    // caret is and whether or not a turn is running (steering types here too),
+    // and put the terminal's own cursor on it so an IME composes at the caret.
+    let mut input_scroll = 0u16;
+    let mut caret_at = None;
+    if composer_live(app) && chunks[2].width > 0 {
+        let visible = chunks[2].height.saturating_sub(1);
+        let (total, col, row) = composer_caret(&app.input, app.cursor, chunks[2].width);
+        input_scroll = row.saturating_sub(visible.saturating_sub(1)).min(total.saturating_sub(visible));
+        if visible > 0 && app.context_view.is_none() {
+            caret_at = Some((chunks[2].x + col, chunks[2].y + row - input_scroll));
+        }
+    }
     if let Some(lines) = panel_lines {
         f.render_widget(Paragraph::new(lines), panel_area);
     }
     f.render_widget(input_box(app).scroll((input_scroll, 0)), chunks[2]);
+    if let Some(at) = caret_at {
+        f.set_cursor_position(at);
+    }
     f.render_widget(dock_line(app, chunks[3].width), chunks[3]);
     // The `/context` overlay renders on top of (never instead of) the finished
     // frame, so the spinner and streamed output keep animating behind it
@@ -18713,6 +18858,43 @@ fn input_box_height(app: &App, width: u16) -> u16 {
     content + 1
 }
 
+/// Whether the message box is showing the editable composer (rather than a
+/// status line, a picker's "selecting" note or a dock that owns the keyboard).
+/// Mirrors the branch order of [`input_box`].
+fn composer_live(app: &App) -> bool {
+    let empty = app.input.is_empty();
+    if empty && (app.compacting.is_some() || app.run_compacting.is_some() || app.retrying.is_some()) {
+        return false;
+    }
+    if app.picker.is_some() || (app.status == Status::Running && empty) {
+        return false;
+    }
+    app.blocking_dock().is_none()
+}
+
+/// `(total_rows, caret_col, caret_row)` of the composer laid out at `width`.
+/// The layout is the one the box is drawn with: the styled lines are rendered
+/// into a scratch buffer by the same wrapping `Paragraph`, and the caret is the
+/// one reverse-video cell they carry. Nothing here re-implements word wrap, so
+/// the answer cannot drift from what is on screen (wide characters included).
+fn composer_caret(input: &str, cursor: usize, width: u16) -> (u16, u16, u16) {
+    use ratatui::widgets::Widget;
+    let width = width.max(1);
+    let para = Paragraph::new(input_content_lines(input, cursor)).wrap(Wrap { trim: false });
+    let total = para.line_count(width).clamp(1, u16::MAX as usize) as u16;
+    let area = ratatui::layout::Rect::new(0, 0, width, total);
+    let mut buf = ratatui::buffer::Buffer::empty(area);
+    para.render(area, &mut buf);
+    for row in 0..total {
+        for col in 0..width {
+            if buf[(col, row)].style().add_modifier.contains(Modifier::REVERSED) {
+                return (total, col, row);
+            }
+        }
+    }
+    (total, 0, total - 1)
+}
+
 /// Visible input as styled lines: `> ` on the first line, 2-space hang on
 /// continuations, and a solid block cursor at the byte offset `cursor` (the
 /// character under the cursor is drawn in reverse video; at end of line a
@@ -19090,7 +19272,7 @@ mod tests {
         run_command, running_group_rows, selection_text, spans_width, spawn_branch_poll,
         split_reasoning, starting_call_lines, startup_modes, strip_system_xml_tags,
         subagent_activity, subagent_name_from_run_id, summarize_result, sync_output_for,
-        thinking_open, tilde_path, tokens_per_second, tool_activity, tool_finished,
+        has_answer_text, thinking_open, tilde_path, tokens_per_second, tool_activity, tool_finished,
         transcript_top_padding, unescape_partial_json_string, user_content_parts, wave_sweep_line,
         with_wave_glyph, without_think_tags, App, CompactKind, ContextReport, ContextSegment,
         ContextView, CurrentRun, McpField, McpPrompt, Pending, PendingImage, PickerKind,
@@ -21030,6 +21212,60 @@ mod tests {
                 (false, "after".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn incremental_matches_full_scan_over_every_split() {
+        let texts = [
+            "<think>plan</think>answer",
+            "  <think>a</think>\n <thinking>b</thinking>x",
+            "pre <think> unterminated",
+            "<think></think>  ",
+            "a<b>c</think>d<think",
+            "<unsloth:think>\u{e9}</unsloth:think>\u{fc}<think>",
+            "x < y and a<b",
+            "",
+        ];
+        for text in texts {
+            for step in 1..=7usize {
+                let mut scan = super::ThinkScan::default();
+                let mut buf = String::new();
+                let mut at = 0;
+                while at < text.len() {
+                    let mut to = (at + step).min(text.len());
+                    while !text.is_char_boundary(to) {
+                        to += 1;
+                    }
+                    buf.push_str(&text[at..to]);
+                    at = to;
+                    assert_eq!(
+                        scan.state(&buf),
+                        (thinking_open(&buf), has_answer_text(&buf)),
+                        "{text:?} step {step} after {buf:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tag_split_across_tokens() {
+        let mut app = test_app();
+        app.assistant_buf.push_str("<thi");
+        assert!(!app.reasoning_open());
+        app.assistant_buf.push_str("nk>pondering");
+        assert!(app.reasoning_open());
+        app.assistant_buf.push_str("</think>done");
+        assert!(!app.reasoning_open());
+    }
+
+    #[test]
+    fn a_replaced_buffer_is_rescanned() {
+        let mut app = test_app();
+        app.assistant_buf = "<think>weighing options".to_string();
+        assert!(app.reasoning_open());
+        app.assistant_buf = "here is the answer, which is longer than before".to_string();
+        assert!(!app.reasoning_open());
     }
 
     #[test]
@@ -23200,7 +23436,10 @@ mod tests {
         assert_eq!(app.input, "draft");
         assert_eq!(app.scrollback, 1);
 
+        // Esc clears the draft but keeps it in recall, newest of all.
         press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
         assert_eq!(app.cursor, "second".len(), "caret sits at the end");
@@ -23212,6 +23451,8 @@ mod tests {
 
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "", "past the newest is a fresh message");
         assert_eq!(app.scrollback, 1, "recall never scrolls the transcript");
@@ -33221,6 +33462,66 @@ mod tests {
         assert!(!footer.contains("bg shell"), "indicator is gone: {footer}");
     }
 
+    fn cursor_after_draw(app: &mut App, w: u16, h: u16) -> (Vec<String>, Option<(u16, u16)>) {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal.draw(|f| super::draw(f, app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let rows = (0..buf.area.height)
+            .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>())
+            .collect();
+        let pos = terminal.get_cursor_position().ok().map(|p| (p.x, p.y));
+        (rows, pos)
+    }
+
+    #[test]
+    fn cursor_position_matches_caret_on_wide_chars() {
+        let mut app = test_app();
+        app.input = "\u{4e16}\u{754c}ab".into();
+        app.cursor = "\u{4e16}\u{754c}".len();
+        let (rows, pos) = cursor_after_draw(&mut app, 40, 12);
+        let input_row = rows.iter().position(|r| r.contains('\u{4e16}')).expect("input row");
+        // "> " is 2 cells, each wide char 2: the caret sits on `a` at column 6.
+        assert_eq!(pos, Some((6, input_row as u16)), "{rows:?}");
+    }
+
+    #[test]
+    fn scroll_follows_caret_after_home() {
+        let mut app = test_app();
+        app.input = (1..=20).map(|n| format!("line{n}")).collect::<Vec<_>>().join("\n");
+        app.cursor = 0;
+        let (rows, pos) = cursor_after_draw(&mut app, 40, 20);
+        assert!(rows.iter().any(|r| r.contains("line1 ") || r.trim_end().ends_with("line1")), "first line visible: {rows:?}");
+        let (_, y) = pos.expect("a cursor");
+        assert!(rows[y as usize].contains("line1"), "cursor on the caret's row: {rows:?}");
+        // And the end of the buffer scrolls into view when the caret goes there.
+        app.cursor = app.input.len();
+        let (rows, pos) = cursor_after_draw(&mut app, 40, 20);
+        assert!(rows.iter().any(|r| r.contains("line20")), "{rows:?}");
+        let (_, y) = pos.expect("a cursor");
+        assert!(rows[y as usize].contains("line20"), "{rows:?}");
+    }
+
+    #[test]
+    fn scroll_follows_caret_when_running() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.input = (1..=20).map(|n| format!("steer{n}")).collect::<Vec<_>>().join("\n");
+        app.cursor = app.input.len();
+        let (rows, _) = cursor_after_draw(&mut app, 40, 20);
+        assert!(rows.iter().any(|r| r.contains("steer20")), "caret line visible while a turn runs: {rows:?}");
+    }
+
+    #[test]
+    fn no_cursor_when_the_composer_is_not_live() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        let (_, pos) = cursor_after_draw(&mut app, 40, 12);
+        // A status row stands in for the composer: no caret to put a cursor on.
+        assert!(!super::composer_live(&app));
+        let _ = pos;
+    }
+
     /// The borderless input box used to reserve two blank rows for borders it
     /// does not draw. One row of air above the dock is all it needs.
     #[test]
@@ -34836,6 +35137,54 @@ mod tests {
         app.accept_path_hint();
         assert_eq!(app.input, "use @\"my docs/report.md\"");
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn many_edits_make_one_search_per_tick() {
+        let mut app = test_app();
+        for c in "see @src".chars() {
+            app.input_insert(c);
+        }
+        assert!(app.path_hints_dirty, "an edit only marks the hints dirty");
+        let first = app.take_path_hint_request();
+        assert!(first.is_some());
+        assert_eq!(first.unwrap().2, "src");
+        assert!(app.take_path_hint_request().is_none(), "one search for the whole burst");
+    }
+
+    #[test]
+    fn stale_generation_result_ignored() {
+        let mut app = test_app();
+        app.input = "@a".into();
+        app.cursor = app.input.len();
+        app.refresh_path_hints();
+        let (old_gen, _, _) = app.take_path_hint_request().unwrap();
+        app.input_insert('b');
+        let item = || vec![super::PathHintItem { path: "ab".into(), name: "ab".into(), is_dir: false }];
+        app.apply_path_hints(old_gen, item());
+        assert!(app.path_hints.is_empty(), "a result for an older buffer is dropped");
+        let (new_gen, _, _) = app.take_path_hint_request().unwrap();
+        app.apply_path_hints(new_gen, item());
+        assert_eq!(app.path_hints.len(), 1);
+    }
+
+    #[test]
+    fn hint_search_does_not_climb_out_of_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "x").unwrap();
+        assert_eq!(super::search_path_hints(dir.path(), "a").len(), 1);
+        assert!(super::search_path_hints(dir.path(), "../").is_empty());
+        assert!(super::search_path_hints(dir.path(), "x/../a").is_empty());
+    }
+
+    #[test]
+    fn flush_installs_hints_for_the_current_buffer() {
+        let mut app = test_app();
+        app.input = "@Cargo".into();
+        app.cursor = app.input.len();
+        app.refresh_path_hints();
+        app.flush_path_hints();
+        assert!(!app.path_hints_dirty);
     }
 
     #[test]

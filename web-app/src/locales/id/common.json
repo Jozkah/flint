@@ -2958,5 +2958,11 @@
         "confirm": "Hentikan semuanya"
       }
     }
+  },
+  "apiKey": {
+    "show": "Tampilkan kunci API",
+    "hide": "Sembunyikan kunci API",
+    "copy": "Salin kunci API",
+    "copied": "Disalin"
   }
 }

@@ -30,6 +30,11 @@ pub struct McpConfinement {
     pub jan_data: Option<std::path::PathBuf>,
     /// Environment names the user approved. Nothing else is passed through.
     pub allowed_env: Vec<String>,
+    /// Outbound network for the confined server. Absent means on (the long-
+    /// standing behaviour: npx/uvx and package-fetching servers need it); an
+    /// explicit `allowNetwork: false` turns it off. Flipping the default to off
+    /// is an owner decision.
+    pub allow_network: bool,
 }
 
 /// Configuration parameters extracted from MCP server config
@@ -154,6 +159,10 @@ fn parse_confinement(obj: &serde_json::Map<String, Value>) -> Option<McpConfinem
                     .collect()
             })
             .unwrap_or_default(),
+        allow_network: value
+            .get("allowNetwork")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
     })
 }
 

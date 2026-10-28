@@ -19,6 +19,15 @@ const DEFAULT_BYTES: usize = 16 * 1024;
 const MAX_BYTES: usize = 64 * 1024;
 const TIMEOUT_SECS: u64 = 15;
 
+/// Local admin APIs that are never reached from here: Docker's unauthenticated
+/// TCP socket (2375/2376), Ollama (11434), and Flint's own servers (the local
+/// API on 1337, the remote bridge on 1340).
+const DENIED_PORTS: &[u16] = &[2375, 2376, 11434, 1337, 1340];
+
+pub fn is_denied_port(port: u16) -> bool {
+    DENIED_PORTS.contains(&port)
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Request {
     pub head: bool,
@@ -133,6 +142,12 @@ pub async fn local_http(args: &Value) -> String {
         Ok(req) => req,
         Err(message) => return message,
     };
+    if is_denied_port(req.port) {
+        return format!(
+            "ERROR: local_http does not reach port {}: it is a local admin or Flint's own service.",
+            req.port
+        );
+    }
     let resolved: Vec<SocketAddr> = match tokio::net::lookup_host((req.host.as_str(), req.port)).await {
         Ok(addrs) => addrs.collect(),
         Err(e) => return format!("ERROR: could not resolve {}: {e}", req.host),
@@ -199,6 +214,20 @@ pub async fn local_http(args: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn local_http_admin_port_denied() {
+        for port in [2375u16, 2376, 11434, 1337, 1340] {
+            assert!(is_denied_port(port), "{port}");
+        }
+        assert!(!is_denied_port(5173));
+        let out = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(local_http(&json!({ "url": "http://127.0.0.1:2375/version" })));
+        assert!(out.starts_with("ERROR: local_http does not reach port 2375"), "{out}");
+    }
 
     #[test]
     fn parses_host_port_and_path() {

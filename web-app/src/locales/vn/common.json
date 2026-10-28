@@ -3001,5 +3001,11 @@
         "confirm": "Dừng tất cả"
       }
     }
+  },
+  "apiKey": {
+    "show": "Hiện khóa API",
+    "hide": "Ẩn khóa API",
+    "copy": "Sao chép khóa API",
+    "copied": "Đã sao chép"
   }
 }

@@ -60,6 +60,34 @@ describe('handleMobileMutation privilege limits', () => {
     })
   })
 
+  it.each([
+    ['mode', { mode: 'foo' }],
+    ['title', { title: 5 }],
+    ['moderator model', { moderator: { model: 'x' } }],
+    ['limits', { limits: { maxRounds: 'a' } }],
+    ['participant model', { participants: [{ name: 'A', model: 'x' }] }],
+  ])('room.create rejects bad %s with bad_params', async (_n, extra) => {
+    await expect(
+      handleMobileMutation({ mobileOp: 'room.create', input: { title: 'R', ...extra } })
+    ).rejects.toMatchObject({ code: 'bad_params' })
+    expect(h.createRoom).not.toHaveBeenCalled()
+  })
+
+  it('room.update rejects a bad mode', async () => {
+    await expect(
+      handleMobileMutation({ mobileOp: 'room.update', id: 'r1', patch: { mode: 'foo' } })
+    ).rejects.toMatchObject({ code: 'bad_params' })
+    expect(h.updateRoomSettings).not.toHaveBeenCalled()
+  })
+
+  it('room.create passes a valid payload', async () => {
+    await handleMobileMutation({
+      mobileOp: 'room.create',
+      input: { title: 'R', mode: 'compare', moderator: { enabled: true, model: { provider: 'a', id: 'b' } }, limits: { maxRounds: 3 } },
+    })
+    expect(h.createRoom).toHaveBeenCalledTimes(1)
+  })
+
   it('room.create ignores extra fields and forces toolAccess none', async () => {
     await handleMobileMutation({
       mobileOp: 'room.create',

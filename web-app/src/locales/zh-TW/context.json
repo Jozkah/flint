@@ -170,5 +170,76 @@
     "toolOk": "成功",
     "toolFailed": "失敗",
     "chatStarted": "聊天已開始"
+  },
+  "promptSnapshot": {
+    "summary": "模型收到的內容",
+    "loading": "載入中…",
+    "gone": "該快照已不在磁碟上。",
+    "unavailable": "未儲存任何載荷。{{reason}}",
+    "reason": {
+      "not-serializable": "請求無法序列化，因此未儲存任何內容。",
+      "disabled": "此次執行已關閉快照。",
+      "too-large": "請求太大，無法完整儲存。"
+    },
+    "meta": {
+      "provider": "提供者",
+      "model": "模型",
+      "reasoning": "推理",
+      "session": "工作階段",
+      "run": "執行",
+      "agent": "代理程式",
+      "sent": "傳送時間",
+      "hash": "雜湊",
+      "redacted": "已塗黑",
+      "nothing": "無",
+      "redactedList_one": "{{count}} 個欄位：{{list}}",
+      "redactedList_other": "{{count}} 個欄位：{{list}}"
+    },
+    "view": {
+      "label": "檢視方式",
+      "tree": "樹狀",
+      "json": "JSON"
+    },
+    "copy": "複製已塗黑的載荷",
+    "copied": "已複製",
+    "diff": {
+      "run": "與上一個請求比較",
+      "loading": "正在比較…",
+      "first": "這是工作階段中儲存的第一個請求，沒有更早的可比較。",
+      "summary": "相對於 {{id}}：{{details}}。",
+      "separator": "，",
+      "entered": "{{count}} 項進入",
+      "left": "{{count}} 項移出",
+      "keptMessages_one": "保留 {{count}} 則訊息",
+      "keptMessages_other": "保留 {{count}} 則訊息",
+      "keptTools_one": "保留 {{count}} 個工具",
+      "keptTools_other": "保留 {{count}} 個工具",
+      "systemChanged": "系統提示已變更",
+      "enteredHeading": "進入",
+      "leftHeading": "移出",
+      "nothingNew": "沒有新內容。",
+      "nothingLeft": "沒有內容離開視窗。"
+    },
+    "replay": {
+      "label": "此內容的重播",
+      "run": "重播此內容",
+      "hint": "原樣再次傳送此請求。模型要求的工具不會執行。",
+      "needsSession": "重播需要此回合所屬的工作階段。",
+      "redactedBlock_one": "無法重播：有 {{count}} 個欄位在儲存前已被塗黑，模型將無法收到當時收到的內容。",
+      "redactedBlock_other": "無法重播：有 {{count}} 個欄位在儲存前已被塗黑，模型將無法收到當時收到的內容。",
+      "state": {
+        "running": "正在重播…",
+        "interrupted": "已中斷：執行期間 Flint 停止了",
+        "completed": "已完成",
+        "failed": "失敗",
+        "cancelled": "已停止",
+        "refused": "已拒絕"
+      },
+      "matched": "與該回合內容相同（雜湊一致）",
+      "differed": "傳送的請求與該回合不同",
+      "finish": "結束：{{reason}}",
+      "stop": "停止",
+      "asked": "要求了 {{tools}}（未執行）"
+    }
   }
 }
