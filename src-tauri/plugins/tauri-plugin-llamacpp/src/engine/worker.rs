@@ -954,14 +954,68 @@ pub async fn spawn_external(
         WorkerError::Spawn(format!("could not write {}: {e}", compat_path.display()))
     })?;
 
+    let args = super::external::external_args(&compat_path.to_string_lossy(), models_max);
+    let mut last_err = None;
+    for attempt in 1..=EXTERNAL_PORT_ATTEMPTS {
+        match spawn_external_attempt(
+            exe,
+            &args,
+            api_key,
+            &envs,
+            &compat.models,
+            on_fault.clone(),
+            on_offload.clone(),
+        )
+        .await
+        {
+            Err(e) if port_was_taken(&e) && attempt < EXTERNAL_PORT_ATTEMPTS => {
+                log::warn!("external llama-server lost its port ({e:?}); retrying on a fresh one");
+                last_err = Some(e);
+            }
+            other => return other,
+        }
+    }
+    Err(last_err.unwrap_or_else(|| WorkerError::Spawn("no free loopback port".into())))
+}
+
+/// How many fresh ports `spawn_external` tries when the router cannot bind the
+/// one picked for it (bind-then-release leaves a window for another process).
+const EXTERNAL_PORT_ATTEMPTS: u32 = 3;
+
+/// Marker in the error when something other than the child answers on the
+/// chosen port. Matched by `port_was_taken`.
+const PORT_TAKEN_MARK: &str = "another process holds the chosen port";
+
+/// True when `err` means the router's port was unavailable, so a retry on a
+/// new port can succeed. Matches the bind failures of Linux/macOS and Windows.
+fn port_was_taken(err: &WorkerError) -> bool {
+    let text = match err {
+        WorkerError::Exited(t) | WorkerError::Spawn(t) => t.to_ascii_lowercase(),
+        _ => return false,
+    };
+    text.contains("address already in use")
+        || text.contains("only one usage of each socket")
+        || text.contains("address in use")
+        || text.contains(PORT_TAKEN_MARK)
+}
+
+/// One start of the external router on a freshly chosen port.
+async fn spawn_external_attempt(
+    exe: &Path,
+    args: &[String],
+    api_key: &str,
+    envs: &HashMap<String, String>,
+    models: &[String],
+    on_fault: Option<FaultCallback>,
+    on_offload: Option<OffloadCallback>,
+) -> Result<WorkerHandle, WorkerError> {
     let port = std::net::TcpListener::bind(("127.0.0.1", 0))
         .and_then(|l| l.local_addr())
         .map_err(|e| WorkerError::Spawn(format!("no free loopback port: {e}")))?
         .port();
 
-    let args = super::external::external_args(&compat_path.to_string_lossy(), models_max);
     log::info!("starting external {} {}", exe.display(), args.join(" "));
-    let (envs, clear_vk_fallback) = with_engine_env_defaults(envs);
+    let (envs, clear_vk_fallback) = with_engine_env_defaults(envs.clone());
 
     let mut cmd = Command::new(exe);
     jan_utils::system::setup_windows_process_flags(&mut cmd);
@@ -971,7 +1025,7 @@ pub async fn spawn_external(
     if clear_vk_fallback {
         cmd.env_remove(VK_SYSMEM_FALLBACK_ENV);
     }
-    cmd.args(&args)
+    cmd.args(args)
         .envs(envs)
         .env("LLAMA_ARG_PORT", port.to_string())
         .env("LLAMA_API_KEY", api_key)
@@ -1016,13 +1070,18 @@ pub async fn spawn_external(
             };
             return Err(WorkerError::Exited(report.text()));
         }
+        // No bearer key here: until the listener is proven to be the child, the
+        // key must not go to whatever holds the port. `/health` is public.
         let ok = client
             .get(&url)
-            .bearer_auth(api_key)
             .send()
             .await
             .is_ok_and(|r| r.status().is_success());
         if ok {
+            if !port_owned_by_tree(port, pid) {
+                let _ = child.start_kill();
+                return Err(WorkerError::Spawn(format!("{PORT_TAKEN_MARK} ({port})")));
+            }
             break;
         }
         if tokio::time::Instant::now() >= deadline {
@@ -1036,13 +1095,114 @@ pub async fn spawn_external(
         port,
         pid,
         api_key: api_key.to_string(),
-        models: compat.models,
+        models: models.to_vec(),
         cuda_toolkit: None,
         child,
         stderr_tail,
         #[cfg(windows)]
         _job: job,
     })
+}
+
+/// Whether the TCP listener on loopback `port` belongs to `pid` or one of its
+/// descendants (a launcher script may front the real server). When the OS
+/// cannot say, the child still being the one that was started is accepted.
+fn port_owned_by_tree(port: u16, pid: u32) -> bool {
+    match listener_pid(port) {
+        None => true,
+        Some(owner) => pid_in_tree(pid, owner),
+    }
+}
+
+/// True when `candidate` is `root` or has `root` among its ancestors.
+fn pid_in_tree(root: u32, candidate: u32) -> bool {
+    if root == candidate {
+        return true;
+    }
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let mut cur = sysinfo::Pid::from_u32(candidate);
+    for _ in 0..32 {
+        match sys.process(cur).and_then(|p| p.parent()) {
+            Some(parent) if parent.as_u32() == root => return true,
+            Some(parent) => cur = parent,
+            None => return false,
+        }
+    }
+    false
+}
+
+/// The process listening on `127.0.0.1:port`, when the platform can say.
+#[cfg(windows)]
+fn listener_pid(port: u16) -> Option<u32> {
+    use windows_sys::Win32::NetworkManagement::IpHelper::{
+        GetExtendedTcpTable, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
+    };
+    use windows_sys::Win32::Networking::WinSock::AF_INET;
+    let mut size = 0u32;
+    unsafe {
+        GetExtendedTcpTable(
+            std::ptr::null_mut(),
+            &mut size,
+            0,
+            AF_INET as u32,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        );
+    }
+    if size == 0 {
+        return None;
+    }
+    // The table can grow between the two calls.
+    let mut buf = vec![0u8; size as usize + 4096];
+    size = buf.len() as u32;
+    let rc = unsafe {
+        GetExtendedTcpTable(
+            buf.as_mut_ptr().cast(),
+            &mut size,
+            0,
+            AF_INET as u32,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
+    rows.iter()
+        .find(|r| u16::from_be((r.dwLocalPort & 0xffff) as u16) == port)
+        .map(|r| r.dwOwningPid)
+}
+
+#[cfg(target_os = "linux")]
+fn listener_pid(port: u16) -> Option<u32> {
+    let table = std::fs::read_to_string("/proc/net/tcp").ok()?;
+    let want = format!(":{port:04X}");
+    let inode = table.lines().skip(1).find_map(|line| {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        (f.len() > 9 && f[1].ends_with(&want) && f[3] == "0A").then(|| f[9].to_string())
+    })?;
+    let needle = format!("socket:[{inode}]");
+    for entry in std::fs::read_dir("/proc").ok()?.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        let Ok(fds) = std::fs::read_dir(entry.path().join("fd")) else { continue };
+        for fd in fds.flatten() {
+            if std::fs::read_link(fd.path()).is_ok_and(|l| l.to_string_lossy() == needle) {
+                return Some(pid);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn listener_pid(_port: u16) -> Option<u32> {
+    None
 }
 
 /// Where the worker lives next to the running executable, which is how Tauri
@@ -1108,6 +1268,66 @@ fn with_engine_env_defaults(mut envs: HashMap<String, String>) -> (HashMap<Strin
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn port_was_taken_matches_bind_failures() {
+        assert!(port_was_taken(&WorkerError::Exited("bind: Address already in use".into())));
+        assert!(port_was_taken(&WorkerError::Exited(
+            "Only one usage of each socket address".into()
+        )));
+        assert!(port_was_taken(&WorkerError::Spawn(format!("{PORT_TAKEN_MARK} (1)"))));
+        assert!(!port_was_taken(&WorkerError::Exited("illegal instruction".into())));
+        assert!(!port_was_taken(&WorkerError::Timeout(Duration::from_secs(1))));
+    }
+
+    #[test]
+    fn pid_in_tree_accepts_self_and_rejects_unrelated() {
+        let me = std::process::id();
+        assert!(pid_in_tree(me, me));
+        // pid 4294967295 does not exist, so it has no ancestry.
+        assert!(!pid_in_tree(me, u32::MAX));
+    }
+
+    #[test]
+    fn listener_pid_finds_our_own_listener() {
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = l.local_addr().unwrap().port();
+        match listener_pid(port) {
+            Some(pid) => assert_eq!(pid, std::process::id()),
+            // Platforms that cannot say fall back to "accept".
+            None => assert!(port_owned_by_tree(port, std::process::id())),
+        }
+        assert!(port_owned_by_tree(port, std::process::id()));
+    }
+
+    #[tokio::test]
+    async fn external_spawn_does_not_send_key_to_a_squatter() {
+        // A listener that is not the child answers /health; the owner check must
+        // refuse it before the bearer key is ever sent.
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let server = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = server.local_addr().unwrap().port();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = server.accept().await {
+                let mut buf = [0u8; 2048];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = sock
+                    .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                    .await;
+            }
+        });
+        // The squatter is this test process; a child pid that is neither it nor
+        // its ancestor cannot own the port (on platforms that can tell).
+        if listener_pid(port).is_some() {
+            assert!(!port_owned_by_tree(port, u32::MAX));
+        }
+        let client = readiness_client().unwrap();
+        let _ = client.get(format!("http://127.0.0.1:{port}/health")).send().await;
+        let seen = rx.recv().await.unwrap().to_ascii_lowercase();
+        assert!(!seen.contains("authorization"), "probe leaked a key: {seen}");
+    }
 
     #[test]
     fn pin_cwd_sets_parent_for_absolute_exe() {

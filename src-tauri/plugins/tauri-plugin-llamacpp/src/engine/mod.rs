@@ -18,6 +18,7 @@ pub mod addon;
 #[cfg(feature = "tauri")]
 pub mod addon_commands;
 pub mod commands;
+pub mod device_cache;
 pub mod driver;
 pub mod env_policy;
 pub mod events;
