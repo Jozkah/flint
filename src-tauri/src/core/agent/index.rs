@@ -648,6 +648,8 @@ pub fn hierarchy(index: &Index, name: &str, limit: usize) -> Hierarchy {
             .map(|file| {
                 file.symbols
                     .iter()
+                    // Local constants/lets inside the body must not end the scan.
+                    .filter(|s| matches!(s.kind, SymbolKind::Function | SymbolKind::Type))
                     .map(|s| s.line)
                     .filter(|line| *line > definition.line)
                     .min()
@@ -1101,6 +1103,23 @@ mod tests {
         let nothing = hierarchy(&index, "no_such_function", 50);
         assert!(nothing.defined.is_empty() && nothing.callers.is_empty() && nothing.callees.is_empty());
         assert!(hierarchy(&index, "", 50).defined.is_empty());
+    }
+
+    /// F1m-001: a local `const` inside a function body must not end the scan.
+    #[test]
+    fn callees_found_after_local_const_in_js_function() {
+        let f = Fixture::new(
+            "hierarchy-local-const",
+            &[(
+                "src/a.js",
+                "function foo() {\n  const x = 1;\n  bar();\n  baz();\n}\n",
+            )],
+        );
+        let (index, _) = f.refresh();
+        let foo = hierarchy(&index, "foo", 50);
+        let callees: Vec<&str> = foo.callees.iter().map(|c| c.name.as_str()).collect();
+        assert!(callees.contains(&"bar"), "{callees:?}");
+        assert!(callees.contains(&"baz"), "{callees:?}");
     }
 
     #[test]
