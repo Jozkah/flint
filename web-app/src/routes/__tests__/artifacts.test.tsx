@@ -134,6 +134,17 @@ describe('Library route (/artifacts)', () => {
     expect(h.requestPreview).toHaveBeenCalledWith('s1', 'index.html')
   })
 
+  it('the details drawer is a dialog that takes focus and closes on Escape', async () => {
+    await renderPage()
+    await selectFirst()
+    const slot = screen.getByTestId('artifact-inspector-slot')
+    expect(slot).toHaveAttribute('role', 'dialog')
+    expect(slot).toHaveAttribute('aria-modal', 'true')
+    expect(slot).toHaveFocus()
+    fireEvent.keyDown(slot, { key: 'Escape' })
+    expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()
+  })
+
   it('shows details beside the list, with the same two actions', async () => {
     await renderPage()
     expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()

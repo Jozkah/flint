@@ -7,9 +7,6 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  LayoutGrid,
-  List as ListIcon,
-  ListFilter,
   Pencil,
   Plus,
   Power,
@@ -30,15 +27,6 @@ import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
 import McpServerLogDialog from '@/containers/dialogs/McpServerLogDialog'
 import { Switch } from '@/components/ui/switch'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -72,11 +60,11 @@ import {
 } from '@/containers/SettingsTabs'
 import {
   EnginePage,
-  KpiRow,
-  KpiTile,
   PageHead,
-  SearchField,
 } from '@/containers/engine/EngineKit'
+import { McpKpiRow } from '@/containers/McpKpiRow'
+import { McpServerSearch } from '@/containers/McpServerSearch'
+import { McpServerContextMenu } from '@/containers/McpServerContextMenu'
 import { LiveChart } from '@/containers/engine/LiveChart'
 import { RowMenu } from '@/containers/engine/RowMenu'
 import {
@@ -169,8 +157,8 @@ const maskSensitiveUrl = (url: string) => {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.mcp_servers as any)({
+ 
+export const Route = createFileRoute(route.settings.mcp_servers)({
   component: MCPServersDesktop,
 })
 
@@ -1402,51 +1390,16 @@ function MCPServersDesktop() {
             }
           />
 
-          <KpiRow>
-            <KpiTile
-              title={t('engine:mcp.kpiServers')}
-              icon={<Icon name="flow" />}
-              value={serverEntries.length}
-              sub={t('engine:mcp.kpiServersSub', {
-                connected: connectedCount,
-                connecting: connectingCount,
-              })}
-              delay={40}
-            />
-            <KpiTile
-              title={t('engine:mcp.kpiTools')}
-              icon={<Icon name="x-sparkle" />}
-              value={toolCount}
-              sub={t('engine:mcp.kpiToolsSub', { count: connectedCount })}
-              delay={90}
-            />
-            <KpiTile
-              title={t('engine:mcp.kpiCalls')}
-              icon={<Icon name="x-activity" />}
-              value={callsToday.length}
-              sub={
-                callsToday.length > 0
-                  ? t('engine:mcp.kpiCallsSub', {
-                      pct: ((failedToday / callsToday.length) * 100).toFixed(1),
-                    })
-                  : t('engine:mcp.kpiCallsNone')
-              }
-              delay={140}
-            />
-            <KpiTile
-              title={t('engine:mcp.kpiApproved')}
-              icon={<Icon name="x-shield" />}
-              value={approvedCount}
-              sub={
-                allowAllMCPPermissions
-                  ? t('engine:mcp.kpiApprovedAll')
-                  : t('engine:mcp.kpiApprovedSub', {
-                      count: serverEntries.length - approvedCount,
-                    })
-              }
-              delay={190}
-            />
-          </KpiRow>
+          <McpKpiRow
+            serverCount={serverEntries.length}
+            connectedCount={connectedCount}
+            connectingCount={connectingCount}
+            toolCount={toolCount}
+            callsToday={callsToday.length}
+            failedToday={failedToday}
+            approvedCount={approvedCount}
+            allowAllMCPPermissions={allowAllMCPPermissions}
+          />
 
           <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:220ms]">
             <SettingsTabStrip<ToolsTab>
@@ -1470,65 +1423,13 @@ function MCPServersDesktop() {
               </a>
             </span>
             {tab === 'servers' && serverEntries.length > 0 && (
-              <SearchField
-                className="ml-auto w-[300px] max-w-full"
+              <McpServerSearch
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder={t('mcp-servers:searchPlaceholder')}
-                trailing={
-                  <>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={t('engine:mcp.filterLabel')}
-                          title={t('engine:mcp.filterLabel')}
-                          className={cn(statusFilter !== 'all' && 'text-acc-text')}
-                        >
-                          <ListFilter aria-hidden />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuRadioGroup
-                          value={statusFilter}
-                          onValueChange={(v) =>
-                            setStatusFilter(v as 'all' | 'on' | 'off')
-                          }
-                        >
-                          <DropdownMenuRadioItem value="all">
-                            {t('engine:mcp.filterAll')}
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="on">
-                            {t('engine:mcp.filterOn')}
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="off">
-                            {t('engine:mcp.filterOff')}
-                          </DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={t('engine:mcp.viewLabel')}
-                      title={
-                        effectiveView === 'list'
-                          ? t('engine:mcp.viewCards')
-                          : t('engine:mcp.viewList')
-                      }
-                      onClick={() =>
-                        setView(effectiveView === 'list' ? 'cards' : 'list')
-                      }
-                    >
-                      {effectiveView === 'list' ? (
-                        <LayoutGrid aria-hidden />
-                      ) : (
-                        <ListIcon aria-hidden />
-                      )}
-                    </Button>
-                  </>
-                }
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                view={effectiveView}
+                onViewChange={setView}
               />
             )}
           </div>
@@ -1599,73 +1500,20 @@ function MCPServersDesktop() {
           )}
 
           {ctxMenu && (
-            <DropdownMenu
-              open
-              onOpenChange={(open) => {
-                if (!open) setCtxMenu(null)
-              }}
-            >
-              <DropdownMenuTrigger asChild>
-                <span
-                  className="pointer-events-none fixed"
-                  style={{ left: ctxMenu.x, top: ctxMenu.y }}
-                />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="bottom"
-                align="start"
-                className="min-w-[180px]"
-              >
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setLogServer(ctxMenu.key)
-                    setCtxMenu(null)
-                  }}
-                >
-                  <FileText />
-                  {t('mcp-servers:serverLog.title', { serverName: ctxMenu.key })}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    handleEdit(ctxMenu.key)
-                    setCtxMenu(null)
-                  }}
-                >
-                  <Pencil />
-                  {t('mcp-servers:editServer')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    const config = mcpServers[ctxMenu.key]
-                    if (config) {
-                      toggleServer(
-                        ctxMenu.key,
-                        !snapshotFor(ctxMenu.key, config).snapshot.switchOn
-                      )
-                    }
-                    setCtxMenu(null)
-                  }}
-                >
-                  <Power />
-                  {mcpServers[ctxMenu.key] &&
-                  snapshotFor(ctxMenu.key, mcpServers[ctxMenu.key]).snapshot
-                    .switchOn
-                    ? t('mcp-servers:connection.disable')
-                    : t('mcp-servers:connection.enable')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={() => {
-                    handleDeleteClick(ctxMenu.key)
-                    setCtxMenu(null)
-                  }}
-                >
-                  <Trash2 />
-                  {t('mcp-servers:deleteServer.title')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <McpServerContextMenu
+              ctxMenu={ctxMenu}
+              switchOn={
+                mcpServers[ctxMenu.key]
+                  ? snapshotFor(ctxMenu.key, mcpServers[ctxMenu.key]).snapshot
+                      .switchOn
+                  : null
+              }
+              onClose={() => setCtxMenu(null)}
+              onLog={setLogServer}
+              onEdit={handleEdit}
+              onToggle={toggleServer}
+              onDelete={handleDeleteClick}
+            />
           )}
         </EnginePage>
         </SettingsWithSections>

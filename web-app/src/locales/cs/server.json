@@ -23,5 +23,44 @@
   "openingNotice": "Za chvíli se otevře {{host}}. Stisknutím Esc zůstanete v tomto zařízení.",
   "useDevice": "Použít toto zařízení",
   "limitsTitle": "Co kde běží",
-  "limits": "Chat, místnosti, modely a nástroje běží na serveru. Relace Cowork a kampaně potřebují agenta, který běží na počítači s otevřeným Flintem: k tomuto počítači se dostanete přes vzdálený přístup a mobilní aplikaci. Server bez obrazovky umí kampaně vypsat a kontrolovat návrhy, ale relace nespouští."
+  "limits": "Chat, místnosti, modely a nástroje běží na serveru. Relace Cowork a kampaně potřebují agenta, který běží na počítači s otevřeným Flintem: k tomuto počítači se dostanete přes vzdálený přístup a mobilní aplikaci. Server bez obrazovky umí kampaně vypsat a kontrolovat návrhy, ale relace nespouští.",
+  "planApproval": {
+    "title": "Approve this plan to start it",
+    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_few": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_many": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "after": "after {{deps}}",
+    "accessLabel": "How tasks work",
+    "accessWorktree": "Work on their own inside their own folder",
+    "accessAsk": "Ask for each action",
+    "approve": "Approve and start",
+    "reject": "Reject",
+    "rejectReason": "the plan was not approved"
+  },
+  "worktree": {
+    "state": {
+      "ready": "ready",
+      "missing": "folder missing",
+      "corrupt": "not a worktree any more",
+      "branchMoved": "branch moved",
+      "identityChanged": "repository changed"
+    },
+    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "alreadyIn": "Already in {{target}}.",
+    "mergedFast": "Merged into {{target}} (fast-forward).",
+    "merged": "Merged into {{target}}.",
+    "discarded": "Discarded. This session cannot continue without its worktree.",
+    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "merging": "Merging...",
+    "mergeInto": "Merge into {{base}}",
+    "baseFallback": "base",
+    "discard": "Discard",
+    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
+    "discardAnyway": "Discard anyway",
+    "keep": "Keep",
+    "notProposed": "Changes were not proposed: {{error}}",
+    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+  }
 }

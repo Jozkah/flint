@@ -83,7 +83,11 @@ pub fn write_gate(ctx: &ToolContext<'_>, file: &Path, shown: &str) -> Option<Str
     let (mailbox, me) = identity(ctx)?;
     let key = path_key::file_key(file);
     let now = now_ms();
-    let held = decide_write(&mailbox, &mut table(), &me, &key, shown, now);
+    let held = {
+        let mut table = table();
+        table.sweep(now);
+        decide_write(&mailbox, &mut table, &me, &key, shown, now)
+    };
     if held.is_some() {
         super::announce(mailbox.session(&me).and_then(|r| r.shared.folder_key), &me, "held");
     }

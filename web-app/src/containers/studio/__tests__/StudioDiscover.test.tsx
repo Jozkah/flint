@@ -14,6 +14,12 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+vi.mock('@/i18n/react-i18next-compat', () => ({
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts ? `${key} ${JSON.stringify(opts)}` : key,
+  }),
+}))
 vi.mock('@/containers/HuggingFaceAvatar', () => ({
   HuggingFaceAvatar: () => null,
 }))
@@ -71,9 +77,9 @@ describe('StudioDiscover errors', () => {
   it('a failed file listing is an error with Retry, not "No weights files"', async () => {
     h.files.mockRejectedValueOnce(new Error('rate limited'))
     render(<StudioDiscover query="" />)
-    fireEvent.click(await screen.findByText('Choose a file'))
+    fireEvent.click(await screen.findByText('studio:discover.chooseFile'))
     expect(await screen.findByText(/rate limited/)).toBeInTheDocument()
-    expect(screen.queryByText(/No weights files/)).toBeNull()
+    expect(screen.queryByText('studio:discover.noWeights')).toBeNull()
     h.files.mockResolvedValue([{ name: 'model-Q4_K_M.gguf', size: 10 }])
     fireEvent.click(screen.getByTestId('studio-files-retry'))
     expect(await screen.findByText('model-Q4_K_M.gguf')).toBeInTheDocument()

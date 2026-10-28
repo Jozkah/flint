@@ -49,7 +49,8 @@
     "retention_one": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
     "retention_other": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
     "retentionForever": "Các mục đã lưu trữ được giữ cho đến khi bạn xóa.",
-    "emptyAction": "Dọn sạch kho lưu trữ"
+    "emptyAction": "Dọn sạch kho lưu trữ",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "Không thành công",
@@ -1360,5 +1361,13 @@
       "tickFirst": "Hãy tích các tệp được đánh dấu mà bạn đã xem trước.",
       "missing": "Các thay đổi được đề xuất không còn nữa. Hãy mở chiến dịch trên máy tính."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

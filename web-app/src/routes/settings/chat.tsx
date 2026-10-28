@@ -33,8 +33,8 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useTitleSettings } from '@/hooks/useTitleSettings'
 import { DEFAULT_TITLE_PROMPT } from '@/lib/thread-title-summarizer'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.chat as any)({
+ 
+export const Route = createFileRoute(route.settings.chat)({
   component: ChatSettings,
 })
 

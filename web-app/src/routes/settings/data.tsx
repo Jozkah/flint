@@ -34,8 +34,8 @@ import {
   parseChatGptExport,
 } from '@/lib/chatgptImport'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.data as any)({
+ 
+export const Route = createFileRoute(route.settings.data)({
   component: DataSettings,
 })
 

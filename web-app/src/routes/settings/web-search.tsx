@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
+import { SiteIcon } from '@/components/SiteIcon'
 import { EyeOff, Eye, Search, ArrowUp, ArrowDown, X, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -32,39 +33,30 @@ import {
 } from '@/hooks/useWebSearchConfig'
 import { Icon } from '@/components/ui/icon'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.web_search as any)({
+ 
+export const Route = createFileRoute(route.settings.web_search)({
   component: WebSearchContent,
 })
 
 /**
- * Use each provider's own favicon instead of an unrelated initial badge. The
- * request goes directly to the provider whose mark is being shown (never to a
- * favicon aggregation/tracking service); a blocked or missing favicon falls
- * back to a neutral search glyph rather than a fake brand mark.
+ * Each provider's own favicon, requested from the provider's own site only (no
+ * favicon aggregation service). It follows the "Load site icons" setting: off,
+ * no vendor is contacted and the neutral search glyph shows instead.
  */
-const ProviderFavicon = ({ provider }: { provider: WebSearchProviderMeta }) => {
-  const [failed, setFailed] = useState(false)
-  if (failed) {
-    return (
+const ProviderFavicon = ({ provider }: { provider: WebSearchProviderMeta }) => (
+  <SiteIcon
+    url={`https://${provider.homepage}`}
+    className="size-4 shrink-0 rounded-sm object-contain"
+    fallback={
       <span
         aria-hidden
         className="size-4 shrink-0 inline-flex items-center justify-center rounded-sm bg-muted text-fg-2"
       >
         <Search className="size-3" />
       </span>
-    )
-  }
-  return (
-    <img
-      aria-hidden
-      alt=""
-      src={`https://${provider.homepage}/favicon.ico`}
-      className="size-4 shrink-0 rounded-sm object-contain"
-      onError={() => setFailed(true)}
-    />
-  )
-}
+    }
+  />
+)
 
 const iconButton =
   'grid size-6 shrink-0 place-items-center rounded-md text-secondary-foreground hover:bg-hover-btn hover:text-foreground disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11'
@@ -300,6 +292,9 @@ function WebSearchContent() {
                   <Input
                     type="text"
                     className="w-full font-mono"
+                    aria-label={t('settings:webSearch.endpoint', {
+                      provider: provider.label,
+                    })}
                     placeholder={t(
                       'settings:webSearch.endpointPlaceholder'
                     )}
@@ -328,6 +323,9 @@ function WebSearchContent() {
                   <Input
                     type={showKey ? 'text' : 'password'}
                     className="min-w-0 flex-1 font-mono sm:w-[220px] sm:flex-none"
+                    aria-label={t('settings:webSearch.apiKey', {
+                      provider: provider.label,
+                    })}
                     placeholder={t('settings:webSearch.apiKeyPlaceholder', {
                       provider: provider.label,
                     })}
