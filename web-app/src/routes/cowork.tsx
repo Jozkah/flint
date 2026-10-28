@@ -6,10 +6,8 @@ import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
-import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
-import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
 import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
 import {
   useBrowserToolMirror,
@@ -22,7 +20,6 @@ import type { VerifyReport } from '@/lib/browserVerify'
 import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
-import ChatInput from '@/containers/ChatInput'
 import { type WidgetHost } from '@/lib/visualize/hostContext'
 import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
@@ -76,7 +73,6 @@ import {
   CoworkSidePanel,
   type InspectorLayout,
 } from '@/containers/CoworkSidePanel'
-import { CoworkReviewReady } from '@/containers/CoworkReviewReady'
 import {
   useCoworkSessions,
   ensureCurrentSession,
@@ -134,7 +130,6 @@ import { currentDescriber, describeRunAttachments } from '@/lib/imageDescription
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
-import SkillSelector from '@/containers/SkillSelector'
 import {
   appendLiveMessages,
   assistantAnchorId,
@@ -254,6 +249,7 @@ import { configuredContextTokens } from '@/lib/coworkContextWindow'
 import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
 import { CoworkTranscript } from '@/containers/CoworkTranscript'
 import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
+import { CoworkComposerArea } from '@/containers/CoworkComposerArea'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
@@ -301,7 +297,6 @@ import {
 } from '@/containers/CoworkRailToolbar'
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
-import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import type { UIMessage } from 'ai'
 import {
   compactHistory,
@@ -335,9 +330,7 @@ import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
-import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
-import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
 import {
   answerMail,
@@ -352,14 +345,10 @@ import {
 } from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
-import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { useShallow } from 'zustand/react/shallow'
 import {
-  hideRecovery,
-  recoverableWorktrees,
   recoveryHidden,
-  sessionWorktreeBranch,
-} from '@/lib/coworkWorktrees'
+  } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
 import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
@@ -415,9 +404,6 @@ import {
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
-import { CoworkSessionWorktreeBar } from '@/containers/CoworkSessionWorktreeBar'
-import { SharedFolderBar } from '@/containers/SharedFolderBar'
-import { SharedFolderIsolationHint } from '@/containers/SharedFolderIsolationHint'
 import {
   applyDecision,
   conflictKey,
@@ -440,7 +426,6 @@ import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
-import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import {
   beginTeamChild,
   settleTeamChild,
@@ -521,7 +506,6 @@ import { createChildRunner } from '@/lib/coworkChildRunner'
 import { DelegationNudge } from '@/lib/delegationNudge'
 import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
-import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
@@ -529,15 +513,11 @@ import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
-import { CoworkBarStack } from '@/containers/CoworkBarStack'
 import {
   EMPTY_SUMMARY,
-  NarrowBarsSheet,
-  NarrowStatusStrip,
   attentionCount,
   type NarrowBarsSummary,
 } from '@/containers/NarrowStatusStrip'
-import { scrollToApproval } from '@/lib/approvalDestination'
 import { CoworkRunChip } from '@/containers/CoworkRunChip'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
@@ -6337,283 +6317,60 @@ export function CoworkPage() {
   coworkPane={coworkPane}
 />
 
-          <div className={cn('shrink-0 px-3.5 pt-2', paneChrome ? 'pb-3.5' : 'pb-1.5')}>
-            <div className="mx-auto w-full max-w-[780px]">
-              {/* Work a crashed or closed run left behind. Shown where the
-                  session is about to start, because that is the moment someone
-                  would otherwise start a second one beside it. Everything else
-                  that used to sit here -- readiness, compatibility, skill
-                  folders, context accounting -- moved behind the session
-                  details control in the header, so the composer sits directly
-                  beneath the conversation. */}
-              {/* Not beside the session's own worktree bar: a session that
-                  already has a worktree is not about to adopt another. */}
-              {/* Whether a folder's own hooks and agents may run: asked here,
-                  over the composer, so it cannot scroll away. Outside the
-                  stack so it never pushes the session's own bars behind
-                  "Show N more". */}
-              {(() => {
-                const bars = (
-                  <>
-              <FolderTrustBanner folder={folder} />
-              {/* The bars over the composer stack: two at a time, the rest
-                  behind "Show N more". */}
-              <CoworkBarStack max={Infinity}>
-                {folder &&
-                  !recoveryHiddenHere &&
-                  ((!worktree && (session?.turns.length ?? 0) === 0) ||
-                    effective.downgradedFrom === 'managed-worktree') && (
-                  <div className="px-1 pb-2">
-                    <CoworkWorktreeRecovery
-                      orphans={recoverableWorktrees(
-                        foundWorktrees,
-                        worktree,
-                        session?.id,
-                        coworkSessionIds,
-                        heldWorktreePaths
-                      )}
-                      onHide={() => {
-                        hideRecovery(folder)
-                        setRecoveryHiddenHere(true)
-                      }}
-                      ownBranch={
-                        session?.id ? sessionWorktreeBranch(session.id) : undefined
-                      }
-                      downgradeNote={(() => {
-                        const key = effectiveDowngradeKey(effective)
-                        return key &&
-                          effective.downgradedFrom === 'managed-worktree'
-                          ? t(key)
-                          : undefined
-                      })()}
-                      onAdopt={(record) => {
-                        if (session?.id)
-                          useCoworkWorktrees.getState().adopt(session.id, record)
-                      }}
-                      onPending={(record) =>
-                        useCoworkWorktrees.getState().pending(record)
-                      }
-                      onRemove={async (record, force) => {
-                        const dataFolder = await serviceHub
-                          .app()
-                          .getJanDataFolder()
-                        if (!dataFolder) return
-                        // Removed under a temporary binding rather than through
-                        // the session's own record: this checkout belongs to no
-                        // session, and adopting it first to delete it would put
-                        // the session on a worktree that is about to be gone.
-                        const key = `recovery:${record.path}`
-                        useCoworkWorktrees.getState().adopt(key, record)
-                        const done = await useCoworkWorktrees
-                          .getState()
-                          .discard(key, dataFolder, force)
-                        useCoworkWorktrees.getState().forget(key)
-                        if (!done.ok) toast.error(done.reason)
-                        setFoundWorktrees(
-                          await useCoworkWorktrees
-                            .getState()
-                            .list(folder, dataFolder)
-                        )
-                      }}
-                    />
-                  </div>
-                )}
-                {/* AH-210: what a handed-off session could not bring with it. */}
-                <CoworkHandoffNotice
-                  handoff={session?.handoff}
-                  folder={folder}
-                  onDismiss={() =>
-                    session &&
-                    useCoworkSessions.getState().dismissHandoff(session.id)
-                  }
-                />
-                {/* The session's changed files, one step from review: over the
-                    composer, where the design keeps it while the run goes on. */}
-                <CoworkReviewReady
-                  fileCount={changeCounts.fileCount}
-                  additions={changeCounts.additions}
-                  deletions={changeCounts.deletions}
-                  onReview={() => openRail({ kind: 'diff' })}
-                  sessionId={session?.id}
-                  running={running}
-                  sandboxPaths={fileDiffs.map((f) => f.path)}
-                  applyActions={sandboxApply}
-                />
-                {/* The pull request for the folder's branch, if it has one, with
-                    the same mark the session carries in the sidebar. */}
-                {session?.id && folder ? (
-                  <>
-                  <SharedFolderIsolationHint
-                    reason={autoWorktree.isolationReason}
-                    choseShared={autoWorktree.choseShared}
-                    onUseShared={() => void autoWorktree.chooseShared()}
-                  />
-                  <CoworkSessionWorktreeBar
-                    sessionId={session.id}
-                    title={session.title}
-                    folder={folder}
-                    record={worktree}
-                    offerCopy={
-                      autoWorktree.isGit === false &&
-                      capabilityState.known &&
-                      capabilityState.managedWorktree &&
-                      (session.turns.length ?? 0) === 0
-                    }
-                    onWorkOnCopy={autoWorktree.workOnCopy}
-                    onCreatePr={(branch, base) =>
-                      handleSubmit(
-                        t('common:coworkParallel.prPrompt', {
-                          branch,
-                          base: base || 'the default branch',
-                        })
-                      )
-                    }
-                    onDiscarded={() => {
-                      const sid = session.id
-                      void useDirectEditGrants.getState().revokeSession(sid)
-                      useCoworkWorktrees.getState().forget(sid)
-                      useCoworkSessions.getState().setAccess(sid, 'review-only')
-                      useCoworkParallel.getState().mark(sid, folder, 'skipped')
-                    }}
-                  />
-                  </>
-                ) : null}
-                <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
-                {/* Other sessions in this folder: one more bar, so the narrow
-                    strip folds it in with the rest. Nothing when alone. */}
-                <SharedFolderBar
-                  sessionId={session?.id}
-                  onOpenSession={(id) => useCoworkSessions.getState().selectSession(id)}
-                />
-              </CoworkBarStack>
-                  </>
-                )
-                return (
-                  <>
-                    <NarrowBarsSheet
-                      inline={!stripMode}
-                      open={barsSheetOpen && stripMode}
-                      onOpenChange={setBarsSheetOpen}
-                      onSummary={setBarsSummary}
-                    >
-                      {bars}
-                    </NarrowBarsSheet>
-                    {stripMode && (
-                    <NarrowStatusStrip
-                      waiting={waitingIds.length}
-                      summary={barsSummary}
-                      files={{
-                        count: changeCounts.fileCount,
-                        additions: changeCounts.additions,
-                        deletions: changeCounts.deletions,
-                      }}
-                      branch={worktree?.branch ?? gitBranch ?? null}
-                      onWaiting={() => {
-                        if (waitingIds[0]) void scrollToApproval(waitingIds[0])
-                      }}
-                      onOpen={() => setBarsSheetOpen((v) => !v)}
-                      condensed={phoneStrip}
-                    />
-                    )}
-                  </>
-                )
-              })()}
-              {/* The FLINT.md dialog; the folder menu opens it. */}
-              <CoworkProjectInit
-                hideTrigger
-                open={projectInitOpen}
-                onOpenChange={setProjectInitOpen}
-                folder={projectInitRoot}
-                hasInstructions={!projectInitOffered}
-                onAccepted={() => setInstructionsVersion((v) => v + 1)}
-              />
-              {/* Jev: a suggested skill, only when its opt-in is on. */}
-              <JevSkillSuggestion
-                surface="cowork"
-                project={folder}
-                draftScope={coworkPane?.draftScope}
-              />
-              <ChatInput
-                showSpeedToken={false}
-                initialMessage={true}
-                scopeKey={session?.id}
-                draftScope={coworkPane?.draftScope}
-                // The session's model, resolved as the run resolves it: the
-                // composer must not refuse a send the run would make.
-                modelSelection={composerModel.selection}
-                // The session's own effort, where its transport reads it.
-                modelOverrideScope={session?.id ?? ''}
-                unavailableModel={composerModel.unavailable}
-                confirmModel={confirmSessionModel}
-                // Held input is shown once, in CoworkHeldInput above.
-                heldShownElsewhere
-                // A pasted folder path offers to attach it as the project.
-                pastedFolder={{
-                  attached: applyFolders,
-                  onAttach: (path) => void attachFolder(path),
-                }}
-                ownsToolSet={false}
-                // `@` names files in the folder the run works in, nothing else.
-                referenceRoot={treeRoot}
-                referenceSources={referenceSources}
-                slashSurface="cowork"
-                slashProject={folder}
-                slashBuiltins={slashBuiltins}
-                onSubmit={handleSubmit}
-                onStop={handleStop}
-                chatStatus={running ? 'streaming' : 'ready'}
-                // One stop control for this surface, in the composer's own
-                // action slot: it asks how far to stop rather than sitting
-                // beside a second, destructive button.
-                stopControl={
-                  <CoworkStopMenu
-                    running={running}
-                    sessionId={session?.id}
-                    runId={currentRunId}
-                    onStopCurrent={handleStop}
-                    onStopAll={handleStopAll}
-                  />
-                }
-                tokenSource={tokenSource}
-                onCompact={() => void compactNowRef.current()}
-                // Assistant, sampling, web search and reasoning behind one
-                // Options button: the Cowork row stays quiet.
-                groupOptions
-                // Web search is per session; a choice made before the first
-                // message creates the session it belongs to, like the mode.
-                webSearchScope={
-                  session?.id ? coworkWebSearchScope(session.id) : null
-                }
-                ensureWebSearchScope={() =>
-                  coworkWebSearchScope(
-                    ensureCurrentSession(paneSessionIdRef.current)
-                  )
-                }
-                // Under the composer, as Claude lays it out: what the run may
-                // do on the left; the effort and the model on the right.
-                // A split pane uses the same row (its folder included).
-                belowLeft={belowComposerControls}
-                // Below the input in every layout, a split pane included: each
-                // pane picks its own session's model there, never the global one.
-                modelControl={quietModelSelector}
-                surfaceControls={
-                  <>
-                    <CoworkSandboxChip />
-                    {/* On a phone the composer is out of view while the
-                        output is, so it keeps one set there. */}
-                    {/* On a phone the box keeps only attach, options and
-                        skills: the views are one tap away in the view switch. */}
-                    {showComposerRailButtons &&
-                      !phone &&
-                      railToolbar('toolbar')}
-                    <div className="ml-auto flex items-center">
-                      <SkillSelector folder={folder} />
-                    </div>
-                  </>
-                }
-              />
-            </div>
-          </div>
+          <CoworkComposerArea
+  paneChrome={paneChrome}
+  folder={folder}
+  recoveryHiddenHere={recoveryHiddenHere}
+  worktree={worktree}
+  session={session}
+  effective={effective}
+  foundWorktrees={foundWorktrees}
+  coworkSessionIds={coworkSessionIds}
+  heldWorktreePaths={heldWorktreePaths}
+  setRecoveryHiddenHere={setRecoveryHiddenHere}
+  serviceHub={serviceHub}
+  setFoundWorktrees={setFoundWorktrees}
+  changeCounts={changeCounts}
+  openRail={openRail}
+  running={running}
+  fileDiffs={fileDiffs}
+  sandboxApply={sandboxApply}
+  autoWorktree={autoWorktree}
+  capabilityState={capabilityState}
+  handleSubmit={handleSubmit}
+  treeRoot={treeRoot}
+  stripMode={stripMode}
+  barsSheetOpen={barsSheetOpen}
+  setBarsSheetOpen={setBarsSheetOpen}
+  setBarsSummary={setBarsSummary}
+  waitingIds={waitingIds}
+  barsSummary={barsSummary}
+  gitBranch={gitBranch}
+  phoneStrip={phoneStrip}
+  projectInitOpen={projectInitOpen}
+  setProjectInitOpen={setProjectInitOpen}
+  projectInitRoot={projectInitRoot}
+  projectInitOffered={projectInitOffered}
+  setInstructionsVersion={setInstructionsVersion}
+  coworkPane={coworkPane}
+  composerModel={composerModel}
+  confirmSessionModel={confirmSessionModel}
+  applyFolders={applyFolders}
+  attachFolder={attachFolder}
+  referenceSources={referenceSources}
+  slashBuiltins={slashBuiltins}
+  handleStop={handleStop}
+  currentRunId={currentRunId}
+  handleStopAll={handleStopAll}
+  tokenSource={tokenSource}
+  compactNowRef={compactNowRef}
+  paneSessionIdRef={paneSessionIdRef}
+  belowComposerControls={belowComposerControls}
+  quietModelSelector={quietModelSelector}
+  showComposerRailButtons={showComposerRailButtons}
+  phone={phone}
+  railToolbar={railToolbar}
+/>
           </FrameBody>
         </Frame>
 
