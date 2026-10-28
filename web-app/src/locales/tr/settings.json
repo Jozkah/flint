@@ -266,7 +266,7 @@
     "caBundleBroken": "Bu paket kullanılamıyor ({{kind}}): düzeltilene veya kaldırılana kadar giden HTTPS hiçbir şeye güvenmez.",
     "ignoreSslScope": "Proxy üzerinden geçen tüm trafiğe uygulanır. Tek bir sağlayıcı da kendi adresi için geçersiz sertifikalara izin verebilir; bunu Sağlayıcılar altındaki sayfasında yapabilirsiniz.",
     "proxyUrlInvalid": "Bu bir proxy adresine benzemiyor. host:port veya http://host:port kullanın.",
-    "proxyUrlScheme": "Yalnızca http ve https proxy'leri desteklenir.",
+    "proxyUrlScheme": "Yalnızca http, https, socks5 ve socks5h proxy'leri desteklenir.",
     "ignoreSslConfirmTitle": "SSL sertifikaları yok sayılsın mı?",
     "ignoreSslConfirmBody": "Flint, proxy üzerinden geçen tüm trafik için kendinden imzalı, süresi dolmuş veya uyuşmayan sertifikaları kabul edecek; bu yüzden yoldaki herkes trafiği okuyabilir veya değiştirebilir. Yalnızca proxy'ye ve ağa güveniyorsanız devam edin.",
     "ignoreSslConfirm": "Sertifikaları yok say",

@@ -267,7 +267,7 @@
     "caBundleBroken": "Este paquete no se puede usar ({{kind}}): el HTTPS saliente no confía en nada hasta que se corrija o se quite.",
     "ignoreSslScope": "Se aplica a todo el tráfico por proxy. Un proveedor también puede permitir certificados no válidos solo para su propia dirección, en su página de Proveedores de modelos.",
     "proxyUrlInvalid": "Esto no parece una dirección de proxy. Usa host:puerto o http://host:puerto.",
-    "proxyUrlScheme": "Solo se admiten proxies http y https.",
+    "proxyUrlScheme": "Solo se admiten proxies http, https, socks5 y socks5h.",
     "ignoreSslConfirmTitle": "¿Ignorar los certificados SSL?",
     "ignoreSslConfirmBody": "Flint aceptará certificados autofirmados, caducados o que no coincidan para todo el tráfico del proxy, así que cualquiera en la ruta podría leerlo o alterarlo. Continúa solo si confías en el proxy y en la red.",
     "ignoreSslConfirm": "Ignorar certificados",

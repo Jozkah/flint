@@ -266,7 +266,7 @@
     "caBundleBroken": "Không thể dùng gói này ({{kind}}): HTTPS đi ra không tin cậy gì cho đến khi nó được sửa hoặc gỡ.",
     "ignoreSslScope": "Áp dụng cho toàn bộ lưu lượng qua proxy. Từng nhà cung cấp cũng có thể cho phép chứng chỉ không hợp lệ cho địa chỉ riêng của mình, trên trang của nhà cung cấp đó trong Nhà cung cấp Mô hình.",
     "proxyUrlInvalid": "Đây không giống địa chỉ proxy. Hãy dùng host:port hoặc http://host:port.",
-    "proxyUrlScheme": "Chỉ hỗ trợ proxy http và https.",
+    "proxyUrlScheme": "Chỉ hỗ trợ proxy http, https, socks5 và socks5h.",
     "ignoreSslConfirmTitle": "Bỏ qua chứng chỉ SSL?",
     "ignoreSslConfirmBody": "Flint sẽ chấp nhận chứng chỉ tự ký, hết hạn hoặc không khớp cho toàn bộ lưu lượng qua proxy, nên bất kỳ ai trên đường truyền đều có thể đọc hoặc sửa nó. Chỉ tiếp tục nếu bạn tin tưởng proxy và mạng.",
     "ignoreSslConfirm": "Bỏ qua chứng chỉ",
