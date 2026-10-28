@@ -338,6 +338,8 @@ macro_rules! invoke_commands_with_extras {
         core::server::remote_provider_commands::set_model_param_defaults,
         core::server::remote_provider_commands::get_provider_config,
         core::server::remote_provider_commands::get_provider_keys,
+        core::server::remote_provider_commands::has_provider_keys,
+        core::server::remote_provider_commands::export_provider_keys_for_backup,
         core::server::remote_provider_commands::list_provider_configs,
         core::server::remote_provider_commands::register_secret_values,
         core::server::remote_provider_commands::set_provider_tls_trust,
