@@ -1456,7 +1456,18 @@
     "footerCount_one": "1 memòria en aquest àmbit",
     "footerCount_other": "{{count}} memòries en aquest àmbit",
     "footerCount_many": "{{count}} memòries en aquest àmbit",
-    "agentNotes": "Notes de l'agent"
+    "agentNotes": "Notes de l'agent",
+    "report": {
+      "summary_one": "S'ha importat {{count}} record de l'exportació",
+      "summary_many": "S'han importat {{count}} records de l'exportació",
+      "summary_other": "S'han importat {{count}} records de l'exportació",
+      "duplicates_one": "{{count}} duplicat omès",
+      "duplicates_many": "{{count}} duplicats omesos",
+      "duplicates_other": "{{count}} duplicats omesos",
+      "refused_one": "{{count}} rebutjat",
+      "refused_many": "{{count}} rebutjats",
+      "refused_other": "{{count}} rebutjats"
+    }
   },
   "chatMentions": {
     "title": "Mencions de converses",

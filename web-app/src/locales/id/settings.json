@@ -1429,7 +1429,12 @@
     "noMatchHint": "Periksa ejaannya, atau hapus pencarian untuk melihat semuanya.",
     "emptyHint": "Tulis satu di atas, atau biarkan Flint mengingat saat Anda mengobrol.",
     "footerCount_other": "{{count}} memori dalam cakupan ini",
-    "agentNotes": "Catatan agen"
+    "agentNotes": "Catatan agen",
+    "report": {
+      "summary_other": "{{count}} memori diimpor dari ekspor",
+      "duplicates_other": "{{count}} duplikat dilewati",
+      "refused_other": "{{count}} ditolak"
+    }
   },
   "chatMentions": {
     "title": "Sebutan percakapan",

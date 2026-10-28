@@ -1454,7 +1454,18 @@
     "footerCount_other": "{{count}} ký ức trong phạm vi này",
     "footerCount_one": "1 ký ức trong phạm vi này",
     "footerCount_many": "{{count}} ký ức trong phạm vi này",
-    "agentNotes": "Ghi chú của agent"
+    "agentNotes": "Ghi chú của agent",
+    "report": {
+      "summary_one": "Đã nhập {{count}} ký ức từ bản xuất",
+      "summary_many": "Đã nhập {{count}} ký ức từ bản xuất",
+      "summary_other": "Đã nhập {{count}} ký ức từ bản xuất",
+      "duplicates_one": "Đã bỏ qua {{count}} bản trùng",
+      "duplicates_many": "Đã bỏ qua {{count}} bản trùng",
+      "duplicates_other": "Đã bỏ qua {{count}} bản trùng",
+      "refused_one": "{{count}} bị từ chối",
+      "refused_many": "{{count}} bị từ chối",
+      "refused_other": "{{count}} bị từ chối"
+    }
   },
   "chatMentions": {
     "title": "Nhắc đến hội thoại",

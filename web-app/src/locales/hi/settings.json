@@ -1606,7 +1606,15 @@
     "emptyHint": "ऊपर एक लिखें, या चैट करते समय Flint को याद रखने दें।",
     "footerCount_one": "इस दायरे में 1 याद",
     "footerCount_other": "इस दायरे में {{count}} यादें",
-    "agentNotes": "एजेंट नोट्स"
+    "agentNotes": "एजेंट नोट्स",
+    "report": {
+      "summary_one": "निर्यात से {{count}} स्मृति आयात की गई",
+      "summary_other": "निर्यात से {{count}} स्मृतियाँ आयात की गईं",
+      "duplicates_one": "{{count}} डुप्लिकेट छोड़ा गया",
+      "duplicates_other": "{{count}} डुप्लिकेट छोड़े गए",
+      "refused_one": "{{count}} अस्वीकृत",
+      "refused_other": "{{count}} अस्वीकृत"
+    }
   },
   "chatMentions": {
     "title": "बातचीत का उल्लेख",

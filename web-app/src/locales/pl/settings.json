@@ -1475,7 +1475,21 @@
     "footerCount_few": "{{count}} wspomnienia w tym zakresie",
     "footerCount_many": "{{count}} wspomnień w tym zakresie",
     "footerCount_other": "{{count}} wspomnienia w tym zakresie",
-    "agentNotes": "Notatki agenta"
+    "agentNotes": "Notatki agenta",
+    "report": {
+      "summary_one": "Zaimportowano {{count}} wspomnienie z eksportu",
+      "summary_few": "Zaimportowano {{count}} wspomnień z eksportu",
+      "summary_many": "Zaimportowano {{count}} wspomnień z eksportu",
+      "summary_other": "Zaimportowano {{count}} wspomnień z eksportu",
+      "duplicates_one": "Pominięto {{count}} duplikat",
+      "duplicates_few": "Pominięto {{count}} duplikatów",
+      "duplicates_many": "Pominięto {{count}} duplikatów",
+      "duplicates_other": "Pominięto {{count}} duplikatów",
+      "refused_one": "{{count}} odrzucone",
+      "refused_few": "{{count}} odrzuconych",
+      "refused_many": "{{count}} odrzuconych",
+      "refused_other": "{{count}} odrzuconych"
+    }
   },
   "chatMentions": {
     "title": "Wzmianki o rozmowach",

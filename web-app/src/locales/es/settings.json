@@ -1627,7 +1627,18 @@
     "footerCount_one": "1 recuerdo en este ámbito",
     "footerCount_other": "{{count}} recuerdos en este ámbito",
     "footerCount_many": "{{count}} recuerdos en este ámbito",
-    "agentNotes": "Notas del agente"
+    "agentNotes": "Notas del agente",
+    "report": {
+      "summary_one": "Se importó {{count}} recuerdo de la exportación",
+      "summary_many": "Se importaron {{count}} recuerdos de la exportación",
+      "summary_other": "Se importaron {{count}} recuerdos de la exportación",
+      "duplicates_one": "{{count}} duplicado omitido",
+      "duplicates_many": "{{count}} duplicados omitidos",
+      "duplicates_other": "{{count}} duplicados omitidos",
+      "refused_one": "{{count}} rechazado",
+      "refused_many": "{{count}} rechazados",
+      "refused_other": "{{count}} rechazados"
+    }
   },
   "chatMentions": {
     "title": "Menciones de conversaciones",

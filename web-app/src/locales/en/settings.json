@@ -1194,7 +1194,7 @@
       "updated": "Updated {{when}}",
       "loading": "Loading campaigns",
       "loadFailed": "Couldn't load campaigns.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
+      "skipped_one": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_other": "Skipped {{count}} unreadable campaign records. The files were left in place.",
       "retry": "Retry",
       "needsDesktop": "Campaigns need the desktop app",
@@ -1433,7 +1433,15 @@
     "emptyHint": "Write one above, or let Flint remember as you chat.",
     "footerCount_one": "1 memory in this scope",
     "footerCount_other": "{{count}} memories in this scope",
-    "agentNotes": "Agent notes"
+    "agentNotes": "Agent notes",
+    "report": {
+      "summary_one": "Imported {{count}} memory from export",
+      "summary_other": "Imported {{count}} memories from export",
+      "duplicates_one": "{{count}} duplicate skipped",
+      "duplicates_other": "{{count}} duplicates skipped",
+      "refused_one": "{{count}} refused",
+      "refused_other": "{{count}} refused"
+    }
   },
   "chatMentions": {
     "title": "Conversation mentions",

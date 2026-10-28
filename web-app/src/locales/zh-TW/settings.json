@@ -1432,7 +1432,12 @@
     "noMatchHint": "檢查拼字，或清除搜尋以查看全部。",
     "emptyHint": "在上方寫一條，或讓 Flint 在聊天時自動記住。",
     "footerCount_other": "此範圍內有 {{count}} 條記憶",
-    "agentNotes": "代理筆記"
+    "agentNotes": "代理筆記",
+    "report": {
+      "summary_other": "已從匯出中匯入 {{count}} 則記憶",
+      "duplicates_other": "已略過 {{count}} 則重複",
+      "refused_other": "已拒絕 {{count}} 則"
+    }
   },
   "chatMentions": {
     "title": "對話提及",

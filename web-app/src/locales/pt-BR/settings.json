@@ -1483,7 +1483,18 @@
     "footerCount_one": "1 memória neste escopo",
     "footerCount_other": "{{count}} memórias neste escopo",
     "footerCount_many": "{{count}} memórias neste escopo",
-    "agentNotes": "Notas do agente"
+    "agentNotes": "Notas do agente",
+    "report": {
+      "summary_one": "{{count}} memória importada da exportação",
+      "summary_many": "{{count}} memórias importadas da exportação",
+      "summary_other": "{{count}} memórias importadas da exportação",
+      "duplicates_one": "{{count}} duplicata ignorada",
+      "duplicates_many": "{{count}} duplicatas ignoradas",
+      "duplicates_other": "{{count}} duplicatas ignoradas",
+      "refused_one": "{{count}} recusada",
+      "refused_many": "{{count}} recusadas",
+      "refused_other": "{{count}} recusadas"
+    }
   },
   "chatMentions": {
     "title": "Menções a conversas",

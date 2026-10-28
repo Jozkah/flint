@@ -1454,7 +1454,18 @@
     "footerCount_one": "1 ricordo in questo ambito",
     "footerCount_other": "{{count}} ricordi in questo ambito",
     "footerCount_many": "{{count}} ricordi in questo ambito",
-    "agentNotes": "Note dell'agente"
+    "agentNotes": "Note dell'agente",
+    "report": {
+      "summary_one": "Importato {{count}} ricordo dall'esportazione",
+      "summary_many": "Importati {{count}} ricordi dall'esportazione",
+      "summary_other": "Importati {{count}} ricordi dall'esportazione",
+      "duplicates_one": "{{count}} duplicato saltato",
+      "duplicates_many": "{{count}} duplicati saltati",
+      "duplicates_other": "{{count}} duplicati saltati",
+      "refused_one": "{{count}} rifiutato",
+      "refused_many": "{{count}} rifiutati",
+      "refused_other": "{{count}} rifiutati"
+    }
   },
   "chatMentions": {
     "title": "Menzioni di conversazioni",

@@ -1454,7 +1454,18 @@
     "footerCount_one": "1 souvenir dans cette portée",
     "footerCount_other": "{{count}} souvenirs dans cette portée",
     "footerCount_many": "{{count}} souvenirs dans cette portée",
-    "agentNotes": "Notes de l'agent"
+    "agentNotes": "Notes de l'agent",
+    "report": {
+      "summary_one": "{{count}} souvenir importé depuis l'export",
+      "summary_many": "{{count}} souvenirs importés depuis l'export",
+      "summary_other": "{{count}} souvenirs importés depuis l'export",
+      "duplicates_one": "{{count}} doublon ignoré",
+      "duplicates_many": "{{count}} doublons ignorés",
+      "duplicates_other": "{{count}} doublons ignorés",
+      "refused_one": "{{count}} refusé",
+      "refused_many": "{{count}} refusés",
+      "refused_other": "{{count}} refusés"
+    }
   },
   "chatMentions": {
     "title": "Mentions de conversations",
