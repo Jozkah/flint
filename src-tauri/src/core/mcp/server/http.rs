@@ -13,6 +13,7 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
@@ -22,8 +23,15 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
+use tokio::sync::Semaphore;
 
 use super::{JanToolServer, ServeOptions};
+
+/// Most connections served at once. Past it a new connection is closed at once:
+/// auth is checked after the headers, so idle sockets would otherwise pile up.
+const MAX_CONNECTIONS: usize = 64;
+/// How long a client gets to send a full request head before the socket closes.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A bound Streamable HTTP server: where it listens, and the token a caller
 /// must present.
@@ -103,6 +111,16 @@ pub async fn bind(
     port: u16,
     token: Option<String>,
 ) -> Result<(BoundServer, impl std::future::Future<Output = ()>), String> {
+    bind_with_limits(opts, port, token, MAX_CONNECTIONS, HEADER_READ_TIMEOUT).await
+}
+
+async fn bind_with_limits(
+    opts: ServeOptions,
+    port: u16,
+    token: Option<String>,
+    max_connections: usize,
+    header_timeout: Duration,
+) -> Result<(BoundServer, impl std::future::Future<Output = ()>), String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -125,6 +143,7 @@ pub async fn bind(
         StreamableHttpServerConfig::default(),
     ));
     let token = Arc::new(token);
+    let connections = Arc::new(Semaphore::new(max_connections));
 
     let serve = async move {
         loop {
@@ -132,13 +151,19 @@ pub async fn bind(
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("MCP server accept error: {e}");
+                    // EMFILE and friends repeat at once; do not spin a core.
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                     continue;
                 }
+            };
+            let Ok(permit) = connections.clone().try_acquire_owned() else {
+                continue; // dropped: the server is at its connection limit
             };
             let io = TokioIo::new(stream);
             let service = service.clone();
             let token = token.clone();
             tokio::spawn(async move {
+                let _permit = permit;
                 let handler = service_fn(move |req: Request<hyper::body::Incoming>| {
                     let service = service.clone();
                     let token = token.clone();
@@ -149,11 +174,64 @@ pub async fn bind(
                         Ok(service.handle(req).await)
                     }
                 });
-                if let Err(e) = http1::Builder::new().serve_connection(io, handler).await {
+                if let Err(e) = http1::Builder::new()
+                    .timer(hyper_util::rt::TokioTimer::new())
+                    .header_read_timeout(header_timeout)
+                    .serve_connection(io, handler)
+                    .await
+                {
                     log::debug!("MCP server connection error: {e}");
                 }
             });
         }
     };
     Ok((bound, serve))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::TcpStream;
+
+    async fn start(
+        max: usize,
+        header_timeout: Duration,
+    ) -> (BoundServer, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = ServeOptions::new(dir.path().to_path_buf());
+        let (bound, serve) = bind_with_limits(opts, 0, None, max, header_timeout)
+            .await
+            .unwrap();
+        tokio::spawn(serve);
+        (bound, dir)
+    }
+
+    #[tokio::test]
+    async fn mcp_http_caps_connections() {
+        let (bound, _dir) = start(1, Duration::from_secs(30)).await;
+        // First connection is served and held idle.
+        let _held = TcpStream::connect(bound.addr).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        // The second is accepted by the kernel, then closed by the server.
+        let mut over = TcpStream::connect(bound.addr).await.unwrap();
+        let mut buf = Vec::new();
+        let read = tokio::time::timeout(Duration::from_secs(5), over.read_to_end(&mut buf))
+            .await
+            .expect("over-limit connection was not closed");
+        assert!(read.is_ok() || buf.is_empty());
+        assert!(buf.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_http_header_timeout_closes() {
+        let (bound, _dir) = start(8, Duration::from_millis(200)).await;
+        let mut idle = TcpStream::connect(bound.addr).await.unwrap();
+        let mut buf = Vec::new();
+        // Never sends a request head: the server must hang up on its own.
+        tokio::time::timeout(Duration::from_secs(5), idle.read_to_end(&mut buf))
+            .await
+            .expect("idle connection was not closed by the header timeout")
+            .ok();
+    }
 }
