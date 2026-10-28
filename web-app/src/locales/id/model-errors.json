@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Gagal memulai model",
   "serverStartFailed": "Gagal memulai server",
   "azureEndpointMissing": "Tidak ada endpoint yang dikonfigurasi untuk {{provider}}. Atur Base URL di Pengaturan > Penyedia Model.",
-  "emptyReply": "Model selesai tanpa memberikan balasan. Coba buat ulang, atau periksa pengaturan penyedia."
+  "emptyReply": "Model selesai tanpa memberikan balasan. Coba buat ulang, atau periksa pengaturan penyedia.",
+  "gpuCrashCpuFallbackTitle": "Driver GPU mengalami crash",
+  "gpuCrashCpuFallbackQuestion": "Driver GPU crash saat memuat model ini. Muat di CPU saja? Akan berjalan lebih lambat.",
+  "gpuCrashCpuFallbackConfirm": "Muat di CPU"
 }

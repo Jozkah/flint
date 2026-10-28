@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Échec du démarrage du modèle",
   "serverStartFailed": "Échec du démarrage du serveur",
   "azureEndpointMissing": "Aucun point de terminaison n'est configuré pour {{provider}}. Définissez l'URL de base dans Paramètres > Fournisseurs de modèles.",
-  "emptyReply": "Le modèle a terminé sans renvoyer de réponse. Essayez de la régénérer ou vérifiez les paramètres du fournisseur."
+  "emptyReply": "Le modèle a terminé sans renvoyer de réponse. Essayez de la régénérer ou vérifiez les paramètres du fournisseur.",
+  "gpuCrashCpuFallbackTitle": "Le pilote GPU a planté",
+  "gpuCrashCpuFallbackQuestion": "Le pilote GPU a planté pendant le chargement de ce modèle. Le charger plutôt sur le CPU ? Il sera plus lent.",
+  "gpuCrashCpuFallbackConfirm": "Charger sur le CPU"
 }

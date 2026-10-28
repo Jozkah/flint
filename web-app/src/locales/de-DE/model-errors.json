@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Modell konnte nicht gestartet werden",
   "serverStartFailed": "Server konnte nicht gestartet werden",
   "azureEndpointMissing": "Für {{provider}} ist kein Endpunkt konfiguriert. Lege die Basis-URL unter Einstellungen > Modellanbieter fest.",
-  "emptyReply": "Das Modell hat keine Antwort geliefert. Versuche es neu zu generieren oder prüfe die Anbieter-Einstellungen."
+  "emptyReply": "Das Modell hat keine Antwort geliefert. Versuche es neu zu generieren oder prüfe die Anbieter-Einstellungen.",
+  "gpuCrashCpuFallbackTitle": "Der GPU-Treiber ist abgestürzt",
+  "gpuCrashCpuFallbackQuestion": "Der GPU-Treiber ist beim Laden dieses Modells abgestürzt. Stattdessen auf der CPU laden? Es läuft dann langsamer.",
+  "gpuCrashCpuFallbackConfirm": "Auf CPU laden"
 }

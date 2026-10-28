@@ -38,5 +38,8 @@
   "serverInvalidModelPath": "Invalid or inaccessible model path",
   "serverStartModelFailed": "Failed to start model",
   "serverStartFailed": "Failed to start server",
-  "azureEndpointMissing": "No endpoint configured for {{provider}}. Set the Base URL in Settings > Model Providers."
+  "azureEndpointMissing": "No endpoint configured for {{provider}}. Set the Base URL in Settings > Model Providers.",
+  "gpuCrashCpuFallbackTitle": "The GPU driver crashed",
+  "gpuCrashCpuFallbackQuestion": "The GPU driver crashed while loading this model. Load it on the CPU instead? It will run slower.",
+  "gpuCrashCpuFallbackConfirm": "Load on CPU"
 }

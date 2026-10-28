@@ -38,5 +38,8 @@
   "serverStartModelFailed": "モデルを起動できませんでした",
   "serverStartFailed": "サーバーを起動できませんでした",
   "azureEndpointMissing": "{{provider}} のエンドポイントが設定されていません。設定 > モデルプロバイダ でベース URL を設定してください。",
-  "emptyReply": "モデルが応答を返さずに終了しました。再生成するか、プロバイダー設定を確認してください。"
+  "emptyReply": "モデルが応答を返さずに終了しました。再生成するか、プロバイダー設定を確認してください。",
+  "gpuCrashCpuFallbackTitle": "GPU ドライバーがクラッシュしました",
+  "gpuCrashCpuFallbackQuestion": "このモデルの読み込み中に GPU ドライバーがクラッシュしました。代わりに CPU で読み込みますか？動作は遅くなります。",
+  "gpuCrashCpuFallbackConfirm": "CPU で読み込む"
 }

@@ -72,7 +72,7 @@ import {
   resolveKvCacheTypes,
   shouldRetryLoadWithF16Kv,
 } from './kvCache'
-import { shouldRetryLoadOnCpu } from './cpuFallback'
+import { isGpuCrashDuringLoad, shouldRetryLoadOnCpu } from './cpuFallback'
 import {
   evaluateEmbeddingVector,
   evaluateGpuOffload,
@@ -2554,6 +2554,17 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       })
   }
 
+  /**
+   * Loads a model with it kept off the GPU for the rest of this run, after
+   * the person agreed to it when the GPU driver crashed during a load.
+   */
+  async loadOnCpu(modelId: string): Promise<SessionInfo> {
+    this.cpuFallbackModels.add(modelId)
+    await this.refreshEnginePreset()
+    await this.ensureEngineReady()
+    return this.load(modelId)
+  }
+
   override async load(
     modelId: string,
     settings?: unknown,
@@ -2696,6 +2707,19 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           await this.refreshEnginePreset()
           await this.ensureEngineReady()
           info = await loadLlamaModel(modelId, isEmbedding)
+        } else if (
+          error &&
+          typeof error === 'object' &&
+          isGpuCrashDuringLoad({
+            error,
+            alreadyOnCpu: this.cpuFallbackModels.has(modelId),
+            configuredDevice: (this.config as { device?: unknown }).device,
+          })
+        ) {
+          // The GPU driver crashed the engine while the model was loading.
+          // The CPU may well run it, but slower, so the app asks first and
+          // calls `loadOnCpu` on a yes instead of this switching silently.
+          throw { ...(error as object), cpu_fallback_offered: true }
         } else {
           throw error
         }

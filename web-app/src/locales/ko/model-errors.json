@@ -38,5 +38,8 @@
   "serverStartModelFailed": "모델을 시작하지 못했습니다",
   "serverStartFailed": "서버를 시작하지 못했습니다",
   "azureEndpointMissing": "{{provider}}에 구성된 엔드포인트가 없습니다. 설정 > 모델 제공자에서 기본 URL을 설정하세요.",
-  "emptyReply": "모델이 응답 없이 종료되었습니다. 다시 생성하거나 공급자 설정을 확인하세요."
+  "emptyReply": "모델이 응답 없이 종료되었습니다. 다시 생성하거나 공급자 설정을 확인하세요.",
+  "gpuCrashCpuFallbackTitle": "GPU 드라이버가 충돌했습니다",
+  "gpuCrashCpuFallbackQuestion": "이 모델을 불러오는 중 GPU 드라이버가 충돌했습니다. 대신 CPU에서 불러올까요? 속도가 느려집니다.",
+  "gpuCrashCpuFallbackConfirm": "CPU에서 불러오기"
 }
