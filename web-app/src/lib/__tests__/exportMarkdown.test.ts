@@ -59,6 +59,34 @@ describe('stripAbsolutePaths', () => {
     )
     expect(stripAbsolutePaths('relative/dir/file.ts')).toBe('relative/dir/file.ts')
   })
+
+  it('strips Windows paths with spaces, quoted or not', () => {
+    const plain = stripAbsolutePaths('open C:\\Users\\John Smith\\proj\\a.ts now')
+    expect(plain).toBe('open a.ts now')
+    expect(plain).not.toContain('John')
+    expect(plain).not.toContain('Users')
+    expect(stripAbsolutePaths('cd "C:\\Users\\John Smith\\proj" && ls')).toBe(
+      'cd "proj" && ls'
+    )
+  })
+
+  it('strips deep POSIX paths outside the usual roots', () => {
+    expect(stripAbsolutePaths('at /Volumes/Data/proj/a.ts.')).toBe('at a.ts.')
+    expect(stripAbsolutePaths('at /Applications/Foo.app/x')).toBe('at x')
+    expect(stripAbsolutePaths('log /data/app/x.log')).toBe('log x.log')
+    expect(stripAbsolutePaths('edit /workspace/src/a.ts')).toBe('edit a.ts')
+    expect(stripAbsolutePaths('run /app/server.js')).toBe('run server.js')
+    expect(stripAbsolutePaths('in "/srv/my site/app/x.txt"')).toBe('in "x.txt"')
+  })
+
+  it('leaves URLs and version strings alone', () => {
+    expect(stripAbsolutePaths('https://example.com/home/x/y')).toBe(
+      'https://example.com/home/x/y'
+    )
+    expect(stripAbsolutePaths('versions 1/2/3 and and/or/maybe')).toBe(
+      'versions 1/2/3 and and/or/maybe'
+    )
+  })
 })
 
 describe('renderMarkdown', () => {

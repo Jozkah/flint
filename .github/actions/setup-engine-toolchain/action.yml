@@ -27,6 +27,23 @@ inputs:
     required: false
     default: ''
 
+  vulkan-version:
+    description: >
+      LunarG Vulkan SDK version the Windows installer is downloaded at. Bump it
+      together with vulkan-sdk-sha256-windows.
+    required: false
+    default: '1.4.363.0'
+  vulkan-sdk-sha256-windows:
+    description: SHA-256 of that version's vulkan_sdk.exe, checked before it runs.
+    required: false
+    default: '94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141'
+  vulkan-apt-version:
+    description: >
+      LunarG apt release the Linux runners install (the repository's newest is
+      1.4.313). Resolved to the exact vulkan-sdk package through apt-cache.
+    required: false
+    default: '1.4.313'
+
 runs:
   using: composite
   steps:
@@ -90,13 +107,30 @@ runs:
         Linux)
           # LunarG rather than the distro packages: jammy ships Vulkan headers
           # 1.3.204, older than the extensions ggml-vulkan compiles against.
+          # The apt repository stops at 1.4.313, so Linux pins that release.
           codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
-            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
-          sudo wget -qO "/etc/apt/sources.list.d/lunarg-vulkan-$codename.list" \
-            "https://packages.lunarg.com/vulkan/lunarg-vulkan-$codename.list"
+          keyring=/usr/share/keyrings/lunarg-vulkan.gpg
+          wget -qO "$RUNNER_TEMP/lunarg-key.asc" \
+            https://packages.lunarg.com/lunarg-signing-key-pub.asc
+          fingerprints=$(gpg --show-keys --with-colons "$RUNNER_TEMP/lunarg-key.asc" \
+            | awk -F: '$1 == "fpr" {print $10}')
+          echo "$fingerprints" | grep -qx '03F5D621A3710FA95A93D89BAA8452080E383F7E' || {
+            echo "error: LunarG signing key fingerprint changed: $fingerprints" >&2
+            exit 1
+          }
+          sudo gpg --dearmor --yes -o "$keyring" "$RUNNER_TEMP/lunarg-key.asc"
+          ver="${{ inputs.vulkan-apt-version }}"
+          wget -qO "$RUNNER_TEMP/lunarg.list" \
+            "https://packages.lunarg.com/vulkan/$ver/lunarg-vulkan-$ver-$codename.list"
+          sed "s#^deb #deb [signed-by=$keyring] #" "$RUNNER_TEMP/lunarg.list" \
+            | sudo tee "/etc/apt/sources.list.d/lunarg-vulkan-$codename.list" >/dev/null
           sudo apt-get update
-          sudo apt-get install -y vulkan-sdk
+          pkg=$(apt-cache madison vulkan-sdk | awk -v v="$ver." 'index($3, v) == 1 {print $3; exit}')
+          if [ -z "$pkg" ]; then
+            echo "error: vulkan-sdk $ver is not in the LunarG repository" >&2
+            exit 1
+          fi
+          sudo apt-get install -y "vulkan-sdk=$pkg"
           ;;
         Windows)
           # A persistent runner keeps the last run's install, and the installer
@@ -104,8 +138,15 @@ runs:
           if [ -x /c/VulkanSDK/Bin/glslc.exe ]; then
             echo "engine toolchain: reusing the Vulkan SDK in C:\VulkanSDK"
           else
+            ver="${{ inputs.vulkan-version }}"
             curl -fL -o "$RUNNER_TEMP/vulkan-sdk.exe" \
-              https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe
+              "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkan_sdk.exe"
+            # Verified before it is executed. To bump: change vulkan-version,
+            # then take the new hash from
+            # https://vulkan.lunarg.com/sdk/sha/<version>/windows/vulkan_sdk.exe.txt
+            # and confirm it against your own download.
+            echo "${{ inputs.vulkan-sdk-sha256-windows }}  $RUNNER_TEMP/vulkan-sdk.exe" \
+              | sha256sum -c -
             "$RUNNER_TEMP/vulkan-sdk.exe" --root 'C:\VulkanSDK' \
               --accept-licenses --default-answer --confirm-command install
           fi

@@ -21,6 +21,7 @@ import { appPrompts } from './appPrompts'
 import { useAccessRequests } from '@/lib/accessRequests'
 import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
+import { useContextSizeApproval } from '@/hooks/useModelContextApproval'
 
 export type PushEmit = (event: RemoteEvent) => void
 
@@ -138,6 +139,7 @@ export function startPushForwarding(emit: PushEmit): () => void {
     useAccessRequests.subscribe(checkPrompts),
     useBrowserAgentPrompt.subscribe(checkPrompts),
     useTeamConflictRequests.subscribe(checkPrompts),
+    useContextSizeApproval.subscribe(checkPrompts),
     watchIds(
       useToolApprovalRequests,
       (s) => new Set(allApprovalRequests(s).map((a) => a.requestId)),
