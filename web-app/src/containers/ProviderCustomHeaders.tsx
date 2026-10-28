@@ -17,12 +17,16 @@ import {
 import { storeSecretHeaderValues } from '@/lib/providerHeaderSecrets'
 
 /** A row being edited. `secretChosen` stops the name from re-guessing it. */
-type Draft = ProviderCustomHeader & { secretChosen?: boolean }
+type Draft = ProviderCustomHeader & { id: string; secretChosen?: boolean }
+
+let draftSeq = 0
+/** A stable React key per row, so removing one does not shift the others' state. */
+const draftId = () => `draft-${(draftSeq += 1)}`
 
 const blank = (h: Draft) => !h.header.trim() && !h.value.trim()
 
 const toDrafts = (rows: ProviderCustomHeader[] | null | undefined): Draft[] =>
-  (rows ?? []).map((h) => ({ ...h, secretChosen: true }))
+  (rows ?? []).map((h) => ({ ...h, id: draftId(), secretChosen: true }))
 
 /**
  * The provider's custom request headers. janhq/jan#8208.
@@ -49,7 +53,13 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
   // second change made before the round-trip (switching a header off and on
   // again) must be compared with the first, or it is dropped as "unchanged".
   const lastSaved = useRef(saved)
+  const lastProvider = useRef(provider.provider)
   useEffect(() => {
+    const switched = lastProvider.current !== provider.provider
+    lastProvider.current = provider.provider
+    // The store echoing back what this component just saved is not news:
+    // re-seeding would drop a blank row the user is still filling in.
+    if (!switched && saved === lastSaved.current) return
     lastSaved.current = saved
     setDrafts(toDrafts(provider.custom_header))
     setErrors(new Map())
@@ -134,7 +144,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         const errorId = `custom-header-error-${i}`
         const ValueInput = h.secret ? SecretInput : Input
         return (
-          <div key={i} className="space-y-1">
+          <div key={h.id} className="space-y-1">
             {/* Phone: switch, name and remove on one line, value below. */}
             <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-muted p-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] sm:border-0 sm:bg-transparent sm:p-0">
               <Switch
@@ -229,7 +239,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         variant="outline"
         className="pointer-coarse:h-11"
         data-testid="custom-header-add"
-        onClick={() => setDrafts((current) => [...current, { header: '', value: '' }])}
+        onClick={() => setDrafts((current) => [...current, { id: draftId(), header: '', value: '' }])}
       >
         + {t('providers:customHeaders.add')}
       </Button>

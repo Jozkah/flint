@@ -5966,7 +5966,16 @@ fn scenario_cowork_killed_mid_turn(ctx: &Ctx) -> ScenarioResult {
             let file: Value = serde_json::from_str(&std::fs::read_to_string(&settings).ok()?).ok()?;
             let sessions: Value = serde_json::from_str(file.get("code-sessions")?.as_str()?).ok()?;
             let state = sessions.get("state").unwrap_or(&sessions);
-            let f = state["sessions"].as_array()?.iter().find(|x| x["id"] == session.as_str())?.get("inFlight")?;
+            // Sessions are saved one key each (`code-sessions:<id>`); an older
+            // blob held them inline.
+            let shard: Option<Value> = file
+                .get(format!("code-sessions:{session}"))
+                .and_then(|v| v.as_str())
+                .and_then(|text| serde_json::from_str(text).ok());
+            let f = match &shard {
+                Some(s) => s.pointer("/state/sessions/0")?.get("inFlight")?,
+                None => state["sessions"].as_array()?.iter().find(|x| x["id"] == session.as_str())?.get("inFlight")?,
+            };
             let turns = f["turns"].as_array()?;
             let calls = turns
                 .iter()
@@ -6061,7 +6070,11 @@ fn scenario_cowork_interrupted_turn_continues(ctx: &Ctx) -> ScenarioResult {
     let left = ctx.eval(&format!(
         "const raw = await window.__TAURI_INTERNALS__.invoke('settings_get', {{ key: 'code-sessions' }}).catch(() => null);
          let state; try {{ state = JSON.parse(raw); state = state.state ?? state; }} catch {{ return null; }}
-         const s = (state.sessions || []).find(x => x.id === {session:?});
+         let s = (state.sessions || []).find(x => x.id === {session:?});
+         if (!s && Array.isArray(state.sessionIds)) {{
+           const text = await window.__TAURI_INTERNALS__.invoke('settings_get', {{ key: 'code-sessions:' + {session:?} }}).catch(() => null);
+           try {{ s = JSON.parse(text).state.sessions[0]; }} catch {{}}
+         }}
          return s ? (s.inFlight ? 'still in flight' : 'clear') : 'no session';"
     ))?;
     ensure!(left == "clear", "the checkpoint outlived its recovery: {left}");

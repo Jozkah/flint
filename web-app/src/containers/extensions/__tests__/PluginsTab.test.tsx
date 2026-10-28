@@ -100,6 +100,18 @@ describe('PluginsTab', () => {
     expect(await screen.findByText('Demo Plugin')).toBeInTheDocument()
   })
 
+  it('the remove confirmation is a real dialog: Escape closes it and nothing is removed', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+    render(<PluginsTab />)
+    fireEvent.click((await screen.findAllByRole('button', { name: /Demo Plugin/ }))[0])
+    fireEvent.click(await screen.findByText('plugins:remove.button'))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('plugins:remove.title')
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(removePlugin).not.toHaveBeenCalled()
+  })
+
   it('with a configured global marketplace, Browse renders results and searchPlugins is called with global scope', async () => {
     getPluginSources.mockResolvedValue({
       marketplace: 'https://example.com/index.json',

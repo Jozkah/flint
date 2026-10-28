@@ -783,70 +783,805 @@ impl CompositeToolInvoker {
     /// convention). The registry is loaded fresh from disk each call so a
     /// just-created subagent is immediately dispatchable within the same run.
     pub(super) async fn handle_subagent_tool(&self, name: &str, args: &serde_json::Value) -> String {
-        use crate::core::agent::subagent::{
-            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
-            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
-        };
         let Some(ctx) = &self.subagents else {
             return "ERROR: subagents are not available in this run".to_string();
         };
         match name {
-            "list_subagents" => {
-                let surface =
-                    crate::core::agent::subagent::surface_for_project_root(&self.project_root);
-                let registry = SubagentRegistry::load_for(&self.project_root, surface);
-                format_subagent_list(&registry)
-            }
-            // AH-102: the run's own children, listed and cancelled one at a
-            // time. Both are confined to this parent's registry, so a run id
-            // from another run names nothing here.
-            "consensus" => {
-                use crate::core::agent::consensus;
-                let text = |key: &str| args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
-                let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
-                    format!("ERROR [{}]: {}", e.kind().tag(), e.message())
-                };
-                let data = crate::core::app::commands::resolve_jan_data_folder();
-                let project = self.project_root.clone();
-                let id = text("id");
-                if !id.is_empty() {
-                    return match consensus::load(&data, &project, &id) {
-                        Ok(record) => consensus::render(&record),
-                        Err(e) => failed(&e),
-                    };
+            "list_subagents" => self.subagent_tool_list_subagents().await,
+            "consensus" => self.subagent_tool_consensus(ctx, args).await,
+            "list_subagent_runs" => self.subagent_tool_list_subagent_runs(ctx).await,
+            "cancel_subagent" => self.subagent_tool_cancel_subagent(ctx, args).await,
+            "symbol_find" => self.subagent_tool_symbol_find(args).await,
+            "mcp_resource_list" => self.subagent_tool_mcp_resource_list().await,
+            "mcp_resource_read" => self.subagent_tool_mcp_resource_read(args).await,
+            "review_comments" => self.subagent_tool_review_comments(args).await,
+            "commit_message" => self.subagent_tool_commit_message(args).await,
+            "git_branch" => self.subagent_tool_git_branch(args).await,
+            "semantic_search" => self.subagent_tool_semantic_search(args).await,
+            "pull_request" => self.subagent_tool_pull_request(name, args).await,
+            "git_split" | "git_history" => self.subagent_tool_git_split_git_history(name, args).await,
+            "dispatch_subagent" => self.subagent_tool_dispatch_subagent(ctx, args).await,
+            "await_subagent" => self.subagent_tool_await_subagent(ctx, args).await,
+            "create_subagent" => self.subagent_tool_create_subagent(args).await,
+            _ => "ERROR: unknown subagent tool".to_string(),
+        }
+    }
+
+    /// The `list_subagents` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_list_subagents(&self) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let surface =
+            crate::core::agent::subagent::surface_for_project_root(&self.project_root);
+        let registry = SubagentRegistry::load_for(&self.project_root, surface);
+        format_subagent_list(&registry)
+    }
+
+    /// The `consensus` arm of [`Self::handle_subagent_tool`].
+    // AH-102: the run's own children, listed and cancelled one at a
+    // time. Both are confined to this parent's registry, so a run id
+    // from another run names nothing here.
+    async fn subagent_tool_consensus(&self, ctx: &SubagentContext, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        use crate::core::agent::consensus;
+        let text = |key: &str| args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+        let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
+            format!("ERROR [{}]: {}", e.kind().tag(), e.message())
+        };
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        let project = self.project_root.clone();
+        let id = text("id");
+        if !id.is_empty() {
+            return match consensus::load(&data, &project, &id) {
+                Ok(record) => consensus::render(&record),
+                Err(e) => failed(&e),
+            };
+        }
+        let question = text("question");
+        let context = text("context");
+        let reviewers: Vec<String> = args
+            .get("reviewers")
+            .and_then(|v| v.as_array())
+            .map(|list| list.iter().filter_map(|x| x.as_str()).map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default();
+        let surface =
+            crate::core::agent::subagent::surface_for_project_root(&self.project_root);
+        let registry = SubagentRegistry::load_for(&self.project_root, surface);
+        // A saved subagent may sit on a gate only if every tool it may
+        // use reads: one that can write could change what it judges.
+        let is_read_only = |name: &str| -> Option<bool> {
+            let definition = registry.get(name)?;
+            Some(definition.allowed_tools.as_ref().is_some_and(|tools| {
+                !tools.is_empty()
+                    && tools.iter().all(|tool| {
+                        tauri_plugin_agent_tools::tools::lookup(tool).is_some_and(|t| {
+                            matches!(
+                                t.capability,
+                                tauri_plugin_agent_tools::tools::Capability::Read
+                                    | tauri_plugin_agent_tools::tools::Capability::Net
+                            )
+                        })
+                    })
+            }))
+        };
+        let quorum = match consensus::check_request(&question, &reviewers, &text("quorum"), &is_read_only) {
+            Ok(quorum) => quorum,
+            Err(e) => return failed(&e),
+        };
+        let parent = crate::core::agent::subagent::ParentRun {
+            routing: self.routing.clone(),
+            conversation: None,
+            model: ctx.model_id.clone(),
+            budget_remaining: ctx.tokens_remaining(),
+            token_rates: ctx.token_rates(),
+            usd_remaining: ctx.usd_remaining(),
+            send_reasoning: ctx.send_reasoning,
+            model_settings: crate::core::agent::subagent::load_model_settings(),
+        };
+        // Every reviewer is dispatched before any is awaited, so they
+        // work at the same time and none waits on another's answer.
+        let mut dispatched = Vec::new();
+        for reviewer in &reviewers {
+            let request = crate::core::agent::subagent::SubagentRequest {
+                subagent_name: reviewer.clone(),
+                description: consensus::brief(reviewer, &question, &context),
+                allowed_tools: None,
+                system_prompt: None,
+                isolate: None,
+                fork_context: false,
+                durable: false,
+                max_turns: None,
+                title: None,
+            };
+            let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
+            dispatched.push((reviewer.clone(), run));
+        }
+        let mut verdicts = Vec::new();
+        let mut cancelled = false;
+        for (reviewer, run) in dispatched {
+            let answer = match run {
+                Ok(run_id) => match await_subagent(&ctx.bg, &run_id).await {
+                    Ok(text) => Ok(text),
+                    Err(crate::core::agent::subagent::SubagentError::Cancelled) => {
+                        cancelled = true;
+                        Err("cancelled".to_string())
+                    }
+                    Err(e) => Err(e.to_string()),
+                },
+                Err(e) => Err(e),
+            };
+            verdicts.push(match &answer {
+                Ok(text) => consensus::read_verdict(&reviewer, Ok(text)),
+                Err(why) => consensus::read_verdict(&reviewer, Err(why)),
+            });
+        }
+        if tauri_plugin_agent_tools::lifecycle::current().is_some_and(|t| t.is_stopped()) {
+            cancelled = true;
+        }
+        let outcome = consensus::decide(quorum, reviewers.len(), &verdicts, cancelled);
+        let record = consensus::Record {
+            version: consensus::RECORD_VERSION,
+            id: consensus::new_id(),
+            question,
+            quorum,
+            reviewers,
+            verdicts,
+            outcome,
+            session: ctx.parent_args.session_id.clone().unwrap_or_default(),
+            run: self.cancel_scope.run.clone(),
+            decided_at: tauri_plugin_agent_tools::audit::now(),
+        };
+        self.invocations.note(
+            "consensus.decided",
+            serde_json::json!({
+                "gate": record.id,
+                "outcome": record.outcome.tag(),
+                "reviewers": record.reviewers.len(),
+                "approvals": record.verdicts.iter().filter(|v| v.vote == consensus::Vote::Approve).count(),
+            }),
+        );
+        match consensus::save(&data, &project, &record) {
+            Ok(_) => consensus::render(&record),
+            Err(e) => format!(
+                "ERROR [{}]: the gate was decided ({}) but could not be recorded, so it does not count: {}",
+                e.kind().tag(),
+                record.outcome.tag(),
+                e.message()
+            ),
+        }
+    }
+
+    /// The `list_subagent_runs` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_list_subagent_runs(&self, ctx: &SubagentContext) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let mut out = crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list());
+        if let Some(report) = ctx.bg.failure_report(None) {
+            out.push_str("\n\n");
+            out.push_str(&report);
+        }
+        let durable = crate::core::agent::durable_subagent::list(
+            std::path::Path::new(&ctx.parent_args.jan_data_folder),
+            ctx.parent_args.session_id.as_deref().unwrap_or_default(),
+        );
+        if !durable.is_empty() {
+            out.push_str("\n\n");
+            out.push_str(&crate::core::agent::durable_subagent::format_durable(&durable));
+        }
+        out
+    }
+
+    /// The `cancel_subagent` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_cancel_subagent(&self, ctx: &SubagentContext, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let run_id = match parse_await_args(args) {
+            Ok(r) => r,
+            Err(e) => return format!("ERROR: {e}"),
+        };
+        let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
+        let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
+        if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
+            return match tauri_plugin_agent_tools::worker::cancel(data, owner, &run_id) {
+                Ok(state) => {
+                    self.invocations.note(
+                        "agent.ended",
+                        serde_json::json!({ "child": run_id, "stoppedBy": "cancelled", "mode": "durable" }),
+                    );
+                    format!("Durable subagent {run_id} is now {}.", state.tag())
                 }
-                let question = text("question");
-                let context = text("context");
-                let reviewers: Vec<String> = args
-                    .get("reviewers")
-                    .and_then(|v| v.as_array())
-                    .map(|list| list.iter().filter_map(|x| x.as_str()).map(|s| s.trim().to_string()).collect())
-                    .unwrap_or_default();
-                let surface =
-                    crate::core::agent::subagent::surface_for_project_root(&self.project_root);
-                let registry = SubagentRegistry::load_for(&self.project_root, surface);
-                // A saved subagent may sit on a gate only if every tool it may
-                // use reads: one that can write could change what it judges.
-                let is_read_only = |name: &str| -> Option<bool> {
-                    let definition = registry.get(name)?;
-                    Some(definition.allowed_tools.as_ref().is_some_and(|tools| {
-                        !tools.is_empty()
-                            && tools.iter().all(|tool| {
-                                tauri_plugin_agent_tools::tools::lookup(tool).is_some_and(|t| {
-                                    matches!(
-                                        t.capability,
-                                        tauri_plugin_agent_tools::tools::Capability::Read
-                                            | tauri_plugin_agent_tools::tools::Capability::Net
-                                    )
-                                })
-                            })
-                    }))
+                Err(e) => format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
+            };
+        }
+        let cancelled = ctx.bg.cancel(&run_id);
+        // Only a run this call actually stopped is an ending: one that
+        // had already finished, or was never this parent's, is not.
+        if matches!(
+            cancelled,
+            crate::core::agent::subagent::SubagentCancelOutcome::CancelledQueued
+                | crate::core::agent::subagent::SubagentCancelOutcome::CancelledRunning
+        ) {
+            self.invocations.note(
+                "agent.ended",
+                serde_json::json!({ "child": run_id, "stoppedBy": "cancelled" }),
+            );
+        }
+        crate::core::agent::subagent::format_subagent_cancel(&run_id, cancelled)
+    }
+
+    /// The `symbol_find` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_symbol_find(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            return "ERROR [invalid_input]: symbol_find needs a `name`.".to_string();
+        }
+        let want_uses = args
+            .get("uses")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let want_calls = args
+            .get("calls")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        let project = self.project_root.clone();
+        // The first build of a large project can take a while: off the
+        // runtime, and stopped with the run.
+        let registered = self.call_token("symbol_find");
+        let refreshed = blocking_with_cancel(registered.token().clone(), move |cancel| {
+            crate::core::agent::index::refresh(&data, &project, cancel)
+        })
+        .await;
+        drop(registered);
+        let Some(refreshed) = refreshed else {
+            return "ERROR [io]: the symbol index build stopped unexpectedly.".to_string();
+        };
+        match refreshed {
+            Ok((index, _)) => {
+                let mut out = String::new();
+                let definitions =
+                    crate::core::agent::index::find_symbol(&index, &name, 20);
+                if definitions.is_empty() {
+                    out.push_str(&format!(
+                        "Nothing named {name:?} is defined in the {} files indexed here.\n",
+                        index.files.len()
+                    ));
+                }
+                for hit in &definitions {
+                    out.push_str(&format!(
+                        "{}:{} defines {} ({:?})\n",
+                        hit.path, hit.line, hit.name, hit.kind
+                    ));
+                }
+                if want_uses {
+                    let uses =
+                        crate::core::agent::index::find_references(&index, &name, 100);
+                    out.push_str(&format!("\n{} use(s):\n", uses.len()));
+                    for hit in uses {
+                        out.push_str(&format!(
+                            "{}:{}{} {}\n",
+                            hit.path,
+                            hit.line,
+                            if hit.is_definition { " (definition)" } else { "" },
+                            hit.text
+                        ));
+                    }
+                }
+                if want_calls {
+                    // AH-062: who calls it, and what it calls. Named
+                    // as places to look rather than as a call graph:
+                    // the reading is line-shaped, so a name used as a
+                    // value reads like a call.
+                    let walk =
+                        crate::core::agent::index::hierarchy(&index, &name, 50);
+                    out.push_str(&format!("
+
+{} caller(s):
+", walk.callers.len()));
+                    for call in &walk.callers {
+                        out.push_str(&format!(
+                            "{}:{} in {}
+",
+                            call.path,
+                            call.line,
+                            call.within.as_deref().unwrap_or("(top level)")
+                        ));
+                    }
+                    out.push_str(&format!("
+{} call(s) made:
+", walk.callees.len()));
+                    for call in &walk.callees {
+                        out.push_str(&format!("{}:{} {}
+", call.path, call.line, call.name));
+                    }
+                }
+                out.trim_end().to_string()
+            }
+            Err(e) => {
+                let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                    (&e).into();
+                format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+            }
+        }
+    }
+
+    /// The `mcp_resource_list` arm of [`Self::handle_subagent_tool`].
+    // AH-137: an MCP server's documents, which are read rather than
+    // run. Both are reads, so Plan mode keeps them.
+    async fn subagent_tool_mcp_resource_list(&self) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        crate::core::agent::upstream::list_mcp_resources(&self.mcp.mcp_servers).await
+    }
+
+    /// The `mcp_resource_read` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_mcp_resource_read(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let server = args.get("server").and_then(|v| v.as_str()).unwrap_or_default();
+        let uri = args.get("uri").and_then(|v| v.as_str()).unwrap_or_default();
+        crate::core::agent::upstream::read_mcp_resource(
+            &self.mcp.mcp_servers,
+            server,
+            uri,
+        )
+        .await
+    }
+
+    /// The `review_comments` arm of [`Self::handle_subagent_tool`].
+    // AH-164. A review, worked through one comment at a time, with
+    // "addressed" checked against the file rather than believed.
+    async fn subagent_tool_review_comments(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        let project = self.project_root.clone();
+        let text = |key: &str| {
+            args.get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        };
+        let failed = |e: &crate::core::agent::review::ReviewError| {
+            let harness: tauri_plugin_agent_tools::harness_error::HarnessError = e.into();
+            format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+        };
+
+        let source = text("load");
+        if !source.is_empty() {
+            // A path the model supplies, resolved inside the project
+            // like any other path it names.
+            let path = tauri_plugin_agent_tools::tools::sandbox::resolve_path(
+                &project, None, &source,
+            );
+            if tauri_plugin_agent_tools::tools::sandbox::escapes_project(
+                &project, None, &source,
+            )
+            .unwrap_or(true)
+            {
+                return format!(
+                    "ERROR [sandbox_denied]: {source:?} is outside this project."
+                );
+            }
+            return match crate::core::agent::review::load(&data, &project, &path) {
+                Ok(review) => crate::core::agent::review::render(&review),
+                Err(e) => failed(&e),
+            };
+        }
+
+        let id = text("id");
+        if id.is_empty() {
+            return match crate::core::agent::review::current(&data, &project) {
+                Some(review) => crate::core::agent::review::render(&review),
+                None => "No review is loaded. Call this with `load` set to the path of \
+                                 the review file."
+                    .to_string(),
+            };
+        }
+        let outcome = match text("outcome").as_str() {
+            "addressed" => crate::core::agent::review::Outcome::Addressed,
+            "answered" => crate::core::agent::review::Outcome::Answered,
+            other => {
+                return format!(
+                    "ERROR [invalid_input]: `outcome` is addressed or answered; \
+                             {other:?} is neither."
+                )
+            }
+        };
+        match crate::core::agent::review::reply(
+            &data,
+            &project,
+            &id,
+            outcome,
+            &text("reply"),
+        ) {
+            Ok(_) => match crate::core::agent::review::current(&data, &project) {
+                Some(review) => crate::core::agent::review::render(&review),
+                None => "recorded".to_string(),
+            },
+            Err(e) => failed(&e),
+        }
+    }
+
+    /// The `commit_message` arm of [`Self::handle_subagent_tool`].
+    // AH-159. The harness supplies the change; the model writes the
+    // words; the harness checks the words against the change. Nothing
+    // here commits anything.
+    async fn subagent_tool_commit_message(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let root = self.project_root.clone();
+        let change = match crate::core::agent::vcs::staged(&root) {
+            Ok(change) => change,
+            Err(e) => {
+                let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                    (&e).into();
+                return format!("ERROR [{}]: {}", harness.kind().tag(), e.message);
+            }
+        };
+        match args.get("message").and_then(|v| v.as_str()) {
+            // No message yet: this is the ask, so hand back what the
+            // message has to describe.
+            None => format!(
+                "{}\n\nWrite the message and call this again with `message`. A subject \
+                         of at most {} characters, then a blank line, then why. Describe only \
+                         what is staged.",
+                crate::core::agent::vcs::message_brief(&change),
+                crate::core::agent::vcs::MAX_SUBJECT
+            ),
+            Some(message) => {
+                match crate::core::agent::vcs::check_message(message, &change) {
+                    Ok(checked) => format!(
+                        "This message describes the staged change. Nothing has been \
+                                 committed; run the commit yourself when you are ready.\n\n{checked}"
+                    ),
+                    Err(e) => {
+                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                            (&e).into();
+                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The `git_branch` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_git_branch(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        // AH-161. Listing is reading; creating or switching changes
+        // the checkout, so it is a write and Plan mode does not offer
+        // it (the check below is defence in depth against a stale
+        // schema).
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("list")
+            .trim()
+            .to_string();
+        let branch = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let root = self.project_root.clone();
+        let changes = action == "create" || action == "switch";
+        if changes && self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            return plan_mode_read_only_msg("git_branch");
+        }
+        let answer = match action.as_str() {
+            "list" => crate::core::agent::vcs::branches(&root).map(|branches| {
+                let mut out = String::new();
+                for b in &branches {
+                    out.push_str(&format!(
+                        "{}{}{}{}\n",
+                        if b.current { "* " } else { "  " },
+                        b.name,
+                        b.upstream
+                            .as_ref()
+                            .map(|u| format!(" -> {u}"))
+                            .unwrap_or_default(),
+                        if b.checked_out_elsewhere {
+                            " (checked out in another worktree)"
+                        } else {
+                            ""
+                        }
+                    ));
+                }
+                if branches.is_empty() {
+                    out.push_str("no branches");
+                }
+                out.trim_end().to_string()
+            }),
+            "create" | "switch" => {
+                crate::core::agent::vcs::switch_branch(&root, &branch, action == "create")
+                    .map(|change| change.note)
+            }
+            other => {
+                return format!(
+                    "ERROR [invalid_input]: git_branch takes action list, create or \
+                             switch; {other:?} is not one of them. Deleting a branch is not \
+                             offered: a branch is often the only record of work that is not \
+                             merged."
+                )
+            }
+        };
+        match answer {
+            Ok(text) => text,
+            Err(e) => {
+                let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                    (&e).into();
+                format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+            }
+        }
+    }
+
+    /// The `semantic_search` arm of [`Self::handle_subagent_tool`].
+    // AH-160, AH-166, AH-167. These change history, so Plan mode does
+    // not offer them and refuses them here too; every refusal and the
+    // backup that makes each step recoverable live in `vcs`.
+    // AH-162, AH-163. A pull request from the branch, with a description
+    // the harness keeps in step with it. Never pushes, comments, requests
+    // reviewers or notifies; the refusals and the token's limits are in
+    // `pull_request`.
+    // AH-071. Search by meaning with the embedding model the user named;
+    // without one this says so and searches nothing -- it never falls
+    // back to a text search under this name.
+    async fn subagent_tool_semantic_search(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        use crate::core::agent::semantic;
+        let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
+            format!("ERROR [{}]: {}", e.kind().tag(), e.message())
+        };
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(semantic::DEFAULT_RESULTS);
+        let embedder = match semantic::configured() {
+            Ok(e) => e,
+            Err(e) => return failed(&e),
+        };
+        if query.is_empty() {
+            return "ERROR [invalid_input]: a semantic search needs a query".to_string();
+        }
+        let root = self.project_root.clone();
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        let token = tauri_plugin_agent_tools::lifecycle::current();
+        let http = semantic::HttpEmbedder { embedder: embedder.clone(), cancel: token.clone() };
+        let cancelled = move || token.as_ref().is_some_and(|t| t.is_stopped());
+        match semantic::refresh(&data, &root, &embedder.id, &http, &cancelled).await {
+            Ok((store, update)) => match semantic::search(&root, &store, &query, limit, &http).await {
+                Ok(hits) => semantic::render(&root, &store, &update, &hits),
+                Err(e) => failed(&e),
+            },
+            Err(e) => failed(&e),
+        }
+    }
+
+    /// The `pull_request` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_pull_request(&self, name: &str, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        use crate::core::agent::pull_request as pr;
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            return plan_mode_read_only_msg(name);
+        }
+        let text = |key: &str| {
+            args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string()
+        };
+        let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
+            format!("ERROR [{}]: {}", e.kind().tag(), e.message())
+        };
+        let root = self.project_root.clone();
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        let branch = match crate::core::agent::vcs::divergence(&root) {
+            Ok(d) => d.branch,
+            Err(e) => return failed(&(&e).into()),
+        };
+        let recorded = match &branch {
+            Some(b) => match pr::load(&data, &root, b) {
+                Ok(r) => r,
+                Err(e) => return failed(&e),
+            },
+            None => None,
+        };
+        let forge = || -> Result<pr::Forge, tauri_plugin_agent_tools::harness_error::HarnessError> {
+            let api = pr::api_base()?;
+            let token = pr::token_for(&api, &|n| std::env::var(n).ok())?;
+            Ok(pr::Forge { api, token, cancel: tauri_plugin_agent_tools::lifecycle::current() })
+        };
+        match text("action").as_str() {
+            "status" => {
+                let Some(record) = recorded else {
+                    return "no pull request has been opened from this branch by Jan".to_string();
                 };
-                let quorum = match consensus::check_request(&question, &reviewers, &text("quorum"), &is_read_only) {
-                    Ok(quorum) => quorum,
+                let head = match pr::change(&root, &record.base) {
+                    Ok(change) => change.head,
+                    Err(e) => return format!("pull request #{} ({}): the branch cannot be described right now -- {}", record.number, record.url, failed(&e)),
+                };
+                if head == record.head {
+                    format!("pull request #{} ({}): the description is in step with the branch at {}", record.number, record.url, &head[..head.len().min(12)])
+                } else {
+                    format!("pull request #{} ({}): the description is out of step -- it was written for {} and the branch is at {}; call sync", record.number, record.url, &record.head[..record.head.len().min(12)], &head[..head.len().min(12)])
+                }
+            }
+            "create" => {
+                let base = match text("base") { b if b.is_empty() => "main".to_string(), b => b };
+                let change = match pr::change(&root, &base) {
+                    Ok(c) => c,
                     Err(e) => return failed(&e),
                 };
-                let parent = crate::core::agent::subagent::ParentRun {
+                // Checked before the forge is asked anything.
+                if let Err(e) = pr::compose(&text("title"), &text("body"), &change) {
+                    return failed(&e);
+                }
+                let forge = match forge() {
+                    Ok(f) => f,
+                    Err(e) => return failed(&e),
+                };
+                if let Err(refused) = self.approve_forge_mutation("open", &forge.api.origin().ascii_serialization()).await {
+                    return refused;
+                }
+                let footer = self.attribution.as_ref().is_some_and(|(_, s)| s.pull_requests);
+                match forge.create(&data, &root, &change, &text("title"), &text("body"), footer).await {
+                    Ok((record, how)) => format!("{how} pull request #{}: {}", record.number, record.url),
+                    Err(e) => failed(&e),
+                }
+            }
+            "sync" => {
+                let forge = match forge() {
+                    Ok(f) => f,
+                    Err(e) => return failed(&e),
+                };
+                let Some(record) = recorded else {
+                    return "ERROR [not_found]: no pull request has been opened from this branch by Jan; create one first".to_string();
+                };
+                let change = match pr::change(&root, &record.base) {
+                    Ok(c) => c,
+                    Err(e) => return failed(&e),
+                };
+                if let Err(refused) = self.approve_forge_mutation("update", &forge.api.origin().ascii_serialization()).await {
+                    return refused;
+                }
+                match forge.sync(&data, &root, &record, &change).await {
+                    Ok(true) => format!("updated the description of pull request #{} for {}", record.number, &change.head[..change.head.len().min(12)]),
+                    Ok(false) => format!("pull request #{} is already in step with the branch", record.number),
+                    Err(e) => failed(&e),
+                }
+            }
+            other => format!(
+                "ERROR [invalid_input]: pull_request takes action create, sync or status; {other:?} is not one of them."
+            ),
+        }
+    }
+
+    /// The `git_split | git_history` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_git_split_git_history(&self, name: &str, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        use crate::core::agent::vcs;
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            return plan_mode_read_only_msg(name);
+        }
+        let root = self.project_root.clone();
+        let text = |key: &str| {
+            args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string()
+        };
+        let answer = if name == "git_split" {
+            match serde_json::from_value::<Vec<vcs::SplitGroup>>(
+                args.get("groups").cloned().unwrap_or_default(),
+            ) {
+                Err(e) => {
+                    return format!(
+                        "ERROR [invalid_input]: `groups` must be a list of {{files, message}}: {e}"
+                    )
+                }
+                Ok(mut groups) => {
+                    // Each commit of the split carries Flint's co-author
+                    // trailer, as a `git commit` through the git tool does.
+                    attribute_split(self.attribution.as_ref(), &mut groups);
+                    let scope = tauri_plugin_agent_tools::lifecycle::current();
+                    vcs::apply_split(&root, &groups, &|| {
+                        scope.as_ref().is_some_and(|t| t.is_stopped())
+                    })
+                    .map(|outcome| vcs::render_split(&outcome))
+                }
+            }
+        } else {
+            match text("action").as_str() {
+                "status" => vcs::history_status(&root),
+                "rebase" => vcs::rebase_start(&root, &text("onto")).map(|op| vcs::render_op(&op)),
+                "cherry_pick" => vcs::cherry_pick(&root, &text("commit")).map(|op| vcs::render_op(&op)),
+                "continue" => vcs::continue_op(&root, &text("backup")).map(|op| vcs::render_op(&op)),
+                "abort" => vcs::abort_op(&root, &text("backup")).map(|op| vcs::render_op(&op)),
+                other => {
+                    return format!(
+                        "ERROR [invalid_input]: git_history takes action status, rebase, \
+                                 cherry_pick, continue or abort; {other:?} is not one of them."
+                    )
+                }
+            }
+        };
+        match answer {
+            Ok(text) => text,
+            Err(e) => {
+                let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                    (&e).into();
+                format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+            }
+        }
+    }
+
+    /// The `dispatch_subagent` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_dispatch_subagent(&self, ctx: &SubagentContext, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let req = match parse_dispatch_args(args) {
+            Ok(r) => r,
+            Err(e) => return format!("ERROR: {e}"),
+        };
+        let child_name = req.subagent_name.clone();
+        // AH-101: a durable child is a job of its own, not a task in
+        // this process.
+        if req.durable {
+            return match crate::core::agent::durable_subagent::dispatch(
+                &ctx.parent_args,
+                req,
+                &crate::core::agent::subagent::ParentRun {
                     routing: self.routing.clone(),
                     conversation: None,
                     model: ctx.model_id.clone(),
@@ -855,804 +1590,194 @@ impl CompositeToolInvoker {
                     usd_remaining: ctx.usd_remaining(),
                     send_reasoning: ctx.send_reasoning,
                     model_settings: crate::core::agent::subagent::load_model_settings(),
-                };
-                // Every reviewer is dispatched before any is awaited, so they
-                // work at the same time and none waits on another's answer.
-                let mut dispatched = Vec::new();
-                for reviewer in &reviewers {
-                    let request = crate::core::agent::subagent::SubagentRequest {
-                        subagent_name: reviewer.clone(),
-                        description: consensus::brief(reviewer, &question, &context),
-                        allowed_tools: None,
-                        system_prompt: None,
-                        isolate: None,
-                        fork_context: false,
-                        durable: false,
-                        max_turns: None,
-                        title: None,
-                    };
-                    let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
-                    dispatched.push((reviewer.clone(), run));
+                },
+            ) {
+                Ok(run_id) => {
+                    self.invocations.note(
+                        "agent.dispatched",
+                        serde_json::json!({
+                            "child": run_id,
+                            "agent": child_name,
+                            "mode": "durable",
+                            "parentRun": self.cancel_scope.run,
+                        }),
+                    );
+                    format!(
+                        "Durable subagent started as a job of its own. run_id={run_id}. It keeps running if this run or the app ends. Call await_subagent with this run_id to collect its result -- also from a later run of this conversation; list_subagent_runs shows it and cancel_subagent stops it. Anything it would need approval for is denied, because nobody is attached to it."
+                    )
                 }
-                let mut verdicts = Vec::new();
-                let mut cancelled = false;
-                for (reviewer, run) in dispatched {
-                    let answer = match run {
-                        Ok(run_id) => match await_subagent(&ctx.bg, &run_id).await {
-                            Ok(text) => Ok(text),
-                            Err(crate::core::agent::subagent::SubagentError::Cancelled) => {
-                                cancelled = true;
-                                Err("cancelled".to_string())
-                            }
-                            Err(e) => Err(e.to_string()),
-                        },
-                        Err(e) => Err(e),
-                    };
-                    verdicts.push(match &answer {
-                        Ok(text) => consensus::read_verdict(&reviewer, Ok(text)),
-                        Err(why) => consensus::read_verdict(&reviewer, Err(why)),
-                    });
-                }
-                if tauri_plugin_agent_tools::lifecycle::current().is_some_and(|t| t.is_stopped()) {
-                    cancelled = true;
-                }
-                let outcome = consensus::decide(quorum, reviewers.len(), &verdicts, cancelled);
-                let record = consensus::Record {
-                    version: consensus::RECORD_VERSION,
-                    id: consensus::new_id(),
-                    question,
-                    quorum,
-                    reviewers,
-                    verdicts,
-                    outcome,
-                    session: ctx.parent_args.session_id.clone().unwrap_or_default(),
-                    run: self.cancel_scope.run.clone(),
-                    decided_at: tauri_plugin_agent_tools::audit::now(),
-                };
+                Err(e) => format!("ERROR: {e}"),
+            };
+        }
+        // AH-100: a fork copies the conversation this turn is
+        // dispatching from. Read here rather than held by the child,
+        // so what it gets is what the parent had when it asked.
+        let forked = req.fork_context.then(|| {
+            self.live_conversation
+                .lock()
+                .map(|live| live.clone())
+                .unwrap_or_default()
+        });
+        match spawn_subagent(
+            &ctx.bg,
+            &ctx.parent_args,
+            req,
+            &crate::core::agent::subagent::ParentRun {
+                routing: self.routing.clone(),
+                conversation: forked,
+                model: ctx.model_id.clone(),
+                budget_remaining: ctx.tokens_remaining(),
+                token_rates: ctx.token_rates(),
+                usd_remaining: ctx.usd_remaining(),
+                send_reasoning: ctx.send_reasoning,
+                model_settings: crate::core::agent::subagent::load_model_settings(),
+            },
+            &self.events,
+        ) {
+            Ok(run_id) => {
+                // AH-004: the parent's record says which child it
+                // started and which request asked for it, so a nested
+                // run is reachable from the run that caused it.
                 self.invocations.note(
-                    "consensus.decided",
+                    "agent.dispatched",
                     serde_json::json!({
-                        "gate": record.id,
-                        "outcome": record.outcome.tag(),
-                        "reviewers": record.reviewers.len(),
-                        "approvals": record.verdicts.iter().filter(|v| v.vote == consensus::Vote::Approve).count(),
+                        "child": run_id,
+                        "agent": child_name,
+                        "mode": "background",
+                        "parentRun": self.cancel_scope.run,
                     }),
                 );
-                match consensus::save(&data, &project, &record) {
-                    Ok(_) => consensus::render(&record),
-                    Err(e) => format!(
-                        "ERROR [{}]: the gate was decided ({}) but could not be recorded, so it does not count: {}",
-                        e.kind().tag(),
-                        record.outcome.tag(),
-                        e.message()
-                    ),
-                }
-            }
-            "list_subagent_runs" => {
-                let mut out = crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list());
-                if let Some(report) = ctx.bg.failure_report(None) {
-                    out.push_str("\n\n");
-                    out.push_str(&report);
-                }
-                let durable = crate::core::agent::durable_subagent::list(
-                    std::path::Path::new(&ctx.parent_args.jan_data_folder),
-                    ctx.parent_args.session_id.as_deref().unwrap_or_default(),
+                let mut out = format!(
+                    "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result. While it runs you can send it a message with message_send (to={run_id}), and read anything it sends you with message_check."
                 );
-                if !durable.is_empty() {
-                    out.push_str("\n\n");
-                    out.push_str(&crate::core::agent::durable_subagent::format_durable(&durable));
+                if let Some(c) = ctx.bg.checkout_of(&run_id) {
+                    out.push_str(&format!(
+                        " It works in a checkout of its own at {} (branch {}), so its changes are not in the project until the user reviews and applies them.",
+                        c.path, c.branch
+                    ));
                 }
                 out
             }
-            "cancel_subagent" => {
-                let run_id = match parse_await_args(args) {
-                    Ok(r) => r,
-                    Err(e) => return format!("ERROR: {e}"),
-                };
-                let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
-                let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
-                if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
-                    return match tauri_plugin_agent_tools::worker::cancel(data, owner, &run_id) {
-                        Ok(state) => {
-                            self.invocations.note(
-                                "agent.ended",
-                                serde_json::json!({ "child": run_id, "stoppedBy": "cancelled", "mode": "durable" }),
-                            );
-                            format!("Durable subagent {run_id} is now {}.", state.tag())
-                        }
-                        Err(e) => format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
-                    };
-                }
-                let cancelled = ctx.bg.cancel(&run_id);
-                // Only a run this call actually stopped is an ending: one that
-                // had already finished, or was never this parent's, is not.
-                if matches!(
-                    cancelled,
-                    crate::core::agent::subagent::SubagentCancelOutcome::CancelledQueued
-                        | crate::core::agent::subagent::SubagentCancelOutcome::CancelledRunning
-                ) {
-                    self.invocations.note(
-                        "agent.ended",
-                        serde_json::json!({ "child": run_id, "stoppedBy": "cancelled" }),
-                    );
-                }
-                crate::core::agent::subagent::format_subagent_cancel(&run_id, cancelled)
-            }
-            "symbol_find" => {
-                let name = args
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string();
-                if name.is_empty() {
-                    return "ERROR [invalid_input]: symbol_find needs a `name`.".to_string();
-                }
-                let want_uses = args
-                    .get("uses")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                let want_calls = args
-                    .get("calls")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                let data = crate::core::app::commands::resolve_jan_data_folder();
-                let project = self.project_root.clone();
-                // The first build of a large project can take a while: off the
-                // runtime, and stopped with the run.
-                let registered = self.call_token("symbol_find");
-                let refreshed = blocking_with_cancel(registered.token().clone(), move |cancel| {
-                    crate::core::agent::index::refresh(&data, &project, cancel)
-                })
-                .await;
-                drop(registered);
-                let Some(refreshed) = refreshed else {
-                    return "ERROR [io]: the symbol index build stopped unexpectedly.".to_string();
-                };
-                match refreshed {
-                    Ok((index, _)) => {
-                        let mut out = String::new();
-                        let definitions =
-                            crate::core::agent::index::find_symbol(&index, &name, 20);
-                        if definitions.is_empty() {
-                            out.push_str(&format!(
-                                "Nothing named {name:?} is defined in the {} files indexed here.\n",
-                                index.files.len()
-                            ));
-                        }
-                        for hit in &definitions {
-                            out.push_str(&format!(
-                                "{}:{} defines {} ({:?})\n",
-                                hit.path, hit.line, hit.name, hit.kind
-                            ));
-                        }
-                        if want_uses {
-                            let uses =
-                                crate::core::agent::index::find_references(&index, &name, 100);
-                            out.push_str(&format!("\n{} use(s):\n", uses.len()));
-                            for hit in uses {
-                                out.push_str(&format!(
-                                    "{}:{}{} {}\n",
-                                    hit.path,
-                                    hit.line,
-                                    if hit.is_definition { " (definition)" } else { "" },
-                                    hit.text
-                                ));
-                            }
-                        }
-                        if want_calls {
-                            // AH-062: who calls it, and what it calls. Named
-                            // as places to look rather than as a call graph:
-                            // the reading is line-shaped, so a name used as a
-                            // value reads like a call.
-                            let walk =
-                                crate::core::agent::index::hierarchy(&index, &name, 50);
-                            out.push_str(&format!("
-
-{} caller(s):
-", walk.callers.len()));
-                            for call in &walk.callers {
-                                out.push_str(&format!(
-                                    "{}:{} in {}
-",
-                                    call.path,
-                                    call.line,
-                                    call.within.as_deref().unwrap_or("(top level)")
-                                ));
-                            }
-                            out.push_str(&format!("
-{} call(s) made:
-", walk.callees.len()));
-                            for call in &walk.callees {
-                                out.push_str(&format!("{}:{} {}
-", call.path, call.line, call.name));
-                            }
-                        }
-                        out.trim_end().to_string()
-                    }
-                    Err(e) => {
-                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
-                            (&e).into();
-                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
-                    }
-                }
-            }
-            // AH-137: an MCP server's documents, which are read rather than
-            // run. Both are reads, so Plan mode keeps them.
-            "mcp_resource_list" => {
-                crate::core::agent::upstream::list_mcp_resources(&self.mcp.mcp_servers).await
-            }
-            "mcp_resource_read" => {
-                let server = args.get("server").and_then(|v| v.as_str()).unwrap_or_default();
-                let uri = args.get("uri").and_then(|v| v.as_str()).unwrap_or_default();
-                crate::core::agent::upstream::read_mcp_resource(
-                    &self.mcp.mcp_servers,
-                    server,
-                    uri,
-                )
-                .await
-            }
-            // AH-164. A review, worked through one comment at a time, with
-            // "addressed" checked against the file rather than believed.
-            "review_comments" => {
-                let data = crate::core::app::commands::resolve_jan_data_folder();
-                let project = self.project_root.clone();
-                let text = |key: &str| {
-                    args.get(key)
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .trim()
-                        .to_string()
-                };
-                let failed = |e: &crate::core::agent::review::ReviewError| {
-                    let harness: tauri_plugin_agent_tools::harness_error::HarnessError = e.into();
-                    format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
-                };
-
-                let source = text("load");
-                if !source.is_empty() {
-                    // A path the model supplies, resolved inside the project
-                    // like any other path it names.
-                    let path = tauri_plugin_agent_tools::tools::sandbox::resolve_path(
-                        &project, None, &source,
-                    );
-                    if tauri_plugin_agent_tools::tools::sandbox::escapes_project(
-                        &project, None, &source,
-                    )
-                    .unwrap_or(true)
-                    {
-                        return format!(
-                            "ERROR [sandbox_denied]: {source:?} is outside this project."
-                        );
-                    }
-                    return match crate::core::agent::review::load(&data, &project, &path) {
-                        Ok(review) => crate::core::agent::review::render(&review),
-                        Err(e) => failed(&e),
-                    };
-                }
-
-                let id = text("id");
-                if id.is_empty() {
-                    return match crate::core::agent::review::current(&data, &project) {
-                        Some(review) => crate::core::agent::review::render(&review),
-                        None => "No review is loaded. Call this with `load` set to the path of \
-                                 the review file."
-                            .to_string(),
-                    };
-                }
-                let outcome = match text("outcome").as_str() {
-                    "addressed" => crate::core::agent::review::Outcome::Addressed,
-                    "answered" => crate::core::agent::review::Outcome::Answered,
-                    other => {
-                        return format!(
-                            "ERROR [invalid_input]: `outcome` is addressed or answered; \
-                             {other:?} is neither."
-                        )
-                    }
-                };
-                match crate::core::agent::review::reply(
-                    &data,
-                    &project,
-                    &id,
-                    outcome,
-                    &text("reply"),
-                ) {
-                    Ok(_) => match crate::core::agent::review::current(&data, &project) {
-                        Some(review) => crate::core::agent::review::render(&review),
-                        None => "recorded".to_string(),
-                    },
-                    Err(e) => failed(&e),
-                }
-            }
-            // AH-159. The harness supplies the change; the model writes the
-            // words; the harness checks the words against the change. Nothing
-            // here commits anything.
-            "commit_message" => {
-                let root = self.project_root.clone();
-                let change = match crate::core::agent::vcs::staged(&root) {
-                    Ok(change) => change,
-                    Err(e) => {
-                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
-                            (&e).into();
-                        return format!("ERROR [{}]: {}", harness.kind().tag(), e.message);
-                    }
-                };
-                match args.get("message").and_then(|v| v.as_str()) {
-                    // No message yet: this is the ask, so hand back what the
-                    // message has to describe.
-                    None => format!(
-                        "{}\n\nWrite the message and call this again with `message`. A subject \
-                         of at most {} characters, then a blank line, then why. Describe only \
-                         what is staged.",
-                        crate::core::agent::vcs::message_brief(&change),
-                        crate::core::agent::vcs::MAX_SUBJECT
-                    ),
-                    Some(message) => {
-                        match crate::core::agent::vcs::check_message(message, &change) {
-                            Ok(checked) => format!(
-                                "This message describes the staged change. Nothing has been \
-                                 committed; run the commit yourself when you are ready.\n\n{checked}"
-                            ),
-                            Err(e) => {
-                                let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
-                                    (&e).into();
-                                format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
-                            }
-                        }
-                    }
-                }
-            }
-            "git_branch" => {
-                // AH-161. Listing is reading; creating or switching changes
-                // the checkout, so it is a write and Plan mode does not offer
-                // it (the check below is defence in depth against a stale
-                // schema).
-                let action = args
-                    .get("action")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("list")
-                    .trim()
-                    .to_string();
-                let branch = args
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let root = self.project_root.clone();
-                let changes = action == "create" || action == "switch";
-                if changes && self.run_mode == crate::core::agent::plan::RunMode::Plan {
-                    return plan_mode_read_only_msg("git_branch");
-                }
-                let answer = match action.as_str() {
-                    "list" => crate::core::agent::vcs::branches(&root).map(|branches| {
-                        let mut out = String::new();
-                        for b in &branches {
-                            out.push_str(&format!(
-                                "{}{}{}{}\n",
-                                if b.current { "* " } else { "  " },
-                                b.name,
-                                b.upstream
-                                    .as_ref()
-                                    .map(|u| format!(" -> {u}"))
-                                    .unwrap_or_default(),
-                                if b.checked_out_elsewhere {
-                                    " (checked out in another worktree)"
-                                } else {
-                                    ""
-                                }
-                            ));
-                        }
-                        if branches.is_empty() {
-                            out.push_str("no branches");
-                        }
-                        out.trim_end().to_string()
-                    }),
-                    "create" | "switch" => {
-                        crate::core::agent::vcs::switch_branch(&root, &branch, action == "create")
-                            .map(|change| change.note)
-                    }
-                    other => {
-                        return format!(
-                            "ERROR [invalid_input]: git_branch takes action list, create or \
-                             switch; {other:?} is not one of them. Deleting a branch is not \
-                             offered: a branch is often the only record of work that is not \
-                             merged."
-                        )
-                    }
-                };
-                match answer {
-                    Ok(text) => text,
-                    Err(e) => {
-                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
-                            (&e).into();
-                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
-                    }
-                }
-            }
-            // AH-160, AH-166, AH-167. These change history, so Plan mode does
-            // not offer them and refuses them here too; every refusal and the
-            // backup that makes each step recoverable live in `vcs`.
-            // AH-162, AH-163. A pull request from the branch, with a description
-            // the harness keeps in step with it. Never pushes, comments, requests
-            // reviewers or notifies; the refusals and the token's limits are in
-            // `pull_request`.
-            // AH-071. Search by meaning with the embedding model the user named;
-            // without one this says so and searches nothing -- it never falls
-            // back to a text search under this name.
-            "semantic_search" => {
-                use crate::core::agent::semantic;
-                let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
-                    format!("ERROR [{}]: {}", e.kind().tag(), e.message())
-                };
-                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
-                let limit = args
-                    .get("limit")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize)
-                    .unwrap_or(semantic::DEFAULT_RESULTS);
-                let embedder = match semantic::configured() {
-                    Ok(e) => e,
-                    Err(e) => return failed(&e),
-                };
-                if query.is_empty() {
-                    return "ERROR [invalid_input]: a semantic search needs a query".to_string();
-                }
-                let root = self.project_root.clone();
-                let data = crate::core::app::commands::resolve_jan_data_folder();
-                let token = tauri_plugin_agent_tools::lifecycle::current();
-                let http = semantic::HttpEmbedder { embedder: embedder.clone(), cancel: token.clone() };
-                let cancelled = move || token.as_ref().is_some_and(|t| t.is_stopped());
-                match semantic::refresh(&data, &root, &embedder.id, &http, &cancelled).await {
-                    Ok((store, update)) => match semantic::search(&root, &store, &query, limit, &http).await {
-                        Ok(hits) => semantic::render(&root, &store, &update, &hits),
-                        Err(e) => failed(&e),
-                    },
-                    Err(e) => failed(&e),
-                }
-            }
-            "pull_request" => {
-                use crate::core::agent::pull_request as pr;
-                if self.run_mode == crate::core::agent::plan::RunMode::Plan {
-                    return plan_mode_read_only_msg(name);
-                }
-                let text = |key: &str| {
-                    args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string()
-                };
-                let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
-                    format!("ERROR [{}]: {}", e.kind().tag(), e.message())
-                };
-                let root = self.project_root.clone();
-                let data = crate::core::app::commands::resolve_jan_data_folder();
-                let branch = match crate::core::agent::vcs::divergence(&root) {
-                    Ok(d) => d.branch,
-                    Err(e) => return failed(&(&e).into()),
-                };
-                let recorded = match &branch {
-                    Some(b) => match pr::load(&data, &root, b) {
-                        Ok(r) => r,
-                        Err(e) => return failed(&e),
-                    },
-                    None => None,
-                };
-                let forge = || -> Result<pr::Forge, tauri_plugin_agent_tools::harness_error::HarnessError> {
-                    let api = pr::api_base()?;
-                    let token = pr::token_for(&api, &|n| std::env::var(n).ok())?;
-                    Ok(pr::Forge { api, token, cancel: tauri_plugin_agent_tools::lifecycle::current() })
-                };
-                match text("action").as_str() {
-                    "status" => {
-                        let Some(record) = recorded else {
-                            return "no pull request has been opened from this branch by Jan".to_string();
-                        };
-                        let head = match pr::change(&root, &record.base) {
-                            Ok(change) => change.head,
-                            Err(e) => return format!("pull request #{} ({}): the branch cannot be described right now -- {}", record.number, record.url, failed(&e)),
-                        };
-                        if head == record.head {
-                            format!("pull request #{} ({}): the description is in step with the branch at {}", record.number, record.url, &head[..head.len().min(12)])
-                        } else {
-                            format!("pull request #{} ({}): the description is out of step -- it was written for {} and the branch is at {}; call sync", record.number, record.url, &record.head[..record.head.len().min(12)], &head[..head.len().min(12)])
-                        }
-                    }
-                    "create" => {
-                        let base = match text("base") { b if b.is_empty() => "main".to_string(), b => b };
-                        let change = match pr::change(&root, &base) {
-                            Ok(c) => c,
-                            Err(e) => return failed(&e),
-                        };
-                        // Checked before the forge is asked anything.
-                        if let Err(e) = pr::compose(&text("title"), &text("body"), &change) {
-                            return failed(&e);
-                        }
-                        let forge = match forge() {
-                            Ok(f) => f,
-                            Err(e) => return failed(&e),
-                        };
-                        if let Err(refused) = self.approve_forge_mutation("open", &forge.api.origin().ascii_serialization()).await {
-                            return refused;
-                        }
-                        let footer = self.attribution.as_ref().is_some_and(|(_, s)| s.pull_requests);
-                        match forge.create(&data, &root, &change, &text("title"), &text("body"), footer).await {
-                            Ok((record, how)) => format!("{how} pull request #{}: {}", record.number, record.url),
-                            Err(e) => failed(&e),
-                        }
-                    }
-                    "sync" => {
-                        let forge = match forge() {
-                            Ok(f) => f,
-                            Err(e) => return failed(&e),
-                        };
-                        let Some(record) = recorded else {
-                            return "ERROR [not_found]: no pull request has been opened from this branch by Jan; create one first".to_string();
-                        };
-                        let change = match pr::change(&root, &record.base) {
-                            Ok(c) => c,
-                            Err(e) => return failed(&e),
-                        };
-                        if let Err(refused) = self.approve_forge_mutation("update", &forge.api.origin().ascii_serialization()).await {
-                            return refused;
-                        }
-                        match forge.sync(&data, &root, &record, &change).await {
-                            Ok(true) => format!("updated the description of pull request #{} for {}", record.number, &change.head[..change.head.len().min(12)]),
-                            Ok(false) => format!("pull request #{} is already in step with the branch", record.number),
-                            Err(e) => failed(&e),
-                        }
-                    }
-                    other => format!(
-                        "ERROR [invalid_input]: pull_request takes action create, sync or status; {other:?} is not one of them."
-                    ),
-                }
-            }
-            "git_split" | "git_history" => {
-                use crate::core::agent::vcs;
-                if self.run_mode == crate::core::agent::plan::RunMode::Plan {
-                    return plan_mode_read_only_msg(name);
-                }
-                let root = self.project_root.clone();
-                let text = |key: &str| {
-                    args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string()
-                };
-                let answer = if name == "git_split" {
-                    match serde_json::from_value::<Vec<vcs::SplitGroup>>(
-                        args.get("groups").cloned().unwrap_or_default(),
-                    ) {
-                        Err(e) => {
-                            return format!(
-                                "ERROR [invalid_input]: `groups` must be a list of {{files, message}}: {e}"
-                            )
-                        }
-                        Ok(mut groups) => {
-                            // Each commit of the split carries Flint's co-author
-                            // trailer, as a `git commit` through the git tool does.
-                            attribute_split(self.attribution.as_ref(), &mut groups);
-                            let scope = tauri_plugin_agent_tools::lifecycle::current();
-                            vcs::apply_split(&root, &groups, &|| {
-                                scope.as_ref().is_some_and(|t| t.is_stopped())
-                            })
-                            .map(|outcome| vcs::render_split(&outcome))
-                        }
-                    }
-                } else {
-                    match text("action").as_str() {
-                        "status" => vcs::history_status(&root),
-                        "rebase" => vcs::rebase_start(&root, &text("onto")).map(|op| vcs::render_op(&op)),
-                        "cherry_pick" => vcs::cherry_pick(&root, &text("commit")).map(|op| vcs::render_op(&op)),
-                        "continue" => vcs::continue_op(&root, &text("backup")).map(|op| vcs::render_op(&op)),
-                        "abort" => vcs::abort_op(&root, &text("backup")).map(|op| vcs::render_op(&op)),
-                        other => {
-                            return format!(
-                                "ERROR [invalid_input]: git_history takes action status, rebase, \
-                                 cherry_pick, continue or abort; {other:?} is not one of them."
-                            )
-                        }
-                    }
-                };
-                match answer {
-                    Ok(text) => text,
-                    Err(e) => {
-                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
-                            (&e).into();
-                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
-                    }
-                }
-            }
-            "dispatch_subagent" => {
-                let req = match parse_dispatch_args(args) {
-                    Ok(r) => r,
-                    Err(e) => return format!("ERROR: {e}"),
-                };
-                let child_name = req.subagent_name.clone();
-                // AH-101: a durable child is a job of its own, not a task in
-                // this process.
-                if req.durable {
-                    return match crate::core::agent::durable_subagent::dispatch(
-                        &ctx.parent_args,
-                        req,
-                        &crate::core::agent::subagent::ParentRun {
-                            routing: self.routing.clone(),
-                            conversation: None,
-                            model: ctx.model_id.clone(),
-                            budget_remaining: ctx.tokens_remaining(),
-                            token_rates: ctx.token_rates(),
-                            usd_remaining: ctx.usd_remaining(),
-                            send_reasoning: ctx.send_reasoning,
-                            model_settings: crate::core::agent::subagent::load_model_settings(),
-                        },
-                    ) {
-                        Ok(run_id) => {
-                            self.invocations.note(
-                                "agent.dispatched",
-                                serde_json::json!({
-                                    "child": run_id,
-                                    "agent": child_name,
-                                    "mode": "durable",
-                                    "parentRun": self.cancel_scope.run,
-                                }),
-                            );
-                            format!(
-                                "Durable subagent started as a job of its own. run_id={run_id}. It keeps running if this run or the app ends. Call await_subagent with this run_id to collect its result -- also from a later run of this conversation; list_subagent_runs shows it and cancel_subagent stops it. Anything it would need approval for is denied, because nobody is attached to it."
-                            )
-                        }
-                        Err(e) => format!("ERROR: {e}"),
-                    };
-                }
-                // AH-100: a fork copies the conversation this turn is
-                // dispatching from. Read here rather than held by the child,
-                // so what it gets is what the parent had when it asked.
-                let forked = req.fork_context.then(|| {
-                    self.live_conversation
-                        .lock()
-                        .map(|live| live.clone())
-                        .unwrap_or_default()
-                });
-                match spawn_subagent(
-                    &ctx.bg,
-                    &ctx.parent_args,
-                    req,
-                    &crate::core::agent::subagent::ParentRun {
-                        routing: self.routing.clone(),
-                        conversation: forked,
-                        model: ctx.model_id.clone(),
-                        budget_remaining: ctx.tokens_remaining(),
-                        token_rates: ctx.token_rates(),
-                        usd_remaining: ctx.usd_remaining(),
-                        send_reasoning: ctx.send_reasoning,
-                        model_settings: crate::core::agent::subagent::load_model_settings(),
-                    },
-                    &self.events,
-                ) {
-                    Ok(run_id) => {
-                        // AH-004: the parent's record says which child it
-                        // started and which request asked for it, so a nested
-                        // run is reachable from the run that caused it.
-                        self.invocations.note(
-                            "agent.dispatched",
-                            serde_json::json!({
-                                "child": run_id,
-                                "agent": child_name,
-                                "mode": "background",
-                                "parentRun": self.cancel_scope.run,
-                            }),
-                        );
-                        let mut out = format!(
-                            "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result. While it runs you can send it a message with message_send (to={run_id}), and read anything it sends you with message_check."
-                        );
-                        if let Some(c) = ctx.bg.checkout_of(&run_id) {
-                            out.push_str(&format!(
-                                " It works in a checkout of its own at {} (branch {}), so its changes are not in the project until the user reviews and applies them.",
-                                c.path, c.branch
-                            ));
-                        }
-                        out
-                    }
-                    Err(e) => format!("ERROR: {e}"),
-                }
-            }
-            "await_subagent" => {
-                let run_id = match parse_await_args(args) {
-                    Ok(r) => r,
-                    Err(e) => return format!("ERROR: {e}"),
-                };
-                // Reading the rest of an answer that came back shortened: it
-                // was already collected, so there is nothing to wait for.
-                if let Some(offset) = crate::core::agent::subagent::parse_await_offset(args) {
-                    return crate::core::agent::subagent::read_retained_result(&run_id, offset);
-                }
-                let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
-                let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
-                let awaited = if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
-                    crate::core::agent::durable_subagent::await_child(
-                        data,
-                        owner,
-                        &run_id,
-                        std::time::Duration::from_millis(500),
-                        || false,
-                    )
-                    .await
-                    .map_err(|e| crate::core::agent::subagent::SubagentError::Upstream(e.message().to_string()))
-                } else {
-                    await_subagent(&ctx.bg, &run_id).await
-                };
-                // How the child ended, against the parent's run. Sizes only:
-                // the child's own report is its own record.
-                self.invocations.note(
-                    "agent.ended",
-                    match &awaited {
-                        Ok(text) => serde_json::json!({
-                            "child": run_id,
-                            "stoppedBy": "done",
-                            "textChars": text.chars().count(),
-                        }),
-                        Err(e) => serde_json::json!({
-                            "child": run_id,
-                            "stoppedBy": "error",
-                            "detail": bound_detail(&e.to_string()),
-                        }),
-                    },
-                );
-                let outcome = match awaited {
-                    Ok(text) if text.trim().is_empty() => {
-                        "The subagent finished but produced no text output.".to_string()
-                    }
-                    Ok(text) => text,
-                    Err(e) => format!("ERROR: {e}"),
-                };
-                // Which other children have failed, so a parent collecting one
-                // answer is not the last to learn that a sibling went wrong.
-                let outcome = match ctx.bg.failure_report(Some(&run_id)) {
-                    Some(report) => format!("{outcome}\n\n{report}"),
-                    None => outcome,
-                };
-                // A child's report reads as "done" whether or not its changes
-                // are anywhere the user can see; this says where they are.
-                match ctx.bg.checkout_of(&run_id) {
-                    Some(c) => format!(
-                        "{outcome}\n\n(Its changes are in its own checkout at {} on branch {}, waiting for the user's review; none has been applied to the project.)",
-                        c.path, c.branch
-                    ),
-                    None => outcome,
-                }
-            }
-            "create_subagent" => {
-                let (def, scope, overwrite) = match parse_create_args(args) {
-                    Ok(v) => v,
-                    Err(e) => return format!("ERROR: {e}"),
-                };
-                if scope == SubagentScope::User {
-                    if let Err(refused) = self.approve_user_subagent(&def.name).await {
-                        return refused;
-                    }
-                }
-                let dir = match subagent_dir_for(&self.project_root, scope) {
-                    Ok(d) => d,
-                    Err(e) => return format!("ERROR: {e}"),
-                };
-                let scope_label = match scope {
-                    SubagentScope::User => "user",
-                    SubagentScope::Project => "project",
-                    // Unreachable: create_subagent rejects the plugin and
-                    // built-in scopes before this point.
-                    SubagentScope::Plugin => "plugin",
-                    SubagentScope::Builtin => "built-in",
-                };
-                let mut registry = SubagentRegistry::load(&self.project_root);
-                match registry.create_in(&dir, def.clone(), scope, overwrite) {
-                    Ok(shadows) => {
-                        let mut msg =
-                            format!("Created {scope_label}-scope subagent '{}'.", def.name);
-                        if shadows {
-                            msg.push_str(
-                                " Note: it shadows a user-scope subagent of the same name.",
-                            );
-                        }
-                        msg
-                    }
-                    Err(e) => format!("ERROR: {e}"),
-                }
-            }
-            _ => "ERROR: unknown subagent tool".to_string(),
+            Err(e) => format!("ERROR: {e}"),
         }
     }
+
+    /// The `await_subagent` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_await_subagent(&self, ctx: &SubagentContext, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let run_id = match parse_await_args(args) {
+            Ok(r) => r,
+            Err(e) => return format!("ERROR: {e}"),
+        };
+        // Reading the rest of an answer that came back shortened: it
+        // was already collected, so there is nothing to wait for.
+        if let Some(offset) = crate::core::agent::subagent::parse_await_offset(args) {
+            return crate::core::agent::subagent::read_retained_result(&run_id, offset);
+        }
+        let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
+        let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
+        let awaited = if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
+            crate::core::agent::durable_subagent::await_child(
+                data,
+                owner,
+                &run_id,
+                std::time::Duration::from_millis(500),
+                || false,
+            )
+            .await
+            .map_err(|e| crate::core::agent::subagent::SubagentError::Upstream(e.message().to_string()))
+        } else {
+            await_subagent(&ctx.bg, &run_id).await
+        };
+        // How the child ended, against the parent's run. Sizes only:
+        // the child's own report is its own record.
+        self.invocations.note(
+            "agent.ended",
+            match &awaited {
+                Ok(text) => serde_json::json!({
+                    "child": run_id,
+                    "stoppedBy": "done",
+                    "textChars": text.chars().count(),
+                }),
+                Err(e) => serde_json::json!({
+                    "child": run_id,
+                    "stoppedBy": "error",
+                    "detail": bound_detail(&e.to_string()),
+                }),
+            },
+        );
+        let outcome = match awaited {
+            Ok(text) if text.trim().is_empty() => {
+                "The subagent finished but produced no text output.".to_string()
+            }
+            Ok(text) => text,
+            Err(e) => format!("ERROR: {e}"),
+        };
+        // Which other children have failed, so a parent collecting one
+        // answer is not the last to learn that a sibling went wrong.
+        let outcome = match ctx.bg.failure_report(Some(&run_id)) {
+            Some(report) => format!("{outcome}\n\n{report}"),
+            None => outcome,
+        };
+        // A child's report reads as "done" whether or not its changes
+        // are anywhere the user can see; this says where they are.
+        match ctx.bg.checkout_of(&run_id) {
+            Some(c) => format!(
+                "{outcome}\n\n(Its changes are in its own checkout at {} on branch {}, waiting for the user's review; none has been applied to the project.)",
+                c.path, c.branch
+            ),
+            None => outcome,
+        }
+    }
+
+    /// The `create_subagent` arm of [`Self::handle_subagent_tool`].
+    async fn subagent_tool_create_subagent(&self, args: &serde_json::Value) -> String {
+        #[allow(unused_imports)]
+        use crate::core::agent::subagent::{
+            await_subagent, format_subagent_list, parse_await_args, parse_create_args,
+            parse_dispatch_args, spawn_subagent, subagent_dir_for, SubagentRegistry, SubagentScope,
+        };
+        let (def, scope, overwrite) = match parse_create_args(args) {
+            Ok(v) => v,
+            Err(e) => return format!("ERROR: {e}"),
+        };
+        if scope == SubagentScope::User {
+            if let Err(refused) = self.approve_user_subagent(&def.name).await {
+                return refused;
+            }
+        }
+        let dir = match subagent_dir_for(&self.project_root, scope) {
+            Ok(d) => d,
+            Err(e) => return format!("ERROR: {e}"),
+        };
+        let scope_label = match scope {
+            SubagentScope::User => "user",
+            SubagentScope::Project => "project",
+            // Unreachable: create_subagent rejects the plugin and
+            // built-in scopes before this point.
+            SubagentScope::Plugin => "plugin",
+            SubagentScope::Builtin => "built-in",
+        };
+        let mut registry = SubagentRegistry::load(&self.project_root);
+        match registry.create_in(&dir, def.clone(), scope, overwrite) {
+            Ok(shadows) => {
+                let mut msg =
+                    format!("Created {scope_label}-scope subagent '{}'.", def.name);
+                if shadows {
+                    msg.push_str(
+                        " Note: it shadows a user-scope subagent of the same name.",
+                    );
+                }
+                msg
+            }
+            Err(e) => format!("ERROR: {e}"),
+        }
+    }
+
 
     pub(super) async fn handle_ask_tool(&self, args: &serde_json::Value) -> String {
         use crate::core::agent::interaction::{register, AskError, AskRequest};
@@ -3198,4 +3323,4 @@ impl CompositeToolInvoker {
             last.content.push_str(&note);
         }
     }
-}
+}

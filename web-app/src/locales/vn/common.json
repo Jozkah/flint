@@ -1624,7 +1624,8 @@
       "empty": "Tệp này trống",
       "needs-file-dialog": "Hãy dùng \"Đính kèm tệp\" cho tài liệu — bản sao được thả vào không có đường dẫn cho trình đọc",
       "sensitive": "Trông như thông tin xác thực hoặc khóa, nên không được đọc",
-      "binary": "Đây không phải tệp văn bản, dù phần mở rộng nói gì"
+      "binary": "Đây không phải tệp văn bản, dù phần mở rộng nói gì",
+      "unreadable": "Không thể đọc tệp này"
     },
     "addFiles": "Thêm tệp",
     "addFilesOrImages": "Thêm tệp hoặc hình ảnh",

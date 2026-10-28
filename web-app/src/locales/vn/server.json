@@ -20,6 +20,7 @@
   "auto": "Mở khi khởi động",
   "autoDesc": "Mở máy chủ khi ứng dụng khởi động, sau vài giây để bạn có thể chọn thiết bị này.",
   "opening": "Đang mở {{host}} sau {{seconds}} giây",
+  "openingNotice": "Sắp mở {{host}}. Nhấn Esc để ở lại thiết bị này.",
   "useDevice": "Dùng thiết bị này",
   "limitsTitle": "Cái gì chạy ở đâu",
   "limits": "Trò chuyện, phòng, mô hình và công cụ chạy trên máy chủ. Phiên Cowork và Chiến dịch cần một tác tử chạy trên máy tính đang mở Flint: hãy kết nối tới máy tính đó qua Truy cập từ xa và ứng dụng điện thoại. Máy chủ không giao diện có thể liệt kê chiến dịch và xem xét đề xuất, nhưng không chạy phiên."

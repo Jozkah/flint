@@ -196,6 +196,27 @@ describe('ProjectFiles', () => {
     expect(screen.getAllByText('notes.txt').length).toBeGreaterThan(0)
   })
 
+  it('keeps the later request\'s list when two loads resolve out of order', async () => {
+    let first!: (v: unknown) => void
+    listAttachmentsForProjectMock.mockImplementationOnce(
+      () => new Promise((r) => (first = r))
+    )
+    const { rerender } = render(<ProjectFiles projectId="p1" lng="en" />)
+    listAttachmentsForProjectMock.mockResolvedValueOnce([
+      { id: '2', name: 'second.txt', path: '/x/second.txt', size: 1, chunk_count: 0 },
+    ])
+    rerender(<ProjectFiles projectId="p2" lng="en" />)
+    await waitFor(() =>
+      expect(screen.getAllByText('second.txt').length).toBeGreaterThan(0)
+    )
+    first([
+      { id: '1', name: 'first.txt', path: '/x/first.txt', size: 1, chunk_count: 0 },
+    ])
+    await Promise.resolve()
+    expect(screen.queryByText('first.txt')).toBeNull()
+    expect(screen.getAllByText('second.txt').length).toBeGreaterThan(0)
+  })
+
   it('falls back to empty list when extension is missing', async () => {
     extMock.listAttachmentsForProject = undefined
     render(<ProjectFiles projectId="p1" lng="en" />)

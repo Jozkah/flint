@@ -2266,6 +2266,46 @@ pub(crate) fn configure_child_args(
     child_args
 }
 
+/// Everything that can refuse a spawn before anything is started: nesting,
+/// the active project, the project's spawn rules and failure policy, and the
+/// name and permission resolution. Synchronous, so a bad request errors at the
+/// call and not in the background.
+fn authorize_spawn(
+    parent_args: &crate::core::agent::r#loop::OrchestrationArgs,
+    req: &SubagentRequest,
+) -> Result<(FailurePolicy, ResolvedDispatch), SubagentError> {
+    if !parent_args.subagents_enabled {
+        return Err(SubagentError::PermissionDenied(
+            "subagents cannot dispatch nested subagents".to_string(),
+        ));
+    }
+    let project_root = parent_args.project_root.as_ref().ok_or_else(|| {
+        SubagentError::Upstream("subagents require an active project".to_string())
+    })?;
+    check_project_spawn_allowed(project_root, &req.subagent_name)?;
+    let policy = crate::core::agent::project::subagent_failure_policy(project_root)
+        .map_err(SubagentError::Upstream)?;
+    let surface = surface_for_project_root(project_root);
+    let registry = SubagentRegistry::load_for(project_root, surface);
+    let resolved = resolve_dispatch(&registry, req, &parent_args.permissions)?;
+    Ok((policy, resolved))
+}
+
+/// The arguments a child runs with: the parent's, rooted in the child's own
+/// checkout when it has one. The child's whole world is its checkout: the root
+/// its tools resolve, the root its writes are confined to, the root its shell
+/// starts in.
+fn build_child_args(
+    parent_args: &crate::core::agent::r#loop::OrchestrationArgs,
+    checkout: Option<&ChildCheckout>,
+) -> crate::core::agent::r#loop::OrchestrationArgs {
+    let mut child = parent_args.clone();
+    if let Some(c) = checkout {
+        child.project_root = Some(PathBuf::from(&c.path));
+    }
+    child
+}
+
 /// Resolve and start a subagent on a background task, returning its `run_id`
 /// immediately (non-blocking). The caller collects the result later with
 /// [`await_subagent`]. Registered in `bg` so the parent run can abort it on
@@ -2287,20 +2327,7 @@ pub(crate) fn spawn_subagent(
     use crate::core::agent::events::StreamEvent;
     use std::sync::atomic::Ordering;
 
-    if !parent_args.subagents_enabled {
-        return Err(SubagentError::PermissionDenied(
-            "subagents cannot dispatch nested subagents".to_string(),
-        ));
-    }
-    let project_root = parent_args.project_root.as_ref().ok_or_else(|| {
-        SubagentError::Upstream("subagents require an active project".to_string())
-    })?;
-    check_project_spawn_allowed(project_root, &req.subagent_name)?;
-    let policy = crate::core::agent::project::subagent_failure_policy(project_root)
-        .map_err(SubagentError::Upstream)?;
-    let surface = surface_for_project_root(project_root);
-    let registry = SubagentRegistry::load_for(project_root, surface);
-    let resolved = resolve_dispatch(&registry, &req, &parent_args.permissions)?;
+    let (policy, resolved) = authorize_spawn(parent_args, &req)?;
 
     let name = resolved.definition.name.clone();
     let run_id = next_subagent_run_id(&name);
@@ -2361,12 +2388,7 @@ pub(crate) fn spawn_subagent(
         });
     }
 
-    let mut parent_args = parent_args.clone();
-    // The child's whole world is its checkout: the root its tools resolve,
-    // the root its writes are confined to, the root its shell starts in.
-    if let Some(c) = &checkout {
-        parent_args.project_root = Some(PathBuf::from(&c.path));
-    }
+    let parent_args = build_child_args(parent_args, checkout.as_ref());
     let task_events = events.clone();
     let entry_events = events.clone();
     let inherited = parent.clone();

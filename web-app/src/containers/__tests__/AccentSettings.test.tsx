@@ -65,6 +65,23 @@ describe('AccentSettings', () => {
     )
   })
 
+  it('drops the drag listeners when the picker unmounts mid-drag', () => {
+    const removed: string[] = []
+    const spy = vi
+      .spyOn(window, 'removeEventListener')
+      .mockImplementation((type: string) => {
+        removed.push(type)
+      })
+    const { unmount } = render(<AccentSettings />)
+    fireEvent.click(screen.getByTestId('accent-custom'))
+    fireEvent.pointerDown(screen.getAllByRole('slider')[0])
+    unmount()
+    spy.mockRestore()
+    expect(removed).toEqual(
+      expect.arrayContaining(['pointermove', 'pointerup', 'pointercancel'])
+    )
+  })
+
   it('has no separate hex field: custom lives in the picker', () => {
     render(<AccentSettings />)
     expect(screen.queryByTestId('accent-hex-input')).toBeNull()

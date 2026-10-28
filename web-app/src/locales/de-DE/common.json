@@ -1627,7 +1627,8 @@
       "empty": "Diese Datei ist leer",
       "needs-file-dialog": "Verwende für Dokumente „Datei anhängen“ – eine abgelegte Kopie hat keinen Pfad für den Leser",
       "sensitive": "Sieht nach Zugangsdaten oder einem Schlüssel aus und wurde daher nicht gelesen",
-      "binary": "Das ist keine Textdatei, was auch immer die Endung behauptet"
+      "binary": "Das ist keine Textdatei, was auch immer die Endung behauptet",
+      "unreadable": "Diese Datei konnte nicht gelesen werden"
     },
     "addFiles": "Dateien hinzufügen",
     "addFilesOrImages": "Dateien oder Bilder hinzufügen",

@@ -184,6 +184,7 @@ import {
   type ModelCapabilities,
   type RejectionReason,
 } from '@/lib/attachmentSupport'
+import { readAsDataUrl } from '@/lib/attachmentIntake'
 import {
   Attachment,
   attachmentsToIngestAsImages,
@@ -2238,25 +2239,24 @@ const ChatInput = memo(function ChatInput({
       const detectedType = file.type || getFileTypeFromExtension(file.name)
       const actualType = getFileTypeFromExtension(file.name) || detectedType
 
-      const reader = new FileReader()
-      await new Promise<void>((resolve) => {
-        reader.onload = () => {
-          const result = reader.result
-          if (typeof result === 'string') {
-            const base64String = result.split(',')[1]
-            const att = createImageAttachment({
-              name: file.name,
-              size: file.size,
-              mimeType: actualType,
-              base64: base64String,
-              dataUrl: result,
-            })
-            preparedFiles.push(att)
-          }
-          resolve()
-        }
-        reader.readAsDataURL(file)
-      })
+      let result: string
+      try {
+        result = await readAsDataUrl(file)
+      } catch {
+        // One unreadable file must not stall the rest of the batch.
+        rejected.push({ name: file.name, reason: 'unreadable' })
+        continue
+      }
+      const base64String = result.split(',')[1]
+      preparedFiles.push(
+        createImageAttachment({
+          name: file.name,
+          size: file.size,
+          mimeType: actualType,
+          base64: base64String,
+          dataUrl: result,
+        })
+      )
     }
 
     // Compute content hashes for deduplication (allows different images with same filename)
@@ -2515,17 +2515,7 @@ const ChatInput = memo(function ChatInput({
         }
         const fmt: 'wav' | 'mp3' = isWav ? 'wav' : 'mp3'
         const mimeType = fmt === 'wav' ? 'audio/wav' : 'audio/mpeg'
-        const dataUrl: string = await new Promise((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const r = reader.result
-            if (typeof r === 'string') resolve(r)
-            else reject(new Error('read failed'))
-          }
-          reader.onerror = () =>
-            reject(reader.error ?? new Error('read failed'))
-          reader.readAsDataURL(file)
-        })
+        const dataUrl: string = await readAsDataUrl(file)
         const base64 = dataUrl.split(',')[1] ?? ''
         const durationSec = await decodeAudioDuration(dataUrl)
         prepared.push(
@@ -2656,17 +2646,7 @@ const ChatInput = memo(function ChatInput({
         const mimeType = file.type.startsWith('video/')
           ? file.type
           : videoMimeForExt(ext)
-        const dataUrl: string = await new Promise((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const r = reader.result
-            if (typeof r === 'string') resolve(r)
-            else reject(new Error('read failed'))
-          }
-          reader.onerror = () =>
-            reject(reader.error ?? new Error('read failed'))
-          reader.readAsDataURL(file)
-        })
+        const dataUrl: string = await readAsDataUrl(file)
         const base64 = dataUrl.split(',')[1] ?? ''
         prepared.push(
           createVideoAttachment({

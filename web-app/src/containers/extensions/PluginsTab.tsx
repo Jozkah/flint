@@ -14,33 +14,32 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { useServiceHub } from '@/hooks/useServiceHub'
+import { usePluginInstallForm } from '@/hooks/usePluginInstall'
+import { newPluginOperationId, usePluginManager } from '@/hooks/usePluginManager'
 import { invalidateSkills } from '@/hooks/useSkills'
 import {
-  checkGitUrl,
   getPluginDetails,
-  getPluginSources,
   installPlugin,
-  listPlugins,
   pluginErrorText,
-  removePlugin,
   searchPlugins,
-  setPluginEnabled,
-  updatePlugin,
-  toPluginError,
   urlHost,
-  type InstallSource,
   type InstalledPlugin,
   type MarketEntry,
-  type PluginDetails,
   type PluginSourceKind,
-  type PluginSources,
 } from '@/lib/pluginStore'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
 import {
@@ -77,23 +76,35 @@ export default function PluginsTab({
   installRequest?: number
 } = {}) {
   const { t } = useTranslation()
-  const serviceHub = useServiceHub()
-
-  const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [sources, setSources] = useState<PluginSources | null>(null)
-
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [details, setDetails] = useState<PluginDetails | null>(null)
-  const [detailsError, setDetailsError] = useState<string | null>(null)
-  const [toggling, setToggling] = useState<string | null>(null)
-  const [toggleError, setToggleError] = useState<string | null>(null)
+  
+  const manager = usePluginManager({ scopeFolder: null, global: true })
+  const {
+    plugins,
+    loading,
+    loadError,
+    sources,
+    selectedId,
+    setSelectedId,
+    details,
+    setDetails,
+    detailsError,
+    toggling,
+    toggleError,
+    confirmRemove,
+    setConfirmRemove,
+    removing,
+    removeError,
+    setRemoveError,
+    updating,
+    refresh,
+    toggle,
+    runUpdate,
+    confirmRemoval,
+  } = manager
 
   const [mode, setMode] = useState<'list' | 'browse' | 'install'>('list')
   const [query, setQuery] = useState('')
   const [entries, setEntries] = useState<MarketEntry[]>([])
-  const [updating, setUpdating] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [installingName, setInstallingName] = useState<string | null>(null)
@@ -101,20 +112,23 @@ export default function PluginsTab({
   // Install-by-source form: local folder / git URL / marketplace name.
   // Works regardless of whether a global marketplace is configured (only
   // the "marketplace" kind depends on one).
-  const [installKind, setInstallKind] = useState<PluginSourceKind>('local')
-  const [localPath, setLocalPath] = useState('')
-  const [gitUrl, setGitUrl] = useState('')
-  const [marketName, setMarketName] = useState('')
-  const [installFieldError, setInstallFieldError] = useState<string | null>(null)
+  const {
+    kind: installKind,
+    setKind: setInstallKind,
+    localPath,
+    setLocalPath,
+    gitUrl,
+    setGitUrl,
+    marketName,
+    setMarketName,
+    fieldError: installFieldError,
+    setFieldError: setInstallFieldError,
+    gitHost,
+    chooseFolder,
+    buildSource: buildInstallSource,
+  } = usePluginInstallForm()
   const [installBusy, setInstallBusy] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
-
-  const [confirmRemove, setConfirmRemove] = useState<PluginDetails | null>(null)
-  const [removing, setRemoving] = useState(false)
-  const [removeError, setRemoveError] = useState<string | null>(null)
-
-  const tRef = useRef(t)
-  tRef.current = t
 
   // Where each plugin is on, for the "Enabled on" chips. Best effort: the
   // cards render without it.
@@ -130,130 +144,9 @@ export default function PluginsTab({
   }, [])
   useEffect(() => refreshMatrix(), [refreshMatrix])
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const list = await listPlugins('', 'global')
-      setPlugins(list)
-      return list
-    } catch (e) {
-      setLoadError(pluginErrorText(tRef.current, e))
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh()
-    getPluginSources('', 'global')
-      .then(setSources)
-      .catch(() => setSources(null))
-  }, [refresh])
-
-  // The plugin whose details were asked for last. A slower request for a
-  // plugin the user already left must not overwrite the current one's details
-  // (the pane would then show "loading" forever).
-  const detailsForRef = useRef<string | null>(null)
-
-  const loadDetails = useCallback(
-    async (id: string) => {
-      detailsForRef.current = id
-      setDetails(null)
-      setDetailsError(null)
-      try {
-        const d = await getPluginDetails('', id, 'global')
-        if (detailsForRef.current === id) setDetails(d)
-      } catch (e) {
-        if (detailsForRef.current === id) {
-          setDetailsError(pluginErrorText(tRef.current, e))
-        }
-        if (toPluginError(e).code === 'not_installed') void refresh()
-      }
-    },
-    [refresh]
-  )
-
   const select = (id: string) => {
     setMode('list')
-    setSelectedId(id)
-    setToggleError(null)
-    setRemoveError(null)
-    void loadDetails(id)
-  }
-
-  const toggle = async (plugin: InstalledPlugin, enabled: boolean) => {
-    const apply = (value: boolean) => {
-      setPlugins((list) =>
-        list.map((p) => (p.id === plugin.id ? { ...p, enabled: value } : p))
-      )
-      setDetails((d) => (d && d.id === plugin.id ? { ...d, enabled: value } : d))
-    }
-    setToggleError(null)
-    setToggling(plugin.id)
-    apply(enabled)
-    try {
-      const state = await setPluginEnabled('', plugin.id, enabled, 'global')
-      apply(state.enabled)
-      invalidateSkills()
-      toast.success(
-        t(state.enabled ? 'plugins:toggle.enabled' : 'plugins:toggle.disabled', {
-          name: plugin.name,
-        })
-      )
-    } catch (e) {
-      apply(!enabled)
-      setToggleError(
-        t('plugins:toggle.failed', { name: plugin.name, error: pluginErrorText(t, e) })
-      )
-      if (toPluginError(e).code === 'not_installed') void refresh()
-    } finally {
-      setToggling(null)
-    }
-  }
-
-  const runUpdate = async (plugin: PluginDetails) => {
-    setUpdating(plugin.id)
-    setRemoveError(null)
-    try {
-      const report = await updatePlugin('', plugin.id, crypto.randomUUID(), 'global')
-      toast.success(
-        report.updated
-          ? t('plugins:update.done', { name: plugin.name })
-          : t('plugins:update.upToDate', { name: plugin.name })
-      )
-      if (report.updated) invalidateSkills()
-      await refresh()
-    } catch (e) {
-      setRemoveError(
-        t('plugins:update.failed', { name: plugin.name, error: pluginErrorText(t, e) })
-      )
-    } finally {
-      setUpdating(null)
-    }
-  }
-
-  const confirmRemoval = async () => {
-    if (!confirmRemove) return
-    const target = confirmRemove
-    setRemoving(true)
-    setRemoveError(null)
-    try {
-      const report = await removePlugin('', target.id, 'global')
-      toast.success(t('plugins:remove.done', { name: report.name, path: report.removedPath }))
-      setConfirmRemove(null)
-      setSelectedId(null)
-      setDetails(null)
-      await refresh()
-    } catch (e) {
-      setRemoveError(t('plugins:remove.failed', { name: target.name, error: pluginErrorText(t, e) }))
-      setConfirmRemove(null)
-      void refresh()
-    } finally {
-      invalidateSkills()
-      setRemoving(false)
-    }
+    manager.select(id)
   }
 
   const openBrowse = () => {
@@ -280,10 +173,7 @@ export default function PluginsTab({
   const installFromMarket = async (entry: MarketEntry) => {
     setInstallingName(entry.name)
     try {
-      const operationId =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `install-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const operationId = newPluginOperationId()
       const plugin = await installPlugin(
         '',
         { kind: 'marketplace', name: entry.name },
@@ -338,56 +228,13 @@ export default function PluginsTab({
     setInstallError(null)
   }
 
-  const chooseFolder = async () => {
-    const picked = await serviceHub.dialog().open({ directory: true })
-    const path = Array.isArray(picked) ? picked[0] : picked
-    if (path) {
-      setLocalPath(path)
-      setInstallFieldError(null)
-    }
-  }
-
-  const gitCheck = checkGitUrl(gitUrl)
-  const gitHost = gitCheck.ok ? gitCheck.host : null
-
-  const buildInstallSource = (): InstallSource | null => {
-    if (installKind === 'local') {
-      if (!localPath.trim()) {
-        setInstallFieldError(t('plugins:install.errors.pathRequired'))
-        return null
-      }
-      return { kind: 'local', path: localPath.trim() }
-    }
-    if (installKind === 'git') {
-      if (!gitCheck.ok) {
-        setInstallFieldError(
-          t(
-            gitCheck.reason === 'empty'
-              ? 'plugins:install.errors.urlRequired'
-              : 'plugins:install.errors.urlFormat'
-          )
-        )
-        return null
-      }
-      return { kind: 'git', url: gitUrl.trim() }
-    }
-    if (!marketName.trim()) {
-      setInstallFieldError(t('plugins:install.errors.nameRequired'))
-      return null
-    }
-    return { kind: 'marketplace', name: marketName.trim() }
-  }
-
   const submitInstall = async () => {
     if (installBusy) return
     setInstallFieldError(null)
     setInstallError(null)
     const source = buildInstallSource()
     if (!source) return
-    const operationId =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `install-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const operationId = newPluginOperationId()
     setInstallBusy(true)
     try {
       const plugin = await installPlugin('', source, operationId, 'global')
@@ -1133,48 +980,50 @@ export default function PluginsTab({
         </div>
       </div>
 
-      {confirmRemove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 motion-safe:animate-fade-in">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('plugins:remove.title', { name: confirmRemove.name })}
-            className="w-full max-w-sm rounded-xl border-[0.8px] border-border bg-card p-4 shadow-pop motion-safe:animate-dlg-in"
-          >
-            <div className="text-sm font-semibold">
-              {t('plugins:remove.title', { name: confirmRemove.name })}
-            </div>
-            <p className="mt-1 break-all text-xs text-muted-foreground">
-              {t('plugins:remove.body', { path: confirmRemove.installedPath })}
-            </p>
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={removing}
-                onClick={() => setConfirmRemove(null)}
-              >
-                {t('plugins:remove.cancel')}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={removing}
-                onClick={() => void confirmRemoval()}
-              >
-                {removing && (
-                  <Loader2
-                    className="motion-safe:animate-spin"
-                    size={14}
-                    aria-hidden
-                  />
-                )}
-                {t('plugins:remove.confirm')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={confirmRemove !== null}
+        onOpenChange={(open) => {
+          if (!open && !removing) setConfirmRemove(null)
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {t('plugins:remove.title', { name: confirmRemove?.name ?? '' })}
+            </DialogTitle>
+            <DialogDescription className="break-all">
+              {t('plugins:remove.body', {
+                path: confirmRemove?.installedPath ?? '',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={removing}
+              onClick={() => setConfirmRemove(null)}
+            >
+              {t('plugins:remove.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={removing}
+              onClick={() => void confirmRemoval()}
+            >
+              {removing && (
+                <Loader2
+                  className="motion-safe:animate-spin"
+                  size={14}
+                  aria-hidden
+                />
+              )}
+              {t('plugins:remove.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

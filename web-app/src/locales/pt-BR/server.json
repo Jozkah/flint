@@ -20,6 +20,7 @@
   "auto": "Abrir ao iniciar",
   "autoDesc": "Abre o servidor quando o app inicia, após alguns segundos em que você pode escolher este dispositivo.",
   "opening": "Abrindo {{host}} em {{seconds}} s",
+  "openingNotice": "{{host}} será aberto em instantes. Pressione Esc para ficar neste dispositivo.",
   "useDevice": "Usar este dispositivo",
   "limitsTitle": "O que roda onde",
   "limits": "Chat, salas, modelos e ferramentas rodam no servidor. Sessões do Cowork e Campanhas precisam de um agente que rode em um computador com o Flint aberto: acesse esse computador pelo Acesso remoto e pelo app do celular. Um servidor sem tela pode listar campanhas e revisar propostas, mas não executa sessões."

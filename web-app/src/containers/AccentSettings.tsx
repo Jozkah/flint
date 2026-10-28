@@ -1,5 +1,7 @@
 import {
   useCallback,
+  useEffect,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -87,8 +89,12 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
  */
 function useDragArea(onMove: (x: number, y: number) => void) {
   const [dragging, setDragging] = useState(false)
+  const teardownRef = useRef<(() => void) | null>(null)
+  // Drop the window listeners if the picker unmounts mid-drag.
+  useEffect(() => () => teardownRef.current?.(), [])
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
+    teardownRef.current?.()
     const el = e.currentTarget
     const report = (clientX: number, clientY: number) => {
       const r = el.getBoundingClientRect()
@@ -100,13 +106,20 @@ function useDragArea(onMove: (x: number, y: number) => void) {
     report(e.clientX, e.clientY)
     setDragging(true)
     const move = (ev: PointerEvent) => report(ev.clientX, ev.clientY)
-    const up = () => {
-      setDragging(false)
+    const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      teardownRef.current = null
     }
+    const up = () => {
+      stop()
+      setDragging(false)
+    }
+    teardownRef.current = stop
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
   return { dragging, onPointerDown }
 }

@@ -522,11 +522,13 @@ function MessageChanges({
   t: T
 }) {
   const api = useRoomsApi()
+  // Stable across re-renders: the apply dialog reloads when `load` changes.
+  const actions = useMemo(() => workspaceActions(message), [message])
   if (!message.changes || message.changes.files.length === 0) return null
   return (
     <TurnChangeCard
       changes={message.changes}
-      actions={workspaceActions(message)}
+      actions={actions}
       decision={decision}
       onDecision={(d) => api.controller.setChangeDecision(message.roomId, message.id, d)}
       t={t}

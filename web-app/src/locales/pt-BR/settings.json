@@ -354,7 +354,11 @@
       "confirmBody": "Isto altera as permissões da pasta abaixo, onde {{program}} está instalado, e somente dessa pasta e do que há dentro dela: adiciona uma entrada que permite a todo app do Windows em sandbox (ALL APPLICATION PACKAGES) ler e executar os arquivos dentro dela. Nada mais no seu perfil de usuário é aberto. Você pode revogar aqui a qualquer momento, o que remove exatamente essa entrada.",
       "confirm": "Permitir",
       "needsAdmin": "Instalada em {{folder}}, que somente um administrador pode alterar. Precisa de administrador: execute isto em um terminal elevado:",
-      "copyCommand": "Copiar comando"
+      "copyCommand": "Copiar comando",
+      "loadError": "Não foi possível ler as toolchains do sandbox.",
+      "retry": "Tentar novamente",
+      "revokeTitle": "Parar de permitir que o sandbox use {{program}}?",
+      "revokeBody": "Isso remove a entrada de permissão adicionada à pasta abaixo. Comandos do sandbox não poderão mais executar {{program}} a partir dela."
     },
     "title": "Ferramentas do agente",
     "description": "Dê aos modelos um espaço de trabalho temporário privado para cada conversa, além de memórias e skills mantidas permanentemente na pasta de dados do Flint.",
