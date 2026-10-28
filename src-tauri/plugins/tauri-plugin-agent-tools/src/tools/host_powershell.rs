@@ -26,8 +26,11 @@ use crate::tools::git_tool::Roots;
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 const MAX_TIMEOUT_SECS: u64 = 900;
 // The script travels as base64 of UTF-16 on the command line, which Windows
-// caps at 32,767 characters: 12,000 characters encode to about 32,000.
+// caps at 32,767 characters. The limit is on the encoded length, since an
+// astral character is four bytes of UTF-16: 24,000 bytes encode to 32,000
+// characters, which leaves room for the fixed arguments.
 const MAX_SCRIPT_CHARS: usize = 12_000;
+const MAX_ENCODED_CHARS: usize = 32_000;
 const HEAD_BYTES: usize = 6 * 1024;
 const TAIL_BYTES: usize = 40 * 1024;
 
@@ -43,8 +46,8 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
         .and_then(Value::as_str)
         .filter(|s| !s.trim().is_empty())
         .ok_or("ERROR: host_powershell needs a 'script'.")?;
-    if script.chars().count() > MAX_SCRIPT_CHARS {
-        return Err(format!("ERROR: host_powershell takes a script of at most {MAX_SCRIPT_CHARS} characters; put a longer one in a file."));
+    if script.chars().count() > MAX_SCRIPT_CHARS || encode(script).len() > MAX_ENCODED_CHARS {
+        return Err(format!("ERROR: host_powershell takes a script of at most {MAX_SCRIPT_CHARS} characters ({MAX_ENCODED_CHARS} once encoded for the command line; characters outside the basic plane count double); put a longer one in a file."));
     }
     if script.contains('\0') {
         return Err("ERROR: a host_powershell script may not contain a NUL character.".into());
@@ -160,6 +163,9 @@ mod tests {
             assert!(plan(&bad).is_err(), "{bad}");
         }
         assert!(plan(&json!({ "script": "x".repeat(MAX_SCRIPT_CHARS) })).is_ok());
+        // 10,000 astral characters pass the character count but not the encoded limit.
+        let err = plan(&json!({ "script": "\u{1F600}".repeat(10_000) })).unwrap_err();
+        assert!(err.contains("32000"), "{err}");
     }
 
     #[test]
