@@ -19,15 +19,6 @@
 const HEX = /[0-9a-fA-F]/
 
 /**
- * Re-escapes backslashes inside JSON string literals as literal path
- * separators. Small local models emit Windows paths like `C:\Users\name\file.txt`
- * verbatim, where `\U`, `\n`, `\f`, ... are treated as (invalid or unintended)
- * JSON escapes and the path is corrupted or dropped. Every backslash is doubled
- * except a genuine `\uXXXX` unicode escape, which is preserved. Run it only on
- * text that already failed to parse (see `recoverToolArgs`, which parses first),
- * so an intended escape in valid JSON is never mangled.
- */
-/**
  * Whether a quote whose next character is at `from` ends a JSON string value:
  * what follows it, after whitespace, is the end of input or `,` `}` `]` `:`.
  */
@@ -37,13 +28,31 @@ function closesString(raw: string, from: number): boolean {
   return j >= raw.length || ',}]:'.includes(raw[j])
 }
 
+/**
+ * Re-escapes backslashes inside JSON string literals. Small local models emit
+ * Windows paths like `C:\Users\name\file.txt` verbatim, where `\U`, `\f`, ...
+ * are invalid (or unintended) JSON escapes and the path is corrupted or
+ * dropped. A string value that starts like a Windows path (`C:\` or a UNC
+ * `\\host`) has every backslash doubled except a genuine `\uXXXX`. In any other
+ * string value a valid JSON escape (`\n`, `\t`, `\\`, ...) is kept as the model
+ * meant it and only an invalid one is doubled, so file content with real
+ * newlines is not turned into a literal `\n`. Run it only on text that already
+ * failed to parse (see `recoverToolArgs`, which parses first), so an intended
+ * escape in valid JSON is never mangled.
+ */
 export function sanitizeInvalidJsonEscapes(raw: string): string {
   let out = ''
   let inString = false
+  // The string being scanned starts like a Windows path: each backslash in it
+  // is a separator.
+  let pathLike = false
   for (let i = 0; i < raw.length; i++) {
     const ch = raw[i]
     if (!inString) {
-      if (ch === '"') inString = true
+      if (ch === '"') {
+        inString = true
+        pathLike = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(raw.slice(i + 1, i + 4))
+      }
       out += ch
       continue
     }
@@ -65,6 +74,10 @@ export function sanitizeInvalidJsonEscapes(raw: string): string {
         // that is followed by what ends a value is a trailing path separator
         // instead, handled below like any other literal backslash.
         out += '\\"'
+        i += 1
+      } else if (!pathLike && '\\/bfnrt'.includes(raw[i + 1] ?? '\u0000')) {
+        // A valid escape in prose or content: kept as written.
+        out += raw.slice(i, i + 2)
         i += 1
       } else {
         out += '\\\\'
