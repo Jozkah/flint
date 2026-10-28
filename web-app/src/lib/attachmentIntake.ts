@@ -18,3 +18,24 @@ export function readAsDataUrl(file: Blob): Promise<string> {
     reader.readAsDataURL(file)
   })
 }
+
+type Keyed = {
+  id?: string
+  contentHash?: string
+  type: string
+  name: string
+  path?: string
+}
+
+/** What identifies an attachment across the copies the store makes of it. */
+export const attachmentKey = (a: Keyed): string =>
+  a.id ?? a.contentHash ?? `${a.type}:${a.name}:${a.path ?? ''}`
+
+/**
+ * `current` without the attachments that were sent. A file attached after the
+ * send read its list is not in `sent`, so it stays for the next message.
+ */
+export function withoutSent<T extends Keyed>(current: T[], sent: Keyed[]): T[] {
+  const gone = new Set(sent.map(attachmentKey))
+  return current.filter((a) => !gone.has(attachmentKey(a)))
+}
