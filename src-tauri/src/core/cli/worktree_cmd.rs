@@ -8,7 +8,6 @@
 //! when that checkout is clean.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::json;
 
@@ -226,6 +225,7 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     fn git_ok(dir: &Path, args: &[&str]) {
         let out = Command::new("git")
