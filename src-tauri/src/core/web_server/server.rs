@@ -1149,40 +1149,44 @@ async fn route(state: Arc<State>, req: Request<Incoming>, peer: std::net::IpAddr
     with_cors(route_inner(state, req, client).await, cors.as_deref())
 }
 
+/// How a request is authenticated, decided by where it sits in `route_inner`.
+///
+/// The order below is the security model, so it is spelled out once:
+/// 1. `Public` routes answer before any session is looked at: the health
+///    probe, the token-guarded shutdown, token and credential sign-in, and the
+///    sign-in page itself. Each has its own guard (a shutdown token, the
+///    credential, the limiter).
+/// 2. Everything else is `Session`: a valid bearer token or session cookie, or
+///    a redirect to `/login` (GET) / a 401.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Auth {
+    Public,
+    Session,
+}
+
+/// The routes served before the session gate. Anything not listed here is
+/// behind it, including every route added later.
+fn route_auth(method: &Method, path: &str) -> Auth {
+    let public = (path == "/healthz" && method == Method::GET)
+        || (path == "/api/v1/shutdown" && method == Method::POST)
+        || (path == "/api/v1/token" && method == Method::POST)
+        || (path == "/login" && method == Method::GET)
+        || (path == "/api/v1/session" && method == Method::POST);
+    if public {
+        Auth::Public
+    } else {
+        Auth::Session
+    }
+}
+
 async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net::IpAddr) -> Resp {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     if path == "/healthz" && method == Method::GET {
-        // The marker lets `flint stop` tell this server from any other
-        // program that answers `/healthz` on a reused port.
-        let mut resp = text(StatusCode::OK, "ok");
-        resp.headers_mut().insert(
-            header::HeaderName::from_static(control::SERVER_MARKER_HEADER),
-            HeaderValue::from_static("1"),
-        );
-        return resp;
+        return healthz();
     }
     if path == "/api/v1/shutdown" && method == Method::POST {
-        // Only `flint stop` knows this: the token lives in a file private to the
-        // account running the server.
-        let presented = req
-            .headers()
-            .get(control::SHUTDOWN_HEADER)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let expected = state.shutdown_token.as_str();
-        let matches = !expected.is_empty()
-            && presented.len() == expected.len()
-            && presented
-                .bytes()
-                .zip(expected.bytes())
-                .fold(0u8, |diff, (a, b)| diff | (a ^ b))
-                == 0;
-        if !matches {
-            return text(StatusCode::FORBIDDEN, "Not allowed");
-        }
-        state.shutdown.notify_one();
-        return no_content();
+        return shutdown_route(&state, &req);
     }
     // A page on another site can post well-formed junk to a local server and
     // use up the sign-in attempts of the person it is open for. A request that
@@ -1228,244 +1232,42 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         return text(StatusCode::FORBIDDEN, "Invalid origin");
     }
     if path == "/login" && method == Method::GET {
-        let error = req
-            .uri()
-            .query()
-            .and_then(|q| form_urlencoded::parse(q.as_bytes()).find(|(k, _)| k == "error"))
-            .map(|(_, v)| v.into_owned());
-        return reply(
-            StatusCode::OK,
-            "text/html; charset=utf-8",
-            login_page(error.as_deref()),
-        );
+        return login_form(&req);
     }
-    if path == "/api/v1/session" && method == Method::POST {
-        // A browser form is sent back to the sign-in page with a notice; any
-        // other client gets the status code.
-        let is_form = req
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"));
-        let refuse = |status: StatusCode, code: &str, message: &'static str| -> Resp {
-            if is_form {
-                let mut response = reply(StatusCode::SEE_OTHER, "text/plain; charset=utf-8", "Sign in failed");
-                if let Ok(location) = HeaderValue::from_str(&format!("/login?error={code}")) {
-                    response.headers_mut().insert(header::LOCATION, location);
-                }
-                response
-            } else {
-                text(status, message)
-            }
-        };
-        if state.limiter.blocked(client) {
-            return refuse(StatusCode::TOO_MANY_REQUESTS, "rate", "Too many sign-in attempts");
-        }
-        let secure = cookie_secure(&state, req.headers());
-        let body = match collect_limited(req.into_body(), MAX_LOGIN_BODY, LOGIN_BODY_DEADLINE).await {
-            Ok(body) => body,
-            Err(status) => return text(status, "Request too large or too slow"),
-        };
-        let Some(token) = std::str::from_utf8(&body)
-            .ok()
-            .and_then(|body| body.strip_prefix("credential="))
-            .filter(|token| token.len() == 64 && token.bytes().all(|c| c.is_ascii_hexdigit()))
-        else {
-            return refuse(StatusCode::BAD_REQUEST, "format", "Invalid credential format");
-        };
-        let wait = state.limiter.delay(client);
-        if !wait.is_zero() {
-            tokio::time::sleep(wait).await;
-        }
-        let result = state.auth.lock().unwrap_or_else(|p| p.into_inner()).sign_in(token);
-        return match result {
-            Ok(Some(session)) => {
-                state.limiter.record_success(client);
-                let mut response = reply(
-                    StatusCode::SEE_OTHER,
-                    "text/plain; charset=utf-8",
-                    "Signed in",
-                );
-                response
-                    .headers_mut()
-                    .insert(header::LOCATION, HeaderValue::from_static("/"));
-                response.headers_mut().insert(header::SET_COOKIE,
-                    HeaderValue::from_str(&format!("{COOKIE_NAME}={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{}", if secure { "; Secure" } else { "" }))
-                        .expect("hex session cookie is valid"));
-                response
-            }
-            Ok(None) => {
-                state.limiter.record_failure(client);
-                refuse(StatusCode::UNAUTHORIZED, "invalid", "Invalid credential")
-            }
-            Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server", "Could not save session"),
-        };
+    if sign_in {
+        return session_sign_in(&state, req, client).await;
     }
+    debug_assert_eq!(route_auth(&method, &path), Auth::Session);
+
     // An Authorization header decides on its own: a bad token is never
     // rescued by a cookie that happens to ride along.
     let presented_bearer = req.headers().contains_key(header::AUTHORIZATION);
-    let session = if presented_bearer {
+    let session: Option<String> = if presented_bearer {
         bearer_token(req.headers())
     } else {
         session_cookie(req.headers())
-    };
-    let authorized = session.is_some_and(|token| state.auth.lock().unwrap_or_else(|p| p.into_inner()).authorize(token));
+    }
+    .map(str::to_owned);
+    let authorized = session
+        .as_deref()
+        .is_some_and(|token| state.auth.lock().unwrap_or_else(|p| p.into_inner()).authorize(token));
     if !authorized {
-        if !presented_bearer && (method == Method::GET || method == Method::HEAD) {
-            let mut response = reply(
-                StatusCode::SEE_OTHER,
-                "text/plain; charset=utf-8",
-                "Sign in required",
-            );
-            response
-                .headers_mut()
-                .insert(header::LOCATION, HeaderValue::from_static("/login"));
-            return response;
-        }
-        return text(StatusCode::UNAUTHORIZED, "Sign in required");
+        return unauthenticated(presented_bearer, &method);
     }
     if path == "/api/v1/sessions" && method == Method::DELETE {
-        // Sign every browser session out, this one included. The credential
-        // stays; `flint serve --rotate-credential` replaces that.
-        let revoked = state.auth.lock().unwrap_or_else(|p| p.into_inner()).revoke_all();
-        if revoked.is_err() {
-            return text(StatusCode::INTERNAL_SERVER_ERROR, "Could not end sessions");
-        }
-        let mut response = reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new());
-        response.headers_mut().insert(
-            header::SET_COOKIE,
-            HeaderValue::from_static("flint_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"),
-        );
-        return response;
+        return end_all_sessions(&state);
     }
     if path == "/api/v1/session" {
-        if method == Method::GET {
-            return reply(
-                StatusCode::OK,
-                "application/json",
-                r#"{"authenticated":true}"#,
-            );
-        }
-        if method == Method::DELETE {
-            if state
-                .auth
-                .lock()
-                .unwrap()
-                .sign_out(session.unwrap())
-                .is_err()
-            {
-                return text(StatusCode::INTERNAL_SERVER_ERROR, "Could not end session");
-            }
-            let mut response = reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new());
-            response.headers_mut().insert(
-                header::SET_COOKIE,
-                HeaderValue::from_static(
-                    "flint_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
-                ),
-            );
+        if let Some(response) = session_route(&state, &method, session.as_deref()) {
             return response;
         }
     }
-    if method == Method::POST && path == "/api/v1/threads" {
-        let thread = match read_json(req).await {
-            Ok(value) => value,
-            Err(response) => return response,
-        };
-        let root = state.data_folder.clone();
-        return match tokio::task::spawn_blocking(move || data::create_thread(&root, thread)).await {
-            Ok(Ok(thread)) => json_created(&thread),
-            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not create thread"),
-        };
-    }
-    if let Some(rest) = path.strip_prefix("/api/v1/threads/") {
-        let parts: Vec<_> = rest.split('/').collect();
-        if parts.iter().any(|part| crate::core::threads::utils::validate_thread_id(part).is_err()) {
-            return text(StatusCode::BAD_REQUEST, "Invalid id");
-        }
-        match (method.clone(), parts.as_slice()) {
-            (Method::PUT, [id]) => {
-                let thread = match read_json(req).await {
-                    Ok(value) => value,
-                    Err(response) => return response,
-                };
-                if thread.get("id").and_then(serde_json::Value::as_str) != Some(*id) {
-                    return text(StatusCode::BAD_REQUEST, "Thread id does not match URL");
-                }
-                let root = state.data_folder.clone();
-                let id = (*id).to_owned();
-                return match data::update_thread(&root, &id, thread).await {
-                    Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
-                    Err(_) => text(StatusCode::NOT_FOUND, "Thread not found"),
-                };
-            }
-            (Method::DELETE, [id]) => {
-                let permanent = req.uri().query() == Some("permanent=true");
-                return match data::delete_thread(&state.data_folder, id, permanent).await {
-                    Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
-                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete thread"),
-                };
-            }
-            (Method::POST, [id, "messages"]) => {
-                let message = match read_json_max(req, MAX_LARGE_JSON_BODY).await {
-                    Ok(value) => value,
-                    Err(response) => return response,
-                };
-                if message.get("thread_id").and_then(serde_json::Value::as_str) != Some(*id) {
-                    return text(StatusCode::BAD_REQUEST, "Message thread id does not match URL");
-                }
-                return match data::create_message(&state.data_folder, id, message).await {
-                    Ok(message) => json_created(&message),
-                    Err(_) => text(StatusCode::NOT_FOUND, "Thread not found"),
-                };
-            }
-            (Method::PUT, [id, "messages", message_id]) => {
-                let message = match read_json_max(req, MAX_LARGE_JSON_BODY).await {
-                    Ok(value) => value,
-                    Err(response) => return response,
-                };
-                if message.get("thread_id").and_then(serde_json::Value::as_str) != Some(*id)
-                    || message.get("id").and_then(serde_json::Value::as_str) != Some(*message_id)
-                {
-                    return text(StatusCode::BAD_REQUEST, "Message id does not match URL");
-                }
-                return match data::update_message(&state.data_folder, id, message_id, message).await {
-                    Ok(message) => json(&message),
-                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not update message"),
-                };
-            }
-            (Method::DELETE, [id, "messages", message_id]) => {
-                return match data::delete_message(&state.data_folder, id, message_id).await {
-                    Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
-                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete message"),
-                };
-            }
-            _ => {}
-        }
-    }
+    let req = match thread_write_routes(&state, &method, &path, req).await {
+        Ok(response) => return response,
+        Err(req) => req,
+    };
     if method == Method::GET && path.starts_with("/api/v1/agent/sessions/") && path.ends_with("/events") {
-        let id = path["/api/v1/agent/sessions/".len()..path.len() - "/events".len()].to_owned();
-        let Some(agent) = state.agent.clone() else {
-            return text(
-                StatusCode::FORBIDDEN,
-                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
-            );
-        };
-        let after = crate::core::web_server::agent_runs::resume_point(
-            query_param(req.uri().query(), "after").as_deref(),
-            req.headers().get("last-event-id").and_then(|v| v.to_str().ok()),
-        );
-        // A session that is live here streams: replay, then the tail.
-        if let Some(live) = agent.tail(&id, after) {
-            return live;
-        }
-        return match tokio::task::spawn_blocking(move || agent.replay(&id, after)).await {
-            Ok(Ok(body)) => reply(StatusCode::OK, "text/event-stream", body),
-            Ok(Err(failure)) => {
-                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
-                reply(status, "text/plain; charset=utf-8", failure.body.as_str().unwrap_or("Request failed").to_owned())
-            }
-            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
-        };
+        return agent_events(&state, &req, &path).await;
     }
     if path == "/api/v1/events" && method == Method::GET {
         return events::stream(&state.events);
@@ -1476,63 +1278,12 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     if path == "/api/v1/provider/cancel" && method == Method::POST {
         return provider::cancel(req).await;
     }
-    if path == "/api/v1/uploads" && method == Method::POST {
-        let name = query_param(req.uri().query(), "name").unwrap_or_default();
-        let body = match collect_limited(req.into_body(), uploads::MAX_UPLOAD_BYTES, UPLOAD_BODY_DEADLINE).await {
-            Ok(body) => body,
-            Err(status) => return text(status, "File too large or too slow"),
-        };
-        let root = state.data_folder.clone();
-        return match tokio::task::spawn_blocking(move || uploads::store(&root, &name, &body)).await {
-            Ok(Ok(stored)) => json_created(&stored),
-            Ok(Err(uploads::StoreError::OverQuota)) => {
-                text(StatusCode::INSUFFICIENT_STORAGE, "Upload storage is full")
-            }
-            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not store upload"),
-        };
-    }
-    if path == "/api/v1/uploads/parse" && method == Method::POST {
-        let body = match read_json(req).await {
-            Ok(body) => body,
-            Err(response) => return response,
-        };
-        let (Some(file), kind) = (str_field(&body, "path"), str_field(&body, "type").unwrap_or("")) else {
-            return text(StatusCode::BAD_REQUEST, "path is required");
-        };
-        let (root, file, kind) = (state.data_folder.clone(), file.to_owned(), kind.to_owned());
-        return match tokio::task::spawn_blocking(move || uploads::parse(&root, &file, &kind)).await {
-            Ok(Ok(parsed)) => json(&serde_json::json!({ "text": parsed })),
-            Ok(Err(message)) => reply(StatusCode::UNPROCESSABLE_ENTITY, "text/plain; charset=utf-8", message),
-            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Parser failed"),
-        };
-    }
-    if let Some(id) = path.strip_prefix("/api/v1/uploads/") {
-        if method == Method::DELETE {
-            let (root, id) = (state.data_folder.clone(), id.to_owned());
-            return match tokio::task::spawn_blocking(move || uploads::delete(&root, &id)).await {
-                Ok(Ok(())) => no_content(),
-                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid upload id"),
-                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete upload"),
-            };
-        }
-    }
+    let req = match upload_routes(&state, &method, &path, req).await {
+        Ok(response) => return response,
+        Err(req) => req,
+    };
     if let Some(command) = path.strip_prefix("/api/v1/rpc/") {
-        if method != Method::POST {
-            return text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
-        }
-        let Some(command) = percent_decode(command) else {
-            return text(StatusCode::BAD_REQUEST, "Invalid command");
-        };
-        let caller = super::runner::Caller::digest(session.unwrap_or(""), client);
-        // A message with pictures or files is far over the default body; the
-        // checks that bound it (image caps, text caps, the line cap) are the
-        // runner's, so only this one command is let through at the large size.
-        let limit = if command == "agent_run_start" { MAX_LARGE_JSON_BODY } else { MAX_JSON_BODY };
-        let args = match read_json_max(req, limit).await {
-            Ok(args) => args,
-            Err(response) => return response,
-        };
-        return rpc_route(&state, &command, args, &caller).await;
+        return rpc_entry(&state, &method, command, session.as_deref(), client, req).await;
     }
     if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
         return mcp_route(&state, &method, rest, req).await;
@@ -1547,39 +1298,8 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     {
         return resource_route(&state, &method, &path, req).await;
     }
-    if method == Method::GET && path == "/api/v1/threads" {
-        let root = state.data_folder.clone();
-        return match tokio::task::spawn_blocking(move || data::threads(&root)).await {
-            Ok(Ok(threads)) => json(&threads),
-            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not list threads"),
-        };
-    }
-    if method == Method::GET {
-        if let Some(rest) = path.strip_prefix("/api/v1/threads/") {
-            let (id, want_messages) = match rest.split_once('/') {
-                Some((id, "messages")) => (id, true),
-                None => (rest, false),
-                _ => return text(StatusCode::NOT_FOUND, "Unknown API route"),
-            };
-            if crate::core::threads::utils::validate_thread_id(id).is_err() {
-                return text(StatusCode::BAD_REQUEST, "Invalid thread id");
-            }
-            let id = id.to_owned();
-            let root = state.data_folder.clone();
-            return match tokio::task::spawn_blocking(move || {
-                if want_messages {
-                    data::messages(&root, &id).map(serde_json::Value::Array)
-                } else {
-                    data::thread(&root, &id)
-                }
-            })
-            .await
-            {
-                Ok(Ok(value)) => json(&value),
-                Ok(Err(_)) => text(StatusCode::NOT_FOUND, "Thread not found"),
-                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not read thread"),
-            };
-        }
+    if let Some(response) = thread_read_routes(&state, &method, &path).await {
+        return response;
     }
     if let Some(resp) = phone_client_page(&path) {
         return resp;
@@ -1590,14 +1310,423 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     if method != Method::GET && method != Method::HEAD {
         return text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
     }
-    let rel = path.strip_prefix('/').unwrap_or(&path);
+    serve_asset(&state, &method, &path).await
+}
+
+fn healthz() -> Resp {
+    // The marker lets `flint stop` tell this server from any other
+    // program that answers `/healthz` on a reused port.
+    let mut resp = text(StatusCode::OK, "ok");
+    resp.headers_mut().insert(
+        header::HeaderName::from_static(control::SERVER_MARKER_HEADER),
+        HeaderValue::from_static("1"),
+    );
+    resp
+}
+
+fn shutdown_route(state: &State, req: &Request<Incoming>) -> Resp {
+    // Only `flint stop` knows this: the token lives in a file private to the
+    // account running the server.
+    let presented = req
+        .headers()
+        .get(control::SHUTDOWN_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let expected = state.shutdown_token.as_str();
+    let matches = !expected.is_empty()
+        && presented.len() == expected.len()
+        && presented
+            .bytes()
+            .zip(expected.bytes())
+            .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+            == 0;
+    if !matches {
+        return text(StatusCode::FORBIDDEN, "Not allowed");
+    }
+    state.shutdown.notify_one();
+    no_content()
+}
+
+fn login_form(req: &Request<Incoming>) -> Resp {
+    let error = req
+        .uri()
+        .query()
+        .and_then(|q| form_urlencoded::parse(q.as_bytes()).find(|(k, _)| k == "error"))
+        .map(|(_, v)| v.into_owned());
+    reply(
+        StatusCode::OK,
+        "text/html; charset=utf-8",
+        login_page(error.as_deref()),
+    )
+}
+
+async fn session_sign_in(state: &State, req: Request<Incoming>, client: std::net::IpAddr) -> Resp {
+    // A browser form is sent back to the sign-in page with a notice; any
+    // other client gets the status code.
+    let is_form = req
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"));
+    let refuse = |status: StatusCode, code: &str, message: &'static str| -> Resp {
+        if is_form {
+            let mut response = reply(StatusCode::SEE_OTHER, "text/plain; charset=utf-8", "Sign in failed");
+            if let Ok(location) = HeaderValue::from_str(&format!("/login?error={code}")) {
+                response.headers_mut().insert(header::LOCATION, location);
+            }
+            response
+        } else {
+            text(status, message)
+        }
+    };
+    if state.limiter.blocked(client) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "rate", "Too many sign-in attempts");
+    }
+    let secure = cookie_secure(state, req.headers());
+    let body = match collect_limited(req.into_body(), MAX_LOGIN_BODY, LOGIN_BODY_DEADLINE).await {
+        Ok(body) => body,
+        Err(status) => return text(status, "Request too large or too slow"),
+    };
+    let Some(token) = std::str::from_utf8(&body)
+        .ok()
+        .and_then(|body| body.strip_prefix("credential="))
+        .filter(|token| token.len() == 64 && token.bytes().all(|c| c.is_ascii_hexdigit()))
+    else {
+        return refuse(StatusCode::BAD_REQUEST, "format", "Invalid credential format");
+    };
+    let wait = state.limiter.delay(client);
+    if !wait.is_zero() {
+        tokio::time::sleep(wait).await;
+    }
+    let result = state.auth.lock().unwrap_or_else(|p| p.into_inner()).sign_in(token);
+    match result {
+        Ok(Some(session)) => {
+            state.limiter.record_success(client);
+            let mut response = reply(
+                StatusCode::SEE_OTHER,
+                "text/plain; charset=utf-8",
+                "Signed in",
+            );
+            response
+                .headers_mut()
+                .insert(header::LOCATION, HeaderValue::from_static("/"));
+            response.headers_mut().insert(header::SET_COOKIE,
+                HeaderValue::from_str(&format!("{COOKIE_NAME}={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{}", if secure { "; Secure" } else { "" }))
+                    .expect("hex session cookie is valid"));
+            response
+        }
+        Ok(None) => {
+            state.limiter.record_failure(client);
+            refuse(StatusCode::UNAUTHORIZED, "invalid", "Invalid credential")
+        }
+        Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server", "Could not save session"),
+    }
+}
+
+/// The answer for a request with no valid session: a browser page load goes to
+/// the sign-in page, anything else gets a 401.
+fn unauthenticated(presented_bearer: bool, method: &Method) -> Resp {
+    if !presented_bearer && (*method == Method::GET || *method == Method::HEAD) {
+        let mut response = reply(
+            StatusCode::SEE_OTHER,
+            "text/plain; charset=utf-8",
+            "Sign in required",
+        );
+        response
+            .headers_mut()
+            .insert(header::LOCATION, HeaderValue::from_static("/login"));
+        return response;
+    }
+    text(StatusCode::UNAUTHORIZED, "Sign in required")
+}
+
+fn end_all_sessions(state: &State) -> Resp {
+    // Sign every browser session out, this one included. The credential
+    // stays; `flint serve --rotate-credential` replaces that.
+    let revoked = state.auth.lock().unwrap_or_else(|p| p.into_inner()).revoke_all();
+    if revoked.is_err() {
+        return text(StatusCode::INTERNAL_SERVER_ERROR, "Could not end sessions");
+    }
+    let mut response = reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new());
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_static("flint_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"),
+    );
+    response
+}
+
+/// `GET` and `DELETE` on the current session; `None` for any other method.
+fn session_route(state: &State, method: &Method, session: Option<&str>) -> Option<Resp> {
+    if *method == Method::GET {
+        return Some(reply(
+            StatusCode::OK,
+            "application/json",
+            r#"{"authenticated":true}"#,
+        ));
+    }
+    if *method == Method::DELETE {
+        if state
+            .auth
+            .lock()
+            .unwrap()
+            .sign_out(session.unwrap())
+            .is_err()
+        {
+            return Some(text(StatusCode::INTERNAL_SERVER_ERROR, "Could not end session"));
+        }
+        let mut response = reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new());
+        response.headers_mut().insert(
+            header::SET_COOKIE,
+            HeaderValue::from_static(
+                "flint_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
+            ),
+        );
+        return Some(response);
+    }
+    None
+}
+
+/// Thread and message writes. `Err(req)` hands the request back when the path
+/// is not one of them, so the dispatcher can keep going.
+async fn thread_write_routes(
+    state: &State,
+    method: &Method,
+    path: &str,
+    req: Request<Incoming>,
+) -> Result<Resp, Request<Incoming>> {
+    if *method == Method::POST && path == "/api/v1/threads" {
+        let thread = match read_json(req).await {
+            Ok(value) => value,
+            Err(response) => return Ok(response),
+        };
+        let root = state.data_folder.clone();
+        return Ok(match tokio::task::spawn_blocking(move || data::create_thread(&root, thread)).await {
+            Ok(Ok(thread)) => json_created(&thread),
+            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not create thread"),
+        });
+    }
+    let Some(rest) = path.strip_prefix("/api/v1/threads/") else {
+        return Err(req);
+    };
+    let parts: Vec<_> = rest.split('/').collect();
+    if parts.iter().any(|part| crate::core::threads::utils::validate_thread_id(part).is_err()) {
+        return Ok(text(StatusCode::BAD_REQUEST, "Invalid id"));
+    }
+    match (method.clone(), parts.as_slice()) {
+        (Method::PUT, [id]) => {
+            let thread = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return Ok(response),
+            };
+            if thread.get("id").and_then(serde_json::Value::as_str) != Some(*id) {
+                return Ok(text(StatusCode::BAD_REQUEST, "Thread id does not match URL"));
+            }
+            let root = state.data_folder.clone();
+            let id = (*id).to_owned();
+            Ok(match data::update_thread(&root, &id, thread).await {
+                Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                Err(_) => text(StatusCode::NOT_FOUND, "Thread not found"),
+            })
+        }
+        (Method::DELETE, [id]) => {
+            let permanent = req.uri().query() == Some("permanent=true");
+            Ok(match data::delete_thread(&state.data_folder, id, permanent).await {
+                Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete thread"),
+            })
+        }
+        (Method::POST, [id, "messages"]) => {
+            let message = match read_json_max(req, MAX_LARGE_JSON_BODY).await {
+                Ok(value) => value,
+                Err(response) => return Ok(response),
+            };
+            if message.get("thread_id").and_then(serde_json::Value::as_str) != Some(*id) {
+                return Ok(text(StatusCode::BAD_REQUEST, "Message thread id does not match URL"));
+            }
+            Ok(match data::create_message(&state.data_folder, id, message).await {
+                Ok(message) => json_created(&message),
+                Err(_) => text(StatusCode::NOT_FOUND, "Thread not found"),
+            })
+        }
+        (Method::PUT, [id, "messages", message_id]) => {
+            let message = match read_json_max(req, MAX_LARGE_JSON_BODY).await {
+                Ok(value) => value,
+                Err(response) => return Ok(response),
+            };
+            if message.get("thread_id").and_then(serde_json::Value::as_str) != Some(*id)
+                || message.get("id").and_then(serde_json::Value::as_str) != Some(*message_id)
+            {
+                return Ok(text(StatusCode::BAD_REQUEST, "Message id does not match URL"));
+            }
+            Ok(match data::update_message(&state.data_folder, id, message_id, message).await {
+                Ok(message) => json(&message),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not update message"),
+            })
+        }
+        (Method::DELETE, [id, "messages", message_id]) => {
+            Ok(match data::delete_message(&state.data_folder, id, message_id).await {
+                Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete message"),
+            })
+        }
+        _ => Err(req),
+    }
+}
+
+async fn agent_events(state: &State, req: &Request<Incoming>, path: &str) -> Resp {
+    let id = path["/api/v1/agent/sessions/".len()..path.len() - "/events".len()].to_owned();
+    let Some(agent) = state.agent.clone() else {
+        return text(
+            StatusCode::FORBIDDEN,
+            "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+        );
+    };
+    let after = crate::core::web_server::agent_runs::resume_point(
+        query_param(req.uri().query(), "after").as_deref(),
+        req.headers().get("last-event-id").and_then(|v| v.to_str().ok()),
+    );
+    // A session that is live here streams: replay, then the tail.
+    if let Some(live) = agent.tail(&id, after) {
+        return live;
+    }
+    match tokio::task::spawn_blocking(move || agent.replay(&id, after)).await {
+        Ok(Ok(body)) => reply(StatusCode::OK, "text/event-stream", body),
+        Ok(Err(failure)) => {
+            let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+            reply(status, "text/plain; charset=utf-8", failure.body.as_str().unwrap_or("Request failed").to_owned())
+        }
+        Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+    }
+}
+
+/// Upload, parse and delete. `Err(req)` hands the request back when the path
+/// is not an upload route.
+async fn upload_routes(
+    state: &State,
+    method: &Method,
+    path: &str,
+    req: Request<Incoming>,
+) -> Result<Resp, Request<Incoming>> {
+    if path == "/api/v1/uploads" && *method == Method::POST {
+        let name = query_param(req.uri().query(), "name").unwrap_or_default();
+        let body = match collect_limited(req.into_body(), uploads::MAX_UPLOAD_BYTES, UPLOAD_BODY_DEADLINE).await {
+            Ok(body) => body,
+            Err(status) => return Ok(text(status, "File too large or too slow")),
+        };
+        let root = state.data_folder.clone();
+        return Ok(match tokio::task::spawn_blocking(move || uploads::store(&root, &name, &body)).await {
+            Ok(Ok(stored)) => json_created(&stored),
+            Ok(Err(uploads::StoreError::OverQuota)) => {
+                text(StatusCode::INSUFFICIENT_STORAGE, "Upload storage is full")
+            }
+            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not store upload"),
+        });
+    }
+    if path == "/api/v1/uploads/parse" && *method == Method::POST {
+        let body = match read_json(req).await {
+            Ok(body) => body,
+            Err(response) => return Ok(response),
+        };
+        let (Some(file), kind) = (str_field(&body, "path"), str_field(&body, "type").unwrap_or("")) else {
+            return Ok(text(StatusCode::BAD_REQUEST, "path is required"));
+        };
+        let (root, file, kind) = (state.data_folder.clone(), file.to_owned(), kind.to_owned());
+        return Ok(match tokio::task::spawn_blocking(move || uploads::parse(&root, &file, &kind)).await {
+            Ok(Ok(parsed)) => json(&serde_json::json!({ "text": parsed })),
+            Ok(Err(message)) => reply(StatusCode::UNPROCESSABLE_ENTITY, "text/plain; charset=utf-8", message),
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Parser failed"),
+        });
+    }
+    if let Some(id) = path.strip_prefix("/api/v1/uploads/") {
+        if *method == Method::DELETE {
+            let (root, id) = (state.data_folder.clone(), id.to_owned());
+            return Ok(match tokio::task::spawn_blocking(move || uploads::delete(&root, &id)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid upload id"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete upload"),
+            });
+        }
+    }
+    Err(req)
+}
+
+async fn rpc_entry(
+    state: &State,
+    method: &Method,
+    command: &str,
+    session: Option<&str>,
+    client: std::net::IpAddr,
+    req: Request<Incoming>,
+) -> Resp {
+    if *method != Method::POST {
+        return text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
+    }
+    let Some(command) = percent_decode(command) else {
+        return text(StatusCode::BAD_REQUEST, "Invalid command");
+    };
+    let caller = super::runner::Caller::digest(session.unwrap_or(""), client);
+    // A message with pictures or files is far over the default body; the
+    // checks that bound it (image caps, text caps, the line cap) are the
+    // runner's, so only this one command is let through at the large size.
+    let limit = if command == "agent_run_start" { MAX_LARGE_JSON_BODY } else { MAX_JSON_BODY };
+    let args = match read_json_max(req, limit).await {
+        Ok(args) => args,
+        Err(response) => return response,
+    };
+    rpc_route(state, &command, args, &caller).await
+}
+
+/// `GET` of the thread list, one thread, or its messages; `None` for anything
+/// else.
+async fn thread_read_routes(state: &State, method: &Method, path: &str) -> Option<Resp> {
+    if *method == Method::GET && path == "/api/v1/threads" {
+        let root = state.data_folder.clone();
+        return Some(match tokio::task::spawn_blocking(move || data::threads(&root)).await {
+            Ok(Ok(threads)) => json(&threads),
+            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not list threads"),
+        });
+    }
+    if *method == Method::GET {
+        if let Some(rest) = path.strip_prefix("/api/v1/threads/") {
+            let (id, want_messages) = match rest.split_once('/') {
+                Some((id, "messages")) => (id, true),
+                None => (rest, false),
+                _ => return Some(text(StatusCode::NOT_FOUND, "Unknown API route")),
+            };
+            if crate::core::threads::utils::validate_thread_id(id).is_err() {
+                return Some(text(StatusCode::BAD_REQUEST, "Invalid thread id"));
+            }
+            let id = id.to_owned();
+            let root = state.data_folder.clone();
+            return Some(
+                match tokio::task::spawn_blocking(move || {
+                    if want_messages {
+                        data::messages(&root, &id).map(serde_json::Value::Array)
+                    } else {
+                        data::thread(&root, &id)
+                    }
+                })
+                .await
+                {
+                    Ok(Ok(value)) => json(&value),
+                    Ok(Err(_)) => text(StatusCode::NOT_FOUND, "Thread not found"),
+                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not read thread"),
+                },
+            );
+        }
+    }
+    None
+}
+
+async fn serve_asset(state: &State, method: &Method, path: &str) -> Resp {
+    let rel = path.strip_prefix('/').unwrap_or(path);
     let file = match static_files::resolve(&state.assets, rel) {
         Ok(file) => file,
         Err(StaticError::Forbidden) => return text(StatusCode::FORBIDDEN, "Forbidden path"),
         Err(StaticError::NotFound) => return text(StatusCode::NOT_FOUND, "Not found"),
     };
     let content_type = static_files::content_type(&file);
-    let body = if method == Method::HEAD {
+    let body = if *method == Method::HEAD {
         Bytes::new()
     } else {
         match tokio::fs::read(file).await {
@@ -2087,5 +2216,126 @@ mod tests {
         assert!(policy.contains("style-src 'self' 'unsafe-inline'"));
         assert!(policy.contains("script-src 'self'"));
         assert!(policy.contains("object-src 'none'"));
+    }
+}
+
+#[cfg(test)]
+mod auth_gate_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn only_the_listed_routes_are_public() {
+        let public = [
+            (Method::GET, "/healthz"),
+            (Method::POST, "/api/v1/shutdown"),
+            (Method::POST, "/api/v1/token"),
+            (Method::GET, "/login"),
+            (Method::POST, "/api/v1/session"),
+        ];
+        for (method, path) in &public {
+            assert_eq!(route_auth(method, path), Auth::Public, "{method} {path}");
+        }
+        // Same paths under another method, and everything else, sit behind the gate.
+        for (method, path) in [
+            (Method::POST, "/healthz"),
+            (Method::GET, "/api/v1/shutdown"),
+            (Method::GET, "/api/v1/token"),
+            (Method::POST, "/login"),
+            (Method::GET, "/api/v1/session"),
+            (Method::DELETE, "/api/v1/session"),
+            (Method::GET, "/api/v1/threads"),
+            (Method::GET, "/"),
+        ] {
+            assert_eq!(route_auth(&method, path), Auth::Session, "{method} {path}");
+        }
+    }
+
+    /// One raw HTTP/1.1 request; returns the status code.
+    async fn status(addr: &str, method: &str, path: &str) -> u16 {
+        let mut sock = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let request = format!(
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nOrigin: http://{addr}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        sock.write_all(request.as_bytes()).await.unwrap();
+        let mut raw = Vec::new();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), sock.read_to_end(&mut raw)).await;
+        let head = String::from_utf8_lossy(&raw);
+        head.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0)
+    }
+
+    #[tokio::test]
+    async fn all_non_public_routes_require_auth() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "ok").unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        // A port picked up front: the server only reports its address through
+        // the run file, which the test does not need.
+        let port = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+        let addr = format!("127.0.0.1:{port}");
+        let options = Options {
+            bind: addr.parse().unwrap(),
+            assets: dir.path().to_path_buf(),
+            data_folder: data.clone(),
+            auth_file: dir.path().join("auth.json"),
+            public_host: None,
+            allow_mcp_stdio: false,
+            trust_proxy: false,
+            agent_roots: Vec::new(),
+            agent_run: false,
+            agent_runner: Default::default(),
+            allowed_hosts: Vec::new(),
+            allowed_origins: Vec::new(),
+            llama_worker: None,
+            credential_file: Some(dir.path().join("credential.txt")),
+        };
+        let server = tokio::spawn(serve(options));
+        let mut up = false;
+        for _ in 0..100 {
+            if tokio::net::TcpStream::connect(&addr).await.is_ok() {
+                up = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(up, "the test server never came up");
+
+        // No session: a page load is sent to the sign-in page, every other
+        // request is refused.
+        let behind_the_gate = [
+            ("GET", "/"),
+            ("GET", "/index.html"),
+            ("GET", "/api/v1/threads"),
+            ("GET", "/api/v1/threads/abc"),
+            ("GET", "/api/v1/events"),
+            ("GET", "/api/v1/session"),
+            ("GET", "/api/v1/uploads/x"),
+            ("GET", "/api/v1/hardware"),
+            ("GET", "/api/v1/mcp/servers"),
+            ("GET", "/api/v1/agent/sessions/s1/events"),
+            ("POST", "/api/v1/threads"),
+            ("POST", "/api/v1/uploads"),
+            ("POST", "/api/v1/uploads/parse"),
+            ("POST", "/api/v1/rpc/list_threads"),
+            ("POST", "/api/v1/provider/stream"),
+            ("PUT", "/api/v1/threads/abc"),
+            ("DELETE", "/api/v1/threads/abc"),
+            ("DELETE", "/api/v1/sessions"),
+            ("DELETE", "/api/v1/session"),
+        ];
+        for (method, path) in behind_the_gate {
+            let code = status(&addr, method, path).await;
+            let want: &[u16] = if method == "GET" { &[303] } else { &[401] };
+            assert!(want.contains(&code), "{method} {path} answered {code} without a session");
+        }
+
+        // The public routes do not ask for one.
+        assert_eq!(status(&addr, "GET", "/healthz").await, 200);
+        assert_eq!(status(&addr, "GET", "/login").await, 200);
+        // The shutdown route is public but needs its own token.
+        assert_eq!(status(&addr, "POST", "/api/v1/shutdown").await, 403);
+
+        server.abort();
     }
 }
