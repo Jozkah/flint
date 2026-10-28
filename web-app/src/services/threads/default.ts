@@ -4,6 +4,7 @@
 
 import { ExtensionManager } from '@/lib/extension'
 import { ConversationalExtension, ExtensionTypeEnum } from '@janhq/core'
+import { requireConversational } from '@/services/conversationalExtension'
 import type { ThreadsService } from './types'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 
@@ -99,9 +100,8 @@ export class DefaultThreadsService implements ThreadsService {
       : [{ id: 'model-only', name: 'Model', model: modelPayload }]
 
     return (
-      ExtensionManager.getInstance()
-        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-        ?.createThread({
+      requireConversational()
+        .createThread({
           ...thread,
           assistants: assistantsPayload,
           metadata: {
@@ -122,7 +122,6 @@ export class DefaultThreadsService implements ThreadsService {
             assistants,
           } as Thread
         })
-        ?? thread
     )
   }
 
@@ -132,9 +131,7 @@ export class DefaultThreadsService implements ThreadsService {
       return
     }
 
-    await ExtensionManager.getInstance()
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.modifyThread({
+    await requireConversational().modifyThread({
         ...thread,
         // The thread's model is stored on its assistant entry, and read back
         // from assistants[0]. An empty list ("None" picked in the assistants
@@ -184,8 +181,6 @@ export class DefaultThreadsService implements ThreadsService {
       return
     }
 
-    await ExtensionManager.getInstance()
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.deleteThread(threadId)
+    await requireConversational().deleteThread(threadId)
   }
 }
