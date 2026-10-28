@@ -1131,7 +1131,14 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     if path == "/healthz" && method == Method::GET {
-        return text(StatusCode::OK, "ok");
+        // The marker lets `flint stop` tell this server from any other
+        // program that answers `/healthz` on a reused port.
+        let mut resp = text(StatusCode::OK, "ok");
+        resp.headers_mut().insert(
+            header::HeaderName::from_static(control::SERVER_MARKER_HEADER),
+            HeaderValue::from_static("1"),
+        );
+        return resp;
     }
     if path == "/api/v1/shutdown" && method == Method::POST {
         // Only `flint stop` knows this: the token lives in a file private to the

@@ -2475,6 +2475,10 @@ async fn run() {
                 Ok(app_lib::core::web_server::control::Stopped::NotRunning) => {
                     println!("No Flint server is running on {}.", data_folder.display())
                 }
+                Ok(app_lib::core::web_server::control::Stopped::Foreign) => {
+                    eprintln!("Something else is using the recorded server address and did not accept the stop request; nothing was ended.");
+                    std::process::exit(1);
+                }
                 Err(error) => {
                     eprintln!("Error: {error}");
                     std::process::exit(1);
