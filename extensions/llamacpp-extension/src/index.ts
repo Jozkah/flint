@@ -226,6 +226,40 @@ const LEGACY_NGL_DEFAULT = 100
 
 /// Matches the `timeout` default in settings.json.
 const DEFAULT_TIMEOUT = 600
+const TOKENIZE_TIMEOUT_MS = 60_000
+const EMBED_TIMEOUT_MS = 120_000
+
+/**
+ * fetch with a deadline for the response headers. A deadline hit rejects with
+ * `Request timed out`; an abort from `external` keeps its own reason.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  ms: number,
+  external?: AbortSignal
+): Promise<Response> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort(new Error('Request timed out'))
+  }, ms)
+  const onExternal = () => controller.abort(external?.reason)
+  if (external) {
+    if (external.aborted) controller.abort(external.reason)
+    else external.addEventListener('abort', onExternal, { once: true })
+  }
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (e) {
+    if (timedOut) throw new Error('Request timed out')
+    throw e
+  } finally {
+    clearTimeout(timer)
+    external?.removeEventListener('abort', onExternal)
+  }
+}
 
 // Short and non-empty: enough to exercise tokenize plus pooling without making
 // setup wait on a long prompt.
@@ -2901,9 +2935,23 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
     let jsonStr = ''
+    // After the headers arrive the stream may still stall; abort it when no
+    // chunk shows up for the configured timeout (a total cap would kill long
+    // generations).
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer)
+      idleTimer = setTimeout(
+        () => combinedController.abort(new Error('Request timed out')),
+        this.timeout * 1000
+      )
+    }
     try {
       while (true) {
+        armIdle()
         const { done, value } = await reader.read()
+        // Not waiting on the server while the consumer processes this chunk.
+        if (idleTimer) clearTimeout(idleTimer)
 
         if (done) {
           break
@@ -2952,6 +3000,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         }
       }
     } finally {
+      if (idleTimer) clearTimeout(idleTimer)
       // Cancel first so an early consumer exit closes the HTTP body instead of
       // leaving it open until the abort signal fires.
       await reader.cancel().catch(() => {})
@@ -3006,12 +3055,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       return this.handleStreamingResponse(url, headers, body, abortController)
     }
     // Handle non-streaming response
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-      signal: abortController?.signal,
-    })
+    const response = await fetchWithTimeout(
+      url,
+      { method: 'POST', headers, body },
+      this.timeout * 1000,
+      abortController?.signal
+    )
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
@@ -3508,14 +3557,18 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const sInfo = await this.ensureEmbeddingModelLoaded()
     const counts: number[] = []
     for (const text of texts) {
-      const res = await fetch(`http://localhost:${sInfo.port}/tokenize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sInfo.api_key}`,
+      const res = await fetchWithTimeout(
+        `http://localhost:${sInfo.port}/tokenize`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sInfo.api_key}`,
+          },
+          body: JSON.stringify({ content: text, model: sInfo.model_id }),
         },
-        body: JSON.stringify({ content: text, model: sInfo.model_id }),
-      })
+        TOKENIZE_TIMEOUT_MS
+      )
       if (!res.ok) {
         throw new Error(`Tokenize request failed with status ${res.status}`)
       }
@@ -3567,11 +3620,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         model: session.model_id,
         encoding_format: 'float',
       })
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers,
-        body,
-      })
+      const response = await fetchWithTimeout(
+        baseUrl,
+        { method: 'POST', headers, body },
+        EMBED_TIMEOUT_MS
+      )
       return response
     }
 
