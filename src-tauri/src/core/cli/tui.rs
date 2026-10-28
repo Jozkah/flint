@@ -23106,7 +23106,10 @@ mod tests {
         assert_eq!(app.input, "draft");
         assert_eq!(app.scrollback, 1);
 
+        // Esc clears the draft but keeps it in recall, newest of all.
         press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
         assert_eq!(app.cursor, "second".len(), "caret sits at the end");
@@ -23118,6 +23121,8 @@ mod tests {
 
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "", "past the newest is a fresh message");
         assert_eq!(app.scrollback, 1, "recall never scrolls the transcript");
