@@ -136,14 +136,16 @@ fn resolve_bare_program(
     path: &std::ffi::OsStr,
     pathext: &str,
 ) -> Option<std::path::PathBuf> {
-    let as_path = std::path::Path::new(name);
-    if name.is_empty()
-        || name.contains(['/', '\\'])
-        || as_path.extension().is_some()
-    {
+    let lower = name.to_ascii_lowercase();
+    let has_executable_ext = pathext
+        .split(';')
+        .filter(|e| !e.is_empty())
+        .any(|ext| lower.ends_with(&ext.to_ascii_lowercase()));
+    if name.is_empty() || name.contains(['/', '\\']) || has_executable_ext {
         return None;
     }
-    std::env::split_paths(path).find_map(|dir| {
+    // A relative or empty PATH entry means the working directory: never search it.
+    std::env::split_paths(path).filter(|dir| dir.is_absolute()).find_map(|dir| {
         pathext
             .split(';')
             .filter(|e| !e.is_empty())
@@ -169,6 +171,15 @@ mod launchable_tests {
         assert!(super::resolve_bare_program("C:/tools/npx", &path, ".CMD").is_none());
         assert!(super::resolve_bare_program("npx.cmd", &path, ".CMD").is_none());
         assert!(super::resolve_bare_program("absent", &path, ".CMD").is_none());
+        // A dotted name that is not an executable extension still resolves.
+        std::fs::write(dir.join("python3.11.exe"), "x").unwrap();
+        assert_eq!(
+            super::resolve_bare_program("python3.11", &path, ".EXE").unwrap(),
+            dir.join("python3.11.exe")
+        );
+        // Empty and relative PATH entries are ignored.
+        let rel = std::ffi::OsString::from(if cfg!(windows) { ";bin" } else { ":bin" });
+        assert!(super::resolve_bare_program("npx", &rel, ".CMD").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

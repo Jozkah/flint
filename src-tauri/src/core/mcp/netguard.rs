@@ -113,6 +113,15 @@ pub(crate) fn mixed_answers_error(host: &str, answers: &[IpAddr]) -> Option<Stri
     ))
 }
 
+/// A plain http request sent on to the same host over https, which moves from
+/// port 80 to 443 by itself and is the one port change a redirect may make.
+fn is_https_upgrade(first: &Url, to: &Url) -> bool {
+    first.scheme() == "http"
+        && to.scheme() == "https"
+        && first.port().is_none()
+        && to.port().is_none()
+}
+
 /// Why a redirect from `first` (where the request started) to `to` is refused.
 pub(crate) fn redirect_refusal(first: &Url, to: &Url, hops: usize) -> Option<String> {
     if hops > MAX_REDIRECTS {
@@ -128,6 +137,13 @@ pub(crate) fn redirect_refusal(first: &Url, to: &Url, hops: usize) -> Option<Str
     }
     if first.scheme() == "https" && to.scheme() != "https" {
         return Some(format!("refused a redirect from https to {}", to.scheme()));
+    }
+    if first.port_or_known_default() != to.port_or_known_default() && !is_https_upgrade(first, to) {
+        return Some(format!(
+            "refused a redirect to another port ({:?} to {:?})",
+            first.port_or_known_default(),
+            to.port_or_known_default()
+        ));
     }
     let literal = match to.host() {
         Some(Host::Ipv4(ip)) => Some(IpAddr::V4(ip)),
@@ -330,6 +346,9 @@ mod tests {
         assert!(redirect_refusal(&from, &url("https://127.0.0.1/x"), 1).is_some());
         assert!(redirect_refusal(&from, &url("https://169.254.169.254/latest"), 1).is_some());
         // A server configured at a private literal may redirect within itself.
+        assert!(redirect_refusal(&url("https://mcp.a.test/x"), &url("https://mcp.a.test:8443/x"), 1).is_some());
+        assert!(redirect_refusal(&url("http://mcp.a.test/x"), &url("https://mcp.a.test/x"), 1).is_none());
+        assert!(redirect_refusal(&url("http://mcp.a.test/x"), &url("https://mcp.a.test:8443/x"), 1).is_some());
         assert!(redirect_refusal(&url("http://10.0.0.5/a"), &url("http://10.0.0.5/b"), 1).is_none());
         assert!(redirect_refusal(&url("http://10.0.0.5/a"), &url("http://10.0.0.6/b"), 1).is_some());
         assert!(redirect_refusal(&from, &from, MAX_REDIRECTS + 1).unwrap().contains("too many"));

@@ -58,14 +58,17 @@ impl CredentialStore {
     /// Replace the stored credential for `provider`. An empty record never
     /// exists: `store` with a value that serializes to nothing is rejected.
     pub fn store(provider: &str, credential: &Credential) -> Result<(), String> {
+        if provider.is_empty() || provider.contains(':') || provider.chars().any(char::is_control) {
+            return Err(format!("invalid provider id {provider:?}"));
+        }
+        if matches!(credential, Credential::ApiKey(key) if key.trim().is_empty()) {
+            return Err("API key is empty".to_string());
+        }
         let record = serde_json::json!({
             "version": CREDENTIAL_VERSION,
             "credential": credential,
         });
         let raw = record.to_string();
-        if raw.is_empty() {
-            return Err("credential record serialized to nothing".to_string());
-        }
         provider_secrets::store_secret_record(&secret_key(provider), &raw)
     }
 
@@ -143,6 +146,13 @@ mod tests {
     use super::*;
     use crate::core::server::provider_secrets::TEST_ENV_LOCK;
     use crate::core::server::provider_secrets::TestEnvGuard;
+
+    #[test]
+    fn empty_keys_and_bad_provider_ids_are_refused_before_storing() {
+        assert!(CredentialStore::store("openai", &Credential::ApiKey("  ".into())).is_err());
+        assert!(CredentialStore::store("a:b", &Credential::ApiKey("k".into())).is_err());
+        assert!(CredentialStore::store("", &Credential::ApiKey("k".into())).is_err());
+    }
 
     struct TempSecrets {
         _guard: TestEnvGuard,
