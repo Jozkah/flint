@@ -1421,7 +1421,6 @@ struct PersistTarget {
     history: Vec<serde_json::Value>,
     /// The checkout this run worked in, recorded on the thread so a later
     /// `--resume` reattaches to it.
-    #[cfg_attr(feature = "cli", allow(dead_code))]
     workspace: Option<worktree::Worktree>,
     /// `--ephemeral`: nothing about this run is written to the thread store.
     ephemeral: bool,
@@ -1749,7 +1748,6 @@ fn latest_snapshot(thread: Option<&serde_json::Value>) -> Option<String> {
 /// Without this a resumed session branches a *fresh* worktree and the model
 /// reads a pristine tree, silently losing everything the run it is continuing
 /// did in there.
-#[cfg_attr(feature = "cli", allow(dead_code))]
 fn worktree_metadata(
     agent_dir: &std::path::Path,
     thread_id: Option<&str>,
@@ -2589,7 +2587,8 @@ async fn run_agent_loop(
     // killed mid-turn otherwise leaves a checkpoint in a thread that no
     // listing knows, and `--resume` cannot name it.
     if let Some(thread) = persist.thread_id.as_deref().filter(|_| !persist.ephemeral) {
-        if let Err(e) = cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, None) {
+        let meta = worktree_metadata(&persist.agent_dir, Some(thread), persist.workspace.as_ref());
+        if let Err(e) = cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, meta) {
             eprintln!("(could not save session before the run: {e})");
         }
     }
@@ -2893,8 +2892,8 @@ fn persist_headless_run(
         thread_id,
         model,
         mut history,
+        workspace,
         ephemeral,
-        ..
     } = persist;
     let mut session_id = thread_id.clone();
     let mut final_text = None;
@@ -2936,13 +2935,9 @@ fn persist_headless_run(
                 }
             }
         }
-        match cli_save_thread(
-            &agent_dir,
-            thread_id.as_deref().or(save_as),
-            &model,
-            &history,
-            None,
-        ) {
+        let save_id = thread_id.as_deref().or(save_as);
+        let meta = worktree_metadata(&agent_dir, save_id, workspace.as_ref());
+        match cli_save_thread(&agent_dir, save_id, &model, &history, meta) {
             Ok(id) => {
                 session_id = Some(id);
                 saved = true;
@@ -5878,6 +5873,41 @@ mod tests {
 
         // No worktree: `None` keeps `cli_save_thread`'s preserve-existing path.
         assert_eq!(worktree_metadata(base, Some(&id), None), None);
+    }
+
+    /// `agent run --worktree` has to leave the checkout on the thread it saves,
+    /// both at the start of the run and when it finishes, or `--resume` opens a
+    /// fresh worktree and loses the edits.
+    #[test]
+    fn headless_worktree_run_records_worktree_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let workspace = worktree::Worktree {
+            path: std::path::PathBuf::from("/home/u/.jan/worktrees/p-abc/cafe0001"),
+            branch: "jan/agent/cafe0001".to_string(),
+        };
+        let history = vec![serde_json::json!({ "role": "user", "content": "do it" })];
+        let persist = PersistTarget {
+            agent_dir: base.to_path_buf(),
+            thread_id: None,
+            model: "m".to_string(),
+            history,
+            workspace: Some(workspace.clone()),
+            ephemeral: false,
+        };
+        let result: Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError> =
+            Ok(serde_json::json!({
+                "choices": [{ "message": { "content": "done" } }]
+            }));
+        let run = persist_headless_run(persist, &result, None, Some("11111111-1111-4111-8111-111111111111"));
+        assert!(run.saved);
+        let id = run.session_id.expect("session id");
+        let saved = cli_get_thread_in(base, &id).unwrap();
+        assert_eq!(
+            worktree::from_metadata(saved.get("metadata")),
+            Some(workspace),
+            "resume must find the checkout the run used"
+        );
     }
 
     /// A headless run takes no snapshots, so without capturing the source's
