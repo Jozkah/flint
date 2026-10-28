@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { invoke } from '@tauri-apps/api/core'
 import { backendStorage } from '@/lib/backendStorage'
+import { deferredPersistStorage } from '@/lib/deferredPersistStorage'
 import { localStorageKey } from '@/constants/localStorage'
 import { errorText } from '@/lib/errorText'
 
@@ -326,7 +327,11 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
     },
     {
       name: localStorageKey.coworkCheckpoints,
-      storage: createJSONStorage(() => backendStorage),
+      // Written off the click path: see deferredPersistStorage.
+      storage: deferredPersistStorage(
+        createJSONStorage(() => backendStorage)!,
+        1500
+      ),
       skipHydration: true,
       version: 1,
       // A chain persisted before `head` existed hydrates without it.

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
+import { deferredPersistStorage } from '@/lib/deferredPersistStorage'
 import {
   dismissBackground,
   dismissFinished,
@@ -116,7 +117,11 @@ export const useCoworkActivity = create<CoworkActivityState>()(
       // record lives in <jan_data>/settings.json rather than webview
       // localStorage. Async storage requires skipHydration plus an explicit
       // rehydrate in hydrateBackendStores().
-      storage: createJSONStorage(() => backendStorage),
+      // Written off the click path: see deferredPersistStorage.
+      storage: deferredPersistStorage(
+        createJSONStorage(() => backendStorage)!,
+        1500
+      ),
       skipHydration: true,
       version: 2,
       // v1 keyed tasks by the provider's raw call id, which nothing guarantees
