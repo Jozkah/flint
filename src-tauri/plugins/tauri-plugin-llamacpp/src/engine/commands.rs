@@ -502,6 +502,8 @@ pub async fn engine_devices<R: tauri::Runtime>(
     super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);
+    // Same cwd pin as a running worker: --list-devices loads every backend.
+    super::worker::pin_cwd(&mut cmd, &exe);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     // A driver that hangs during backend probing must not leave the worker
