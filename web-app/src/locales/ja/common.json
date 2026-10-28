@@ -1203,6 +1203,7 @@
     "btwFailed": "補足の質問に答えられませんでした。"
   },
   "autoCompactNeedsWindow": "自動圧縮にはコンテキストサイズが必要ですが、Flint は {{model}} のコンテキストサイズを見つけられません。長いチャットがいっぱいになる前に圧縮されるよう、このモデルの最大コンテキストトークン数を設定してください。長さを理由にプロバイダーがリクエストを拒否した場合、Flint は圧縮して 1 回だけ再試行します。",
+  "ollamaWindowTruncating": "Ollama は {{model}} を {{tokens}} トークンのコンテキストで実行しており、それを超える古いメッセージを通知なしに削除します。Flint はこのサイズに合わせて圧縮するようになりました。より多くの履歴を残すには、Ollama サーバー側で OLLAMA_CONTEXT_LENGTH を設定するか、モデルの Modelfile に PARAMETER num_ctx を追加してください。",
   "compaction": {
     "working": "会話を圧縮しています…",
     "divider_one": "コンテキストを圧縮しました — 以前のメッセージ {{count}} 件を要約",
@@ -2736,6 +2737,10 @@
     "truncatedOnAdd": "{{total}} のうち最初の {{shown}} を表示しています（添付ファイルは追加時に切り詰められました）"
   },
   "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
+  "chatPaneDrop": {
+    "overlay": "ファイルをドロップして添付",
+    "unsupported": "{{names}} を添付できません: このファイル形式はサポートされていません。"
+  },
   "sampler": {
     "label": "サンプリングパラメータ",
     "notSupported": "{{provider}} では未対応"

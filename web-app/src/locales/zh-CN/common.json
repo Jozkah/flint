@@ -1205,6 +1205,7 @@
     "btwFailed": "无法回答旁支问题。"
   },
   "autoCompactNeedsWindow": "自动压缩需要上下文大小，而 Flint 找不到 {{model}} 的上下文大小。请为此模型设置最大上下文 Token 数，以便长聊天在填满之前被压缩。如果提供商因长度拒绝请求，Flint 会压缩并重试一次。",
+  "ollamaWindowTruncating": "Ollama 以 {{tokens}} token 的上下文运行 {{model}}，并会静默丢弃超出部分中最早的消息。Flint 现在会按此大小进行压缩。如需保留更多历史，请在 Ollama 服务器上调大：设置 OLLAMA_CONTEXT_LENGTH，或在模型的 Modelfile 中添加 PARAMETER num_ctx。",
   "compaction": {
     "working": "正在压缩对话…",
     "divider_one": "上下文已压缩 — 已总结 {{count}} 条较早的消息",
@@ -2741,6 +2742,10 @@
     "truncatedOnAdd": "显示 {{total}} 中的前 {{shown}}（附件在添加时已被截断）"
   },
   "dropAttachFailed": "无法附加拖放的文件",
+  "chatPaneDrop": {
+    "overlay": "拖放文件以添加附件",
+    "unsupported": "无法添加 {{names}}：不支持此文件类型。"
+  },
   "sampler": {
     "label": "采样参数",
     "notSupported": "{{provider}} 不支持"

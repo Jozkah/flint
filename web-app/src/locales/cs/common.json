@@ -1230,6 +1230,7 @@
     "btwFailed": "Na vedlejší otázku se nepodařilo odpovědět."
   },
   "autoCompactNeedsWindow": "Automatické zhušťování potřebuje velikost kontextu a pro {{model}} žádnou Flint nenašel. Nastavte pro tento model Max. počet tokenů kontextu, aby se dlouhé chaty zhustily dřív, než ho zaplní. Pokud poskytovatel odmítne požadavek kvůli jeho délce, Flint zhustí a zkusí to jednou znovu.",
+  "ollamaWindowTruncating": "Ollama spouští {{model}} s kontextem {{tokens}} tokenů a nejstarší zprávy nad tento limit tiše zahazuje. Flint nyní kompaktuje podle této velikosti. Chcete-li zachovat více historie, zvyšte ji na serveru Ollama: nastavte OLLAMA_CONTEXT_LENGTH nebo přidejte PARAMETER num_ctx do Modelfile modelu.",
   "compaction": {
     "working": "Zhušťování konverzace…",
     "divider_one": "Kontext zhuštěn — shrnuta {{count}} starší zpráva",
@@ -2845,6 +2846,10 @@
     "truncatedOnAdd": "Zobrazeno prvních {{shown}} z {{total}} (příloha byla při přidání zkrácena)"
   },
   "dropAttachFailed": "Přetažené soubory se nepodařilo připojit",
+  "chatPaneDrop": {
+    "overlay": "Přetáhněte soubory sem a připojte je",
+    "unsupported": "{{names}} nelze připojit: tento typ souboru není podporován."
+  },
   "sampler": {
     "label": "Parametry vzorkování",
     "notSupported": "Nepodporuje {{provider}}"

@@ -1205,6 +1205,7 @@
     "btwFailed": "Die Nebenfrage konnte nicht beantwortet werden."
   },
   "autoCompactNeedsWindow": "Die automatische Komprimierung braucht eine Kontextgröße, und für {{model}} kann Flint keine finden. Lege für dieses Modell „Max. Kontext-Tokens“ fest, damit lange Chats komprimiert werden, bevor sie ihn füllen. Wenn der Anbieter eine Anfrage wegen ihrer Länge ablehnt, komprimiert Flint und versucht es einmal erneut.",
+  "ollamaWindowTruncating": "Ollama führt {{model}} mit einem Kontext von {{tokens}} Token aus und verwirft ältere Nachrichten darüber hinaus stillschweigend. Flint komprimiert jetzt anhand dieser Größe. Für mehr Verlauf erhöhe sie auf dem Ollama-Server: setze OLLAMA_CONTEXT_LENGTH oder füge PARAMETER num_ctx zur Modelfile des Modells hinzu.",
   "compaction": {
     "working": "Unterhaltung wird komprimiert…",
     "divider_one": "Kontext komprimiert — {{count}} frühere Nachricht zusammengefasst",
@@ -2742,6 +2743,10 @@
     "truncatedOnAdd": "Die ersten {{shown}} von {{total}} werden angezeigt (der Anhang wurde beim Hinzufügen gekürzt)"
   },
   "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden",
+  "chatPaneDrop": {
+    "overlay": "Dateien hier ablegen, um sie anzuhängen",
+    "unsupported": "{{names}} kann nicht angehängt werden: Dieser Dateityp wird nicht unterstützt."
+  },
   "sampler": {
     "label": "Sampling-Parameter",
     "notSupported": "Wird von {{provider}} nicht unterstützt"

@@ -1213,6 +1213,7 @@
     "btwFailed": "No se pudo responder la pregunta aparte."
   },
   "autoCompactNeedsWindow": "La compactación automática necesita un tamaño de contexto, y {{model}} no tiene ninguno que Flint pueda encontrar. Define los tokens de contexto máximos para este modelo para que los chats largos se compacten antes de llenarlo. Si el proveedor rechaza una solicitud por su longitud, Flint compacta y reintenta una vez.",
+  "ollamaWindowTruncating": "Ollama ejecuta {{model}} con un contexto de {{tokens}} tokens y descarta en silencio los mensajes más antiguos que lo superan. Flint ahora compacta según ese tamaño. Para conservar más historial, auméntalo en el servidor de Ollama: define OLLAMA_CONTEXT_LENGTH o añade PARAMETER num_ctx al Modelfile del modelo.",
   "compaction": {
     "working": "Compactando la conversación…",
     "divider_one": "Contexto compactado: {{count}} mensaje anterior resumido",
@@ -2789,6 +2790,10 @@
     "truncatedOnAdd": "Se muestran los primeros {{shown}} de {{total}} (el adjunto se recortó al añadirlo)"
   },
   "dropAttachFailed": "No se pudieron adjuntar los archivos soltados",
+  "chatPaneDrop": {
+    "overlay": "Suelta archivos para adjuntarlos",
+    "unsupported": "No se puede adjuntar {{names}}: este tipo de archivo no es compatible."
+  },
   "sampler": {
     "label": "Parámetros de muestreo",
     "notSupported": "No compatible con {{provider}}"

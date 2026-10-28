@@ -1210,6 +1210,7 @@
     "btwFailed": "Impossible de répondre à la question annexe."
   },
   "autoCompactNeedsWindow": "Le compactage automatique nécessite une taille de contexte, et Flint n'en trouve aucune pour {{model}}. Définissez le nombre maximal de jetons de contexte pour ce modèle afin que les longues conversations soient compactées avant de le saturer. Si le fournisseur refuse une requête à cause de sa longueur, Flint compacte et réessaie une fois.",
+  "ollamaWindowTruncating": "Ollama exécute {{model}} avec un contexte de {{tokens}} jetons et supprime silencieusement les messages les plus anciens au-delà. Flint compacte désormais selon cette taille. Pour conserver plus d'historique, augmentez-la sur le serveur Ollama : définissez OLLAMA_CONTEXT_LENGTH ou ajoutez PARAMETER num_ctx au Modelfile du modèle.",
   "compaction": {
     "working": "Compactage de la conversation…",
     "divider_one": "Contexte compacté — {{count}} message précédent résumé",
@@ -2788,6 +2789,10 @@
     "truncatedOnAdd": "Affichage des {{shown}} premiers sur {{total}} (la pièce jointe a été tronquée lors de son ajout)"
   },
   "dropAttachFailed": "Impossible de joindre les fichiers déposés",
+  "chatPaneDrop": {
+    "overlay": "Déposez des fichiers pour les joindre",
+    "unsupported": "Impossible de joindre {{names}} : ce type de fichier n'est pas pris en charge."
+  },
   "sampler": {
     "label": "Paramètres d'échantillonnage",
     "notSupported": "Non pris en charge par {{provider}}"

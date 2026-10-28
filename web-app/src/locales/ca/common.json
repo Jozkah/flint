@@ -1214,6 +1214,7 @@
     "btwFailed": "No s'ha pogut respondre la pregunta lateral."
   },
   "autoCompactNeedsWindow": "La compactació automàtica necessita una mida de context, i {{model}} no en té cap que Flint pugui trobar. Estableix el màxim de tokens de context per a aquest model perquè els xats llargs es compactin abans d'omplir-lo. Si el proveïdor rebutja una petició per la seva longitud, Flint compacta i ho torna a provar una vegada.",
+  "ollamaWindowTruncating": "Ollama executa {{model}} amb un context de {{tokens}} tokens i descarta en silenci els missatges més antics que el superen. Ara Flint compacta segons aquesta mida. Per conservar més historial, augmenta-la al servidor d'Ollama: defineix OLLAMA_CONTEXT_LENGTH o afegeix PARAMETER num_ctx al Modelfile del model.",
   "compaction": {
     "working": "S'està compactant la conversa…",
     "divider_one": "Context compactat: {{count}} missatge anterior resumit",
@@ -2788,6 +2789,10 @@
     "truncatedOnAdd": "Es mostren els primers {{shown}} de {{total}} (l'adjunt es va retallar en afegir-lo)"
   },
   "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar",
+  "chatPaneDrop": {
+    "overlay": "Deixa anar fitxers per adjuntar-los",
+    "unsupported": "No es pot adjuntar {{names}}: aquest tipus de fitxer no és compatible."
+  },
   "sampler": {
     "label": "Paràmetres de mostreig",
     "notSupported": "No compatible amb {{provider}}"

@@ -1203,6 +1203,7 @@
     "btwFailed": "Yan soru yanıtlanamadı."
   },
   "autoCompactNeedsWindow": "Otomatik sıkıştırma bir bağlam boyutu gerektirir ve {{model}} için Flint'in bulabildiği bir boyut yok. Uzun sohbetlerin dolmadan önce sıkıştırılması için bu model için En Yüksek Bağlam Token'ını ayarlayın. Sağlayıcı bir isteği uzunluğu nedeniyle reddederse Flint sıkıştırır ve bir kez yeniden dener.",
+  "ollamaWindowTruncating": "Ollama, {{model}} modelini {{tokens}} token bağlamla çalıştırıyor ve bunu aşan en eski mesajları sessizce atıyor. Flint artık bu boyuta göre sıkıştırıyor. Daha fazla geçmiş tutmak için Ollama sunucusunda artırın: OLLAMA_CONTEXT_LENGTH ayarlayın veya modelin Modelfile dosyasına PARAMETER num_ctx ekleyin.",
   "compaction": {
     "working": "Konuşma sıkıştırılıyor…",
     "divider_one": "Bağlam sıkıştırıldı — {{count}} önceki mesaj özetlendi",
@@ -2740,6 +2741,10 @@
     "truncatedOnAdd": "{{total}} içinden ilk {{shown}} gösteriliyor (ek, eklenirken kısaltıldı)"
   },
   "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
+  "chatPaneDrop": {
+    "overlay": "Eklemek için dosyaları bırakın",
+    "unsupported": "{{names}} eklenemiyor: bu dosya türü desteklenmiyor."
+  },
   "sampler": {
     "label": "Örnekleme parametreleri",
     "notSupported": "{{provider}} tarafından desteklenmiyor"
