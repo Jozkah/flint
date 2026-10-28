@@ -324,7 +324,7 @@ enum Cmd {
     SetAccess { mode: PermissionMode, reply: Reply },
     Rename { title: String, reply: Reply },
     Worktree { op: super::session_worktree::Op, caller: Caller, reply: Reply },
-    Delete { reply: Reply },
+    Delete { force: bool, reply: Reply },
     /// Leave memory (the thread stays); refused while a turn is active.
     Close { reply: Reply },
 }
@@ -682,9 +682,10 @@ impl Runner {
             }
             "agent_run_delete" => {
                 let id = text(args, "id")?;
+                let force = args.get("force").and_then(Value::as_bool).unwrap_or(false);
                 match self.get(id) {
-                    Some(live) => self.send(&live, |reply| Cmd::Delete { reply }).await,
-                    None => self.delete_stored(id),
+                    Some(live) => self.send(&live, |reply| Cmd::Delete { force, reply }).await,
+                    None => self.delete_stored(id, force),
                 }
             }
             command if wt::handles(command) => self.worktree(command, args, caller, confined).await,
@@ -796,12 +797,14 @@ impl Runner {
     }
 
     /// A stored session that is not live: it may be deleted if the runner
-    /// started it.
-    fn delete_stored(&self, id: &str) -> Result<Value, Fail> {
+    /// started it. Its worktree goes with it, or the delete is refused
+    /// (`session_worktree::release_for_delete`).
+    fn delete_stored(&self, id: &str, force: bool) -> Result<Value, Fail> {
         let (_, thread) = agent_runs::open(&self.data_folder, &self.roots, id)?;
         if thread.pointer("/metadata/source").and_then(Value::as_str) != Some("runner") {
             return Err(fail(403, "only sessions started on this server can be deleted here"));
         }
+        wt::release_for_delete(&self.data_folder, &self.roots, id, force)?;
         crate::core::cli::delete_thread_at(&self.data_folder, id)
             .map_err(|m| fail(500, format!("could not delete the session: {m}")))?;
         self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "deleted" }));
@@ -1911,7 +1914,15 @@ async fn actor(
                         let _ = reply.send(Ok(json!({})));
                         break;
                     }
-                    Cmd::Delete { reply } => {
+                    Cmd::Delete { force, reply } => {
+                        // The worktree first: a refusal leaves the session, and
+                        // its running turn, exactly as they were.
+                        if let Err(refused) =
+                            wt::release_for_delete(&runner.data_folder, &runner.roots, &session.id, force)
+                        {
+                            let _ = reply.send(Err(refused));
+                            continue;
+                        }
                         if let Some(turn) = active.take() {
                             turn.task.runner.abort();
                             turn.task.steerer.abort();
