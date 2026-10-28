@@ -68,6 +68,12 @@ fn closed_output_panics_are_recognised() {
     ));
     assert!(super::is_closed_output_panic("failed printing to stderr: Broken pipe (os error 32)"));
     assert!(!super::is_closed_output_panic("index out of bounds"));
+    assert!(!super::is_closed_output_panic(
+        "failed printing to stdout: No space left on device (os error 28)"
+    ));
+    assert!(!super::is_closed_output_panic(
+        "failed printing to stdout: There is not enough space on the disk. (os error 112)"
+    ));
     assert!(!super::is_closed_output_panic(""));
 }
 

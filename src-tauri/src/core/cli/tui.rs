@@ -946,6 +946,7 @@ pub async fn run(
     // The last turn's journal may still be queued on the writer thread; a
     // process that exits now would lose it, and with it that turn's resume.
     app.join_journal();
+    app.agent_status.disable();
 
     // Clean exit: the terminal is restored below, so a later panic (the hook
     // stays installed for the process) must not restore it a second time.
@@ -1044,6 +1045,32 @@ struct LoopTasks {
 }
 
 impl LoopTasks {
+    /// Leaving the chat: stop every background job so none outlives the
+    /// interface (a sign-in poll, an MCP authorization holding a loopback
+    /// port, a compaction still spending tokens). The snapshot in flight is
+    /// awaited instead, so a checkpoint is either fully written or not started.
+    async fn shutdown(mut self) {
+        if let Some(c) = self.current.take() {
+            c.handle.abort();
+        }
+        if let Some(t) = self.mcp_task.take() { t.abort(); }
+        if let Some(t) = self.login_task.take() { t.abort(); }
+        if let Some(t) = self.login_begin_task.take() { t.abort(); }
+        if let Some(t) = self.login_claim_task.take() { t.abort(); }
+        if let Some(t) = self.mcp_job.take() { t.abort(); }
+        if let Some(t) = self.context_task.take() { t.abort(); }
+        if let Some(t) = self.usage_task.take() { t.abort(); }
+        if let Some(t) = self.plugin_install_task.take() { t.abort(); }
+        if let Some(t) = self.compact_task.take() { t.abort(); }
+        if let Some(t) = self.goal_task.take() { t.abort(); }
+        if let Some(t) = self.model_fetch_task.take() { t.abort(); }
+        if let Some(t) = self.branch_task.take() { t.abort(); }
+        if let Some(t) = self.hint_task.take() { t.abort(); }
+        if let Some(t) = self.snap_task.take() {
+            let _ = t.await;
+        }
+    }
+
     fn new(mcp_task: Option<tokio::task::JoinHandle<crate::core::cli::mcp::ConnectOutcome>>) -> Self {
         LoopTasks {
             current: None,
@@ -1567,9 +1594,7 @@ async fn chat_loop<B: Backend>(
         }
     }
 
-    if let Some(c) = tasks.current {
-        c.handle.abort();
-    }
+    tasks.shutdown().await;
     crate::core::agent::interaction::cancel_all(ask_requests).await;
     Ok(())
 }

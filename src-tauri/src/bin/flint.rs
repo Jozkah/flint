@@ -2363,9 +2363,21 @@ fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
 /// stdout or stderr. `println!` panics with "failed printing to stdout" when the
 /// reader has gone away -- `flint cli agent vcs | head` closes the pipe after
 /// ten lines -- and there is nobody left to tell about it.
+/// Only a closed reader counts: a full disk or another write failure on a
+/// redirect still panics, so the command exits non-zero instead of "succeeding"
+/// with truncated output.
 fn is_closed_output_panic(message: &str) -> bool {
-    message.starts_with("failed printing to stdout")
-        || message.starts_with("failed printing to stderr")
+    let Some(reason) = message
+        .strip_prefix("failed printing to stdout")
+        .or_else(|| message.strip_prefix("failed printing to stderr"))
+    else {
+        return false;
+    };
+    // EPIPE on Unix; ERROR_BROKEN_PIPE (109) / ERROR_NO_DATA (232) on Windows.
+    reason.contains("Broken pipe")
+        || reason.contains("os error 32)")
+        || reason.contains("os error 109)")
+        || reason.contains("os error 232)")
 }
 
 /// Exit quietly, instead of printing a panic, when a command's output stream
