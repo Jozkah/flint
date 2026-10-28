@@ -548,7 +548,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         super::netguard::enforce_url(&url)?;
         let base = crate::core::net::tls::apply13(
             super::netguard::guard13(reqwest13::Client::builder())
-                .default_headers(header_map(&config_params.headers))
+                .default_headers(header_map(&name, &config_params.headers)?)
                 .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX)),
         )
         .build()
@@ -966,19 +966,23 @@ fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
 
 /// Uses `reqwest13` because rmcp's streamable-http transport is implemented for
 /// reqwest 0.13.
-fn header_map(headers: &serde_json::Map<String, Value>) -> reqwest13::header::HeaderMap {
+///
+/// An invalid name or value (or a non-string value) is an error naming the
+/// header and server, never the value, which may be a secret.
+fn header_map(
+    server: &str,
+    headers: &serde_json::Map<String, Value>,
+) -> Result<reqwest13::header::HeaderMap, String> {
     let mut map = reqwest13::header::HeaderMap::new();
     for (key, value) in headers.iter() {
-        if let Some(v) = value.as_str() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest13::header::HeaderName::from_bytes(key.as_bytes()),
-                reqwest13::header::HeaderValue::from_str(v),
-            ) {
-                map.insert(name, val);
-            }
-        }
+        let invalid = || format!("header '{key}' for server '{server}' is not a valid HTTP header");
+        let v = value.as_str().ok_or_else(invalid)?;
+        let name = reqwest13::header::HeaderName::from_bytes(key.as_bytes())
+            .map_err(|_| invalid())?;
+        let val = reqwest13::header::HeaderValue::from_str(v).map_err(|_| invalid())?;
+        map.insert(name, val);
     }
-    map
+    Ok(map)
 }
 
 /// Identity sent on `initialize` for every transport, so servers see one
@@ -2033,5 +2037,49 @@ mod stdio_stop_tests {
     #[test]
     fn the_grace_period_is_300_ms() {
         assert_eq!(STDIO_EXIT_GRACE, Duration::from_millis(300));
+    }
+}
+
+#[cfg(test)]
+mod header_map_tests {
+    use super::header_map;
+    use serde_json::{json, Map, Value};
+
+    fn headers(v: Value) -> Map<String, Value> {
+        v.as_object().cloned().unwrap()
+    }
+
+    #[test]
+    fn header_map_rejects_newline_value() {
+        let h = headers(json!({"X-Token": "abc\ndef"}));
+        assert!(header_map("srv", &h).is_err());
+    }
+
+    #[test]
+    fn header_map_rejects_space_in_name() {
+        let h = headers(json!({"Bad Name": "v"}));
+        assert!(header_map("srv", &h).is_err());
+    }
+
+    #[test]
+    fn header_map_rejects_non_string_value() {
+        let h = headers(json!({"X-N": 5}));
+        assert!(header_map("srv", &h).is_err());
+    }
+
+    #[test]
+    fn header_map_error_does_not_leak_value() {
+        let h = headers(json!({"X-Token": "sekret\nvalue"}));
+        let err = header_map("srv", &h).unwrap_err();
+        assert!(err.contains("X-Token") && err.contains("srv"));
+        assert!(!err.contains("sekret"));
+    }
+
+    #[test]
+    fn header_map_valid_roundtrip() {
+        let h = headers(json!({"X-Token": "abc", "Authorization": "Bearer t"}));
+        let map = header_map("srv", &h).unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("x-token").unwrap(), "abc");
     }
 }
