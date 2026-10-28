@@ -48,14 +48,11 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual(mockMessages)
     })
 
-    it('should return empty array when extension not found', async () => {
+    it('should reject when extension not found', async () => {
       mockExtensionManager.get.mockReturnValue(null)
       const threadId = 'thread-123'
 
-      const result = await messagesService.fetchMessages(threadId)
-
-      expect(mockExtensionManager.get).toHaveBeenCalledWith(ExtensionTypeEnum.Conversational)
-      expect(result).toEqual([])
+      await expect(messagesService.fetchMessages(threadId)).rejects.toThrow('not available yet')
     })
 
     it('should reject when listMessages fails', async () => {
@@ -93,14 +90,11 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual(message)
     })
 
-    it('should return original message when extension not found', async () => {
+    it('should reject createMessage when extension not found', async () => {
       mockExtensionManager.get.mockReturnValue(null)
       const message = { id: 'msg-1', threadId: 'thread-123', content: 'Hello', role: 'user' }
 
-      const result = await messagesService.createMessage(message)
-
-      expect(mockExtensionManager.get).toHaveBeenCalledWith(ExtensionTypeEnum.Conversational)
-      expect(result).toEqual(message)
+      await expect(messagesService.createMessage(message)).rejects.toThrow('not available yet')
     })
 
     it('should reject when createMessage fails', async () => {
@@ -139,15 +133,18 @@ describe('DefaultMessagesService', () => {
       expect(result).toBeUndefined()
     })
 
-    it('should return undefined when extension not found', async () => {
+    it('should reject deleteMessage when extension not found', async () => {
       mockExtensionManager.get.mockReturnValue(null)
       const threadId = 'thread-123'
       const messageId = 'msg-1'
 
-      const result = await messagesService.deleteMessage(threadId, messageId)
+      await expect(messagesService.deleteMessage(threadId, messageId)).rejects.toThrow('not available yet')
+    })
 
-      expect(mockExtensionManager.get).toHaveBeenCalledWith(ExtensionTypeEnum.Conversational)
-      expect(result).toBeUndefined()
+    it('should still resolve temporary-chat calls without the extension', async () => {
+      mockExtensionManager.get.mockReturnValue(null)
+      await expect(messagesService.fetchMessages('temporary-chat')).resolves.toEqual([])
+      await expect(messagesService.deleteMessage('temporary-chat', 'm')).resolves.toBeUndefined()
     })
 
     it('should handle deleteMessage error', async () => {

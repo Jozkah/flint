@@ -254,7 +254,7 @@ describe('DefaultThreadsService', () => {
       )
     })
 
-    it('should handle createThread when extension manager returns null', async () => {
+    it('should reject createThread when the extension is not available', async () => {
       ;(ExtensionManager.getInstance as any).mockReturnValue({
         get: vi.fn().mockReturnValue(null),
       })
@@ -265,12 +265,22 @@ describe('DefaultThreadsService', () => {
         model: { id: 'gpt-4', provider: 'openai' },
       }
 
-      const result = await threadsService.createThread(inputThread as Thread)
-
-      expect(result).toEqual(inputThread)
+      await expect(
+        threadsService.createThread(inputThread as Thread)
+      ).rejects.toThrow('not available yet')
     })
 
-    it('should handle updateThread when extension manager returns null', async () => {
+    it('should still resolve a temporary thread without the extension', async () => {
+      ;(ExtensionManager.getInstance as any).mockReturnValue({
+        get: vi.fn().mockReturnValue(null),
+      })
+      const temp = { id: 'temporary-chat', title: 'T' }
+      await expect(
+        threadsService.createThread(temp as Thread)
+      ).resolves.toEqual(temp)
+    })
+
+    it('should reject updateThread when the extension is not available', async () => {
       ;(ExtensionManager.getInstance as any).mockReturnValue({
         get: vi.fn().mockReturnValue(null),
       })
@@ -281,19 +291,19 @@ describe('DefaultThreadsService', () => {
         model: { id: 'gpt-4', provider: 'openai' },
       }
 
-      const result = await threadsService.updateThread(thread as Thread)
-
-      expect(result).toBeUndefined()
+      await expect(
+        threadsService.updateThread(thread as Thread)
+      ).rejects.toThrow('not available yet')
     })
 
-    it('should handle deleteThread when extension manager returns null', async () => {
+    it('should reject deleteThread when the extension is not available', async () => {
       ;(ExtensionManager.getInstance as any).mockReturnValue({
         get: vi.fn().mockReturnValue(null),
       })
 
-      const result = await threadsService.deleteThread('test-id')
-
-      expect(result).toBeUndefined()
+      await expect(threadsService.deleteThread('test-id')).rejects.toThrow(
+        'not available yet'
+      )
     })
 
     it('should handle fetchThreads with threads missing metadata', async () => {

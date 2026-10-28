@@ -2,12 +2,8 @@
  * Default Messages Service - Web implementation
  */
 
-import { ExtensionManager } from '@/lib/extension'
-import {
-  ConversationalExtension,
-  ExtensionTypeEnum,
-  ThreadMessage,
-} from '@janhq/core'
+import { ThreadMessage } from '@janhq/core'
+import { requireConversational } from '@/services/conversationalExtension'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import type { MessagesService } from './types'
 
@@ -20,9 +16,7 @@ export class DefaultMessagesService implements MessagesService {
 
     // Let a backend failure reject so callers can tell "no messages" from
     // "could not load" instead of showing an empty thread.
-    const res = await ExtensionManager.getInstance()
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.listMessages(threadId)
+    const res = await requireConversational().listMessages(threadId)
     return res ?? []
   }
 
@@ -34,9 +28,7 @@ export class DefaultMessagesService implements MessagesService {
 
     // A failed write must reject so the caller can surface it; a null echo
     // (serve/web fallback) falls back to the input message.
-    const res = await ExtensionManager.getInstance()
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.createMessage(message)
+    const res = await requireConversational().createMessage(message)
     return res ?? message
   }
 
@@ -46,9 +38,7 @@ export class DefaultMessagesService implements MessagesService {
       return message
     }
 
-    const res = await ExtensionManager.getInstance()
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.modifyMessage(message)
+    const res = await requireConversational().modifyMessage(message)
     return res ?? message
   }
 
@@ -58,8 +48,6 @@ export class DefaultMessagesService implements MessagesService {
       return
     }
 
-    await ExtensionManager.getInstance()
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.deleteMessage(threadId, messageId)
+    await requireConversational().deleteMessage(threadId, messageId)
   }
 }
