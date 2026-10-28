@@ -457,7 +457,7 @@ mod tests {
         // Restrict the plugin to Rooms: Home loses its command and skill.
         let mut matrix = Matrix::load();
         matrix.set_item(ItemKind::Plugin, "rel", vec!["rooms".into()]);
-        matrix.save();
+        matrix.save().unwrap();
         let home = catalog(&Surface::Home, None);
         assert!(!home.iter().any(|e| e.plugin.as_deref() == Some("rel")));
         assert!(home.iter().any(|e| e.name == "notes"));
