@@ -16,10 +16,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn, getModelDisplayName } from '@/lib/utils'
-import {
-  useSetupChecklist,
-  type SetupStageState,
-} from '@/hooks/useSetupChecklist'
+import { useSetupChecklist } from '@/hooks/useSetupChecklist'
 import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
 import { ModelSetupCard } from './ModelSetupCard'
@@ -30,19 +27,15 @@ import { useThreads } from '@/hooks/useThreads'
 import { destinationFor, INTENTS } from '@/lib/onboarding'
 import { isChatCapable } from '@/lib/providerReadiness'
 import { SidebarItemsPicker } from './SidebarItemsPicker'
-
-/**
- * One page of the setup flow. The last page is not a readiness probe, so it
- * does not come from `useSetupChecklist` with the others.
- */
-type WizardStep = {
-  id: string
-  labelKey: string
-  status: SetupStageState['status']
-  messageKey: string
-  values?: Record<string, string | number>
-  detail?: string
-}
+import {
+  engineBackendNameOf,
+  FINISH_STEP,
+  isPageSettled as isPageSettledFor,
+  isSetupStagesComplete,
+  setupPageFromStages,
+  WELCOME_STEP,
+  type WizardStep,
+} from '@/lib/setupFlow'
 
 type SetupScreenProps = {
   /** Called once onboarding ends, so the host stops rendering this screen. */
@@ -181,81 +174,26 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
     [llamaProvider]
   )
 
-  // The last page reports nothing and waits for nothing: it is where the user
-  // decides how to start, so its status is fixed.
-  const finishStep = useMemo<WizardStep>(
-    () => ({
-      id: 'finish',
-      labelKey: 'setup:stageFinish',
-      status: 'pending',
-      messageKey: '',
-    }),
-    []
+  const setupPage = useMemo<WizardStep>(
+    () => setupPageFromStages(stages),
+    [stages]
   )
-
-  // One page at a time, each transient: it gives way as soon as its own
-  // condition is met, and the model download is always last.
-  //
-  // The three readiness probes collapse into a single "set up llama.cpp" page:
-  // the backend download and the embedding install are one wait from the user's
-  // point of view, and the hardware probe only exists to label the GPU badge.
-  const setupPage = useMemo<WizardStep>(() => {
-    const byId = new Map(stages.map((stage) => [stage.id, stage]))
-    const engine = byId.get('engine')
-    const search = byId.get('search')
-    const system = byId.get('system')
-
-    // The first unresolved of the three decides what the page reports, so the
-    // engine's own progress is shown before the checks that depend on it.
-    const reporting =
-      [engine, search, system].find((stage) => stage?.status === 'warning') ??
-      [engine, search].find((stage) => stage?.status !== 'ok') ??
-      engine
-
-    return {
-      id: 'setup',
-      labelKey: 'setup:stageSetup',
-      status: reporting?.status ?? 'pending',
-      messageKey: reporting?.messageKey ?? '',
-      values: reporting?.values,
-      detail: reporting?.detail,
-    }
-  }, [stages])
 
   // Advanced only on the user's say-so. Auto-advancing skipped this page
   // entirely whenever the engine was already installed, which hid the GPU badge
   // -- the one thing on it the user cannot see anywhere else.
   const isSetupSettled = acknowledged.includes('setup')
-  const isSetupComplete = ['engine', 'search', 'system'].every(
-    (id) => stages.find((stage) => stage.id === id)?.status === 'ok'
-  )
-  /** The backend asset name, shown as a caption rather than as prose. */
-  const engineBackendName = String(
-    stages.find((stage) => stage.id === 'engine')?.values?.backend ?? ''
-  )
+  const isSetupComplete = isSetupStagesComplete(stages)
+  const engineBackendName = engineBackendNameOf(stages)
 
-  const pages = useMemo<WizardStep[]>(() => {
-    const welcome: WizardStep = {
-      id: 'welcome',
-      labelKey: 'setup:welcomeTitle',
-      status: 'pending',
-      messageKey: '',
-    }
-    return [welcome, setupPage, finishStep]
-  }, [setupPage, finishStep])
+  const pages = useMemo<WizardStep[]>(
+    () => [WELCOME_STEP, setupPage, FINISH_STEP],
+    [setupPage]
+  )
 
   const isPageSettled = useCallback(
-    (page: WizardStep) => {
-      switch (page.id) {
-        case 'welcome':
-          return hasStarted
-        case 'setup':
-          return isSetupSettled
-        default:
-          // The last page ends the flow itself, so it never settles on its own.
-          return false
-      }
-    },
+    (page: WizardStep) =>
+      isPageSettledFor(page, { hasStarted, isSetupSettled }),
     [hasStarted, isSetupSettled]
   )
 
