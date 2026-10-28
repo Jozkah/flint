@@ -69,8 +69,7 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
         <DialogHeader>
           <DialogTitle>{t('common:deleteMessage')}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete this message? This action cannot be
-            undone.
+            {t('common:deleteMessageDescription')}
           </DialogDescription>
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <DialogClose asChild>
