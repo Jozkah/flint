@@ -664,7 +664,14 @@ fn swap(
     } else {
         TurnState::Applied
     };
-    save(data_folder, &journal).map_err(UndoError::Io)?;
+    // A journal that cannot record the new state must not leave the files in
+    // it: the next undo or redo would judge them against the wrong side.
+    if let Err(e) = save(data_folder, &journal) {
+        for back in done.iter().rev() {
+            let _ = put(&back.0, back.1.as_deref());
+        }
+        return Err(UndoError::Io(e));
+    }
     Ok(UndoReport {
         run: run.to_string(),
         state: journal.turns[idx].state,

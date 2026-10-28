@@ -34,6 +34,21 @@ pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
     LOG_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// [`LOG_LOCK`] plus a lock file in the data folder, so the desktop app and
+/// the CLI writing the same logs do not lose each other's lines between a
+/// compaction's read and its rename. The file lock is best effort: a folder
+/// it cannot be taken in still gets the in-process lock, and the record.
+pub(crate) struct LogGuard {
+    _file: Option<crate::mailbox::Held>,
+    _mutex: std::sync::MutexGuard<'static, ()>,
+}
+
+pub(crate) fn lock_for(data_folder: &Path) -> LogGuard {
+    let mutex = lock();
+    let file = crate::mailbox::Held::take(&data_folder.join("request-logs")).ok();
+    LogGuard { _file: file, _mutex: mutex }
+}
+
 /// The lines of a JSO\n log, lossily decoded. A line with invalid UTF-8 (a torn
 /// write, a bad byte from a crash) comes back with replacement characters and
 /// simply fails to parse, instead of ending the iteration and hiding every
@@ -216,17 +231,37 @@ pub(crate) fn rewrite<T: Serialize>(path: &Path, records: &[T]) -> Result<(), St
         body.push_str(&serde_json::to_string(record).map_err(|e| e.to_string())?);
         body.push('\n');
     }
-    let temp = path.with_extension(format!("jsonl.tmp-{}", std::process::id()));
-    std::fs::write(&temp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        e.to_string()
-    })
+    crate::atomic_file::write_atomic(path, body.as_bytes())
+}
+
+/// When anything inside `dir` last changed: the newest file's time, not the
+/// folder's own (which a write to an existing file never moves).
+fn newest_inside(dir: &Path) -> Option<i64> {
+    fn walk(dir: &Path, depth: usize, newest: &mut Option<std::time::SystemTime>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                if depth < 8 {
+                    walk(&entry.path(), depth + 1, newest);
+                }
+            } else if let Ok(t) = meta.modified() {
+                if newest.is_none_or(|n| t > n) {
+                    *newest = Some(t);
+                }
+            }
+        }
+    }
+    let mut newest = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+    walk(dir, 0, &mut newest);
+    newest
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
 }
 
 /// Apply `policy` to both request logs.
 pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Removed, String> {
-    let _guard = lock();
+    let _guard = lock_for(data_folder);
     let mut removed = Removed::default();
 
     if snapshot::log_path(data_folder).exists() {
@@ -255,12 +290,7 @@ pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Remov
     if let Some(root) = diff_dir(data_folder, "_").and_then(|d| d.parent().map(Path::to_path_buf)) {
         if let Ok(entries) = std::fs::read_dir(&root) {
             for entry in entries.flatten() {
-                let modified = entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs() as i64);
+                let modified = newest_inside(&entry.path());
                 if entry.path().is_dir() && modified.is_some_and(|m| m < cutoff)
                     && std::fs::remove_dir_all(entry.path()).is_ok() {
                         removed.diff_sessions += 1;
@@ -281,7 +311,7 @@ pub fn delete_session(data_folder: &Path, session: &str) -> Result<Removed, Stri
     if session.is_empty() {
         return Ok(Removed::default());
     }
-    let _guard = lock();
+    let _guard = lock_for(data_folder);
     let mut removed = Removed::default();
 
     if snapshot::log_path(data_folder).exists() {
@@ -424,6 +454,8 @@ mod tests {
         }
         let removed = delete_session(&d, "gone").unwrap();
         assert_eq!((removed.diff_sessions, removed.permissions), (1, 1));
+        // The cross-process log lock is released with its guard.
+        assert!(!d.join("request-logs.lock").exists());
         assert!(!crate::activity::diff_path(&d, "gone", "call_0").exists());
         assert!(crate::activity::diff_path(&d, "kept", "call_0").exists());
         let log = std::fs::read_to_string(crate::audit::log_path(&d)).unwrap();

@@ -542,7 +542,7 @@ const SNAPSHOT_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Keep only the newest whole lines of the log that fit in `keep` bytes.
 fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
     let Ok(bytes) = std::fs::read(&path) else {
         return Ok(());
@@ -561,7 +561,7 @@ fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
 fn try_append(data_folder: &Path, snapshot: &PromptSnapshot) -> Result<(), String> {
     // Shared with compaction and deletion, so a record appended while the log
     // is being rewritten is not lost between the read and the rename.
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -599,7 +599,7 @@ pub const MAX_SNAPSHOTS: usize = 2_000;
 fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) -> Result<usize, String> {
     // The lock every append takes (Jozkah/jan#287): without it a snapshot
     // appended between the read and the rename below is lost.
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let path = log_path(data_folder);
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(0);
@@ -646,7 +646,7 @@ fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) ->
 /// because text that cannot be attributed must not be edited either.
 pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<usize, String> {
     // Same read-modify-rename as `rewrite`, under the same lock (Jozkah/jan#287).
-    let _guard = crate::retention::lock();
+    let _guard = crate::retention::lock_for(data_folder);
     let needles: Vec<&str> = needles
         .iter()
         .copied()
