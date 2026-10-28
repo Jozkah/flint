@@ -20,6 +20,7 @@
   "auto": "Open at start",
   "autoDesc": "Open the server when the app starts, after a few seconds in which you can choose this device instead.",
   "opening": "Opening {{host}} in {{seconds}} s",
+  "openingNotice": "Opening {{host}} shortly. Press Escape to stay on this device.",
   "useDevice": "Use this device",
   "limitsTitle": "What runs where",
   "limits": "Chat, rooms, models and tools run on the server. Cowork sessions and Campaigns need an agent that runs on a computer with Flint open: reach that computer through Remote access and the phone app. A headless server can list campaigns and review proposals, but it does not run sessions."

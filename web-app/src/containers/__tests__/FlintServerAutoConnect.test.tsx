@@ -71,6 +71,21 @@ describe('FlintServerAutoConnect', () => {
     expect(screen.queryByTestId('flint-server-autoconnect')).toBeNull()
   })
 
+  it('Escape stays on this device and the countdown never touches the live text', () => {
+    save(true)
+    render(<FlintServerAutoConnect />)
+    const root = screen.getByTestId('flint-server-autoconnect')
+    expect(root).toHaveAttribute('role', 'status')
+    const announced = root.querySelector('.sr-only')?.textContent
+    tick(2)
+    expect(root.querySelector('.sr-only')?.textContent).toBe(announced)
+    expect(screen.getByText('server:useDevice')).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    tick(10)
+    expect(assign).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('flint-server-autoconnect')).toBeNull()
+  })
+
   it('does nothing without the switch, on a desktop build, or without a server', () => {
     save(false)
     const off = render(<FlintServerAutoConnect />)
