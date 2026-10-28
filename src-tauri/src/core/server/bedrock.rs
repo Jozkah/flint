@@ -41,9 +41,34 @@ static CREDENTIAL_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// `Err` so callers never overwrite a record they could not read.
 fn load_credentials() -> Result<Credentials, String> {
     match try_load_secret_record(SECRET_RECORD)? {
-        Some(raw) => Ok(serde_json::from_str(&raw).unwrap_or_default()),
+        Some(raw) => parse_credentials(&raw),
         None => Ok(Credentials::default()),
     }
+}
+
+/// A record that no longer parses is an error naming the keyring entry, not an
+/// empty set of credentials that a later save would silently overwrite.
+fn parse_credentials(raw: &str) -> Result<Credentials, String> {
+    serde_json::from_str(raw).map_err(|_| {
+        format!(
+            "the stored Bedrock credentials ('{SECRET_RECORD}' in the keyring) are damaged; \
+             clear a field to reset them, then enter them again"
+        )
+    })
+}
+
+/// The credentials after one field change. A damaged record is never
+/// overwritten with a partial one; setting an empty value resets it instead.
+#[cfg(any(test, not(feature = "cli")))]
+fn next_credentials(existing: Option<&str>, field: &str, value: &str) -> Result<Credentials, String> {
+    let mut creds = match existing.map(parse_credentials) {
+        None => Credentials::default(),
+        Some(Ok(c)) => c,
+        Some(Err(_)) if value.trim().is_empty() => Credentials::default(),
+        Some(Err(e)) => return Err(e),
+    };
+    apply_field(&mut creds, field, value)?;
+    Ok(creds)
 }
 
 /// Apply one field change under the write lock.
@@ -52,8 +77,8 @@ fn update_credential_field(field: &str, value: &str) -> Result<(), String> {
     let _guard = CREDENTIAL_WRITE_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let mut creds = load_credentials()?;
-    apply_field(&mut creds, field, value)?;
+    let existing = try_load_secret_record(SECRET_RECORD)?;
+    let creds = next_credentials(existing.as_deref(), field, value)?;
     save_credentials(&creds)
 }
 
@@ -331,6 +356,22 @@ mod tests {
     use chrono::TimeZone;
 
     const SECRET: &str = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
+
+    #[test]
+    fn bedrock_damaged_record_is_error_not_default() {
+        let err = parse_credentials("{not json").unwrap_err();
+        assert!(err.contains(SECRET_RECORD), "{err}");
+        assert!(parse_credentials(r#"{"access_key_id":"A"}"#).is_ok());
+    }
+
+    #[test]
+    fn update_field_does_not_overwrite_damaged_record() {
+        assert!(next_credentials(Some("{not json"), "session_token", "tok").is_err());
+        let reset = next_credentials(Some("{not json"), "session_token", "").unwrap();
+        assert!(reset.access_key_id.is_empty() && reset.session_token.is_empty());
+        let ok = next_credentials(Some(r#"{"access_key_id":"A"}"#), "session_token", "tok").unwrap();
+        assert_eq!((ok.access_key_id.as_str(), ok.session_token.as_str()), ("A", "tok"));
+    }
 
     fn vector_time() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2015, 8, 30, 12, 36, 0).unwrap()
