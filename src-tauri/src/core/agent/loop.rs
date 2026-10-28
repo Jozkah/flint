@@ -5535,6 +5535,18 @@ impl CompositeToolInvoker {
                 // run goes to change it.
                 let run_scope = self.cancel_scope.run.clone();
                 let record_to = self.record_to.clone();
+                // Everything `tool_context_with_run` carries, so a concurrent
+                // read sees the same mailbox, policy and tool set as a
+                // sequential one (a skill read must honour `available_tools`).
+                let session_id = self.cancel_scope.session.clone();
+                let session_messaging = self.session_messaging;
+                let sandbox_fs = self.sandbox_fs.clone();
+                let permissions = self.permissions.clone();
+                let subject = self.subject.clone();
+                let available_tools = self.available_tools.clone();
+                let nul_programs = self.nul_programs.clone();
+                let format_on_edit = self.format_on_edit;
+                let check_syntax = self.check_syntax;
                 // Reads run concurrently, so each needs its own token under the
                 // run's scope rather than sharing one.
                 let registered = self.call_token(&id);
@@ -5548,9 +5560,22 @@ impl CompositeToolInvoker {
                             .with_sandbox(sandbox)
                             .with_scratch_root(&scratch)
                             .with_user_skills(user_skills.as_deref())
+                            .with_fs_config(Some(&sandbox_fs))
+                            .with_permissions(&permissions, &subject)
+                            .with_available_tools(&available_tools)
+                            .with_format_on_edit(format_on_edit)
+                            .with_check_syntax(check_syntax)
+                            .with_nul_programs(&nul_programs)
                             .with_cancel(registered.token().clone());
                         let ctx = match record_to.as_deref() {
-                            Some(data) => ctx.with_run(&run_scope, data),
+                            Some(data) => {
+                                let ctx = ctx.with_run(&run_scope, data);
+                                if session_messaging {
+                                    ctx.with_mailbox_as(&session_id, data)
+                                } else {
+                                    ctx
+                                }
+                            }
                             None => ctx,
                         };
                         // Held until the future completes, then dropped, which
@@ -14730,6 +14755,47 @@ mod tests {
     /// version left that prompt unanswered and hung the whole suite forever,
     /// which is why the answer is explicit here and the assertion is on *which*
     /// refusal came back.
+    /// F1x3-002: reads run concurrently on their own context, which used to
+    /// drop the mailbox identity, so `list_sessions` answered "only available
+    /// to Cowork sessions" even with session messaging on.
+    #[tokio::test]
+    async fn mailbox_read_on_concurrent_path_reaches_mailbox() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_loop_mailbox_read_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.record_to = Some(root.clone());
+        invoker.session_messaging = true;
+        let call = vec![serde_json::json!({
+            "id": "call_mailbox_1",
+            "type": "function",
+            "function": { "name": "list_sessions", "arguments": "{}" }
+        })];
+        let out = tokio::time::timeout(std::time::Duration::from_secs(20), invoker.invoke(&call))
+            .await
+            .expect("a read must not wait on a prompt")
+            .expect("dispatch");
+        assert!(
+            !out[0].content.contains("only available to Cowork"),
+            "the concurrent read lost the mailbox identity: {}",
+            out[0].content
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     async fn a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else() {
         let root = std::env::temp_dir().join(format!(
