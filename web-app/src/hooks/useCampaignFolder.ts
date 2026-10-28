@@ -92,6 +92,8 @@ export function useCampaignFolderState(): CampaignFolderState {
     if (!folder) return
     let alive = true
     void isGitRepo(folder).then((ok) => {
+      // A failed check is neither cached nor shown.
+      if (ok === null) return
       remember(folder, ok)
       if (alive) setChecked({ folder, ok })
     })
