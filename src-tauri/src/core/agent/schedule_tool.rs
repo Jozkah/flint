@@ -111,8 +111,16 @@ fn parse_schedule(value: &Value) -> Result<Schedule, String> {
                 .and_then(Value::as_array)
                 .ok_or("schedule.days is a list like [1, 3] (0 = Sunday)")?
                 .iter()
-                .filter_map(|d| d.as_u64().map(|d| d as u8))
-                .collect();
+                .map(|d| {
+                    d.as_u64()
+                        .and_then(|d| u8::try_from(d).ok())
+                        .filter(|d| *d <= 6)
+                        .ok_or_else(|| format!("schedule.days entry {d} is not an integer 0-6 (0 = Sunday)"))
+                })
+                .collect::<Result<Vec<u8>, String>>()?;
+            if days.is_empty() {
+                return Err("schedule.days must list at least one day (0 = Sunday)".to_string());
+            }
             Ok(Schedule::Weekly { days, times: times()? })
         }
         "cron" => Ok(Schedule::Cron { expr: value.get("expr").and_then(Value::as_str).unwrap_or_default().to_string() }),
@@ -295,6 +303,16 @@ pub fn render_list(tasks: &[Task]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn weekly_days_outside_range_are_rejected_not_wrapped() {
+        let bad = serde_json::json!({"kind": "weekly", "days": [257], "times": ["09:00"]});
+        assert!(parse_schedule(&bad).is_err());
+        let empty = serde_json::json!({"kind": "weekly", "days": [], "times": ["09:00"]});
+        assert!(parse_schedule(&empty).is_err());
+        let ok = serde_json::json!({"kind": "weekly", "days": [1, 3], "times": ["09:00"]});
+        assert!(parse_schedule(&ok).is_ok());
+    }
+
     use super::*;
     use serde_json::json;
 

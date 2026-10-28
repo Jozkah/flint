@@ -541,6 +541,7 @@
   "threadImage": "Image de la discussion",
   "editMessage": "Modifier le message",
   "deleteMessage": "Supprimer le message",
+  "deleteMessageDescription": "Voulez-vous vraiment supprimer ce message ? Cette action est irréversible.",
   "deleteThread": "Supprimer la discussion",
   "renameThread": "Renommer la discussion",
   "threadTitle": "Titre de la discussion",

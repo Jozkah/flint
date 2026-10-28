@@ -536,6 +536,7 @@
   "threadImage": "थ्रेड की छवि",
   "editMessage": "संदेश संपादित करें",
   "deleteMessage": "संदेश हटाएं",
+  "deleteMessageDescription": "क्या आप वाकई इस संदेश को हटाना चाहते हैं? यह कार्रवाई पूर्ववत नहीं की जा सकती।",
   "deleteThread": "थ्रेड हटाएं",
   "renameThread": "थ्रेड का नाम बदलें",
   "threadTitle": "थ्रेड शीर्षक",

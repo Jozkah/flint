@@ -552,6 +552,7 @@
   "threadImage": "Obraz wątku",
   "editMessage": "Edytuj Wiadomość",
   "deleteMessage": "Usuń Wiadomość",
+  "deleteMessageDescription": "Czy na pewno chcesz usunąć tę wiadomość? Tej czynności nie można cofnąć.",
   "deleteThread": "Usuń Wątek",
   "renameThread": "Zmień Nazwę Wątku",
   "threadTitle": "Tytuł Wątku",

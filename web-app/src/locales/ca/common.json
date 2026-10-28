@@ -541,6 +541,7 @@
   "threadImage": "Imatge del fil",
   "editMessage": "Edita el missatge",
   "deleteMessage": "Suprimeix el missatge",
+  "deleteMessageDescription": "Segur que vols suprimir aquest missatge? Aquesta acció no es pot desfer.",
   "deleteThread": "Suprimeix el fil",
   "renameThread": "Canvia el nom del fil",
   "threadTitle": "Títol del fil",

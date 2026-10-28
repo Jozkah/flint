@@ -533,6 +533,7 @@
   "threadImage": "Hình ảnh chủ đề",
   "editMessage": "Chỉnh sửa tin nhắn",
   "deleteMessage": "Xóa tin nhắn",
+  "deleteMessageDescription": "Bạn có chắc muốn xóa tin nhắn này? Hành động này không thể hoàn tác.",
   "deleteThread": "Xóa chủ đề",
   "renameThread": "Đổi tên chủ đề",
   "threadTitle": "Tiêu đề chủ đề",

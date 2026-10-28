@@ -541,6 +541,7 @@
   "threadImage": "Immagine conversazione",
   "editMessage": "Modifica messaggio",
   "deleteMessage": "Elimina messaggio",
+  "deleteMessageDescription": "Vuoi davvero eliminare questo messaggio? Questa azione non può essere annullata.",
   "deleteThread": "Elimina conversazione",
   "renameThread": "Rinomina conversazione",
   "threadTitle": "Titolo conversazione",

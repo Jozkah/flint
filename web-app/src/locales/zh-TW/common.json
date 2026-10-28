@@ -536,6 +536,7 @@
   "threadImage": "對話圖片",
   "editMessage": "編輯訊息",
   "deleteMessage": "刪除訊息",
+  "deleteMessageDescription": "確定要刪除這則訊息嗎？此操作無法復原。",
   "deleteThread": "刪除對話",
   "renameThread": "重新命名對話",
   "threadTitle": "對話標題",

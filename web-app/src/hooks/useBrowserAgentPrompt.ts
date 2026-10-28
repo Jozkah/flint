@@ -45,6 +45,9 @@ let next = 0
  * a time, in the order asked. A run that stops while its question is on screen
  * withdraws it, and a withdrawn question counts as "no".
  */
+/** Abort handlers of queued questions, so answering one detaches its listener. */
+const detachers = new Map<string, () => void>()
+
 export const useBrowserAgentPrompt = create<State>()((set, get) => ({
   queue: [],
   request: (req) =>
@@ -56,13 +59,15 @@ export const useBrowserAgentPrompt = create<State>()((set, get) => ({
       const id = `domain-${Date.now().toString(36)}-${++next}`
       const { signal, ...rest } = req
       set((s) => ({ queue: [...s.queue, { ...rest, id, resolve }] }))
-      signal?.addEventListener(
-        'abort',
-        () => get().answer(id, DENY),
-        { once: true }
-      )
+      if (signal) {
+        const onAbort = () => get().answer(id, DENY)
+        signal.addEventListener('abort', onAbort, { once: true })
+        detachers.set(id, () => signal.removeEventListener('abort', onAbort))
+      }
     }),
   answer: (id, answer) => {
+    detachers.get(id)?.()
+    detachers.delete(id)
     const entry = get().queue.find((q) => q.id === id)
     if (!entry) return
     set((s) => ({ queue: s.queue.filter((q) => q.id !== id) }))

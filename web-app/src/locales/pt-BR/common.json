@@ -540,6 +540,7 @@
   "threadImage": "Imagem da conversa",
   "editMessage": "Editar Mensagem",
   "deleteMessage": "Apagar Mensagem",
+  "deleteMessageDescription": "Tem certeza de que deseja excluir esta mensagem? Esta ação não pode ser desfeita.",
   "deleteThread": "Apagar Conversa",
   "renameThread": "Renomear Conversa",
   "threadTitle": "Título da Conversa",
