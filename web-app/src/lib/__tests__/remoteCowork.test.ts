@@ -483,3 +483,121 @@ describe('server session mode and title (round 5 W12-W14)', () => {
     expect(remoteSessionTitle(SID, '', [])).toBe('New session')
   })
 })
+
+describe('remote run gaps, busy sends and steering failures', () => {
+  const setup = (extra?: (command: string, init?: RequestInit) => Response | undefined) => {
+    useCoworkSessions.setState({
+      sessions: [{ id: SID, title: 'S', folder: '/srv/app', turns: [], messages: [], updated: 1, remote: true }],
+      currentId: SID,
+    })
+    const events = openStream()
+    const posted: string[] = []
+    let gets = 0
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      if (url.includes('/events')) return events.response
+      const command = url.split('/').pop()!
+      posted.push(command)
+      const custom = extra?.(command, init)
+      if (custom) return custom
+      if (command === 'agent_run_start') return json({ turnId: 't1', after: 0 })
+      if (command === 'agent_run_get') {
+        gets += 1
+        return json({
+          id: SID,
+          title: 'S',
+          folder: '/srv/app',
+          turns: [],
+          pendingApprovals: [{ request_id: 'perm-9', tool_name: 'write', path: 'a.txt' }],
+        })
+      }
+      return json({})
+    }
+    return { events, posted, fetchImpl, gets: () => gets }
+  }
+  const complete = async (t: ReturnType<typeof setup>) => {
+    t.events.write(frame(env(99, 'turn.completed', { turnId: 't1', stopReason: 'completed', error: null })))
+    await until(() => !useCoworkRun.getState().runs[SID])
+    t.events.close()
+  }
+
+  it('re-raises prompts missed in a gap once, and never twice for a known one', async () => {
+    const t = setup()
+    await sendRemoteTurn(SID, 'go', { fetchImpl: t.fetchImpl, steerEveryMs: 1000 })
+    t.events.write('event: gap\ndata: {"from":4,"after":1}\n\n')
+    await until(() => !!useToolApprovalRequests.getState().pending['perm-9'])
+    t.events.write('event: gap\ndata: {"from":9,"after":5}\n\n')
+    await until(() => t.gets() >= 2)
+    await tick(20)
+    const s = useToolApprovalRequests.getState()
+    expect(Object.keys(s.pending)).toEqual(['perm-9'])
+    expect(s.queued['perm-9']).toBeUndefined()
+    await complete(t)
+  })
+
+  it('rebuilds the preview after a stream reset', async () => {
+    const t = setup()
+    await sendRemoteTurn(SID, 'go', { fetchImpl: t.fetchImpl, steerEveryMs: 1000 })
+    t.events.write(frame(stream(1, { type: 'token', text: 'stale' })))
+    await until(() => !!useCoworkRun.getState().liveTurns[SID]?.some((x) => x.role === 'assistant'))
+    t.events.write('event: reset\ndata: {}\n\n')
+    await until(() => !useCoworkRun.getState().liveTurns[SID]?.some((x) => x.role === 'assistant'))
+    expect(useCoworkRun.getState().liveTurns[SID][0]).toMatchObject({ role: 'user', content: 'go' })
+    await until(() => t.gets() >= 1)
+    await complete(t)
+  })
+
+  it('refuses a send while a turn runs instead of dropping it', async () => {
+    const t = setup()
+    await sendRemoteTurn(SID, 'go', { fetchImpl: t.fetchImpl, steerEveryMs: 1000 })
+    vi.useFakeTimers()
+    try {
+      const assertion = expect(
+        sendRemoteTurn(SID, 'again', { fetchImpl: t.fetchImpl })
+      ).rejects.toThrow(/still running/)
+      await vi.advanceTimersByTimeAsync(3100)
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
+    await complete(t)
+  })
+
+  it('waits for a turn that is ending, then sends', async () => {
+    const t = setup()
+    const streams = [t.events]
+    const fetchImpl = (url: string, init?: RequestInit) => {
+      if (url.includes('/events') && streams.length === 0) {
+        const next = openStream()
+        streams.push(next)
+        return Promise.resolve(next.response)
+      }
+      if (url.includes('/events')) return Promise.resolve(streams.shift()!.response)
+      return t.fetchImpl(url, init)
+    }
+    await sendRemoteTurn(SID, 'go', { fetchImpl, steerEveryMs: 1000 })
+    t.events.write(frame(env(1, 'turn.completed', { turnId: 't1', stopReason: 'completed', error: null })))
+    // Sent while finish() may still be committing: it must not be dropped.
+    await tick(1)
+    await sendRemoteTurn(SID, 'next', { fetchImpl, steerEveryMs: 1000 })
+    expect(t.posted.filter((c) => c === 'agent_run_start')).toHaveLength(2)
+    await until(() => streams.length > 0)
+    streams[0].write(frame(env(1, 'turn.completed', { turnId: 't1', stopReason: 'completed', error: null })))
+    await until(() => !useCoworkRun.getState().runs[SID])
+    streams[0].close()
+    t.events.close()
+  })
+
+  it('puts a steering message back, held, when the server refuses it', async () => {
+    const t = setup((command) =>
+      command === 'agent_run_steer' ? new Response('nope', { status: 500 }) : undefined
+    )
+    await sendRemoteTurn(SID, 'go', { fetchImpl: t.fetchImpl, steerEveryMs: 10 })
+    useMessageQueue.getState().enqueue(SID, { id: 'q1', text: 'also b', createdAt: 1, steer: true })
+    await until(() => t.posted.includes('agent_run_steer'))
+    await until(() => !!useMessageQueue.getState().queues[SID]?.some((m) => m.id === 'q1' && m.held))
+    expect(useCoworkRun.getState().liveTurns[SID].some((x) => x.steered)).toBe(false)
+    await tick(60)
+    expect(t.posted.filter((c) => c === 'agent_run_steer')).toHaveLength(1)
+    await complete(t)
+  })
+})

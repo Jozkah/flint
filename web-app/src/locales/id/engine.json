@@ -177,7 +177,7 @@
     "kpiArtifacts": "Artefak",
     "kpiArtifactsSub": "{{count}} baru minggu ini",
     "kpiSessions": "Dari Cowork",
-    "kpiSessionsSub": "di {{count}} sesi",
+    "kpiSessionsSub": "dengan artefak tersimpan",
     "kpiDisk": "Di disk",
     "kpiDiskSub": "di sandbox sesi",
     "kindCode": "Kode",

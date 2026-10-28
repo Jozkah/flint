@@ -432,6 +432,13 @@ pub fn cli_save_thread(
             if let Some(calls) = record.get_mut("tool_calls") {
                 secrets::scrub_json(calls);
             }
+            // Images ride next to the text in the shape the desktop already
+            // stores (`image_url` content entries), so a resume still shows
+            // them to the model. Not scrubbed: a data URL is not a secret and
+            // the redactor must not touch its bytes.
+            if let Some(parts) = record["content"].as_array_mut() {
+                parts.extend(image_parts(m.get("content")));
+            }
             if reuse {
                 match previous.get(position) {
                     Some(old) if same_message(old, &record) => {
@@ -527,6 +534,7 @@ pub(crate) fn rebuild_wire_history(messages: &[serde_json::Value]) -> Vec<serde_
     for m in messages {
         let role = m.get("role").and_then(|v| v.as_str()).unwrap_or_default();
         let text = thread_message_text(m);
+        let images = image_parts(m.get("content"));
         if role == "tool" {
             let id = m
                 .get("tool_call_id")
@@ -551,10 +559,18 @@ pub(crate) fn rebuild_wire_history(messages: &[serde_json::Value]) -> Vec<serde_
         let calls = m
             .get("tool_calls")
             .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()));
-        if text.is_empty() && calls.is_none() {
+        if text.is_empty() && calls.is_none() && images.is_empty() {
             continue;
         }
         let mut msg = serde_json::json!({ "role": role, "content": text });
+        if !images.is_empty() {
+            let mut parts = Vec::new();
+            if !text.is_empty() {
+                parts.push(serde_json::json!({ "type": "text", "text": text }));
+            }
+            parts.extend(images);
+            msg["content"] = serde_json::Value::Array(parts);
+        }
         if let Some(calls) = calls {
             msg["tool_calls"] = calls.clone();
             open = calls
@@ -785,6 +801,21 @@ pub(crate) fn thread_message_text(msg: &serde_json::Value) -> String {
             .join(""),
         _ => String::new(),
     }
+}
+
+/// The `image_url` parts of a message `content` array, as `{type, image_url}`
+/// entries (the form both the wire and the desktop's stored messages use).
+/// Anything else, and an image part with no URL, is left out.
+fn image_parts(content: Option<&serde_json::Value>) -> Vec<serde_json::Value> {
+    let Some(serde_json::Value::Array(parts)) = content else {
+        return Vec::new();
+    };
+    parts
+        .iter()
+        .filter(|p| p.get("type").and_then(|v| v.as_str()) == Some("image_url"))
+        .filter(|p| p.get("image_url").and_then(|i| i.get("url")).and_then(|u| u.as_str()).is_some())
+        .map(|p| serde_json::json!({ "type": "image_url", "image_url": p["image_url"].clone() }))
+        .collect()
 }
 
 /// Text of an OpenAI-shaped message `content`: the string as-is, or the joined
@@ -5359,6 +5390,42 @@ mod tests {
             default_thread_title(history.as_array().unwrap()),
             "Explain the buffer logic"
         );
+    }
+
+    #[test]
+    fn image_part_survives_save_and_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = "data:image/png;base64,QUJD";
+        let history = vec![
+            serde_json::json!({ "role": "user", "content": [
+                { "type": "text", "text": "what is this" },
+                { "type": "image_url", "image_url": { "url": url, "detail": "high" } },
+            ]}),
+            serde_json::json!({ "role": "assistant", "content": "a picture" }),
+        ];
+        let id = cli_save_thread(dir.path(), None, "m", &history, None).unwrap();
+        let (records, _) = cli_read_messages_lenient(dir.path(), &id).unwrap();
+        let stored = records[0]["content"].as_array().unwrap();
+        assert_eq!(stored[0]["type"], "text");
+        assert_eq!(stored[1]["type"], "image_url");
+        assert_eq!(stored[1]["image_url"]["url"], url);
+        let rebuilt = rebuild_wire_history(&records);
+        assert_eq!(rebuilt[0]["content"][0], serde_json::json!({ "type": "text", "text": "what is this" }));
+        assert_eq!(rebuilt[0]["content"][1]["image_url"]["url"], url);
+        assert_eq!(rebuilt[1]["content"], "a picture");
+    }
+
+    #[test]
+    fn image_only_message_is_not_dropped_on_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = vec![serde_json::json!({ "role": "user", "content": [
+            { "type": "image_url", "image_url": { "url": "data:image/png;base64,QUJD" } },
+        ]})];
+        let id = cli_save_thread(dir.path(), None, "m", &history, None).unwrap();
+        let (records, _) = cli_read_messages_lenient(dir.path(), &id).unwrap();
+        let rebuilt = rebuild_wire_history(&records);
+        assert_eq!(rebuilt.len(), 1);
+        assert_eq!(rebuilt[0]["content"][0]["type"], "image_url");
     }
 
     #[test]

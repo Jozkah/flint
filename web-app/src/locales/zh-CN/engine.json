@@ -181,7 +181,7 @@
     "kpiArtifacts": "产物",
     "kpiArtifactsSub": "本周新增 {{count}} 个",
     "kpiSessions": "来自 Cowork",
-    "kpiSessionsSub": "涉及 {{count}} 个会话",
+    "kpiSessionsSub": "含已保存的产物",
     "kpiDisk": "磁盘上",
     "kpiDiskSub": "在会话沙盒中",
     "kindCode": "代码",
