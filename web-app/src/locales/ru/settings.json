@@ -478,7 +478,9 @@
     "usageUnsaved": "Несохранённые изменения",
     "stopServerToEdit": "Остановите сервер, чтобы изменить",
     "trustedHostsInvalid": "Недопустимый хост: {{hosts}}. Укажите хост или хост:порт, например example.com или 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Не сохранено. Enter — сохранить, Escape — отменить."
+    "trustedHostsUnsaved": "Не сохранено. Enter — сохранить, Escape — отменить.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Аналитика",
@@ -592,7 +594,11 @@
       "installing": "Установка…",
       "uninstall": "Удалить",
       "uninstalling": "Удаление…",
-      "foreignDesc": "Найдено в {{path}}, установлено другой копией Flint. Установите здесь, чтобы использовать CLI этой копии."
+      "foreignDesc": "Найдено в {{path}}, установлено другой копией Flint. Установите здесь, чтобы использовать CLI этой копии.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Запуск и трей",
     "cliGroup": "Командная строка",
@@ -1218,7 +1224,6 @@
       "updated": "Обновлено {{when}}",
       "loading": "Загрузка кампаний",
       "loadFailed": "Не удалось загрузить кампании.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Пропущена {{count}} нечитаемая запись кампании. Файлы остались на месте.",
       "skipped_few": "Пропущено {{count}} нечитаемые записи кампаний. Файлы остались на месте.",
       "skipped_other": "Пропущено {{count}} нечитаемых записей кампаний. Файлы остались на месте.",

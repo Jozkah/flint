@@ -474,7 +474,9 @@
     "usageUnsaved": "저장되지 않은 변경",
     "stopServerToEdit": "편집하려면 서버를 중지하세요",
     "trustedHostsInvalid": "유효하지 않은 호스트: {{hosts}}. example.com 또는 192.168.1.5:3000처럼 호스트 또는 호스트:포트를 입력하세요.",
-    "trustedHostsUnsaved": "저장되지 않음. Enter로 저장, Escape로 되돌리기."
+    "trustedHostsUnsaved": "저장되지 않음. Enter로 저장, Escape로 되돌리기.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "분석",
@@ -588,7 +590,11 @@
       "installing": "설치 중…",
       "uninstall": "제거",
       "uninstalling": "제거 중…",
-      "foreignDesc": "{{path}}에서 찾았습니다. 다른 Flint 사본이 설치한 것입니다. 이 사본의 CLI를 쓰려면 여기에 설치하세요."
+      "foreignDesc": "{{path}}에서 찾았습니다. 다른 Flint 사본이 설치한 것입니다. 이 사본의 CLI를 쓰려면 여기에 설치하세요.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "시작 및 트레이",
     "cliGroup": "명령줄",
@@ -1361,7 +1367,6 @@
       "updated": "{{when}}에 업데이트됨",
       "loading": "캠페인을 불러오는 중",
       "loadFailed": "캠페인을 불러올 수 없습니다.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "읽을 수 없는 캠페인 기록 {{count}}개를 건너뛰었습니다. 파일은 그대로 두었습니다.",
       "skipped_other": "읽을 수 없는 캠페인 기록 {{count}}개를 건너뛰었습니다. 파일은 그대로 두었습니다.",
       "retry": "다시 시도",

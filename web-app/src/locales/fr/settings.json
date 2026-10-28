@@ -476,7 +476,9 @@
     "usageUnsaved": "Modifications non enregistrées",
     "stopServerToEdit": "Arrêtez le serveur pour modifier",
     "trustedHostsInvalid": "Hôte non valide : {{hosts}}. Utilisez un hôte ou hôte:port, comme example.com ou 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler."
+    "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analytique",
@@ -590,7 +592,11 @@
       "installing": "Installation…",
       "uninstall": "Désinstaller",
       "uninstalling": "Désinstallation…",
-      "foreignDesc": "Trouvée dans {{path}}, installée par une autre copie de Flint. Installez ici pour utiliser la CLI de cette copie."
+      "foreignDesc": "Trouvée dans {{path}}, installée par une autre copie de Flint. Installez ici pour utiliser la CLI de cette copie.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Démarrage et zone de notification",
     "cliGroup": "Ligne de commande",
@@ -1203,7 +1209,6 @@
       "updated": "Mise à jour {{when}}",
       "loading": "Chargement des campagnes",
       "loadFailed": "Impossible de charger les campagnes.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} fiche de campagne illisible ignorée. Les fichiers sont restés en place.",
       "skipped_other": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",
       "skipped_many": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",

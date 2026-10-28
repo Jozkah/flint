@@ -474,7 +474,9 @@
     "usageUnsaved": "未儲存的變更",
     "stopServerToEdit": "停止伺服器後才能編輯",
     "trustedHostsInvalid": "無效的主機：{{hosts}}。請使用主機或 主機:連接埠，例如 example.com 或 192.168.1.5:3000。",
-    "trustedHostsUnsaved": "未儲存。按 Enter 儲存，按 Escape 復原。"
+    "trustedHostsUnsaved": "未儲存。按 Enter 儲存，按 Escape 復原。",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "分析",
@@ -588,7 +590,11 @@
       "installing": "正在安裝…",
       "uninstall": "解除安裝",
       "uninstalling": "正在解除安裝…",
-      "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安裝。在此安裝即可使用本份的 CLI。"
+      "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安裝。在此安裝即可使用本份的 CLI。",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "啟動與系統匣",
     "cliGroup": "命令列",
@@ -1188,7 +1194,6 @@
       "updated": "{{when}}更新",
       "loading": "正在載入戰役",
       "loadFailed": "無法載入戰役。",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "已略過 {{count}} 筆無法讀取的戰役記錄。檔案保持原樣。",
       "skipped_other": "已略過 {{count}} 筆無法讀取的戰役記錄。檔案保持原樣。",
       "retry": "重試",

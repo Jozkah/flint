@@ -18,3 +18,15 @@ export function scopeLabel(scope: MemoryScope, t: Translate): string {
     ? t(`settings:memoryPage.scope.${scope}.tab`)
     : scope
 }
+
+export function formatWhen(
+  seconds: number | null,
+  t: Translate,
+  language?: string
+): string {
+  if (!seconds) return t('settings:memoryPage.meta.never')
+  return new Intl.DateTimeFormat(language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(seconds * 1000))
+}

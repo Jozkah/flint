@@ -99,7 +99,11 @@
     "variant": "Variante",
     "whatToLookFor": "Cosa cercare",
     "searchPlaceholderShort": "Cerca o incolla un URL…",
-    "resultLimit": "Mostra"
+    "resultLimit": "Mostra",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Importa un file di modello GGUF per aggiungerlo alla tua raccolta. Attiva il supporto multimodale per allegare un mmproj (input di immagini o audio) o il supporto ai modelli draft per la decodifica speculativa. I modelli di embedding vengono rilevati automaticamente.",

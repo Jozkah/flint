@@ -478,7 +478,9 @@
     "usageUnsaved": "Niezapisane zmiany",
     "stopServerToEdit": "Zatrzymaj serwer, aby edytować",
     "trustedHostsInvalid": "Nieprawidłowy host: {{hosts}}. Użyj hosta lub host:port, np. example.com lub 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa."
+    "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Dane Analityczne",
@@ -592,7 +594,11 @@
       "installing": "Instalowanie…",
       "uninstall": "Odinstaluj",
       "uninstalling": "Odinstalowywanie…",
-      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii."
+      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Uruchamianie i zasobnik",
     "cliGroup": "Wiersz poleceń",
@@ -1218,7 +1224,6 @@
       "updated": "Zaktualizowano {{when}}",
       "loading": "Wczytywanie kampanii",
       "loadFailed": "Nie udało się wczytać kampanii.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Pominięto {{count}} nieczytelny wpis kampanii. Pliki zostały na miejscu.",
       "skipped_few": "Pominięto {{count}} nieczytelne wpisy kampanii. Pliki zostały na miejscu.",
       "skipped_other": "Pominięto {{count}} nieczytelnych wpisów kampanii. Pliki zostały na miejscu.",

@@ -478,7 +478,9 @@
     "usageUnsaved": "Canvis sense desar",
     "stopServerToEdit": "Atura el servidor per editar",
     "trustedHostsInvalid": "No és un amfitrió vàlid: {{hosts}}. Fes servir un amfitrió o amfitrió:port, com example.com o 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Sense desar. Prem Retorn per desar, Escape per desfer."
+    "trustedHostsUnsaved": "Sense desar. Prem Retorn per desar, Escape per desfer.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analítica",
@@ -592,7 +594,11 @@
       "installing": "S'està instal·lant…",
       "uninstall": "Desinstal·la",
       "uninstalling": "S'està desinstal·lant…",
-      "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia."
+      "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Inici i safata",
     "cliGroup": "Línia d'ordres",
@@ -1205,7 +1211,6 @@
       "updated": "Actualitzada {{when}}",
       "loading": "Carregant les campanyes",
       "loadFailed": "No s'han pogut carregar les campanyes.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "S'ha omès {{count}} registre de campanya il·legible. Els fitxers s'han deixat al seu lloc.",
       "skipped_other": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
       "skipped_many": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",

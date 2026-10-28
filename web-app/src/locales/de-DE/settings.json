@@ -474,7 +474,9 @@
     "usageUnsaved": "Ungespeicherte Änderungen",
     "stopServerToEdit": "Server stoppen, um zu bearbeiten",
     "trustedHostsInvalid": "Kein gültiger Host: {{hosts}}. Verwende einen Host oder Host:Port, z. B. example.com oder 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Nicht gespeichert. Enter speichert, Escape macht rückgängig."
+    "trustedHostsUnsaved": "Nicht gespeichert. Enter speichert, Escape macht rückgängig.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analytik",
@@ -588,7 +590,11 @@
       "installing": "Wird installiert …",
       "uninstall": "Deinstallieren",
       "uninstalling": "Wird deinstalliert …",
-      "foreignDesc": "Gefunden unter {{path}}, installiert von einer anderen Flint-Kopie. Hier installieren, um die CLI dieser Kopie zu nutzen."
+      "foreignDesc": "Gefunden unter {{path}}, installiert von einer anderen Flint-Kopie. Hier installieren, um die CLI dieser Kopie zu nutzen.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Start und Infobereich",
     "cliGroup": "Befehlszeile",
@@ -1188,7 +1194,6 @@
       "updated": "Aktualisiert {{when}}",
       "loading": "Kampagnen werden geladen",
       "loadFailed": "Kampagnen konnten nicht geladen werden.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} nicht lesbarer Kampagneneintrag übersprungen. Die Dateien blieben an ihrem Platz.",
       "skipped_other": "{{count}} nicht lesbare Kampagneneinträge übersprungen. Die Dateien blieben an ihrem Platz.",
       "retry": "Wiederholen",

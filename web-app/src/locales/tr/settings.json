@@ -474,7 +474,9 @@
     "usageUnsaved": "Kaydedilmemiş değişiklikler",
     "stopServerToEdit": "Düzenlemek için sunucuyu durdurun",
     "trustedHostsInvalid": "Geçersiz ana bilgisayar: {{hosts}}. example.com veya 192.168.1.5:3000 gibi bir ana bilgisayar ya da ana bilgisayar:bağlantı noktası kullanın.",
-    "trustedHostsUnsaved": "Kaydedilmedi. Kaydetmek için Enter, geri almak için Escape."
+    "trustedHostsUnsaved": "Kaydedilmedi. Kaydetmek için Enter, geri almak için Escape.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analizler",
@@ -588,7 +590,11 @@
       "installing": "Kuruluyor…",
       "uninstall": "Kaldır",
       "uninstalling": "Kaldırılıyor…",
-      "foreignDesc": "{{path}} konumunda bulundu, Flint'in başka bir kopyası kurmuş. Bu kopyanın CLI'sini kullanmak için buraya kurun."
+      "foreignDesc": "{{path}} konumunda bulundu, Flint'in başka bir kopyası kurmuş. Bu kopyanın CLI'sini kullanmak için buraya kurun.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Başlangıç ve tepsi",
     "cliGroup": "Komut satırı",
@@ -1188,7 +1194,6 @@
       "updated": "Güncellendi: {{when}}",
       "loading": "Kampanyalar yükleniyor",
       "loadFailed": "Kampanyalar yüklenemedi.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Okunamayan {{count}} kampanya kaydı atlandı. Dosyalar yerinde bırakıldı.",
       "skipped_other": "Okunamayan {{count}} kampanya kaydı atlandı. Dosyalar yerinde bırakıldı.",
       "retry": "Yeniden dene",

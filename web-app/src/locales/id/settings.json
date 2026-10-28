@@ -472,7 +472,9 @@
     "usageUnsaved": "Perubahan belum disimpan",
     "stopServerToEdit": "Hentikan server untuk mengedit",
     "trustedHostsInvalid": "Host tidak valid: {{hosts}}. Gunakan host atau host:port, seperti example.com atau 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Belum disimpan. Tekan Enter untuk menyimpan, Escape untuk membatalkan."
+    "trustedHostsUnsaved": "Belum disimpan. Tekan Enter untuk menyimpan, Escape untuk membatalkan.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analitik",
@@ -586,7 +588,11 @@
       "installing": "Memasang…",
       "uninstall": "Copot",
       "uninstalling": "Mencopot…",
-      "foreignDesc": "Ditemukan di {{path}}, dipasang oleh salinan Flint lain. Pasang di sini untuk memakai CLI salinan ini."
+      "foreignDesc": "Ditemukan di {{path}}, dipasang oleh salinan Flint lain. Pasang di sini untuk memakai CLI salinan ini.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Startup dan tray",
     "cliGroup": "Baris perintah",
@@ -1186,7 +1192,6 @@
       "updated": "Diperbarui {{when}}",
       "loading": "Memuat campaign",
       "loadFailed": "Campaign tidak dapat dimuat.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_other": "{{count}} catatan kampanye yang tidak terbaca dilewati. Berkas dibiarkan di tempatnya.",
       "retry": "Coba lagi",
       "needsDesktop": "Kampanye memerlukan aplikasi desktop",

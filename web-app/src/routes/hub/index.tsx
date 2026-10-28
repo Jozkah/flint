@@ -756,12 +756,12 @@ function ModelDiscoverRoute() {
                               <Chip mono>{isMlx ? 'MLX' : 'GGUF'}</Chip>
                               {installed && (
                                 <Chip tone="ok" dot>
-                                  <Check /> Installed
+                                  <Check /> {t('sweep:hub.installed')}
                                 </Chip>
                               )}
                               {model.gated && (
                                 <Chip tone="warn">
-                                  <LockKeyhole /> Gated
+                                  <LockKeyhole /> {t('sweep:hub.gated')}
                                 </Chip>
                               )}
                             </span>
@@ -779,7 +779,7 @@ function ModelDiscoverRoute() {
                               )}
                               {(hasVision || hasTools) && (
                                 <span>
-                                  {[hasVision && 'Vision', hasTools && 'Tools']
+                                  {[hasVision && t('common:vision'), hasTools && t('common:tools')]
                                     .filter(Boolean)
                                     .join(' · ')}
                                 </span>
@@ -898,7 +898,7 @@ function ModelDiscoverRoute() {
                                         </span>
                                         {isRecommended && (
                                           <Chip tone="info">
-                                            <Sparkles /> Recommended for this computer
+                                            <Sparkles /> {t('sweep:hub.recommendedHere')}
                                           </Chip>
                                         )}
                                         <span className="text-xs text-muted-foreground tabular-nums">
@@ -909,7 +909,7 @@ function ModelDiscoverRoute() {
                                           )}
                                         </span>
                                         {group.multipart && (
-                                          <Chip>{group.files.length} shards</Chip>
+                                          <Chip>{t('sweep:hub.shards', { count: group.files.length })}</Chip>
                                         )}
                                         <Chip
                                           tone={fitTone(fit.verdict)}

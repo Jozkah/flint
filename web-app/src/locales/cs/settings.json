@@ -478,7 +478,9 @@
     "usageUnsaved": "Neuložené změny",
     "stopServerToEdit": "Pro úpravu zastavte server",
     "trustedHostsInvalid": "Neplatný hostitel: {{hosts}}. Použijte hostitele nebo hostitel:port, např. example.com nebo 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Neuloženo. Enter uloží, Escape vrátí změnu."
+    "trustedHostsUnsaved": "Neuloženo. Enter uloží, Escape vrátí změnu.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analytika",
@@ -592,7 +594,11 @@
       "installing": "Instaluje se…",
       "uninstall": "Odinstalovat",
       "uninstalling": "Odinstalovává se…",
-      "foreignDesc": "Nalezeno v {{path}}, nainstalováno jinou kopií Flintu. Nainstalujte zde, abyste použili CLI této kopie."
+      "foreignDesc": "Nalezeno v {{path}}, nainstalováno jinou kopií Flintu. Nainstalujte zde, abyste použili CLI této kopie.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Spuštění a lišta",
     "cliGroup": "Příkazový řádek",
@@ -1218,7 +1224,6 @@
       "updated": "Aktualizováno {{when}}",
       "loading": "Načítání kampaní",
       "loadFailed": "Kampaně se nepodařilo načíst.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Přeskočen {{count}} nečitelný záznam kampaně. Soubory zůstaly na místě.",
       "skipped_few": "Přeskočeny {{count}} nečitelné záznamy kampaní. Soubory zůstaly na místě.",
       "skipped_other": "Přeskočeno {{count}} nečitelných záznamů kampaní. Soubory zůstaly na místě.",

@@ -99,7 +99,11 @@
     "variant": "Biến thể",
     "whatToLookFor": "Cần tìm gì",
     "searchPlaceholderShort": "Tìm hoặc dán URL…",
-    "resultLimit": "Hiển thị"
+    "resultLimit": "Hiển thị",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Nhập một tệp mô hình GGUF để thêm vào bộ sưu tập của bạn. Bật hỗ trợ đa phương thức để đính kèm mmproj cho đầu vào hình ảnh hoặc âm thanh, hoặc bật hỗ trợ mô hình nháp cho giải mã suy đoán. Mô hình embedding được nhận diện tự động.",

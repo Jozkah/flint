@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
 import { isServedByFlint } from '@/lib/platform/utils'
 import {
@@ -11,7 +11,6 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { OctagonAlert } from 'lucide-react'
-import { Icon } from '@/components/ui/icon'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -21,8 +20,6 @@ import {
   Brain,
   Download,
   FolderOpen,
-  Pin,
-  PinOff,
   Search,
   SearchX,
   Trash2,
@@ -39,9 +36,8 @@ import {
 } from '@/lib/settingsSearch'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
-import { useMemoryConversations } from '@/hooks/useMemoryConversations'
-import { useThreadManagement } from '@/hooks/useThreadManagement'
-import { memoryLocation, setMemoryEnabled } from '@/lib/memoryBinding'
+import { useMemoryTarget } from '@/hooks/useMemoryTarget'
+import { setMemoryEnabled } from '@/lib/memoryBinding'
 import {
   memoryConflicts,
   memoryRecordCommit,
@@ -60,7 +56,6 @@ import {
   memorySettingsUpdate,
   memoryStorageSummary,
   type MemoryConflictPair,
-  type MemoryLocation,
   type MemoryScope,
   type MemoryStorageSummary,
   type MemoryView,
@@ -72,8 +67,9 @@ import {
   type SettingsTab,
 } from '@/containers/SettingsTabs'
 import { AgentNotesSettings } from '@/containers/AgentNotesSettings'
-import { type Translate } from '@/containers/memory/memoryScopes'
 import { MemoryScopeTabs } from '@/containers/memory/MemoryScopeTabs'
+import { MemoryRecordRow } from '@/containers/memory/MemoryRecordRow'
+import { MemoryPager } from '@/containers/memory/MemoryPager'
 import { MemoryImportReport } from '@/containers/memory/MemoryImportReport'
 import { MemoryConflictsCard } from '@/containers/memory/MemoryConflictsCard'
 import {
@@ -97,18 +93,6 @@ const PAGE_SIZE = 50
 /** The page's tabs: its switches, the remembered facts, and agent notes. */
 type MemoryTab = 'settings' | 'remembered' | 'notes'
 
-function formatWhen(
-  seconds: number | null,
-  t: Translate,
-  language?: string
-): string {
-  if (!seconds) return t('settings:memoryPage.meta.never')
-  return new Intl.DateTimeFormat(language, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(seconds * 1000))
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -116,7 +100,7 @@ function formatBytes(bytes: number): string {
 }
 
 function MemorySettings() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [scope, setScope] = useState<MemoryScope>('user')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState<MemoryView[]>([])
@@ -146,92 +130,18 @@ function MemorySettings() {
   /** The scope a "forget all" is waiting for confirmation on. */
   const [clearing, setClearing] = useState<MemoryScope | null>(null)
 
-  /**
-   * Where the settings page is. Deliberately not a project or session the page
-   * chooses: the backend derives what may be seen from this, and the page
-   * cannot widen it by asking differently.
-   */
-  /**
-   * Resolved from the service hub, which is the only thing that knows it.
-   *
-   * This read `window.core?.api?.dataFolder`, which nothing in the application
-   * defines -- it was the sole reference to that path anywhere. It resolved to
-   * `''`, the backend's `settings_root()` returned `None`, and every command on
-   * this page rejected with "no data folder to store settings in". The toggle
-   * was simply the first one anybody pressed.
-   *
-   * `null` while it is being fetched, so the page can tell "not loaded yet"
-   * apart from "loaded and empty" instead of sending a request that cannot
-   * succeed.
-   */
-  const [dataFolder, setDataFolder] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    getServiceHub()
-      .app()
-      .getJanDataFolder()
-      .then((folder) => {
-        if (!cancelled) setDataFolder(folder ?? '')
-      })
-      .catch(() => {
-        if (!cancelled) setDataFolder('')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  /**
-   * Which conversation and which project the chat/project tabs are about.
-   *
-   * This read `window.core.api.activeSessionId` and `.projectRoot`, which
-   * nothing in the application ever assigns, so "This chat" and "This
-   * project" always answered "no chat is open". The user picks them here from
-   * the conversations and project folders that exist; the backend still
-   * derives the project's identity from the folder itself and never trusts an
-   * id the page sends.
-   */
-  const conversations = useMemoryConversations()
-  const [sessionId, setSessionId] = useState<string | undefined>(undefined)
-  const [projectRoot, setProjectRoot] = useState<string | undefined>(undefined)
-  useEffect(() => {
-    if (sessionId === undefined && conversations.sessions[0]) {
-      setSessionId(conversations.sessions[0].id)
-    }
-    if (projectRoot === undefined && conversations.projects[0]) {
-      setProjectRoot(conversations.projects[0])
-    }
-  }, [conversations, sessionId, projectRoot])
-
-  /**
-   * The Flint project whose memories the Project tab shows, for a project with
-   * no folder. The backend scopes it (`jan-project:<id>`) and shows that
-   * project's records and no other's. A folder, when one is picked, is the
-   * identity instead, so choosing one of these clears the other.
-   */
-  const projects = useThreadManagement((s) => s.folders)
-  const [projectId, setProjectId] = useState('')
-  const selectedProject = projects.find((p) => p.id === projectId)
-  useEffect(() => {
-    // A project deleted while selected is no longer a scope to show.
-    if (projectId && !projects.some((p) => p.id === projectId)) setProjectId('')
-  }, [projects, projectId])
-
-  const location: MemoryLocation | null = useMemo(
-    () =>
-      dataFolder == null
-        ? null
-        : memoryLocation(
-            dataFolder,
-            {
-              projectRoot: projectRoot || undefined,
-              janProjectId: projectId || undefined,
-            },
-            sessionId
-          ),
-    [dataFolder, projectRoot, projectId, sessionId]
-  )
+  const {
+    conversations,
+    sessionId,
+    setSessionId,
+    projectRoot,
+    setProjectRoot,
+    projects,
+    projectId,
+    setProjectId,
+    selectedProject,
+    location,
+  } = useMemoryTarget()
 
   /**
    * Everything awaiting an answer, from every chat -- not only this one.
@@ -1012,229 +922,23 @@ function MemorySettings() {
                   ) : (
                     <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
                       {page.map((memory) => (
-                        <li
+                        <MemoryRecordRow
                           key={memory.id}
-                          className="flex items-start justify-between gap-3 px-3 py-3"
-                          data-testid="memory-row"
-                          data-memory-id={memory.id}
-                          data-pinned={memory.pinned ? 'true' : 'false'}
-                        >
-                          <div className="min-w-0">
-                            <p className="text-sm break-words text-foreground">{memory.preview}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {[
-                                memory.origin === 'explicit'
-                                  ? t('settings:memoryPage.meta.youSaved')
-                                  : t('settings:memoryPage.meta.inferred'),
-                                memory.pinned ? t('settings:memoryPage.meta.pinned') : null,
-                                memory.status !== 'active' ? memory.status : null,
-                                t('settings:memoryPage.meta.used', { count: memory.useCount }),
-                                t('settings:memoryPage.meta.lastUsed', {
-                                  when: formatWhen(memory.lastUsedAt, t, i18n.language),
-                                }),
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </p>
-                            <details className="mt-1 text-xs" data-testid="memory-provenance">
-                              <summary className="cursor-pointer rounded-sm text-acc-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
-                                {t('uiLeftovers:memory.why')}
-                              </summary>
-                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-muted p-2 text-fg-2 sm:grid-cols-[auto_1fr]">
-                                <dt>ID</dt>
-                                <dd className="font-mono break-all">{memory.id}</dd>
-                                <dt>{t('uiLeftovers:scope')}</dt>
-                                <dd>{memory.scope}</dd>
-                                <dt>{t('uiLeftovers:memory.writtenBy')}</dt>
-                                <dd>
-                                  {memory.creator} ({memory.origin})
-                                </dd>
-                                <dt>{t('uiLeftovers:memory.created')}</dt>
-                                <dd>{formatWhen(memory.createdAt, t, i18n.language)}</dd>
-                                <dt>{t('uiLeftovers:memory.updated')}</dt>
-                                <dd>{formatWhen(memory.updatedAt, t, i18n.language)}</dd>
-                                <dt>{t('uiLeftovers:memory.fromConversation')}</dt>
-                                <dd className="font-mono break-all">
-                                  {memory.sourceSessionId ?? t('uiLeftovers:memory.notRecorded')}
-                                  {memory.sourceDeleted && ` ${t('uiLeftovers:memory.deletedSince')}`}
-                                </dd>
-                                {memory.sourceMessageId && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.fromMessage')}</dt>
-                                    <dd className="font-mono break-all">{memory.sourceMessageId}</dd>
-                                  </>
-                                )}
-                                {memory.projectId && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.projectIdentity')}</dt>
-                                    <dd className="font-mono break-all">{memory.projectId}</dd>
-                                  </>
-                                )}
-                                {memory.supersedes && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.replaces')}</dt>
-                                    <dd className="font-mono break-all">{memory.supersedes}</dd>
-                                  </>
-                                )}
-                                <dt>{t('uiLeftovers:memory.redacted')}</dt>
-                                <dd>{memory.redacted ? t('uiLeftovers:memory.yes') : t('uiLeftovers:memory.no')}</dd>
-                                {memory.expiresAt && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.expires')}</dt>
-                                    <dd>{formatWhen(memory.expiresAt, t, i18n.language)}</dd>
-                                  </>
-                                )}
-                                <dt>{t('uiLeftovers:memory.version')}</dt>
-                                <dd data-testid="memory-provenance-version">
-                                  {memory.version == null ? t('uiLeftovers:memory.versionUnknown') : memory.version}
-                                </dd>
-                                <dt>{t('uiLeftovers:memory.source')}</dt>
-                                <dd data-testid="memory-provenance-source">{memory.sourceType ?? t('uiLeftovers:memory.unknown')}</dd>
-                                {memory.importedFrom && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.importedFrom')}</dt>
-                                    <dd className="break-all" data-testid="memory-provenance-imported">
-                                      {t('uiLeftovers:memory.importedExport', {
-                                        id: memory.importedFrom.export_id,
-                                        scope: memory.importedFrom.exported_scope,
-                                        when: formatWhen(memory.importedFrom.exported_at, t, i18n.language),
-                                      })}
-                                    </dd>
-                                    <dt>{t('uiLeftovers:memory.originally')}</dt>
-                                    <dd className="break-all" data-testid="memory-provenance-original">
-                                      {memory.importedFrom.original_source_type} ·{' '}
-                                      <span className="font-mono">{memory.importedFrom.original_id}</span> ·{' '}
-                                      {t('uiLeftovers:memory.createdWhen', { when: formatWhen(memory.importedFrom.original_created_at, t, i18n.language) })}
-                                      {memory.importedFrom.original_session_id &&
-                                        ` · ${t('uiLeftovers:memory.conversationId', { id: memory.importedFrom.original_session_id })}`}
-                                      {memory.importedFrom.original_run_id &&
-                                        ` · ${t('uiLeftovers:memory.runId', { id: memory.importedFrom.original_run_id })}`}
-                                    </dd>
-                                  </>
-                                )}
-                                <dt>{t('uiLeftovers:memory.fromRun')}</dt>
-                                <dd className="font-mono break-all">{memory.sourceRunId ?? t('uiLeftovers:memory.notRecorded')}</dd>
-                                <dt>{t('uiLeftovers:memory.savedInProject')}</dt>
-                                <dd className="font-mono break-all">{memory.sourceProjectId ?? t('uiLeftovers:memory.notRecorded')}</dd>
-                                {memory.contentHash && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.contentHash')}</dt>
-                                    <dd className="font-mono break-all">{memory.contentHash}</dd>
-                                  </>
-                                )}
-                                {(memory.history?.length ?? 0) > 0 && (
-                                  <>
-                                    <dt>{t('uiLeftovers:memory.earlierVersions')}</dt>
-                                    <dd data-testid="memory-provenance-history">
-                                      {memory.history!.map((h) => (
-                                        <span key={`${h.version}-${h.content_hash}`} className="block font-mono break-all">
-                                          v{h.version} · {h.content_hash} · {t('settings:memoryPage.replacedAt', { when: formatWhen(h.replaced_at, t, i18n.language) })}
-                                        </span>
-                                      ))}
-                                    </dd>
-                                  </>
-                                )}
-                                <dt>{t('uiLeftovers:memory.usedIn')}</dt>
-                                <dd data-testid="memory-provenance-uses">
-                                  {(memory.uses?.length ?? 0) === 0
-                                    ? t('uiLeftovers:memory.noRequests')
-                                    : memory.uses!.map((u, i: number) => (
-                                        <span
-                                          key={`${u.at}-${i}`}
-                                          className="block font-mono break-all"
-                                          data-snapshot-id={u.snapshot_id ?? ''}
-                                        >
-                                          {formatWhen(u.at, t, i18n.language)} · {u.session_id}
-                                          {u.turn_id ? ` · ${t('uiLeftovers:memory.turnId', { id: u.turn_id })}` : ''}
-                                          {u.snapshot_id ? ` · ${t('uiLeftovers:memory.snapshotId', { id: u.snapshot_id })}` : ''}
-                                          {u.reason ? ` · ${u.reason}` : ''}
-                                        </span>
-                                      ))}
-                                </dd>
-                              </dl>
-                            </details>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-muted-foreground pointer-coarse:size-11"
-                              disabled={busy}
-                              title={
-                                memory.pinned
-                                  ? t('settings:memoryPage.unpin')
-                                  : t('settings:memoryPage.pin')
-                              }
-                              aria-label={
-                                memory.pinned
-                                  ? t('settings:memoryPage.unpinAria')
-                                  : t('settings:memoryPage.pinAria')
-                              }
-                              onClick={() => void onTogglePin(memory)}
-                            >
-                              {memory.pinned ? (
-                                <PinOff aria-hidden />
-                              ) : (
-                                <Pin aria-hidden />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-muted-foreground pointer-coarse:size-11"
-                              disabled={busy}
-                              title={t('common:edit')}
-                              aria-label={t('settings:memoryPage.editAria')}
-                              onClick={() => {
-                                setEditing(memory)
-                                setDraft(memory.content)
-                              }}
-                            >
-                              <Icon name="x-edit" size={16} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-muted-foreground pointer-coarse:size-11"
-                              disabled={busy}
-                              title={t('settings:memoryPage.forget')}
-                              aria-label={t('settings:memoryPage.forgetAria')}
-                              onClick={() => void onForget(memory)}
-                            >
-                              <Icon name="x-trash" size={16} />
-                            </Button>
-                          </div>
-                        </li>
+                          memory={memory}
+                          busy={busy}
+                          onTogglePin={onTogglePin}
+                          onEdit={(m) => {
+                            setEditing(m)
+                            setDraft(m.content)
+                          }}
+                          onForget={onForget}
+                        />
                       ))}
                     </ul>
                   )}
 
                   {total > PAGE_SIZE && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-muted-foreground">
-                      <span>
-                        {t('settings:memoryPage.showing', {
-                          from: offset + 1,
-                          to: Math.min(offset + PAGE_SIZE, total),
-                          total,
-                        })}
-                      </span>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          disabled={offset === 0}
-                          onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                        >
-                          {t('settings:memoryPage.previous')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          disabled={offset + PAGE_SIZE >= total}
-                          onClick={() => setOffset(offset + PAGE_SIZE)}
-                        >
-                          {t('common:next')}
-                        </Button>
-                      </div>
-                    </div>
+                    <MemoryPager offset={offset} total={total} pageSize={PAGE_SIZE} onOffsetChange={setOffset} />
                   )}
 
                   {/* The destructive action, kept quiet and apart from the

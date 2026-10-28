@@ -476,7 +476,9 @@
     "usageUnsaved": "Modifiche non salvate",
     "stopServerToEdit": "Arresta il server per modificare",
     "trustedHostsInvalid": "Host non valido: {{hosts}}. Usa un host o host:porta, come example.com o 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Non salvato. Premi Invio per salvare, Esc per annullare."
+    "trustedHostsUnsaved": "Non salvato. Premi Invio per salvare, Esc per annullare.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analisi dati",
@@ -590,7 +592,11 @@
       "installing": "Installazione…",
       "uninstall": "Disinstalla",
       "uninstalling": "Disinstallazione…",
-      "foreignDesc": "Trovata in {{path}}, installata da un'altra copia di Flint. Installa qui per usare la CLI di questa copia."
+      "foreignDesc": "Trovata in {{path}}, installata da un'altra copia di Flint. Installa qui per usare la CLI di questa copia.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Avvio e area di notifica",
     "cliGroup": "Riga di comando",
@@ -1203,7 +1209,6 @@
       "updated": "Aggiornata {{when}}",
       "loading": "Caricamento delle campagne",
       "loadFailed": "Impossibile caricare le campagne.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} record di campagna illeggibile saltato. I file sono rimasti dove erano.",
       "skipped_other": "{{count}} record di campagna illeggibili saltati. I file sono rimasti dove erano.",
       "skipped_many": "{{count}} record di campagna illeggibili saltati. I file sono rimasti dove erano.",
