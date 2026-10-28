@@ -61,6 +61,31 @@ fn read_config(data_folder: &std::path::Path) -> Value {
     }
 }
 
+/// The config for a read-modify-write. A missing or blank file is an empty
+/// document; a file that cannot be read or parsed, or whose root is not an
+/// object, is an error so the caller never writes a near-empty file over
+/// servers (and their keys) it failed to read.
+fn load_config(data_folder: &std::path::Path) -> Result<Value, String> {
+    let path = config_path(data_folder);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(serde_json::json!({})),
+        Err(e) => return Err(format!("{}: {e}; refusing to overwrite", path.display())),
+    };
+    if text.trim().is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+    let cfg: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{}: {e}; refusing to overwrite", path.display()))?;
+    if !cfg.is_object() {
+        return Err(format!(
+            "{}: not a JSON object; refusing to overwrite",
+            path.display()
+        ));
+    }
+    Ok(cfg)
+}
+
 /// Atomically persist a full `mcp_config.json` document (tmp + rename), the
 /// same idiom `set_active` already uses. `mcpServers`/`mcpSettings` keys are
 /// ensured so a caller passing a bare servers object still writes a valid doc.
@@ -103,6 +128,10 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
     }
     std::io::Write::write_all(&mut file, body.as_bytes()).map_err(|e| e.to_string())?;
     drop(file);
+    // Best effort: keep the previous file so a bad write is recoverable.
+    if path.is_file() {
+        let _ = std::fs::copy(&path, path.with_extension("json.bak"));
+    }
     std::fs::rename(&tmp, &path)
         .map_err(|e| format!("cannot replace {}: {e}", path.display()))?;
     Ok(())
@@ -165,10 +194,7 @@ pub fn set_active(name: &str, active: bool) -> Result<(), String> {
 }
 
 fn set_active_in(data_folder: &std::path::Path, name: &str, active: bool) -> Result<(), String> {
-    let mut cfg = read_config(data_folder);
-    if !cfg.is_object() {
-        cfg = serde_json::json!({});
-    }
+    let mut cfg = load_config(data_folder)?;
     let entry = servers_map_mut(&mut cfg)
         .get_mut(name)
         .ok_or_else(|| format!("server '{name}' not found in mcp_config.json"))?;
@@ -300,10 +326,7 @@ fn upsert_server_in(
 ) -> Result<(), String> {
     validate_server_name(name)?;
     validate_config(config)?;
-    let mut cfg = read_config(data_folder);
-    if !cfg.is_object() {
-        cfg = serde_json::json!({});
-    }
+    let mut cfg = load_config(data_folder)?;
     let servers = servers_map_mut(&mut cfg);
     let existing_active = servers.get(name).and_then(|c| c.get("active")).cloned();
     let mut entry = config.clone();
@@ -326,10 +349,7 @@ pub fn remove_server(name: &str) -> Result<(), String> {
 
 fn remove_server_in(data_folder: &std::path::Path, name: &str) -> Result<(), String> {
     validate_server_name(name)?;
-    let mut cfg = read_config(data_folder);
-    if !cfg.is_object() {
-        cfg = serde_json::json!({});
-    }
+    let mut cfg = load_config(data_folder)?;
     let removed = servers_map_mut(&mut cfg).remove(name).is_some();
     if !removed {
         return Err(format!("server '{name}' not found in mcp_config.json"));
@@ -1009,6 +1029,48 @@ mod tests {
         let doc: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert!(doc.get("mcpServers").is_some());
         assert!(doc.get("mcpSettings").is_some());
+    }
+
+    #[test]
+    fn mutators_refuse_to_overwrite_an_unparsable_config() {
+        let data = temp_data();
+        let folder = data.path();
+        let bad = "{\"mcpServers\":{\"a\":{\"command\":\"x\",\"env\":{\"KEY\":\"secret\"}}},}";
+        std::fs::write(config_path(folder), bad).unwrap();
+        let cfg = serde_json::json!({ "command": "echo" });
+        let err = upsert_server_in(folder, "b", &cfg).unwrap_err();
+        assert!(err.contains("mcp_config.json"), "error names the file: {err}");
+        assert!(set_active_in(folder, "a", true).is_err());
+        assert!(remove_server_in(folder, "a").is_err());
+        assert_eq!(std::fs::read_to_string(config_path(folder)).unwrap(), bad);
+    }
+
+    #[test]
+    fn mutators_refuse_a_non_object_root() {
+        let data = temp_data();
+        let folder = data.path();
+        std::fs::write(config_path(folder), "[1,2]").unwrap();
+        assert!(upsert_server_in(folder, "b", &serde_json::json!({ "command": "echo" })).is_err());
+        assert_eq!(std::fs::read_to_string(config_path(folder)).unwrap(), "[1,2]");
+    }
+
+    #[test]
+    fn missing_file_still_creates_the_config() {
+        let data = temp_data();
+        let folder = data.path();
+        upsert_server_in(folder, "b", &serde_json::json!({ "command": "echo" })).unwrap();
+        assert!(config_path(folder).is_file());
+    }
+
+    #[test]
+    fn write_config_keeps_a_backup_of_the_previous_file() {
+        let data = temp_data();
+        let folder = data.path();
+        write_config(folder, &serde_json::json!({ "mcpServers": { "a": {} } })).unwrap();
+        let first = std::fs::read_to_string(config_path(folder)).unwrap();
+        write_config(folder, &serde_json::json!({ "mcpServers": {} })).unwrap();
+        let bak = std::fs::read_to_string(config_path(folder).with_extension("json.bak")).unwrap();
+        assert_eq!(bak, first);
     }
 
     #[test]
