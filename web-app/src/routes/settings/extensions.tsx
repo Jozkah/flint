@@ -3,8 +3,8 @@ import { route } from '@/constants/routes'
 
 /** Extensions is a tab of Integrations now; this keeps old links, bookmarks
  * and saved routes working. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.extensions as any)({
+
+export const Route = createFileRoute(route.settings.extensions)({
   beforeLoad: () => {
     throw redirect({
       to: route.settings.integrations,

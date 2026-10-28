@@ -1336,8 +1336,10 @@ async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
     cmd.background();
 
-    let output = cmd
-        .output()
+    // taskkill can take seconds; keep it off the async worker.
+    let output = tokio::task::spawn_blocking(move || cmd.output())
+        .await
+        .map_err(|e| format!("taskkill task failed: {e}"))?
         .map_err(|e| format!("Failed to run taskkill: {}", e))?;
 
     if !output.status.success() {

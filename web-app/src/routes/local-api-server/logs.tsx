@@ -5,8 +5,8 @@ import { useServerLogs } from '@/hooks/useServerLogs'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { LogsDashboard } from '@/containers/LogViewer'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.localApiServerlogs as any)({
+
+export const Route = createFileRoute(route.localApiServerlogs)({
   component: LogsViewer,
 })
 

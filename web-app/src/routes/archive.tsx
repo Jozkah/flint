@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { isServedByFlint } from '@/lib/platform/utils'
 import { DesktopOnlyPage } from '@/containers/DesktopOnlyPage'
 import { createFileRoute } from '@tanstack/react-router'
@@ -7,7 +7,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { SettingsPageBody } from '@/containers/SettingsPageHeader'
 import { ArchivePanel } from '@/containers/archive/ArchivePanel'
 
-export const Route = createFileRoute(route.archive as any)({
+export const Route = createFileRoute(route.archive)({
   // Everything here is the desktop app's; a browser gets one line instead.
   component: () =>
     isServedByFlint() ? <DesktopOnlyTitle /> : <ArchivePage />,

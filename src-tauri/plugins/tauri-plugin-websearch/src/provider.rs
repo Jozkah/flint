@@ -210,11 +210,21 @@ fn gated(
     endpoint: Option<String>,
 ) -> Result<Box<dyn SearchProvider>, String> {
     let keyless_exa = id == "exa" && normalize_key(api_key.clone()).is_none();
+    let gate_secret = api_key.clone();
     let inner = create_raw_provider(id, api_key, endpoint)?;
     let gate_key = match id {
         "exa" if keyless_exa => "exa-hosted".to_string(),
         "ddg" => "duckduckgo".to_string(),
-        _ => id.to_string(),
+        // One gate per credential: a limit hit by one key leaves another usable.
+        _ => match gate_secret.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+            Some(key) => {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                key.hash(&mut hasher);
+                format!("{id}#{:08x}", hasher.finish() as u32)
+            }
+            None => id.to_string(),
+        },
     };
     Ok(Box::new(crate::ratelimit::Gated::new(
         display_name(id),

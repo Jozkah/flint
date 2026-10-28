@@ -60,18 +60,21 @@ pub(crate) fn initialize_result() -> Value {
     })
 }
 
-/// The text of a `session/prompt`'s content blocks. Only `text` blocks are
-/// supported; anything else is a params error.
+/// The text of a `session/prompt`'s content blocks. `text` blocks are used
+/// as written and `resource_link` blocks become an `@path` line; other block
+/// kinds are described, not fatal, so a client that always attaches one still works.
 pub(crate) fn prompt_text(prompt: &Value) -> Result<String, String> {
     let blocks = prompt.as_array().ok_or("prompt must be an array of content blocks")?;
-    let mut parts = Vec::with_capacity(blocks.len());
+    let mut parts: Vec<String> = Vec::with_capacity(blocks.len());
     for (index, block) in blocks.iter().enumerate() {
         match (block["type"].as_str(), block["text"].as_str()) {
-            (Some("text"), Some(text)) => parts.push(text),
+            (Some("text"), Some(text)) => parts.push(text.to_owned()),
             (Some("text"), None) => return Err(format!("prompt[{index}]: text block has no text")),
-            (Some(other), _) => {
-                return Err(format!("prompt[{index}]: unsupported content block type '{other}' (only text)"))
+            (Some("resource_link"), _) => {
+                let uri = block["uri"].as_str().ok_or(format!("prompt[{index}]: resource_link has no uri"))?;
+                parts.push(format!("@{}", uri.strip_prefix("file://").unwrap_or(uri)));
             }
+            (Some(other), _) => parts.push(format!("[unsupported {other} content omitted]")),
             (None, _) => return Err(format!("prompt[{index}]: content block has no type")),
         }
     }
@@ -659,19 +662,16 @@ mod tests {
     }
 
     #[test]
-    fn prompt_accepts_text_and_refuses_other_blocks() {
+    fn prompt_accepts_text_links_and_describes_other_blocks() {
         let ok = route(br#"{"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"sessionId":"s","prompt":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}}"#);
         assert_eq!(ok, Incoming::Prompt { id: json!(4), session_id: "s".into(), text: "a\n\nb".into() });
-        for block in [
-            r#"{"type":"image","data":"AA==","mimeType":"image/png"}"#,
-            r#"{"type":"resource_link","uri":"file:///x","name":"x"}"#,
-            r#"{"type":"audio","data":"AA=="}"#,
-        ] {
-            let line = format!(r#"{{"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{{"sessionId":"s","prompt":[{block}]}}}}"#);
-            let record = reply(&line);
-            assert_eq!(record["error"]["code"], -32602, "{block}");
-            assert_eq!(record["id"], 5);
-        }
+        let link = route(br#"{"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{"sessionId":"s","prompt":[{"type":"text","text":"read"},{"type":"resource_link","uri":"file:///x/y.rs","name":"y"},{"type":"audio","data":"AA=="}]}}"#);
+        assert_eq!(
+            link,
+            Incoming::Prompt { id: json!(5), session_id: "s".into(), text: "read\n\n@/x/y.rs\n\n[unsupported audio content omitted]".into() }
+        );
+        let record = reply(r#"{"jsonrpc":"2.0","id":7,"method":"session/prompt","params":{"sessionId":"s","prompt":[{"type":"resource_link","name":"x"}]}}"#);
+        assert_eq!(record["error"]["code"], -32602);
         assert_eq!(reply(r#"{"jsonrpc":"2.0","id":6,"method":"session/prompt","params":{"sessionId":"s","prompt":"hi"}}"#)["error"]["code"], -32602);
     }
 

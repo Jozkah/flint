@@ -26,8 +26,8 @@ import { CaBundleStatus, type CaBundleState } from '@/containers/CaBundleStatus'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform/utils'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.network_proxy as any)({
+
+export const Route = createFileRoute(route.settings.network_proxy)({
   component: desktopOnlyRoute(HTTPSProxyContent, 'common:network_proxy'),
 })
 

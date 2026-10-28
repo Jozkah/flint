@@ -461,10 +461,27 @@ fn claude_code_env_keys_path() -> PathBuf {
 }
 
 fn load_claude_code_env_keys(path: &std::path::Path) -> Vec<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    match serde_json::from_str(&raw) {
+        Ok(keys) => keys,
+        Err(e) => {
+            // Reading garbage as "nothing recorded" would let the next save
+            // erase the names; keep the file aside instead.
+            log::warn!("claude-code-env-keys.json is unreadable ({e}); moved to .bak");
+            let _ = std::fs::rename(path, path.with_extension("json.bak"));
+            Vec::new()
+        }
+    }
+}
+
+fn save_claude_code_env_keys(path: &std::path::Path, keys: &[String]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(keys).map_err(|e| e.to_string())?;
+    atomic_write_preserving(&path.to_string_lossy(), &json)
 }
 
 fn record_claude_code_env_keys(path: &std::path::Path, keys: &[String]) -> Result<(), String> {
@@ -474,11 +491,7 @@ fn record_claude_code_env_keys(path: &std::path::Path, keys: &[String]) -> Resul
             all.push(key.clone());
         }
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(path, serde_json::to_string(&all).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())
+    save_claude_code_env_keys(path, &all)
 }
 
 /// Recorded names that the new variable set no longer contains: they were
@@ -498,8 +511,7 @@ fn forget_claude_code_env_keys(path: &std::path::Path, forget: &[String]) -> Res
         .into_iter()
         .filter(|k| !forget.contains(k))
         .collect();
-    std::fs::write(path, serde_json::to_string(&kept).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())
+    save_claude_code_env_keys(path, &kept)
 }
 
 /// Every user variable Reset removes on Windows: the fixed Claude Code names
@@ -2284,6 +2296,19 @@ mod tests {
         delete_models_and_configs(d);
         delete_common_data(d);
         delete_settings(d);
+    }
+
+    #[test]
+    fn corrupt_env_key_record_is_kept_aside_and_saves_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude-code-env-keys.json");
+        std::fs::write(&path, "{not json").unwrap();
+        assert!(load_claude_code_env_keys(&path).is_empty());
+        assert!(dir.path().join("claude-code-env-keys.json.bak").exists());
+        record_claude_code_env_keys(&path, &["A".to_string(), "B".to_string()]).unwrap();
+        assert_eq!(load_claude_code_env_keys(&path), vec!["A".to_string(), "B".to_string()]);
+        forget_claude_code_env_keys(&path, &["A".to_string()]).unwrap();
+        assert_eq!(load_claude_code_env_keys(&path), vec!["B".to_string()]);
     }
 
     #[test]

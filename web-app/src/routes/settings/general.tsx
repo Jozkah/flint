@@ -26,8 +26,8 @@ import {
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import { isForeignBundledCli } from '@/utils/path'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.general as any)({
+
+export const Route = createFileRoute(route.settings.general)({
   component: General,
 })
 
@@ -73,9 +73,9 @@ function General() {
       setCliInstalled(s.installed)
       setCliPath(s.path)
       setCliForeign(false)
-      toast.success(`Flint CLI installed to ${s.path}`)
+      toast.success(t('settings:general.cli.installedToast', { path: s.path ?? '' }))
     } catch (e) {
-      toast.error('Install failed', { description: String(e) })
+      toast.error(t('settings:general.cli.installFailed'), { description: String(e) })
     } finally {
       setIsCliLoading(false)
     }
@@ -87,9 +87,9 @@ function General() {
       await invoke('uninstall_jan_cli')
       setCliInstalled(false)
       setCliPath(null)
-      toast.success('Flint CLI uninstalled')
+      toast.success(t('settings:general.cli.uninstalledToast'))
     } catch (e) {
-      toast.error('Uninstall failed', { description: String(e) })
+      toast.error(t('settings:general.cli.uninstallFailed'), { description: String(e) })
     } finally {
       setIsCliLoading(false)
     }

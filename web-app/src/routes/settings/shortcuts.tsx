@@ -67,8 +67,8 @@ function FixedKeys({ children }: { children: React.ReactNode }) {
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.shortcuts as any)({
+
+export const Route = createFileRoute(route.settings.shortcuts)({
   component: Shortcuts,
 })
 

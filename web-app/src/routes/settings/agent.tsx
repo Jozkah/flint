@@ -60,8 +60,8 @@ import { SubagentSettings } from '@/containers/SubagentSettings'
 import { CampaignParallelSetting } from '@/containers/CampaignSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.agent as any)({
+
+export const Route = createFileRoute(route.settings.agent)({
   // Everything here is the desktop app's; a browser gets one line instead.
   component: () =>
     isServedByFlint() ? <DesktopOnlyTitle /> : <AgentToolsContent />,
@@ -615,6 +615,7 @@ function AgentToolsContent() {
           <div className="space-y-3">
             <Input
               type="text"
+              aria-label={t('settings:agentTools.namePlaceholder')}
               placeholder={t('settings:agentTools.namePlaceholder')}
               value={editor?.name ?? ''}
               // Locked once the entry exists: a new name would create a second
@@ -628,6 +629,7 @@ function AgentToolsContent() {
             />
             <Textarea
               className="min-h-64 font-mono text-base md:text-xs"
+              aria-label={t('settings:agentTools.contentPlaceholder')}
               placeholder={t('settings:agentTools.contentPlaceholder')}
               value={editor?.content ?? ''}
               onChange={(e) =>

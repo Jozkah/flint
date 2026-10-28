@@ -6,8 +6,8 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { LogsDashboard } from '@/containers/LogViewer'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.appLogs as any)({
+
+export const Route = createFileRoute(route.appLogs)({
   component: LogsViewer,
 })
 

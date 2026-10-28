@@ -62,6 +62,9 @@ pub fn classify(event: &Event) -> Action {
         _ => return Action::Ignore,
     };
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    // Windows reports AltGr as Ctrl+Alt, so `@`, `\`, `{` on many layouts
+    // arrive with both set; a printable character with both is typed text.
+    let alt_gr = cfg!(windows) && ctrl && key.modifiers.contains(KeyModifiers::ALT);
     match key.code {
         KeyCode::Esc => Action::Cancel,
         KeyCode::Char('c' | 'd') if ctrl => Action::Cancel,
@@ -72,7 +75,7 @@ pub fn classify(event: &Event) -> Action {
         // is how a redirected or line-translating tty delivers a submit.
         KeyCode::Char('j') if ctrl => Action::Submit,
         KeyCode::Backspace => Action::Backspace,
-        KeyCode::Char(ch) if !ctrl => Action::Insert(ch.to_string()),
+        KeyCode::Char(ch) if !ctrl || (alt_gr && !ch.is_control()) => Action::Insert(ch.to_string()),
         _ => Action::Ignore,
     }
 }
@@ -158,6 +161,14 @@ mod tests {
 
     fn ctrl(ch: char) -> Event {
         Event::Key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::CONTROL))
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn altgr_characters_are_typed_text_but_ctrl_chords_are_not() {
+        let altgr = Event::Key(KeyEvent::new(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::ALT));
+        assert_eq!(classify(&altgr), Action::Insert("@".into()));
+        assert_eq!(classify(&ctrl('x')), Action::Ignore);
     }
 
     #[test]

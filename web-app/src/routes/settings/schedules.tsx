@@ -23,8 +23,8 @@ import { useSchedules } from '@/containers/schedules/useSchedules'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ScheduledTask } from '@/lib/schedules'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.schedules as any)({
+
+export const Route = createFileRoute(route.settings.schedules)({
   component: SchedulesContent,
 })
 
