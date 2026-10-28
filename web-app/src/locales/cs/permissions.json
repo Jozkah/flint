@@ -399,5 +399,13 @@
     "deny": "Zamítnout",
     "always": "Povolit vždy",
     "session": "Povolit pro tuto konverzaci"
+  },
+  "approvalText": {
+    "waitTitle": "Waiting for your approval: {{tool}}",
+    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
+    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
+    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
+    "sensitive": "Sensitive tool call: review its action before allowing it.",
+    "autoPause": "{{count}} tool calls ran without asking. Continue?"
   }
 }

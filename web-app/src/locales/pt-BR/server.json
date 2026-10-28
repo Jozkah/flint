@@ -28,6 +28,7 @@
     "title": "Approve this plan to start it",
     "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
     "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_many": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
     "cost": "Rough cost: {{low}} to {{high}} tokens.",
     "after": "after {{deps}}",
     "accessLabel": "How tasks work",

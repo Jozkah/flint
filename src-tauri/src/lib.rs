@@ -130,6 +130,8 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::set_server_run_in_background,
         core::server::commands::set_close_to_tray,
         core::huggingface::set_download_speed_limit,
+        core::huggingface::get_hf_endpoint_setting,
+        core::huggingface::set_hf_endpoint_setting,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
         core::agent::commands::get_usage_attribution,
@@ -933,6 +935,9 @@ pub fn build_app() -> tauri::App {
             // The RAG/memory databases live in the data folder, before any
             // frontend command can reach them.
             tauri_plugin_vector_db::manage_state(app.handle(), data_folder.join("vectordb"));
+            // The Hugging Face endpoint chosen in Settings, before any search
+            // or download can run.
+            core::hf_endpoint::load_setting(&data_folder);
             tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
                 tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder),
             );

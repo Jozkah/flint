@@ -21,6 +21,20 @@ describe('RichComposerEditor', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('**Bold** and `code`', false))
   })
 
+  it('lets the input pick its own text direction (RTL languages)', async () => {
+    render(
+      <RichComposerEditor
+        value="مرحبا"
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+        onPaste={vi.fn()}
+        placeholder="Message"
+      />
+    )
+    const input = await screen.findByRole('textbox', { name: 'common:composer.messageLabel' })
+    expect(input.getAttribute('dir')).toBe('auto')
+  })
+
   it('formats quote and code block without sending on Enter inside code', async () => {
     const onSend = vi.fn()
     render(

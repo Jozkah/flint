@@ -247,6 +247,7 @@
     "failed": "Não foi possível confiar na pasta",
     "kept_one": "Hooks mantidos ativos em {{count}} pasta que você já usa. Revise-a em Configurações > Permissões > Pastas confiáveis.",
     "kept_other": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis.",
+    "kept_many": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis.",
     "summaryHooks": "Confiar nesta pasta? Os hooks dela executam comandos",
     "summarySubagents": "Confiar nesta pasta? As definições de agentes dela podem ser executadas",
     "summaryBoth": "Confiar nesta pasta? Os hooks e agentes dela podem ser executados",
@@ -392,8 +393,17 @@
     "grantNote": "\"Permitir nesta conversa\" termina quando a conversa termina, ou após 8 horas. \"Sempre permitir\" vale para todas as conversas até você revogar em Configurações > Permissões > Acesso a pastas.",
     "moreWaiting_one": "Mais {{count}} solicitação aguardando.",
     "moreWaiting_other": "Mais {{count}} solicitações aguardando.",
+    "moreWaiting_many": "Mais {{count}} solicitações aguardando.",
     "deny": "Negar",
     "always": "Sempre permitir",
     "session": "Permitir nesta conversa"
+  },
+  "approvalText": {
+    "waitTitle": "Waiting for your approval: {{tool}}",
+    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
+    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
+    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
+    "sensitive": "Sensitive tool call: review its action before allowing it.",
+    "autoPause": "{{count}} tool calls ran without asking. Continue?"
   }
 }

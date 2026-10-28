@@ -120,7 +120,7 @@ export type ModelSettingParams = {
   cont_batching?: boolean
   vision_model?: boolean
   text_model?: boolean
-  engine?: boolean
+  engine?: string
   top_p?: number
   top_k?: number
   min_p?: number

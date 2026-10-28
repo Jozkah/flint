@@ -275,7 +275,7 @@
     "caBundleBroken": "此套件無法使用（{{kind}}）：在修復或移除之前，對外的 HTTPS 不信任任何內容。",
     "ignoreSslScope": "適用於所有經代理的流量。個別提供者也可以只對自己的位址允許無效憑證，設定在模型提供者中該提供者的頁面上。",
     "proxyUrlInvalid": "這看起來不像代理位址。請使用 host:port 或 http://host:port。",
-    "proxyUrlScheme": "僅支援 http 與 https 代理。",
+    "proxyUrlScheme": "僅支援 http、https、socks5 和 socks5h 代理。",
     "ignoreSslConfirmTitle": "忽略 SSL 憑證？",
     "ignoreSslConfirmBody": "Flint 將對所有代理流量接受自簽、已過期或不相符的憑證，因此路徑上的任何人都可能讀取或竄改這些流量。僅在你信任該代理與網路時繼續。",
     "ignoreSslConfirm": "忽略憑證",
@@ -550,6 +550,15 @@
     "closeToTrayDesc": "關閉視窗時，Flint 會隱藏到系統匣而不是結束。請從系統匣選單結束。",
     "downloadLimit": "下載速度限制",
     "downloadLimitDesc": "將模型下載限制為每秒這麼多 MB。0 表示不限制。",
+    "hfEndpoint": "Hugging Face 端點",
+    "hfEndpointDesc": "模型搜尋與下載的目標位址。若 huggingface.co 在你所在地區遭封鎖或很慢，請選擇鏡像。",
+    "hfEndpointDefault": "預設 (huggingface.co)",
+    "hfEndpointCustom": "自訂 URL",
+    "hfEndpointSave": "儲存",
+    "hfEndpointSaved": "已儲存 Hugging Face 端點",
+    "hfEndpointEnvOverride": "環境變數 HF_ENDPOINT 已設為 {{value}}，會覆寫此設定。",
+    "hfEndpointSendToken": "將我的權杖傳送到此鏡像",
+    "hfEndpointSendTokenDesc": "預設關閉：你的 Hugging Face 權杖只會傳送到 huggingface.co。僅在信任此鏡像時開啟。",
     "exportLogs": "匯出記錄（已遮蔽）",
     "exportLogsDesc": "儲存已移除已知 API 金鑰和 token 的應用程式記錄，以便附加到錯誤回報中。分享前請先檢查。",
     "importChatGpt": "匯入 ChatGPT 匯出資料",
@@ -696,6 +705,9 @@
     "title": "上下文壓縮",
     "auto": "自動壓縮",
     "autoDescription": "在對話超出模型上下文視窗之前騰出空間。聊天、Cowork 和 CLI 共用。",
+    "compactAt": "壓縮時機",
+    "compactAtDescription": "當對話達到上下文視窗的這個比例時，會先摘要較早的訊息。自動表示使用內建值。會在 llama.cpp 上下文移位捨棄內容之前執行。",
+    "compactAtAuto": "自動",
     "reserveTokens": "保留的 token 數",
     "reserveDescription": "保持閒置的餘裕：當對話使用量超過視窗減去此值時開始壓縮。",
     "keepRecent": "保留的近期訊息",
@@ -1432,7 +1444,12 @@
     "noMatchHint": "檢查拼字，或清除搜尋以查看全部。",
     "emptyHint": "在上方寫一條，或讓 Flint 在聊天時自動記住。",
     "footerCount_other": "此範圍內有 {{count}} 條記憶",
-    "agentNotes": "代理筆記"
+    "agentNotes": "代理筆記",
+    "report": {
+      "summary_other": "已從匯出中匯入 {{count}} 則記憶",
+      "duplicates_other": "已略過 {{count}} 則重複",
+      "refused_other": "已拒絕 {{count}} 則"
+    }
   },
   "chatMentions": {
     "title": "對話提及",
@@ -1514,7 +1531,16 @@
     "reasoningDefaultDesc": "新聊天中思考預設開啟還是關閉。模型自身的推理設定和輸入框中的開關仍然優先。無法切換思考的模型不受影響。",
     "reasoningDefaultModel": "模型預設",
     "reasoningDefaultOn": "開啟",
-    "reasoningDefaultOff": "關閉"
+    "reasoningDefaultOff": "關閉",
+    "rulesGroup": "規則",
+    "rulesDesc": "在助理自身指示之後加入對話的常駐指示。若只想在某個對話中關閉，請在該對話的選項面板切換。",
+    "rulesEnabled": "規則已啟用",
+    "rulesRemove": "刪除規則",
+    "rulesAllChats": "所有對話",
+    "rulesNoGroups": "尚無群組",
+    "rulesPlaceholder": "新增規則，例如「用公制單位回答」",
+    "rulesAdd": "新增",
+    "rulesTooLong": "已啟用的規則約 {{tokens}} 個 token，超過建議的 {{budget}}。過長的規則會在每個對話中佔用上下文。"
   },
   "data": {
     "tabStorage": "儲存空間",
@@ -1533,6 +1559,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

@@ -8,9 +8,13 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   getCompactionPolicy,
   setCompactionPolicy,
+  clampCompactAtPercent,
   type CompactionLayer,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
+
+/** Choices for "compact at": 50% to 95% of the window in steps of 5. */
+const COMPACT_AT_CHOICES = [50, 55, 60, 65, 70, 75, 80, 85, 90, 95]
 import { Select } from '@/components/ui/select'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import type { SmallContextMode } from '@/lib/smallContext'
@@ -88,6 +92,28 @@ export function CompactionPolicySettings() {
                 checked={policy.auto}
                 onCheckedChange={(checked) => void save({ auto: checked })}
               />
+            }
+          />
+          <CardItem
+            title={t('settings:compaction.compactAt')}
+            description={t('settings:compaction.compactAtDescription') + note('compactAtPercent')}
+            actions={
+              <Select
+                aria-label={t('settings:compaction.compactAt')}
+                data-testid="compact-at-percent"
+                className="min-w-[140px]"
+                value={String(clampCompactAtPercent(policy.compactAtPercent ?? 0))}
+                onChange={(e) =>
+                  void save({ compactAtPercent: clampCompactAtPercent(Number(e.target.value)) })
+                }
+              >
+                <option value="0">{t('settings:compaction.compactAtAuto')}</option>
+                {COMPACT_AT_CHOICES.map((p) => (
+                  <option key={p} value={String(p)}>
+                    {p}%
+                  </option>
+                ))}
+              </Select>
             }
           />
           <CardItem

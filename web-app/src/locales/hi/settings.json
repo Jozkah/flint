@@ -275,7 +275,7 @@
     "caBundleBroken": "यह बंडल उपयोग नहीं किया जा सकता ({{kind}}): ठीक करने या हटाने तक आउटबाउंड HTTPS किसी पर भरोसा नहीं करता।",
     "ignoreSslScope": "यह प्रॉक्सी से गुज़रने वाले सारे ट्रैफ़िक पर लागू होता है। कोई एक प्रदाता भी अपने पते के लिए अमान्य प्रमाणपत्र की अनुमति दे सकता है, मॉडल प्रदाता में उसके पेज पर।",
     "proxyUrlInvalid": "यह प्रॉक्सी पते जैसा नहीं दिखता। host:port या http://host:port का उपयोग करें।",
-    "proxyUrlScheme": "केवल http और https प्रॉक्सी समर्थित हैं।",
+    "proxyUrlScheme": "केवल http, https, socks5 और socks5h प्रॉक्सी समर्थित हैं।",
     "ignoreSslConfirmTitle": "SSL प्रमाणपत्र अनदेखा करें?",
     "ignoreSslConfirmBody": "Flint प्रॉक्सी से गुज़रने वाले सारे ट्रैफ़िक के लिए स्वयं-हस्ताक्षरित, समाप्त या बेमेल प्रमाणपत्र स्वीकार करेगा, इसलिए रास्ते में कोई भी उसे पढ़ या बदल सकता है। केवल तभी आगे बढ़ें जब आप प्रॉक्सी और नेटवर्क पर भरोसा करते हों।",
     "ignoreSslConfirm": "प्रमाणपत्र अनदेखा करें",
@@ -550,6 +550,15 @@
     "closeToTrayDesc": "विंडो बंद करने पर Flint बाहर निकलने के बजाय सिस्टम ट्रे में छिप जाता है। ट्रे मेनू से बाहर निकलें।",
     "downloadLimit": "डाउनलोड गति सीमा",
     "downloadLimitDesc": "मॉडल डाउनलोड को इतने MB प्रति सेकंड तक सीमित करें। 0 का मतलब असीमित है।",
+    "hfEndpoint": "Hugging Face एंडपॉइंट",
+    "hfEndpointDesc": "मॉडल खोज और डाउनलोड कहाँ जाते हैं। अगर आपके यहाँ huggingface.co ब्लॉक या धीमा है तो कोई मिरर चुनें।",
+    "hfEndpointDefault": "डिफ़ॉल्ट (huggingface.co)",
+    "hfEndpointCustom": "कस्टम URL",
+    "hfEndpointSave": "सहेजें",
+    "hfEndpointSaved": "Hugging Face एंडपॉइंट सहेजा गया",
+    "hfEndpointEnvOverride": "HF_ENDPOINT एनवायरनमेंट वेरिएबल {{value}} पर सेट है और इस सेटिंग से ऊपर है।",
+    "hfEndpointSendToken": "मेरा टोकन इस मिरर को भेजें",
+    "hfEndpointSendTokenDesc": "डिफ़ॉल्ट रूप से बंद: आपका Hugging Face टोकन केवल huggingface.co को जाता है। इसे तभी चालू करें जब आप इस मिरर पर भरोसा करते हों।",
     "exportLogs": "लॉग एक्सपोर्ट करें (संपादित)",
     "exportLogsDesc": "ऐप लॉग को ज्ञात API कुंजियों और टोकन हटाकर सहेजें, ताकि उसे बग रिपोर्ट के साथ जोड़ा जा सके। साझा करने से पहले उसकी समीक्षा करें।",
     "importChatGpt": "ChatGPT एक्सपोर्ट इंपोर्ट करें",
@@ -696,6 +705,9 @@
     "title": "संदर्भ संक्षेपण",
     "auto": "अपने-आप संक्षिप्त करें",
     "autoDescription": "बातचीत के मॉडल की संदर्भ विंडो से बड़ी होने से पहले जगह बनाएँ। चैट, Cowork और CLI में साझा।",
+    "compactAt": "इस पर संक्षिप्त करें",
+    "compactAtDescription": "जब बातचीत कॉन्टेक्स्ट विंडो के इस हिस्से तक पहुँचती है, तो पुराने संदेश पहले सारांशित किए जाते हैं। स्वचालित अंतर्निहित बिंदु रखता है। llama.cpp का कॉन्टेक्स्ट शिफ्ट कुछ हटाने से पहले चलता है।",
+    "compactAtAuto": "स्वचालित",
     "reserveTokens": "आरक्षित टोकन",
     "reserveDescription": "खाली रखी गई गुंजाइश: बातचीत विंडो में से इसे घटाने के बाद बची सीमा से ज़्यादा उपयोग करे तो संक्षेपण शुरू होता है।",
     "keepRecent": "हाल के संदेश रखे गए",
@@ -1606,7 +1618,15 @@
     "emptyHint": "ऊपर एक लिखें, या चैट करते समय Flint को याद रखने दें।",
     "footerCount_one": "इस दायरे में 1 याद",
     "footerCount_other": "इस दायरे में {{count}} यादें",
-    "agentNotes": "एजेंट नोट्स"
+    "agentNotes": "एजेंट नोट्स",
+    "report": {
+      "summary_one": "निर्यात से {{count}} स्मृति आयात की गई",
+      "summary_other": "निर्यात से {{count}} स्मृतियाँ आयात की गईं",
+      "duplicates_one": "{{count}} डुप्लिकेट छोड़ा गया",
+      "duplicates_other": "{{count}} डुप्लिकेट छोड़े गए",
+      "refused_one": "{{count}} अस्वीकृत",
+      "refused_other": "{{count}} अस्वीकृत"
+    }
   },
   "chatMentions": {
     "title": "बातचीत का उल्लेख",
@@ -1690,7 +1710,16 @@
     "reasoningDefaultDesc": "नई चैट में सोचना चालू से शुरू हो या बंद से। मॉडल की अपनी रीज़निंग सेटिंग और कंपोज़र का टॉगल अब भी प्राथमिक रहते हैं। जो मॉडल सोचना बदल नहीं सकते, उन्हें नहीं छुआ जाता।",
     "reasoningDefaultModel": "मॉडल डिफ़ॉल्ट",
     "reasoningDefaultOn": "चालू",
-    "reasoningDefaultOff": "बंद"
+    "reasoningDefaultOff": "बंद",
+    "rulesGroup": "नियम",
+    "rulesDesc": "स्थायी निर्देश जो सहायक के अपने निर्देशों के बाद चैट में जोड़े जाते हैं। किसी एक चैट के लिए नियम को उस चैट के विकल्प पैनल से बंद करें।",
+    "rulesEnabled": "नियम चालू",
+    "rulesRemove": "नियम हटाएँ",
+    "rulesAllChats": "सभी चैट",
+    "rulesNoGroups": "अभी कोई समूह नहीं",
+    "rulesPlaceholder": "नियम जोड़ें, जैसे \"मीट्रिक इकाइयों में उत्तर दो\"",
+    "rulesAdd": "जोड़ें",
+    "rulesTooLong": "सक्रिय नियम लगभग {{tokens}} टोकन के हैं, सुझाए गए {{budget}} से अधिक। लंबे नियम हर चैट में संदर्भ लेते हैं।"
   },
   "data": {
     "tabStorage": "स्टोरेज",
@@ -1709,6 +1738,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

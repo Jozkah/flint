@@ -152,7 +152,7 @@ export type APIFunctions = NativeRouteFunctions &
   DownloadEventFunctions &
   ExtensionRouteFunctions &
   FileSystemRouteFunctions &
-  FileManagerRoute
+  FileManagerRouteFunctions
 
 export const CoreRoutes = [
   ...Object.values(AppRoute),

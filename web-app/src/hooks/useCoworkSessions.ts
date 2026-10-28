@@ -399,15 +399,6 @@ type CoworkSessionsState = {
   setGoal: (id: string, goal: CoworkGoal | null) => void
   setTodos: (id: string, todos: TodoList, anchorId?: string) => void
   setProgressUi: (id: string, patch: ProgressUi) => void
-  /**
-   * @deprecated Bridge for the pre-AI-SDK Cowork route, which has no
-   * `UIMessage[]` to commit. Removed together with that route.
-   */
-  commitLegacyTurns: (
-    id: string,
-    turns: CoworkTurn[],
-    history: CoworkMessage[]
-  ) => void
   commitTurns: (
     id: string,
     turns: CoworkTurn[],
@@ -627,7 +618,9 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
            * point two sessions at one checkout without either knowing.
            */
           folder: null,
-          mode: parent.mode,
+          // Bypass is never inherited: it is written to disk as `ask`, so a
+          // fork that kept it would change meaning after a restart.
+          mode: parent.mode === 'bypass' ? 'ask' : parent.mode,
           todos: parent.todos,
           goal: parent.goal,
           forkedFrom: { sessionId: parent.id, turns: keep, at: now() },
@@ -687,7 +680,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           // Unbound, like a fork: the export carried no authority and this
           // machine has granted none.
           folder: null,
-          mode: bundle.session.mode,
+          mode: bundle.session.mode === 'bypass' ? 'ask' : bundle.session.mode,
           goal: bundle.session.goal,
           todos: bundle.session.todos,
           forkedFrom: bundle.session.forkedFrom,
@@ -1021,15 +1014,6 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             void _drop
             return campaign ? { ...rest, campaign } : rest
           }),
-        })),
-
-      commitLegacyTurns: (id, turns, history) =>
-        set((s) => ({
-          sessions: s.sessions.map((x) =>
-            x.id === id
-              ? { ...x, turns: [...x.turns, ...stamped(turns)], history, updated: now() }
-              : x
-          ),
         })),
 
       commitTurns: (id, turns, messages, subagents, usage) => {

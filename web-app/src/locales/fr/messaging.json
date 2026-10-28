@@ -85,10 +85,13 @@
   "waitingNotice": "Message de {{name}} en attente",
   "heldBanner_one": "{{count}} message d'une autre session vous attend",
   "heldBanner_other": "{{count}} messages d'autres sessions vous attendent",
+  "heldBanner_many": "{{count}} messages d'autres sessions vous attendent",
   "waitingCount_one": "{{count}} message en attente",
   "waitingCount_other": "{{count}} messages en attente",
+  "waitingCount_many": "{{count}} messages en attente",
   "waitingIn_one": "{{count}} message dans {{session}}",
   "waitingIn_other": "{{count}} messages dans {{session}}",
+  "waitingIn_many": "{{count}} messages dans {{session}}",
   "held": {
     "title": "Messages waiting for approval",
     "banner": "Waiting for your approval ({{count}})",

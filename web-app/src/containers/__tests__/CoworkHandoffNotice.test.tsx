@@ -4,6 +4,18 @@ import userEvent from '@testing-library/user-event'
 
 const core = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/core', () => core)
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const en = (await import('@/locales/en/common.json')).default as Record<string, unknown>
+  const t = (key: string, opts?: Record<string, unknown>) => {
+    const raw = key
+      .replace(/^common:/, '')
+      .split('.')
+      .reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], en)
+    if (typeof raw !== 'string') return key
+    return raw.replace(/\{\{(\w+)\}\}/g, (_m, n) => String(opts?.[n] ?? ''))
+  }
+  return { useTranslation: () => ({ t }) }
+})
 
 import { CoworkHandoffNotice } from '../CoworkHandoffNotice'
 import type { HandoffRecord } from '@/lib/sessionHandoff'

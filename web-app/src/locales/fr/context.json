@@ -193,7 +193,8 @@
       "redacted": "Masqué",
       "nothing": "rien",
       "redactedList_one": "{{count}} champ : {{list}}",
-      "redactedList_other": "{{count}} champs : {{list}}"
+      "redactedList_other": "{{count}} champs : {{list}}",
+      "redactedList_many": "{{count}} champs : {{list}}"
     },
     "view": {
       "label": "Afficher en",
@@ -212,8 +213,10 @@
       "left": "{{count}} sortis",
       "keptMessages_one": "{{count}} message conservé",
       "keptMessages_other": "{{count}} messages conservés",
+      "keptMessages_many": "{{count}} messages conservés",
       "keptTools_one": "{{count}} outil conservé",
       "keptTools_other": "{{count}} outils conservés",
+      "keptTools_many": "{{count}} outils conservés",
       "systemChanged": "prompt système modifié",
       "enteredHeading": "Entrés",
       "leftHeading": "Sortis",
@@ -227,6 +230,7 @@
       "needsSession": "Le rejeu a besoin de la session à laquelle appartient ce tour.",
       "redactedBlock_one": "Rejeu impossible : {{count}} champ a été masqué avant l'enregistrement, le modèle ne recevrait donc pas ce qu'il a reçu alors.",
       "redactedBlock_other": "Rejeu impossible : {{count}} champs ont été masqués avant l'enregistrement, le modèle ne recevrait donc pas ce qu'il a reçu alors.",
+      "redactedBlock_many": "Rejeu impossible : {{count}} champs ont été masqués avant l'enregistrement, le modèle ne recevrait donc pas ce qu'il a reçu alors.",
       "state": {
         "running": "Rejeu en cours…",
         "interrupted": "Interrompu : Flint s'est arrêté pendant l'exécution",

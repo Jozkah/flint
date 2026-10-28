@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { OctagonAlert } from 'lucide-react'
 import { Label } from '@/components/ui/label'
@@ -55,22 +55,30 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
   // second write-back would clobber the first.
   const [busy, setBusy] = useState(false)
 
+  // Only the newest read may set state, and none after unmount.
+  const loadId = useRef(0)
   const refresh = useCallback(async () => {
+    const id = ++loadId.current
     setLoading(true)
     setError(null)
     try {
       const [m, p] = await Promise.all([getMatrix(), listProjects()])
+      if (id !== loadId.current) return
       setMatrix(m)
       setProjects(p)
     } catch (e) {
+      if (id !== loadId.current) return
       setError(String(e))
     } finally {
-      setLoading(false)
+      if (id === loadId.current) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void refresh()
+    return () => {
+      loadId.current++
+    }
   }, [refresh])
 
   const columns: Column[] = [

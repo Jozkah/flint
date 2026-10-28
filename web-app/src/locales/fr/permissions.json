@@ -247,6 +247,7 @@
     "failed": "Impossible de faire confiance au dossier",
     "kept_one": "Hooks conservés pour {{count}} dossier que vous utilisez déjà. Vérifiez-le dans Paramètres > Autorisations > Dossiers de confiance.",
     "kept_other": "Hooks conservés pour {{count}} dossiers que vous utilisez déjà. Vérifiez-les dans Paramètres > Autorisations > Dossiers de confiance.",
+    "kept_many": "Hooks conservés pour {{count}} dossiers que vous utilisez déjà. Vérifiez-les dans Paramètres > Autorisations > Dossiers de confiance.",
     "summaryHooks": "Faire confiance à ce dossier ? Ses hooks exécutent des commandes",
     "summarySubagents": "Faire confiance à ce dossier ? Ses définitions d'agents peuvent s'exécuter",
     "summaryBoth": "Faire confiance à ce dossier ? Ses hooks et agents peuvent s'exécuter",
@@ -392,8 +393,17 @@
     "grantNote": "« Autoriser pour cette conversation » prend fin avec la conversation, ou après 8 heures. « Toujours autoriser » le conserve pour toutes les conversations jusqu'à ce que vous le révoquiez dans Paramètres > Autorisations > Accès aux dossiers.",
     "moreWaiting_one": "{{count}} autre demande en attente.",
     "moreWaiting_other": "{{count}} autres demandes en attente.",
+    "moreWaiting_many": "{{count}} autres demandes en attente.",
     "deny": "Refuser",
     "always": "Toujours autoriser",
     "session": "Autoriser pour cette conversation"
+  },
+  "approvalText": {
+    "waitTitle": "Waiting for your approval: {{tool}}",
+    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
+    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
+    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
+    "sensitive": "Sensitive tool call: review its action before allowing it.",
+    "autoPause": "{{count}} tool calls ran without asking. Continue?"
   }
 }

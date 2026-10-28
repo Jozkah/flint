@@ -128,7 +128,7 @@ import {
   contextSafetyMargin,
   type ContextManagerConfig,
 } from './context-manager'
-import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, type CompactionRecord } from '@/lib/compaction'
+import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, DEFAULT_COMPACT_THRESHOLD, type CompactionRecord } from '@/lib/compaction'
 import {
   resetCompactionBreaker,
 } from '@/lib/compactionGuard'
@@ -150,7 +150,7 @@ import {
   type CompactionHost,
   type RunCompactionOptions,
 } from '@/lib/chat/transport/compaction'
-import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
+import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY, compactThresholdFor } from '@/lib/compactionPolicy'
 import { toolsForConversation, toolsForWindow } from '@/lib/leanTools'
 import {
   SMALL_CONTEXT_MEMORY_CHARS,
@@ -2468,6 +2468,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             trimReserveTokens:
               contextConfig.maxOutputTokens +
               contextSafetyMargin(estimatedWindow),
+            threshold: compactThresholdFor(compaction, DEFAULT_COMPACT_THRESHOLD),
             systemPromptTokens,
             keepRecent: compaction.keepRecent || DEFAULT_KEEP_RECENT,
             summaryMaxTokens: compaction.summaryMaxTokens,

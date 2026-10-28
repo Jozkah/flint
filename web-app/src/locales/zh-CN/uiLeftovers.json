@@ -47,7 +47,8 @@
     "memoriesSent": "已发送的记忆",
     "withheld": "因冲突而搁置:{{ids}}",
     "perSec": "{{n}} token/秒",
-    "count": "{{n}} 个 token"
+    "count": "{{n}} 个 token",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "编辑服务器主机"

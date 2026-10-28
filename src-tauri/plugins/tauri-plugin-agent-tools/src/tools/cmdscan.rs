@@ -785,7 +785,7 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         {
             return false;
         }
-        if base == "env" {
+        if name == "env" {
             idx += 1;
             while idx < tokens.len() && is_assignment(&tokens[idx]) {
                 if assigns_resolution_var(&tokens[idx]) {
@@ -800,7 +800,7 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
             }
             continue;
         }
-        if SHELLS.contains(&base.as_str()) {
+        if SHELLS.contains(&name.as_str()) {
             match shell_mode(&tokens, idx) {
                 ShellMode::Inline(c_arg) => {
                     return match tokens.get(c_arg) {
@@ -814,7 +814,7 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
             bases.insert(base);
             return true;
         }
-        if WRAPPERS.contains(&base.as_str()) {
+        if WRAPPERS.contains(&name.as_str()) {
             idx += 1;
             // Skip the wrapper's flags, numeric args (durations/priorities), and
             // any inline assignments to reach the wrapped command.
@@ -827,7 +827,7 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
                 }
                 // A bare flag followed by a word may take that word as its
                 // value, so which token is the command is ambiguous: prompt.
-                if wrapper_flag_is_ambiguous(base.as_str(), t, tokens.get(idx + 1)) {
+                if wrapper_flag_is_ambiguous(name.as_str(), t, tokens.get(idx + 1)) {
                     return false;
                 }
                 // `nice PATH=/tmp ls`: an inline assignment still applies.
@@ -1093,7 +1093,8 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
         if tokens.iter().any(|t| is_drive_ref(t))
             || is_ps_call_of_expression(&tokens, idx)
             || command_word_is_dynamic(first)
-            || OPAQUE.contains(&name.as_str()) && !matches!(base.as_str(), "sudo" | "doas")
+            // `sudo`/`doas` run as someone else: listed inner command, marked.
+            || OPAQUE.contains(&name.as_str())
             || is_redefining(&name)
             || (ASSIGNING_BUILTINS.contains(&name.as_str())
                 && assigns_unsafely(&tokens[idx + 1..]))
@@ -1101,7 +1102,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
         {
             *unplain = true;
         }
-        if base == "env" || base == "sudo" || base == "doas" {
+        if name == "env" || name == "sudo" || name == "doas" {
             idx += 1;
             while let Some(t) = tokens.get(idx) {
                 if is_assignment(t) {
@@ -1123,7 +1124,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
             }
             continue;
         }
-        if SHELLS.contains(&base.as_str()) {
+        if SHELLS.contains(&name.as_str()) {
             match shell_mode(&tokens, idx) {
                 ShellMode::Inline(c_arg) => {
                     if let Some(cmd) = tokens.get(c_arg) {
@@ -1136,7 +1137,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
                 ShellMode::NoCommand => {}
             }
         }
-        if WRAPPERS.contains(&base.as_str()) {
+        if WRAPPERS.contains(&name.as_str()) {
             idx += 1;
             while let Some(t) = tokens.get(idx) {
                 let numeric = t.chars().next().is_some_and(|c| c.is_ascii_digit());
@@ -1144,7 +1145,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
                     idx += 1;
                     break;
                 }
-                if wrapper_flag_is_ambiguous(base.as_str(), t, tokens.get(idx + 1)) {
+                if wrapper_flag_is_ambiguous(name.as_str(), t, tokens.get(idx + 1)) {
                     // `time -o FILE cmd`: the flag owns the next word, so the
                     // command is the one after it. Marked either way.
                     *unplain = true;
@@ -1194,7 +1195,14 @@ mod simple_command_tests {
             simple_commands("RUST_LOG=debug env -u X timeout 60 git push -f"),
             vec!["git push -f"]
         );
-        assert_eq!(simple_commands("sudo -u bob git status"), vec!["git status"]);
+        assert_eq!(
+            simple_commands("sudo -u bob git status"),
+            vec!["git status".to_string(), super::non_plain("sudo -u bob git status")]
+        );
+        // The shell and wrapper tables are looked up by canonical name.
+        assert_eq!(simple_commands("bash.exe -c 'rm -rf x'"), vec!["rm -rf x"]);
+        assert_eq!(simple_commands("bash -xc 'rm -rf x'"), vec!["rm -rf x"]);
+        assert_eq!(super::scan_command("BASH.EXE -c 'git status'"), super::scan_command("bash -c 'git status'"));
         assert_eq!(simple_commands("bash -c 'git reset --hard'"), vec!["git reset --hard"]);
         assert_eq!(simple_commands("echo $(git reset --hard)"), vec!["git reset --hard", "echo"]);
         assert_eq!(simple_commands("git commit -m 'a b'"), vec!["git commit -m 'a b'"]);
