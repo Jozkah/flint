@@ -86,14 +86,28 @@ pub fn sanitize_key(raw: &str) -> Result<String, String> {
     super::auth::providers::sanitize_key(raw)
 }
 
+/// The key is only ever sent over https, or over http to a loopback host (a
+/// local dev server). Checked before any request is built.
+fn send_allowed(root: &str) -> Result<(), String> {
+    let url = reqwest::Url::parse(root).map_err(|e| format!("invalid Tokamak URL {root}: {e}"))?;
+    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]" | "::1"));
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if loopback => Ok(()),
+        _ => Err(format!(
+            "refusing to send the API key to {root}: use https (plain http is only allowed for localhost)"
+        )),
+    }
+}
+
 /// Verify `api_key` against Tokamak and return the model ids it grants access
 /// to. An empty list is a valid answer (the account has no models yet), so the
 /// caller decides whether that is usable.
-async fn verify_key(api_key: &str) -> Result<Vec<String>, String> {
+async fn verify_key(api_key: &str, root: &str) -> Result<Vec<String>, String> {
+    send_allowed(root)?;
     let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
         .map_err(|e| e.to_string())?;
-    let root = base_url();
     let response = client
         .get(format!("{root}/models"))
         .header("Authorization", format!("Bearer {api_key}"))
@@ -115,7 +129,7 @@ async fn verify_key(api_key: &str) -> Result<Vec<String>, String> {
 /// when verification fails, so a typo never leaves a broken entry behind.
 pub async fn login(api_key: &str) -> Result<Login, String> {
     let api_key = sanitize_key(api_key)?;
-    let models = verify_key(&api_key).await?;
+    let models = verify_key(&api_key, &base_url()).await?;
     persist(&api_key, models)
 }
 
@@ -176,7 +190,7 @@ pub(crate) async fn device_login(
     pending: super::device_auth::PendingAuth,
 ) -> Result<Login, String> {
     let minted = pending.claim().await?;
-    let models = verify_key(&minted.api_key).await?;
+    let models = verify_key(&minted.api_key, &base_url()).await?;
     persist_minted(&minted, models)
 }
 
@@ -381,7 +395,7 @@ pub async fn live_valid() -> Option<bool> {
     if key.is_empty() {
         return Some(false);
     }
-    match verify_key(&key).await {
+    match verify_key(&key, &stored_base_url()).await {
         // A 401/403 is an invalid key; a network blip should not read as one.
         Ok(_) => Some(true),
         Err(e) if e.contains("could not reach") => None,
@@ -652,6 +666,15 @@ mod tests {
             assert_eq!(status.key_id.as_deref(), Some("k-1"));
             assert_eq!(status.key_expires_at, Some(1700000000));
         });
+    }
+
+    #[test]
+    fn refuses_plain_http_remote() {
+        assert!(send_allowed("https://tokamak.sh/v1").is_ok());
+        assert!(send_allowed("http://localhost:8080/v1").is_ok());
+        assert!(send_allowed("http://127.0.0.1:9/v1").is_ok());
+        assert!(send_allowed("http://evil.example/v1").is_err());
+        assert!(send_allowed("not a url").is_err());
     }
 
     /// A dev or self-hosted deployment must be reachable without a rebuild, and
