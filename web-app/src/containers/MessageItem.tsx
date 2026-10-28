@@ -959,7 +959,7 @@ export const MessageItem = memo(
                   className="shrink-0 pointer-coarse:h-11"
                 >
                   <RefreshCw className="size-3.5" />
-                  <span>Regenerate</span>
+                  <span>{t('common:regenerate')}</span>
                 </Button>
               )}
           </div>
