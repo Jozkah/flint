@@ -2963,5 +2963,43 @@
       "medium": "Trung bình",
       "low": "Thấp"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Dừng",
+    "title": "Dừng công việc đang chạy",
+    "description": "Chọn phạm vi. Không thể hoàn tác: công việc đã dừng sẽ không được tiếp tục, kể cả sau khi khởi động lại.",
+    "legend": "Cần dừng gì",
+    "stopping": "Đang dừng. Đang kết thúc các tiến trình của Flint…",
+    "report": {
+      "clean": "Đã dừng. Đã dừng {{stopped}}, {{already}} đã dừng từ trước, không còn gì đang chạy.",
+      "partial_one": "Đã dừng {{stopped}}, nhưng còn {{count}} tiến trình đang chạy. Việc dọn dẹp chưa hoàn tất.",
+      "partial_other": "Đã dừng {{stopped}}, nhưng còn {{count}} tiến trình đang chạy. Việc dọn dẹp chưa hoàn tất."
+    },
+    "error": "Không thể dừng: {{error}}",
+    "cancel": "Hủy",
+    "close": "Đóng",
+    "confirmBusy": "Đang dừng…",
+    "scope": {
+      "call": {
+        "name": "Lệnh gọi công cụ này",
+        "desc": "Chỉ lệnh gọi công cụ này ({{id}}). Mọi thứ khác trong lượt chạy vẫn tiếp tục.",
+        "confirm": "Dừng lệnh gọi công cụ"
+      },
+      "run": {
+        "name": "Lượt chạy này",
+        "desc": "Lượt chạy này ({{id}}), gồm các lệnh gọi công cụ, lệnh shell, lệnh gọi MCP và tác tử con. Các lượt chạy khác không bị ảnh hưởng.",
+        "confirm": "Dừng lượt chạy"
+      },
+      "session": {
+        "name": "Phiên này",
+        "desc": "Mọi lượt chạy trong phiên này ({{id}}). Các phiên khác không bị ảnh hưởng.",
+        "confirm": "Dừng phiên"
+      },
+      "application": {
+        "name": "Mọi thứ trong Flint",
+        "desc": "Toàn bộ công việc ở mọi nơi trong Flint, ở mọi phiên. Không có gì đang chạy được bỏ qua.",
+        "confirm": "Dừng tất cả"
+      }
+    }
   }
 }

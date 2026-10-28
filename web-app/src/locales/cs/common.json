@@ -3100,5 +3100,45 @@
       "medium": "Střední",
       "low": "Nízká"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Zastavit",
+    "title": "Zastavit běžící práci",
+    "description": "Zvolte, jak daleko to sahá. Nelze vrátit zpět: zastavená práce se neobnoví ani po restartu.",
+    "legend": "Co zastavit",
+    "stopping": "Zastavuji. Ukončuji vlastní procesy…",
+    "report": {
+      "clean": "Zastaveno. {{stopped}} zastaveno, {{already}} už zastaveno, nic dál neběží.",
+      "partial_one": "Zastaveno {{stopped}}, ale {{count}} proces stále běží. Úklid se nedokončil.",
+      "partial_few": "Zastaveno {{stopped}}, ale {{count}} procesy stále běží. Úklid se nedokončil.",
+      "partial_many": "Zastaveno {{stopped}}, ale {{count}} procesu stále běží. Úklid se nedokončil.",
+      "partial_other": "Zastaveno {{stopped}}, ale {{count}} procesů stále běží. Úklid se nedokončil."
+    },
+    "error": "Zastavení se nepodařilo: {{error}}",
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "confirmBusy": "Zastavuji…",
+    "scope": {
+      "call": {
+        "name": "Toto volání nástroje",
+        "desc": "Pouze toto volání nástroje ({{id}}). Vše ostatní v běhu pokračuje.",
+        "confirm": "Zastavit volání"
+      },
+      "run": {
+        "name": "Tento běh",
+        "desc": "Tento běh ({{id}}) včetně volání nástrojů, příkazů shellu, volání MCP a podagentů. Ostatní běhy zůstanou nedotčeny.",
+        "confirm": "Zastavit běh"
+      },
+      "session": {
+        "name": "Tato relace",
+        "desc": "Každý běh v této relaci ({{id}}). Ostatní relace zůstanou nedotčeny.",
+        "confirm": "Zastavit relaci"
+      },
+      "application": {
+        "name": "Vše ve Flintu",
+        "desc": "Veškerá práce všude ve Flintu, ve všech relacích. Nic z běžícího nebude ušetřeno.",
+        "confirm": "Zastavit vše"
+      }
+    }
   }
 }
