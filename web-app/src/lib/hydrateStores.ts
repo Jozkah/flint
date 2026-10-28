@@ -22,6 +22,7 @@ import { useEngineAddon } from '@/hooks/useEngineAddon'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useTitleSettings } from '@/hooks/useTitleSettings'
+import { useChatRules } from '@/hooks/useChatRules'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { usePrStatusStore } from '@/stores/pr-status-store'
@@ -97,6 +98,7 @@ const secondaryStores = [
   useWebSearchConfig,
   useWebPreviewSettings,
   useTitleSettings,
+  useChatRules,
   useCoworkSessions,
   useClaudeCompat,
   useCoworkActivity,

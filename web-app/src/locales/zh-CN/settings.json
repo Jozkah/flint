@@ -1528,7 +1528,16 @@
     "reasoningDefaultDesc": "新聊天中思考默认开启还是关闭。模型自身的推理设置和输入框中的开关仍然优先。无法切换思考的模型不受影响。",
     "reasoningDefaultModel": "模型默认",
     "reasoningDefaultOn": "开启",
-    "reasoningDefaultOff": "关闭"
+    "reasoningDefaultOff": "关闭",
+    "rulesGroup": "规则",
+    "rulesDesc": "在助手自身指令之后添加到对话中的常驻指令。若只想在某个对话中关闭，请在该对话的选项面板里切换。",
+    "rulesEnabled": "规则已启用",
+    "rulesRemove": "删除规则",
+    "rulesAllChats": "所有对话",
+    "rulesNoGroups": "还没有分组",
+    "rulesPlaceholder": "添加规则，例如“用公制单位回答”",
+    "rulesAdd": "添加",
+    "rulesTooLong": "已启用的规则约 {{tokens}} 个 token，超过建议的 {{budget}}。过长的规则会在每个对话中占用上下文。"
   },
   "data": {
     "tabStorage": "存储",

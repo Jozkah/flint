@@ -1562,7 +1562,16 @@
     "reasoningDefaultDesc": "Si el raonament comença activat o desactivat en un xat nou. El paràmetre de raonament del model i el commutador del compositor continuen tenint prioritat. Els models que no poden canviar el raonament no es modifiquen.",
     "reasoningDefaultModel": "Per defecte del model",
     "reasoningDefaultOn": "Activat",
-    "reasoningDefaultOff": "Desactivat"
+    "reasoningDefaultOff": "Desactivat",
+    "rulesGroup": "Regles",
+    "rulesDesc": "Instruccions permanents afegides als xats després de les instruccions de l'assistent. Desactiva'n una per a un sol xat des del panell d'opcions d'aquell xat.",
+    "rulesEnabled": "Regla activa",
+    "rulesRemove": "Elimina la regla",
+    "rulesAllChats": "Tots els xats",
+    "rulesNoGroups": "Encara no hi ha grups",
+    "rulesPlaceholder": "Afegeix una regla, p. ex. \"Respon en unitats mètriques\"",
+    "rulesAdd": "Afegeix",
+    "rulesTooLong": "Les regles actives ocupen uns {{tokens}} tokens, més dels {{budget}} suggerits. Les regles llargues consumeixen context a cada xat."
   },
   "data": {
     "tabStorage": "Emmagatzematge",

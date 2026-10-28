@@ -1560,7 +1560,16 @@
     "reasoningDefaultDesc": "Se il ragionamento parte attivo o disattivo in una nuova chat. L'impostazione di ragionamento del modello e l'interruttore del compositore hanno comunque la precedenza. I modelli che non possono cambiare il ragionamento non vengono toccati.",
     "reasoningDefaultModel": "Predefinito del modello",
     "reasoningDefaultOn": "Attivo",
-    "reasoningDefaultOff": "Disattivo"
+    "reasoningDefaultOff": "Disattivo",
+    "rulesGroup": "Regole",
+    "rulesDesc": "Istruzioni permanenti aggiunte alle chat dopo le istruzioni dell'assistente. Disattivane una per una sola chat dal pannello opzioni di quella chat.",
+    "rulesEnabled": "Regola attiva",
+    "rulesRemove": "Rimuovi regola",
+    "rulesAllChats": "Tutte le chat",
+    "rulesNoGroups": "Ancora nessun gruppo",
+    "rulesPlaceholder": "Aggiungi una regola, ad es. \"Rispondi in unità metriche\"",
+    "rulesAdd": "Aggiungi",
+    "rulesTooLong": "Le regole attive occupano circa {{tokens}} token, oltre i {{budget}} consigliati. Le regole lunghe consumano contesto in ogni chat."
   },
   "data": {
     "tabStorage": "Archiviazione",

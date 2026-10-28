@@ -3194,6 +3194,8 @@
     "applying": "Applicazione…",
     "applySelected": "Applica selezione"
   },
+  "chatRules": "Regole",
+  "chatRuleForThisChat": "Usa questa regola in questa chat",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

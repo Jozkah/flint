@@ -1701,7 +1701,16 @@
     "reasoningDefaultDesc": "새 채팅에서 사고를 켠 상태로 시작할지 끈 상태로 시작할지 정합니다. 모델 자체의 추론 설정과 입력창 토글이 계속 우선합니다. 사고를 전환할 수 없는 모델은 그대로 둡니다.",
     "reasoningDefaultModel": "모델 기본값",
     "reasoningDefaultOn": "켜기",
-    "reasoningDefaultOff": "끄기"
+    "reasoningDefaultOff": "끄기",
+    "rulesGroup": "규칙",
+    "rulesDesc": "어시스턴트 자체 지침 뒤에 채팅에 추가되는 상시 지침입니다. 한 채팅에서만 끄려면 해당 채팅의 옵션 패널에서 끄세요.",
+    "rulesEnabled": "규칙 켜짐",
+    "rulesRemove": "규칙 삭제",
+    "rulesAllChats": "모든 채팅",
+    "rulesNoGroups": "아직 그룹이 없습니다",
+    "rulesPlaceholder": "규칙 추가 (예: \"미터법 단위로 답해\")",
+    "rulesAdd": "추가",
+    "rulesTooLong": "활성 규칙이 약 {{tokens}} 토큰으로 권장치 {{budget}}를 넘습니다. 긴 규칙은 모든 채팅에서 컨텍스트를 차지합니다."
   },
   "data": {
     "tabStorage": "저장소",

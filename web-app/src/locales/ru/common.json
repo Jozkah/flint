@@ -3260,6 +3260,8 @@
     "applying": "Применение…",
     "applySelected": "Применить выбранное"
   },
+  "chatRules": "Правила",
+  "chatRuleForThisChat": "Использовать это правило в этом чате",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

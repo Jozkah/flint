@@ -81,6 +81,8 @@ import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { deriveToolOutputCap } from '@/lib/context-manager'
 import { renderInstructions } from '@/lib/instructionTemplate'
+import { useChatRulesBlock } from '@/hooks/useChatRules'
+import { composeSystemMessage } from '@/lib/chatRules'
 import {
   contextIsResizable,
   knownContextWindow,
@@ -461,9 +463,14 @@ export function ThreadConversation({
   // Get system message from thread's assistant instructions (if thread has an assigned assistant)
   // Only use assistant instructions if the thread was created with one (e.g., via a project)
   const threadAssistant = thread?.assistants?.[0]
-  const systemMessage = threadAssistant?.instructions
-    ? renderInstructions(threadAssistant.instructions)
-    : undefined
+  // Standing rules (Settings > Chat) follow the assistant's instructions.
+  const chatRulesBlock = useChatRulesBlock(threadId, thread?.metadata?.project?.id)
+  const systemMessage = composeSystemMessage(
+    threadAssistant?.instructions
+      ? renderInstructions(threadAssistant.instructions)
+      : undefined,
+    chatRulesBlock
+  )
 
   // AH-032/AH-083: the transport takes a snapshot of every request and has
   // nowhere to return it -- the AI SDK owns the call -- so it hands it here.
