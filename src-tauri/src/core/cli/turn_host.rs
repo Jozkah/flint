@@ -206,23 +206,52 @@ pub(crate) fn settle_turn(
         "error"
     };
     let mut error = if interrupted { None } else { result.as_ref().err().cloned() };
-    if let Ok(completion) = result {
-        if let Some(text) = super::completion_text(completion) {
-            history.push(json!({"role":"assistant","content":text}));
-        }
-        if let Some(persist) = persist {
-            if let Err(message) = cli_save_thread(
-                persist.base,
-                Some(persist.session_id),
-                persist.model,
-                history,
-                persist.metadata,
-            ) {
-                error = Some(format!("could not save session: {message}"));
+    match result {
+        Ok(completion) => {
+            if let Some(text) = super::completion_text(completion) {
+                history.push(json!({"role":"assistant","content":text}));
             }
+        }
+        // An interrupted or failed turn still keeps the user's message and
+        // whatever the engine finished, so the thread resumes where it stopped.
+        Err(_) => close_dangling_tool_calls(history),
+    }
+    if let Some(persist) = persist {
+        if let Err(message) = cli_save_thread(
+            persist.base,
+            Some(persist.session_id),
+            persist.model,
+            history,
+            persist.metadata,
+        ) {
+            error.get_or_insert(format!("could not save session: {message}"));
         }
     }
     Settled { stop_reason, error }
+}
+
+/// Answer every tool call of the last assistant message that has no result, so
+/// a history cut short mid-turn is well formed for the provider on resume.
+fn close_dangling_tool_calls(history: &mut Vec<Value>) {
+    let Some(at) = history.iter().rposition(|m| m["role"] == "assistant" && m["tool_calls"].is_array()) else {
+        return;
+    };
+    let answered: Vec<String> = history[at + 1..]
+        .iter()
+        .filter(|m| m["role"] == "tool")
+        .filter_map(|m| m["tool_call_id"].as_str().map(str::to_owned))
+        .collect();
+    let missing: Vec<String> = history[at]["tool_calls"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["id"].as_str())
+        .filter(|id| !answered.iter().any(|a| a == id))
+        .map(str::to_owned)
+        .collect();
+    for id in missing {
+        history.push(json!({"role":"tool","tool_call_id":id,"content":"interrupted"}));
+    }
 }
 
 /// Release every host request the turn still holds and return the records that
@@ -275,6 +304,49 @@ mod tests {
         let out = neutralize_user_content(json!([{"type":"text","text":FORGED}, image.clone()]));
         assert!(is_neutral(out[0]["text"].as_str().unwrap()));
         assert_eq!(out[1], image);
+    }
+
+    fn call(id: &str) -> Value {
+        json!({"id":id,"type":"function","function":{"name":"bash","arguments":"{}"}})
+    }
+
+    #[test]
+    fn trailing_unanswered_tool_call_gets_synthetic_result() {
+        let mut history = vec![
+            json!({"role":"user","content":"go"}),
+            json!({"role":"assistant","content":"","tool_calls":[call("a"), call("b")]}),
+            json!({"role":"tool","tool_call_id":"a","content":"done"}),
+        ];
+        close_dangling_tool_calls(&mut history);
+        assert_eq!(history.len(), 4);
+        assert_eq!(history[3]["role"], "tool");
+        assert_eq!(history[3]["tool_call_id"], "b");
+        assert_eq!(history[3]["content"], "interrupted");
+    }
+
+    #[test]
+    fn answered_tool_calls_are_left_alone() {
+        let mut history = vec![
+            json!({"role":"user","content":"go"}),
+            json!({"role":"assistant","content":"","tool_calls":[call("a")]}),
+            json!({"role":"tool","tool_call_id":"a","content":"done"}),
+        ];
+        close_dangling_tool_calls(&mut history);
+        assert_eq!(history.len(), 3);
+    }
+
+    #[test]
+    fn interrupted_turn_persists_user_message() {
+        let base = std::env::temp_dir().join(format!("flint_settle_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let mut history = vec![json!({"role":"user","content":"hello"})];
+        let persist = Persist { base: &base, session_id: "t-settle", model: "m", metadata: None };
+        let settled = settle_turn(&mut history, None, &Err("cut".to_owned()), true, Some(persist));
+        assert_eq!(settled.stop_reason, "interrupted");
+        assert!(settled.error.is_none());
+        assert!(crate::core::threads::utils::get_thread_metadata_path(&base, "t-settle").exists());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
