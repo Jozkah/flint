@@ -67,6 +67,20 @@ const claiming = new Set<string>()
  */
 const preclaimed = new Set<string>()
 
+/** Ids an in-memory dedupe set keeps; the oldest are forgotten past this. */
+const MAX_REMEMBERED_IDS = 5000
+
+/** Add to an insertion-ordered set, forgetting the oldest entries past the cap. */
+function rememberBounded(set: Set<string>, id: string): void {
+  set.delete(id)
+  set.add(id)
+  while (set.size > MAX_REMEMBERED_IDS) {
+    const oldest = set.values().next().value
+    if (oldest === undefined) break
+    set.delete(oldest)
+  }
+}
+
 /**
  * Take messages out of a session's queue at a drain boundary and keep only
  * what may reach the model.
@@ -200,7 +214,7 @@ export async function drainIdleSession(
   const next = await dequeueClaimedReady(sid, mailbox)
   if (!next) return
   if (!isSessionInView(sid)) {
-    if (next.from) preclaimed.add(next.from.messageId)
+    if (next.from) rememberBounded(preclaimed, next.from.messageId)
     useMessageQueue.setState((state) => ({
       queues: { ...state.queues, [sid]: [next, ...(state.queues[sid] ?? [])] },
     }))
@@ -257,6 +271,11 @@ export function createMailboxDelivery(
       .then(work)
       .catch((e) => console.warn(`[mailbox] delivery for ${sid} failed:`, e))
     chains.set(sid, next)
+    // Once settled and nothing newer was chained behind it, the entry only
+    // holds a finished promise for a session that may never be seen again.
+    void next.then(() => {
+      if (chains.get(sid) === next) chains.delete(sid)
+    })
     return next
   }
 
@@ -360,7 +379,7 @@ export function createMailboxDelivery(
         if (!m.from) continue
         const now = afterById.get(m.id)
         if (!now) {
-          handed.add(m.from.messageId)
+          rememberBounded(handed, m.from.messageId)
           // A claimed drain marks read itself (mailbox_claim).
           if (!m.held && !claiming.has(m.from.messageId)) {
             drained.push(m.from.messageId)
