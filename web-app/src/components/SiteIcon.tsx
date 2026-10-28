@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { faviconCandidates } from '@/lib/webUrl'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 
 /**
  * A site's favicon, or `fallback` (its letter) while it loads, when the site
@@ -27,7 +28,9 @@ function SiteIconFor({
   className?: string
   fallback: ReactNode
 }) {
-  const candidates = faviconCandidates(url)
+  // Off: no request is made, so no site learns that the page was read.
+  const enabled = useGeneralSetting((s) => s.loadSiteIcons)
+  const candidates = enabled ? faviconCandidates(url) : []
   const [at, setAt] = useState(0)
   const [state, setState] = useState<'loading' | 'ok' | 'failed'>('loading')
   const src = candidates[at]

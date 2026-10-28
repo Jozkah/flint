@@ -584,7 +584,9 @@
     "startupGroup": "Uruchamianie i zasobnik",
     "cliGroup": "Wiersz poleceń",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "Rozszerzenia"
