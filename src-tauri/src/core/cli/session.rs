@@ -572,29 +572,16 @@ pub(super) fn resolve_workspace(
     }
 }
 
-/// Resolve project config + credentials into a ready-to-run engine handle.
-/// Shared by `run_agent_loop` (plain CLI) and `cli_agent_ui` (TUI).
-pub(crate) fn prepare_agent_session(
-    project: &str,
+/// Pick the session's model: --model, then agent.toml, then the server's
+/// browser selection, the user-wide default and the desktop app's selection
+/// (see the notes below), or an empty model when nothing can serve one.
+fn resolve_model(
     model_override: Option<String>,
-    overrides: ProviderOverrides,
-    flags: SessionFlags,
-    resume: Option<&ResumeRequest>,
-) -> Result<AgentSession, String> {
-    let project_root = resolve_project_root(project);
-    ensure_project(&project_root)?;
-    if let Err(e) = crate::core::agent::global_config::ensure_global_config() {
-        log::warn!("Agent: could not scaffold ~/.jan/config.toml: {e}");
-    }
-    // AH-186: the run's settings are the project's, with the chosen profile
-    // folded in. An unknown profile is refused here -- before a provider, a
-    // tool or a model is resolved from settings nobody asked for.
-    let mut cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
-    validate_tool_flags(&flags.allow_tools, &flags.deny_tools)?;
-    // `--deny-tool` only adds to the project's denies; it can never lift one.
-    cfg.tools.deny.extend(flags.deny_tools.iter().cloned());
-    let permissions = permissions_from(&cfg);
-
+    cfg: &crate::core::agent::project::AgentToml,
+    overrides: &ProviderOverrides,
+    flags: &SessionFlags,
+    project_root: &std::path::Path,
+) -> Result<String, String> {
     // Resolution order: --model flag, then agent.toml [agent].model, then the
     // standalone global config (~/.jan/config.toml default_model / first provider
     // model), then the desktop app's currently-selected model (settings.json
@@ -633,7 +620,7 @@ pub(crate) fn prepare_agent_session(
     // the first message.
     let model = if !flags.require_model
         && !explicit
-        && !crate::core::cli::providers::has_usable_provider(Some(&project_root))
+        && !crate::core::cli::providers::has_usable_provider(Some(project_root))
     {
         String::new()
     } else {
@@ -645,6 +632,12 @@ pub(crate) fn prepare_agent_session(
                 .to_string(),
         );
     }
+    Ok(model)
+}
+
+/// Apply the project's routing rules to the main model and to the `smol` role
+/// (used by /goal evaluation). Returns `(model, smol_model)`.
+fn route_models(model: String, cfg: &crate::core::agent::project::AgentToml) -> Result<(String, String), String> {
     // AH-194: the project's own rules about which model answers what. Read
     // here, where the model has been resolved and before anything is sent, and
     // refused at startup when a rule cannot be honoured -- a rule quietly
@@ -681,6 +674,123 @@ pub(crate) fn prepare_agent_session(
         },
     )
     .unwrap_or(smol_model);
+    Ok((model, smol_model))
+}
+
+/// Connect the MCP servers marked `active` in mcp_config.json off-thread, so
+/// setup and rendering are not blocked on a cold stdio spawn. The caller awaits
+/// the returned task before the first turn (tools are collected once per run),
+/// so a race with the first message cannot leave the model without its MCP
+/// tools. The task is `None` when no server is active.
+fn connect_mcp() -> (
+    crate::core::state::SharedMcpServers,
+    McpSettings,
+    Option<tokio::task::JoinHandle<mcp::ConnectOutcome>>,
+) {
+    let mcp_servers: crate::core::state::SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
+    let mcp_settings = mcp::read_settings();
+    let mcp_task = if mcp::active_count() > 0 && !tauri_plugin_agent_tools::safe_mode::active() {
+        let servers = mcp_servers.clone();
+        Some(tokio::spawn(
+            async move { mcp::connect_active(&servers).await },
+        ))
+    } else {
+        None
+    };
+    (mcp_servers, mcp_settings, mcp_task)
+}
+
+/// Resolve the run's limits: context window, compaction policy, token and
+/// money ceilings. A run that asked for a ceiling it cannot be priced against
+/// is refused here, before any paid request.
+fn resolve_limits(
+    cfg: &crate::core::agent::project::AgentToml,
+    flags: &SessionFlags,
+    project: &str,
+    model: &str,
+) -> Result<SessionLimits, String> {
+    // Resolution order: configured `[agent].context_window` override, then the
+    // built-in model catalog, then the 128K fallback.
+    let resolved_window = crate::core::cli::model_capabilities::resolve_context_window(
+        &model,
+        cfg.agent.context_window,
+    );
+
+    // AH-076: the same policy the loop reads, with the legacy
+    // `[agent].compaction_reserve_tokens` still honoured as a project value.
+    let compaction = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(&crate::core::app::commands::resolve_jan_data_folder()),
+        Some(&resolve_project_root(project)),
+        cfg.agent.compaction_reserve_tokens,
+    )
+    .map_err(|e| e.message().to_string())?;
+
+    // Resolved before the session is built: a run that asked for a ceiling it
+    // cannot be priced against is refused here, before any paid request.
+    let pause_at_usd = validate_pause_at_usd(cfg.budget.pause_at_usd)?;
+    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd).or(pause_at_usd) {
+        None => None,
+        Some(_) => {
+            let prices = crate::core::agent::spend::prices(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+            )
+            .map_err(|e| e.message)?;
+            match flags.max_budget_usd.or(cfg.budget.max_usd) {
+                Some(_) => resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?,
+                // Only a pause: priced the same way, against no ceiling.
+                None => resolve_cost_ceiling(None, pause_at_usd, &prices, &model)?.map(|c| {
+                    crate::core::agent::session::CostCeiling { max_usd: f64::INFINITY, ..c }
+                }),
+            }
+        }
+    };
+    Ok(SessionLimits {
+        context_window: resolved_window.tokens,
+        context_window_source: resolved_window.source,
+        reserve_tokens: compaction.reserve_tokens,
+        compaction: compaction.clone(),
+        max_tokens: cfg.agent.max_tokens,
+        max_session_tokens: resolve_session_budget(
+            flags.max_session_tokens,
+            cfg.budget.max_tokens,
+            known_window(resolved_window),
+        ),
+        max_session_tokens_pinned: flags.max_session_tokens.is_some()
+            || cfg.budget.max_tokens.is_some(),
+        max_turns: flags.max_turns,
+        cost_ceiling,
+        pause_at_usd,
+    })
+}
+
+/// Resolve project config + credentials into a ready-to-run engine handle.
+/// Shared by `run_agent_loop` (plain CLI) and `cli_agent_ui` (TUI).
+pub(crate) fn prepare_agent_session(
+    project: &str,
+    model_override: Option<String>,
+    overrides: ProviderOverrides,
+    flags: SessionFlags,
+    resume: Option<&ResumeRequest>,
+) -> Result<AgentSession, String> {
+    let project_root = resolve_project_root(project);
+    ensure_project(&project_root)?;
+    if let Err(e) = crate::core::agent::global_config::ensure_global_config() {
+        log::warn!("Agent: could not scaffold ~/.jan/config.toml: {e}");
+    }
+    // AH-186: the run's settings are the project's, with the chosen profile
+    // folded in. An unknown profile is refused here -- before a provider, a
+    // tool or a model is resolved from settings nobody asked for.
+    let mut cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
+    validate_tool_flags(&flags.allow_tools, &flags.deny_tools)?;
+    // `--deny-tool` only adds to the project's denies; it can never lift one.
+    cfg.tools.deny.extend(flags.deny_tools.iter().cloned());
+    let permissions = permissions_from(&cfg);
+
+    let model = resolve_model(model_override, &cfg, &overrides, &flags, &project_root)?;
+    // AH-194: the project's own rules about which model answers what. Read
+    // here, where the model has been resolved and before anything is sent, and
+    // refused at startup when a rule cannot be honoured.
+    let (model, smol_model) = route_models(model, &cfg)?;
 
     let mut provider_configs = load_provider_configs(Some(&project_root), &overrides)?;
 
@@ -708,21 +818,7 @@ pub(crate) fn prepare_agent_session(
         ));
     }
 
-    // MCP servers marked `active` in mcp_config.json connect off-thread so setup/
-    // render isn't blocked on a cold stdio spawn. The caller awaits `mcp_task`
-    // before the first turn (tools are collected once per run), so a race with
-    // the first message can't leave the model without its MCP tools. `None` when
-    // no server is active.
-    let mcp_servers: crate::core::state::SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
-    let mcp_settings = mcp::read_settings();
-    let mcp_task = if mcp::active_count() > 0 && !tauri_plugin_agent_tools::safe_mode::active() {
-        let servers = mcp_servers.clone();
-        Some(tokio::spawn(
-            async move { mcp::connect_active(&servers).await },
-        ))
-    } else {
-        None
-    };
+    let (mcp_servers, mcp_settings, mcp_task) = connect_mcp();
 
     // `think_tags` is user-wide and read from free rendering functions, so it is
     // applied to the process here, the one path every agent surface takes.
@@ -764,64 +860,14 @@ pub(crate) fn prepare_agent_session(
         flags.profile.clone(),
     );
 
-    // Resolution order: configured `[agent].context_window` override, then the
-    // built-in model catalog, then the 128K fallback.
-    let resolved_window = crate::core::cli::model_capabilities::resolve_context_window(
-        &model,
-        cfg.agent.context_window,
-    );
-
-    // AH-076: the same policy the loop reads, with the legacy
-    // `[agent].compaction_reserve_tokens` still honoured as a project value.
-    let compaction = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
-        Some(&crate::core::app::commands::resolve_jan_data_folder()),
-        Some(&resolve_project_root(project)),
-        cfg.agent.compaction_reserve_tokens,
-    )
-    .map_err(|e| e.message().to_string())?;
-
-    // Resolved before the session is built: a run that asked for a ceiling it
-    // cannot be priced against is refused here, before any paid request.
-    let pause_at_usd = validate_pause_at_usd(cfg.budget.pause_at_usd)?;
-    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd).or(pause_at_usd) {
-        None => None,
-        Some(_) => {
-            let prices = crate::core::agent::spend::prices(
-                &crate::core::app::commands::resolve_jan_data_folder(),
-            )
-            .map_err(|e| e.message)?;
-            match flags.max_budget_usd.or(cfg.budget.max_usd) {
-                Some(_) => resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?,
-                // Only a pause: priced the same way, against no ceiling.
-                None => resolve_cost_ceiling(None, pause_at_usd, &prices, &model)?.map(|c| {
-                    crate::core::agent::session::CostCeiling { max_usd: f64::INFINITY, ..c }
-                }),
-            }
-        }
-    };
+    let limits = resolve_limits(&cfg, &flags, project, &model)?;
 
     Ok(AgentSession {
         args,
         permission_requests,
         model,
         smol_model,
-        limits: SessionLimits {
-            context_window: resolved_window.tokens,
-            context_window_source: resolved_window.source,
-            reserve_tokens: compaction.reserve_tokens,
-            compaction: compaction.clone(),
-            max_tokens: cfg.agent.max_tokens,
-            max_session_tokens: resolve_session_budget(
-                flags.max_session_tokens,
-                cfg.budget.max_tokens,
-                known_window(resolved_window),
-            ),
-            max_session_tokens_pinned: flags.max_session_tokens.is_some()
-                || cfg.budget.max_tokens.is_some(),
-            max_turns: flags.max_turns,
-            cost_ceiling,
-            pause_at_usd,
-        },
+        limits,
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),
         send_reasoning: cfg.agent.send_reasoning.unwrap_or(true),
