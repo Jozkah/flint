@@ -3046,22 +3046,58 @@ fn origin_is_trusted(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
     is_trusted_origin(origin, trusted_hosts)
 }
 
+/// True when the process looks like a leftover Flint/Jan server or llama worker.
+fn is_leftover_flint_process(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["flint", "jan", "llama"].iter().any(|k| n.contains(k))
+}
+
+/// Look up which process holds `port`. It shells out (netstat/lsof), so it
+/// only runs after a bind failure and is capped by a short timeout.
+async fn lookup_port_owner(port: u16) -> Option<jan_utils::network::ProcessUsingPort> {
+    let task =
+        tokio::task::spawn_blocking(move || jan_utils::network::find_process_using_port(port));
+    match tokio::time::timeout(std::time::Duration::from_secs(2), task).await {
+        Ok(Ok(owner)) => owner,
+        _ => None,
+    }
+}
+
 /// Convert a TCP bind failure into a user-facing message. Address-in-use
 /// (Windows error 10048 / WSAEADDRINUSE, Unix EADDRINUSE) almost always means
 /// a leftover Flint process or another service still owns the port after a
 /// restart, so name the port and the remedy instead of surfacing a bare OS
-/// errno. Any other error is passed through unchanged.
+/// errno. When `owner` is known (looked up after the failure), the message
+/// names it and says whether it looks like a leftover Flint process. Any
+/// other error is passed through unchanged.
 fn map_bind_error(
     addr: SocketAddr,
     err: std::io::Error,
+    owner: Option<&jan_utils::network::ProcessUsingPort>,
 ) -> Box<dyn std::error::Error + Send + Sync> {
     if err.kind() == std::io::ErrorKind::AddrInUse {
-        let msg = format!(
-            "Port {port} ({addr}) is already in use. A previous Flint process may still be \
-             running or another application may be using the port. Close the leftover \
-             process and try again, or pick a different port in Settings > Local API Server.",
-            port = addr.port()
-        );
+        let port = addr.port();
+        let msg = match owner {
+            Some(p) if is_leftover_flint_process(&p.name) => format!(
+                "Port {port} ({addr}) is already in use, held by {name} (PID {pid}). This looks \
+                 like a leftover Flint process; close it (or end it in Task Manager) and try \
+                 again, or pick a different port in Settings > Local API Server.",
+                name = p.name,
+                pid = p.pid
+            ),
+            Some(p) => format!(
+                "Port {port} ({addr}) is already in use, held by {name} (PID {pid}). Close that \
+                 application and try again, or pick a different port in Settings > Local API \
+                 Server.",
+                name = p.name,
+                pid = p.pid
+            ),
+            None => format!(
+                "Port {port} ({addr}) is already in use. A previous Flint process may still be \
+                 running or another application may be using the port. Close the leftover \
+                 process and try again, or pick a different port in Settings > Local API Server."
+            ),
+        };
         return msg.into();
     }
     if err.kind() == std::io::ErrorKind::PermissionDenied {
@@ -3267,7 +3303,12 @@ async fn start_server_internal(
         Ok(bound) => bound,
         Err(e) => {
             log::error!("Failed to bind to {addr}: {e}");
-            return Err(map_bind_error(addr, e));
+            let owner = if e.kind() == std::io::ErrorKind::AddrInUse {
+                lookup_port_owner(addr.port()).await
+            } else {
+                None
+            };
+            return Err(map_bind_error(addr, e, owner.as_ref()));
         }
     };
     let bound_addr = listener.local_addr().unwrap_or(addr);
@@ -4189,7 +4230,7 @@ mod tests {
     fn addr_in_use_maps_to_actionable_message() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "Address already in use");
-        let msg = map_bind_error(addr, err).to_string();
+        let msg = map_bind_error(addr, err, None).to_string();
         assert!(msg.contains("1337"), "should name the port: {msg}");
         assert!(
             msg.contains("already in use") && msg.contains("process"),
@@ -4197,11 +4238,43 @@ mod tests {
         );
     }
 
+    fn fake_owner(name: &str) -> jan_utils::network::ProcessUsingPort {
+        jan_utils::network::ProcessUsingPort {
+            pid: 4242,
+            name: name.to_string(),
+            cmd: vec![],
+        }
+    }
+
+    #[test]
+    fn addr_in_use_names_a_foreign_owner() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "in use");
+        let owner = fake_owner("nginx.exe");
+        let msg = map_bind_error(addr, err, Some(&owner)).to_string();
+        assert!(msg.contains("1337") && msg.contains("nginx.exe (PID 4242)"), "{msg}");
+        assert!(!msg.contains("leftover Flint"), "{msg}");
+    }
+
+    #[test]
+    fn addr_in_use_flags_a_leftover_flint_owner() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        for name in ["Flint.exe", "jan", "llama-server.exe"] {
+            let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "in use");
+            let owner = fake_owner(name);
+            let msg = map_bind_error(addr, err, Some(&owner)).to_string();
+            assert!(
+                msg.contains("(PID 4242)") && msg.contains("leftover Flint"),
+                "{msg}"
+            );
+        }
+    }
+
     #[test]
     fn non_addr_in_use_error_passes_through() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
-        let msg = map_bind_error(addr, err).to_string();
+        let msg = map_bind_error(addr, err, None).to_string();
         assert!(
             msg.contains("denied"),
             "should keep the original error: {msg}"
@@ -4212,7 +4285,7 @@ mod tests {
     fn permission_denied_names_the_reserved_port_range() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
-        let msg = map_bind_error(addr, err).to_string();
+        let msg = map_bind_error(addr, err, None).to_string();
         assert!(msg.contains("1337") && msg.contains("reserved"), "{msg}");
     }
 
