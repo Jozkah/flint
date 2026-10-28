@@ -126,7 +126,6 @@ import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { currentDescriber, describeRunAttachments } from '@/lib/imageDescription'
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
-import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import {
   appendLiveMessages,
@@ -295,13 +294,10 @@ import {
 } from '@/containers/CoworkRailToolbar'
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
-import type { UIMessage } from 'ai'
 import {
   compactHistory,
-  compactionNeedsTurnSplit,
   compactionWindow,
   resolveAutoCompact,
-  shouldCompact,
   DEFAULT_KEEP_RECENT,
   } from '@/lib/compaction'
 import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
@@ -390,6 +386,7 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
+import { createCompactRun } from '@/lib/cowork/run/compactRun'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -3937,90 +3934,23 @@ export function CoworkPage() {
       window: () => runWindow ?? learnedWindow,
       model: () => transport.model,
     })
-    const compactRun = async (
-      msgs: UIMessage[],
-      why: 'threshold' | 'context-error',
-      signal: AbortSignal,
-      failure?: unknown,
-      headroom?: number
-    ): Promise<UIMessage[] | null> => {
-      if (!autoCompact) return null
-      if (why === 'context-error' && runWindow == null) {
-        const limit = parseServerContextLimit(
-          (failure as { data?: unknown } | null)?.data ?? null,
-          failure instanceof Error ? failure.message : String(failure ?? '')
-        )
-        if (limit) {
-          learnedWindow = limit.contextTokens
-          rememberServerLimit(
-            {
-              provider: selectedProvider ?? '',
-              baseUrl:
-                (useModelProvider.getState().getProviderByName(selectedProvider)
-                  ?.base_url as string) ?? '',
-              model: selectedModel.id,
-            },
-            limit
-          )
-        }
-      }
-      if (why === 'threshold') {
-        const now = transport.measureContext(msgs, runWindow ?? learnedWindow)
-        const window = compactionWindow(
-          now.budget.known === false ? null : now.budget.tokens
-        )
-        // What the next step is expected to add, never more than a quarter of
-        // the window, so one big result cannot make every step compact.
-        const expected = Math.min(
-          Math.max(0, headroom ?? 0),
-          Math.floor(window * 0.25)
-        )
-        if (
-          !shouldCompact(
-            accountedTotal(now).tokens,
-            window,
-            undefined,
-            expected,
-            compactionPolicy
-          )
-        ) {
-          return null
-        }
-      }
-      setCompacting(true)
-      let result: Awaited<ReturnType<typeof compactHistory>>
-      try {
-        const keepRecent = compactionPolicy.keepRecent || DEFAULT_KEEP_RECENT
-        result = await compactHistory(msgs, {
-          summarize: summarizeRun,
-          keepRecent,
-          // A follow-up turn whose own tool loop fills the window would be kept
-          // whole by the turn-preserving cut, leaving nothing to fold.
-          splitTurn: compactionNeedsTurnSplit(
-            msgs,
-            keepRecent,
-            compactionWindow(runWindow, learnedWindow),
-            compactionPolicy
-          ),
-          reason: why,
-          signal,
-        })
-      } finally {
-        setCompacting(false)
-      }
-      if (!result) return null
-      pushLive([{ role: 'assistant', content: '', compaction: result.record }])
-      void recordLifecycle(
-        { session: sid, run: runId, source: 'cowork' },
-        {
-          id: `compaction:${runId}:${result.record.at}`,
-          lifecycle: 'compaction',
-          phase: 'succeeded',
-          summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
-        }
-      )
-      return result.messages
-    }
+    const compactRun = createCompactRun({
+      sid,
+      runId,
+      autoCompact,
+      runWindow,
+      compactionPolicy,
+      selectedProvider,
+      selectedModelId: selectedModel.id,
+      transport,
+      summarize: summarizeRun,
+      getLearnedWindow: () => learnedWindow,
+      setLearnedWindow: (tokens) => {
+        learnedWindow = tokens
+      },
+      setCompacting,
+      pushLive: (turns) => pushLive(turns),
+    })
     if (sid === sessionIdRef.current) setRunContext(measured)
 
     /**
