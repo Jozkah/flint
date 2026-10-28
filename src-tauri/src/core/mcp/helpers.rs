@@ -255,11 +255,18 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
             }
         }
 
-        let health_check_result = {
+        // Clone the peer in a short scope so the servers lock is not held
+        // across the probe (a stalled server must not block every other MCP
+        // command for the probe timeout).
+        let peer = {
             let servers = servers_state.lock().await;
-            if let Some(service) = servers.get(&name) {
+            servers.get(&name).map(|service| service.peer().clone())
+        };
+
+        let health_check_result = {
+            if let Some(peer) = peer {
                 let live =
-                    probe_liveness(service, Duration::from_secs(5), Duration::from_secs(2)).await;
+                    probe_liveness(&peer, Duration::from_secs(5), Duration::from_secs(2)).await;
                 match &live {
                     Liveness::Alive => {}
                     Liveness::AliveWithoutPing => {
@@ -270,7 +277,9 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
                     }
                     Liveness::Gone(why) => log::warn!("MCP server {name} health check failed: {why}"),
                 }
-                live.is_alive()
+                // The server may have been stopped while it was probed: only
+                // count a failure if it is still registered.
+                live.is_alive() || !servers_state.lock().await.contains_key(&name)
             } else {
                 // Entry was removed (e.g., by get_tools cleanup or deactivate).
                 // Only stop monitoring if the server was deliberately deactivated.
@@ -853,13 +862,17 @@ async fn schedule_mcp_start_task<R: Runtime>(
         const TOOL_VERIFY_BACKOFF_MS: u64 = 1000;
 
         for attempt in 1..=MAX_TOOL_VERIFY_ATTEMPTS {
-            let verify_result = {
+            // Clone the peer under a short lock; the list call runs unlocked.
+            let verify_peer = {
                 let servers_map = servers.lock().await;
-                if let Some(service) = servers_map.get(&name) {
+                servers_map.get(&name).map(|service| service.peer().clone())
+            };
+            let verify_result = {
+                if let Some(peer) = verify_peer {
                     Some(
                         timeout(
                             Duration::from_secs(TOOL_VERIFY_TIMEOUT_SECS),
-                            service.list_all_tools(),
+                            peer.list_all_tools(),
                         )
                         .await,
                     )
