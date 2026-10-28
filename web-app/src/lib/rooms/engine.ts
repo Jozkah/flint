@@ -7,6 +7,7 @@
  * participants or the moderator from model output, and never consults any
  * tool-approval store.
  */
+import { rt } from './text'
 import { cleanReply } from './cleanReply'
 import { participantSampling } from './persona'
 import { estimateTokens } from '@/lib/context-manager'
@@ -254,7 +255,7 @@ function ranToolsInstruction(
     .map((t) => `${t.name} ${JSON.stringify(t.args ?? {}).slice(0, 120)}`)
     .join('; ')
   return `${base ? `${base}
-` : ''}Earlier in this turn you already ran tools (${ran}); ${reason} Do not repeat anything that changed files or state; read again only what you still need.`
+` : ''}${rt('ranTools', { ran, reason })}`
 }
 
 function modelKey(model: RoomModelRef): string {
@@ -520,11 +521,11 @@ class RoomRun {
   async handleAbort() {
     const intent = this.opts.intent?.() ?? 'pause'
     if (intent === 'stop') {
-      await this.system('Stopped by the user.')
+      await this.system(rt('stoppedByUser'))
       await this.save({ status: 'stopped', stopReason: { kind: 'user' } })
     } else {
       await this.system(
-        intent === 'cancel-turn' ? 'The turn was cancelled; the room is paused.' : 'Paused by the user.'
+        intent === 'cancel-turn' ? rt('turnCancelled') : rt('pausedByUser')
       )
       await this.save({ status: 'paused', stopReason: { kind: 'user' } })
     }
@@ -544,9 +545,9 @@ class RoomRun {
     this.room = room
     for (const c of changes) {
       if (c.to.state === 'unavailable') {
-        await this.system(`${c.participant.name} is unavailable: ${c.to.message}`)
+        await this.system(rt('unavailableNote', { name: c.participant.name, message: c.to.message }))
       } else if (c.from.state === 'unavailable') {
-        await this.system(`${c.participant.name} is available again.`)
+        await this.system(rt('availableAgain', { name: c.participant.name }))
       }
     }
     return this.ensureEnough(minimum)
@@ -557,8 +558,8 @@ class RoomRun {
     if (count >= minimum) return true
     await this.pauseNoParticipants(
       minimum >= 2
-        ? `Fewer than two participants are available (${count}). The room is paused.`
-        : 'No participant is available. The room is paused.'
+        ? rt('fewerThanTwo', { count: String(count) })
+        : rt('noneAvailablePaused')
     )
     return false
   }
@@ -720,12 +721,12 @@ class RoomRun {
     // summary; journaled, so it is still there after a reload.
     if (built.trimmed?.kind === 'summarized' && built.trimmed.fresh && built.trimmed.summary) {
       this.droppedNoted = true
-      const who = speaker.kind === 'participant' ? speaker.participant.name : 'the moderator'
+      const who = speaker.kind === 'participant' ? speaker.participant.name : rt('theModerator')
       await this.appendMessage(
         this.message({
           author: { kind: 'system' },
           kind: 'system',
-          text: `The discussion outgrew ${who}'s context window, so the oldest ${built.trimmed.count} message(s) were compacted into a summary.`,
+          text: rt('compacted', { who, n: built.trimmed.count }),
           compaction: {
             summarizedCount: built.trimmed.count,
             summary: truncate(built.trimmed.summary),
@@ -734,11 +735,11 @@ class RoomRun {
       )
     } else if (built.trimmed && !this.droppedNoted) {
       this.droppedNoted = true
-      const who = speaker.kind === 'participant' ? speaker.participant.name : 'the moderator'
+      const who = speaker.kind === 'participant' ? speaker.participant.name : rt('theModerator')
       await this.system(
         built.trimmed.kind === 'summarized'
-          ? `The discussion outgrew ${who}'s context window, so the oldest ${built.trimmed.count} message(s) were compacted into a summary.`
-          : `The discussion is longer than ${who}'s context window; the oldest ${built.trimmed.count} message(s) were left out of that prompt.`
+          ? rt('compacted', { who, n: built.trimmed.count })
+          : rt('leftOut', { who, n: built.trimmed.count })
       )
     }
     return built
@@ -1020,7 +1021,7 @@ class RoomRun {
               instruction = ranToolsInstruction(
                 instruction,
                 ranTools,
-                'their output was dropped to fit the context window.'
+                rt('ranToolsDropped')
               )
             }
             built = await this.prompt(args.speaker, args.model, instruction, true, toolsInfo, live)
@@ -1105,7 +1106,7 @@ class RoomRun {
                 instruction = ranToolsInstruction(
                   instruction,
                   ranTools,
-                  'the provider then failed and the request is being retried.'
+                  rt('ranToolsRetry')
                 )
                 built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo, live)
               }
@@ -1191,10 +1192,10 @@ class RoomRun {
   moderatorReady(): { ok: true; model: RoomModelRef } | { ok: false; problem: string } {
     const m = this.room.moderator
     if (!m.enabled || !m.model) {
-      return { ok: false, problem: 'No moderator is configured.' }
+      return { ok: false, problem: rt('moderatorNotConfigured') }
     }
     const problem = checkModel(m.model, this.lookup)
-    if (problem) return { ok: false, problem: `The moderator is unavailable: ${problem.message}` }
+    if (problem) return { ok: false, problem: rt('moderatorUnavailable', { message: problem.message }) }
     return { ok: true, model: m.model }
   }
 
@@ -1215,7 +1216,7 @@ class RoomRun {
           return {
             text: raw.slice(0, 2000),
             status: 'failed',
-            error: { code: 'invalid-directive', message: 'The moderator reply was not a valid directive.' },
+            error: { code: 'invalid-directive', message: rt('directiveInvalid') },
           }
         }
         const next = resolveParticipant(parsed.next, activeParticipants(this.room))
@@ -1227,10 +1228,10 @@ class RoomRun {
       },
     })
     if (outcome.kind !== 'complete') {
-      return { directive: null, problem: 'The moderator call failed.' }
+      return { directive: null, problem: rt('moderatorCallFailed') }
     }
     if (!box.directive) {
-      return { directive: null, problem: 'The moderator reply was not a valid directive.' }
+      return { directive: null, problem: rt('directiveInvalid') }
     }
     return { directive: box.directive, problem: null }
   }
@@ -1349,7 +1350,7 @@ class RoomRun {
         return
       }
       if (converged) {
-        await this.system('Recent turns repeat earlier ones; the discussion has converged.')
+        await this.system(rt('converged'))
         return this.close({ kind: 'converged', by: 'repetition' })
       }
       // A whole round of participants all waiting on the user (e.g. every model
@@ -1361,7 +1362,7 @@ class RoomRun {
       ) {
         this.consecutiveUserWaits = 0
         await this.system(
-          'Every participant is waiting for your input, so the room paused. Reply — or attach a folder / enable a tool they need — and it will continue.'
+          rt('allWaiting')
         )
         await this.save({ status: 'awaiting-user', nextSpeakerId: null })
         return
@@ -1556,7 +1557,7 @@ class RoomRun {
     const grid = compareGrid(this.messages)
     const latest = grid.questions.at(-1)
     if (!latest) {
-      await this.system('Ask a question first; there is nothing to answer yet.')
+      await this.system(rt('askFirst'))
       return
     }
     const chosen = activeParticipants(this.room).filter((p) =>
@@ -1636,15 +1637,15 @@ class RoomRun {
       })
     } else {
       const first = activeParticipants(this.room)[0]
-      if (!first) return this.pauseNoParticipants('No participant is available to write the synthesis.')
+      if (!first) return this.pauseNoParticipants(rt('noSynthesisParticipant'))
       outcome = await this.participantTurn(first, 'synthesis', instruction, finalize)
     }
 
     if (outcome.kind === 'complete') {
       await this.save({ status: 'completed', stopReason, nextSpeakerId: null })
     } else {
-      await this.system('The synthesis could not be written. The room is paused.')
-      await this.save({ status: 'paused', stopReason: { kind: 'error', code: 'synthesis-failed', message: 'The synthesis call failed.' } })
+      await this.system(rt('synthesisFailed'))
+      await this.save({ status: 'paused', stopReason: { kind: 'error', code: 'synthesis-failed', message: rt('synthesisCallFailed') } })
     }
   }
 
@@ -1766,8 +1767,8 @@ export async function runRoom(
       try {
         await run.system(
           storage
-            ? `The room stopped because a write to storage failed (${code}): ${message}`
-            : `The room stopped because of an internal error: ${message}`
+            ? rt('storageFailed', { code, message })
+            : rt('internalError', { message })
         )
         await run.save({ status: 'paused', stopReason: { kind: 'error', code, message } })
       } catch {
