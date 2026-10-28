@@ -384,7 +384,11 @@ impl PendingAuth {
                     if e.protocol {
                         protocol_strikes += 1;
                         if protocol_strikes >= MAX_PROTOCOL_STRIKES {
-                            return Err(format!("protocol error: {}", e.message));
+                            return Err(format!(
+                                "protocol error: {} ({})",
+                                e.message,
+                                e.detail.as_deref().unwrap_or_default()
+                            ));
                         }
                     }
                     last_transient = Some((e.message, last_round));
@@ -430,6 +434,9 @@ struct PollError {
     /// The answer parsed but is not what the protocol says; counted, because a
     /// server that keeps answering this way will never settle the sign-in.
     protocol: bool,
+    /// A redacted excerpt of the reply, shown only if the sign-in is abandoned
+    /// because of it.
+    detail: Option<String>,
 }
 
 impl PollError {
@@ -438,6 +445,7 @@ impl PollError {
             message,
             retryable: true,
             protocol: false,
+            detail: None,
         }
     }
 
@@ -446,14 +454,16 @@ impl PollError {
             message,
             retryable: false,
             protocol: false,
+            detail: None,
         }
     }
 
     fn protocol(message: String, body: &serde_json::Value) -> Self {
         Self {
-            message: format!("{message} ({})", redacted_body(body)),
+            message,
             retryable: true,
             protocol: true,
+            detail: Some(redacted_body(body)),
         }
     }
 }
