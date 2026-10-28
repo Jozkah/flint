@@ -28,8 +28,8 @@ import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import { RoomControls } from '@/containers/rooms/RoomControls'
 import { RoomEditor } from '@/containers/rooms/RoomEditor'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.roomDetail as any)({
+ 
+export const Route = createFileRoute(route.roomDetail)({
   component: RoomPage,
 })
 

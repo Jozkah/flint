@@ -81,11 +81,7 @@ import {
   MemoryEditDialog,
 } from '@/containers/memory/MemoryDialogs'
 
-// `as any` matches every other settings route: the typed route tree is
-// generated during the build, after this file is typechecked, so the literal is
-// not yet a known key when tsc reads it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.memory as any)({
+export const Route = createFileRoute(route.settings.memory)({
   component: MemorySettings,
 })
 

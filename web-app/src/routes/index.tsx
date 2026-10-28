@@ -34,7 +34,7 @@ import {
   ResumeRecentLink,
 } from '@/containers/GettingStartedCard'
 
-export const Route = createFileRoute(route.home as any)({
+export const Route = createFileRoute(route.home)({
   component: Index,
   validateSearch: (search: Record<string, unknown>): SearchParams => {
     const result: SearchParams = {

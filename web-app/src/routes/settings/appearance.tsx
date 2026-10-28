@@ -37,8 +37,8 @@ import {
   type PerformanceMode,
 } from '@/lib/perfMode'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.appearance as any)({
+ 
+export const Route = createFileRoute(route.settings.appearance)({
   component: InterfaceSettings,
 })
 
