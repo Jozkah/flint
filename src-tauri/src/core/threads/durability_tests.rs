@@ -237,7 +237,9 @@ async fn modify_thread_keeps_the_backend_owned_active_root() {
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(v["metadata"]["activeRootId"], "r2");
     assert_eq!(v["title"], "T");
+}
 
+#[test]
 fn append_dedupes_via_cache() {
     let (_tmp, path) = thread("cache-dedupe");
     assert!(append_message_line_if_new(&path, &json!({"id": "a"}), Some("a")).unwrap());
