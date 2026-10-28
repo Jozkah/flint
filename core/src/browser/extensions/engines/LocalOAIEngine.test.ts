@@ -44,6 +44,17 @@ describe('LocalOAIEngine', () => {
     vi.clearAllMocks()
   })
 
+  it('onUnload removes the exact model handlers onLoad added', () => {
+    engine.onLoad()
+    const added = (events.on as Mock).mock.calls
+      .filter((c) => c[0] === ModelEvent.OnModelInit || c[0] === ModelEvent.OnModelStop)
+      .map((c) => c[1])
+    expect(added).toHaveLength(2)
+    engine.onUnload()
+    const removed = (events.off as Mock).mock.calls.map((c) => c[1])
+    for (const fn of added) expect(removed).toContain(fn)
+  })
+
   describe('onLoad', () => {
     it('should call super.onLoad and subscribe to model events', () => {
       const superOnLoadSpy = vi.spyOn(Object.getPrototypeOf(Object.getPrototypeOf(engine)), 'onLoad')

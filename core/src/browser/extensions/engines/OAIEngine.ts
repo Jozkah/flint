@@ -31,18 +31,27 @@ export abstract class OAIEngine extends AIEngine {
   /**
    * On extension load, subscribe to events.
    */
+  // Kept as fields so onUnload can remove exactly what onLoad added.
+  private readonly onMessageSent = (data: MessageRequest) =>
+    this.inference(data)
+  private readonly onInferenceStopped = () => this.stopInference()
+
   override onLoad() {
     super.onLoad()
-    events.on(MessageEvent.OnMessageSent, (data: MessageRequest) =>
-      this.inference(data)
-    )
-    events.on(InferenceEvent.OnInferenceStopped, () => this.stopInference())
+    // A second load without an unload must not stack another listener.
+    events.off(MessageEvent.OnMessageSent, this.onMessageSent)
+    events.off(InferenceEvent.OnInferenceStopped, this.onInferenceStopped)
+    events.on(MessageEvent.OnMessageSent, this.onMessageSent)
+    events.on(InferenceEvent.OnInferenceStopped, this.onInferenceStopped)
   }
 
   /**
    * On extension unload
    */
-  override onUnload(): void {}
+  override onUnload(): void {
+    events.off(MessageEvent.OnMessageSent, this.onMessageSent)
+    events.off(InferenceEvent.OnInferenceStopped, this.onInferenceStopped)
+  }
 
   inference(data: MessageRequest) {}
 
