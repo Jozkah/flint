@@ -2232,7 +2232,7 @@ fn prepare_agent_run(
         .as_ref()
         .map(|w| w.path.clone())
         .unwrap_or_else(|| project_root.clone());
-    let (clean_task, injected) = path_refs::resolve_references(task, &read_root);
+    let (clean_task, injected) = path_refs::resolve_references_with(task, &read_root, false);
     let final_task = if injected.is_empty() {
         clean_task
     } else {
