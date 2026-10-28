@@ -77,7 +77,7 @@ pub fn agent_status_sequence(state: AgentStatusState, prompt: Option<&str>) -> S
         .map(|p| {
             p.chars()
                 .filter(|c| {
-                    !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+                    (!c.is_control() || matches!(*c, '\t' | '\n' | '\r')) && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
                 })
                 .take(160)
                 .collect::<String>()
@@ -259,8 +259,8 @@ mod tests {
     #[test]
     fn prompt_roundtrips_as_valid_json_payload() {
         // The prompt must survive decode exactly: quotes, backslashes,
-        // tabs, newlines, carriage returns, and control chars all roundtrip.
-        let prompt = "tab\there\nnewline\rCR \"double\" \\backslash \u{7}bel \u{1b}esc";
+        // tabs, newlines and carriage returns roundtrip; other controls are dropped.
+        let prompt = "tab\there\nnewline\rCR \"double\" \\backslash bel esc";
         let seq = agent_status_sequence(AgentStatusState::Working, Some(prompt));
         let payload = parse_payload(&seq);
         assert_eq!(
@@ -279,10 +279,10 @@ mod tests {
         let seq = agent_status_sequence(AgentStatusState::Working, Some(prompt));
         let body = extract_payload(&seq);
         assert!(!body.contains('\x1b') && !body.contains('\x07'));
-        // The payload itself decodes to the original prompt.
+        // The controls are dropped rather than escaped.
         assert_eq!(
             parse_payload(&seq)["prompt"],
-            serde_json::Value::String(prompt.to_string())
+            serde_json::Value::String("raw  control chars".to_string())
         );
     }
 
