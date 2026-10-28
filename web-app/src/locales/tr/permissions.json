@@ -367,5 +367,33 @@
     "none": "Bu klasör hook tanımlamıyor.",
     "error": "Hook dosyası okunamadı",
     "loadFailed": "Hook'lar okunamadı"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Ajanın bu klasördeki dosyaları değiştirmesine izin verilsin mi?",
+        "file": "Ajanın bu dosyayı değiştirmesine izin verilsin mi?"
+      },
+      "read": {
+        "folder": "Ajanın bu klasörü okumasına izin verilsin mi?",
+        "file": "Ajanın bu dosyayı okumasına izin verilsin mi?"
+      }
+    },
+    "asking": "{{task}} çalışma alanının dışında erişim istiyor.",
+    "askingFrom": "{{origin}} ({{task}} içinde) çalışma alanının dışında erişim istiyor.",
+    "thisConversation": "bu sohbet",
+    "folderLabel": "Klasör (ve içindeki her şey)",
+    "fileLabel": "Dosya",
+    "requestedAs": "{{requested}} olarak istendi; bu, yukarıdaki yola çözülür.",
+    "reason": "Belirtilen neden",
+    "access": "Erişim:",
+    "readWrite": "Okuma ve yazma",
+    "readOnly": "Salt okunur",
+    "grantNote": "\"Bu sohbet için izin ver\" sohbet bitince veya 8 saat sonra sona erer. \"Her zaman izin ver\", Ayarlar > İzinler > Klasör erişimi bölümünden iptal edene kadar tüm sohbetler için geçerlidir.",
+    "moreWaiting_one": "{{count}} istek daha bekliyor.",
+    "moreWaiting_other": "{{count}} istek daha bekliyor.",
+    "deny": "Reddet",
+    "always": "Her zaman izin ver",
+    "session": "Bu sohbet için izin ver"
   }
 }
