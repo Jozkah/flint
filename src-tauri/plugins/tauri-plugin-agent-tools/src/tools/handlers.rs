@@ -506,6 +506,12 @@ fn collapse_carriage_returns(s: &str) -> String {
     out
 }
 
+/// The text the shared-folder guard must read for `host_powershell`: its
+/// argument is `script`; `command` is accepted too for a model that guesses.
+fn powershell_guard_text(args: &serde_json::Value) -> Option<&str> {
+    arg_str(args, "script").or_else(|| arg_str(args, "command"))
+}
+
 /// Execute a built-in tool. Returns the tool-result text plus, for a `read` of
 /// an image file, the base64 `image_url` content parts the model needs to see
 /// the image. Errors are returned as a String STARTING WITH "ERROR" rather than
@@ -751,7 +757,7 @@ pub(crate) async fn execute_text(
         "computer" => crate::tools::computer::run(args).await.0,
         "open_path" => crate::tools::open_path::run(args, ctx).await,
         "host_powershell" => {
-            if let Some(command) = arg_str(args, "command") {
+            if let Some(command) = powershell_guard_text(args) {
                 if let Some(held) =
                     crate::shared_folder::tools::guard_command(ctx, command, ctx.project_root)
                 {
@@ -4437,6 +4443,26 @@ mod find_cap_tests {
     }
 }
 
+/// Most lines of context one match may pull in on each side.
+const GREP_MAX_CONTEXT: usize = 20;
+
+/// Longest a grep walk may run before it stops and says so.
+const GREP_WALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
+
+fn clamp_grep_context(requested: Option<u64>) -> usize {
+    requested.map_or(0, |v| v.min(GREP_MAX_CONTEXT as u64) as usize)
+}
+
+/// Tells the blocking grep walk to stop once the awaiting call is dropped
+/// (cancelled), instead of reading the rest of the tree for nobody.
+struct CancelOnDrop(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 async fn grep(
     args: &serde_json::Value,
     root: &Path,
@@ -4450,7 +4476,7 @@ async fn grep(
     let glob_filter = arg_str(args, "glob").map(String::from);
     let ignore_case = arg_bool(args, "ignore_case");
     let literal = arg_bool(args, "literal");
-    let context = arg_u64(args, "context").map(|v| v as usize).unwrap_or(0);
+    let context = clamp_grep_context(arg_u64(args, "context"));
     let limit = arg_u64(args, "limit")
         .map(|v| v as usize)
         .unwrap_or(GREP_DEFAULT_LIMIT)
@@ -4468,6 +4494,9 @@ async fn grep(
     let Some(pattern) = pattern else {
         return "ERROR: missing required argument 'pattern'".to_string();
     };
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _cancel_on_drop = CancelOnDrop(cancel.clone());
+    let started = std::time::Instant::now();
     let res = tokio::task::spawn_blocking(move || {
         let effective = if literal {
             regex::escape(&pattern)
@@ -4497,6 +4526,7 @@ async fn grep(
         let mut truncated = false;
         let mut skipped_secrets = 0usize;
         let mut skipped_large = 0usize;
+        let mut stopped = false;
 
         let mut search_file = |file: &Path, rel_base: &Path| -> bool {
             if let Some(gp) = &glob_pat {
@@ -4570,6 +4600,12 @@ async fn grep(
                 .build()
                 .flatten()
             {
+                if cancel.load(std::sync::atomic::Ordering::Relaxed)
+                    || started.elapsed() > GREP_WALL_BUDGET
+                {
+                    stopped = true;
+                    break;
+                }
                 let Some(file_type) = entry.file_type() else {
                     continue;
                 };
@@ -4624,6 +4660,9 @@ async fn grep(
                 "\n\n[Skipped {skipped_large} file(s) over {} MiB or not regular files; search those with bash (rg)]",
                 READ_MAX_BYTES / (1024 * 1024)
             ));
+        }
+        if stopped {
+            skipped_note.push_str("\n\n[search stopped early (time budget or cancelled); narrow the path or glob to search the rest]");
         }
         if groups.is_empty() {
             format!("No matches.{skipped_note}")
@@ -4961,6 +5000,21 @@ mod bash_job_registry_tests {
 
         assert_eq!(await_bash_job("bash-outlives", None).await, "built");
         assert!(!list_bash_jobs(None).iter().any(|j| j.job_id == "bash-outlives"));
+    }
+
+    #[test]
+    fn grep_context_clamped() {
+        assert_eq!(clamp_grep_context(None), 0);
+        assert_eq!(clamp_grep_context(Some(3)), 3);
+        assert_eq!(clamp_grep_context(Some(u64::MAX)), GREP_MAX_CONTEXT);
+    }
+
+    #[test]
+    fn host_powershell_git_reset_hard_held() {
+        let args = json!({ "script": "git reset --hard HEAD" });
+        assert_eq!(powershell_guard_text(&args), Some("git reset --hard HEAD"));
+        let legacy = json!({ "command": "git clean -fdx" });
+        assert_eq!(powershell_guard_text(&legacy), Some("git clean -fdx"));
     }
 
     #[test]
