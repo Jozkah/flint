@@ -181,7 +181,7 @@
     "kpiArtifacts": "Sản phẩm",
     "kpiArtifactsSub": "{{count}} mới trong tuần này",
     "kpiSessions": "Từ Cowork",
-    "kpiSessionsSub": "trên {{count}} phiên",
+    "kpiSessionsSub": "có tạo phẩm đã lưu",
     "kpiDisk": "Trên ổ đĩa",
     "kpiDiskSub": "trong sandbox của phiên",
     "kindCode": "Mã",

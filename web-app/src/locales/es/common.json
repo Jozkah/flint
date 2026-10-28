@@ -3066,5 +3066,11 @@
         "confirm": "Detener todo"
       }
     }
+  },
+  "apiKey": {
+    "show": "Mostrar la clave de API",
+    "hide": "Ocultar la clave de API",
+    "copy": "Copiar la clave de API",
+    "copied": "Copiado"
   }
 }

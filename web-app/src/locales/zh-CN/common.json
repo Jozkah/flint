@@ -3004,5 +3004,11 @@
         "confirm": "全部停止"
       }
     }
+  },
+  "apiKey": {
+    "show": "显示 API 密钥",
+    "hide": "隐藏 API 密钥",
+    "copy": "复制 API 密钥",
+    "copied": "已复制"
   }
 }

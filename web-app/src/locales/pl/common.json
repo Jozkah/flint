@@ -3141,5 +3141,11 @@
         "confirm": "Zatrzymaj wszystko"
       }
     }
+  },
+  "apiKey": {
+    "show": "Pokaż klucz API",
+    "hide": "Ukryj klucz API",
+    "copy": "Kopiuj klucz API",
+    "copied": "Skopiowano"
   }
 }

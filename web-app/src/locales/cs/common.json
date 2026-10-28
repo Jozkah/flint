@@ -3140,5 +3140,11 @@
         "confirm": "Zastavit vše"
       }
     }
+  },
+  "apiKey": {
+    "show": "Zobrazit klíč API",
+    "hide": "Skrýt klíč API",
+    "copy": "Kopírovat klíč API",
+    "copied": "Zkopírováno"
   }
 }
