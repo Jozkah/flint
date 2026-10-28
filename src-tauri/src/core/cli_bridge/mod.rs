@@ -260,16 +260,21 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
         format!("{}[system]\n{}\n\n{}", backend.preamble(), prompt.system, prompt.transcript)
     };
     let id = format!("{:x}", rand::random::<u64>());
-    let (events_tx, mut events_rx) = mpsc::channel::<Event>(64);
-    let run_model = model.clone();
-    tokio::spawn(async move {
-        let gate = GATE.get_or_init(|| Semaphore::new(MAX_CONCURRENT));
-        let _permit = gate.acquire().await;
-        backend::run(backend, &run_model, stdin_text, events_tx).await;
-    });
+    let reply_model = model.clone();
+    let start = move |stdin_text: String| {
+        let (events_tx, events_rx) = mpsc::channel::<Event>(64);
+        let run_model = model.clone();
+        let images = prompt.images.clone();
+        tokio::spawn(async move {
+            let gate = GATE.get_or_init(|| Semaphore::new(MAX_CONCURRENT));
+            let _permit = gate.acquire().await;
+            backend::run(backend, &run_model, stdin_text, images, events_tx).await;
+        });
+        events_rx
+    };
+    let mut events_rx = start(stdin_text.clone());
 
     let (out_tx, out_rx) = mpsc::channel::<String>(64);
-    let reply_model = model.clone();
     let has_tools = prompt.has_tools;
     // Pump CLI events into OpenAI-shaped output.
     let pump = tokio::spawn(async move {
@@ -277,28 +282,51 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
         let mut collected = String::new();
         let mut failure: Option<String> = None;
         let mut usage = (0u64, 0u64);
+        let mut retried = false;
         if streaming {
             let _ = out_tx
                 .send(chunk(&id, &reply_model, json!({"role": "assistant", "content": ""}), Value::Null))
                 .await;
         }
-        while let Some(event) = events_rx.recv().await {
-            match event {
-                Event::Text(text) => {
-                    let ready = if has_tools { filter.push(&text) } else { text };
-                    if ready.is_empty() {
-                        continue;
+        loop {
+            while let Some(event) = events_rx.recv().await {
+                match event {
+                    Event::Text(text) => {
+                        let ready = if has_tools { filter.push(&text) } else { text };
+                        if ready.is_empty() {
+                            continue;
+                        }
+                        collected.push_str(&ready);
+                        if streaming
+                            && out_tx.send(chunk(&id, &reply_model, json!({"content": ready}), Value::Null)).await.is_err()
+                        {
+                            return;
+                        }
                     }
-                    collected.push_str(&ready);
-                    if streaming
-                        && out_tx.send(chunk(&id, &reply_model, json!({"content": ready}), Value::Null)).await.is_err()
-                    {
-                        return;
-                    }
+                    Event::Usage { input, output } => usage = (input, output),
+                    Event::Failed(message) => failure = Some(message),
                 }
-                Event::Usage { input, output } => usage = (input, output),
-                Event::Failed(message) => failure = Some(message),
             }
+            // A model that wrote its own tool syntax gets one corrected retry,
+            // provided nothing has reached the caller yet.
+            if has_tools && !retried && failure.is_none() && filter.unusable_foreign_reply() && collected.trim().is_empty() {
+                retried = true;
+                filter = ToolStream::default();
+                let fixed = match stdin_text.strip_suffix("[assistant]
+") {
+                    Some(head) => format!(
+                        "{head}[reminder]
+Your previous reply used an unsupported tool syntax and was discarded. Call a tool only by writing <tool_call>{{\"name\":...,\"arguments\":{{...}}}}</tool_call>.
+
+[assistant]
+"
+                    ),
+                    None => stdin_text.clone(),
+                };
+                events_rx = start(fixed);
+                continue;
+            }
+            break;
         }
         let (tail, calls) = if has_tools { filter.finish() } else { (String::new(), Vec::new()) };
         collected.push_str(&tail);
@@ -422,7 +450,7 @@ mod tests {
         assert_eq!(http(port, "GET", "/nothing/v1/models", &[key], "").await.0, 404);
         let (status, body) = http(port, "GET", "/claude-cli/v1/models", &[key], "").await;
         assert_eq!(status, 200);
-        assert!(body.contains("\"id\":\"opus\""), "{body}");
+        assert!(body.contains("\"id\":\"claude-opus-5-5\""), "{body}");
     }
 
     async fn live_roundtrip(backend: Backend, model: &str) {
@@ -457,7 +485,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_claude() {
-        live_roundtrip(Backend::Claude, "haiku").await;
+        live_roundtrip(Backend::Claude, "claude-haiku-5-5").await;
     }
 
     #[tokio::test]
@@ -465,6 +493,79 @@ mod tests {
     async fn live_codex() {
         let model = Backend::Codex.discover_models().await.remove(0);
         live_roundtrip(Backend::Codex, &model).await;
+    }
+
+    /// A solid red 32x32 PNG; the model must name the colour.
+    const RED_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg==";
+
+    async fn live_image(backend: Backend, model: &str) {
+        let port = test_server().await;
+        let key = ("authorization", "Bearer secret-token-secret-token-secret-token");
+        let path = format!("/{}/v1/chat/completions", backend.id());
+        let body = json!({"model": model, "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "What single colour fills this image? Answer with one word."},
+            {"type": "image_url", "image_url": {"url": format!("data:image/png;base64,{RED_PNG}")}}
+        ]}]});
+        let (status, body) = http(port, "POST", &path, &[key], &body.to_string()).await;
+        assert_eq!(status, 200, "{body}");
+        let value: Value = serde_json::from_str(&body).unwrap();
+        let text = value["choices"][0]["message"]["content"].as_str().unwrap().to_lowercase();
+        assert!(text.contains("red"), "{body}");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_claude_image() {
+        live_image(Backend::Claude, "claude-haiku-5-5").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_codex_image() {
+        let model = Backend::Codex.discover_models().await.remove(0);
+        live_image(Backend::Codex, &model).await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_gemini_image() {
+        live_image(Backend::Gemini, "gemini-2.5-flash").await;
+    }
+
+    /// Every advertised model, one at a time; prints a verdict per model.
+    async fn live_all(backend: Backend) {
+        let mut failed = Vec::new();
+        // FLINT_LIVE_MODELS="a,b" limits the run to those models.
+        let only = std::env::var("FLINT_LIVE_MODELS").unwrap_or_default();
+        for model in backend.discover_models().await {
+            if !only.is_empty() && !only.split(',').any(|name| name == model) {
+                continue;
+            }
+            let m = model.clone();
+            let ok = tokio::spawn(async move {
+                live_roundtrip(backend, &m).await;
+                live_image(backend, &m).await;
+            })
+            .await
+            .is_ok();
+            println!("LIVE {} {model}: {}", backend.id(), if ok { "ok" } else { "FAILED" });
+            if !ok {
+                failed.push(model);
+            }
+        }
+        assert!(failed.is_empty(), "failed: {failed:?}");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_claude_all() {
+        live_all(Backend::Claude).await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_codex_all() {
+        live_all(Backend::Codex).await;
     }
 
     #[tokio::test]

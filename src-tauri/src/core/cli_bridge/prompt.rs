@@ -9,6 +9,9 @@ use serde_json::{json, Value};
 
 const OPEN: &str = "<tool_call>";
 const CLOSE: &str = "</tool_call>";
+/// Claude's own tool syntax; models sometimes write it instead of ours. It is
+/// held back like a call so it never reaches the user as text.
+const FOREIGN: [&str; 4] = ["<invoke", "<parameter", "<function_calls", "<antml"];
 
 /// One tool call the model asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,15 +20,50 @@ pub struct ToolCall {
     pub arguments: Value,
 }
 
+/// An inline image from the request (`data:` URIs only; remote URLs are never
+/// fetched on the model's behalf).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub mime: String,
+    /// Base64 payload, as sent.
+    pub base64: String,
+}
+
+impl Image {
+    pub fn extension(&self) -> &'static str {
+        match self.mime.as_str() {
+            "image/jpeg" | "image/jpg" => "jpg",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => "png",
+        }
+    }
+}
+
+/// Images per request and total base64 size the bridge will pass on.
+const MAX_IMAGES: usize = 8;
+const MAX_IMAGE_BYTES: usize = 24 * 1024 * 1024;
+
 /// A request reduced to what a CLI needs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Prompt {
     pub system: String,
     pub transcript: String,
     pub has_tools: bool,
+    pub images: Vec<Image>,
 }
 
-fn content_text(content: &Value) -> String {
+fn parse_data_uri(url: &str) -> Option<Image> {
+    let rest = url.strip_prefix("data:")?;
+    let (meta, data) = rest.split_once(',')?;
+    let mime = meta.strip_suffix(";base64")?;
+    if !mime.starts_with("image/") || data.is_empty() {
+        return None;
+    }
+    Some(Image { mime: mime.to_string(), base64: data.to_string() })
+}
+
+fn content_text(content: &Value, images: &mut Vec<Image>) -> String {
     match content {
         Value::String(text) => text.clone(),
         Value::Array(parts) => parts
@@ -36,7 +74,24 @@ fn content_text(content: &Value) -> String {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string(),
-                Some("image_url") | Some("input_image") => "[image omitted]".to_string(),
+                Some("image_url") | Some("input_image") => {
+                    let url = part
+                        .get("image_url")
+                        .and_then(|image| image.get("url").or(Some(image)))
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let used: usize = images.iter().map(|image| image.base64.len()).sum();
+                    match parse_data_uri(url) {
+                        Some(image)
+                            if images.len() < MAX_IMAGES
+                                && used + image.base64.len() <= MAX_IMAGE_BYTES =>
+                        {
+                            images.push(image);
+                            format!("[image {}]", images.len())
+                        }
+                        _ => "[image omitted]".to_string(),
+                    }
+                }
                 _ => String::new(),
             })
             .filter(|text| !text.is_empty())
@@ -63,11 +118,21 @@ fn tool_protocol(tools: &[Value]) -> String {
         })
         .collect();
     format!(
-        "You can call tools. To call one, write {OPEN}{{\"name\":\"<tool name>\",\"arguments\":{{...}}}}{CLOSE} \
+        "You have the tools listed below. They are not native function calls of this environment, so do not look \
+         for them elsewhere and never say they are unavailable: you call one only by writing the tag in your reply text. To call one, write {OPEN}{{\"name\":\"<tool name>\",\"arguments\":{{...}}}}{CLOSE} \
          with valid JSON arguments matching the tool's schema. You may write several calls in one reply. \
          Write nothing after your last call: the results arrive in the next message as \
          <tool_result> blocks. Never pretend a tool ran; call it. Reply in plain text when no tool is needed.\n\n\
+         Example of a correct reply that calls a tool:\n{}\n\n\
          Available tools (JSON):\n{}",
+        tool_call_block(
+            specs
+                .first()
+                .and_then(|spec| spec.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or("tool_name"),
+            &json!({}),
+        ),
         Value::Array(specs)
     )
 }
@@ -76,6 +141,7 @@ fn tool_protocol(tools: &[Value]) -> String {
 pub fn build_prompt(body: &Value) -> Prompt {
     let mut system: Vec<String> = Vec::new();
     let mut transcript = String::new();
+    let mut images: Vec<Image> = Vec::new();
     let messages = body
         .get("messages")
         .and_then(Value::as_array)
@@ -86,7 +152,10 @@ pub fn build_prompt(body: &Value) -> Prompt {
     let mut call_names: std::collections::HashMap<String, String> = Default::default();
     for message in &messages {
         let role = message.get("role").and_then(Value::as_str).unwrap_or("user");
-        let text = message.get("content").map(content_text).unwrap_or_default();
+        let text = message
+            .get("content")
+            .map(|content| content_text(content, &mut images))
+            .unwrap_or_default();
         match role {
             "system" | "developer" => system.push(text),
             "assistant" => {
@@ -138,11 +207,17 @@ pub fn build_prompt(body: &Value) -> Prompt {
     if let Some(tools) = tools {
         system.push(tool_protocol(tools));
     }
+    if tools.is_some() {
+        transcript.push_str(&format!(
+            "[reminder]\nThe tools are available: call them by writing {OPEN}{{\"name\":...,\"arguments\":{{...}}}}{CLOSE} in your reply.\n\n"
+        ));
+    }
     transcript.push_str("[assistant]\n");
     Prompt {
         system: system.join("\n\n"),
         transcript,
         has_tools: tools.is_some(),
+        images,
     }
 }
 
@@ -154,6 +229,7 @@ pub struct ToolStream {
     held: String,
     in_call: bool,
     started: bool,
+    foreign: bool,
 }
 
 impl ToolStream {
@@ -174,16 +250,30 @@ impl ToolStream {
                 self.held = rest.trim_start_matches('\n').to_string();
             }
         }
-        if let Some(at) = self.held.find(OPEN) {
+        let opens = std::iter::once((OPEN, false)).chain(FOREIGN.iter().map(|tag| (*tag, true)));
+        let first = opens
+            .clone()
+            .filter_map(|(tag, foreign)| self.held.find(tag).map(|at| (at, foreign)))
+            .min_by_key(|(at, _)| *at);
+        if let Some((at, foreign)) = first {
             let text = self.held[..at].to_string();
             self.held = self.held[at..].to_string();
             self.in_call = true;
+            self.foreign = foreign;
             return text;
         }
-        // Keep back a tail that might still grow into the opening tag.
-        let keep = (1..OPEN.len().min(self.held.len() + 1))
-            .rev()
-            .find(|n| self.held.is_char_boundary(self.held.len() - n) && OPEN.starts_with(&self.held[self.held.len() - n..]))
+        // Keep back a tail that might still grow into an opening tag.
+        let keep = opens
+            .map(|(tag, _)| {
+                (1..tag.len().min(self.held.len() + 1))
+                    .rev()
+                    .find(|n| {
+                        self.held.is_char_boundary(self.held.len() - n)
+                            && tag.starts_with(&self.held[self.held.len() - n..])
+                    })
+                    .unwrap_or(0)
+            })
+            .max()
             .unwrap_or(0);
         let cut = self.held.len() - keep;
         let text = self.held[..cut].to_string();
@@ -191,11 +281,7 @@ impl ToolStream {
         text
     }
 
-    /// End of output: the last releasable text and every parsed tool call.
-    pub fn finish(self) -> (String, Vec<ToolCall>) {
-        if !self.in_call {
-            return (self.held, Vec::new());
-        }
+    fn parse_held(&self) -> Vec<ToolCall> {
         let mut calls = Vec::new();
         let mut rest = self.held.as_str();
         while let Some(start) = rest.find(OPEN) {
@@ -208,6 +294,25 @@ impl ToolStream {
                 calls.push(call);
             }
             rest = next;
+        }
+        calls
+    }
+
+    /// True when the model wrote a foreign tool syntax and no readable call
+    /// came with it: the reply is unusable. Check before [`ToolStream::finish`].
+    pub fn unusable_foreign_reply(&self) -> bool {
+        self.foreign && self.parse_held().is_empty()
+    }
+
+    /// End of output: the last releasable text and every parsed tool call.
+    pub fn finish(self) -> (String, Vec<ToolCall>) {
+        if !self.in_call {
+            return (self.held, Vec::new());
+        }
+        let calls = self.parse_held();
+        if calls.is_empty() && self.foreign {
+            // Not a call after all: show it as text.
+            return (self.held, calls);
         }
         (String::new(), calls)
     }
@@ -240,6 +345,20 @@ mod tests {
         let (rest, calls) = stream.finish();
         text.push_str(&rest);
         (text, calls)
+    }
+
+    #[test]
+    fn foreign_tool_syntax_is_held_back_and_flagged() {
+        let mut stream = ToolStream::default();
+        let mut text = stream.push("
+<invoke_tool>
+<parameter name=\"name\">ls</parameter>
+</invoke_tool>");
+        assert!(text.trim().is_empty());
+        assert!(stream.unusable_foreign_reply());
+        let (tail, calls) = stream.finish();
+        text.push_str(&tail);
+        assert!(calls.is_empty() && text.contains("<invoke_tool>"));
     }
 
     #[test]
@@ -279,6 +398,21 @@ mod tests {
     #[test]
     fn an_echoed_turn_cue_is_dropped() {
         assert_eq!(run(&["[assist", "ant]\nhi"]).0, "hi");
+    }
+
+    #[test]
+    fn data_uri_images_are_collected_and_remote_ones_dropped() {
+        let body = json!({"messages": [{"role": "user", "content": [
+            {"type": "text", "text": "look"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,QUJD"}},
+            {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}},
+        ]}]});
+        let prompt = build_prompt(&body);
+        assert_eq!(prompt.images.len(), 1);
+        assert_eq!(prompt.images[0].mime, "image/jpeg");
+        assert_eq!(prompt.images[0].extension(), "jpg");
+        assert!(prompt.transcript.contains("[image 1]"));
+        assert!(prompt.transcript.contains("[image omitted]"));
     }
 
     #[test]

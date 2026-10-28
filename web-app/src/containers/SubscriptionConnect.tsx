@@ -16,6 +16,14 @@ export const SUBSCRIPTION_PROVIDERS = [
 export const isSubscriptionProvider = (provider: string | undefined) =>
   SUBSCRIPTION_PROVIDERS.some((id) => id === provider)
 
+/** Conservative windows: Flint compacts long chats and rooms against these,
+ * and the vendor CLIs do not report one. */
+const CONTEXT_WINDOW: Record<string, number> = {
+  'claude-cli': 200_000,
+  'codex-cli': 200_000,
+  'gemini-cli': 1_000_000,
+}
+
 type BridgeStatus = {
   installed: boolean
   loggedIn: boolean
@@ -72,8 +80,10 @@ export function SubscriptionConnect({ providerName }: Props) {
         id,
         model: id,
         name: id,
-        capabilities: ['completion'],
+        // The bridge carries tool calls and images for every model.
+        capabilities: ['completion', 'tools', 'vision'],
         version: '1.0',
+        context_length: CONTEXT_WINDOW[providerName],
       }))
       updateProvider(providerName, {
         ...provider,

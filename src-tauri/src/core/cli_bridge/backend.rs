@@ -9,7 +9,9 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{json, Value};
+
+use super::prompt::Image;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
@@ -66,9 +68,34 @@ impl Backend {
     /// these stay valid as vendors ship new versions.
     pub fn models(self) -> Vec<String> {
         let list: &[&str] = match self {
-            Backend::Claude => &["opus", "sonnet", "haiku"],
+            Backend::Claude => &[
+                "claude-opus-5-5",
+                "claude-fable-5-1",
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5",
+                "claude-haiku-4-5",
+                "claude-sonnet-5",
+                "claude-opus-5",
+                "claude-fable-5",
+                "claude-opus-4-8",
+                "claude-opus-4-7",
+                "claude-opus-4-6",
+                "claude-sonnet-4-6",
+            ],
             Backend::Codex => &["gpt-6.1-sol"],
-            Backend::Gemini => &["gemini-3-pro", "gemini-3-flash", "gemini-2.5-pro"],
+            // From the model constants in gemini-cli 0.66.0.
+            Backend::Gemini => &[
+                "gemini-3.1-pro-preview",
+                "gemini-3-pro-preview",
+                "gemini-3.8-flash",
+                "gemini-3.5-flash",
+                "gemini-3-flash-preview",
+                "gemini-3.1-flash-lite",
+                "gemini-3.5-flash-lite",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+            ],
         };
         list.iter().map(|model| model.to_string()).collect()
     }
@@ -131,7 +158,7 @@ impl Backend {
         match self {
             Backend::Claude => "",
             Backend::Codex | Backend::Gemini => {
-                "[system]\nYou are a text-only model inside another application. Never run shell commands, read or edit files, or use any built-in tool of your own. Answer in text, and use only the <tool_call> protocol below when a tool is needed.\n\n"
+                "[system]\nYou are a model inside another application. Never run shell commands, read or edit files, or use any built-in tool of your own (attached images are visible to you). Answer in text, and use only the <tool_call> protocol below when a tool is needed.\n\n"
             }
         }
     }
@@ -155,7 +182,7 @@ impl Backend {
                     "",
                     "--no-session-persistence",
                     "--system-prompt",
-                    "You are a text-only model. Follow the instructions in the message.",
+                    "You are a helpful assistant inside another application. Follow the instructions in the message. Images attached to the message are visible to you.",
                 ]);
                 args.extend(own(&["--model", model]));
                 args
@@ -172,7 +199,24 @@ impl Backend {
                     "--ignore-rules",
                     "--sandbox",
                     "read-only",
+                    // Codex answers from its own web search and shell when
+                    // they exist, ignoring Flint's tools. Switch them off.
+                    "-c",
+                    "web_search=\"disabled\"",
                 ]);
+                for feature in [
+                    "shell_tool",
+                    "apps",
+                    "plugins",
+                    "browser_use",
+                    "computer_use",
+                    "in_app_browser",
+                    "multi_agent",
+                    "image_generation",
+                    "goals",
+                ] {
+                    args.extend(own(&["--disable", feature]));
+                }
                 args.extend(own(&["--model", model, "-"]));
                 args
             }
@@ -346,9 +390,91 @@ fn scratch_dir() -> PathBuf {
     dir
 }
 
+/// Decoded request images on disk, deleted on drop.
+#[derive(Default)]
+struct ImageFiles {
+    dir: Option<PathBuf>,
+}
+
+impl ImageFiles {
+    fn write(&mut self, images: &[Image]) -> Vec<PathBuf> {
+        use base64::Engine;
+        let dir = scratch_dir().join(format!("img-{:x}", rand::random::<u64>()));
+        if std::fs::create_dir_all(&dir).is_err() {
+            return Vec::new();
+        }
+        self.dir = Some(dir.clone());
+        images
+            .iter()
+            .enumerate()
+            .filter_map(|(index, image)| {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(image.base64.trim())
+                    .ok()?;
+                let path = dir.join(format!("{}.{}", index + 1, image.extension()));
+                std::fs::write(&path, bytes).ok()?;
+                Some(path)
+            })
+            .collect()
+    }
+}
+
+impl Drop for ImageFiles {
+    fn drop(&mut self) {
+        if let Some(dir) = &self.dir {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
 /// Run one request to completion, sending events as they arrive. The prompt
 /// goes in on stdin so nothing long or user-supplied touches the command line.
-pub async fn run(backend: Backend, model: &str, stdin_text: String, events: mpsc::Sender<Event>) {
+pub async fn run(
+    backend: Backend,
+    model: &str,
+    mut stdin_text: String,
+    images: Vec<Image>,
+    events: mpsc::Sender<Event>,
+) {
+    let mut args = backend.args(model);
+    // Images reach each CLI its own way. Files live in a per-request folder
+    // under the scratch directory and are removed when the request ends.
+    let mut files = ImageFiles::default();
+    if !images.is_empty() {
+        match backend {
+            Backend::Claude => {
+                // Image blocks need the stream-json input form.
+                args.extend(["--input-format".to_string(), "stream-json".to_string()]);
+                let mut content = vec![json!({"type": "text", "text": stdin_text})];
+                content.extend(images.iter().map(|image| {
+                    json!({"type": "image", "source": {"type": "base64", "media_type": image.mime, "data": image.base64}})
+                }));
+                stdin_text = format!(
+                    "{}\n",
+                    json!({"type": "user", "message": {"role": "user", "content": content}})
+                );
+            }
+            Backend::Codex => {
+                let paths = files.write(&images);
+                let flags = paths
+                    .iter()
+                    .flat_map(|path| ["--image".to_string(), path.display().to_string()]);
+                // Right after `exec`; each flag takes one file.
+                args.splice(1..1, flags);
+            }
+            Backend::Gemini => {
+                // `@path` in the prompt attaches the file; the folder sits
+                // inside the CLI's working directory.
+                let paths = files.write(&images);
+                let refs: Vec<String> = paths
+                    .iter()
+                    .filter_map(|path| path.strip_prefix(scratch_dir()).ok())
+                    .map(|path| format!("@{}", path.display().to_string().replace('\\', "/")))
+                    .collect();
+                stdin_text = format!("{stdin_text}\n\nAttached images: {}", refs.join(" "));
+            }
+        }
+    }
     let Some(binary) = find_binary(backend.binary()) else {
         let _ = events
             .send(Event::Failed(format!(
@@ -360,7 +486,7 @@ pub async fn run(backend: Backend, model: &str, stdin_text: String, events: mpsc
         return;
     };
     let mut child = match command(&binary)
-        .args(backend.args(model))
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
