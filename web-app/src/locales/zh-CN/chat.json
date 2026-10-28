@@ -44,6 +44,9 @@
     "description": "正在为附加文件建立索引，以便进行搜索和引用。大文档可能需要一些时间。"
   },
   "actions": {
+    "readAloud": "朗读",
+    "stopReading": "停止朗读",
+    "codeOmitted": "已省略代码",
     "copy": "复制",
     "regenerate": "重新生成回复",
     "continue": "继续生成",
