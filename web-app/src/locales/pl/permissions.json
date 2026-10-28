@@ -369,5 +369,35 @@
     "none": "Ten folder nie deklaruje hooków.",
     "error": "Nie można odczytać pliku hooków",
     "loadFailed": "Nie można odczytać hooków"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Zezwolić agentowi na zmianę plików w tym folderze?",
+        "file": "Zezwolić agentowi na zmianę tego pliku?"
+      },
+      "read": {
+        "folder": "Zezwolić agentowi na odczyt tego folderu?",
+        "file": "Zezwolić agentowi na odczyt tego pliku?"
+      }
+    },
+    "asking": "{{task}} prosi o dostęp poza swoim obszarem roboczym.",
+    "askingFrom": "{{origin}} w {{task}} prosi o dostęp poza swoim obszarem roboczym.",
+    "thisConversation": "ta rozmowa",
+    "folderLabel": "Folder (i wszystko w nim)",
+    "fileLabel": "Plik",
+    "requestedAs": "Zażądano jako {{requested}}, co wskazuje ścieżkę powyżej.",
+    "reason": "Podany powód",
+    "access": "Dostęp:",
+    "readWrite": "Odczyt i zapis",
+    "readOnly": "Tylko odczyt",
+    "grantNote": "„Zezwól dla tej rozmowy” kończy się wraz z rozmową lub po 8 godzinach. „Zezwalaj zawsze” obowiązuje we wszystkich rozmowach, dopóki nie cofniesz tego w Ustawienia > Uprawnienia > Dostęp do folderów.",
+    "moreWaiting_one": "Oczekuje jeszcze {{count}} prośba.",
+    "moreWaiting_few": "Oczekują jeszcze {{count}} prośby.",
+    "moreWaiting_many": "Oczekuje jeszcze prośb: {{count}}.",
+    "moreWaiting_other": "Oczekuje jeszcze prośb: {{count}}.",
+    "deny": "Odmów",
+    "always": "Zezwalaj zawsze",
+    "session": "Zezwól dla tej rozmowy"
   }
 }

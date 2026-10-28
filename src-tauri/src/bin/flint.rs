@@ -479,8 +479,12 @@ enum McpServeCommands {
         #[arg(long, default_value_t = 0)]
         port: u16,
         /// Bearer token for --transport http; a random one is generated and printed if omitted
+        /// (visible in the process list: prefer --token-file)
         #[arg(long)]
         token: Option<String>,
+        /// Read the bearer token from a file (`-` for stdin) instead of the command line
+        #[arg(long, value_name = "PATH", conflicts_with = "token")]
+        token_file: Option<std::path::PathBuf>,
     },
 }
 
@@ -1006,7 +1010,8 @@ struct ProviderArgs {
     /// Target a single provider (e.g. anthropic); required to synthesize creds from flags alone
     #[arg(long)]
     provider: Option<String>,
-    /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY)
+    /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY).
+    /// `-` reads the key from stdin
     #[arg(long)]
     api_key: Option<String>,
     /// Read the API key from a file instead of the command line (trailing whitespace is dropped)
@@ -1017,12 +1022,52 @@ struct ProviderArgs {
 /// The key stored in `path`, trimmed. An empty file is an error rather than an
 /// empty key.
 fn read_api_key_file(path: &std::path::Path) -> Result<String, String> {
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("--api-key-file {}: {e}", path.display()))?;
+    read_secret_file(path, "--api-key-file")
+}
+
+/// A secret read from `path` (`-` is stdin), trimmed; empty is an error.
+fn read_secret_file(path: &std::path::Path, flag: &str) -> Result<String, String> {
+    let raw = if path.as_os_str() == "-" {
+        read_stdin_secret().map_err(|e| format!("{flag} -: {e}"))?
+    } else {
+        std::fs::read_to_string(path).map_err(|e| format!("{flag} {}: {e}", path.display()))?
+    };
     let key = raw.trim();
     if key.is_empty() {
-        return Err(format!("--api-key-file {} is empty", path.display()));
+        return Err(format!("{flag} {} is empty", path.display()));
     }
     Ok(key.to_string())
+}
+
+fn read_stdin_secret() -> std::io::Result<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::io::stdin().read_to_string(&mut text)?;
+    Ok(text)
+}
+
+/// The API key the flags name: inline (warned about), `-` for stdin, or a file.
+/// `stdin` is injected so the `-` form can be tested.
+fn resolve_api_key(
+    inline: Option<String>,
+    file: Option<&std::path::Path>,
+    stdin: impl FnOnce() -> std::io::Result<String>,
+) -> Result<Option<String>, String> {
+    match (inline, file) {
+        (Some(key), _) if key == "-" => {
+            let key = stdin().map_err(|e| format!("--api-key -: {e}"))?.trim().to_string();
+            if key.is_empty() {
+                return Err("--api-key - read nothing from stdin".to_string());
+            }
+            Ok(Some(key))
+        }
+        (Some(key), _) => {
+            eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file, --api-key - (stdin) or JAN_API_KEY");
+            Ok(Some(key))
+        }
+        (None, Some(path)) => read_api_key_file(path).map(Some),
+        (None, None) => Ok(None),
+    }
 }
 
 impl ProviderArgs {
@@ -1033,19 +1078,12 @@ impl ProviderArgs {
         let provider = self
             .provider
             .or_else(|| app_lib::core::cli::providers::desktop_selection().provider);
-        let api_key = match (self.api_key, self.api_key_file) {
-            (Some(key), _) => {
-                eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file or JAN_API_KEY");
-                Some(key)
+        let api_key = match resolve_api_key(self.api_key, self.api_key_file.as_deref(), read_stdin_secret) {
+            Ok(key) => key,
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(2);
             }
-            (None, Some(path)) => match read_api_key_file(&path) {
-                Ok(key) => Some(key),
-                Err(message) => {
-                    eprintln!("{message}");
-                    std::process::exit(2);
-                }
-            },
-            (None, None) => None,
         };
         ProviderOverrides {
             provider,
@@ -2213,6 +2251,12 @@ fn main() {
     if let Some(dir) = pre_parse_data_dir(std::env::args().skip(1)) {
         std::env::set_var("JAN_DATA_FOLDER", dir);
     }
+    // `schedule tick --data` and `schedule run-spec` need the same, plus the
+    // unattended flag; applied here, not inside the async command.
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    for (key, value) in app_lib::core::cli::schedule::process_env_for(&raw) {
+        std::env::set_var(key, value);
+    }
     let worker = std::thread::Builder::new()
         .name("jan-main".to_string())
         .stack_size(32 * 1024 * 1024)
@@ -2642,7 +2686,23 @@ async fn handle_mcp_serve(cmd: McpServeCommands) {
         tools,
         port,
         token,
+        token_file,
     } = cmd;
+    let token = match token_file {
+        Some(path) => match read_secret_file(&path, "--token-file") {
+            Ok(token) => Some(token),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(2);
+            }
+        },
+        None => {
+            if token.is_some() {
+                eprintln!("warning: --token is visible in the process list; prefer --token-file");
+            }
+            token
+        }
+    };
     let flags = ServeFlags {
         allow_write,
         allow_exec,
@@ -5120,6 +5180,27 @@ mod tests {
     }
 
     #[test]
+    fn api_key_dash_reads_stdin_trimmed() {
+        let key = super::resolve_api_key(Some("-".into()), None, || Ok("  sk-from-stdin\n".into()));
+        assert_eq!(key, Ok(Some("sk-from-stdin".to_string())));
+        assert!(super::resolve_api_key(Some("-".into()), None, || Ok("\n".into())).is_err());
+        let inline = super::resolve_api_key(Some("sk-inline".into()), None, || panic!("stdin must not be read"));
+        assert_eq!(inline, Ok(Some("sk-inline".to_string())));
+        assert_eq!(super::resolve_api_key(None, None, || panic!("no")), Ok(None));
+    }
+
+    #[test]
+    fn mcp_serve_token_file_conflicts_with_token() {
+        assert!(Cli::try_parse_from(["flint", "mcp", "serve", "--token", "a", "--token-file", "f"]).is_err());
+        let cli = Cli::parse_from(["flint", "mcp", "serve", "--token-file", "f"]);
+        let Some(Commands::Mcp { cmd: McpServeCommands::Serve { token, token_file, .. } }) = cli.command else {
+            panic!("expected mcp serve");
+        };
+        assert!(token.is_none());
+        assert_eq!(token_file.as_deref(), Some(std::path::Path::new("f")));
+    }
+
+    #[test]
     fn api_key_file_reads_trimmed() {
         let path = std::env::temp_dir().join(format!("flint_key_{}.txt", std::process::id()));
         std::fs::write(&path, "sk-test-123
@@ -5307,6 +5388,7 @@ mod tests {
                     tools,
                     port,
                     token,
+                    ..
                 },
         }) = cli.command
         else {

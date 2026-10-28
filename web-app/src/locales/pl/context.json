@@ -170,5 +170,84 @@
     "toolOk": "ok",
     "toolFailed": "niepowodzenie",
     "chatStarted": "Czat rozpoczęty"
+  },
+  "promptSnapshot": {
+    "summary": "Co otrzymał model",
+    "loading": "Ładowanie…",
+    "gone": "Tej migawki nie ma już na dysku.",
+    "unavailable": "Nie zapisano żadnych danych. {{reason}}",
+    "reason": {
+      "not-serializable": "Żądania nie dało się zserializować, więc nic nie zapisano.",
+      "disabled": "Migawki są wyłączone dla tego uruchomienia.",
+      "too-large": "Żądanie było zbyt duże, by zapisać je w całości."
+    },
+    "meta": {
+      "provider": "Dostawca",
+      "model": "Model",
+      "reasoning": "Rozumowanie",
+      "session": "Sesja",
+      "run": "Uruchomienie",
+      "agent": "Agent",
+      "sent": "Wysłano",
+      "hash": "Hash",
+      "redacted": "Zaciemniono",
+      "nothing": "nic",
+      "redactedList_one": "{{count}} pole: {{list}}",
+      "redactedList_few": "{{count}} pola: {{list}}",
+      "redactedList_many": "{{count}} pól: {{list}}",
+      "redactedList_other": "{{count}} pól: {{list}}"
+    },
+    "view": {
+      "label": "Pokaż jako",
+      "tree": "Drzewo",
+      "json": "JSON"
+    },
+    "copy": "Kopiuj zaciemnione dane",
+    "copied": "Skopiowano",
+    "diff": {
+      "run": "Porównaj z poprzednim żądaniem",
+      "loading": "Porównywanie…",
+      "first": "To pierwsze zapisane żądanie sesji; nie ma wcześniejszego do porównania.",
+      "summary": "W porównaniu z {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "doszło: {{count}}",
+      "left": "ubyło: {{count}}",
+      "keptMessages_one": "zachowano {{count}} wiadomość",
+      "keptMessages_few": "zachowano {{count}} wiadomości",
+      "keptMessages_many": "zachowano {{count}} wiadomości",
+      "keptMessages_other": "zachowano {{count}} wiadomości",
+      "keptTools_one": "zachowano {{count}} narzędzie",
+      "keptTools_few": "zachowano {{count}} narzędzia",
+      "keptTools_many": "zachowano {{count}} narzędzi",
+      "keptTools_other": "zachowano {{count}} narzędzi",
+      "systemChanged": "zmieniono prompt systemowy",
+      "enteredHeading": "Doszło",
+      "leftHeading": "Ubyło",
+      "nothingNew": "Nic nowego.",
+      "nothingLeft": "Nic nie opuściło okna."
+    },
+    "replay": {
+      "label": "Powtórzenia tego kontekstu",
+      "run": "Powtórz ten kontekst",
+      "hint": "Wysyła dokładnie to samo żądanie ponownie. Narzędzia, o które prosi model, nie są uruchamiane.",
+      "needsSession": "Powtórzenie wymaga sesji, do której należy ta tura.",
+      "redactedBlock_one": "Nie można powtórzyć: {{count}} pole zostało zaciemnione przed zapisem, więc model nie otrzymałby tego, co wtedy.",
+      "redactedBlock_few": "Nie można powtórzyć: {{count}} pola zostały zaciemnione przed zapisem, więc model nie otrzymałby tego, co wtedy.",
+      "redactedBlock_many": "Nie można powtórzyć: {{count}} pól zostało zaciemnionych przed zapisem, więc model nie otrzymałby tego, co wtedy.",
+      "redactedBlock_other": "Nie można powtórzyć: {{count}} pól zostało zaciemnionych przed zapisem, więc model nie otrzymałby tego, co wtedy.",
+      "state": {
+        "running": "Powtarzanie…",
+        "interrupted": "Przerwano: Flint zatrzymał się w trakcie",
+        "completed": "Ukończono",
+        "failed": "Niepowodzenie",
+        "cancelled": "Zatrzymano",
+        "refused": "Odrzucono"
+      },
+      "matched": "Ten sam kontekst co tura (hashe się zgadzają)",
+      "differed": "Wysłane żądanie różniło się od żądania tury",
+      "finish": "koniec: {{reason}}",
+      "stop": "Zatrzymaj",
+      "asked": "Poprosił o {{tools}} (nie uruchomiono)"
+    }
   }
 }

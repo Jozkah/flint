@@ -194,7 +194,7 @@
     "kpiArtifacts": "Артефакты",
     "kpiArtifactsSub": "{{count}} новых на этой неделе",
     "kpiSessions": "Из Cowork",
-    "kpiSessionsSub": "в {{count}} сессиях",
+    "kpiSessionsSub": "с сохранёнными артефактами",
     "kpiDisk": "На диске",
     "kpiDiskSub": "в песочницах сессий",
     "kindCode": "Код",

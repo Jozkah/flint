@@ -703,6 +703,11 @@ export type McpConfinementRequest = {
   janData?: string
   /** Environment names the user approved. Nothing else is passed through. */
   allowedEnv: string[]
+  /**
+   * Outbound network for the confined server. Omitted means on; false turns it off. A server a
+   * repository imported can be cut off from the network with false.
+   */
+  allowNetwork?: boolean
 }
 
 /**
