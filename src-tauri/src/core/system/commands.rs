@@ -817,51 +817,6 @@ Known secrets are stripped; the scan is best-effort, so review before sharing.
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-const PROBEABLE_LIBRARIES: &[&str] = &[
-    "vulkan-1.dll",
-    "libvulkan.so.1",
-    "libvulkan.so",
-    "libvulkan.1.dylib",
-    "nvcuda.dll",
-    "libcuda.so.1",
-    "libcuda.so",
-    "cudart64_12.dll",
-    "cudart64_11.dll",
-    "libcudart.so",
-    "nvml.dll",
-    "libnvidia-ml.so.1",
-    "OpenCL.dll",
-    "libOpenCL.so.1",
-    "libOpenCL.so",
-    "libgomp.so.1",
-    "vcruntime140.dll",
-    "msvcp140.dll",
-];
-
-fn is_probeable_library(name: &str) -> bool {
-    PROBEABLE_LIBRARIES
-        .iter()
-        .any(|l| l.eq_ignore_ascii_case(name))
-}
-
-// check if a system library is available
-#[tauri::command]
-pub fn is_library_available(library: &str) -> bool {
-    // Loading a library runs its initializers, so only well-known driver and
-    // runtime names may be probed, never a path the caller supplies.
-    if !is_probeable_library(library) {
-        log::warn!("Refusing to probe unlisted library {library:?}");
-        return false;
-    }
-    match unsafe { libloading::Library::new(library) } {
-        Ok(_) => true,
-        Err(e) => {
-            log::info!("Library {library} is not available: {e}");
-            false
-        }
-    }
-}
-
 #[tauri::command]
 pub fn launch_claude_code_with_config(
     api_url: String,
@@ -2053,8 +2008,6 @@ mod tests {
         assert!(is_blocked_env_key("dyld_insert_libraries"));
         assert!(is_blocked_env_key("PATH"));
         assert!(!is_blocked_env_key("CLAUDE_CODE_MAX_OUTPUT_TOKENS"));
-        assert!(is_probeable_library("vulkan-1.dll"));
-        assert!(!is_probeable_library("C:\\evil\\x.dll"));
         assert!(is_valid_env_key("_MY_VAR1"));
         assert!(!is_valid_env_key("1ABC"));
         assert!(!is_valid_env_key(""));
