@@ -144,6 +144,22 @@ describe('useAssistant - coverage', () => {
     expect(result.current.assistants.find(a => a.id === 'jan')).toBeUndefined()
   })
 
+  it('deleting the default assistant moves the store default back to the built-in', async () => {
+    const { result } = renderHook(() => useAssistant())
+    const a2 = { id: 'a2', name: 'A2', avatar: '', description: '', instructions: '', created_at: 1, parameters: {} }
+    act(() => {
+      result.current.addAssistant(a2 as any)
+      result.current.setDefaultAssistant('a2')
+    })
+    expect(result.current.defaultAssistantId).toBe('a2')
+
+    await act(async () => {
+      await result.current.deleteAssistant('a2')
+    })
+
+    expect(result.current.defaultAssistantId).toBe('jan')
+  })
+
   it('setCurrentAssistant switches even when a default assistant is set', () => {
     const { result } = renderHook(() => useAssistant())
 

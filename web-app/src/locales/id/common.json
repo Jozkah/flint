@@ -2864,6 +2864,21 @@
     "load": "Muat gambar dari {{host}}"
   },
   "messageSaveFailed": "Pesan tidak dapat disimpan. Pesan bisa hilang setelah dimulai ulang.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan.",
   "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim",
   "attachmentMissingFile": "Satu file lampiran tidak tersedia lagi. Hapus lalu lampirkan lagi; pesan Anda masih ada di kotak.",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { isMac } from '@/lib/shortcuts'
 import { useKeybindings } from '@/hooks/useKeybindings'
@@ -14,6 +14,8 @@ interface UseKeyboardShortcutProps {
   usePlatformMetaKey?: boolean // If true, will use Command on Mac and Ctrl on Windows/Linux
 }
 
+const NO_ROUTES: string[] = []
+
 export function useKeyboardShortcut({
   key,
   metaKey = false,
@@ -21,7 +23,7 @@ export function useKeyboardShortcut({
   altKey = false,
   shiftKey = false,
   callback,
-  excludeRoutes = [],
+  excludeRoutes = NO_ROUTES,
   usePlatformMetaKey = false,
 }: UseKeyboardShortcutProps) {
   // If usePlatformMetaKey is true, use Command on Mac and Ctrl on Windows/Linux
@@ -40,6 +42,14 @@ export function useKeyboardShortcut({
   }, [ctrlKey, usePlatformMetaKey])
   const router = useRouter()
   const pathname = router.state.location.pathname
+  // Read at keypress time, so a new callback or route list each render does
+  // not tear the window listener down and put it back.
+  const callbackRef = useRef(callback)
+  const excludeRoutesRef = useRef(excludeRoutes)
+  useEffect(() => {
+    callbackRef.current = callback
+    excludeRoutesRef.current = excludeRoutes
+  })
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -47,7 +57,7 @@ export function useKeyboardShortcut({
       // a command. Also stand down for an event something already handled.
       if (e.defaultPrevented || useKeybindings.getState().recording) return
       // Check if we're on an excluded route
-      if (excludeRoutes.includes(pathname)) {
+      if (excludeRoutesRef.current.includes(pathname)) {
         // console.warn('Excluded route, not executing shortcut')
         return
       }
@@ -62,9 +72,7 @@ export function useKeyboardShortcut({
       ) {
         e.preventDefault()
 
-        if (callback) {
-          callback()
-        }
+        callbackRef.current?.()
       }
     }
 
@@ -76,8 +84,6 @@ export function useKeyboardShortcut({
     effectiveCtrlKey,
     altKey,
     shiftKey,
-    callback,
     pathname,
-    excludeRoutes,
   ])
 }

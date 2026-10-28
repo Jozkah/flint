@@ -218,6 +218,7 @@ export const useAssistant = create<AssistantState>((set, get) => ({
 
     // If the deleted assistant was the default, reset to the built-in default
     if (wasDefaultAssistant) {
+      set({ defaultAssistantId: defaultAssistant.id })
       setDefaultAssistantId(defaultAssistant.id)
     }
   },
