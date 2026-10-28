@@ -443,22 +443,60 @@ fn parse_spreadsheet(file_path: &str) -> Result<String, RagError> {
     let mut workbook = open_workbook_auto(file_path)
         .map_err(|e| RagError::ParseError(e.to_string()))?;
     let mut out = String::new();
-    for sheet_name in workbook.sheet_names().to_owned() {
+    'sheets: for sheet_name in workbook.sheet_names().to_owned() {
         if let Ok(range) = workbook.worksheet_range(&sheet_name) {
-            out.push_str(&format!("# Sheet: {}\n", sheet_name));
-            for row in range.rows() {
-                let cells = row
-                    .iter()
-                    .map(format_cell)
-                    .collect::<Vec<_>>()
-                    .join("\t");
-                out.push_str(&cells);
-                out.push('\n');
+            if append_capped(&mut out, &format!("# Sheet: {}\n", sheet_name), MAX_SPREADSHEET_OUTPUT_BYTES) {
+                break 'sheets;
+            }
+            let rows: Vec<String> = range
+                .rows()
+                .take(MAX_ROWS_PER_SHEET)
+                .map(|row| row.iter().map(format_cell).collect::<Vec<_>>().join("\t"))
+                .collect();
+            // Trailing all-empty rows are just tab runs; drop them.
+            let keep = rows
+                .iter()
+                .rposition(|r| !r.trim_matches('\t').is_empty())
+                .map_or(0, |i| i + 1);
+            for row in &rows[..keep] {
+                if append_capped(&mut out, row, MAX_SPREADSHEET_OUTPUT_BYTES)
+                    || append_capped(&mut out, "\n", MAX_SPREADSHEET_OUTPUT_BYTES)
+                {
+                    break 'sheets;
+                }
             }
             out.push('\n');
         }
     }
     Ok(out)
+}
+
+/// Max bytes of text a spreadsheet may produce.
+const MAX_SPREADSHEET_OUTPUT_BYTES: usize = 32 * 1024 * 1024;
+/// Max rows read from one sheet.
+const MAX_ROWS_PER_SHEET: usize = 200_000;
+
+/// Append `s` unless it would pass `cap`; on overflow add a truncation note
+/// and return true so the caller stops.
+fn append_capped(out: &mut String, s: &str, cap: usize) -> bool {
+    if out.len() + s.len() > cap {
+        out.push_str("\n[output truncated at 32 MB]\n");
+        return true;
+    }
+    out.push_str(s);
+    false
+}
+
+/// Sort key for `ppt/slides/slideN.xml`: numeric N; unparsable names last.
+fn slide_sort_key(name: &str) -> (u64, String) {
+    let n = name
+        .rsplit('/')
+        .next()
+        .and_then(|f| f.strip_prefix("slide"))
+        .and_then(|f| f.strip_suffix(".xml"))
+        .and_then(|d| d.parse::<u64>().ok())
+        .unwrap_or(u64::MAX);
+    (n, name.to_string())
 }
 
 fn parse_pptx(file_path: &str) -> Result<String, RagError> {
@@ -477,7 +515,7 @@ fn parse_pptx(file_path: &str) -> Result<String, RagError> {
             slides.push(name);
         }
     }
-    slides.sort();
+    slides.sort_by_key(|n| slide_sort_key(n));
 
     let mut output = String::new();
     for slide_name in slides {
@@ -793,6 +831,7 @@ mod tests {
         let path = dir.zip(
             "a.pptx",
             &[
+                ("ppt/slides/slide10.xml", r#"<p:sld xmlns:a="a" xmlns:p="p"><a:t>Tenth slide</a:t></p:sld>"#),
                 ("ppt/slides/slide2.xml", r#"<p:sld xmlns:a="a" xmlns:p="p"><a:t>Second slide</a:t></p:sld>"#),
                 ("ppt/slides/slide1.xml", r#"<p:sld xmlns:a="a" xmlns:p="p"><a:t>First slide</a:t></p:sld>"#),
                 ("ppt/presentation.xml", "<p:presentation/>"),
@@ -801,7 +840,33 @@ mod tests {
         let text = parse_document(&path, "pptx").unwrap();
         let first = text.find("First slide").expect("slide 1 text");
         let second = text.find("Second slide").expect("slide 2 text");
-        assert!(first < second, "{text}");
+        let tenth = text.find("Tenth slide").expect("slide 10 text");
+        assert!(first < second && second < tenth, "{text}");
+    }
+
+    #[test]
+    fn append_capped_stops_at_cap() {
+        let mut out = String::new();
+        assert!(!append_capped(&mut out, "abcd", 6));
+        assert!(append_capped(&mut out, "efg", 6));
+        assert!(out.starts_with("abcd"));
+        assert!(out.contains("[output truncated at 32 MB]"));
+        assert!(!out.contains("efg"));
+    }
+
+    #[test]
+    fn slide_sort_key_orders_numerically_unparsable_last() {
+        let mut v = vec![
+            "ppt/slides/slide10.xml".to_string(),
+            "ppt/slides/zzz.xml".to_string(),
+            "ppt/slides/slide2.xml".to_string(),
+            "ppt/slides/slide1.xml".to_string(),
+        ];
+        v.sort_by_key(|n| slide_sort_key(n));
+        assert_eq!(
+            v,
+            ["ppt/slides/slide1.xml", "ppt/slides/slide2.xml", "ppt/slides/slide10.xml", "ppt/slides/zzz.xml"]
+        );
     }
 
     #[test]
@@ -996,13 +1061,15 @@ endstream", body.len(), body)
                 ),
                 (
                     "xl/worksheets/sheet1.xml",
-                    r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>apple</t></is></c><c r="B1"><v>3</v></c></row></sheetData></worksheet>"#,
+                    r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>apple</t></is></c><c r="B1"><v>3</v></c></row><row r="5"><c r="A5" t="inlineStr"><is><t></t></is></c></row></sheetData></worksheet>"#,
                 ),
             ],
         );
         let text = parse_document(&path, "xlsx").unwrap();
         assert!(text.contains("# Sheet: Data"), "{text}");
         assert!(text.contains("apple\t3"), "{text}");
+        // trailing_empty_rows_skipped: the empty row 5 adds no line.
+        assert_eq!(text.trim_end().lines().count(), 2, "{text}");
     }
 
     #[test]
