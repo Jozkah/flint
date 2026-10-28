@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { syncListedModels } from '@/lib/providerModelSync'
-import { listedCapabilities } from '@/lib/listedCapabilities'
 import { CardItem } from '@/containers/Card'
 import { classifyModelLocation, endpointHost } from '@/lib/modelLocation'
 import { useProviderLocations } from '@/hooks/useEndpointLocations'
@@ -42,8 +40,6 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { BedrockCredentials } from '@/containers/BedrockCredentials'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { ProviderTlsTrust } from '@/containers/ProviderTlsTrust'
-import { applyCustomHeaders } from '@/lib/customHeaders'
-import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
   ChevronDown,
@@ -68,29 +64,17 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { takeFirstModelFetch } from '@/lib/pendingFirstModelFetch'
-import {
-  AZURE_BASE_URL_PLACEHOLDER,
-  predefinedProviders,
-} from '@/constants/providers'
-import { useModelLoad } from '@/hooks/useModelLoad'
+import { predefinedProviders } from '@/constants/providers'
+import { useApiKeyDrafts } from '@/hooks/useApiKeyDrafts'
+import { useProviderConnectionTest } from '@/hooks/useProviderConnectionTest'
+import { useProviderModelActions } from '@/hooks/useProviderModelActions'
+import { EDITABLE_ENDPOINT } from '@/lib/providerDetailHelpers'
 import { useAppState } from '@/hooks/useAppState'
 import { useShallow } from 'zustand/shallow'
-import { azureApiVersionSetting } from '@/lib/model-factory'
 import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { DialogAddModel } from '@/containers/dialogs/AddModel'
-import {
-  providerHasRemoteApiKeys,
-  providerRemoteApiKeyChain,
-  API_KEY_FALLBACKS_SETTING_KEY,
-  serializeApiKeyFallbacks,
-} from '@/lib/provider-api-keys'
-import {
-  describeEndpointFailure,
-  isLocalEndpoint,
-} from '@/lib/endpointDiagnostics'
+import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
 import { errorText } from '@/lib/errorText'
-import { describeEngineError, parseEngineError } from '@/lib/engineError'
 import {
   deriveModelStatus,
   modelStatusLabelKey,
@@ -139,42 +123,9 @@ import {
   startOfToday,
   useEngineActivity,
 } from '@/stores/engine-activity-store'
-import {
-  getStatusClass,
-  getStatusLabel,
-  isMemorySetting,
-  maskApiKey,
-} from '@/lib/providerDetailHelpers'
+import { getStatusClass, getStatusLabel, isMemorySetting } from '@/lib/providerDetailHelpers'
 
 // as route.threadsDetail
-/**
- * Built-in providers whose endpoint depends on the account, so it stays
- * editable: OpenAI for proxies and gateways that speak its API, Azure on the
- * resource name, Alibaba Qwen on the region its keys were created in.
- */
-const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: string }> = {
-  openai: {
-    description: 'providers:baseUrl.openaiDescription',
-    placeholder: 'https://api.openai.com/v1',
-  },
-  azure: {
-    description: 'providers:baseUrl.azureDescription',
-    placeholder: AZURE_BASE_URL_PLACEHOLDER,
-  },
-  bedrock: {
-    description: 'providers:baseUrl.bedrockDescription',
-    placeholder: 'https://bedrock-runtime.us-east-1.amazonaws.com',
-  },
-  litellm: {
-    description: 'providers:baseUrl.litellmDescription',
-    placeholder: 'http://localhost:4000/v1',
-  },
-  qwen: {
-    description: 'providers:baseUrl.qwenDescription',
-    placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-  },
-}
-
 // Remote lists longer than this get a filter box; rows render this many at a time.
 const MODEL_FILTER_MIN = 20
 const MODEL_PAGE_SIZE = 12
@@ -234,7 +185,6 @@ const CHIP_TONE = {
 function ProviderDetail() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
-  const { setModelLoadError } = useModelLoad()
   const [activeModels, setActiveModels] = useAppState(
     useShallow((state) => [state.activeModels, state.setActiveModels])
   )
@@ -243,9 +193,6 @@ function ProviderDetail() {
     (state) => state.modelLoadProgress?.modelId
   )
   const generations = useEngineActivity((s) => s.generations)
-  const [loadingModels, setLoadingModels] = useState<string[]>([])
-  /** Models whose last start from this page threw; cleared by a success. */
-  const [failedModels, setFailedModels] = useState<string[]>([])
   /** A request with the saved keys succeeded while this page was open. */
   const [connectionVerified, setConnectionVerified] = useState(false)
   // The last model refresh was refused or unreachable: "Connected" would be a
@@ -254,16 +201,7 @@ function ProviderDetail() {
   const [localFiles, setLocalFiles] = useState<Record<string, LocalFileInfo>>(
     {}
   )
-  const [refreshingModels, setRefreshingModels] = useState(false)
   const [importingModel, setImportingModel] = useState<string | null>(null)
-  const [apiKeysDraft, setApiKeysDraft] = useState('')
-  const [baseUrlDraft, setBaseUrlDraft] = useState('')
-  const [apiVersionDraft, setApiVersionDraft] = useState('')
-  const [showAdvancedApiKeys, setShowAdvancedApiKeys] = useState(false)
-  const [isTestingKeys, setIsTestingKeys] = useState(false)
-  const [keyCheckResults, setKeyCheckResults] = useState<
-    { index: number; masked: string; status: string; detail: string }[]
-  >([])
   const { providerName } = useParams({ from: Route.id })
   const { getProviderByName, setProviders, updateProvider } =
     useModelProvider()
@@ -639,398 +577,64 @@ function ProviderDetail() {
     }
   }, [serviceHub])
 
-  useEffect(() => {
-    if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
-    setBaseUrlDraft(provider.base_url ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerName, provider?.base_url])
+  const {
+    apiKeysDraft,
+    setApiKeysDraft,
+    baseUrlDraft,
+    setBaseUrlDraft,
+    apiVersionDraft,
+    setApiVersionDraft,
+    showAdvancedApiKeys,
+    setShowAdvancedApiKeys,
+    commitApiKeysDraft,
+    commitApiVersionDraft,
+    commitBaseUrlDraft,
+    primaryKeyDraft,
+    setPrimaryKeyDraft,
+    advancedApiKeyLines,
+    setKeyAtIndex,
+    addKeyLine,
+    removeKeyLine,
+  } = useApiKeyDrafts({ provider, providerName, serviceHub, updateProvider })
 
-  const commitApiKeysDraft = useCallback(() => {
-    if (!provider) return
-    const lines = apiKeysDraft
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0)
-    const nextPrimary = lines[0] ?? ''
-    const nextFallbacks = lines.slice(1)
+  const markConnectionVerified = useCallback(() => {
+    setConnectionVerified(true)
+    setConnectionFailed(false)
+  }, [])
 
-    const prevPrimary = provider.api_key ?? ''
-    const prevFallbacks = provider.api_key_fallbacks ?? []
-    const changed =
-      nextPrimary !== prevPrimary ||
-      JSON.stringify(nextFallbacks) !== JSON.stringify(prevFallbacks)
-    if (!changed) return
-
-    const newSettings = [...provider.settings]
-    const apiKeySettingIndex = newSettings.findIndex((s) => s.key === 'api-key')
-    if (apiKeySettingIndex !== -1) {
-      const apiKeyProps = newSettings[apiKeySettingIndex].controller_props as {
-        value: string | boolean | number
-      }
-      apiKeyProps.value = nextPrimary
-    }
-
-    const fallbacksValue = serializeApiKeyFallbacks(nextFallbacks)
-    const fallbacksIndex = newSettings.findIndex(
-      (s) => s.key === API_KEY_FALLBACKS_SETTING_KEY
-    )
-    if (fallbacksIndex !== -1) {
-      const props = newSettings[fallbacksIndex].controller_props as {
-        value: string | boolean | number
-      }
-      props.value = fallbacksValue
-    } else if (fallbacksValue.length > 0) {
-      newSettings.push({
-        key: API_KEY_FALLBACKS_SETTING_KEY,
-        title: 'API Key Fallbacks',
-        description: '',
-        controller_type: 'input',
-        controller_props: {
-          value: fallbacksValue,
-          type: 'password',
-          placeholder: '',
-        },
-      } as (typeof newSettings)[number])
-    }
-
-    serviceHub.providers().updateSettings(providerName, newSettings)
-    updateProvider(providerName, {
-      ...provider,
-      settings: newSettings,
-      api_key: nextPrimary,
-      api_key_fallbacks: nextFallbacks,
-      // Built-in providers start switched off; giving one its first key is
-      // the user asking to use it.
-      ...(nextPrimary && !prevPrimary ? { active: true } : {}),
+  const {
+    isTestingKeys,
+    keyCheckResults,
+    setKeyCheckResults,
+    handleTestApiKeys,
+  } =
+    useProviderConnectionTest({
+      provider,
+      apiKeysDraft,
+      serviceHub,
+      onVerified: markConnectionVerified,
     })
-    // Clearing the key is an explicit user action: purge the keyring secret so
-    // it isn't re-seeded into memory on the next launch. (register handles the
-    // non-empty case via boot sync -> register_provider_config.)
-    if (nextPrimary.length === 0 && nextFallbacks.length === 0) {
-      serviceHub.providers().deleteProviderKeys(providerName)
-    }
-  }, [apiKeysDraft, provider, providerName, serviceHub, updateProvider])
-
-  // Azure's legacy deployments-style endpoints take an api-version the URL may
-  // not carry; it lives in the provider's `api-version` setting.
-  // The draft follows the stored value (provider switch, import, reset), so a
-  // stale draft can never be committed over a newer stored value.
-  const storedApiVersion =
-    provider?.provider === 'azure' ? azureApiVersionSetting(provider) : null
-  useEffect(() => {
-    if (storedApiVersion !== null) setApiVersionDraft(storedApiVersion)
-  }, [providerName, storedApiVersion])
-
-  const commitApiVersionDraft = useCallback(() => {
-    if (!provider || provider.provider !== 'azure') return
-    const next = apiVersionDraft.trim()
-    if (next === azureApiVersionSetting(provider)) return
-    const settings = provider.settings.some((s) => s.key === 'api-version')
-      ? provider.settings.map((s) =>
-          s.key === 'api-version'
-            ? ({
-                ...s,
-                controller_props: { ...s.controller_props, value: next },
-              } as ProviderSetting)
-            : s
-        )
-      : provider.settings
-    serviceHub.providers().updateSettings(providerName, settings)
-    updateProvider(providerName, { ...provider, settings })
-  }, [apiVersionDraft, provider, providerName, serviceHub, updateProvider])
-
-  const commitBaseUrlDraft = useCallback(() => {
-    if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
-    const next = baseUrlDraft.trim()
-    if (next === (provider.base_url ?? '')) return
-    updateProvider(providerName, { ...provider, base_url: next })
-  }, [baseUrlDraft, provider, providerName, updateProvider])
-
-  const rawApiKeyLines = apiKeysDraft.split(/\r?\n/)
-  const primaryKeyDraft = (rawApiKeyLines[0] ?? '').trim()
-  const setPrimaryKeyDraft = (nextPrimary: string) => {
-    const rest = rawApiKeyLines.slice(1)
-    setApiKeysDraft([nextPrimary, ...rest].join('\n'))
-  }
-
-  const advancedApiKeyLines = apiKeysDraft.split(/\r?\n/).map((l) => l.trim())
-  const setKeyAtIndex = (index: number, nextValue: string) => {
-    const next = [...advancedApiKeyLines]
-    next[index] = nextValue.trim()
-    setApiKeysDraft(next.join('\n'))
-  }
-
-  const addKeyLine = () => {
-    setApiKeysDraft([...advancedApiKeyLines, ''].join('\n'))
-  }
-
-  const removeKeyLine = (index: number) => {
-    if (index === 0) return
-    const next = advancedApiKeyLines.filter((_, i) => i !== index)
-    setApiKeysDraft((next.length > 0 ? next : ['']).join('\n'))
-  }
-
-  const handleTestApiKeys = useCallback(async () => {
-    if (!provider?.base_url) {
-      toast.error(t('providers:models'), {
-        description: t('providers:refreshModelsError'),
-      })
-      return
-    }
-
-    const keyDraftLines = apiKeysDraft.split(/\r?\n/).map((l) => l.trim())
-    const nonEmptyKeyCount = keyDraftLines.filter((l) => l.length > 0).length
-    if (nonEmptyKeyCount === 0) {
-      toast.error(t('providers:models'), {
-        description: t('providers:refreshModelsError'),
-      })
-      return
-    }
-
-    setIsTestingKeys(true)
-    try {
-      const fetchImpl = serviceHub.providers().fetch()
-      const results: { index: number; masked: string; status: string; detail: string }[] = []
-
-      for (let i = 0; i < keyDraftLines.length; i++) {
-        const key = keyDraftLines[i]
-        const keyIndex = i + 1
-        if (!key) continue
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        }
-        applyProviderAuthHeader(provider, headers, key)
-        // Loopback and LAN endpoints are local engines, not remote services.
-        // The old check matched the literal strings "localhost:" and
-        // "127.0.0.1:", so a server on the LAN or on a Tailscale address was
-        // treated as remote.
-        if (isLocalEndpoint(provider.base_url)) {
-          headers['Origin'] = 'tauri://localhost'
-        }
-        // What a real request sends, so a gateway that needs its own header
-        // does not fail the test for want of it. janhq/jan#8208.
-        applyCustomHeaders(headers, provider)
-
-        try {
-          const response = await fetchImpl(`${provider.base_url}/models`, {
-            method: 'GET',
-            headers,
-          })
-
-          let status = 'http_error'
-          if (response.ok) status = 'ok'
-          else if (response.status === 401) status = 'unauthorized'
-          else if (response.status === 403) status = 'forbidden'
-          else if (response.status === 429) status = 'rate_limited'
-
-          results.push({
-            index: keyIndex,
-            masked: maskApiKey(key),
-            status,
-            // Name the endpoint, the status and whoever answered. A bare
-            // "Forbidden (403)" cannot tell a wrong key from a proxy on the
-            // internet answering for a server the user believes is local.
-            detail: response.ok
-              ? `${response.status} ${response.statusText}`
-              : describeEndpointFailure({
-                  provider: provider.provider,
-                  url: `${provider.base_url}/models`,
-                  method: 'GET',
-                  status: response.status,
-                  statusText: response.statusText,
-                  server: response.headers?.get?.('server') ?? null,
-                }),
-          })
-        } catch (err) {
-          results.push({
-            index: keyIndex,
-            masked: maskApiKey(key),
-            status: 'network_error',
-            detail: describeEndpointFailure({
-              provider: provider.provider,
-              url: `${provider.base_url}/models`,
-              method: 'GET',
-              cause: err,
-            }),
-          })
-        }
-      }
-
-      setKeyCheckResults(results)
-      if (results.some((r) => r.status === 'ok')) {
-        setConnectionVerified(true)
-        setConnectionFailed(false)
-      }
-    } finally {
-      setIsTestingKeys(false)
-    }
-  }, [apiKeysDraft, provider, serviceHub, t])
 
   // Note: settingsChanged event is now handled globally in GlobalEventHandler
   // This ensures all screens receive the event intermediately
 
-  const handleRefreshModels = async () => {
-    if (!provider || !provider.base_url) {
-      toast.error(t('providers:models'), {
-        description: t('providers:refreshModelsError'),
-      })
-      return
-    }
-    // Only an endpoint that is *definitely* public is asked for a key up
-    // front. A local one needs no credential, and a single-label hostname like
-    // `llm-host` is not yet known to be either -- refusing those meant Flint told
-    // the user to "configure an API key" for a server that never asked for
-    // one, and never sent the request that would have said what was actually
-    // wrong. Where it is not certain, make the request and report the answer.
-    if (
-      classifyModelLocation({ baseUrl: provider.base_url }) === 'remote' &&
-      !providerHasRemoteApiKeys(provider)
-    ) {
-      toast.error(t('providers:models'), {
-        description: t('providers:refreshModelsError'),
-      })
-      return
-    }
-
-    setRefreshingModels(true)
-    try {
-      const modelIds = await serviceHub
-        .providers()
-        .fetchModelsFromProvider(provider)
-      setConnectionVerified(true)
-      setConnectionFailed(false)
-      const newModels: Model[] = modelIds.map((id) => ({
-        id,
-        model: id,
-        name: id,
-        capabilities: [
-          'completion',
-          ...(listedCapabilities(provider.base_url, id) ?? []),
-        ],
-        version: '1.0',
-      }))
-
-
-      // What the server lists is the truth: new models come in, and models it
-      // no longer lists go, so the model menu stops offering them.
-      const synced = syncListedModels(
-        provider.models,
-        modelIds,
-        (id) => newModels.find((m) => m.id === id) as Model
-      )
-      const modelsToAdd = synced.added
-
-      if (modelsToAdd.length > 0 || synced.removed.length > 0) {
-        updateProvider(providerName, {
-          ...provider,
-          models: synced.models,
-        })
-
-        // Short, and one at a time: a long-lived card sat over the Save button of
-        // a dialog opened right after a refresh.
-        toast.success(t('providers:models'), {
-          id: 'providers-models-refresh',
-          duration: 2500,
-          description: [
-            modelsToAdd.length > 0
-              ? t('providers:refreshModelsSuccess', {
-                  count: modelsToAdd.length,
-                  provider: getProviderTitle(provider.provider),
-                })
-              : null,
-            synced.removed.length > 0
-              ? t('providers:refreshModelsRemoved', { count: synced.removed.length })
-              : null,
-          ]
-            .filter(Boolean)
-            .join(' '),
-        })
-      } else {
-        toast.success(t('providers:models'), {
-          id: 'providers-models-refresh',
-          duration: 2500,
-          description: t('providers:noNewModels'),
-        })
-      }
-    } catch (error) {
-      setConnectionVerified(false)
-      setConnectionFailed(true)
-      console.error(
-        t('providers:refreshModelsFailed', { provider: getProviderTitle(provider.provider) }),
-        error
-      )
-      // Show what actually failed. The service throws a message naming the
-      // endpoint, the status and whoever answered; replacing it with "check
-      // your API key and base URL" hid a proxy answering 403 for a server the
-      // user believed was local, and pointed at the one thing that was fine.
-      toast.error(t('providers:models'), {
-        description: errorText(
-          error,
-          t('providers:refreshModelsFailed', { provider: getProviderTitle(provider.provider) })
-        ),
-      })
-    } finally {
-      setRefreshingModels(false)
-    }
-  }
-
-  // A provider the user has just added lists its models without a manual
-  // click: one refresh, through the same action as the button, no polling.
-  useEffect(() => {
-    if (!provider?.base_url) return
-    if (takeFirstModelFetch(providerName)) void handleRefreshModels()
-    // Runs for the provider on screen, not for every later store change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerName, provider?.base_url])
-
-  const handleStartModel = async (modelId: string) => {
-    // Add model to loading state
-    setLoadingModels((prev) => [...prev, modelId])
-    if (provider) {
-      try {
-        // Start the model with plan result
-        await serviceHub.models().startModel(provider, modelId)
-        setFailedModels((prev) => prev.filter((id) => id !== modelId))
-
-        // Refresh active models after starting (pass provider to get correct engine's loaded models)
-        serviceHub
-          .models()
-          .getActiveModels(provider.provider)
-          .then((models) => setActiveModels(models || []))
-      } catch (error) {
-        setFailedModels((prev) =>
-          prev.includes(modelId) ? prev : [...prev, modelId]
-        )
-        // An engine failure carries a code and the engine's own words; the
-        // plain text of it is only "The model could not be loaded."
-        const message = parseEngineError(error)
-          ? describeEngineError(error)
-          : errorText(error, 'Model could not start')
-        setModelLoadError(message)
-        toast.error(`Could not start ${modelId}`, { description: message })
-      } finally {
-        // Remove model from loading state
-        setLoadingModels((prev) => prev.filter((id) => id !== modelId))
-      }
-    }
-  }
-
-  const handleStopModel = (modelId: string) => {
-    // Original: stopModel(modelId).then(() => { setActiveModels((prevModels) => prevModels.filter((model) => model !== modelId)) })
-    serviceHub
-      .models()
-      .stopModel(modelId, provider?.provider)
-      .then(() => {
-        // Refresh active models after stopping (pass provider to get correct engine's loaded models)
-        serviceHub
-          .models()
-          .getActiveModels(provider?.provider)
-          .then((models) => setActiveModels(models || []))
-      })
-      .catch((error) => {
-        console.error('Error stopping model:', error)
-      })
-  }
+  const {
+    loadingModels,
+    failedModels,
+    refreshingModels,
+    handleRefreshModels,
+    handleStartModel,
+    handleStopModel,
+  } = useProviderModelActions({
+    provider,
+    providerName,
+    serviceHub,
+    updateProvider,
+    onConnection: (verified) => {
+      setConnectionVerified(verified)
+      setConnectionFailed(!verified)
+    },
+  })
 
   const bedrockCredentialsSaved = useBedrockCredentials((state) => state.saved)
   const apiKeyMissing =
