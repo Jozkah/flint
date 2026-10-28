@@ -16,7 +16,9 @@ const strings = (value: unknown): string[] => {
 }
 
 const intentionalLegacyReference = (text: string) =>
-  /(?:\.jan(?:\/|\b)|JAN\.md|existing JAN|from JAN|JAN installation|JAN data)/.test(text)
+  /(?:\.jan(?:\/|\b)|JAN\.md|existing JAN|from JAN|JAN installation|JAN data|JAN source|JAN item|JAN copy)/.test(
+    text
+  )
 
 describe('Flint branding', () => {
   it('never presents the current product as JAN in English UI copy', () => {
