@@ -75,19 +75,30 @@ pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
         return None;
     }
     let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
-    let mut dir = Some(project_root);
-    while let Some(current) = dir {
+    let mut total = 0usize;
+    for (n, current) in context_dirs(project_root).into_iter().enumerate() {
         // FLINT.md takes precedence over a legacy JAN.md in the same directory.
         for name in [CONTEXT_FILE_NAME, LEGACY_CONTEXT_FILE_NAME] {
             let path = current.join(name);
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if !content.trim().is_empty() {
+                    // The project's own file is always kept; ancestors only
+                    // while the total stays under the cap.
+                    let room = if n == 0 {
+                        MAX_CONTEXT_FILE_BYTES
+                    } else {
+                        MAX_CONTEXT_FILE_BYTES.min(MAX_CONTEXT_TOTAL_BYTES.saturating_sub(total))
+                    };
+                    if room == 0 {
+                        break;
+                    }
+                    let content = cap_context(content.trim(), room);
+                    total += content.len();
                     files.push((path, content));
                     break;
                 }
             }
         }
-        dir = current.parent();
     }
     if files.is_empty() {
         return None;
@@ -100,12 +111,59 @@ pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
     for (path, content) in files {
         block.push_str(&format!(
             "<project_instructions path=\"{}\">\n{}\n</project_instructions>\n\n",
-            path.display(),
-            content.trim()
+            xml_attr(&path.display().to_string()),
+            content
         ));
     }
     block.push_str("</project_context>");
     Some(block)
+}
+
+/// Per-file and total byte caps for the instructions files in the prompt.
+const MAX_CONTEXT_FILE_BYTES: usize = 32 * 1024;
+const MAX_CONTEXT_TOTAL_BYTES: usize = 128 * 1024;
+
+/// `text` cut to at most `max` bytes on a char boundary, with a marker.
+fn cap_context(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n[... truncated: file exceeds {} KB ...]", &text[..end], max / 1024)
+}
+
+/// Escape a value for use inside a double-quoted XML attribute.
+fn xml_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// The directories whose instructions file applies to `project_root`, nearest
+/// first: the root itself, then ancestors up to and including the directory
+/// holding `.git` or the user's home, whichever comes first. With neither in
+/// reach (a folder outside any repository and outside home) only the root
+/// counts, so an unrelated parent folder cannot inject instructions.
+fn context_dirs(project_root: &Path) -> Vec<&Path> {
+    let home = dirs::home_dir();
+    let mut out = Vec::new();
+    let mut bounded = false;
+    for dir in project_root.ancestors() {
+        out.push(dir);
+        if dir.join(".git").exists() || home.as_deref() == Some(dir) {
+            bounded = true;
+            break;
+        }
+    }
+    if !bounded {
+        out.truncate(1);
+    }
+    out
 }
 
 /// The "Compact instructions" section of the project instructions file
@@ -117,9 +175,8 @@ pub(crate) fn compact_instructions(project_root: &Path) -> Option<String> {
         return None;
     }
     let mut found = None;
-    let mut dir = Some(project_root);
     let mut files = Vec::new();
-    while let Some(current) = dir {
+    for current in context_dirs(project_root) {
         for name in [CONTEXT_FILE_NAME, LEGACY_CONTEXT_FILE_NAME] {
             if let Ok(content) = std::fs::read_to_string(current.join(name)) {
                 if !content.trim().is_empty() {
@@ -128,7 +185,6 @@ pub(crate) fn compact_instructions(project_root: &Path) -> Option<String> {
                 }
             }
         }
-        dir = current.parent();
     }
     // Nearest first in `files`: the first with a section wins.
     for content in &files {
@@ -603,11 +659,14 @@ fn permanent_store_root() -> Option<std::path::PathBuf> {
 /// descriptions of the enabled skills. A memory contradicting either is
 /// withheld (AH-084). Skill bodies are not read here; the catalog the model
 /// sees is descriptions, so that is what memory is checked against.
-fn instructions_above_memory(project_root: &Path) -> Vec<memory::precedence::Instruction> {
+fn instructions_above_memory(
+    project_root: &Path,
+    context: Option<&str>,
+) -> Vec<memory::precedence::Instruction> {
     use memory::precedence::{Instruction, Source};
     let mut out = Vec::new();
-    if let Some(context) = load_context_files(project_root) {
-        out.push(Instruction { source: Source::JanMd, name: CONTEXT_FILE_NAME.to_string(), text: context });
+    if let Some(context) = context {
+        out.push(Instruction { source: Source::JanMd, name: CONTEXT_FILE_NAME.to_string(), text: context.to_string() });
     }
     let enabled = crate::core::agent::project::enabled_skills(project_root);
     for skill in crate::core::agent::skills::catalog(project_root, &enabled) {
@@ -637,10 +696,14 @@ pub(crate) fn with_memory_query<T>(query: Option<&str>, f: impl FnOnce() -> T) -
     out
 }
 
+/// Written into the project store once the legacy notes were migrated.
+const NOTES_MIGRATED_MARKER: &str = ".notes-migrated";
+
 pub(crate) fn load_memories(
     project_root: &Path,
     session_id: Option<&str>,
     temporary: bool,
+    context: Option<&str>,
 ) -> (Option<String>, memory::retrieve::Selection) {
     use memory::record::Scope;
 
@@ -660,10 +723,21 @@ pub(crate) fn load_memories(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    match memory::migrate::migrate_project_notes(&project_store, project_id.as_deref(), now) {
-        Ok(report) if report.changed_anything() => log::info!("{}", report.summary()),
-        Ok(_) => {}
-        Err(e) => log::warn!("memory migration skipped: {e}"),
+    // A marker in the store skips the directory scan on later runs; it is only
+    // written when the store already exists, so this stays read-only otherwise.
+    let marker = project_store.join(NOTES_MIGRATED_MARKER);
+    if !marker.exists() {
+        match memory::migrate::migrate_project_notes(&project_store, project_id.as_deref(), now) {
+            Ok(report) => {
+                if report.changed_anything() {
+                    log::info!("{}", report.summary());
+                }
+                if project_store.is_dir() {
+                    let _ = std::fs::write(&marker, b"");
+                }
+            }
+            Err(e) => log::warn!("memory migration skipped: {e}"),
+        }
     }
 
     let mut records = memory::store::load(&project_store, Scope::Project).records;
@@ -677,7 +751,7 @@ pub(crate) fn load_memories(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    let instructions = instructions_above_memory(project_root);
+    let instructions = instructions_above_memory(project_root, context);
     // `[memory] ranked = true`: relevance + recency + use under a token cap.
     let memory_cfg = crate::core::agent::project::load_agent_config(project_root)
         .map(|c| c.memory)
@@ -787,8 +861,9 @@ recording in your answer instead.",
         Composer::MemoryPrecedence,
         memory::precedence::STATEMENT.to_string(),
     ));
-    if let Some(context) = load_context_files(project_root) {
-        blocks.push((Composer::ProjectContext, context));
+    let context = load_context_files(project_root);
+    if let Some(context) = &context {
+        blocks.push((Composer::ProjectContext, context.clone()));
     }
     if let Some(skills) = load_skills_for(project_root, offers(offered, "skill_read")) {
         blocks.push((Composer::Skills, skills));
@@ -816,7 +891,7 @@ recording in your answer instead.",
     ));
     // Remembered facts last: nothing already in the prompt is displaced by
     // them, and the block sits closest to the conversation it describes.
-    let (remembered, selection) = load_memories(project_root, session_id, temporary);
+    let (remembered, selection) = load_memories(project_root, session_id, temporary, context.as_deref());
     if let Some(remembered) = remembered {
         blocks.push((Composer::RememberedMemories, remembered));
     }
@@ -1133,7 +1208,7 @@ mod tests {
 1
 ").unwrap();
 
-            let _ = load_memories(&project, Some("chat-a"), false);
+            let _ = load_memories(&project, Some("chat-a"), false, None);
             assert!(
                 !project.join(".jan").exists(),
                 "loading memories created .jan in the user's folder"
@@ -1512,6 +1587,7 @@ We build with make.")
         let root = scratch_project("ctxfiles");
         let nested = root.join("sub");
         std::fs::create_dir_all(&nested).unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
         std::fs::write(root.join("JAN.md"), "ROOT_RULES").unwrap();
         std::fs::write(nested.join("JAN.md"), "NESTED_RULES").unwrap();
 
@@ -1526,6 +1602,48 @@ We build with make.")
         let prompt = build_system_prompt(None, &nested, None, false).expect("prompt");
         // Context files precede the skills catalog position and follow the guide.
         assert!(prompt.contains("NESTED_RULES"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ancestor_walk_stops_at_git_root() {
+        let outer = scratch_project("walkstop");
+        let repo = outer.join("repo");
+        let nested = repo.join("sub");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(outer.join("JAN.md"), "OUTSIDE_RULES").unwrap();
+        std::fs::write(repo.join("JAN.md"), "REPO_RULES").unwrap();
+        let block = load_context_files(&nested).expect("context block");
+        assert!(block.contains("REPO_RULES"));
+        assert!(!block.contains("OUTSIDE_RULES"));
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+
+    #[test]
+    fn oversize_context_file_is_truncated() {
+        let root = scratch_project("bigctx");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("JAN.md"), "x".repeat(MAX_CONTEXT_FILE_BYTES * 2)).unwrap();
+        let block = load_context_files(&root).expect("context block");
+        assert!(block.contains("[... truncated"));
+        assert!(block.len() < MAX_CONTEXT_FILE_BYTES + 1024);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn context_path_attribute_is_escaped() {
+        assert_eq!(xml_attr("a\"<b>&"), "a&quot;&lt;b&gt;&amp;");
+    }
+
+    #[test]
+    fn migration_skipped_when_marker_exists() {
+        let root = scratch_project("migmarker");
+        std::fs::create_dir_all(&root).unwrap();
+        let store = workspace::project_store(&root);
+        std::fs::create_dir_all(&store).unwrap();
+        let _ = load_memories(&root, None, false, None);
+        assert!(store.join(NOTES_MIGRATED_MARKER).exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
