@@ -36644,7 +36644,7 @@
         "src-tauri/src/core/net/transport.rs (cross-origin redirect refused on send and send_stream; same-server followed)",
         "src-tauri/src/core/secret_values.rs, src-tauri/src/core/cli/secrets.rs (exact-value redaction)",
         "src-tauri/src/core/server/remote_provider_commands.rs (configs leave without secrets)",
-        "src-tauri/examples/cowork_smoke.rs custom-headers-reach-the-provider-and-secrets-stay-secret + custom-headers-survive-a-restart"
+        "src-tauri/examples/cowork_smoke/main.rs custom-headers-reach-the-provider-and-secrets-stay-secret + custom-headers-survive-a-restart"
       ],
       "verification": "Precedence, secret-persistence and startup-load tests fail on the previous code. Completion audit added: per-row on/off switch (disabled header not sent, re-enabled sent again), secret values registered for redaction even for providers without an API key (register_secret_values), error bodies redacted in the transport before the webview sees them (mutation check: disabling it fails an_error_body_echoing_a_secret_header_comes_back_redacted), provider-scoping guard test. Real WebView on Windows 11 with the mock provider recording received headers: add, reserved Authorization refused in the page and never sent, plain+secret received, switch off/on takes effect on the next request, a 401 echoing every header leaves the secret on neither the page nor the disk, value in the credential store and in no file of the data folder, restored after a restart in a second process, removal takes effect on the next request and removes the stored value. Mock provider only.",
       "blockers": [],
@@ -71256,7 +71256,7 @@
         "web-app/src/stores/__tests__/message-queue-store.steering.test.ts",
         "web-app/src/containers/__tests__/CoworkHeldInput.test.tsx",
         "web-app/src/routes/__tests__/cowork.sessions.test.tsx (steering, held input)",
-        "src-tauri/examples/cowork_smoke.rs steering-reaches-the-running-session-at-its-next-boundary"
+        "src-tauri/examples/cowork_smoke/main.rs steering-reaches-the-running-session-at-its-next-boundary"
       ],
       "verification": "TUI: cli suite with the 14 steering tests passed. Cowork (desktop) extended to the same behaviour: real WebView on Windows 11 with the mock provider -- two messages typed during session A first step reach the model after the tool round, in order, as user input, marked as steering in the transcript; session B request carries neither. First two scenario attempts failed on scenario assumptions (typed before the first call, which is also a valid boundary; provider conversion merges consecutive user messages), fixed in the scenario. Mock provider only.",
       "blockers": [],
@@ -73648,7 +73648,7 @@
         "web-app/src/lib/__tests__/coworkRunner.test.ts (Stop with an endless stream / a request not yet streaming)",
         "web-app/src/lib/__tests__/coworkSessionLifecycle.test.ts",
         "web-app/src/hooks/__tests__/useCoworkSessions.model.test.ts",
-        "src-tauri/examples/cowork_smoke.rs stop-cancels-only-the-selected-session"
+        "src-tauri/examples/cowork_smoke/main.rs stop-cancels-only-the-selected-session"
       ],
       "verification": "Unit and route tests fail on the old code (mutation checks for a page-wide running flag, Stop aborting every run, a run not bound to its model; each new Stop test fails on the code before its fix). Real WebView on Windows 11 with the mock provider: two sessions streaming, Stop in B ends B within the wait, A still running 3 s later, both sessions record their model in settings.json; model-round-trip and tool-activity-timeline still pass. Mock provider only, not a real model.",
       "blockers": [],

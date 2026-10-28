@@ -81,7 +81,7 @@ through its own runner.
   and not sent; input after a finished run is the next request.
 - `web-app/src/containers/__tests__/CoworkHeldInput.test.tsx`.
 - Real app: `steering-reaches-the-running-session-at-its-next-boundary` in
-  `src-tauri/examples/cowork_smoke.rs`.
+  `src-tauri/examples/cowork_smoke/main.rs`.
   - Two messages are typed while session A's first step streams.
   - The model's request after the tool round carries both, in order, as user
     messages after the tool result; the first request carried neither.

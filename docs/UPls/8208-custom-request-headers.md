@@ -126,7 +126,7 @@ Those requests go without the custom headers, as before.
   - `core/cli/secrets.rs`: exact-value redaction.
   - `core/server/remote_provider_commands.rs`: configs leave without secrets.
 - Real app: `custom-headers-reach-the-provider-and-secrets-stay-secret` in
-  `src-tauri/examples/cowork_smoke.rs`. The fixture records the headers of
+  `src-tauri/examples/cowork_smoke/main.rs`. The fixture records the headers of
   every chat request it receives.
   - Headers are added in the settings page, and a reserved one is refused
     there.
