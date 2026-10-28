@@ -47,7 +47,11 @@ export function unquotePath(p: string): string {
       continue
     }
     const n = body[++i]
-    if (/[0-7]/.test(n)) {
+    if (n === undefined) {
+      bytes.push(0x5c)
+      break
+    }
+    if (/^[0-7]{3}$/.test(body.slice(i, i + 3))) {
       bytes.push(parseInt(body.slice(i, i + 3), 8))
       i += 2
     } else {
