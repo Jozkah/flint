@@ -188,7 +188,13 @@ pub(crate) fn api_http_error(
     retry_after: Option<Duration>,
     body: &str,
 ) -> String {
-    if status == 429 || status == 503 || mentions_rate_limit(body) {
+    // The body wording only counts for client errors that are not about the
+    // credential: a 401/403 whose text says "rate limits" is an auth failure.
+    let body_says_limited = (400..500).contains(&status)
+        && status != 401
+        && status != 403
+        && mentions_rate_limit(body);
+    if status == 429 || status == 503 || body_says_limited {
         return rate_limited_marker(provider, Some(status), retry_after);
     }
     let reason = plain_snippet(body);
