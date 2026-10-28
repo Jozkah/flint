@@ -2,6 +2,7 @@
  * Speaking policy: who speaks next, consecutive-speaker enforcement and round
  * bookkeeping (docs/DISCUSSION_ROOMS.md, "Speaking modes").
  */
+import { rt } from './text'
 import { clampLimits } from './limits'
 import type { ModeratorDirective, Participant, Room, RoomMessage } from './types'
 
@@ -104,11 +105,11 @@ export function nextSpeaker(input: {
 }): SpeakerChoice {
   const { room, messages } = input
   const active = activeParticipants(room)
-  if (active.length === 0) return { kind: 'none', note: 'No participant is available.' }
+  if (active.length === 0) return { kind: 'none', note: rt('noParticipant') }
 
   const fallback = (why: string): SpeakerChoice => {
     const p = roundRobinNext(room, messages)
-    if (!p) return { kind: 'none', note: `${why} No participant may speak next.` }
+    if (!p) return { kind: 'none', note: rt('withNoneMaySpeak', { why }) }
     return { kind: 'speaker', participant: p, via: 'fallback', note: why }
   }
 
@@ -122,7 +123,7 @@ export function nextSpeaker(input: {
     // silence outside user-selected (#180).
     if (chosen) {
       return fallback(
-        `${chosen.name} would exceed the consecutive-turn limit; the next speaker was chosen in order.`
+        rt('consecutive', { name: chosen.name })
       )
     }
     if (room.mode === 'user-selected') return { kind: 'awaiting-user' }
@@ -136,7 +137,7 @@ export function nextSpeaker(input: {
       const p = roundRobinNext(room, messages)
       return p
         ? { kind: 'speaker', participant: p, via: 'round-robin' }
-        : { kind: 'none', note: 'No participant may speak next.' }
+        : { kind: 'none', note: rt('noneMaySpeak') }
     }
     case 'user-selected':
       return { kind: 'awaiting-user' }
@@ -144,28 +145,28 @@ export function nextSpeaker(input: {
       const d = input.directive
       if (!d) {
         return fallback(
-          `${input.directiveProblem ?? 'The moderator gave no usable directive.'} The next speaker was chosen in order.`
+          rt('directiveInOrder', { problem: input.directiveProblem ?? rt('directiveMissing') })
         )
       }
       if (!d.next) {
-        return fallback('The moderator did not name a next speaker; the next speaker was chosen in order.')
+        return fallback(rt('moderatorNoNext'))
       }
       const chosen = resolveParticipant(d.next, active)
       if (!chosen) {
         return fallback(
-          `The moderator named "${d.next.slice(0, 80)}", who is not an available participant; the next speaker was chosen in order.`
+          rt('moderatorNamedUnavailable', { name: d.next.slice(0, 80) })
         )
       }
       if (blockedByConsecutive(room, messages, chosen)) {
         return fallback(
-          `${chosen.name} would exceed the consecutive-turn limit; the next speaker was chosen in order.`
+          rt('consecutive', { name: chosen.name })
         )
       }
       return { kind: 'speaker', participant: chosen, via: 'moderator' }
     }
     // A stored mode this build does not know degrades instead of throwing.
     default:
-      return { kind: 'none', note: 'This room has an unknown speaking mode.' }
+      return { kind: 'none', note: rt('unknownMode') }
   }
 }
 

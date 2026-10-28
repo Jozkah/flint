@@ -2,6 +2,7 @@
  * Participant availability preflight and suspension
  * (docs/DISCUSSION_ROOMS.md, "Participants and availability").
  */
+import { rt } from './text'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import { knownContextWindow } from '@/lib/knownContextWindow'
@@ -88,24 +89,24 @@ export function checkModel(
   lookup: ProviderLookup,
   opts: { minimumTokens?: number; contextWindow?: number } = {}
 ): ModelProblem | null {
-  if (!ref) return { reason: 'model-missing', message: 'No model is selected.' }
+  if (!ref) return { reason: 'model-missing', message: rt('modelNone') }
   const provider = lookup(ref.provider)
   if (!provider) {
     return {
       reason: 'provider-missing',
-      message: `The provider "${ref.provider}" is not configured in Flint.`,
+      message: rt('providerMissing', { provider: ref.provider }),
     }
   }
   if (!isProviderUsable(provider)) {
     return {
       reason: 'provider-not-configured',
-      message: `The provider "${ref.provider}" is not ready (for example, it has no API key).`,
+      message: rt('providerNotReady', { provider: ref.provider }),
     }
   }
   if (!provider.models?.some((m) => m.id === ref.id)) {
     return {
       reason: 'model-missing',
-      message: `The model "${ref.id}" is not available from "${ref.provider}".`,
+      message: rt('modelUnavailable', { model: ref.id, provider: ref.provider }),
     }
   }
   if (opts.minimumTokens != null) {
@@ -113,7 +114,7 @@ export function checkModel(
     if (window < opts.minimumTokens) {
       return {
         reason: 'context-too-small',
-        message: `The model's context window (${window} tokens) is too small for the room prompt and reply (${opts.minimumTokens} tokens).`,
+        message: rt('contextTooSmall', { window, minimum: opts.minimumTokens }),
       }
     }
   }
@@ -219,7 +220,7 @@ export function effectiveToolAccess(
 ): { note: string | null } {
   if (p.toolAccess === 'none') return { note: null }
   if (!modelSupportsTools(p.model, lookup)) {
-    return { note: `${p.name}'s model does not support tools, so ${p.name} runs without tools.` }
+    return { note: rt('noTools', { name: p.name }) }
   }
   return { note: null }
 }

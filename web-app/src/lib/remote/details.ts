@@ -2,6 +2,7 @@
 // (protocol.ts). Kept apart from `sources.ts`, which reads the stores, so they
 // can be tested with plain data.
 
+import { pt } from './text'
 import type { UIMessage } from 'ai'
 import { toolKind } from '@/lib/toolKind'
 import { canTemporarilyAllowGit } from '@/hooks/useToolApprovalRequests'
@@ -126,7 +127,7 @@ function askNote(data: unknown): RemoteNote | null {
   if (ask?.state !== 'answered' && ask?.state !== 'cancelled') return null
   const questions = ask.request?.questions ?? []
   if (ask.state === 'cancelled') {
-    return { kind: 'answered', text: `Skipped: ${questions.map((q) => q.question).join(' · ')}` }
+    return { kind: 'answered', text: pt('skipped', { questions: questions.map((q) => q.question).join(' · ') }) }
   }
   const lines = questions.map((q) => {
     const a = ask.answers?.find((x) => x.id === q.id)
@@ -154,10 +155,10 @@ export function messageExtrasOf(message: UIMessage): Pick<RemoteMessage, 'reason
       attachments.push({ name: part.filename?.trim() || KIND_NAME[kind], kind })
     } else if (part.type === 'data-compaction') {
       const n = (part.data as { summarizedCount?: number } | undefined)?.summarizedCount
-      notes.push({ kind: 'compaction', text: n ? `Conversation compacted: ${n} earlier messages summarised` : 'Conversation compacted' })
+      notes.push({ kind: 'compaction', text: n ? pt('compactedN', { n }) : pt('compacted') })
     } else if (part.type === 'data-session-stop') {
       const d = part.data as { fromName?: string; reason?: string } | undefined
-      notes.push({ kind: 'stopped', text: `Stopped by ${d?.fromName || 'another session'}${d?.reason ? `: ${cut(d.reason, 300)}` : ''}` })
+      notes.push({ kind: 'stopped', text: d?.reason ? pt('stoppedReason', { name: d?.fromName || pt('anotherSession'), reason: cut(d.reason, 300) }) : pt('stopped', { name: d?.fromName || pt('anotherSession') }) })
     } else if (part.type === 'data-ask') {
       const note = askNote(part.data)
       if (note) notes.push(note)
