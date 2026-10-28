@@ -535,15 +535,52 @@ pub fn validate_path(raw: &str) -> Result<String, ProposalError> {
 /// Git hooks. The number is not always 1 -- it depends on what else was named
 /// alike first -- so every `git~N` and `jan~N` is refused, as Git itself does.
 pub fn is_reserved_name(part: &str) -> bool {
-    let lower = part.trim_end_matches(['.', ' ']).to_ascii_lowercase();
-    if lower == ".git" || lower == ".jan" {
-        return true;
+    is_git_name(part) || {
+        let lower = canonical_component(part);
+        lower == ".jan" || is_short_alias_of(&lower, ".jan", false)
     }
-    ["git~", "jan~"].iter().any(|prefix| {
-        lower
-            .strip_prefix(prefix)
-            .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
-    })
+}
+
+/// One path component the way Windows resolves it: lower case, with an NTFS
+/// stream or index suffix dropped (`.git::$INDEX_ALLOCATION` opens `.git`
+/// itself, `.git:x` a stream of it) and the trailing dots and spaces Windows
+/// ignores trimmed.
+pub fn canonical_component(part: &str) -> String {
+    let base = part.split(':').next().unwrap_or(part);
+    base.trim_end_matches(['.', ' ']).to_ascii_lowercase()
+}
+
+/// `.git`, or its 8.3 short name `git~N`, however it is cased or streamed.
+pub fn is_git_name(part: &str) -> bool {
+    let lower = canonical_component(part);
+    lower == ".git" || is_short_alias_of(&lower, ".git", false)
+}
+
+/// Whether `component` (already [`canonical_component`]) is the 8.3 short
+/// name NTFS gives a file called `name`: the first six letters of the name
+/// without its leading dot, `~N`, and the first three letters of the
+/// extension (`.husky` is `husky~1`, `.gitlab-ci.yml` is `gitlab~1.yml`).
+/// The tail number is not always 1, and the prefix shrinks as it grows, so
+/// the shape is matched rather than one spelling. `any_ext` ignores the
+/// extension, for a family such as `lefthook.*`.
+pub fn is_short_alias_of(component: &str, name: &str, any_ext: bool) -> bool {
+    let Some((left, right)) = component.split_once('~') else {
+        return false;
+    };
+    let (digits, got_ext) = right.split_once('.').unwrap_or((right, ""));
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let stripped = name.trim_start_matches('.').to_ascii_lowercase();
+    let (stem, ext) = match stripped.rfind('.') {
+        Some(i) => (&stripped[..i], &stripped[i + 1..]),
+        None => (&stripped[..], ""),
+    };
+    let stem: String = stem.chars().filter(|c| !matches!(c, '.' | ' ')).collect();
+    let take = 7usize.saturating_sub(digits.len()).clamp(1, 6);
+    let want: String = stem.chars().take(take).collect();
+    let want_ext: String = ext.chars().take(3).collect();
+    left == want && (any_ext || got_ext == want_ext)
 }
 
 /// Whether `root/rel` resolves into `root/.git` or `root/.jan`, whatever it
@@ -2179,5 +2216,32 @@ mod tests {
         );
         assert!(!dest.join("Cargo.lock").exists());
         assert!(!dest.join("db/migrations/0002.sql").exists());
+    }
+}
+
+#[cfg(test)]
+mod short_alias_tests {
+    use super::*;
+
+    #[test]
+    fn reserved_names_cover_streams_and_short_names() {
+        for part in [".git", ".GIT.", "GIT~1", "git~7", ".git::$INDEX_ALLOCATION", ".jan", "JAN~1", ".jan:x"] {
+            assert!(is_reserved_name(part), "{part}");
+        }
+        for part in ["git~", "git~x", ".gitignore", "git", "jan.txt"] {
+            assert!(!is_reserved_name(part), "{part}");
+        }
+    }
+
+    #[test]
+    fn short_alias_shape() {
+        assert!(is_short_alias_of("husky~1", ".husky", false));
+        assert!(is_short_alias_of("gitlab~1.yml", ".gitlab-ci.yml", false));
+        assert!(is_short_alias_of("gitlab~3.yml", ".gitlab-ci.yml", false));
+        // The prefix shrinks once the number takes a second digit.
+        assert!(is_short_alias_of("gitla~10.yml", ".gitlab-ci.yml", false));
+        assert!(!is_short_alias_of("husky~1.txt", ".husky", false));
+        assert!(!is_short_alias_of("hooks~1", ".husky", false));
+        assert!(is_short_alias_of("leftho~1.yml", "lefthook.yml", true));
     }
 }

@@ -691,7 +691,9 @@ pub fn resolve_decision(
         let path_hits = tool.path_args.iter().any(|key| {
             args.get(key)
                 .and_then(|v| v.as_str())
-                .is_some_and(crate::tools::sandbox::names_git_internals)
+                .is_some_and(|p| {
+                    crate::tools::sandbox::names_git_internals_resolved(project_root, p)
+                })
         });
         let command_hits = tool.capability == Capability::Exec
             && args
@@ -1267,6 +1269,45 @@ mod tests {
         }
         // Reading is not a change.
         assert_ne!(decide("read", json!({"path": ".git/config"})), git);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn git_aliases_and_streams_are_refused_and_git_work_is_not() {
+        let root = unique_root();
+        let perms = ToolPermissions::allow_all();
+        let grants = SessionGrants::default();
+        let decide = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let git = Decision::HardDeny(DenyReason::GitInternals);
+        for (tool, args) in [
+            ("write", json!({"path": "GIT~1/hooks/pre-commit", "content": "x"})),
+            ("write", json!({"path": ".git::$INDEX_ALLOCATION/hooks/pre-commit", "content": "x"})),
+            ("bash", json!({"command": "echo x > GIT~1/hooks/pre-commit"})),
+            ("bash", json!({"command": "echo x > .git::$INDEX_ALLOCATION/config"})),
+        ] {
+            assert_eq!(decide(tool, args.clone()), git, "{tool} {args}");
+        }
+        // Ordinary git work in the shell names no `.git` path.
+        for command in [
+            "git commit -am \"fix: x\"",
+            "git checkout -b feature/x",
+            "git config user.name tester",
+            "git status && git log --oneline -5",
+        ] {
+            assert_ne!(decide("bash", json!({"command": command})), git, "{command}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

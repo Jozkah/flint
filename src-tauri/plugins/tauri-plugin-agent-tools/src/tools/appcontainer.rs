@@ -1437,6 +1437,7 @@ mod win {
         for step in root_acl_plan(&previous, &[], &[], |p| p.is_dir()) {
             if let AclStep::Revoke(path) = step {
                 revoke_path(&path, sid.0)?;
+                unguard_git(&path, sid.0)?;
             }
         }
         std::fs::remove_file(&record).map_err(|e| format!("{}: {e}", record.display()))
@@ -1633,13 +1634,20 @@ mod win {
                 == Some(listed.as_str())
             && roots.iter().all(|r| r.join(crate::tools::sandbox::JAN_DIR).is_dir())
         {
+            // A `git init` or a clone the last command made has no guard yet.
+            for root in roots {
+                guard_git(root, sid)?;
+            }
             return Ok(());
         }
         let (old_write, old_read) = super::parse_roots_record(&recorded);
         let previous: Vec<PathBuf> = old_write.into_iter().chain(old_read).collect();
         for step in root_acl_plan(&previous, roots, &read_roots, |p| p.is_dir()) {
             match step {
-                AclStep::Revoke(path) => revoke_path(&path, sid)?,
+                AclStep::Revoke(path) => {
+                    revoke_path(&path, sid)?;
+                    unguard_git(&path, sid)?;
+                }
                 // Jozkah/jan#124: the worktree's `.jan` holds the project's
                 // agent policy and hooks. Created when missing so it is cut
                 // off before the shell could make one of its own. A write root
@@ -1671,6 +1679,11 @@ mod win {
                     FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
                 )?,
             }
+        }
+        // After every grant above: a grant walk gives the container back what
+        // the guard withholds, so the guard goes on last.
+        for root in roots {
+            guard_git(root, sid)?;
         }
         if let Some(parent) = record.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
@@ -1788,6 +1801,53 @@ mod win {
         result
     }
 
+    /// Make the parts of a repository at `root` that git executes read-only
+    /// for the container: `.git/hooks`, `.git/config`, or a linked worktree's
+    /// `.git` file. Git runs them outside the sandbox, so a write is a program
+    /// the user's own terminal runs. The container keeps read and execute (git
+    /// itself needs to read its config), and holds no delete right on the
+    /// folder, so it cannot rename the folder away and put its own in place.
+    /// Idempotent; a root with no `.git` is left alone.
+    fn guard_git(root: &Path, sid: PSID) -> Result<(), String> {
+        let guard = crate::tools::sandbox::git_guard(root);
+        for dir in &guard.dirs {
+            if !dir.exists() {
+                std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            }
+        }
+        for path in guard.dirs.iter().chain(guard.files.iter()) {
+            if !path.exists() {
+                continue;
+            }
+            isolate_path(path, sid)?;
+            set_access_one(path, sid, SET_ACCESS, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE)?;
+        }
+        Ok(())
+    }
+
+    /// Remove the container's ACEs from what [`guard_git`] protected.
+    fn unguard_git(root: &Path, sid: PSID) -> Result<(), String> {
+        let guard = crate::tools::sandbox::git_guard(root);
+        for path in guard.dirs.iter().chain(guard.files.iter()) {
+            if path.exists() {
+                revoke_path(path, sid)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Cut the workspace's `.jan` off from the container, as a write root's is
+    /// (F5x3-006): the project's agent policy and hooks are not for the shell
+    /// to read or rewrite. Only when it exists: nothing is created in a
+    /// workspace that has none.
+    fn isolate_workspace_jan(workspace: &Path, sid: PSID) -> Result<(), String> {
+        let jan = workspace.join(crate::tools::sandbox::JAN_DIR);
+        if !jan.is_dir() {
+            return Ok(());
+        }
+        isolate_path(&jan, sid)
+    }
+
     /// Most directories one grant will walk looking for protected descendants.
     const MAX_PROTECTED_WALK: usize = 50_000;
 
@@ -1811,6 +1871,14 @@ mod win {
             for entry in entries.flatten() {
                 let child = entry.path();
                 if entry.file_name().eq_ignore_ascii_case(".jan") || is_reparse_point(&child) {
+                    continue;
+                }
+                // A grant must not reopen the read-only hooks folder
+                // ([`guard_git`]); a revoke (mask 0) still has to reach it.
+                if mask != 0
+                    && entry.file_name().eq_ignore_ascii_case("hooks")
+                    && dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case(".git"))
+                {
                     continue;
                 }
                 if !entry.file_type().is_ok_and(|t| t.is_dir()) {
@@ -2250,6 +2318,12 @@ mod win {
         // installs on the scratch reaches it.
         let home = synthetic_home(req, &name)?;
         grant_path(&req.workspace, sid.0).map_err(|detail| {
+            LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
+        })?;
+        isolate_workspace_jan(&req.workspace, sid.0).map_err(|detail| {
+            LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
+        })?;
+        guard_git(&req.workspace, sid.0).map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
         // The scratch is the shell's `TEMP`/`TMP`, so without this every temp-file
@@ -2882,6 +2956,66 @@ mod tests {
             assert_ne!(win::effective_rights(&wt.join("main.rs"), psid), 0, "pass {pass}: main.rs");
         }
         win::sync_write_roots(&record, psid, &[], &[]).unwrap();
+        drop(sid);
+        win::delete_profile(&name);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// W13, on the real ACLs: after each sync the container can read git's
+    /// hooks folder and config but not write, add to or delete them, while the
+    /// rest of `.git` (HEAD, objects) stays writable so commit and checkout
+    /// work. A revoked root keeps no ACE on the guarded paths.
+    #[cfg(windows)]
+    #[test]
+    fn git_hooks_and_config_are_read_only_to_the_container() {
+        const WRITE_BITS: u32 = 0x2 | 0x4 | 0x40 | 0x10000; // data, append, delete child, delete
+        let n = std::process::id();
+        let base = std::env::temp_dir().join(format!("jan_ac_gitguard_{n}"));
+        let wt = base.join("worktree");
+        let dot_git = wt.join(".git");
+        std::fs::create_dir_all(dot_git.join("hooks")).unwrap();
+        std::fs::write(dot_git.join("hooks/pre-commit"), b"x").unwrap();
+        std::fs::write(dot_git.join("config"), b"[core]\n").unwrap();
+        std::fs::write(dot_git.join("HEAD"), b"ref: refs/heads/main\n").unwrap();
+        let record = base.join("record");
+        let name = format!("jan.test.gitguard.{n}");
+        let sid = match win::test_profile(&name) {
+            Ok(sid) => sid,
+            Err(e) => {
+                eprintln!("skipped: no AppContainer profile here: {e}");
+                return;
+            }
+        };
+        let psid = win::sid_ptr(&sid);
+        for pass in 0..3 {
+            win::sync_write_roots(&record, psid, std::slice::from_ref(&wt), &[]).unwrap();
+            for guarded in [
+                dot_git.join("hooks"),
+                dot_git.join("hooks/pre-commit"),
+                dot_git.join("config"),
+            ] {
+                let rights = win::effective_rights(&guarded, psid);
+                assert_ne!(rights, 0, "pass {pass}: {} lost read", guarded.display());
+                assert_eq!(
+                    rights & WRITE_BITS,
+                    0,
+                    "pass {pass}: {} is writable: {rights:x}",
+                    guarded.display()
+                );
+            }
+            // The rest of the repository keeps working.
+            let head = win::effective_rights(&dot_git.join("HEAD"), psid);
+            assert_ne!(head & 0x2, 0, "pass {pass}: HEAD is not writable");
+            assert_ne!(win::effective_rights(&wt, psid), 0, "pass {pass}: the root");
+        }
+        win::sync_write_roots(&record, psid, &[], &[]).unwrap();
+        for guarded in [dot_git.join("hooks"), dot_git.join("config")] {
+            assert!(
+                win::aces_for(&guarded, psid).is_empty(),
+                "{} kept an ACE after revoke",
+                guarded.display()
+            );
+        }
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);
