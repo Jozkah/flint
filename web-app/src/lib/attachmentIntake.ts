@@ -225,25 +225,43 @@ export function splitNewByName(
   return { fresh, duplicates }
 }
 
-/** The message lines for the files a media batch turned away. */
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+/**
+ * The message lines for the files a media batch turned away. `t` localises
+ * them; without it the lines are English, which keeps the pure helper usable
+ * (and testable) without a translator.
+ */
 export function mediaBatchErrors(
   kind: 'audio' | 'video',
-  batch: MediaBatch
+  batch: MediaBatch,
+  t?: Translate
 ): string[] {
   const errors: string[] = []
   const label = kind === 'audio' ? 'Audio' : 'Video'
   const limit = kind === 'audio' ? '25MB' : '100MB'
   if (batch.oversized.length > 0) {
     errors.push(
-      `${label} file${batch.oversized.length > 1 ? 's' : ''} too large (max ${limit}): ${batch.oversized.join(', ')}`
+      t
+        ? t(`chat:composer.${kind}TooLarge`, {
+            count: batch.oversized.length,
+            limit,
+            files: batch.oversized.join(', '),
+          })
+        : `${label} file${batch.oversized.length > 1 ? 's' : ''} too large (max ${limit}): ${batch.oversized.join(', ')}`
     )
   }
   if (batch.invalid.length > 0) {
     const plural = batch.invalid.length > 1 ? 's' : ''
     errors.push(
-      kind === 'audio'
-        ? `Invalid audio type${plural} (only WAV, MP3 allowed): ${batch.invalid.join(', ')}`
-        : `Invalid video type${plural}: ${batch.invalid.join(', ')}`
+      t
+        ? t(`chat:composer.${kind}Invalid`, {
+            count: batch.invalid.length,
+            files: batch.invalid.join(', '),
+          })
+        : kind === 'audio'
+          ? `Invalid audio type${plural} (only WAV, MP3 allowed): ${batch.invalid.join(', ')}`
+          : `Invalid video type${plural}: ${batch.invalid.join(', ')}`
     )
   }
   return errors

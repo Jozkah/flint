@@ -787,7 +787,7 @@ describe('ChatInput', () => {
       selectedModel: { id: 'gemini-3-pro', capabilities: ['tools'] },
     }
     const { unmount } = renderInput({ modelSelection })
-    expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^chat:composer.reasoningLabel/ })).toBeNull()
     unmount()
     renderInput({
       modelSelection,
@@ -795,7 +795,7 @@ describe('ChatInput', () => {
       modelOverrideScope: 'session-1',
     })
     expect(
-      screen.getByRole('button', { name: /^Reasoning:/ })
+      screen.getByRole('button', { name: /^chat:composer.reasoningLabel/ })
     ).toBeInTheDocument()
   })
 
@@ -810,7 +810,7 @@ describe('ChatInput', () => {
       slashSurface: 'cowork',
       modelOverrideScope: 'session-1',
     })
-    expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^chat:composer.reasoningLabel/ })).toBeNull()
     expect(screen.getByTestId('composer-effort')).toBeInTheDocument()
   })
 
@@ -824,7 +824,7 @@ describe('ChatInput', () => {
       slashSurface: 'cowork',
       modelOverrideScope: 'session-1',
     })
-    expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^chat:composer.reasoningLabel/ })).toBeNull()
     expect(screen.queryByTestId('composer-effort')).toBeNull()
   })
 
@@ -835,7 +835,7 @@ describe('ChatInput', () => {
     renderInput({ onSubmit: vi.fn() })
     fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     expect(
-      screen.getByText('Please select a model to start chatting.')
+      screen.getByText('chat:composer.selectModel')
     ).toBeInTheDocument()
   })
 
@@ -854,7 +854,7 @@ describe('ChatInput', () => {
         'small-3B'
       )
       expect(
-        screen.queryByText('Please select a model to start chatting.')
+        screen.queryByText('chat:composer.selectModel')
       ).not.toBeInTheDocument()
     } finally {
       providersOverride = []
@@ -878,7 +878,7 @@ describe('ChatInput', () => {
     fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(
-      screen.queryByText('Please select a model to start chatting.')
+      screen.queryByText('chat:composer.selectModel')
     ).not.toBeInTheDocument()
   })
 
@@ -895,7 +895,7 @@ describe('ChatInput', () => {
     fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     expect(
       screen.getByText(
-        'qwen3.8-27b is no longer available. Pick another model in the model menu.'
+        'chat:composer.modelUnavailable'
       )
     ).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
@@ -1064,7 +1064,7 @@ describe('ChatInput', () => {
       fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     })
     const errorNode = screen.getByText(
-      'Please select a model to start chatting.'
+      'chat:composer.selectModel'
     )
     expect(errorNode).toBeInTheDocument()
     // dismiss icon (svg) sits alongside
@@ -1302,7 +1302,7 @@ describe('ChatInput', () => {
         models: [selectedModelOverride],
       })
       renderInput()
-      fireEvent.click(screen.getByRole('button', { name: 'Add Audio' }))
+      fireEvent.click(screen.getByRole('button', { name: 'chat:composer.addAudio' }))
       expect(
         screen.getByText('common:modelCapability.title')
       ).toBeInTheDocument()
@@ -1546,7 +1546,7 @@ describe('ChatInput', () => {
       expect(setPromptMock).toHaveBeenLastCalledWith('@agent:review-bot ')
       expect(onSubmit).not.toHaveBeenCalled()
       expect(screen.getByTestId('reference-status').textContent).toMatch(
-        /references?/
+        /chat:composer\.references/
       )
     })
 
@@ -1579,7 +1579,7 @@ describe('ChatInput', () => {
         { name: 'entry', target: 'src/index.ts' },
       ])
       expect(screen.getByTestId('reference-status')).toHaveTextContent(
-        'Saved @alias:entry for src/index.ts'
+        'chat:composer.aliasSaved'
       )
       await waitFor(() => expect(getTextarea()).toHaveFocus())
     })
