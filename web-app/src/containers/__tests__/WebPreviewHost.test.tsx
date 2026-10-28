@@ -38,6 +38,13 @@ describe('WebPreviewHost', () => {
     expect(frame.getAttribute('src')).toBe('https://a.com')
   })
 
+  it('never frames a page from the app origin', () => {
+    useWebPreview.getState().openUrl(window.location.origin + '/x')
+    render(<WebPreviewHost />)
+    expect(screen.queryByTitle(window.location.origin + '/x')).toBeNull()
+    expect(screen.queryByTestId('wp-same-origin')).not.toBeNull()
+  })
+
   it('open-external delegates to opener.openUrl', () => {
     useWebPreview.getState().openUrl('https://a.com')
     render(<WebPreviewHost />)
