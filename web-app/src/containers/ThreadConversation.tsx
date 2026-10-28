@@ -1,3 +1,4 @@
+import { safeSessionGet, safeSessionRemove } from '@/lib/safeStorage'
 import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { switchedFromOf } from '@/lib/assistantSwitch'
@@ -2374,11 +2375,11 @@ export function ThreadConversation({
 
     const initialMessageKey = `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${threadId}`
 
-    const storedMessage = sessionStorage.getItem(initialMessageKey)
+    const storedMessage = safeSessionGet(initialMessageKey)
 
     if (storedMessage) {
       // Mark as sent immediately to prevent duplicate sends
-      sessionStorage.removeItem(initialMessageKey)
+      safeSessionRemove(initialMessageKey)
       initialMessageSentRef.current = true
 
       // Process message asynchronously
