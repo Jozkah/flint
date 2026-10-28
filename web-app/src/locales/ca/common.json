@@ -3065,5 +3065,11 @@
         "confirm": "Atura-ho tot"
       }
     }
+  },
+  "apiKey": {
+    "show": "Mostra la clau d'API",
+    "hide": "Amaga la clau d'API",
+    "copy": "Copia la clau d'API",
+    "copied": "Copiat"
   }
 }

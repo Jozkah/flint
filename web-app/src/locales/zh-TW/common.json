@@ -3004,5 +3004,11 @@
         "confirm": "全部停止"
       }
     }
+  },
+  "apiKey": {
+    "show": "顯示 API 金鑰",
+    "hide": "隱藏 API 金鑰",
+    "copy": "複製 API 金鑰",
+    "copied": "已複製"
   }
 }

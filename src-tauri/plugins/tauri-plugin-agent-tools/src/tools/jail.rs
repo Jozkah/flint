@@ -76,7 +76,7 @@ pub struct Policy {
     /// outside `$HOME` would otherwise leave all of it readable by the shell. The
     /// CLI leaves this unset: there the project itself is the workspace, so
     /// masking it would hide the very files the agent works on.
-    pub mask_root: Option<PathBuf>,
+    pub mask_roots: Vec<PathBuf>,
     pub allow_network: bool,
     /// Paths to hide from the shell: the agent's own `<project>/.jan` state
     /// directory, and the `.jan` of every write root (a managed worktree or a
@@ -144,7 +144,7 @@ impl Policy {
     pub fn new(workspace: &Path, allow_network: bool) -> Self {
         Self {
             workspace: workspace.to_path_buf(),
-            mask_root: None,
+            mask_roots: Vec::new(),
             allow_network,
             hide_roots: Vec::new(),
             home_readonly: false,
@@ -217,7 +217,10 @@ impl Policy {
     /// masking it keeps a relocated data folder out of the shell's reach. The
     /// thread workspace (nested under it) is re-bound on top so it survives.
     pub fn with_mask_root(mut self, mask_root: &Path) -> Self {
-        self.mask_root = Some(mask_root.to_path_buf());
+        let root = mask_root.to_path_buf();
+        if !self.mask_roots.contains(&root) {
+            self.mask_roots.push(root);
+        }
         self
     }
 
@@ -734,7 +737,7 @@ pub fn fs_rules(policy: &Policy) -> FsRules {
     must.extend(policy.scratch_root.iter().cloned());
     must.extend(policy.read_roots.iter().cloned());
     let mut hidden: Vec<PathBuf> = policy.hide_roots.clone();
-    hidden.extend(policy.mask_root.iter().cloned());
+    hidden.extend(policy.mask_roots.iter().cloned());
     let home = home_dir();
     fs_policy::resolve(&fs_policy::FsInput {
         config: &policy.fs,
@@ -916,7 +919,7 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // a `JAN_DATA_FOLDER` outside the home readable, exposing the permanent
     // store and any co-located `settings.json`. The workspace is re-bound below
     // (it is nested under this root on the desktop), so it survives.
-    if let Some(mask) = &policy.mask_root {
+    for mask in &policy.mask_roots {
         push(&mut args, &["--tmpfs", &mask.to_string_lossy()]);
     }
 
@@ -1014,7 +1017,7 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
          ; Python multiprocessing and OpenMP runtimes. Their shared POSIX shm/sem\n\
          ; names are host-wide and cannot be scoped per-sandbox on sandbox-exec\n\
          ; (also deprecated / not a security boundary per Apple) -- accepted tradeoff;\n\
-         ; the real boundary is the $HOME / MASK_ROOT read denial below.\n\
+         ; the real boundary is the $HOME / MASK_ROOT_n read denial below.\n\
          (allow ipc-posix-sem)\n\
          (allow ipc-posix-shm*)\n\
          (allow mach-lookup (global-name \"com.apple.system.opendirectoryd.libinfo\"))\n\
@@ -1027,8 +1030,10 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
     if home_dir().is_some() && !policy.home_readonly {
         p.push_str("(deny file-read* (subpath (param \"HOME_ROOT\")))\n");
     }
-    if policy.mask_root.is_some() {
-        p.push_str("(deny file-read* (subpath (param \"MASK_ROOT\")))\n");
+    for i in 0..policy.mask_roots.len() {
+        p.push_str(&format!(
+            "(deny file-read* (subpath (param \"MASK_ROOT_{i}\")))\n"
+        ));
     }
     p.push_str(
         "(allow file-read* (subpath (param \"WORKSPACE\")))\n\
@@ -1164,8 +1169,8 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
         "-DWORKSPACE={}",
         policy.workspace.to_string_lossy()
     ));
-    if let Some(mask) = &policy.mask_root {
-        args.push(format!("-DMASK_ROOT={}", mask.to_string_lossy()));
+    for (i, mask) in policy.mask_roots.iter().enumerate() {
+        args.push(format!("-DMASK_ROOT_{i}={}", mask.to_string_lossy()));
     }
     for (i, root) in policy.read_roots.iter().enumerate() {
         args.push(format!("-DREAD_ROOT_{i}={}", root.to_string_lossy()));
@@ -2371,7 +2376,7 @@ mod tests {
                 .with_read_roots(vec![PathBuf::from(repo)]),
         );
         let deny = p
-            .find("(deny file-read* (subpath (param \"MASK_ROOT\")))")
+            .find("(deny file-read* (subpath (param \"MASK_ROOT_0\")))")
             .expect("mask deny");
         let allow = p
             .find("(allow file-read* (subpath (param \"READ_ROOT_0\")))")
@@ -2917,7 +2922,7 @@ mod tests {
         );
 
         let deny = p
-            .find("(deny file-read* (subpath (param \"MASK_ROOT\")))")
+            .find("(deny file-read* (subpath (param \"MASK_ROOT_0\")))")
             .expect("mask deny");
         let read = p
             .find("(allow file-read* (subpath (param \"WRITE_ROOT_0\")))")

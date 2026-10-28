@@ -3015,5 +3015,11 @@
         "confirm": "Alles stoppen"
       }
     }
+  },
+  "apiKey": {
+    "show": "API-Schlüssel anzeigen",
+    "hide": "API-Schlüssel ausblenden",
+    "copy": "API-Schlüssel kopieren",
+    "copied": "Kopiert"
   }
 }
