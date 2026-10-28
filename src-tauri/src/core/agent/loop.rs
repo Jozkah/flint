@@ -9260,7 +9260,7 @@ async fn run_turn_cycle(
     // results as they land, and announced once at the next turn boundary after
     // the job finishes, so the model need not poll for them.
     let mut shells_owed: Vec<String> = Vec::new();
-    let mut monitored: Vec<String> = Vec::new();
+    let mut monitored = crate::core::agent::monitor::Tracked::default();
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
