@@ -880,6 +880,17 @@ async fn download_attempt<R: Runtime>(
     let mut downloaded = start;
     let mut stream = response.bytes_stream();
     let attempt_started = std::time::Instant::now();
+    let mut progress = ProgressThrottle::new();
+    let emit_progress = |downloaded: u64| {
+        let _ = app.emit(
+            "huggingface-download-progress",
+            HuggingFaceDownloadProgress {
+                task_id: task_id.to_string(),
+                downloaded,
+                total,
+            },
+        );
+    };
 
     loop {
         let next = tokio::select! {
@@ -932,20 +943,46 @@ async fn download_attempt<R: Runtime>(
                 _ = cancelled(cancel) => {}
             }
         }
-        let _ = app.emit(
-            "huggingface-download-progress",
-            HuggingFaceDownloadProgress {
-                task_id: task_id.to_string(),
-                downloaded,
-                total,
-            },
-        );
+        if progress.should_emit(std::time::Instant::now(), downloaded, total) {
+            emit_progress(downloaded);
+        }
     }
     output
         .flush()
         .await
         .map_err(|e| io_failure("Could not finish writing the model download", &e))?;
+    // The last chunks may have been throttled away; the UI must end on the
+    // true byte count.
+    emit_progress(downloaded);
     Ok(Attempt::Finished)
+}
+
+/// Limits how often a download reports progress. A fast link delivers
+/// thousands of chunks a second; each event crosses the IPC bridge and
+/// re-renders the downloads list.
+struct ProgressThrottle {
+    last: Option<std::time::Instant>,
+}
+
+impl ProgressThrottle {
+    const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(150);
+
+    fn new() -> Self {
+        Self { last: None }
+    }
+
+    /// Whether to emit now: the first chunk, the one that completes the file,
+    /// and otherwise at most once per interval.
+    fn should_emit(&mut self, now: std::time::Instant, downloaded: u64, total: Option<u64>) -> bool {
+        let due = match self.last {
+            None => true,
+            Some(last) => now.saturating_duration_since(last) >= Self::MIN_INTERVAL || total == Some(downloaded),
+        };
+        if due {
+            self.last = Some(now);
+        }
+        due
+    }
 }
 
 #[tauri::command]
@@ -1237,6 +1274,20 @@ mod tests {
         // The margin counts: exactly the file size free is not enough.
         assert!(disk_preflight(Some(gb), 0, gb).is_err());
         assert!(disk_preflight(Some(gb), 0, gb + DISK_MARGIN_BYTES).is_ok());
+    }
+
+    #[test]
+    fn progress_throttle_emits_first_final_and_one_per_interval() {
+        use std::time::Instant;
+        let t0 = Instant::now();
+        let mut p = ProgressThrottle::new();
+        assert!(p.should_emit(t0, 10, Some(1000)), "the first chunk reports");
+        assert!(!p.should_emit(t0 + std::time::Duration::from_millis(50), 20, Some(1000)));
+        assert!(!p.should_emit(t0 + std::time::Duration::from_millis(149), 30, Some(1000)));
+        assert!(p.should_emit(t0 + std::time::Duration::from_millis(150), 40, Some(1000)));
+        assert!(!p.should_emit(t0 + std::time::Duration::from_millis(160), 50, Some(1000)));
+        assert!(p.should_emit(t0 + std::time::Duration::from_millis(165), 1000, Some(1000)), "the completing chunk always reports");
+        assert!(!p.should_emit(t0 + std::time::Duration::from_millis(170), 1001, None), "unknown total is throttled too");
     }
 
     #[test]
