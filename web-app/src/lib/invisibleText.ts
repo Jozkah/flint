@@ -9,7 +9,10 @@
  * visible characters. A zero-width joiner is in the set, so emoji joined with
  * one show as separate emoji.
  */
+// The class lists joiners and variation selectors on purpose: they are the
+// characters this strips.
 const INVISIBLE =
+  // eslint-disable-next-line no-misleading-character-class
   /[\u{E0000}-\u{E007F}\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2060-\u2064\uFEFF\uFE00-\uFE0D\u{E0100}-\u{E01EF}\u00AD\u061C\u180E]/gu
 
 /**

@@ -264,7 +264,13 @@
     "caBundleNone": "仅信任平台的证书颁发机构。",
     "caBundleInUse": "除平台的证书外，还信任此包中的 {{count}} 个证书。",
     "caBundleBroken": "此包无法使用（{{kind}}）：在修复或移除之前，出站 HTTPS 不信任任何内容。",
-    "ignoreSslScope": "适用于所有经代理的流量。单个提供商也可以只对自己的地址允许无效证书，设置在模型提供商中该提供商的页面上。"
+    "ignoreSslScope": "适用于所有经代理的流量。单个提供商也可以只对自己的地址允许无效证书，设置在模型提供商中该提供商的页面上。",
+    "proxyUrlInvalid": "这看起来不像代理地址。请使用 host:port 或 http://host:port。",
+    "proxyUrlScheme": "仅支持 http 和 https 代理。",
+    "ignoreSslConfirmTitle": "忽略 SSL 证书？",
+    "ignoreSslConfirmBody": "Flint 将对所有代理流量接受自签名、已过期或不匹配的证书，因此路径上的任何人都可能读取或篡改这些流量。仅在你信任该代理和网络时继续。",
+    "ignoreSslConfirm": "忽略证书",
+    "ignoreSslActiveWarning": "所有代理流量的证书检查已关闭。"
   },
   "webSearch": {
     "showKey": "显示密钥",
@@ -432,6 +438,7 @@
     "serverHostDesc": "服务器的网络地址。",
     "serverHostLanWarning": "0.0.0.0 会让网络中的其他设备可以访问该服务器。请设置 API 密钥，并在其他设备上使用这台机器的局域网地址（而非 localhost）。",
     "serverHostLanNoTrusted": "受信任的主机为空：请添加其他设备访问这台机器时所用的地址，否则它们的请求可能被拒绝。",
+    "apiKeyRequiredLan": "在 0.0.0.0 上公开服务器之前请先设置 API 密钥，或将主机切换为 127.0.0.1。",
     "serverPort": "服务器端口",
     "serverPortDesc": "API 服务器的端口号。",
     "apiPrefix": "API 前缀",

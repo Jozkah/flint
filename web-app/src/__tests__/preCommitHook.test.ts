@@ -130,7 +130,7 @@ describe('the pre-commit checks', () => {
   it('runs the lint the old hook ran', () => {
     const { status, calls } = check({})
     expect(status).toBe(0)
-    expect(calls[1].args).toEqual(['lint', '--fix', '--quiet'])
+    expect(calls[1].args).toEqual(['lint', '--quiet'])
   })
 
   it('reports the failing check status rather than a summary', () => {

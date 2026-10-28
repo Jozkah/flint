@@ -265,7 +265,13 @@
     "caBundleNone": "Sono considerate attendibili solo le autorità di certificazione della piattaforma.",
     "caBundleInUse": "Considero attendibili {{count}} certificati di questo bundle oltre a quelli della piattaforma.",
     "caBundleBroken": "Questo bundle non può essere usato ({{kind}}): l'HTTPS in uscita non considera attendibile nulla finché non viene corretto o rimosso.",
-    "ignoreSslScope": "Vale per tutto il traffico tramite proxy. Un singolo fornitore può anche consentire certificati non validi per il proprio indirizzo, nella sua pagina in Fornitori di modelli."
+    "ignoreSslScope": "Vale per tutto il traffico tramite proxy. Un singolo fornitore può anche consentire certificati non validi per il proprio indirizzo, nella sua pagina in Fornitori di modelli.",
+    "proxyUrlInvalid": "Non sembra un indirizzo proxy. Usa host:porta o http://host:porta.",
+    "proxyUrlScheme": "Sono supportati solo i proxy http e https.",
+    "ignoreSslConfirmTitle": "Ignorare i certificati SSL?",
+    "ignoreSslConfirmBody": "Flint accetterà certificati autofirmati, scaduti o non corrispondenti per tutto il traffico del proxy, quindi chiunque sul percorso potrebbe leggerlo o alterarlo. Continua solo se ti fidi del proxy e della rete.",
+    "ignoreSslConfirm": "Ignora i certificati",
+    "ignoreSslActiveWarning": "I controlli dei certificati sono disattivati per tutto il traffico del proxy."
   },
   "webSearch": {
     "showKey": "Mostra chiave",
@@ -434,6 +440,7 @@
     "serverHostDesc": "Indirizzo di rete per il server.",
     "serverHostLanWarning": "0.0.0.0 rende il server raggiungibile dagli altri dispositivi della tua rete. Imposta una chiave API e usa l'indirizzo LAN della macchina (non localhost) dall'altro dispositivo.",
     "serverHostLanNoTrusted": "Host attendibili è vuoto: aggiungi l'indirizzo che gli altri dispositivi useranno per raggiungere questa macchina, altrimenti le loro richieste potrebbero essere rifiutate.",
+    "apiKeyRequiredLan": "Imposta una chiave API prima di esporre il server su 0.0.0.0, oppure cambia l'host in 127.0.0.1.",
     "serverPort": "Porta del server",
     "serverPortDesc": "Numero di porta per il server API.",
     "apiPrefix": "Prefisso API",

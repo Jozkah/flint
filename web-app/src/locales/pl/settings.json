@@ -266,7 +266,13 @@
     "caBundleNone": "Zaufane są tylko urzędy certyfikacji platformy.",
     "caBundleInUse": "Zaufano certyfikatom z tego pakietu ({{count}}) oraz certyfikatom platformy.",
     "caBundleBroken": "Tego pakietu nie można użyć ({{kind}}): wychodzące HTTPS nikomu nie ufa, dopóki nie zostanie naprawiony lub usunięty.",
-    "ignoreSslScope": "Dotyczy całego ruchu przez serwer proxy. Pojedynczy dostawca może też zezwolić na nieprawidłowe certyfikaty dla własnego adresu, na swojej stronie w Dostawcy Modeli."
+    "ignoreSslScope": "Dotyczy całego ruchu przez serwer proxy. Pojedynczy dostawca może też zezwolić na nieprawidłowe certyfikaty dla własnego adresu, na swojej stronie w Dostawcy Modeli.",
+    "proxyUrlInvalid": "To nie wygląda na adres proxy. Użyj host:port lub http://host:port.",
+    "proxyUrlScheme": "Obsługiwane są tylko proxy http i https.",
+    "ignoreSslConfirmTitle": "Zignorować certyfikaty SSL?",
+    "ignoreSslConfirmBody": "Flint będzie akceptować certyfikaty z podpisem własnym, wygasłe lub niepasujące dla całego ruchu przez proxy, więc każdy na trasie mógłby go odczytać lub zmienić. Kontynuuj tylko wtedy, gdy ufasz proxy i sieci.",
+    "ignoreSslConfirm": "Zignoruj certyfikaty",
+    "ignoreSslActiveWarning": "Sprawdzanie certyfikatów jest wyłączone dla całego ruchu przez proxy."
   },
   "webSearch": {
     "showKey": "Pokaż klucz",
@@ -436,6 +442,7 @@
     "serverHostDesc": "Adres sieciowy serwera.",
     "serverHostLanWarning": "0.0.0.0 udostępnia serwer innym urządzeniom w Twojej sieci. Ustaw klucz API i na drugim urządzeniu używaj adresu LAN tego komputera (nie localhost).",
     "serverHostLanNoTrusted": "Zaufane Hosty są puste: dodaj adres, którego inne urządzenia użyją do połączenia z tym komputerem, bo ich żądania mogą zostać odrzucone.",
+    "apiKeyRequiredLan": "Ustaw klucz API przed udostępnieniem serwera na 0.0.0.0 albo zmień hosta na 127.0.0.1.",
     "serverPort": "Port",
     "serverPortDesc": "Numer portu serwera API.",
     "apiPrefix": "Prefiks API",
