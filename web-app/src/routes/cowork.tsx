@@ -20,7 +20,6 @@ import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import { type WidgetHost } from '@/lib/visualize/hostContext'
-import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
@@ -83,15 +82,9 @@ import { confirmBypass } from '@/lib/bypassConfirm'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
   runTitle,
-  recordAgentDispatch,
-  recordJobCollected,
-  recordShellDispatch,
-  recordShellOutcome,
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
 import {
-  collectedJobId,
-  commandOf,
   finishedJobPatch,
 } from '@/lib/coworkTasks'
 import {
@@ -118,8 +111,6 @@ import {
 import {
   agentAttribution,
   drainIdleSession,
-  takeClaimed,
-  hasLiveSteering,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -150,11 +141,13 @@ import {
   recordLifecycle,
   type ToolActivityItem,
 } from '@/lib/toolActivity'
-import { createFrameBatch } from '@/lib/frameBatch'
-import {
-  useToolCallRuntime,
-  withToolTiming,
-} from '@/hooks/useToolCallRuntime'
+import { createStreamSink } from '@/lib/cowork/run/streamSink'
+import { createLiveLane } from '@/lib/cowork/run/liveLane'
+import { createStepHandlers } from '@/lib/cowork/run/stepHandlers'
+import { createToolHandlers } from '@/lib/cowork/run/toolHandlers'
+import { createTeamTool } from '@/lib/cowork/run/teamTool'
+import { createApprovalHooks } from '@/lib/cowork/run/approvalHooks'
+import { withToolTiming } from '@/hooks/useToolCallRuntime'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
@@ -209,26 +202,20 @@ import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
-import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
-import { createDecodeClock, generationSpeed, speedStats } from '@/lib/tokenSpeed'
+import { createDecodeClock, speedStats } from '@/lib/tokenSpeed'
 import {
   prepareCoworkAttachments,
   type CoworkAttachmentInput,
   type SubmittedFile,
 } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
-import { usageEventPayload } from '@/lib/executionTimeline'
-import { recordMemoryUses } from '@/lib/memoryUses'
-import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
   useCoworkView,
   type CoworkRail,
 } from '@/hooks/useCoworkView'
-import { useFileActivity } from '@/hooks/useFileActivity'
 import {
-  deriveFromTurns,
   isChange,
   type FileActivityEvent,
   type FileOrigin,
@@ -308,27 +295,15 @@ import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
   deriveRunOutcome,
   } from '@/lib/coworkRunOutcome'
-import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
-import {
-  executeCampaignTool,
-  isCoordinatorEligible,
-} from '@/lib/campaignTools'
-import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
+import { isCoordinatorEligible } from '@/lib/campaignTools'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
-import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
+import { groupsToOffer } from '@/lib/coworkToolGroups'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import {
   createMailLedger,
 } from '@/lib/mailAutoReply'
 import { holdQueueThenStop } from '@/lib/chatSteering'
-import {
-  COWORK_DECISION_WINDOW_MS,
-  TeamControl,
-  awaitingDecision,
-} from '@/lib/coworkTeamControl'
-import { useTeamControls } from '@/hooks/useTeamControls'
-import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { useShallow } from 'zustand/react/shallow'
 import {
   recoveryHidden,
@@ -371,11 +346,7 @@ import {
   } from '@/lib/coworkReadiness'
 import { notifyToolBatch, } from '@/lib/agentTools'
 import {
-  CONTINUE_QUESTION_ID,
   decideOpening,
-  acceptsProposal,
-  continuationInstruction,
-  PROPOSAL_ACCEPTED_RESULT,
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
@@ -391,46 +362,9 @@ import {
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
-import {
-  applyDecision,
-  conflictKey,
-  parseTeamRequest,
-  refuseGraph,
-  refuseUnresolved,
-  renderTeamReport,
-  renderNotRetried,
-  runTeam,
-  scopeConflicts,
-  teamProgress,
-  TEAM_DEFAULT_PROMPT,
-  type TaskResult,
-  type TeamState,
-  type TeamTask,
-} from '@/lib/coworkTeam'
-import { openRunLog, withRunLog } from '@/lib/workflowRuns'
-import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
-import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { recordEvents } from '@/lib/eventLog'
-import {
-  beginTeamChild,
-  settleTeamChild,
-  useTeamChildrenVersion,
-  type ParallelOverride,
-} from '@/lib/teamChildren'
-import {
-  describeDestinations,
-  planDestinations,
-} from '@/lib/coworkTeamDestinations'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
-import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
-import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
-import {
-  planReviewDecision,
-  renderPlanReviewResult,
-  planExecuteNotice,
-  PLAN_EXECUTE_INSTRUCTION,
-} from '@/lib/coworkPlanReview'
 import {
   getSandboxStatus,
   getSandboxToolchains,
@@ -442,7 +376,6 @@ import {
   webSearchOnFor,
 } from '@/hooks/useWebSearchChoice'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
-import { runTyped, schemaInstruction } from '@/lib/coworkWorkflowSchema'
 import {
   abortRun,
   abortAll,
@@ -450,15 +383,11 @@ import {
   endRun,
   hasSubagent,
   abortSubagent,
-  registerSubagent,
-  unregisterSubagent,
   isAbortLike,
   answerAsk,
   runTurn,
   untilStopped,
   type RunOutcome,
-  type StreamSink,
-  type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import {
@@ -2963,70 +2892,15 @@ export function CoworkPage() {
       }
       return undefined
     })()
-    // AH-026: the live lane is also kept with the session while the run goes,
-    // so a run the app is killed under comes back as an interrupted turn.
-    const runStartedAt = Date.now()
-    const runBaseCount = current?.messages?.length ?? 0
-    const saveInFlight = (step = false) => {
-      const at = Date.now()
-      if (!checkpointDue(rs.lastCheckpointAt, at, step)) return
-      rs.lastCheckpointAt = at
-      // Only while this run still owns the session's live lane.
-      if (useCoworkRun.getState().runs[sid]?.runId !== runId) return
-      useCoworkSessions
-        .getState()
-        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, rs.runTurns, at))
-    }
-    // Text deltas publish at most once per frame: a set per token woke every
-    // `useCoworkRun` subscriber and re-rendered this route per token, which is
-    // what made scrolling a streaming transcript lag. Any other write publishes
-    // at once and takes the queued text with it, so ordering is unchanged.
-    const textFrame = createFrameBatch(() => publish())
-    const publish = () => {
-      textFrame.cancel()
-      useCoworkRun.getState().setRunTurns(sid, runId, [...rs.runTurns])
-      saveInFlight()
-    }
-    const pushLive = (
-      turns: CoworkTurn[],
-      snapshot: PromptSnapshotRef | undefined = lastSnapshotRef.current[sid]
-    ) => {
-      // AH-078. Bind each assistant row to the dispatch that produced it,
-      // here, because here is where the row first exists: at dispatch the
-      // lane holds the user turn and nothing else, so a reference written
-      // then has nothing to land on. The snapshot is this session's latest,
-      // so a continuation, a retry and a compaction each carry their own --
-      // unless the caller names the step's own (see `stepSnapshot`).
-      const stamped = turns.map((turn) =>
-        turn.role === 'assistant' && !turn.promptSnapshot && snapshot
-          ? { ...turn, promptSnapshot: snapshot }
-          : turn
-      )
-      rs.runTurns = [...rs.runTurns, ...stamped]
-      publish()
-      // AH-083: the memories this row's request carried now know the turn and
-      // the exact snapshot they went out in. Here for the same reason as the
-      // stamp above: this is where the row, its memory and its snapshot meet.
-      // Named by this run's session, never the one in view.
-      for (const turn of stamped) {
-        if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
-        void recordMemoryUses({
-          sessionId: sid,
-          projectRoot: runAuthority.folder ?? undefined,
-          memory: turn.memory,
-          turnId: turn.promptSnapshot?.id
-            ? `turn-${turn.promptSnapshot.id}`
-            : undefined,
-          snapshotId: turn.promptSnapshot?.id,
-        })
-      }
-    }
-    const mutateLive = (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
-      const next = apply(rs.runTurns)
-      if (next === rs.runTurns) return
-      rs.runTurns = next
-      publish()
-    }
+    const { saveInFlight, textFrame, publish, pushLive, mutateLive } = createLiveLane({
+      rs,
+      sid,
+      runId,
+      runStartedAt: Date.now(),
+      runBaseCount: current?.messages?.length ?? 0,
+      latestSnapshot: () => lastSnapshotRef.current[sid],
+      projectRoot: () => runAuthority.folder ?? undefined,
+    })
     publish()
     /**
      * The authority this run holds, taken once and kept for its lifetime.
@@ -3479,73 +3353,16 @@ export function CoworkPage() {
       model: selectedModel.id,
     }
 
-    // Only rows streamed by the current model step may receive new deltas.
-    // A previous step can end with an assistant row, and the next model reply
-    // must not append to it before the settled row replaces the live one.
-    const streamedAssistantTurns = new Set<CoworkTurn>()
-    const clearStreamedTurns = () => {
-      if (streamedAssistantTurns.size === 0) return
-      rs.runTurns = rs.runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
-      streamedAssistantTurns.clear()
-      publish()
-    }
-    const sink: StreamSink = {
-      onOutput: (chars) => decodeClock.tick(chars),
-      onText: (delta) => {
-        const last = rs.runTurns[rs.runTurns.length - 1]
-        if (last && last.role === 'assistant' && streamedAssistantTurns.has(last)) {
-          last.content += delta
-          textFrame.schedule()
-        } else {
-          pushLive([{ role: 'assistant', content: delta }])
-          const added = rs.runTurns[rs.runTurns.length - 1]
-          if (added?.role === 'assistant') streamedAssistantTurns.add(added)
-        }
-      },
-      onToolStart: (callId, name) =>
-        pushLive([
-          { role: 'tool', content: '', callId, name, status: 'running' },
-        ]),
-      // Only a widget's arguments are kept as they stream: it is the one call
-      // whose card draws from them before the call is complete.
-      onToolArgsDelta: (callId, delta) => {
-        const row = rs.runTurns.find((turn) => turn.callId === callId)
-        if (row?.name !== SHOW_WIDGET_TOOL) return
-        row.argsLive = (row.argsLive ?? '') + delta
-        textFrame.schedule()
-      },
-      onToolCall: (call) => {
-        const row = rs.runTurns.find((turn) => turn.callId === call.toolCallId)
-        if (row) {
-          row.args = call.input
-          row.argsLive = undefined
-          publish()
-          // #321: checkpointed now, not at the next step or text delta. A
-          // crash between here and the step's end otherwise left the saved
-          // call without its arguments, and resuming replayed it without them.
-          saveInFlight(true)
-        }
-        // A shell command is background work the moment it starts, and its
-        // arguments are the only place the command line exists.
-        const command = commandOf(call.input)
-        if (command) {
-          recordShellDispatch(run, {
-            callId: call.toolCallId,
-            command,
-            anchorMessageId: anchorMessageId(),
-          })
-          recordEvents([
-            {
-              id: `job:${call.toolCallId}:started`,
-              session: run.sessionId,
-              run: run.runId,
-              kind: 'job.started',
-              payload: { tool: 'bash', command },
-            },
-          ])
-        }
-      },
-    }
+    const { sink, streamed: streamedAssistantTurns, clearStreamedTurns } = createStreamSink({
+      rs,
+      run,
+      decodeClock,
+      scheduleFrame: () => textFrame.schedule(),
+      publish,
+      pushLive,
+      saveInFlight,
+      anchorMessageId: () => anchorMessageId(),
+    })
 
     const baseMessages = current?.messages ?? []
     // The message this run's work is reported under, named by the same rule the
@@ -3764,6 +3581,61 @@ export function CoworkPage() {
       // way every other ending is: the user's own message is committed, the
       // run is closed and nothing is left running.
       if (overflow) throw overflow
+      const approvalHooks = createApprovalHooks({
+        rs,
+        sid,
+        runId,
+        folder: current?.folder,
+        campaign: current?.campaign,
+        storedMode,
+        selectedProvider,
+        modelId: selectedModel?.id,
+        pickFolder: () => serviceHub.dialog().open({ directory: true }),
+        holdFolder: (picked) => {
+          restartAfterFolderRef.current[sid] = true
+          setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
+        },
+      })
+      const teamTool = createTeamTool({
+        sid,
+        runId,
+        run,
+        signal: controller.signal,
+        folder: current?.folder,
+        modelId: selectedModel.id,
+        canIsolate,
+        dataFolder: () => serviceHub.app().getJanDataFolder(),
+        anchorMessageId: () => anchorMessageId(),
+        dispatchChild,
+      })
+      const toolHandlers = createToolHandlers({
+        rs,
+        sid,
+        folder: current?.folder,
+        access: effective.access,
+        inspecting,
+        planAnchor,
+        handle,
+        transport,
+        mutateLive,
+        t,
+      })
+      const stepHandlers = createStepHandlers({
+        rs,
+        sid,
+        runId,
+        run,
+        modelId: selectedModel?.id,
+        runDeadline,
+        transport,
+        decodeClock,
+        streamed: streamedAssistantTurns,
+        mailLedger,
+        latestSnapshot: () => lastSnapshotRef.current[sid],
+        originOfPath,
+        saveInFlight,
+        pushLive,
+      })
       rs.outcome = await runTurn({
         messages,
         signal: controller.signal,
@@ -3844,66 +3716,7 @@ export function CoworkPage() {
                 // through the same prompt, with its server named so the user's
                 // trust choices for that server apply.
                 mcpServerFor: (name) => transport.mcpServerFor(name),
-                onApproveMcp: (callId, toolName, input, server, signal) =>
-                  useToolApprovalRequests
-                    .getState()
-                    .requestApproval(callId, toolName, sid, server, {
-                      input,
-                      workspaceLabel: current?.folder ?? undefined,
-                      autoApproveStreak: sid,
-                      signal,
-                    }),
-                // A refusal for a path outside the sandbox, with no folder
-                // attached: ask once per run whether to attach one. A run's
-                // folder is fixed once it starts, so on yes the pick is held
-                // and the run ends; it restarts when the folder is applied.
-                onNeedFolder: async ({ signal }) => {
-                  if (rs.folderOffered) return 'declined'
-                  rs.folderOffered = true
-                  const ok = await useToolApprovalRequests
-                    .getState()
-                    .requestApproval(
-                      `${runId}:attach-folder`,
-                      'attach_folder',
-                      sid,
-                      undefined,
-                      {
-                        input: {},
-                        alwaysAsk: true,
-                        taskContext:
-                          'This run needs files outside its sandbox, but no project folder is attached. Attach one so the run can continue?',
-                        signal,
-                      }
-                    )
-                  if (!ok) return 'declined'
-                  const picked = await serviceHub
-                    .dialog()
-                    .open({ directory: true })
-                  if (typeof picked !== 'string') return 'declined'
-                  restartAfterFolderRef.current[sid] = true
-                  setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
-                  return 'attached'
-                },
-                // The prompt the chat surface already uses for tool approval,
-                // not a second one: it honours grants the user has already made
-                // and renders in the tool card the call is reported in.
-                onApprove: (callId, toolName, input, preview, signal, forced) =>
-                  useToolApprovalRequests
-                    .getState()
-                    .requestApproval(callId, toolName, sid, undefined, {
-                      input,
-                      ...(forced
-                        ? {
-                          alwaysAsk: true,
-                          taskContext: forced.reason,
-                          conversationProgram: forced.conversationProgram,
-                          onDecision: forced.onDecision,
-                        }
-                        : {}),
-                      workspaceLabel: current?.folder ?? undefined,
-                      preview,
-                      signal,
-                    }),
+                ...approvalHooks,
                 // A shell handed to the backend outlives a cancelled run, so it
                 // holds the authority it started with until the process is done.
                 trackShell: () =>
@@ -3926,195 +3739,9 @@ export function CoworkPage() {
                 cancelChild: (callId) =>
                   abortSubagent(sid, taskIdFor(sid, runId, callId)),
                 agentDefaults: (name) => runAgents.find((d) => d.name === name),
-                // Campaign tools exist only here, on the main run of a session
-                // that may coordinate: a task's, a subagent's and chat's
-                // contexts have no handler, so a call to one is refused.
-                onCampaign:
-                  isCoordinatorEligible(current?.campaign) && current?.folder
-                    ? (call, campaignSignal) =>
-                        executeCampaignTool(
-                          call,
-                          {
-                            sessionId: sid,
-                            // The session's own mode: an opening turn's
-                            // forced review must not cap the tasks at review.
-                            mode: storedMode,
-                            sourceRoot: current?.folder ?? null,
-                            model: selectedModel
-                              ? {
-                                  provider: selectedProvider,
-                                  id: selectedModel.id,
-                                }
-                              : undefined,
-                            signal: campaignSignal,
-                            onApprove: (
-                              callId,
-                              toolName,
-                              input,
-                              _preview,
-                              approveSignal,
-                              forced
-                            ) =>
-                              useToolApprovalRequests
-                                .getState()
-                                .requestApproval(
-                                  callId,
-                                  toolName,
-                                  sid,
-                                  undefined,
-                                  {
-                                    input,
-                                    alwaysAsk: true,
-                                    taskContext: forced?.reason,
-                                    workspaceLabel: current?.folder ?? undefined,
-                                    signal: approveSignal,
-                                    // The plan card's "how should tasks work".
-                                    choice: forced?.choice,
-                                    onDecision: (decision, chosenId) => {
-                                      if (decision !== 'deny' && chosenId) {
-                                        forced?.onChoice?.(chosenId)
-                                      }
-                                    },
-                                  }
-                                ),
-                          },
-                          createToolDeps(getCampaignRunner())
-                        )
-                    : undefined,
-                onEnableTools: (input) => {
-                  const parsed = parseEnableRequest(
-                    input,
-                    transport.heldGroups,
-                    transport.openedGroups,
-                    transport.advertisedGroups
-                  )
-                  if (typeof parsed === 'string') {
-                    return { output: `ERROR: ${parsed}`, isError: true }
-                  }
-                  const added = transport.openGroupsNow(parsed.groups)
-                  return {
-                    output:
-                      added.length > 0
-                        ? `Loaded ${added.length} tools: ${added.join(', ')}. Use them from your next step.`
-                        : 'Those tools are already loaded.',
-                  }
-                },
-                onTodo: async (input) => {
-                  const result = applyTodoOp(
-                    useCoworkSessions
-                      .getState()
-                      .sessions.find((s) => s.id === sid)?.todos,
-                    input
-                  )
-                  if (result.error) {
-                    return { output: `ERROR: ${result.error}`, isError: true }
-                  }
-                  // Snapshot anchored at this run's prompt, so the transcript
-                  // keeps one record of the plan per run.
-                  useCoworkSessions
-                    .getState()
-                    .setTodos(sid, result.list, planAnchor)
-                  return { output: renderTodoResult(result.list) }
-                },
-                onAsk: (callId, input) =>
-                  new Promise<ToolOutcome>((resolve) => {
-                    const parsed = parseAskRequest(input)
-                    if (typeof parsed === 'string') {
-                      resolve({ output: `ERROR: ${parsed}`, isError: true })
-                      return
-                    }
-                    // In the transcript, at the point the run asked -- not in a
-                    // slot above the composer. It stays there once answered.
-                    const askRecord = {
-                      requestId: callId,
-                      request: parsed,
-                      sessionId: sid,
-                      callId,
-                      at: new Date().toISOString(),
-                      state: 'pending' as const,
-                    }
-                    // Into this run's own lane, whichever session is in view:
-                    // that lane is what renders for this session.
-                    mutateLive((turns) => attachAskToTurns(turns, askRecord))
-                    // The opening turn ends on a named question. Recording the
-                    // wait is what makes a session reopened at this point restore
-                    // an unanswered proposal rather than resume into work.
-                    const proposal = parsed.questions.find(
-                      (one) => one.id === CONTINUE_QUESTION_ID
-                    )
-                    if (proposal && current?.folder) {
-                      useCoworkSessions.getState().setContinuity(sid, {
-                        state: 'awaiting-continuation',
-                        folder: current.folder,
-                        proposal: proposal.question,
-                      })
-                    }
-                    // Held by this run's handle: answered only through this
-                    // session, and settled by stopping this session alone.
-                    handle.pendingAsks.set(callId, (answers) => {
-                      const state = answers ? 'answered' : 'cancelled'
-                      mutateLive((turns) =>
-                        settleAskInTurns(turns, callId, state, answers ?? undefined)
-                      )
-                      // An answered proposal is no longer outstanding. Declining
-                      // is recorded as a decision, not as work to pick up later.
-                      if (proposal && current?.folder) {
-                        useCoworkSessions.getState().setContinuity(sid, {
-                          state: answers ? 'executing' : 'cancelled',
-                          folder: current.folder,
-                          proposal: proposal.question,
-                        })
-                      }
-                      // An accepted opening proposal ends this read-only run
-                      // and continues in a new one that can write (#296).
-                      if (
-                        inspecting &&
-                        proposal &&
-                        answers &&
-                        acceptsProposal(parsed, answers)
-                      ) {
-                        rs.continueWith = continuationInstruction(
-                          proposal.question,
-                          answers
-                        )
-                        resolve({
-                          output: PROPOSAL_ACCEPTED_RESULT,
-                          endsTurn: true,
-                        })
-                        return
-                      }
-                      // A plan review changes the session's mode, from the next
-                      // message: this run's tools are frozen. Only ever towards
-                      // Ask, where each change still waits for the user.
-                      const review = planReviewDecision(parsed, answers)
-                      if (review === 'execute' || review === 'exit') {
-                        useCoworkSessions.getState().setMode(sid, 'ask')
-                      }
-                      // "Execute plan" leaves plan mode and carries on: this
-                      // run's tools are frozen read-only, so it ends and the
-                      // plan continues in a new run that can make changes.
-                      // When those changes cannot reach the user's files, the
-                      // user is told what to change rather than left to find
-                      // "Attach a folder first" in the access menu.
-                      if (review === 'execute') {
-                        const notice = planExecuteNotice({
-                          folder: current?.folder,
-                          access: effective.access,
-                        })
-                        if (notice) {
-                          toast.info(t(`common:coworkPlanExecute.${notice}`), {
-                            duration: 12000,
-                          })
-                        }
-                        rs.continueWith = PLAN_EXECUTE_INSTRUCTION
-                      }
-                      resolve(
-                        review === 'none'
-                          ? renderAskResult(answers, parsed)
-                          : renderPlanReviewResult(review, answers)
-                      )
-                    })
-                  }),
+                onEnableTools: toolHandlers.onEnableTools,
+                onTodo: toolHandlers.onTodo,
+                onAsk: toolHandlers.onAsk,
                 nudge: delegationNudge,
                 onTask: async (callId, input) => {
                   const req = parseSubagentRequest(input)
@@ -4123,619 +3750,20 @@ export function CoworkPage() {
                   }
                   return dispatchChild(callId, req)
                 },
-                onTeam: async (callId, input) => {
-                  const parsed = parseTeamRequest(input)
-                  if (typeof parsed === 'string') {
-                    return { output: `ERROR: ${parsed}`, isError: true }
-                  }
-                  let tasks: TeamTask[] = parsed
-                  // Refused here rather than inside `runTeam`, so a graph that
-                  // cannot run never causes a worktree to be created for it.
-                  const badGraph = refuseGraph(tasks)
-                  if (badGraph) {
-                    return { output: `ERROR: ${badGraph}`, isError: true }
-                  }
-                  // AH-109: tasks whose declared changes overlap go to the
-                  // person before anything is provisioned or dispatched. Each
-                  // answer is applied and the graph is looked at again, so a
-                  // revised scope that still overlaps is asked about too.
-                  const allowParallel = new Set<string>()
-                  const overrides: ParallelOverride[] = []
-                  const decided: string[] = []
-                  for (let round = 0; ; round += 1) {
-                    const open = scopeConflicts(tasks).filter(
-                      (c) => !allowParallel.has(conflictKey(c))
-                    )
-                    if (open.length === 0) break
-                    if (round >= 6) {
-                      return {
-                        output: `ERROR: ${refuseUnresolved(tasks, allowParallel)}`,
-                        isError: true,
-                      }
-                    }
-                    const answer = await useTeamConflictRequests
-                      .getState()
-                      .request(sid, callId, tasks, open, controller.signal)
-                    if (answer.kind === 'cancel') {
-                      return {
-                        output:
-                          'ERROR: the user chose not to run these tasks, because ' +
-                          `they would change the same paths: ${open
-                            .map((c) => `${c.tasks.join(' and ')} on ${c.overlaps.map((o) => o.paths[0]).join(', ')}`)
-                            .join('; ')}. Nothing ran.`,
-                        isError: true,
-                      }
-                    }
-                    for (const c of open) {
-                      const d = answer.decisions[conflictKey(c)]
-                      if (!d) continue
-                      const where = c.overlaps.map((o) => o.paths[0]).join(', ')
-                      if (d.kind === 'parallel') {
-                        allowParallel.add(conflictKey(c))
-                        overrides.push({
-                          tasks: [...c.tasks],
-                          paths: c.overlaps.map((o) => o.paths[0]),
-                          decidedAt: new Date().toISOString(),
-                        })
-                        decided.push(
-                          `${c.tasks.join(' and ')} ran side by side at the user's decision despite both changing ${where}`
-                        )
-                      } else if (d.kind === 'serialize') {
-                        decided.push(
-                          `${d.then} ran after ${d.first}, at the user's decision, because both change ${where}`
-                        )
-                      } else {
-                        decided.push(
-                          `the user limited ${d.task} to: ${d.writes.join(', ') || 'nothing'}`
-                        )
-                      }
-                      tasks = applyDecision(tasks, d)
-                    }
-                    const revised = refuseGraph(tasks)
-                    if (revised) {
-                      return { output: `ERROR: ${revised}`, isError: true }
-                    }
-                  }
-                  // Every isolated task gets its checkout before any child
-                  // starts. A team that could only isolate some of its tasks is
-                  // refused whole: the alternative is children silently writing
-                  // the folder the request asked them to stay out of.
-                  const plan = await planDestinations(tasks, {
-                    parentSessionId: sid,
-                    project: current?.folder ?? null,
-                    // Only asked for when something actually isolates: a team
-                    // that wants nothing of its own should not depend on this
-                    // answering at all.
-                    dataFolder: tasks.some((one) => one.isolate)
-                      ? ((await serviceHub
-                          .app()
-                          .getJanDataFolder()
-                          .catch(() => '')) ?? '')
-                      : '',
-                    canIsolate,
-                    ensure: (owner, project, dataFolder) =>
-                      useCoworkWorktrees
-                        .getState()
-                        .ensure(owner, project, dataFolder),
-                    authorize: (owner, folderPath, dataFolder) =>
-                      useDirectEditGrants
-                        .getState()
-                        .authorize(owner, folderPath, dataFolder),
-                    revoke: (owner) => {
-                      useCoworkWorktrees.getState().forget(owner)
-                      return useDirectEditGrants.getState().revokeSession(owner)
-                    },
-                  })
-                  if (!plan.ok) {
-                    return { output: `ERROR: ${plan.refusal}`, isError: true }
-                  }
-                  // The team is itself a unit of work: without a record of its
-                  // own, its progress would have nowhere to land and its children
-                  // would appear in the panel as unrelated errands.
-                  const teamTaskId = taskIdFor(sid, runId, callId)
-                  recordAgentDispatch(run, {
-                    callId,
-                    agentName: 'team',
-                    title: 'team',
-                    description: `${tasks.length} tasks`,
-                    model: selectedModel.id,
-                    anchorMessageId: anchorMessageId(),
-                  })
-                  useCoworkActivity.getState().patchTask(teamTaskId, {
-                    status: 'running',
-                    startedAt: Date.now(),
-                  })
-                  // AH-111: a failed member can be restarted or replaced from the
-                  // Tasks panel while the team runs; the control lives as long
-                  // as the team does.
-                  const teamControl = new TeamControl()
-                  useTeamControls.getState().register(teamTaskId, teamControl)
-                  // Its own stop, chained to the turn's: a background workflow
-                  // is cancelled through this (`cancel_task`, the panel's Stop)
-                  // without ending the turn.
-                  const teamAbort = registerSubagent(sid, teamTaskId)
-                  // Registered only while the run is live; with no run to hang it
-                  // off, the handle comes back already aborted, which must not
-                  // cancel a team the turn itself has not stopped.
-                  const teamSignal = hasSubagent(sid, teamTaskId)
-                    ? AbortSignal.any([controller.signal, teamAbort.signal])
-                    : controller.signal
-                  // A workflow keeps each finished agent's result so a stopped run
-                  // can be resumed; a replay returns saved ones without running.
-                  const runMeta = (input as { run?: { phases: unknown[]; args?: Record<string, unknown>; resumeRunId?: string } } | null)?.run
-                  const runLog = runMeta ? await openRunLog(sid, callId, runMeta) : null
-                  const withLog = (fn: (one: TeamTask, signal: AbortSignal) => Promise<TaskResult>) =>
-                    runLog
-                      ? withRunLog(runLog, fn, (one, output) => {
-                          const childId = `${callId}:${one.id}`
-                          recordAgentDispatch(run, {
-                            callId: childId,
-                            agentName: one.subagentName ?? 'worker',
-                            title: one.title,
-                            phase: one.phase,
-                            description: one.description,
-                            parentTaskId: teamTaskId,
-                          })
-                          useCoworkActivity.getState().patchTask(taskIdFor(sid, runId, childId), {
-                            status: 'done',
-                            output,
-                            detail: 'from saved result',
-                            endedAt: Date.now(),
-                          })
-                        })
-                      : fn
-                  try {
-                    const teamOutcome = await runTeam(tasks, {
-                      // The turn's controller: stopping the run stops the team,
-                      // and every child hangs off a signal chained to this one.
-                      signal: teamSignal,
-                      allowParallel,
-                      control: teamControl,
-                      decisionWindowMs: COWORK_DECISION_WINDOW_MS,
-                      onPause: (paused) =>
-                        useCoworkActivity.getState().patchTask(teamTaskId, { paused }),
-                      onControl: (request, result) => {
-                        if (!result.ok || request.kind === 'finish' || request.kind === 'pause' || request.kind === 'resume') {
-                          if (!result.ok) toast.error(result.refusal.message)
-                          return
-                        }
-                        const childTask = taskIdFor(sid, runId, `${callId}:${request.taskId}`)
-                        const activity = useCoworkActivity.getState()
-                        const prior = activity.tasks[childTask]
-                        activity.patchTask(childTask, {
-                          status: 'running',
-                          endedAt: undefined,
-                          attempts: (prior?.attempts ?? 0) + 1,
-                          ...(request.kind === 'replace'
-                            ? {
-                                replacedWith: {
-                                  agentName: request.with.subagentName,
-                                  description: request.with.description,
-                                },
-                                ...(request.with.description
-                                  ? { description: request.with.description }
-                                  : {}),
-                              }
-                            : {}),
-                        })
-                      },
-                      onState: (state: TeamState) =>
-                        useCoworkActivity.getState().patchTask(teamTaskId, {
-                          detail:
-                            awaitingDecision(state) &&
-                            !Object.values(state).some((s) => s.status === 'running' || s.status === 'pending')
-                              ? `${teamProgress(state)} · waiting for a decision on the failed tasks`
-                              : teamProgress(state),
-                        }),
-                      runTask: wrapLoops(withLog(async (one: TeamTask, signal: AbortSignal) => {
-                        // One call id per task, so each child gets its own
-                        // transcript lane and its own entry in the Tasks panel.
-                        const childId = `${callId}:${one.id}`
-                        const destination = plan.byTask.get(one.id)
-                        if (destination) {
-                          // Said in the panel, not only in the report: someone
-                          // watching a child work needs to know it is not their
-                          // folder it is working in.
-                          useCoworkActivity
-                            .getState()
-                            .patchTask(taskIdFor(sid, runId, childId), {
-                              detail: `own checkout: ${destination.path}`,
-                            })
-                          // AH-109: recorded before it runs, so its worktree is
-                          // listed for review whatever becomes of the run -- and
-                          // an isolated child that cannot be recorded does not
-                          // run, rather than leaving work nobody is shown.
-                          const began = await beginTeamChild({
-                            parentSession: sid,
-                            taskId: one.id,
-                            run: runId,
-                            call: callId,
-                            description: one.description,
-                            agent: one.subagentName ?? 'worker',
-                            project: current?.folder ?? '',
-                            declaredWrites: one.writes,
-                            overrides: overrides.filter((o) =>
-                              o.tasks.includes(one.id)
-                            ),
-                          })
-                          useTeamChildrenVersion.getState().bump()
-                          if (!began.ok) {
-                            return {
-                              taskId: one.id,
-                              ok: false,
-                              output: `its checkout could not be recorded for review, so it did not run: ${began.reason}`,
-                              producedBy: childId,
-                            }
-                          }
-                        }
-                        // How the child ended, for its review record: a Stop
-                        // from the panel or the run is a cancellation, never a
-                        // failure and never a success.
-                        const childTask = taskIdFor(sid, runId, childId)
-                        const endedAs = (isError: boolean) =>
-                          signal.aborted ||
-                          useCoworkActivity.getState().tasks[childTask]
-                            ?.status === 'cancelled'
-                            ? ('cancelled' as const)
-                            : isError
-                              ? ('failed' as const)
-                              : ('completed' as const)
-                        let status: 'completed' | 'failed' | 'cancelled' =
-                          'failed'
-                        let detail = ''
-                        try {
-                          // A task that names no saved agent still has to be
-                          // runnable: without a prompt it resolves to nothing
-                          // and is refused as unknown. A named agent ignores
-                          // `system_prompt`, as `resolveSubagent` prefers the
-                          // saved definition.
-                          const dispatchOne = (
-                            id: string,
-                            description: string,
-                            title: string | undefined
-                          ) =>
-                            dispatchChild(
-                              id,
-                              {
-                                subagent_name: one.subagentName ?? 'worker',
-                                description,
-                                ...(title ? { title } : {}),
-                                ...(one.model ? { model: one.model } : {}),
-                                ...(one.phase ? { phase: one.phase } : {}),
-                                system_prompt: TEAM_DEFAULT_PROMPT,
-                              },
-                              signal,
-                              teamTaskId,
-                              destination,
-                              one.id
-                            )
-                          // A typed answer is checked and re-asked; each retry is
-                          // its own row, so every attempt stays visible.
-                          const result = one.schema
-                            ? await runTyped(
-                                one.description + schemaInstruction(one.schema),
-                                one.schema,
-                                (brief, attempt) =>
-                                  dispatchOne(
-                                    attempt === 1 ? childId : `${childId}~r${attempt}`,
-                                    brief,
-                                    attempt === 1 || !one.title
-                                      ? one.title
-                                      : `${one.title} (try ${attempt})`
-                                  )
-                              )
-                            : await dispatchOne(childId, one.description, one.title)
-                          status = endedAs(result.isError === true)
-                          detail = result.output.slice(0, 500)
-                          return {
-                            taskId: one.id,
-                            ok: status === 'completed',
-                            output: result.output,
-                            producedBy: childId,
-                            // Not authority-bearing, and the one thing that stops a
-                            // completed task reading as "changed your folder".
-                            ...(destination
-                              ? { destination: destination.path }
-                              : {}),
-                          }
-                        } catch (error) {
-                          status = endedAs(true)
-                          detail =
-                            error instanceof Error ? error.message : String(error)
-                          throw error
-                        } finally {
-                          if (destination) {
-                            await settleTeamChild(sid, one.id, status, detail).catch(
-                              () => {}
-                            )
-                            useTeamChildrenVersion.getState().bump()
-                          }
-                        }
-                      })),
-                    })
-                    await runLog?.settled()
-                    if (!teamOutcome.ok) {
-                      useCoworkActivity.getState().patchTask(teamTaskId, {
-                        status: 'error',
-                        output: teamOutcome.refusal,
-                        endedAt: Date.now(),
-                      })
-                      return {
-                        output: `ERROR: ${teamOutcome.refusal}`,
-                        isError: true,
-                      }
-                    }
-                    const where = describeDestinations(plan.byTask)
-                    const rendered = [
-                      renderTeamReport(teamOutcome.report) +
-                        (teamOutcome.decision === 'window-elapsed' ||
-                        teamOutcome.decision === 'not-retried'
-                          ? `\n\n${renderNotRetried(teamOutcome.report)}`
-                          : ''),
-                      where
-                        ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
-                        : '',
-                      runLog?.summary() ?? '',
-                      runLog && !teamOutcome.report.allDone
-                        ? `This run's run_id is ${runLog.runId}. Relaunch it with \`workflow {resume_run_id: "${runLog.runId}"}\`: finished agents return their saved results; the failed one and everything after it runs again.`
-                        : '',
-                      decided.length
-                        ? `Decided by the user before the team ran:\n${decided.map((d) => `- ${d}`).join('\n')}`
-                        : '',
-                    ]
-                      .filter(Boolean)
-                      .join('\n\n')
-                    useCoworkActivity.getState().patchTask(teamTaskId, {
-                      // The team's own row settles on what actually happened, so a
-                      // partial run cannot read as a finished one at a glance.
-                      status: teamSignal.aborted
-                        ? ('cancelled' as const)
-                        : teamOutcome.report.allDone
-                          ? ('done' as const)
-                          : ('error' as const),
-                      output: rendered,
-                      detail: teamProgress(teamOutcome.state),
-                      endedAt: Date.now(),
-                    })
-                    return {
-                      output: rendered,
-                      // A team where something failed is an error result, so the
-                      // agent cannot read a partial run as a finished one.
-                      isError: !teamOutcome.report.allDone,
-                    }
-                  } finally {
-                    useTeamControls.getState().unregister(teamTaskId)
-                    unregisterSubagent(sid, teamTaskId)
-                    // The children are done, so their authority goes back. The
-                    // worktrees stay: they hold the work the team was run for,
-                    // and the report names where each one is.
-                    await plan.release()
-                  }
-                },
+                onTeam: teamTool,
               }, toolSignal)
             ),
           sink,
-          onStep: ({ step, result, turns, outcomes }) => {
-            if (result.usage)
-              useCoworkRun.getState().setUsage(sid, result.usage)
-            saveInFlight(true)
-            // Persisted as it goes, not at the end: a run killed mid-flight
-            // must not come back with its steps unspent. AH-018.
-            useCoworkSessions.getState().setRunBudget(sid, {
-              runId,
-              steps: step,
-              maxSteps: MAX_AGENT_STEPS,
-              deadlineAt: runDeadline.at,
-              deadlineBudgetMs: runDeadline.budgetMs,
-            })
-            /**
-             * Bind the provider's own count to the payload it counted.
-             * AH-073.
-             *
-             * The snapshot the transport just took carries the invocation, so
-             * the exact number and the exact bytes name the same model call.
-             * Without that the count is "the last request", which is a
-             * different thing on every step of a long turn.
-             */
-            // AH-172: the request's own events in the canonical log, bound
-            // to its invocation -- its usage (counts only) and what the
-            // response was made of (sizes only; the words stay in the
-            // transcript). One id per invocation, so a retried record is one.
-            const stepInvocation = (rs.stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
-            if (stepInvocation) {
-              const stepUsage = fromCoworkUsage(result.usage)
-              recordEvents([
-                ...(stepUsage
-                  ? [
-                      {
-                        id: `usage:${stepInvocation}`,
-                        session: sid,
-                        run: runId,
-                        invocation: stepInvocation,
-                        kind: 'usage.reported' as const,
-                        payload: usageEventPayload(stepUsage),
-                      },
-                    ]
-                  : []),
-                {
-                  id: `message:${stepInvocation}`,
-                  session: sid,
-                  run: runId,
-                  invocation: stepInvocation,
-                  kind: 'message.completed' as const,
-                  payload: {
-                    textChars: result.text.length,
-                    toolCalls: result.toolCalls.length,
-                  },
-                },
-              ])
-            }
-            if (result.usage) {
-              void recordPayloadUsage({
-                session: sid,
-                run: runId,
-                snapshot: rs.stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
-                model: selectedModel?.id,
-                usage: result.usage,
-              })
-            }
-            // Replace the optimistic running rows with the settled ones so the
-            // transcript shows results, not spinners.
-            rs.runTurns = rs.runTurns.filter(
-              (turn) =>
-                !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
-                !streamedAssistantTurns.has(turn)
-            )
-            streamedAssistantTurns.clear()
-            const liveStats = useAppState.getState().liveTokenStatsByThread[sid]
-            // Prefer llama.cpp's reported generation speed; otherwise derive it
-            // from output tokens over the streaming span, so remote providers
-            // (pxa-27b and every other non-llama.cpp model) still show a
-            // tokens/sec figure -- matching what the Chat transport does.
-            decodeClock.endStep()
-            const stepOutputTokens =
-              liveStats?.completionTokens ??
-              fromCoworkUsage(result.usage)?.outputTokens ??
-              0
-            const generation = generationSpeed({
-              serverTokensPerSecond: liveStats?.tokensPerSecond,
-              outputTokens: stepOutputTokens,
-              ...decodeClock.result(),
-            })
-            const answeredBy = transport.answering()
-            const settledTurns = turns.map((turn0) => {
-              const turn =
-                answeredBy && turn0.role === 'assistant' && !turn0.assistant
-                  ? { ...turn0, assistant: answeredBy }
-                  : turn0
-              return turn.role === 'assistant' &&
-              turn.content === result.text &&
-              generation
-                ? {
-                    ...turn,
-                    tokenSpeed: {
-                      tokenSpeed: generation.tokenSpeed,
-                      promptSpeed: liveStats?.promptPerSecond ?? undefined,
-                      tokenCount: generation.tokenCount,
-                      durationMs: generation.durationMs,
-                      source: generation.source,
-                    },
-                  }
-                : turn
-            })
-            // Reset the generation span so the next step measures its own.
-            decodeClock.reset()
-            pushLive(settledTurns, rs.stepSnapshot ?? lastSnapshotRef.current[sid])
-            // Record this step's file work now. Ids are keyed on the tool
-            // call, so the commit below re-recording the same rows is a
-            // no-op rather than a duplicate.
-            useFileActivity
-              .getState()
-              .record(sid, deriveFromTurns(turns, originOfPath, Date.now()))
-            for (const [callId, outcome] of outcomes) {
-              if (outcome.diff) {
-                useToolCallRuntime.getState().recordDiff(callId, outcome.diff)
-              }
-              const turn = turns.find(
-                (one) => one.role === 'tool' && one.callId === callId
-              )
-              if (turn?.name !== 'bash') continue
-              // A collecting call settles the command it collects, which is a
-              // different row; a plain call settles its own.
-              const collecting = collectedJobId(turn.args)
-              if (collecting) recordJobCollected(sid, collecting, outcome)
-              else recordShellOutcome(run, callId, outcome)
-              recordEvents([
-                {
-                  id: `job:${collecting ?? callId}:ended:${callId}`,
-                  session: sid,
-                  run: runId,
-                  kind: 'job.ended',
-                  payload: { tool: 'bash', status: outcome.isError ? 'failed' : 'succeeded' },
-                },
-              ])
-            }
-          },
-          onResponse: () => {
-            rs.stepSnapshot = lastSnapshotRef.current[sid]
-          },
-          activity: () => ({
-            session: sid,
-            run: runId,
-            agent: 'main',
-            invocation: rs.stepSnapshot?.invocation,
-          }),
+          onStep: stepHandlers.onStep,
+          onResponse: stepHandlers.onResponse,
+          activity: stepHandlers.activity,
           compact: compactRun,
           nextMessageId: (() => {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
           })(),
-          // janhq/jan#8864. What the user chose to steer with from this
-          // session's composer while the run worked (Steer now, Ctrl+Enter),
-          // taken at the runner's safe boundaries. Only this
-          // session's queue: input typed in another session never reaches
-          // this run, whichever session is in view. Shown in the transcript
-          // where it entered the conversation, marked as steering.
-          hasSteering: () => hasLiveSteering(sid),
-          takeSteering: async () => {
-            // Mail a tool already consumed (wait_for_reply, read_messages)
-            // is dropped here, so it is never injected a second time.
-            const taken = await takeClaimed(sid, () =>
-              // Only what the user chose to steer with (and mail). Plain
-              // queued input waits and goes as its own turn after the run.
-              useMessageQueue.getState().takeSteering(sid)
-            )
-            // App notices (a background subagent finished or asked) ride along
-            // at the same boundary, as one fenced block.
-            const notices = takeNotices(sid)
-            const noticeMessages = notices.length
-              ? [
-                  {
-                    id: `${sid}-notice-${Date.now().toString(36)}`,
-                    role: 'user',
-                    parts: [{ type: 'text', text: renderNotices(notices) }],
-                  } as any,
-                ]
-              : []
-            if (taken.length === 0) return noticeMessages
-            for (const m of taken) mailLedger.note(m.from)
-            // Into this run's execution record, in sequence with its calls:
-            // steering changes what the model works from. The words stay in
-            // the transcript; the record says only that input was delivered.
-            for (const m of taken) {
-              void recordLifecycle(
-                { session: sid, run: runId, source: 'cowork' },
-                {
-                  id: `steer:${runId}:${m.id}`,
-                  lifecycle: 'steering',
-                  phase: 'succeeded',
-                  summary: 'Input delivered to the running agent',
-                }
-              )
-            }
-            pushLive(
-              taken.map((m) => ({
-                role: 'user' as const,
-                content: m.text,
-                steered: true,
-                at: m.createdAt ?? Date.now(),
-                // A mailbox message keeps its sender, so the transcript can
-                // say who it came from and offer a reply.
-                ...(m.from ? { from: agentAttribution(m.from) } : {}),
-              }))
-            )
-            return [
-              ...noticeMessages,
-              ...taken.map(
-                (m) =>
-                  ({
-                    id: `${sid}-steer-${m.id}`,
-                    role: 'user',
-                    parts: [{ type: 'text', text: m.text }],
-                  }) as any
-              ),
-            ]
-          },
+          hasSteering: stepHandlers.hasSteering,
+          takeSteering: stepHandlers.takeSteering,
         },
       })
       // Children the model started in the background and never collected:
