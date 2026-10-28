@@ -156,17 +156,57 @@ pub fn should_bypass_proxy_with_env(url: &str, no_proxy: &[String], env: &[Strin
     };
 
     // Check if host matches any no_proxy entry
-    for entry in no_proxy {
+    let port = parsed_url.port_or_known_default();
+    let host = host.to_ascii_lowercase();
+
+    for raw in no_proxy {
+        let entry = raw.trim().to_ascii_lowercase();
+        if entry.is_empty() {
+            continue;
+        }
         if entry == "*" {
             return true;
         }
 
-        // Simple wildcard matching
-        if let Some(domain) = entry.strip_prefix("*.") {
-            if host.ends_with(domain) {
-                return true;
+        // IPv4 CIDR, e.g. 10.0.0.0/8
+        if let Some((net, bits)) = entry.split_once('/') {
+            if let (Ok(net), Ok(bits), Ok(ip)) = (
+                net.parse::<std::net::Ipv4Addr>(),
+                bits.parse::<u32>(),
+                host.parse::<std::net::Ipv4Addr>(),
+            ) {
+                if bits <= 32 {
+                    let mask = if bits == 0 { 0 } else { u32::MAX << (32 - bits) };
+                    if u32::from(net) & mask == u32::from(ip) & mask {
+                        return true;
+                    }
+                }
             }
-        } else if host == entry {
+            continue;
+        }
+
+        // Optional ":port" suffix (a single colon; more than one is IPv6)
+        let mut domain = entry.as_str();
+        if domain.matches(':').count() == 1 {
+            if let Some((d, p)) = domain.split_once(':') {
+                if let Ok(p) = p.parse::<u16>() {
+                    if Some(p) != port {
+                        continue;
+                    }
+                    domain = d;
+                }
+            }
+        }
+
+        let domain = domain
+            .strip_prefix("*.")
+            .or_else(|| domain.strip_prefix('.'))
+            .unwrap_or(domain);
+        if domain.is_empty() {
+            continue;
+        }
+        // The domain itself or any subdomain, never a mere suffix of a label.
+        if host == domain || host.ends_with(&format!(".{domain}")) {
             return true;
         }
     }
