@@ -7,6 +7,9 @@
  * Long phases change wording so a slow step reads as slow rather than stuck.
  */
 import type { CoworkTurn } from '@/types/coworkSession'
+import { uiText } from '@/lib/uiText'
+
+const rs = (key: string, english: string) => uiText(`tools:runStatus.${key}`, english)
 
 export type RunPhase =
   | 'waiting'
@@ -75,13 +78,13 @@ export function modelWaitStatus(quiet = false): RunStatus {
     label: byAge(
       quiet
         ? [
-            [0, 'Still waiting for the model…'],
-            [60 * S, 'The model is taking a while…'],
+            [0, rs('stillWaitingModel', 'Still waiting for the model…')],
+            [60 * S, rs('modelSlow', 'The model is taking a while…')],
           ]
         : [
-            [0, 'Waiting for the model…'],
-            [15 * S, 'Still waiting for the model…'],
-            [60 * S, 'The model is taking a while…'],
+            [0, rs('waitingModel', 'Waiting for the model…')],
+            [15 * S, rs('stillWaitingModel', 'Still waiting for the model…')],
+            [60 * S, rs('modelSlow', 'The model is taking a while…')],
           ]
     ),
   }
@@ -114,10 +117,10 @@ export function runStatus(
       phase: 'after-tool',
       key: `after:${last.callId ?? ''}`,
       label: byAge([
-        [0, 'Reading tool results…'],
-        [10 * S, 'Waiting for the model…'],
-        [45 * S, 'Still waiting for the model…'],
-        [60 * S, 'The model is taking a while…'],
+        [0, rs('readingResults', 'Reading tool results…')],
+        [10 * S, rs('waitingModel', 'Waiting for the model…')],
+        [45 * S, rs('stillWaitingModel', 'Still waiting for the model…')],
+        [60 * S, rs('modelSlow', 'The model is taking a while…')],
       ]),
     }
   }
@@ -127,10 +130,10 @@ export function runStatus(
       phase: 'thinking',
       key: 'thinking',
       label: byAge([
-        [0, 'Thinking…'],
-        [20 * S, 'Still thinking…'],
-        [60 * S, 'Thinking hard…'],
-        [120 * S, 'Almost done thinking…'],
+        [0, rs('thinking', 'Thinking…')],
+        [20 * S, rs('stillThinking', 'Still thinking…')],
+        [60 * S, rs('thinkingHard', 'Thinking hard…')],
+        [120 * S, rs('almostDoneThinking', 'Almost done thinking…')],
       ]),
     }
   }
@@ -139,12 +142,12 @@ export function runStatus(
       phase: 'waiting',
       key: 'waiting',
       label: byAge([
-        [0, 'Waiting for the model…'],
-        [15 * S, 'Still waiting for the model…'],
+        [0, rs('waitingModel', 'Waiting for the model…')],
+        [15 * S, rs('stillWaitingModel', 'Still waiting for the model…')],
       ]),
     }
   }
-  return { phase: 'writing', key: 'writing', label: () => 'Writing…' }
+  return { phase: 'writing', key: 'writing', label: () => rs('writing', 'Writing…') }
 }
 
 /** `9s`, `1m 05s`. */

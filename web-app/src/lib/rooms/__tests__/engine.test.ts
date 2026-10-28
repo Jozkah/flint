@@ -790,6 +790,32 @@ describe('engine: unavailable models', () => {
     expect(room.usage.turns).toBe(2)
   })
 
+  it('does not silently repeat tools after a provider failure mid-turn', async () => {
+    const room = makeRoom({
+      participants: [
+        participant('p-a', 'Alice', 'provider-a', 'model-1', { order: 0, toolAccess: 'edit' }),
+        participant('p-b', 'Bob', 'provider-b', 'model-2', { order: 1 }),
+      ],
+      limits: { maxTurns: 1 },
+    })
+    const p = await setup(room)
+    const sleep = vi.fn(async () => true)
+    const { fn, calls } = scriptedStream((input, index) => {
+      if (index === 0) {
+        input.onToolActivity?.({ name: 'write', ok: true, args: { path: '/w/a.txt' }, output: 'ok' })
+        return { error: Object.assign(new Error('unavailable'), { statusCode: 503 }) }
+      }
+      return { text: uniqueText() }
+    })
+    await runRoom('room-1', engineDeps(p, fn, { sleep }), signal())
+    expect(calls).toHaveLength(2)
+    expect(sleep).toHaveBeenCalledTimes(1)
+    const second = calls[1].messages[calls[1].messages.length - 1].content
+    expect(second).toContain('already ran tools')
+    expect(second).toContain('write')
+    // Without a tool call the retry prompt is unchanged (covered by the transient-retry test).
+  })
+
   it('context too small for the room prompt makes a participant unavailable', async () => {
     const p = await setup(makeRoom({ participants: threeParticipants(), limits: { maxTurns: 1 } }))
     const { fn } = scriptedStream(() => ({ text: uniqueText() }))

@@ -36,6 +36,19 @@ pub fn provider_keys(name: &str) -> Result<Vec<String>, String> {
     Ok(crate::core::server::provider_secrets::load_provider_keys(name))
 }
 
+/// Whether a provider has stored keys, without returning them.
+pub fn has_provider_keys(name: &str) -> Result<bool, String> {
+    provider_name(name)?;
+    Ok(!crate::core::server::provider_secrets::load_provider_keys(name).is_empty())
+}
+
+/// Keys for a settings backup; refuses unless the caller confirmed.
+pub fn export_provider_keys_for_backup(name: &str, value: &Value) -> Result<Vec<String>, String> {
+    provider_name(name)?;
+    let confirm = value.get("confirm").and_then(Value::as_bool).unwrap_or(false);
+    crate::core::server::provider_secrets::export_provider_keys_for_backup(name, confirm)
+}
+
 pub fn set_provider_keys(name: &str, value: &Value) -> Result<(), String> {
     provider_name(name)?;
     let list = value

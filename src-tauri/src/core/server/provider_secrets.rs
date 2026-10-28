@@ -796,6 +796,26 @@ pub fn load_provider_keys_guarded(provider: &str) -> Vec<String> {
     load_provider_keys(provider)
 }
 
+/// Whether a provider has any stored key, without returning one. For UI that
+/// only needs to show "configured". Reserved names are always false.
+pub fn has_provider_keys_guarded(provider: &str) -> bool {
+    !load_provider_keys_guarded(provider).is_empty()
+}
+
+/// A provider's key chain for a settings backup. Only the backup export asks
+/// for this, and it refuses unless the caller says the user chose to include
+/// secrets: the keys leave the credential store for a file.
+pub fn export_provider_keys_for_backup(
+    provider: &str,
+    confirm: bool,
+) -> Result<Vec<String>, String> {
+    if !confirm {
+        return Err("exporting provider keys needs an explicit confirmation".into());
+    }
+    reject_reserved_key(provider)?;
+    Ok(load_provider_keys(provider))
+}
+
 /// [`store_provider_keys`] for webview-facing callers; refuses reserved names.
 pub fn store_provider_keys_guarded(provider: &str, keys: &[String]) -> Result<(), String> {
     reject_reserved_key(provider)?;

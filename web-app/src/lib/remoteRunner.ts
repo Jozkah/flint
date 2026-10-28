@@ -10,6 +10,7 @@
  * (`isServerTransport()`).
  */
 
+import { uiText } from '@/lib/uiText'
 import { useEffect, useState } from 'react'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 
@@ -243,17 +244,25 @@ export function useRemoteRunner(): RemoteRunnerState {
   return state
 }
 
-/** The one-line banner text, English, from a probe. */
+/** The one-line banner text from a probe, in the UI language (English fallback). */
 export function runnerBanner(info: RunnerInfo): { ok: boolean; text: string } {
-  if (info.runsSessions) return { ok: true, text: 'This server can run agents: connected.' }
+  if (info.runsSessions) {
+    return { ok: true, text: uiText('tools:runner.connected', 'This server can run agents: connected.') }
+  }
   if (!info.agent) {
     return {
       ok: false,
-      text: 'This server does not run agents. Start `flint serve --agent-run --agent-root <folder>`.',
+      text: uiText(
+        'tools:runner.noAgent',
+        'This server does not run agents. Start `flint serve --agent-run --agent-root <folder>`.'
+      ),
     }
   }
-  const why = info.missing.length ? ` Missing: ${info.missing.join('; ')}.` : ''
-  return { ok: false, text: `This server does not run agents yet.${why}` }
+  const items = info.missing.join('; ')
+  const why = info.missing.length
+    ? uiText('tools:runner.missing', ' Missing: {{items}}.', { items })
+    : ''
+  return { ok: false, text: uiText('tools:runner.notYet', 'This server does not run agents yet.{{why}}', { why }) }
 }
 
 // ---------------------------------------------------------------------------
