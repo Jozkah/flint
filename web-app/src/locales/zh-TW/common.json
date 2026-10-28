@@ -2966,5 +2966,43 @@
       "medium": "中",
       "low": "低"
     }
+  },
+  "emergencyStop": {
+    "trigger": "停止",
+    "title": "停止執行中的工作",
+    "description": "選擇影響範圍。此動作無法復原：已停止的工作不會恢復，重新啟動後也不會。",
+    "legend": "要停止什麼",
+    "stopping": "正在停止。正在結束自有程序…",
+    "report": {
+      "clean": "已停止。已停止 {{stopped}} 個，{{already}} 個先前已停止，沒有任何內容仍在執行。",
+      "partial_one": "已停止 {{stopped}} 個，但仍有 {{count}} 個程序在執行。清理尚未完成。",
+      "partial_other": "已停止 {{stopped}} 個，但仍有 {{count}} 個程序在執行。清理尚未完成。"
+    },
+    "error": "無法停止：{{error}}",
+    "cancel": "取消",
+    "close": "關閉",
+    "confirmBusy": "正在停止…",
+    "scope": {
+      "call": {
+        "name": "此工具呼叫",
+        "desc": "僅此工具呼叫（{{id}}）。本次執行中的其他內容繼續進行。",
+        "confirm": "停止工具呼叫"
+      },
+      "run": {
+        "name": "此次執行",
+        "desc": "此次執行（{{id}}），包括其工具呼叫、Shell 指令、MCP 呼叫與子代理。其他執行不受影響。",
+        "confirm": "停止執行"
+      },
+      "session": {
+        "name": "此工作階段",
+        "desc": "此工作階段（{{id}}）中的每次執行。其他工作階段不受影響。",
+        "confirm": "停止工作階段"
+      },
+      "application": {
+        "name": "Flint 中的一切",
+        "desc": "Flint 中所有工作階段的所有工作。執行中的內容一個也不會保留。",
+        "confirm": "全部停止"
+      }
+    }
   }
 }
