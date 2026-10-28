@@ -240,12 +240,20 @@ fn vscode_keybinding_paths(home: &Path, appdata: Option<&Path>) -> Vec<PathBuf> 
     if let Some(appdata) = appdata {
         roots.extend(FLAVOURS.iter().map(|f| appdata.join(f)));
     }
-    roots.extend(
-        FLAVOURS
-            .iter()
-            .map(|f| home.join("Library/Application Support").join(f)),
-    );
-    roots.extend(FLAVOURS.iter().map(|f| home.join(".config").join(f)));
+    let mac: Vec<PathBuf> = FLAVOURS
+        .iter()
+        .map(|f| home.join("Library/Application Support").join(f))
+        .collect();
+    let xdg: Vec<PathBuf> = FLAVOURS.iter().map(|f| home.join(".config").join(f)).collect();
+    // Without %APPDATA% the first guess is this OS's own layout, so a fresh
+    // Linux setup does not default to a macOS path.
+    if cfg!(target_os = "macos") {
+        roots.extend(mac);
+        roots.extend(xdg);
+    } else {
+        roots.extend(xdg);
+        roots.extend(mac);
+    }
     roots
         .into_iter()
         .map(|r| r.join("User/keybindings.json"))
@@ -257,6 +265,19 @@ fn preferred_path(candidates: &[PathBuf]) -> PathBuf {
     candidates
         .iter()
         .find(|p| p.exists())
+        .or_else(|| candidates.first())
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The VS Code-family file to edit: an existing `keybindings.json`, else the
+/// first flavour whose `User` directory exists (so an editor that is installed
+/// but has no keybindings yet is not skipped), else the first candidate.
+fn preferred_vscode_path(candidates: &[PathBuf]) -> PathBuf {
+    candidates
+        .iter()
+        .find(|p| p.exists())
+        .or_else(|| candidates.iter().find(|p| p.parent().is_some_and(|d| d.exists())))
         .or_else(|| candidates.first())
         .cloned()
         .unwrap_or_default()
@@ -389,7 +410,7 @@ fn configure_lines(path: PathBuf, settings: &[(&str, &str)], detail: &str) -> Ou
 }
 
 fn configure_vscode(home: &Path, appdata: Option<&Path>) -> Outcome {
-    let path = preferred_path(&vscode_keybinding_paths(home, appdata));
+    let path = preferred_vscode_path(&vscode_keybinding_paths(home, appdata));
     let current = match read_config(&path) {
         Ok(s) => s,
         Err(error) => return Outcome::Failed { path, error },
@@ -527,7 +548,7 @@ pub fn setup_hint(
     }
 
     if matches!(shift_enter(kind), ShiftEnter::VsCodeBinding) {
-        let path = preferred_path(&vscode_keybinding_paths(
+        let path = preferred_vscode_path(&vscode_keybinding_paths(
             home,
             get("APPDATA")
                 .filter(|v| !v.is_empty())
@@ -734,6 +755,30 @@ mod tests {
             "macos_option_as_alt yes",
             "macos_option_as_alt"
         ));
+    }
+
+    #[test]
+    fn linux_without_appdata_uses_dot_config() {
+        if cfg!(target_os = "macos") {
+            return;
+        }
+        let home = Path::new("/home/u");
+        let paths = vscode_keybinding_paths(home, None);
+        assert!(paths[0].starts_with(home.join(".config")), "{paths:?}");
+    }
+
+    #[test]
+    fn cursor_user_dir_preferred_when_only_it_exists() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".config/Cursor/User")).unwrap();
+        std::fs::create_dir_all(home.path().join("Library/Application Support/Cursor/User")).ok();
+        let paths = vscode_keybinding_paths(home.path(), None);
+        let chosen = preferred_vscode_path(&paths);
+        assert!(
+            chosen.components().any(|c| c.as_os_str() == "Cursor"),
+            "{chosen:?}"
+        );
+        assert!(chosen.ends_with("User/keybindings.json"), "{chosen:?}");
     }
 
     #[test]
