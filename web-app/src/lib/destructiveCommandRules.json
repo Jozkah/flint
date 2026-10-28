@@ -456,6 +456,15 @@
     { "command": "bash -c 'ls'", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "rm -rf /home/me/project/$X", "workspace": "/home/me/project", "expect": "ask" },
     { "command": "rm -rf /home/me/project/{..,x}", "workspace": "/home/me/project", "expect": "ask" },
-    { "command": "rm -rf C:\\work\\proj\\%X%", "workspace": "C:\\work\\proj", "expect": "ask" }
+    { "command": "rm -rf C:\\work\\proj\\%X%", "workspace": "C:\\work\\proj", "expect": "ask" },
+    { "command": "rm ~/.ssh/id_ed25519", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rm /etc/hosts", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "del %APPDATA%\\x", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "Remove-Item C:\\Users\\me\\a.txt", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "rm -rf é", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -rf aé", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm -rf 中", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "Remove-Item -Recurse 中", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "rm notes.txt src/a.txt", "workspace": "/home/me/project", "expect": "allow" }
   ]
 }
