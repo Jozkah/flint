@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 
 use tauri_plugin_agent_tools::{skills, workspace};
 
@@ -16,6 +16,20 @@ const TREE_URL: &str = "https://api.github.com/repos/anthropics/skills/git/trees
 const RAW_BASE: &str = "https://raw.githubusercontent.com/anthropics/skills/main/";
 const SKILLS_PREFIX: &str = "skills/";
 const USER_AGENT: &str = "jan-agent-skill-import";
+/// Whole-request cap, so a stalled host cannot hang an import forever.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// At most this many hub requests in flight at once.
+const MAX_CONCURRENT: usize = 8;
+
+/// Every segment of a hub-relative path (split on `/` and `\`) must be a safe
+/// single component, so a crafted tree entry cannot escape the staging dir.
+fn safe_rel(rel: &str) -> Result<(), String> {
+    for seg in rel.split(['/', '\\']) {
+        crate::core::agent::safe_name::safe_component(seg)
+            .map_err(|_| format!("ERROR: unsafe path '{rel}'"))?;
+    }
+    Ok(())
+}
 
 /// A skill available on the hub: folder name + its frontmatter description.
 #[derive(serde::Serialize)]
@@ -25,8 +39,13 @@ pub struct HubSkill {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    crate::core::net::tls::apply12(reqwest::Client::builder().user_agent(USER_AGENT))
-        .build()
+    crate::core::net::tls::apply12(
+        reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(REQUEST_TIMEOUT),
+    )
+    .build()
         .map_err(|e| format!("ERROR: {e}"))
 }
 
@@ -101,7 +120,10 @@ pub async fn list() -> Result<Vec<HubSkill>, String> {
             HubSkill { name, description }
         }
     });
-    let mut out = join_all(fetches).await;
+    let mut out: Vec<HubSkill> = stream::iter(fetches)
+        .buffer_unordered(MAX_CONCURRENT)
+        .collect()
+        .await;
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
 }
@@ -135,9 +157,7 @@ pub async fn import(root: &Path, name: &str) -> Result<(), String> {
         async move {
             // Path came from GitHub and is prefix-checked; guard components anyway.
             let rel = path.strip_prefix(&prefix).unwrap_or(&path).to_string();
-            if rel.split('/').any(|seg| seg == "..") {
-                return Err(format!("ERROR: unsafe path '{path}'"));
-            }
+            safe_rel(&rel)?;
             let resp = client
                 .get(format!("{RAW_BASE}{path}"))
                 .send()
@@ -151,7 +171,11 @@ pub async fn import(root: &Path, name: &str) -> Result<(), String> {
         }
     });
     let mut fetched = Vec::new();
-    for result in join_all(downloads).await {
+    let results: Vec<Result<(String, _), String>> = stream::iter(downloads)
+        .buffer_unordered(MAX_CONCURRENT)
+        .collect()
+        .await;
+    for result in results {
         fetched.push(result?);
     }
 
@@ -296,6 +320,16 @@ mod tests {
         assert!(!old.join("stale.txt").exists());
         assert!(!skills_dir.join("pdf.md").exists());
         let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn skill_hub_rejects_backslash_traversal() {
+        for bad in ["..\\x", "a/../b", "a\\..\\b", "C:evil", "a//b", "CON", "dir/nul.txt", ""] {
+            assert!(safe_rel(bad).is_err(), "{bad:?} must be rejected");
+        }
+        for good in ["SKILL.md", "scripts/foo.py", "ref/a b.md", "scripts\\x.py"] {
+            assert!(safe_rel(good).is_ok(), "{good:?} must be accepted");
+        }
     }
 
     #[test]

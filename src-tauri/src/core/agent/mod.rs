@@ -22,6 +22,7 @@ pub(crate) mod code_mode;
 // `import-claude` command calls in the `cli` build.
 pub mod cc_import;
 pub mod cc_links;
+pub(crate) mod safe_name;
 pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;

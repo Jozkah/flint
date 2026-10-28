@@ -276,16 +276,16 @@ pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
 /// Reject path separators and `..` segments so a crafted name cannot escape
 /// the target store.
 fn sanitize_name(name: &str) -> Result<&str, String> {
-    if name.is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name.split(['/', '\\']).any(|seg| seg == "..")
-        || name == ".."
-        || name == "."
-    {
-        return Err(format!("invalid item name: {name:?}"));
+    crate::core::agent::safe_name::safe_component(name)
+}
+
+/// Copy one file unless it is a link: a file link inside a skill could point
+/// at a secret outside the source (e.g. an ssh key).
+fn copy_file_unlinked(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if fs::symlink_metadata(src)?.file_type().is_symlink() {
+        return Ok(());
     }
-    Ok(name)
+    fs::copy(src, dst).map(|_| ())
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -297,14 +297,15 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         if name_str == ".git" || name_str == "node_modules" {
             continue;
         }
+        // Links (file or folder, and Windows reparse points) are skipped: a
+        // folder link back up the tree would recurse until the stack
+        // overflows, and a file link can pull in files from outside the source.
+        if cc_links::is_link(&entry) {
+            continue;
+        }
         let src_path = entry.path();
         let dst_path = dst.join(&file_name);
         if src_path.is_dir() {
-            // A linked folder is not descended into: a link back up the tree
-            // would recurse until the stack overflows.
-            if entry.file_type()?.is_symlink() {
-                continue;
-            }
             copy_dir_recursive(&src_path, &dst_path)?;
         } else if src_path.is_file() {
             fs::copy(&src_path, &dst_path)?;
@@ -332,7 +333,12 @@ fn replace_dir(target: &Path, fill: impl FnOnce(&Path) -> std::io::Result<()>) -
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let pid = std::process::id();
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let pid = format!(
+        "{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
     let staging = target.with_file_name(format!(".{name}.importing-{pid}"));
     let aside = target.with_file_name(format!(".{name}.replaced-{pid}"));
     let _ = remove_target_if_present(&staging);
@@ -364,7 +370,11 @@ fn replace_dir(target: &Path, fill: impl FnOnce(&Path) -> std::io::Result<()>) -
 fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<String, String> {
     let dest_root =
         user_skills_dir().ok_or_else(|| "no global skills store resolved".to_string())?;
+    sanitize_name(name)?;
     let target = dest_root.join(name);
+    if target.parent() != Some(dest_root.as_path()) {
+        return Err(format!("invalid item name: {name:?}"));
+    }
     let flat = dest_root.join(format!("{name}.md"));
     if (target.exists() || flat.is_file()) && !overwrite {
         return Err("skipped".to_string());
@@ -379,7 +389,7 @@ fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<Strin
             copy_dir_recursive(source_path, staging)
         } else {
             // Flat SKILL.md-only source: write it into `<target>/SKILL.md`.
-            fs::copy(source_path, staging.join("SKILL.md")).map(|_| ())
+            copy_file_unlinked(source_path, &staging.join("SKILL.md"))
         }
     })?;
     // An overwrite replaced the flat form too: left in place it would only
@@ -396,7 +406,11 @@ const PLUGIN_TOP_FILES: [&str; 3] = ["SKILL.md", "README.md", "plugin.json"];
 fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<String, String> {
     let dest_root =
         user_plugins_dir().ok_or_else(|| "no global plugins store resolved".to_string())?;
+    sanitize_name(name)?;
     let target = dest_root.join(name);
+    if target.parent() != Some(dest_root.as_path()) {
+        return Err(format!("invalid item name: {name:?}"));
+    }
     if target.exists() && !overwrite {
         return Err("skipped".to_string());
     }
@@ -417,7 +431,7 @@ fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<Stri
         for f in PLUGIN_TOP_FILES {
             let src_f = source_path.join(f);
             if src_f.is_file() {
-                fs::copy(&src_f, staging.join(f))?;
+                copy_file_unlinked(&src_f, &staging.join(f))?;
             }
         }
         // `.claude-plugin/plugin.json` manifest.
@@ -425,7 +439,7 @@ fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<Stri
         if manifest.is_file() {
             let dest_dir = staging.join(".claude-plugin");
             fs::create_dir_all(&dest_dir)?;
-            fs::copy(&manifest, dest_dir.join("plugin.json"))?;
+            copy_file_unlinked(&manifest, &dest_dir.join("plugin.json"))?;
         }
         Ok(())
     })?;
@@ -439,7 +453,7 @@ pub async fn agent_cc_import(
     link_hooks: Option<bool>,
 ) -> Result<CcImportResult, String> {
     let mut result = CcImportResult::default();
-    let mut links = cc_links::load();
+    let mut new_links: Vec<Link> = Vec::new();
 
     // One name, two sources (a user skill and a project skill both called
     // `foo`) would land on the same target: the second would silently
@@ -483,7 +497,7 @@ pub async fn agent_cc_import(
             Ok(_) => {
                 // The import is a live link: remember where it came from so
                 // `sync_links` can bring later edits across.
-                links.upsert(Link {
+                new_links.push(Link {
                     kind: match item.kind {
                         CcItemKind::Skill => LinkKind::Skill,
                         CcItemKind::Plugin => LinkKind::Plugin,
@@ -500,10 +514,15 @@ pub async fn agent_cc_import(
         }
     }
 
-    if let Some(hooks) = link_hooks {
-        links.hooks = hooks;
-    }
-    if let Err(e) = cc_links::save(&links) {
+    // Reloaded under the lock so a concurrent sync's changes are kept.
+    if let Err(e) = cc_links::update(|links| {
+        for link in new_links {
+            links.upsert(link);
+        }
+        if let Some(hooks) = link_hooks {
+            links.hooks = hooks;
+        }
+    }) {
         result
             .errors
             .push(format!("could not record the live link: {e}"));
@@ -606,13 +625,21 @@ pub(crate) fn sync_links() -> usize {
     }
     let mut refreshed = 0;
     let mut changed = false;
-    let mut kept: Vec<Link> = Vec::with_capacity(links.items.len());
+    let mut dropped: Vec<(LinkKind, String)> = Vec::new();
+    let mut updated: Vec<Link> = Vec::new();
     for mut link in std::mem::take(&mut links.items) {
+        if sanitize_name(&link.name).is_err() {
+            log::warn!("cc link: ignoring link with unsafe name {:?}", link.name);
+            dropped.push((link.kind, link.name.clone()));
+            changed = true;
+            continue;
+        }
         let target_present = match link.kind {
             LinkKind::Skill => skill_exists(&link.name, user_skills_dir()),
             LinkKind::Plugin => dir_exists(&link.name, user_plugins_dir()),
         };
         if !target_present {
+            dropped.push((link.kind, link.name.clone()));
             changed = true;
             continue;
         }
@@ -631,16 +658,30 @@ pub(crate) fn sync_links() -> usize {
                         link.source_path = source.to_string_lossy().into_owned();
                         refreshed += 1;
                         changed = true;
+                        updated.push(link.clone());
                     }
                     Err(e) => log::warn!("cc link: could not refresh {}: {e}", link.name),
                 }
             }
         }
-        kept.push(link);
     }
-    links.items = kept;
     if changed {
-        let _ = cc_links::save(&links);
+        // Reloaded under the lock: an import that ran during the copies keeps
+        // its new links, and only this sync's own drops and refreshes apply.
+        let _ = cc_links::update(|links| {
+            links
+                .items
+                .retain(|l| !dropped.iter().any(|(k, n)| *k == l.kind && *n == l.name));
+            for link in updated {
+                if let Some(existing) = links
+                    .items
+                    .iter_mut()
+                    .find(|l| l.kind == link.kind && l.name == link.name)
+                {
+                    *existing = link;
+                }
+            }
+        });
     }
     refreshed
 }
@@ -1081,6 +1122,49 @@ mod tests {
 
         set_test_cc_home(None);
         set_test_user_skills(None);
+    }
+
+    #[test]
+    fn sync_links_ignores_hostile_link_name() {
+        let store = tempdir().unwrap();
+        set_test_user_skills(Some(store.path().to_path_buf()));
+        set_test_user_plugins(None);
+        let outside = tempdir().unwrap();
+        fs::write(outside.path().join("SKILL.md"), "x").unwrap();
+        cc_links::update(|l| {
+            l.upsert(Link {
+                kind: LinkKind::Skill,
+                name: "C:evil".into(),
+                origin: "project".into(),
+                source_path: outside.path().to_string_lossy().into_owned(),
+                fingerprint: 0,
+            })
+        })
+        .unwrap();
+
+        assert_eq!(sync_links(), 0);
+        assert!(!cc_links::load().is_linked(LinkKind::Skill, "C:evil"));
+        set_test_user_skills(None);
+    }
+
+    #[test]
+    fn copy_skips_symlinked_file() {
+        let src = tempdir().unwrap();
+        let dst = tempdir().unwrap();
+        let secret = tempdir().unwrap();
+        fs::write(secret.path().join("id_rsa"), "secret").unwrap();
+        fs::write(src.path().join("SKILL.md"), "ok").unwrap();
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(secret.path().join("id_rsa"), src.path().join("key")).is_ok();
+        #[cfg(windows)]
+        let linked =
+            std::os::windows::fs::symlink_file(secret.path().join("id_rsa"), src.path().join("key")).is_ok();
+        if !linked {
+            return; // no symlink privilege here
+        }
+        copy_dir_recursive(src.path(), dst.path()).unwrap();
+        assert!(dst.path().join("SKILL.md").exists());
+        assert!(!dst.path().join("key").exists(), "a file link must not be copied");
     }
 
     /// Minimal blocking executor for these `async fn`s (they contain no real
