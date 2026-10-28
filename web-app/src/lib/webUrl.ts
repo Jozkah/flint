@@ -65,10 +65,52 @@ export const FAVICON_PATHS = [
   '/apple-touch-icon.png',
 ] as const
 
+/** Dotted-quad IPv4 (the URL parser normalises hex, octal and decimal forms to it). */
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+
+const privateV4 = (a: number, b: number): boolean =>
+  a === 0 ||
+  a === 10 ||
+  a === 127 ||
+  (a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT / tailnet
+  (a === 169 && b === 254) ||
+  (a === 172 && b >= 16 && b <= 31) ||
+  (a === 192 && b === 168)
+
+/**
+ * A host that is not on the public internet: asking it for an icon would tell
+ * a LAN or loopback service (and whoever watches the network) which page the
+ * model just read, and probes services that were never meant to be fetched.
+ * Judged on the host as the URL parser normalised it; a public name that
+ * resolves to a private address is not caught here.
+ */
+export const isNonPublicHost = (hostname: string): boolean => {
+  let h = hostname.toLowerCase().replace(/\.$/, '')
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)
+  if (!h) return true
+  if (h.includes(':')) {
+    if (h === '::' || h === '::1') return true
+    const mapped = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+    if (mapped) {
+      const hi = parseInt(mapped[1], 16)
+      return privateV4(hi >> 8, hi & 255)
+    }
+    const dotted = h.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)
+    if (dotted) return isNonPublicHost(dotted[1])
+    // fc00::/7 unique local, fe80::/10 link local.
+    return /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h)
+  }
+  const v4 = h.match(IPV4)
+  if (v4) return privateV4(Number(v4[1]), Number(v4[2]))
+  if (!h.includes('.')) return true // a bare name resolves on the local network
+  return /\.(localhost|local|internal|lan|localdomain|home\.arpa|intranet|corp)$/.test(h)
+}
+
 export const faviconCandidates = (url: string): string[] => {
   try {
     const u = new URL(url)
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return []
+    if (isNonPublicHost(u.hostname)) return []
     return FAVICON_PATHS.map((p) => `${u.origin}${p}`)
   } catch {
     return []
@@ -79,6 +121,7 @@ export const faviconUrl = (url: string): string | null => {
   try {
     const u = new URL(url)
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    if (isNonPublicHost(u.hostname)) return null
     return `${u.origin}/favicon.ico`
   } catch {
     return null
