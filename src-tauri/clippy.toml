@@ -1,0 +1,5 @@
+# Tests may unwrap, expect and panic; production code is held to the policy in
+# the [lints.clippy] table of Cargo.toml.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

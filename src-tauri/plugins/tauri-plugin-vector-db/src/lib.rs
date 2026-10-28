@@ -1,6 +1,6 @@
 #[cfg(feature = "tauri")]
 mod commands;
-mod compat_env;
+use jan_process::compat_env;
 pub mod db;
 mod error;
 mod state;
