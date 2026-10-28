@@ -9,6 +9,7 @@ import { useJevSettings } from '@/hooks/useJevSettings'
 import { WorkProfilesCard } from '@/containers/WorkProfilesCard'
 import { AutomationCard } from '@/containers/AutomationCard'
 import { JevModelRoutingCard } from '@/containers/JevModelRoutingCard'
+import { DecisionBackendCard } from '@/containers/DecisionBackendCard'
 import {
   jevClearKey,
   jevReceipts,
@@ -190,6 +191,7 @@ export function JevSettingsCard({
       {error && <p className="px-4 text-xs text-destructive">{error}</p>}
     </Card>
     )}
+    {tab === 'setup' && <DecisionBackendCard />}
     {tab === 'setup' && (
     <Card title={t('common:jev.cardFeatures')}>
       <CardItem
@@ -249,7 +251,7 @@ export function JevSettingsCard({
               <ul data-testid="jev-receipts" className="flex flex-col gap-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]">
                 {receipts.slice(0, 20).map((r, i) => (
                   <li key={i} className="break-words">
-                    {new Date(r.at).toLocaleTimeString()} · {r.feature} · {r.mode} · {r.model ?? '—'} ·{' '}
+                    {new Date(r.at).toLocaleTimeString()} · {r.feature} · {r.mode} · {r.backend ?? 'jev'} · {r.model ?? '—'} ·{' '}
                     {r.decision} · {r.latency_ms} ms · {r.input_tokens}/{r.output_tokens} tok
                     {r.fallback ? ` · ${t('common:jev.fallback')}: ${r.fallback}` : ''}
                   </li>
