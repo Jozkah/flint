@@ -64,6 +64,7 @@ import {
   DEFAULT_EMBEDDING_UBATCH,
   CACHE_RAM_AUTO,
   describeFitBudget,
+  toModelId,
 } from './preset'
 import {
   kvDefaultsInEffect,
@@ -1917,9 +1918,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       // check if model.yml exists
       const modelConfigPath = await joinPath([currentDir, 'model.yml'])
       if (await fs.existsSync(modelConfigPath)) {
-        // +1 to remove the leading slash
-        // NOTE: this does not handle Windows path \\
-        modelIds.push(currentDir.slice(modelsDir.length + 1))
+        modelIds.push(toModelId(modelsDir, currentDir))
         continue
       }
 
@@ -2038,9 +2037,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
               })
               const legacyModelPath = legacyModelConfig.files?.[0]
               if (!legacyModelPath) continue
-              // +1 to remove the leading slash
-              // NOTE: this does not handle Windows path \\
-              let modelId = currentDir.slice(modelsDir.length + 1)
+              let modelId = toModelId(modelsDir, currentDir)
 
               modelId =
                 modelId !== 'imported'

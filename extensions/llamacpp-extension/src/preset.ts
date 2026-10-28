@@ -356,6 +356,19 @@ function hasValue(v: unknown): v is string {
  */
 const BUILTIN_TEMPLATE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
+/**
+ * Model id of a model folder: path below `modelsDir`, always `/`-separated
+ * (Windows join results may contain `\`).
+ */
+export function toModelId(modelsDir: string, currentDir: string): string {
+  return currentDir
+    .slice(modelsDir.length)
+    .replace(/^[\\/]+/, '')
+    .split(/[\\/]+/)
+    .filter((seg) => seg.length > 0)
+    .join('/')
+}
+
 // Absolute paths only: a relative one would resolve against llama.cpp's cwd,
 // which is not something the user can predict. Covers POSIX, drive-letter and
 // UNC forms.
@@ -596,9 +609,7 @@ export async function generatePreset(
     const currentDir = stack.pop() as string
     const modelConfigPath = await joinPath([currentDir, 'model.yml'])
     if (await fs.existsSync(modelConfigPath)) {
-      // +1 to drop leading separator. NOTE: matches index.ts behavior; not
-      // Windows-`\\`-aware, same trade-off as the existing list() impl.
-      const modelId = currentDir.slice(modelsDir.length + 1)
+      const modelId = toModelId(modelsDir, currentDir)
       if (modelId.length > 0) {
         modelEntries.push({ modelId, configPath: modelConfigPath })
       }
