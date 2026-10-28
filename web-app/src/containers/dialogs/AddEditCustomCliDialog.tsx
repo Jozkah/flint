@@ -130,12 +130,14 @@ export default function AddEditCustomCliDialog({
                   value={env.key}
                   onChange={(e) => handleEnvKeyChange(index, e.target.value)}
                   placeholder={t('integrations:customCli.key')}
+                  aria-label={t('integrations:customCli.key')}
                   className="min-w-0 flex-1 font-mono"
                 />
                 <Input
                   value={env.value}
                   onChange={(e) => handleEnvValueChange(index, e.target.value)}
                   placeholder={t('integrations:customCli.value')}
+                  aria-label={t('integrations:customCli.value')}
                   className="min-w-0 flex-1"
                 />
                 {envVars.length > 1 && (

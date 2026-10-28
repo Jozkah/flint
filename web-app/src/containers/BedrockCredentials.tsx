@@ -89,7 +89,12 @@ function BedrockCredentialsForm() {
         return (
           <div key={field} className="space-y-1">
             <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-foreground">{t(label)}</label>
+              <label
+                htmlFor={`bedrock-${field}`}
+                className="text-xs font-medium text-foreground"
+              >
+                {t(label)}
+              </label>
               {saved && (
                 <button
                   type="button"
@@ -101,6 +106,7 @@ function BedrockCredentialsForm() {
               )}
             </div>
             <SecretInput
+              id={`bedrock-${field}`}
               className="font-mono"
               placeholder={
                 saved ? t('providers:bedrock.replace') : t('providers:bedrock.enter')
