@@ -2,7 +2,7 @@
  * The command palette: opens, ranks locally, runs what is chosen, and closes.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const navigate = vi.fn()
@@ -101,6 +101,27 @@ describe('CommandPalette', () => {
       expect.objectContaining({ params: { threadId: 'b' } })
     )
     expect(useCommandPalette.getState().open).toBe(false)
+  })
+
+  it('ignores Enter while an IME composition is active', async () => {
+    render(<CommandPalette />)
+    const input = screen.getByTestId('command-palette-input')
+    await screen.findAllByTestId('command-palette-item')
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
+    expect(navigate).not.toHaveBeenCalled()
+    expect(setSearchOpen).not.toHaveBeenCalled()
+    expect(useCommandPalette.getState().open).toBe(true)
+  })
+
+  it('scrolls the newly highlighted row into view', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    render(<CommandPalette />)
+    await screen.findAllByTestId('command-palette-item')
+    scroll.mockClear()
+    await userEvent.type(screen.getByTestId('command-palette-input'), '{ArrowDown}')
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' })
   })
 
   it('moves the selection with the arrow keys', async () => {
