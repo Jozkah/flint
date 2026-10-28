@@ -28,7 +28,7 @@ pub mod browser_verify;
 // The agent's tools for the built-in browser pane; desktop-only like web_preview.
 #[cfg(not(feature = "cli"))]
 pub mod browser_agent;
-pub mod compat_env;
+pub use jan_process::compat_env;
 #[cfg(not(feature = "cli"))]
 pub mod crash_trace;
 // Jev (TypeSafe) decision support: optional, off by default; desktop-only.

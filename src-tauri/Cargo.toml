@@ -18,6 +18,15 @@ default-run = "Flint-Desktop"
 # is gated behind. Declaring the targets is the contract; this keeps it honest.
 autobins = false
 
+# Lint policy. `todo!()` and `unimplemented!()` never belong in a shipped build
+# (there are none today, so this only keeps it that way). `unwrap_used`,
+# `expect_used` and `panic` are the next ratchet: about 340 production sites
+# still use them (audit STD-002), so they stay off until those are burned down;
+# clippy.toml already exempts tests.
+[lints.clippy]
+todo = "deny"
+unimplemented = "deny"
+
 [lib]
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -88,7 +97,7 @@ required-features = ["cli"]
 # Run it with: cargo run --example cowork-smoke --features cowork-smoke
 [[example]]
 name = "cowork-smoke"
-path = "examples/cowork_smoke.rs"
+path = "examples/cowork_smoke/main.rs"
 required-features = ["cowork-smoke"]
 
 [features]

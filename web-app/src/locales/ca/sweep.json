@@ -97,7 +97,11 @@
     "variant": "Variant",
     "whatToLookFor": "Què cercar",
     "searchPlaceholderShort": "Cerca o enganxa un URL…",
-    "resultLimit": "Mostra"
+    "resultLimit": "Mostra",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Importa un fitxer de model GGUF per afegir-lo a la teva col·lecció. Activa el suport multimodal per adjuntar un mmproj (entrada d’imatge o àudio), o el suport de models esborrany per a la descodificació especulativa. Els models d’embedding es detecten automàticament.",

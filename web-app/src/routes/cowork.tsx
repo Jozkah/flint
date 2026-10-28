@@ -66,7 +66,7 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { basenameOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
+import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import { codePathExists } from '@/lib/codePathExists'
 import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
@@ -154,7 +154,6 @@ import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useAssistant } from '@/hooks/useAssistant'
 import {
   ContextOverflowError,
-  coworkWindow,
   isContextOverflow,
   planTurn,
   sessionTokenLimitFor,
@@ -199,7 +198,6 @@ import {
   baselineFromStatus,
   buildOriginLedger,
   destinationOfOrigin,
-  evidenceLimit,
   promptFolderAccess,
   summarizeRun,
   unavailableBaseline,
@@ -276,21 +274,18 @@ import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
-import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
-import { CoworkReviewAction } from '@/containers/CoworkReviewAction'
+import { configuredContextTokens } from '@/lib/coworkContextWindow'
+import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
+import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
+import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
-  applySandboxHunk,
   isFlintInternalPath,
   planSandboxApply,
-  sandboxCopyOfProjectFile,
-  sandboxRelativePath,
-} from '@/lib/coworkSandboxApply'
+  } from '@/lib/coworkSandboxApply'
 import { probeSandboxFile } from '@/lib/coworkApplyAll'
 import { absoluteChangePath, shortToolPath } from '@/lib/codePathResolve'
 import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
-import { CoworkRewind } from '@/containers/CoworkRewind'
-import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import {
   NO_USER_EDITS,
   useCoworkUserEdits,
@@ -434,18 +429,14 @@ import {
   bindingKey,
   classifyInstruction,
   isMissingFileError,
-  parseSkillRequests,
   parseSkillRequestTriggers,
   resolveSkills,
   unresolvedSkills,
   type ContextAccounting,
   type InstructionFile,
   type InstructionProbe,
-  type ReadinessManifest,
-} from '@/lib/coworkReadiness'
-import { measureContextPack } from '@/lib/coworkContext'
-import { coworkPreRunContext } from '@/lib/coworkPreRun'
-import { notifyToolBatch, peekAgentToolSchemas } from '@/lib/agentTools'
+  } from '@/lib/coworkReadiness'
+import { notifyToolBatch, } from '@/lib/agentTools'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
@@ -455,8 +446,6 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
-import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
-import { CoworkTurnUndo } from '@/containers/CoworkTurnUndo'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -488,8 +477,6 @@ import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
-import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
-import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
 import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
@@ -558,7 +545,6 @@ import { setRunModel } from '@/lib/remoteRunner'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import { pickServerFolder } from '@/lib/serverFolderPicker'
 import { MAX_RUN_ATTACHMENTS, type RunAttachment } from '@/lib/remoteRunner'
-import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -604,7 +590,7 @@ import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
-export const Route = createFileRoute(route.cowork as any)({
+export const Route = createFileRoute(route.cowork)({
   beforeLoad: () => ensureCoworkEnabled(),
   component: CoworkRoute,
 })
@@ -625,28 +611,6 @@ function CoworkRoute() {
 }
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
-/**
- * The window a request has to fit inside, when it is known.
- *
- * Resolved by `useModelCapabilities` (AH-195) rather than read from one
- * settings field: an OpenAI-compatible server reports its window under any of
- * several names, and reading only Flint's own `ctx_len` left every such endpoint
- * permanently "not known". When a local runtime has answered this is its
- * effective `n_ctx`, which `--fit` may have set well below the model's
- * training size -- the smaller number is the real limit.
- */
-const configuredContextTokens = (
-  caps: { contextTokens: number | null; source?: string } | null | undefined,
-  acceptedPrompt?: number | null
-): number | null =>
-  coworkWindow({
-    // Use this only when the provider has not reported its own window.
-    userSet:
-      useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
-    capabilities: caps,
-    acceptedPrompt,
-  })
-
 /** The largest prompt the provider has already accepted in these turns. */
 const largestAcceptedPrompt = (
   turns: readonly { usage?: { prompt_tokens?: number } }[] | undefined
@@ -1160,56 +1124,17 @@ export function CoworkPage() {
    * at first run. Retrieved memory and the toolchain probe are left out for
    * the same reason; the run's own measurement replaces this once it exists.
    */
-  const preRunContext = useMemo<ContextAccounting | null>(() => {
-    if (runContext) return null
-    const planMode = isReadOnly(mode)
-    const subagentNames = subagentDefs.map((d) => d.name)
-    return coworkPreRunContext({
-      prompt: {
-        workspacePath,
-        readOnlyFolder: folder,
-        extraFolders,
-        worktreeBranch:
-          effective.destination === 'managed'
-            ? (worktree?.branch ?? null)
-            : null,
-        gitBranch,
-        projectInstructions,
-        compatInstructions: compatInstructionBlocks(compat),
-        projectTooling:
-          folder && tooling?.folder === folder
-            ? (tooling.loaded?.prompt ?? null)
-            : null,
-        planMode,
-        bashAvailable: sandboxEnforces(),
-        subagentNames,
-        webSearch: webSearchEnabled,
-        platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
-        shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
-        mcpServers: [],
-      },
-      tools: {
-        planMode,
-        webSearch: webSearchEnabled,
-        allowSubagents: true,
-        subagentNames,
-        // What a run started with no message yet would carry: the core set.
-        offerGroups: groupsToOffer({ text: '', history: session?.messages ?? [] }),
-      },
-      backendSchemas: peekAgentToolSchemas(folder ?? undefined, 'session'),
-      messages: hasTurns ? null : [],
-      configuredContextTokens: configuredContextTokens(modelCapabilities),
-    })
-  }, [
+  const { readiness } = useCoworkReadiness({
+    sessionId: session?.id,
+    messages: session?.messages,
     runContext,
     mode,
-    session?.messages,
     subagentDefs,
     workspacePath,
     folder,
     extraFolders,
-    effective.destination,
-    worktree?.branch,
+    destination: effective.destination,
+    worktree,
     gitBranch,
     projectInstructions,
     compat,
@@ -1217,98 +1142,15 @@ export function CoworkPage() {
     webSearchEnabled,
     hasTurns,
     modelCapabilities,
-  ])
-  const readiness = useMemo<ReadinessManifest>(() => {
-    const registry = mergeSkillRegistry(compat, {
-      available: availableSkills.map((skill) => ({ name: skill.name })),
-      enabled: new Set(
-        effectiveEnabled(
-          enabledSkills,
-          availableSkills.map((skill) => skill.name)
-        )
-      ),
-    })
-    const requested = parseSkillRequests(
-      composerPrompt,
-      registry.available.map((skill) => skill.name)
-    )
-    return {
-      binding: { sessionId: session?.id ?? null, folder },
-      folder,
-      branch: gitBranch,
-      mode,
-      // From the effective access, not the stored preference: a session that
-      // remembers "edit this folder" but holds no live grant writes to its
-      // sandbox, and the card has to say so.
-      writeDestination: effective.destination,
-      // Only when that is where writes actually go. A session holding a
-      // worktree record but running in Review must not be shown a destination
-      // it is not using.
-      worktree:
-        effective.destination === 'managed' && worktree
-          ? {
-              path: worktree.path,
-              branch: worktree.branch,
-              baseSha: worktree.baseSha,
-              uncommittedAtCreation: worktree.uncommittedAtCreation,
-            }
-          : null,
-      instructions: instructionFiles,
-      // The same merged registry the run resolves against, so the card cannot
-      // call a skill available that the run will report missing.
-      skills: resolveSkills(requested, registry),
-      // Null until a run has built its tool set: before that nothing knows
-      // the number, and stating one would be inventing it.
-      tools: { builtins: advertisedToolCount, mcpServers: connectedMcpServers },
-      model: {
-        id: selectedModel?.id ?? null,
-        supportsTools: selectedModel
-          ? Boolean(selectedModel.capabilities?.includes('tools'))
-          : null,
-      },
-      // From the run's own snapshot when there is one, so the card and the
-      // summary cannot disagree about whether anything is attributable.
-      evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
-      // Only the read for this folder: a late answer for another is ignored.
-      tooling: folder
-        ? tooling?.folder === folder && tooling.loaded
-          ? tooling.loaded.readiness
-          : { state: 'loading' }
-        : undefined,
-      // From the run's own payload once there is one. Before that the
-      // categories that depend on it stay unknown rather than zero: a run that
-      // has not been built has not sent nothing, it has sent nothing *yet*.
-      context:
-        runContext ??
-        preRunContext ??
-        measureContextPack({
-          systemPrompt: null,
-          toolSchemas: null,
-          messages: null,
-          configuredContextTokens: configuredContextTokens(modelCapabilities),
-        }),
-    }
-  }, [
-    session?.id,
-    folder,
-    gitBranch,
-    mode,
     instructionFiles,
-    effective.destination,
-    worktree,
-    compat,
-    runOrigins?.context.baseline,
-    tooling,
+    baseline: runOrigins?.context.baseline,
     advertisedToolCount,
     connectedMcpServers,
-    runContext,
-    preRunContext,
     availableSkills,
     enabledSkills,
     composerPrompt,
     selectedModel,
-    modelCapabilities,
-  ])
+  })
 
   // Read inside the instruction effect without making the session a dependency:
   // the effect keys on the folder, and the ref is only used to notice that the
@@ -2971,11 +2813,11 @@ export function CoworkPage() {
             sessionId: sid,
             serviceHub: serviceHub,
           })
-          for (const f of prepared.failed) toast.error(`Could not read ${f.name}: ${f.error}`)
+          for (const f of prepared.failed) toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
           outgoing = text + prepared.modelSuffix
           const media = submittedToRunAttachments(prepared.parts)
           if (media.unsupported > 0) {
-            return refused('Only images can be sent to a server session; remove the other media files.')
+            return refused(t('common:coworkRun.remoteImagesOnly'))
           }
           if (media.attachments.length > MAX_RUN_ATTACHMENTS) {
             return refused(`A message can carry at most ${MAX_RUN_ATTACHMENTS} files.`)
@@ -3021,10 +2863,10 @@ export function CoworkPage() {
         : null
     if (attached) {
       for (const f of attached.failed) {
-        toast.error(`Could not read ${f.name}: ${f.error}`)
+        toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
       }
       if (attached.truncated.length > 0) {
-        toast.info(`Only part of ${attached.truncated.join(', ')} fits in one message.`)
+        toast.info(t('common:coworkRun.partFits', { files: attached.truncated.join(', ') }))
       }
     }
     const store = useCoworkSessions.getState()
@@ -3129,7 +2971,7 @@ export function CoworkPage() {
       return
     }
     // Another session's message is not what this session is about.
-    if (text && !from && !hidden && current?.title === 'New session') {
+    if (text && !from && !hidden && current?.title === DEFAULT_SESSION_TITLE) {
       // The prompt, cut short, until the model's own title arrives.
       const placeholder = slashTitle(text).slice(0, 40)
       store.setTitle(sid, placeholder)
@@ -7231,153 +7073,31 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'diff' && (
-          <CoworkDiffPanel
-            // Going back to how things were belongs where what changed is
-            // shown: the two questions are asked in the same breath.
-            header={
-              <>
-              {/* An isolated run's work reaches the folder only through a
-                  reviewed proposal, so the review sits with the changes. */}
-              {worktree && session?.id ? (
-                <CoworkProposalReview
-                  worktree={worktree}
-                  session={session.id}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              {/* A server session's own checkout: merge, discard, review. */}
-              {session?.id && session.remote ? (
-                <RemoteWorktreePanel sessionId={session.id} />
-              ) : null}
-              {/* One-command review of the current diff: ranked findings, each
-                  checked by a second pass; fixes go through the session. */}
-              {folder && session?.id ? (
-                <CoworkReviewAction
-                  folder={folder}
-                  sessionId={session.id}
-                  onFix={(text) => widgetHost.sendPrompt(text)}
-                />
-              ) : null}
-              {/* AH-109: each isolated team child's worktree, for review. */}
-              {folder && session?.id ? (
-                <CoworkTeamReviews
-                  project={folder}
-                  session={session.id}
-                  focusTaskId={reviewFocusTaskId}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              </>
-            }
-            // After the files, as the design orders it: what each turn
-            // changed, earlier points, then bundles made elsewhere.
-            footer={
-              <>
-              {/* AH-202: each turn's own file changes, undone or redone
-                  from the turn that made them. */}
-              {session?.id ? (
-                <CoworkTurnUndo
-                  sessionId={session.id}
-                  writeGrant={liveGrant?.grantId}
-                  refreshKey={running}
-                  onChanged={() => git.refresh()}
-                />
-              ) : null}
-              <CoworkRewind
-                points={
-                  session?.id && checkpointChain
-                    ? useCoworkCheckpoints
-                        .getState()
-                        .usable(session.id, treeRoot)
-                    : []
-                }
-                onPlan={(sha) =>
-                  useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
-                }
-                onPreviewDiff={(sha) =>
-                  useCoworkCheckpoints
-                    .getState()
-                    .previewDiff(session?.id ?? '', sha)
-                }
-                // Newer edits Flint made itself are not someone else's work, so
-                // only the rest need an explicit acknowledgement.
-                janAuthored={
-                  runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
-                }
-                onSafetyCapture={async (label) => {
-                  if (!session?.id || !treeRoot)
-                    return { ok: false, reason: 'no working tree' }
-                  const saved = await useCoworkCheckpoints
-                    .getState()
-                    .captureSafety({
-                      sessionId: session.id,
-                      root: treeRoot,
-                      label,
-                      access: effective.access,
-                    })
-                  return saved.ok
-                    ? { ok: true, point: saved.entry }
-                    : saved
-                }}
-                onRestore={async (sha) => {
-                  const done = await useCoworkCheckpoints
-                    .getState()
-                    .restore(session?.id ?? '', sha)
-                  // The tree changed underneath every surface that describes
-                  // it, so the diff is re-read rather than left showing what
-                  // was there a moment ago.
-                  if (done.ok) git.refresh()
-                  return done
-                }}
-              />
-              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
-              {folder && session?.id ? (
-                <CoworkBundleImport
-                  destination={folder}
-                  session={session.id}
-                  pickFolder={async () => {
-                    const picked = await serviceHub
-                      .dialog()
-                      .open({ directory: true })
-                    return typeof picked === 'string' ? picked : null
-                  }}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
-              </>
-            }
-            branch={worktree?.branch ?? gitBranch}
-            projectName={folder ? basenameOf(folder) : undefined}
-            sandboxFiles={fileDiffs}
-            onOpenFile={openToolPath}
-            // Review only leaves the run's output in the sandbox; this is the
-            // explicit per-file step that brings one file into the folder.
-            // The primary and every extra folder the session holds.
-            isSandboxPath={(path) =>
-              sandboxRelativePath(workspacePath, path) !== null
-            }
-            applyPlanFor={(path) =>
-              planSandboxApply(workspacePath, applyFolders, path)
-            }
-            onApplyFile={sandboxApply?.apply}
-            applyActions={sandboxApply}
-            displayPath={displayToolPath}
-            onOpenExternal={(path, source) => {
-              const absolute = absoluteChangePath(path, source, {
-                treeRoot,
-                workspacePath,
-                resolved: resolveToolPath(path),
-              })
-              if (!absolute) return
-              void serviceHub
-                .opener()
-                .openPath(absolute, pathLinkRoots)
-                .catch((e) => toast.error(errorText(e)))
-            }}
-            // The tree the changes are in, not the one the session is
-            // attached to: a managed run's diff lives in its worktree.
-            folder={treeRoot}
+          <CoworkDiffRail
+            sessionId={session?.id}
+            sessionRemote={!!session?.remote}
+            folder={folder}
+            worktree={worktree}
             git={git}
+            onSendPrompt={(text) => widgetHost.sendPrompt(text)}
+            reviewFocusTaskId={reviewFocusTaskId}
+            writeGrant={liveGrant?.grantId}
+            running={running}
+            hasCheckpoints={!!checkpointChain}
+            treeRoot={treeRoot}
+            access={effective.access}
+            janAuthored={
+              runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
+            }
+            gitBranch={gitBranch}
+            fileDiffs={fileDiffs}
+            openToolPath={openToolPath}
+            workspacePath={workspacePath}
+            applyFolders={applyFolders}
+            sandboxApply={sandboxApply}
+            displayToolPath={displayToolPath}
+            resolveToolPath={resolveToolPath}
+            pathLinkRoots={pathLinkRoots}
             origins={runOrigins?.entries}
             focusPath={rail.focusPath}
             onClose={closeRail}
@@ -7451,91 +7171,23 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'code' && session?.id && (
-          <CoworkCodePanel
-            onOfferFolder={() => void attachFolder()}
-            // The tree the run reads. Browsing the attached folder while the
-            // agent works in a worktree would show two different repositories
-            // under one name.
-            folder={treeRoot}
-            projectName={folder ? basenameOf(folder) : undefined}
-            workspacePath={workspacePath}
-            sessionKey={session.id}
-            state={session.codePanel}
+          <CoworkCodeRail
+            sessionId={session.id}
+            codePanel={session.codePanel}
             turns={displayedTurns}
-            onStateChange={(next) =>
-              useCoworkSessions.getState().setCodePanel(session.id, next)
-            }
-            onAddToChat={addCodeToChat}
-            onAttach={() => void attachFolder()}
-            onClose={closeRail}
-            // A Review only run's copy of a project file shows as markers on
-            // the real one, found the way Apply to folder maps it.
-            sandboxCopyFor={(projectPath) =>
-              sandboxApply
-                ? (sandboxCopyOfProjectFile(
-                    fileDiffs.map((f) => f.path),
-                    sandboxApply.planFor,
-                    folder,
-                    projectPath
-                  )?.plan.source ?? null)
-                : null
-            }
-            onApplySandboxHunk={
-              !sandboxApply
-                ? undefined
-                : async (projectPath, expected, content) => {
-              const copy =
-                sandboxApply && session?.id
-                  ? sandboxCopyOfProjectFile(
-                      fileDiffs.map((f) => f.path),
-                      sandboxApply.planFor,
-                      folder,
-                      projectPath
-                    )
-                  : null
-              if (!copy || !session?.id) throw new Error(`${projectPath} has no sandbox copy`)
-              const outcome = await applySandboxHunk({
-                session: session.id,
-                path: copy.plan.source,
-                project: copy.plan.folder,
-                destination: copy.plan.destination,
-                expected,
-                content,
-              })
-              if (outcome === 'applied') git.refresh()
-              return outcome
-                  }
-            }
-            onApplySandboxCopy={(projectPath) => {
-              if (!sandboxApply) return
-              const copy = sandboxCopyOfProjectFile(
-                fileDiffs.map((f) => f.path),
-                sandboxApply.planFor,
-                folder,
-                projectPath
-              )
-              if (!copy) return
-              // Confirmed in the peek ("Apply whole file…"), with the change in view.
-              void sandboxApply
-                .apply(copy.path, true)
-                .then(() => toast.success(t('common:changes.applyReplaced')))
-                .catch((e) =>
-                  toast.error(
-                    t('common:changes.applyFailed', { message: errorText(e) })
-                  )
-                )
-            }}
-            // Hand edits save where the agent's writes would, under the same
-            // grant; with no live grant a real-tree mode stays read-only.
-            editAccess={{
-              destination: effective.destination,
-              writeGrant: relativeIsProject
-                ? (liveGrant?.grantId ?? null)
-                : null,
-            }}
-            readRoot={treeRoot}
+            folder={folder}
+            treeRoot={treeRoot}
+            workspacePath={workspacePath}
             extraFolders={extraFolders}
-            onSaved={() => git.refresh()}
+            destination={effective.destination}
+            relativeIsProject={relativeIsProject}
+            writeGrant={liveGrant?.grantId}
+            sandboxApply={sandboxApply}
+            fileDiffs={fileDiffs}
+            git={git}
+            onAttachFolder={() => void attachFolder()}
+            onAddToChat={addCodeToChat}
+            onClose={closeRail}
           />
         )}
         {phone && !panelShown && (
