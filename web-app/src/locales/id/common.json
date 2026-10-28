@@ -775,6 +775,14 @@
     "filesDescription": "Tambahkan PDF, dokumen, atau teks lain agar dirujuk percakapan ini.",
     "uploadingFiles": "Memproses file…",
     "processButton": "Tambah",
+    "fileChangedOnDisk": "Berubah di disk",
+    "fileMissing": "Tidak ada",
+    "reindexFile": "Indeks ulang",
+    "reindexAllChanged": "Indeks ulang semua yang berubah",
+    "filesChangedOnDisk": "File yang berubah di disk sejak diindeks: {{count}}",
+    "reindexed": "File diindeks ulang: {{count}}",
+    "reindexFailed": "Tidak dapat mengindeks ulang file",
+    "staleFilesNotice": "File koleksi yang berubah atau hilang di disk: {{count}}. Indeks ulang dari daftar File koleksi.",
     "deleteFileDialog": {
       "title": "Hapus file",
       "description": "\"{{fileName}}\" dan konten terindeksnya akan dihapus dari koleksi ini. Tindakan ini tidak dapat dibatalkan."

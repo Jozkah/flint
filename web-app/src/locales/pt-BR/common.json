@@ -785,6 +785,14 @@
     "filesDescription": "Adicione PDFs, documentos ou outros textos para estas conversas consultarem.",
     "uploadingFiles": "Processando arquivos…",
     "processButton": "Adicionar",
+    "fileChangedOnDisk": "Alterado no disco",
+    "fileMissing": "Ausente",
+    "reindexFile": "Reindexar",
+    "reindexAllChanged": "Reindexar todos os alterados",
+    "filesChangedOnDisk": "Arquivos alterados no disco desde a indexação: {{count}}",
+    "reindexed": "Arquivos reindexados: {{count}}",
+    "reindexFailed": "Não foi possível reindexar o arquivo",
+    "staleFilesNotice": "Arquivos da coleção alterados ou ausentes no disco: {{count}}. Reindexe-os na lista de arquivos da coleção.",
     "deleteFileDialog": {
       "title": "Excluir arquivo",
       "description": "\"{{fileName}}\" e seu conteúdo indexado serão removidos desta coleção. Isso não pode ser desfeito."

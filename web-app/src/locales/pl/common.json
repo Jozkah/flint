@@ -797,6 +797,14 @@
     "filesDescription": "Dodaj pliki PDF, dokumenty lub inny tekst, do których te rozmowy będą się odwoływać.",
     "uploadingFiles": "Przetwarzanie plików…",
     "processButton": "Dodaj",
+    "fileChangedOnDisk": "Zmieniony na dysku",
+    "fileMissing": "Brak pliku",
+    "reindexFile": "Indeksuj ponownie",
+    "reindexAllChanged": "Indeksuj ponownie wszystkie zmienione",
+    "filesChangedOnDisk": "Pliki zmienione na dysku od indeksowania: {{count}}",
+    "reindexed": "Ponownie zindeksowane pliki: {{count}}",
+    "reindexFailed": "Nie udało się ponownie zindeksować pliku",
+    "staleFilesNotice": "Pliki kolekcji zmienione lub brakujące na dysku: {{count}}. Zindeksuj je ponownie z listy plików kolekcji.",
     "deleteFileDialog": {
       "title": "Usuń plik",
       "description": "„{{fileName}}” i jego zindeksowana zawartość zostaną usunięte z tej kolekcji. Tej operacji nie można cofnąć."

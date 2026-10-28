@@ -781,6 +781,14 @@
     "filesDescription": "이 프로젝트에서 참조할 PDF, 문서 또는 기타 텍스트를 추가하세요.",
     "uploadingFiles": "파일 처리 중…",
     "processButton": "추가",
+    "fileChangedOnDisk": "디스크에서 변경됨",
+    "fileMissing": "없음",
+    "reindexFile": "다시 색인",
+    "reindexAllChanged": "변경된 파일 모두 다시 색인",
+    "filesChangedOnDisk": "색인 후 디스크에서 변경된 파일: {{count}}",
+    "reindexed": "다시 색인한 파일: {{count}}",
+    "reindexFailed": "파일을 다시 색인하지 못했습니다",
+    "staleFilesNotice": "디스크에서 변경되었거나 사라진 컬렉션 파일: {{count}}. 컬렉션의 파일 목록에서 다시 색인하세요.",
     "deleteFileDialog": {
       "title": "파일 삭제",
       "description": "\"{{fileName}}\"과(와) 색인된 내용이 이 컬렉션에서 제거됩니다. 되돌릴 수 없습니다."

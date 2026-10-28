@@ -274,6 +274,7 @@ import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { route } from '@/constants/routes'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
+import { warnIfProjectFilesChanged } from '@/lib/projectFileFreshness'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { generateThreadTitle } from '@/lib/thread-title-summarizer'
@@ -1634,6 +1635,7 @@ export function ThreadConversation({
           if (ext?.listAttachmentsForProject) {
             const projectFiles = await ext.listAttachmentsForProject(projectId)
             hasProjectDocuments = projectFiles.length > 0
+            void warnIfProjectFilesChanged(projectId, projectFiles)
           }
         } catch (error) {
           console.warn('Failed to check project files:', error)

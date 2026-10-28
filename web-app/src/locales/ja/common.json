@@ -781,6 +781,14 @@
     "filesDescription": "このプロジェクトで参照するPDF、ドキュメント、その他のテキストを追加します。",
     "uploadingFiles": "ファイルを処理しています…",
     "processButton": "追加",
+    "fileChangedOnDisk": "ディスク上で変更済み",
+    "fileMissing": "見つかりません",
+    "reindexFile": "再インデックス",
+    "reindexAllChanged": "変更されたファイルをすべて再インデックス",
+    "filesChangedOnDisk": "インデックス後にディスク上で変更されたファイル: {{count}}",
+    "reindexed": "再インデックスしたファイル: {{count}}",
+    "reindexFailed": "ファイルを再インデックスできませんでした",
+    "staleFilesNotice": "ディスク上で変更または削除されたコレクションのファイル: {{count}}。コレクションのファイル一覧から再インデックスしてください。",
     "deleteFileDialog": {
       "title": "ファイルを削除",
       "description": "「{{fileName}}」とそのインデックス済みの内容がこのコレクションから削除されます。この操作は元に戻せません。"

@@ -786,6 +786,14 @@
     "filesDescription": "Ajoutez des PDF, des documents ou d'autres textes que ces conversations pourront consulter.",
     "uploadingFiles": "Traitement des fichiers…",
     "processButton": "Ajouter",
+    "fileChangedOnDisk": "Modifié sur le disque",
+    "fileMissing": "Introuvable",
+    "reindexFile": "Réindexer",
+    "reindexAllChanged": "Réindexer tous les fichiers modifiés",
+    "filesChangedOnDisk": "Fichiers modifiés sur le disque depuis leur indexation : {{count}}",
+    "reindexed": "Fichiers réindexés : {{count}}",
+    "reindexFailed": "Impossible de réindexer le fichier",
+    "staleFilesNotice": "Fichiers de la collection modifiés ou absents du disque : {{count}}. Réindexez-les depuis la liste des fichiers de la collection.",
     "deleteFileDialog": {
       "title": "Supprimer le fichier",
       "description": "\"{{fileName}}\" et son contenu indexé seront retirés de cette collection. Cette action est irréversible."

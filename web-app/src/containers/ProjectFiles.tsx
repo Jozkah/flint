@@ -6,6 +6,7 @@ import {
   Copy,
   FileText,
   Folder,
+  RefreshCw,
   Trash2,
   UploadIcon,
   AlertCircle,
@@ -46,6 +47,11 @@ import { useProjectUploads } from '@/stores/project-uploads-store'
 import { collectFilesFromDirectory } from '@/lib/directoryWalk'
 import { namedFilePaths } from '@/lib/fileDrop'
 import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
+import {
+  checkProjectFiles,
+  reindexProjectFile,
+  type ProjectFileFreshness,
+} from '@/lib/projectFileFreshness'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 
@@ -152,6 +158,7 @@ type ProjectFile = {
   type?: string
   size?: number
   chunk_count: number
+  mtime?: number | null
 }
 
 const SUPPORTED_EXTENSIONS = [
@@ -328,12 +335,24 @@ function getFilesFromDirectory(
 type FileRowProps = {
   file: ProjectFile
   onDelete: (id: string) => void
+  /** Source on disk vs the indexed copy; only changed/missing show a badge. */
+  freshness?: ProjectFileFreshness
+  onReindex?: (id: string) => void
+  reindexing?: boolean
   t: ReturnType<typeof useTranslation>['t']
   /** Folder depth, for the indent when files are shown as a tree. */
   depth?: number
 }
 
-function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
+function FileRow({
+  file,
+  onDelete,
+  freshness,
+  onReindex,
+  reindexing = false,
+  t,
+  depth = 0,
+}: FileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const openContextMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -381,6 +400,40 @@ function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
             ` · ${t('common:files.chunksCount', { count: file.chunk_count })}`}
         </p>
       </div>
+      {freshness === 'changed' && (
+        <span
+          data-testid="project-file-changed"
+          className="shrink-0 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-warning"
+        >
+          {t('common:projects.fileChangedOnDisk')}
+        </span>
+      )}
+      {freshness === 'missing' && (
+        <span
+          data-testid="project-file-missing"
+          className="shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs text-destructive"
+        >
+          {t('common:projects.fileMissing')}
+        </span>
+      )}
+      {freshness === 'changed' && onReindex && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => onReindex(file.id)}
+          disabled={reindexing}
+          aria-label={`${t('common:projects.reindexFile')} ${file.name}`}
+          title={t('common:projects.reindexFile')}
+        >
+          <RefreshCw
+            className={cn(
+              'size-3.5 text-muted-foreground',
+              reindexing && 'animate-spin motion-reduce:animate-none'
+            )}
+            aria-hidden
+          />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -421,6 +474,12 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   const maxFileSizeMB = useAttachments((s) => s.maxFileSizeMB)
 
   const [files, setFiles] = useState<ProjectFile[]>([])
+  const [freshness, setFreshness] = useState<
+    Record<string, ProjectFileFreshness>
+  >({})
+  const [reindexingIds, setReindexingIds] = useState<Set<string>>(
+    () => new Set()
+  )
   const [loading, setLoading] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
@@ -443,6 +502,9 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             key={node.file.id}
             file={node.file}
             onDelete={requestDeleteFile}
+            freshness={freshness[node.file.id]}
+            onReindex={(id) => void handleReindex([id])}
+            reindexing={reindexingIds.has(node.file.id)}
             t={t}
             depth={depth}
           />
@@ -500,6 +562,11 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         const projectFiles = await ext.listAttachmentsForProject(projectId)
         if (id !== loadRequest.current) return
         setFiles(projectFiles)
+        // One cheap stat per file; the badges fill in after the list shows.
+        const { fs } = await import('@janhq/core')
+        const status = await checkProjectFiles(projectFiles, fs.fileStat)
+        if (id !== loadRequest.current) return
+        setFreshness(status)
       } else {
         if (id !== loadRequest.current) return
         setFiles([])
@@ -798,6 +865,54 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
   }
 
+  const handleReindex = async (fileIds: string[]) => {
+    const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
+      ExtensionTypeEnum.VectorDB
+    )
+    if (!ext?.deleteFileForProject) return
+    const targets = files.filter((f) => fileIds.includes(f.id))
+    setReindexingIds((prev) => new Set([...prev, ...fileIds]))
+    const { fs } = await import('@janhq/core')
+    let done = 0
+    for (const file of targets) {
+      try {
+        await reindexProjectFile(projectId, file, {
+          deleteFile: (pid, fid) => ext.deleteFileForProject(pid, fid),
+          ingest: (pid, input) =>
+            serviceHub.uploads().ingestFileAttachmentForProject(
+              pid,
+              createDocumentAttachment({
+                name: input.name ?? input.path.split(/[\\/]/).pop() ?? input.path,
+                path: input.path,
+                fileType: input.type,
+                size: input.size,
+              })
+            ),
+          fileStat: fs.fileStat,
+        })
+        done++
+      } catch (error) {
+        console.error('Failed to re-index file:', error)
+        toast.error(t('common:projects.reindexFailed'), {
+          description: humanizeUploadError(t, error, file.name),
+        })
+      }
+    }
+    setReindexingIds((prev) => {
+      const next = new Set(prev)
+      fileIds.forEach((id) => next.delete(id))
+      return next
+    })
+    if (done > 0) {
+      toast.success(t('common:projects.reindexed', { count: done }))
+    }
+    await loadProjectFiles()
+  }
+
+  const changedIds = files
+    .filter((f) => freshness[f.id] === 'changed')
+    .map((f) => f.id)
+
   const isEmpty = !loading && files.length === 0
   // A reload keeps the list on screen; the spinner is for an empty first load.
   const showSpinner = loading && files.length === 0
@@ -904,6 +1019,24 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {changedIds.length > 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/5 p-2 text-xs">
+              <span>
+                {t('common:projects.filesChangedOnDisk', {
+                  count: changedIds.length,
+                })}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleReindex(changedIds)}
+                disabled={reindexingIds.size > 0}
+              >
+                <RefreshCw className="size-3.5" aria-hidden />
+                {t('common:projects.reindexAllChanged')}
+              </Button>
+            </div>
+          )}
           {renderNodes(fileTree.nodes, 0)}
 
           <div

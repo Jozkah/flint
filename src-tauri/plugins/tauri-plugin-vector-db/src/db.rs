@@ -35,6 +35,10 @@ pub struct AttachmentFileInfo {
     pub file_type: Option<String>,
     pub size: Option<i64>,
     pub chunk_count: i64,
+    /// Source file's modification time (seconds since the epoch) when it was
+    /// indexed. `None` for rows indexed before the column existed.
+    #[serde(default)]
+    pub mtime: Option<i64>,
     /// Set by `create_file` when an existing row for the same path was reset
     /// because the file on disk changed; its old chunks are gone.
     #[serde(default)]
@@ -527,7 +531,7 @@ pub fn create_file(
 
     let read_row = |tx: &Connection, id: &str, replaced: bool| -> Result<AttachmentFileInfo, VectorDBError> {
         let mut stmt = tx.prepare(
-            "SELECT id, path, name, type, size, chunk_count FROM files WHERE id = ?1",
+            "SELECT id, path, name, type, size, chunk_count, mtime FROM files WHERE id = ?1",
         )?;
         Ok(stmt.query_row(params![id], |r| {
             Ok(AttachmentFileInfo {
@@ -537,6 +541,7 @@ pub fn create_file(
                 file_type: r.get(3)?,
                 size: r.get(4)?,
                 chunk_count: r.get(5)?,
+                mtime: r.get(6)?,
                 replaced,
             })
         })?)
@@ -955,10 +960,16 @@ pub fn list_attachments(
     conn: &Connection,
     limit: Option<usize>,
 ) -> Result<Vec<AttachmentFileInfo>, VectorDBError> {
+    // A database made before the mtime column existed is read as-is: listing
+    // never migrates, and its rows report no mtime.
+    let has_mtime = conn
+        .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'mtime'")?
+        .exists([])?;
+    let mtime_col = if has_mtime { "mtime" } else { "NULL" };
     let query = if let Some(lim) = limit {
-        format!("SELECT id, path, name, type, size, chunk_count FROM files LIMIT {}", lim)
+        format!("SELECT id, path, name, type, size, chunk_count, {} FROM files LIMIT {}", mtime_col, lim)
     } else {
-        "SELECT id, path, name, type, size, chunk_count FROM files".to_string()
+        format!("SELECT id, path, name, type, size, chunk_count, {} FROM files", mtime_col)
     };
 
     let mut stmt = conn.prepare(&query)?;
@@ -972,6 +983,7 @@ pub fn list_attachments(
         let file_type: Option<String> = row.get(3)?;
         let size: Option<i64> = row.get(4)?;
         let chunk_count: i64 = row.get(5)?;
+        let mtime: Option<i64> = row.get(6)?;
         out.push(AttachmentFileInfo {
             id,
             name,
@@ -979,6 +991,7 @@ pub fn list_attachments(
             file_type,
             size,
             chunk_count,
+            mtime,
             replaced: false,
         });
     }
@@ -1411,6 +1424,34 @@ mod tests {
             .exists([])
             .unwrap();
         assert!(has);
+    }
+
+    #[test]
+    fn list_attachments_reports_the_indexed_mtime() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("listmtime", b"hello");
+        let p = path.to_str().unwrap();
+        let created = create_file(&conn, p, Some("a"), None, None).unwrap();
+        assert!(created.mtime.is_some());
+        let listed = list_attachments(&conn, None).unwrap();
+        assert_eq!(listed[0].mtime, created.mtime);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn list_attachments_reads_a_db_without_the_mtime_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT, type TEXT, size INTEGER, chunk_count INTEGER DEFAULT 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO files (id, path, size) VALUES ('f1', '/x', 5)", [])
+            .unwrap();
+        let listed = list_attachments(&conn, None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].mtime, None);
     }
 
     #[test]

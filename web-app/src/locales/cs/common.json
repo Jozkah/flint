@@ -797,6 +797,14 @@
     "filesDescription": "Přidejte PDF, dokumenty nebo jiný text, na který se mohou tyto konverzace odvolávat.",
     "uploadingFiles": "Zpracování souborů…",
     "processButton": "Přidat",
+    "fileChangedOnDisk": "Změněno na disku",
+    "fileMissing": "Chybí",
+    "reindexFile": "Znovu indexovat",
+    "reindexAllChanged": "Znovu indexovat všechny změněné",
+    "filesChangedOnDisk": "Souborů změněných na disku od indexace: {{count}}",
+    "reindexed": "Znovu indexováno souborů: {{count}}",
+    "reindexFailed": "Soubor se nepodařilo znovu indexovat",
+    "staleFilesNotice": "Souborů kolekce změněných nebo chybějících na disku: {{count}}. Znovu je indexujte v seznamu souborů kolekce.",
     "deleteFileDialog": {
       "title": "Smazat soubor",
       "description": "Soubor „{{fileName}}“ a jeho indexovaný obsah budou z této kolekce odstraněny. Tuto akci nelze vrátit zpět."

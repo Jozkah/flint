@@ -7,6 +7,10 @@ pub struct FileStat {
     /// its target. A directory walk must not follow these, or a link to an
     /// ancestor recurses forever.
     pub is_symlink: bool,
+    /// Last modification time in whole seconds since the epoch, when the
+    /// platform reports one. Project files compare it to the indexed copy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -34,11 +38,13 @@ mod tests {
             is_directory: true,
             size: 4096,
             is_symlink: true,
+            modified: Some(1_700_000_000),
         };
         let json = serde_json::to_string(&stat).unwrap();
         assert!(json.contains("\"isDirectory\":true"));
         assert!(json.contains("\"isSymlink\":true"));
         assert!(json.contains("\"size\":4096"));
+        assert!(json.contains("\"modified\":1700000000"));
         assert!(!json.contains("is_directory"));
     }
 

@@ -781,6 +781,14 @@
     "filesDescription": "新增 PDF、文件或其他文字，供這些對話參考。",
     "uploadingFiles": "正在處理檔案…",
     "processButton": "新增",
+    "fileChangedOnDisk": "磁碟上已變更",
+    "fileMissing": "遺失",
+    "reindexFile": "重新索引",
+    "reindexAllChanged": "重新索引所有已變更檔案",
+    "filesChangedOnDisk": "索引後在磁碟上已變更的檔案：{{count}}",
+    "reindexed": "已重新索引的檔案：{{count}}",
+    "reindexFailed": "無法重新索引該檔案",
+    "staleFilesNotice": "磁碟上已變更或遺失的集合檔案：{{count}}。請在集合的檔案清單中重新索引。",
     "deleteFileDialog": {
       "title": "刪除檔案",
       "description": "「{{fileName}}」及其已建立索引的內容將從此集合中移除。此操作無法復原。"

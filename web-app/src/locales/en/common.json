@@ -825,6 +825,14 @@
     "filesDescription": "Add PDFs, documents, or other text for these conversations to reference.",
     "uploadingFiles": "Processing files…",
     "processButton": "Add",
+    "fileChangedOnDisk": "Changed on disk",
+    "fileMissing": "Missing",
+    "reindexFile": "Re-index",
+    "reindexAllChanged": "Re-index all changed",
+    "filesChangedOnDisk": "Files changed on disk since they were indexed: {{count}}",
+    "reindexed": "Files re-indexed: {{count}}",
+    "reindexFailed": "Couldn't re-index the file",
+    "staleFilesNotice": "Collection files changed or missing on disk: {{count}}. Re-index them from the collection's Files list.",
     "deleteFileDialog": {
       "title": "Delete file",
       "description": "\"{{fileName}}\" and its indexed content will be removed from this collection. This can't be undone."

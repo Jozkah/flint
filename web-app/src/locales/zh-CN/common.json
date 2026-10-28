@@ -781,6 +781,14 @@
     "filesDescription": "添加 PDF、文档或其他文本，供此项目引用。",
     "uploadingFiles": "正在处理文件…",
     "processButton": "添加",
+    "fileChangedOnDisk": "磁盘上已更改",
+    "fileMissing": "缺失",
+    "reindexFile": "重新索引",
+    "reindexAllChanged": "重新索引所有已更改文件",
+    "filesChangedOnDisk": "索引后在磁盘上已更改的文件：{{count}}",
+    "reindexed": "已重新索引的文件：{{count}}",
+    "reindexFailed": "无法重新索引该文件",
+    "staleFilesNotice": "磁盘上已更改或缺失的集合文件：{{count}}。请在集合的文件列表中重新索引。",
     "deleteFileDialog": {
       "title": "删除文件",
       "description": "“{{fileName}}”及其已索引的内容将从此集合中移除。此操作无法撤销。"
