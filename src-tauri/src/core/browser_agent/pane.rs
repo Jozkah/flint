@@ -842,6 +842,21 @@ pub async fn browser_agent_rules<R: Runtime>(app: AppHandle<R>) -> Vec<policy::D
     STORE.rules()
 }
 
+/// Why the saved rules could not be loaded (the file was moved aside), or None.
+/// While set, the agent browser denies every site.
+#[tauri::command]
+pub async fn browser_agent_rules_damage<R: Runtime>(app: AppHandle<R>) -> Option<String> {
+    ensure_store(&app);
+    STORE.damaged()
+}
+
+/// The user has seen the damage report: rules work again, from an empty set.
+#[tauri::command]
+pub async fn browser_agent_rules_acknowledge_damage<R: Runtime>(app: AppHandle<R>) {
+    ensure_store(&app);
+    STORE.acknowledge_damage();
+}
+
 #[tauri::command]
 pub async fn browser_agent_rule_set<R: Runtime>(
     app: AppHandle<R>,

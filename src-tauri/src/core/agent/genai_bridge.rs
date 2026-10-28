@@ -21,7 +21,7 @@ use std::time::Duration;
 use genai::adapter::AdapterKind;
 use genai::chat::{
     ChatMessage, ChatOptions, ChatRequest, ChatRole, ChatStreamEvent, ContentPart, MessageContent,
-    ReasoningEffort, Tool, ToolCall, ToolResponse,
+    ReasoningEffort, Tool, ToolCall, ToolChoice, ToolResponse,
 };
 use genai::resolver::{AuthData, Endpoint, ServiceTargetResolver};
 use genai::{Client, ClientBuilder, ModelIden, ServiceTarget};
@@ -131,6 +131,29 @@ pub(crate) fn adapter_kind_for(api_type: Option<&str>) -> AdapterKind {
     }
 }
 
+/// The auth headers a native adapter expects. genai drops its own when a
+/// `RequestOverride` is set, so Anthropic and Gemini would otherwise be sent
+/// `Authorization: Bearer`, which their native endpoints reject.
+fn auth_headers_for(adapter: AdapterKind, api_key: Option<&str>) -> Vec<(String, String)> {
+    let key = api_key.filter(|k| !k.is_empty());
+    match adapter {
+        AdapterKind::Anthropic => {
+            let mut h = Vec::new();
+            if let Some(key) = key {
+                h.push(("x-api-key".to_string(), key.to_string()));
+            }
+            h.push(("anthropic-version".to_string(), "2023-06-01".to_string()));
+            h
+        }
+        AdapterKind::Gemini => key
+            .map(|k| vec![("x-goog-api-key".to_string(), k.to_string())])
+            .unwrap_or_default(),
+        _ => key
+            .map(|k| vec![("Authorization".to_string(), format!("Bearer {k}"))])
+            .unwrap_or_default(),
+    }
+}
+
 /// Build a client pinned to one endpoint, key, and adapter. The resolver is
 /// fixed rather than model-derived: the agent has already resolved which
 /// upstream this model lives on, and letting `genai` re-derive it from the model
@@ -161,9 +184,9 @@ fn client_for(
         ("Accept".to_string(), "text/event-stream".to_string()),
         ("Accept-Encoding".to_string(), "identity".to_string()),
     ];
-    if let Some(key) = api_key.filter(|k| !k.is_empty()) {
-        headers.push(("Authorization".to_string(), format!("Bearer {key}")));
-    }
+    // `RequestOverride` replaces genai's own header map wholesale, so the
+    // adapter's auth headers have to be supplied here.
+    headers.extend(auth_headers_for(adapter, api_key));
     // The correlation id has to go in here rather than through
     // `ChatOptions::with_extra_headers`: genai overwrites the whole header map
     // with this override's when `RequestOverride` is set, which it always is on
@@ -196,9 +219,37 @@ fn client_for(
 }
 
 /// Everything the agent sends that `genai`'s typed options do not model. `top_k`
-/// and `stop_sequences` are not OpenAI-standard but reach llama.cpp and vLLM,
-/// so they ride through `extra_body` verbatim rather than being dropped.
-const EXTRA_BODY_KEYS: &[&str] = &["top_k", "frequency_penalty", "presence_penalty"];
+/// and `min_p` are not OpenAI-standard but reach llama.cpp and vLLM, so they
+/// ride through `extra_body` verbatim rather than being dropped. Only keys the
+/// body actually set are forwarded. `tool_choice` is NOT here: it has a typed
+/// home (`ChatOptions::tool_choice`, see [`tool_choice_from_body`]).
+const EXTRA_BODY_KEYS: &[&str] = &[
+    "top_k",
+    "frequency_penalty",
+    "presence_penalty",
+    "min_p",
+    "repeat_penalty",
+    "parallel_tool_calls",
+    "response_format",
+];
+
+/// The OpenAI `tool_choice` as genai's typed choice: `"auto"`, `"none"`,
+/// `"required"`, or `{"type":"function","function":{"name":..}}`.
+fn tool_choice_from_body(body: &serde_json::Value) -> Option<ToolChoice> {
+    match body.get("tool_choice")? {
+        serde_json::Value::String(s) => match s.as_str() {
+            "auto" => Some(ToolChoice::Auto),
+            "none" => Some(ToolChoice::None),
+            "required" => Some(ToolChoice::Required),
+            _ => None,
+        },
+        v => v
+            .pointer("/function/name")
+            .or_else(|| v.get("name"))
+            .and_then(|n| n.as_str())
+            .map(ToolChoice::tool),
+    }
+}
 
 /// Split an OpenAI request body into the pieces `genai` takes. Unknown keys are
 /// preserved via `extra_body`, so a provider-specific parameter the agent grows
@@ -241,6 +292,7 @@ fn options_from_body(body: &serde_json::Value) -> ChatOptions {
                 _ => None,
             }),
         extra_body: (!extra.is_empty()).then(|| serde_json::Value::Object(extra)),
+        tool_choice: tool_choice_from_body(body),
         // The reconstructed completion needs usage, the final content, and the
         // merged tool calls; reasoning is carried back on the assistant message
         // so a follow-up turn can resend it.
@@ -1636,6 +1688,47 @@ mod tests {
             options.extra_body.as_ref().and_then(|b| b.get("top_k")),
             Some(&json!(40))
         );
+    }
+
+    #[test]
+    fn tool_choice_reaches_the_options() {
+        let none = options_from_body(&json!({ "tool_choice": "none" }));
+        assert_eq!(none.tool_choice, Some(ToolChoice::None));
+        let forced = options_from_body(&json!({
+            "tool_choice": { "type": "function", "function": { "name": "bash" } }
+        }));
+        assert_eq!(forced.tool_choice, Some(ToolChoice::tool("bash")));
+        assert_eq!(options_from_body(&json!({})).tool_choice, None);
+        let extra = options_from_body(&json!({ "min_p": 0.05, "parallel_tool_calls": false }));
+        let extra = extra.extra_body.expect("extra");
+        assert_eq!(extra.get("min_p"), Some(&json!(0.05)));
+        assert_eq!(extra.get("parallel_tool_calls"), Some(&json!(false)));
+    }
+
+    fn header<'a>(h: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        h.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn anthropic_override_headers_include_x_api_key() {
+        let h = auth_headers_for(AdapterKind::Anthropic, Some("k"));
+        assert_eq!(header(&h, "x-api-key"), Some("k"));
+        assert_eq!(header(&h, "anthropic-version"), Some("2023-06-01"));
+        assert_eq!(header(&h, "Authorization"), None);
+    }
+
+    #[test]
+    fn gemini_override_headers_include_x_goog_api_key() {
+        let h = auth_headers_for(AdapterKind::Gemini, Some("k"));
+        assert_eq!(header(&h, "x-goog-api-key"), Some("k"));
+        assert_eq!(header(&h, "Authorization"), None);
+    }
+
+    #[test]
+    fn openai_override_headers_keep_bearer_and_skip_empty_key() {
+        let h = auth_headers_for(AdapterKind::OpenAI, Some("k"));
+        assert_eq!(header(&h, "Authorization"), Some("Bearer k"));
+        assert!(auth_headers_for(AdapterKind::OpenAI, Some("")).is_empty());
     }
 
     #[test]

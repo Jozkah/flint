@@ -232,6 +232,104 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
     })
 }
 
+/// `deny` or `ask` anywhere in a permission value (a bare string, or a map of
+/// patterns, as OpenCode allows for `bash`). `deny` wins over `ask`.
+fn restriction(value: &serde_yaml::Value) -> Option<&'static str> {
+    match value {
+        serde_yaml::Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "deny" => Some("deny"),
+            "ask" => Some("ask"),
+            _ => None,
+        },
+        serde_yaml::Value::Mapping(m) => m.values().filter_map(restriction).fold(None, |acc, r| {
+            if acc == Some("deny") || r == "deny" {
+                Some("deny")
+            } else {
+                Some("ask")
+            }
+        }),
+        _ => None,
+    }
+}
+
+/// The Flint tools an OpenCode permission key governs. `edit` covers writing
+/// too, as it does in OpenCode.
+fn permission_tools(key: &str) -> Option<Vec<&'static str>> {
+    if key == "edit" {
+        return Some(vec!["edit", "write"]);
+    }
+    map_tool(key).map(|t| vec![t])
+}
+
+/// Narrow `allowed` by an OpenCode `permission` block. A subagent cannot prompt,
+/// so `ask` is treated as `deny`: the tool is removed rather than left on, which
+/// would widen what the author allowed. When `allowed` is `None` (no `tools`
+/// field) a removal starts from every importable tool. A denied key with no
+/// Flint tool to remove refuses the import.
+fn apply_permission(
+    permission: Option<&serde_yaml::Value>,
+    allowed: Option<Vec<String>>,
+    notes: &mut Vec<String>,
+) -> Result<Option<Vec<String>>, String> {
+    let rules: Vec<(String, serde_yaml::Value)> = match permission {
+        Some(serde_yaml::Value::Mapping(m)) => m
+            .iter()
+            .filter_map(|(k, v)| Some((k.as_str()?.trim().to_ascii_lowercase(), v.clone())))
+            .collect(),
+        Some(v @ serde_yaml::Value::String(_)) => vec![("*".to_string(), v.clone())],
+        _ => return Ok(allowed),
+    };
+    let star = rules.iter().find(|(k, _)| k == "*").and_then(|(_, v)| restriction(v));
+    let mut removed: Vec<String> = Vec::new();
+    for (key, value) in &rules {
+        if key == "*" {
+            continue;
+        }
+        match permission_tools(key) {
+            Some(tools) => {
+                if let Some(kind) = restriction(value) {
+                    notes.push(format!(
+                        "permission {key}: {kind} removed {}{}",
+                        tools.join(", "),
+                        if kind == "ask" { " (a subagent cannot ask, so ask is treated as deny)" } else { "" }
+                    ));
+                    removed.extend(tools.iter().map(|t| t.to_string()));
+                }
+            }
+            None => {
+                if restriction(value) == Some("deny") {
+                    return Err(format!(
+                        "permission '{key}' is denied, and Jan has no tool for it to narrow; \
+                         importing would give the agent more than its author allowed"
+                    ));
+                }
+            }
+        }
+    }
+    if let Some(kind) = star {
+        // `*` is the default for every tool the author did not give a rule.
+        let named: Vec<&'static str> = rules
+            .iter()
+            .filter_map(|(k, _)| permission_tools(k))
+            .flatten()
+            .collect();
+        for tool in importable_tools() {
+            if !named.iter().any(|n| *n == tool.as_str()) {
+                removed.push(tool);
+            }
+        }
+        notes.push(format!("permission *: {kind} removed every tool without its own rule"));
+    }
+    if removed.is_empty() {
+        return Ok(allowed);
+    }
+    let base = allowed.unwrap_or_else(importable_tools);
+    let mut narrowed: Vec<String> = base.into_iter().filter(|t| !removed.contains(t)).collect();
+    narrowed.sort();
+    narrowed.dedup();
+    Ok(Some(narrowed))
+}
+
 /// Which dialect a markdown file is written in.
 ///
 /// Decided by what the file itself carries -- `mode`, `permission`,
@@ -343,6 +441,8 @@ fn read_markdown(path: &Path, skipped: &mut Vec<String>) -> Result<Option<Import
 
     let mut notes = Vec::new();
     let allowed_tools = map_tools(fm.tools.as_ref(), &mut notes);
+    let allowed_tools = apply_permission(fm.permission.as_ref(), allowed_tools, &mut notes)
+        .map_err(|e| invalid(format!("{name} ({}): {e}", path.display())))?;
     note_unmapped(&fm, &mut notes);
     Ok(Some(Imported {
         definition: SubagentDefinition {
@@ -375,8 +475,9 @@ fn note_unmapped(fm: &AgentFrontmatter, notes: &mut Vec<String>) {
     }
     if fm.permission.is_some() {
         notes.push(
-            "per-agent permission rules were not imported: in Jan a subagent runs under the \
-             run's own permissions, narrowed by its tool list"
+            "per-agent permission rules were only partly imported: deny/ask on a tool removed \
+             that tool, but allow rules and patterns were not carried; in Jan a subagent runs \
+             under the run's own permissions, narrowed by its tool list"
                 .to_string(),
         );
     }
@@ -445,6 +546,8 @@ fn read_opencode_json(path: &Path, skipped: &mut Vec<String>) -> Result<Vec<Impo
             })?;
         let mut notes = Vec::new();
         let allowed_tools = map_tools(fm.tools.as_ref(), &mut notes);
+        let allowed_tools = apply_permission(fm.permission.as_ref(), allowed_tools, &mut notes)
+            .map_err(|e| invalid(format!("agent '{name}' in {}: {e}", path.display())))?;
         let mut without_prompt = AgentFrontmatter {
             rest: fm.rest.clone(),
             ..Default::default()
@@ -663,6 +766,52 @@ mod tests {
         let path = dir.join(name);
         std::fs::write(&path, content).expect("write");
         path
+    }
+
+    fn import_one(tag: &str, frontmatter: &str) -> Result<Imported, HarnessError> {
+        let root = temp_root(tag);
+        let path = write(
+            &root.join(".opencode").join("agent"),
+            "a.md",
+            &format!("---\ndescription: d\n{frontmatter}---\n\nDo it.\n"),
+        );
+        let out = read_all(&path).map(|(mut found, _)| found.remove(0));
+        let _ = std::fs::remove_dir_all(&root);
+        out
+    }
+
+    #[test]
+    fn opencode_edit_deny_removes_write_tools() {
+        let one = import_one("edit-deny", "permission:\n  edit: deny\n").expect("reads");
+        let tools = one.definition.allowed_tools.expect("an explicit allowlist");
+        assert!(!tools.iter().any(|t| t == "edit" || t == "write"), "{tools:?}");
+        assert!(tools.iter().any(|t| t == "read"), "{tools:?}");
+        // Intersects with an explicit tools list.
+        let one = import_one(
+            "edit-deny-tools",
+            "tools:\n  read: true\n  write: true\npermission:\n  edit: deny\n",
+        )
+        .expect("reads");
+        assert_eq!(one.definition.allowed_tools, Some(vec!["read".to_string()]));
+    }
+
+    #[test]
+    fn opencode_bash_ask_treated_as_deny_with_note() {
+        let one = import_one("bash-ask", "permission:\n  bash: ask\n").expect("reads");
+        let tools = one.definition.allowed_tools.expect("an explicit allowlist");
+        assert!(!tools.iter().any(|t| t == "bash"), "{tools:?}");
+        let notes = one.notes.join(" | ");
+        assert!(notes.contains("ask is treated as deny"), "{notes}");
+        // A denied key Jan has no tool for refuses the import.
+        assert!(import_one("unknown-deny", "permission:\n  external_directory: deny\n").is_err());
+    }
+
+    #[test]
+    fn opencode_no_permission_keeps_none_allowlist() {
+        let one = import_one("no-permission", "").expect("reads");
+        assert_eq!(one.definition.allowed_tools, None);
+        let one = import_one("allow-only", "permission:\n  bash: allow\n").expect("reads");
+        assert_eq!(one.definition.allowed_tools, None);
     }
 
     /// AH-118: an OpenCode agent, with its switches, its mode and the fields

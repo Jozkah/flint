@@ -25,6 +25,18 @@ pub enum Surface {
     Cowork(String),
 }
 
+impl ItemKind {
+    /// Parses the UI's `kind` string; anything but skill/plugin is an error
+    /// rather than silently meaning "skill".
+    pub fn parse(kind: &str) -> Result<ItemKind, String> {
+        match kind {
+            "skill" => Ok(ItemKind::Skill),
+            "plugin" => Ok(ItemKind::Plugin),
+            other => Err(format!("unknown extension kind: {other}")),
+        }
+    }
+}
+
 impl Surface {
     /// The string key used in `extensions.json`'s `surfaces` lists.
     pub fn key(&self) -> String {
@@ -87,40 +99,65 @@ fn extensions_path() -> Option<PathBuf> {
     extensions_root().map(|root| root.join(EXTENSIONS_FILE))
 }
 
-/// Writes `value` to `path` crash-safely: serialize to `<path>.tmp`, then
-/// `rename` into place. A rename within the same directory is atomic on both
-/// Windows and POSIX filesystems, so a reader never observes a partial file.
-pub(crate) fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let json = serde_json::to_string_pretty(value)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, json)?;
-    std::fs::rename(&tmp_path, path)
+/// Serializes every load-mutate-save cycle on the matrix in this process, so
+/// two overlapping toggles cannot each save a matrix missing the other's change.
+static MATRIX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Runs `mutate` on the freshly loaded matrix and saves it, all under
+/// [`MATRIX_LOCK`]. Returns the saved matrix, or why it could not be saved.
+pub(crate) fn update(mutate: impl FnOnce(&mut Matrix)) -> Result<Matrix, String> {
+    let _guard = MATRIX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut matrix = Matrix::load_for_update()?;
+    mutate(&mut matrix);
+    matrix.save()?;
+    Ok(matrix)
 }
 
 impl Matrix {
     /// Loads the matrix from disk. Missing or corrupt file -> `Matrix::default()`;
     /// never panics.
     pub fn load() -> Matrix {
+        Self::load_for_update().unwrap_or_default()
+    }
+
+    /// Like [`Matrix::load`], for callers about to save the result back. A
+    /// corrupt file is first copied to `extensions.json.bak-<ts>`; if that
+    /// copy fails this returns `Err`, so the save cannot destroy the only copy.
+    pub(crate) fn load_for_update() -> Result<Matrix, String> {
         let Some(path) = extensions_path() else {
-            return Matrix::default();
+            return Ok(Matrix::default());
         };
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            return Matrix::default();
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Matrix::default()),
+            Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
         };
-        serde_json::from_str(&raw).unwrap_or_default()
+        match serde_json::from_str(&raw) {
+            Ok(m) => Ok(m),
+            Err(err) => {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let mut backup = path.as_os_str().to_owned();
+                backup.push(format!(".bak-{ts}"));
+                std::fs::copy(&path, PathBuf::from(&backup)).map_err(|e| {
+                    format!("{} is corrupt ({err}) and could not be backed up: {e}", path.display())
+                })?;
+                log::warn!("{} is corrupt ({err}); backed up and reset", path.display());
+                Ok(Matrix::default())
+            }
+        }
     }
 
     /// Persists the matrix to disk via an atomic write. No-op if no data
     /// folder resolves.
-    pub fn save(&self) {
+    pub fn save(&self) -> Result<(), String> {
         let Some(path) = extensions_path() else {
-            return;
+            return Ok(());
         };
-        let _ = atomic_write_json(&path, self);
+        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        tauri_plugin_agent_tools::atomic_file::write_atomic(&path, json.as_bytes())
     }
 
     fn map(&self, kind: ItemKind) -> &std::collections::BTreeMap<String, ItemEntry> {
@@ -297,7 +334,7 @@ mod tests {
             &Surface::Cowork("p1".to_string()),
             true,
         );
-        m.save();
+        m.save().unwrap();
 
         // File actually landed on disk, atomically (no leftover .tmp).
         let path = dir.path().join(EXTENSIONS_FILE);
@@ -311,6 +348,66 @@ mod tests {
         assert!(!reloaded.is_enabled(ItemKind::Plugin, "octo", &Surface::Home));
 
         set_test_extensions_root(None);
+    }
+
+    #[test]
+    fn save_error_is_returned() {
+        let file = tempfile::NamedTempFile::new().expect("tempfile");
+        // The store root is a regular file, so the matrix cannot be written under it.
+        set_test_extensions_root(Some(file.path().to_path_buf()));
+        assert!(Matrix::default().save().is_err());
+        assert!(update(|m| m.set(ItemKind::Skill, "x", &Surface::Home, true)).is_err());
+        set_test_extensions_root(None);
+    }
+
+    #[test]
+    fn corrupt_matrix_is_backed_up() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        set_test_extensions_root(Some(dir.path().to_path_buf()));
+        std::fs::write(dir.path().join(EXTENSIONS_FILE), "not json").unwrap();
+        update(|m| m.set(ItemKind::Skill, "x", &Surface::Home, true)).unwrap();
+        let backups: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(".bak-"))
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(std::fs::read_to_string(backups[0].path()).unwrap(), "not json");
+        assert!(Matrix::load().is_enabled(ItemKind::Skill, "x", &Surface::Home));
+        set_test_extensions_root(None);
+    }
+
+    #[test]
+    fn concurrent_toggles_both_persist() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().to_path_buf();
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let root = root.clone();
+                std::thread::spawn(move || {
+                    // The test root is thread-local; each worker sets its own.
+                    set_test_extensions_root(Some(root));
+                    update(|m| m.set(ItemKind::Skill, &format!("s{i}"), &Surface::Home, true)).unwrap();
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        set_test_extensions_root(Some(root));
+        let m = Matrix::load();
+        for i in 0..8 {
+            // Present (restricted to Home) means Rooms is off; absent would be on.
+            assert!(!m.is_enabled(ItemKind::Skill, &format!("s{i}"), &Surface::Rooms), "toggle {i} lost");
+        }
+        set_test_extensions_root(None);
+    }
+
+    #[test]
+    fn unknown_kind_rejected() {
+        assert_eq!(ItemKind::parse("skill"), Ok(ItemKind::Skill));
+        assert_eq!(ItemKind::parse("plugin"), Ok(ItemKind::Plugin));
+        assert!(ItemKind::parse("skil").is_err());
     }
 
     #[test]

@@ -35,21 +35,79 @@ fn marker_path(dest: &Path) -> PathBuf {
     dest.with_file_name(MARKER_FILE)
 }
 
+/// SHA-256 of a file, lowercase hex.
+fn sha256_hex(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Some(
+        hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    )
+}
+
+/// Slack for a legacy marker written just after the file it names.
+const LEGACY_MTIME_SLACK: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Who owns the CLI at `dest`.
+///
+/// The marker has two lines. Line 1 is the file name (all an old reader looks
+/// at); line 2 is `v2 <size> <sha256>` of the binary this app wrote. A v2
+/// marker only claims `dest` while the size and hash still match, so a
+/// standalone install dropped over ours is Foreign. A legacy name-only marker
+/// claims `dest` only if the file is not newer than the marker.
 ///
 /// A copy identical to the bundled one counts as ours even without a marker:
 /// replacing a file with itself destroys nothing, and it lets an install made
 /// before the marker existed be recognised when it is current.
 pub fn ownership(dest: &Path, bundled: &Path) -> Ownership {
-    if !dest.exists() {
+    let Ok(dest_meta) = fs::metadata(dest) else {
         return Ownership::Absent;
-    }
+    };
     let named = dest.file_name().map(|n| n.to_string_lossy().into_owned());
-    let marked = fs::read_to_string(marker_path(dest))
-        .ok()
-        .map(|content| content.trim().to_string());
-    if named.is_some() && marked == named {
-        return Ownership::Ours;
+    let marker = marker_path(dest);
+    if let (Some(named), Ok(content)) = (named, fs::read_to_string(&marker)) {
+        let mut lines = content.lines();
+        if lines.next().map(str::trim) == Some(named.as_str()) {
+            match lines.next().map(str::trim).filter(|l| !l.is_empty()) {
+                Some(binding) => {
+                    let mut parts = binding.split_whitespace();
+                    if let (Some("v2"), Some(size), Some(hash)) =
+                        (parts.next(), parts.next(), parts.next())
+                    {
+                        if size.parse::<u64>().ok() == Some(dest_meta.len())
+                            && sha256_hex(dest).as_deref() == Some(hash)
+                        {
+                            return Ownership::Ours;
+                        }
+                    }
+                }
+                None => {
+                    let untouched = match (
+                        dest_meta.modified(),
+                        fs::metadata(&marker).and_then(|m| m.modified()),
+                    ) {
+                        (Ok(d), Ok(m)) => d <= m + LEGACY_MTIME_SLACK,
+                        _ => false,
+                    };
+                    if untouched {
+                        return Ownership::Ours;
+                    }
+                }
+            }
+        }
     }
     match (fs::read(dest), fs::read(bundled)) {
         (Ok(a), Ok(b)) if a == b => Ownership::Ours,
@@ -57,12 +115,18 @@ pub fn ownership(dest: &Path, bundled: &Path) -> Ownership {
     }
 }
 
-/// Record that the CLI at `dest` was installed by this app.
+/// Record that the CLI at `dest` was installed by this app, bound to its
+/// current size and hash. Call again after every refresh of the file.
 pub fn record_ours(dest: &Path) -> Result<(), String> {
     let name = dest
         .file_name()
         .ok_or_else(|| format!("not a file path: {}", dest.display()))?;
-    fs::write(marker_path(dest), name.to_string_lossy().as_bytes()).map_err(|e| e.to_string())
+    let size = fs::metadata(dest).map_err(|e| e.to_string())?.len();
+    let hash = sha256_hex(dest).ok_or_else(|| format!("cannot hash {}", dest.display()))?;
+    let content = format!("{}
+v2 {size} {hash}
+", name.to_string_lossy());
+    fs::write(marker_path(dest), content).map_err(|e| e.to_string())
 }
 
 /// What the automatic, on-launch install should do.
@@ -167,11 +231,55 @@ mod tests {
     }
 
     #[test]
-    fn a_marked_install_is_ours_even_when_older() {
+    fn unchanged_marked_install_is_ours() {
         let (_tmp, bundled, dest) = fixture();
         fs::write(&dest, b"desktop build 0.8.3").unwrap();
         record_ours(&dest).unwrap();
         assert_eq!(ownership(&dest, &bundled), Ownership::Ours);
+    }
+
+    #[test]
+    fn standalone_installed_over_ours_is_foreign() {
+        let (_tmp, bundled, dest) = fixture();
+        fs::write(&dest, b"desktop build 0.8.3").unwrap();
+        record_ours(&dest).unwrap();
+        fs::write(&dest, b"standalone agent build 0.9.1").unwrap();
+        assert_eq!(ownership(&dest, &bundled), Ownership::Foreign);
+    }
+
+    #[test]
+    fn update_rewrites_marker() {
+        let (_tmp, bundled, dest) = fixture();
+        fs::write(&dest, b"desktop build 0.8.3").unwrap();
+        record_ours(&dest).unwrap();
+        fs::write(&dest, b"desktop build 0.8.4 refreshed").unwrap();
+        assert_eq!(ownership(&dest, &bundled), Ownership::Foreign);
+        record_ours(&dest).unwrap();
+        assert_eq!(ownership(&dest, &bundled), Ownership::Ours);
+    }
+
+    #[test]
+    fn legacy_marker_with_untouched_file_is_ours() {
+        let (_tmp, bundled, dest) = fixture();
+        fs::write(&dest, b"desktop build 0.8.3").unwrap();
+        fs::write(dest.with_file_name(MARKER_FILE), "jan").unwrap();
+        assert_eq!(ownership(&dest, &bundled), Ownership::Ours);
+    }
+
+    #[test]
+    fn legacy_marker_with_newer_file_is_foreign() {
+        let (_tmp, bundled, dest) = fixture();
+        fs::write(&dest, b"standalone agent build 0.9.1").unwrap();
+        let marker = dest.with_file_name(MARKER_FILE);
+        fs::write(&marker, "jan").unwrap();
+        let older = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        fs::File::options()
+            .write(true)
+            .open(&marker)
+            .unwrap()
+            .set_modified(older)
+            .unwrap();
+        assert_eq!(ownership(&dest, &bundled), Ownership::Foreign);
     }
 
     #[test]

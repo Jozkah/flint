@@ -7,6 +7,9 @@ pub enum VectorDBError {
 
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+
+    #[error("Embedding dimension mismatch: {0}")]
+    DimensionMismatch(String),
 }
 
 impl From<rusqlite::Error> for VectorDBError {

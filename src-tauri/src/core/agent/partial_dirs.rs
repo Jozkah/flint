@@ -11,6 +11,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 fn claimed() -> &'static Mutex<HashSet<PathBuf>> {
     static CLAIMED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
@@ -41,7 +42,17 @@ pub(crate) fn claim(path: &Path) -> Claim {
 /// Remove every `*.partial` directory directly under `dir` that no operation
 /// in this process has claimed: those are leftovers of a stopped process or an
 /// operation that ended without cleaning up.
+///
+/// A partial younger than [`MIN_AGE`] is kept even when unclaimed: another
+/// process may be writing it (the claim set only covers this process).
 pub(crate) fn sweep(dir: &Path) {
+    sweep_older_than(dir, MIN_AGE);
+}
+
+/// Unclaimed partials younger than this are left alone by [`sweep`].
+const MIN_AGE: Duration = Duration::from_secs(60 * 60);
+
+fn sweep_older_than(dir: &Path, min_age: Duration) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -52,6 +63,15 @@ pub(crate) fn sweep(dir: &Path) {
         }
         let path = e.path();
         if claimed.contains(&path) {
+            continue;
+        }
+        let old_enough = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age >= min_age);
+        if !old_enough {
             continue;
         }
         let _ = std::fs::remove_dir_all(&path);
@@ -80,13 +100,44 @@ mod tests {
         std::fs::create_dir_all(&live).unwrap();
         std::fs::create_dir_all(&dead).unwrap();
 
-        sweep(&dir);
+        sweep_older_than(&dir, Duration::ZERO);
         assert!(live.exists(), "swept a directory still in use");
         assert!(!dead.exists(), "left a stale partial behind");
 
         drop(guard);
-        sweep(&dir);
+        sweep_older_than(&dir, Duration::ZERO);
         assert!(!live.exists(), "a released partial must be sweepable");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "partial-dirs-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
+    #[test]
+    fn fresh_unclaimed_partial_is_kept() {
+        let dir = scratch("fresh");
+        let p = dir.join("other-process.partial");
+        std::fs::create_dir_all(&p).unwrap();
+        sweep(&dir);
+        assert!(p.exists(), "swept a partial younger than MIN_AGE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_unclaimed_partial_is_removed() {
+        let dir = scratch("old");
+        let p = dir.join("stale.partial");
+        std::fs::create_dir_all(&p).unwrap();
+        sweep_older_than(&dir, Duration::ZERO);
+        assert!(!p.exists(), "kept a partial older than the cutoff");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -565,15 +565,12 @@ pub async fn agent_extensions_matrix_set(
     project_id: Option<String>,
     enabled: bool,
 ) -> Result<serde_json::Value, String> {
-    use crate::core::agent::extensions::{ItemKind, Matrix};
-    let item_kind = match kind.as_str() {
-        "plugin" => ItemKind::Plugin,
-        _ => ItemKind::Skill,
-    };
+    use crate::core::agent::extensions::ItemKind;
+    let item_kind = ItemKind::parse(&kind)?;
     let resolved_surface = resolve_surface(&surface, project_id.as_deref());
-    let mut matrix = Matrix::load();
-    matrix.set(item_kind, &id, &resolved_surface, enabled);
-    matrix.save();
+    let matrix = crate::core::agent::extensions::update(|m| {
+        m.set(item_kind, &id, &resolved_surface, enabled)
+    })?;
     serde_json::to_value(&matrix).map_err(|e| e.to_string())
 }
 
@@ -590,17 +587,12 @@ pub async fn agent_extensions_matrix_set_item(
     id: String,
     surfaces: Option<Vec<String>>,
 ) -> Result<serde_json::Value, String> {
-    use crate::core::agent::extensions::{ItemKind, Matrix};
-    let item_kind = match kind.as_str() {
-        "plugin" => ItemKind::Plugin,
-        _ => ItemKind::Skill,
-    };
-    let mut matrix = Matrix::load();
-    match surfaces {
-        Some(list) => matrix.set_item(item_kind, &id, list),
-        None => matrix.clear_item(item_kind, &id),
-    }
-    matrix.save();
+    use crate::core::agent::extensions::ItemKind;
+    let item_kind = ItemKind::parse(&kind)?;
+    let matrix = crate::core::agent::extensions::update(|m| match surfaces {
+        Some(list) => m.set_item(item_kind, &id, list),
+        None => m.clear_item(item_kind, &id),
+    })?;
     serde_json::to_value(&matrix).map_err(|e| e.to_string())
 }
 

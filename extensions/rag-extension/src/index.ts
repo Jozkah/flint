@@ -17,6 +17,17 @@ import { jevBridge, retrieveWithRerank, type Citation } from './rerank'
 import { resolveFileFilter, unmatchedNote, type FileFilter } from './retrieval'
 import * as ragApi from '@janhq/tauri-plugin-rag-api'
 
+
+/** Hard ceilings for tool arguments the model controls. */
+const MAX_TOP_K = 20
+const MAX_CHUNK_SPAN = 20
+const MAX_CHUNK_CHARS = 40_000
+
+/** The id attachments are stored under: the project id in project scope. */
+function effectiveId(scope: string, threadId: string, projectId: string): string {
+  return scope === 'project' ? projectId || threadId : threadId
+}
+
 export default class RagExtension extends RAGExtension {
   private config = {
     enabled: true,
@@ -133,9 +144,11 @@ export default class RagExtension extends RAGExtension {
     args: Record<string, unknown>
   ): Promise<MCPToolCallResult> {
     const threadId = String(args['thread_id'] || '')
+    const projectId = String(args['project_id'] || '')
     const scope = String(args['scope'] || 'thread')
+    const targetId = effectiveId(scope, threadId, projectId)
 
-    if (!threadId && scope === 'thread') {
+    if (!targetId) {
       return {
         error: 'Missing thread_id',
         content: [{ type: 'text', text: 'Missing thread_id' }],
@@ -159,9 +172,9 @@ export default class RagExtension extends RAGExtension {
 
       let files: AttachmentFileInfo[] = []
       if (scope === 'project' && vec.listAttachmentsForProject) {
-        files = await vec.listAttachmentsForProject(threadId)
+        files = await vec.listAttachmentsForProject(targetId)
       } else if (vec.listAttachments) {
-        files = await vec.listAttachments(threadId)
+        files = await vec.listAttachments(targetId)
       }
 
       return {
@@ -196,10 +209,13 @@ export default class RagExtension extends RAGExtension {
     const scope = String(args['scope'] || 'thread')
 
     // Use project_id as threadId when scope is project
-    const effectiveThreadId = scope === 'project' ? projectId || threadId : threadId
+    const effectiveThreadId = effectiveId(scope, threadId, projectId)
 
     const s = this.config
-    const topK = coerceIntegerArg(args['top_k']) || s.retrievalLimit || 3
+    const topK = Math.min(
+      Math.max(1, coerceIntegerArg(args['top_k']) || s.retrievalLimit || 3),
+      MAX_TOP_K
+    )
     const threshold = s.retrievalThreshold ?? 0.3
     const mode: 'auto' | 'ann' | 'linear' = s.searchMode || 'auto'
 
@@ -343,22 +359,30 @@ export default class RagExtension extends RAGExtension {
     args: Record<string, unknown>
   ): Promise<MCPToolCallResult> {
     const threadId = String(args['thread_id'] || '')
+    const projectId = String(args['project_id'] || '')
     const fileId = String(args['file_id'] || '')
-    const startOrder = coerceIntegerArg(args['start_order'])
-    const endOrder = coerceIntegerArg(args['end_order'])
+    const rawStart = coerceIntegerArg(args['start_order'])
+    const rawEnd = coerceIntegerArg(args['end_order'])
     const scope = String(args['scope'] || 'thread')
+    const targetId = effectiveId(scope, threadId, projectId)
 
     if (
       !fileId ||
-      startOrder === undefined ||
-      endOrder === undefined ||
-      (!threadId && scope === 'thread')
+      rawStart === undefined ||
+      rawEnd === undefined ||
+      !targetId
     ) {
       return {
         error: 'Missing thread_id, file_id, start_order, or end_order',
         content: [{ type: 'text', text: 'Missing required parameters' }],
       }
     }
+
+    // A reversed range is swapped; a span over the ceiling is cut short.
+    const startOrder = Math.max(0, Math.min(rawStart, rawEnd))
+    const requestedEnd = Math.max(rawStart, rawEnd)
+    const endOrder = Math.min(requestedEnd, startOrder + MAX_CHUNK_SPAN - 1)
+    let truncated = endOrder < requestedEnd
 
     try {
       const vec = window.core?.extensionManager.get(
@@ -375,16 +399,32 @@ export default class RagExtension extends RAGExtension {
 
       let chunks
       if (scope === 'project' && vec.getChunksForProject) {
-        chunks = await vec.getChunksForProject(threadId, fileId, startOrder, endOrder)
+        chunks = await vec.getChunksForProject(targetId, fileId, startOrder, endOrder)
       } else {
-        chunks = await vec.getChunks!(threadId, fileId, startOrder, endOrder)
+        chunks = await vec.getChunks!(targetId, fileId, startOrder, endOrder)
       }
 
-      const payload = {
+      let kept = Array.isArray(chunks) ? chunks : []
+      let chars = 0
+      const limited: typeof kept = []
+      for (const c of kept) {
+        chars += JSON.stringify(c)?.length ?? 0
+        if (chars > MAX_CHUNK_CHARS && limited.length > 0) {
+          truncated = true
+          break
+        }
+        limited.push(c)
+      }
+      kept = limited
+      const payload: Record<string, unknown> = {
         thread_id: threadId,
         scope,
         file_id: fileId,
-        chunks: chunks || [],
+        chunks: kept,
+      }
+      if (truncated) {
+        payload.truncated = true
+        payload.note = `Showing at most ${MAX_CHUNK_SPAN} chunks / ${MAX_CHUNK_CHARS} characters; request a later start_order for the rest.`
       }
       return {
         error: '',

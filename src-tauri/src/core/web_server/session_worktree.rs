@@ -440,6 +440,32 @@ pub fn execute(
     Ok(answer)
 }
 
+/// Deleting a session takes its worktree and branch with it, so they do not
+/// pile up under the server's folder. A worktree with uncommitted changes, or
+/// commits not yet merged, refuses (409) unless `force`: that work exists
+/// nowhere else. A record that is not a worktree this server owns (git does
+/// not list it under the owned root, or its repository is outside every
+/// `--agent-root`) is never touched; the delete goes ahead without it.
+pub fn release_for_delete(
+    data: &Path,
+    roots: &[PathBuf],
+    id: &str,
+    force: bool,
+) -> Result<(), Fail> {
+    let Some(record) = thread_metadata(data, id).as_ref().and_then(record_of) else {
+        return Ok(());
+    };
+    if validated(data, roots, &record).is_err() {
+        return Ok(());
+    }
+    worktree::discard_owned(&record, &owned_root(data)?, force).map_err(|m| {
+        fail(
+            409,
+            format!("merge or discard this session's worktree first, or delete with force: {m}"),
+        )
+    })
+}
+
 /// Flint's worktrees of the repository at `project` (already confined).
 pub fn list(data: &Path, project: &Path) -> Result<Value, Fail> {
     let root = owned_root(data)?;
@@ -641,6 +667,63 @@ mod tests {
             404
         );
         assert!(handles("agent_worktree_list") && !handles("agent_campaign_merge_task"));
+    }
+
+    /// A data folder with one runner thread whose worktree is real.
+    fn delete_fixture(id: &str) -> (tempfile::TempDir, PathBuf, Vec<PathBuf>, WorktreeRecord) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        worktree::run(&repo, &["init", "-q", "-b", "main"]).unwrap();
+        std::fs::write(repo.join("a.txt"), "one").unwrap();
+        worktree::run(&repo, &["add", "."]).unwrap();
+        worktree::run(&repo, &["commit", "-q", "-m", "first"]).unwrap();
+        let record = worktree::ensure(&repo, &owned_root(&data).unwrap(), id).unwrap();
+        let thread = json!({ "id": id, "metadata": { "source": "runner", KEY: record_json(&record) } });
+        let path = crate::core::threads::utils::get_thread_metadata_path(&data, id);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, thread.to_string()).unwrap();
+        let roots = vec![repo.canonicalize().unwrap()];
+        (dir, data, roots, record)
+    }
+
+    #[test]
+    fn delete_session_discards_clean_worktree() {
+        let (_dir, data, roots, record) = delete_fixture("del-clean");
+        release_for_delete(&data, &roots, "del-clean", false).expect("clean worktree is released");
+        assert!(!PathBuf::from(&record.path).exists());
+    }
+
+    #[test]
+    fn delete_session_with_dirty_worktree_refused_without_force() {
+        let (_dir, data, roots, record) = delete_fixture("del-dirty");
+        std::fs::write(PathBuf::from(&record.path).join("notes.txt"), "mine").unwrap();
+        let refused = release_for_delete(&data, &roots, "del-dirty", false).unwrap_err();
+        assert_eq!(refused.status, 409);
+        assert!(PathBuf::from(&record.path).join("notes.txt").is_file());
+    }
+
+    #[test]
+    fn delete_session_force_discards() {
+        let (_dir, data, roots, record) = delete_fixture("del-force");
+        std::fs::write(PathBuf::from(&record.path).join("notes.txt"), "mine").unwrap();
+        release_for_delete(&data, &roots, "del-force", true).expect("force discards");
+        assert!(!PathBuf::from(&record.path).exists());
+    }
+
+    #[test]
+    fn delete_never_removes_foreign_path() {
+        let (dir, data, roots, record) = delete_fixture("del-foreign");
+        let foreign = dir.path().join("foreign");
+        std::fs::create_dir_all(&foreign).unwrap();
+        std::fs::write(foreign.join("keep.txt"), "keep").unwrap();
+        let mut forged = record.clone();
+        forged.path = foreign.to_string_lossy().into_owned();
+        write_metadata(&data, "del-foreign", |m| m[KEY] = record_json(&forged)).unwrap();
+        release_for_delete(&data, &roots, "del-foreign", true).expect("nothing to release");
+        assert!(foreign.join("keep.txt").is_file());
+        assert!(PathBuf::from(&record.path).is_dir(), "the real worktree is not the forged record's");
     }
 
     #[test]

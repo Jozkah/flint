@@ -52,6 +52,7 @@ pub fn write_messages_to_file(
     messages: &[serde_json::Value],
     path: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_append_cache(path);
     let mut contents = Vec::new();
     for msg in messages {
         let data = serde_json::to_string(msg).map_err(|e| e.to_string())?;
@@ -85,22 +86,143 @@ pub fn append_message_line_if_new(
     message: &serde_json::Value,
     id: Option<&str>,
 ) -> Result<bool, String> {
-    let bytes = read_if_present(path)?;
-    if let Some(id) = id {
-        if contains_message_id(&bytes, id) {
+    let len = match fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => return Err(e.to_string()),
+    };
+    // Taking the entry out means every error path below leaves the cache
+    // without it, so a failed append is never trusted later.
+    let cached = append_cache().remove(path);
+    let ids = match (id, cached) {
+        // Same length as when this process last wrote: nobody else touched it.
+        (_, Some(state)) if state.len == len => Some(state.ids),
+        (Some(_), _) => Some(scan_message_ids(path)?),
+        (None, _) => None,
+    };
+    if let (Some(id), Some(set)) = (id, ids.as_ref()) {
+        if set.contains(id) {
+            if let Some(ids) = ids {
+                cache_put(path, len, ids);
+            }
             return Ok(false);
         }
     }
-    settle_tail(path, &bytes)?;
+    let settled_len = settle_tail_from_disk(path, len)?;
+    let mut line = serde_json::to_string(message).map_err(|e| e.to_string())?;
+    line.push('\n');
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
         .map_err(|e| e.to_string())?;
-    let data = serde_json::to_string(message).map_err(|e| e.to_string())?;
-    writeln!(file, "{data}").map_err(|e| e.to_string())?;
+    file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
     file.flush().map_err(|e| e.to_string())?;
+    if let (Some(id), Some(mut set)) = (id, ids) {
+        set.insert(id.to_owned());
+        cache_put(path, settled_len + line.len() as u64, set);
+    }
     Ok(true)
+}
+
+/// How much of the file's end is read to settle a torn tail.
+const TAIL_WINDOW: u64 = 64 * 1024;
+/// Messages files whose ids are remembered between appends.
+const APPEND_CACHE_FILES: usize = 64;
+
+/// What the last append to a messages file left behind: its length, and the ids
+/// it holds, so the next append neither re-reads nor re-scans the file. A
+/// length that no longer matches (the CLI or web server wrote) discards it.
+struct TailState {
+    len: u64,
+    ids: std::collections::HashSet<String>,
+}
+
+type TailMap = HashMap<std::path::PathBuf, TailState>;
+
+fn append_cache() -> std::sync::MutexGuard<'static, TailMap> {
+    static CACHE: OnceLock<std::sync::Mutex<TailMap>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn cache_put(path: &Path, len: u64, ids: std::collections::HashSet<String>) {
+    let mut cache = append_cache();
+    if cache.len() >= APPEND_CACHE_FILES {
+        cache.clear();
+    }
+    cache.insert(path.to_path_buf(), TailState { len, ids });
+}
+
+/// Forget what is remembered about a messages file. Call after anything that
+/// rewrites or removes it.
+pub fn invalidate_append_cache(path: &Path) {
+    append_cache().remove(path);
+}
+
+/// Every message id in the file, read line by line. A line that does not parse
+/// is ignored, as the old whole-file duplicate check did.
+fn scan_message_ids(path: &Path) -> Result<std::collections::HashSet<String>, String> {
+    let mut ids = std::collections::HashSet::new();
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ids),
+        Err(e) => return Err(e.to_string()),
+    };
+    let mut reader = BufReader::new(file);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        if reader.read_until(NEWLINE, &mut buf).map_err(|e| e.to_string())? == 0 {
+            break;
+        }
+        if let Ok(m) = serde_json::from_slice::<serde_json::Value>(&buf) {
+            if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
+                ids.insert(id.to_owned());
+            }
+        }
+    }
+    Ok(ids)
+}
+
+/// Settle a torn tail reading only the end of the file; returns the file's
+/// length afterwards. A final line longer than the window falls back to
+/// reading the whole file.
+fn settle_tail_from_disk(path: &Path, len: u64) -> Result<u64, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut file = File::open(path).map_err(|e| e.to_string())?;
+    let window_start = len.saturating_sub(TAIL_WINDOW);
+    file.seek(SeekFrom::Start(window_start))
+        .map_err(|e| e.to_string())?;
+    let mut window = Vec::new();
+    file.take(len - window_start)
+        .read_to_end(&mut window)
+        .map_err(|e| e.to_string())?;
+    if window.ends_with(NEWLINE_BYTES) {
+        return Ok(len);
+    }
+    match window.iter().rposition(|b| *b == NEWLINE) {
+        Some(i) => settle_tail_at(path, &window[i + 1..], window_start + i as u64 + 1, len),
+        None if window_start == 0 => settle_tail_at(path, &window, 0, len),
+        None => {
+            let bytes = read_if_present(path)?;
+            let tail_start = bytes
+                .iter()
+                .rposition(|b| *b == NEWLINE)
+                .map_or(0, |i| i + 1);
+            settle_tail_at(
+                path,
+                &bytes[tail_start..],
+                tail_start as u64,
+                bytes.len() as u64,
+            )
+        }
+    }
 }
 
 fn read_if_present(path: &Path) -> Result<Vec<u8>, String> {
@@ -111,48 +233,29 @@ fn read_if_present(path: &Path) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Whether any complete message line has `"id": id`. Lines are parsed only
-/// when the id text occurs in them at all, so the common case (a new id) is a
-/// plain byte scan. A line that does not parse is not a match.
-fn contains_message_id(bytes: &[u8], id: &str) -> bool {
-    let needle = id.as_bytes();
-    bytes
-        .split(|b| *b == NEWLINE)
-        .filter(|line| !needle.is_empty() && line.windows(needle.len()).any(|w| w == needle))
-        .filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok())
-        .any(|m| m.get("id").and_then(|v| v.as_str()) == Some(id))
-}
-
-fn settle_tail(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if bytes.is_empty() || bytes.ends_with(NEWLINE_BYTES) {
-        return Ok(());
-    }
-    let tail_start = bytes
-        .iter()
-        .rposition(|b| *b == NEWLINE)
-        .map_or(0, |i| i + 1);
-    let tail = &bytes[tail_start..];
-    let complete = serde_json::from_slice::<serde_json::Value>(tail).is_ok();
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .open(path)
-        .map_err(|e| e.to_string())?;
-    if complete {
-        drop(file);
+/// Settle an unterminated final line `tail` that starts at byte `tail_start`
+/// of a `len`-byte file; returns the new length.
+fn settle_tail_at(path: &Path, tail: &[u8], tail_start: u64, len: u64) -> Result<u64, String> {
+    if serde_json::from_slice::<serde_json::Value>(tail).is_ok() {
         let mut file = fs::OpenOptions::new()
             .append(true)
             .open(path)
             .map_err(|e| e.to_string())?;
         file.write_all(NEWLINE_BYTES).map_err(|e| e.to_string())?;
+        Ok(len + 1)
     } else {
         log::warn!(
             "messages: dropping an incomplete final line ({} bytes) in {}",
             tail.len(),
             path.display()
         );
-        file.set_len(tail_start as u64).map_err(|e| e.to_string())?;
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .map_err(|e| e.to_string())?;
+        file.set_len(tail_start).map_err(|e| e.to_string())?;
+        Ok(tail_start)
     }
-    Ok(())
 }
 
 /// Read messages from a thread's messages.jsonl file

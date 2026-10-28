@@ -5,6 +5,7 @@ pub mod http;
 pub mod math;
 pub mod network;
 pub mod path;
+pub mod path_policy;
 pub mod string;
 pub mod system;
 

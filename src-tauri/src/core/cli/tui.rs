@@ -34995,6 +34995,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("jan_init_invite_{}", std::process::id()));
         let nested = root.join("pkg");
         std::fs::create_dir_all(&nested).unwrap();
+        // The ancestor walk stops at the repository root.
+        std::fs::create_dir_all(root.join(".git")).unwrap();
         assert!(!crate::core::agent::context::has_context_file(&nested));
         std::fs::write(root.join("JAN.md"), "ROOT_RULES").unwrap();
         assert!(

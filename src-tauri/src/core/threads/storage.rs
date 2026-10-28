@@ -89,10 +89,26 @@ pub async fn delete_thread_in(root: &Path, id: &str, permanent: bool) -> Result<
         // recreate the folder right after it is removed, leaving an orphan.
         let lock = get_lock_for_thread(id).await;
         let _guard = lock.lock().await;
+        super::helpers::invalidate_append_cache(&get_messages_path(root, id));
         let thread_dir = get_thread_dir(root, id);
-        if thread_dir.exists() {
-            let _ = fs::remove_dir_all(thread_dir);
+        // Unlist the thread first: with thread.json gone `list_threads` skips
+        // the folder, so a removal that fails below cannot leave a thread that
+        // looks alive.
+        match fs::remove_file(get_thread_metadata_path(root, id)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("could not delete thread {id}: {e}")),
         }
+        let dir_result = if thread_dir.exists() {
+            tokio::task::spawn_blocking(move || remove_dir_all_retry(&thread_dir))
+                .await
+                .map_err(|e| format!("delete task failed: {e}"))?
+        } else {
+            Ok(())
+        };
+        // The attachments module is desktop-only (not in the CLI build).
+        #[cfg(not(feature = "cli"))]
+        crate::core::attachments::cleanup::remove_thread_data(root, id);
         if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(root, id) {
             log::warn!("could not remove request records for a deleted thread: {e}");
         }
@@ -103,8 +119,25 @@ pub async fn delete_thread_in(root: &Path, id: &str, permanent: bool) -> Result<
                 }
             }
         }
-        Ok(())
+        dir_result.map_err(|e| format!("could not delete thread {id} folder: {e}"))
     }
+}
+
+/// `remove_dir_all` retried a few times: on Windows a file another process is
+/// still closing (an indexer, antivirus) fails the first attempt.
+fn remove_dir_all_retry(dir: &Path) -> std::io::Result<()> {
+    let mut last = None;
+    for attempt in 0..5 {
+        match fs::remove_dir_all(dir) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => last = Some(e),
+        }
+        if attempt < 4 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+    Err(last.expect("loop ran at least once"))
 }
 
 pub async fn create_message_in(root: &Path, mut message: Value) -> Result<Value, String> {

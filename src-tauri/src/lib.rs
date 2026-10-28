@@ -862,6 +862,8 @@ pub fn build_app() -> tauri::App {
         core::browser_agent::pane::browser_agent_rules,
         core::browser_agent::pane::browser_agent_rule_set,
         core::browser_agent::pane::browser_agent_rule_remove,
+        core::browser_agent::pane::browser_agent_rules_damage,
+        core::browser_agent::pane::browser_agent_rules_acknowledge_damage,
         core::browser_agent::pane::browser_agent_clear_grants,
         core::browser_agent::pane::browser_agent_grants,
         core::browser_agent::pane::browser_agent_stop,
@@ -906,6 +908,9 @@ pub fn build_app() -> tauri::App {
             if let Some(llama) = app.try_state::<std::sync::Arc<tauri_plugin_llamacpp::LlamacppState>>() {
                 let _ = llama.addon_root.set(data_folder.join("engine-addons"));
             }
+            // The RAG/memory databases live in the data folder, before any
+            // frontend command can reach them.
+            tauri_plugin_vector_db::manage_state(app.handle(), data_folder.join("vectordb"));
             tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
                 tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder),
             );

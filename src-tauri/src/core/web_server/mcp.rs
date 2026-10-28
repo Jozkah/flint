@@ -18,6 +18,7 @@ use tokio::sync::{oneshot, Mutex};
 
 use crate::core::cli::mcp as client;
 use crate::core::mcp::models::McpSettings;
+use crate::core::mcp::redact;
 use crate::core::mcp::stall;
 use crate::core::state::SharedMcpServers;
 
@@ -174,11 +175,25 @@ fn refuse_stdio(host: &Host) -> String {
         .to_string()
 }
 
-/// Raw `mcp_config.json`, for the settings page to parse as it does on desktop.
+/// `mcp_config.json` with env values and headers masked, for the settings page
+/// to parse as it does on desktop. The real secrets never leave the host.
 pub fn config_text() -> String {
-    match client::read_config_document() {
+    redacted_text(&client::read_config_document())
+}
+
+fn redacted_text(document: &Value) -> String {
+    match document {
         Value::Null => "{}".to_string(),
-        document => document.to_string(),
+        document => redact::redact_mcp_config(document).to_string(),
+    }
+}
+
+/// Put stored secrets back where the browser sent the mask, and drop any mask
+/// with nothing to restore, as the desktop save does.
+fn unmask(document: &mut Value, stored: &Map<String, Value>) {
+    redact::restore_masked_secrets(document, stored);
+    for entry in redact::strip_unrestored_masks(document) {
+        log::warn!("web save mcp config: dropped hidden value with no stored secret: {entry}");
     }
 }
 
@@ -188,12 +203,13 @@ pub fn config_text() -> String {
 /// definition.
 pub async fn save_config(host: &Host, text: &str) -> Result<(), String> {
     let _writer = host.config_lock.lock().await;
-    let document: Value = serde_json::from_str(text).map_err(|e| format!("invalid JSON: {e}"))?;
+    let mut document: Value = serde_json::from_str(text).map_err(|e| format!("invalid JSON: {e}"))?;
     if !document.is_object() {
         return Err("configuration must be a JSON object".into());
     }
-    let incoming = servers_of(&document);
     let before = saved_servers();
+    unmask(&mut document, &before);
+    let incoming = servers_of(&document);
     for (name, config) in &incoming {
         client::validate_server_name(name)?;
         client::validate_config(config)?;
@@ -636,6 +652,36 @@ async fn call_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample() -> Value {
+        json!({"mcpServers": {"s": {
+            "type": "http", "url": "https://x.test/mcp", "active": true,
+            "headers": {"Authorization": "Bearer real-secret"}
+        }}})
+    }
+
+    #[test]
+    fn web_mcp_config_get_masks_env_and_headers() {
+        let text = redacted_text(&sample());
+        assert!(!text.contains("real-secret"));
+        assert!(text.contains(redact::MASK));
+        assert_eq!(redacted_text(&Value::Null), "{}");
+    }
+
+    #[test]
+    fn web_mcp_config_put_roundtrip_keeps_secrets() {
+        let stored = sample();
+        let mut sent: Value = serde_json::from_str(&redacted_text(&stored)).unwrap();
+        unmask(&mut sent, &servers_of(&stored));
+        assert_eq!(
+            sent["mcpServers"]["s"]["headers"]["Authorization"],
+            "Bearer real-secret"
+        );
+        // A mask with nothing stored is dropped, never written.
+        let mut fresh: Value = serde_json::from_str(&redacted_text(&stored)).unwrap();
+        unmask(&mut fresh, &Map::new());
+        assert!(!fresh.to_string().contains(redact::MASK));
+    }
 
     #[test]
     fn web_mcp_connect_drop_clears_starting() {

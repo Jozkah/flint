@@ -237,4 +237,49 @@ async fn modify_thread_keeps_the_backend_owned_active_root() {
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(v["metadata"]["activeRootId"], "r2");
     assert_eq!(v["title"], "T");
+
+fn append_dedupes_via_cache() {
+    let (_tmp, path) = thread("cache-dedupe");
+    assert!(append_message_line_if_new(&path, &json!({"id": "a"}), Some("a")).unwrap());
+    assert!(!append_message_line_if_new(&path, &json!({"id": "a"}), Some("a")).unwrap());
+    assert!(append_message_line_if_new(&path, &json!({"id": "b"}), Some("b")).unwrap());
+    assert!(!append_message_line_if_new(&path, &json!({"id": "b"}), Some("b")).unwrap());
+    assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 2);
+}
+
+#[test]
+fn cache_rebuilds_when_file_changed_externally() {
+    let (_tmp, path) = thread("cache-external");
+    assert!(append_message_line_if_new(&path, &json!({"id": "a"}), Some("a")).unwrap());
+    // Another writer (the CLI) appends a message this process never saw.
+    let mut raw = fs::read_to_string(&path).unwrap();
+    raw.push_str("{\"id\":\"ext\"}\n");
+    fs::write(&path, raw).unwrap();
+    assert!(!append_message_line_if_new(&path, &json!({"id": "ext"}), Some("ext")).unwrap());
+    assert!(append_message_line_if_new(&path, &json!({"id": "c"}), Some("c")).unwrap());
+}
+
+#[test]
+fn torn_tail_settled_with_tail_read_only() {
+    // A short torn tail and one longer than the 64 KiB tail window.
+    for (label, filler) in [("tail-short", 10usize), ("tail-long", 200 * 1024)] {
+        let (tmp, path) = thread(label);
+        let mut raw = String::from("{\"id\":\"m1\"}\n");
+        raw.push_str("{\"id\":\"torn\",\"text\":\"");
+        raw.push_str(&"x".repeat(filler));
+        fs::write(&path, raw).unwrap();
+        assert!(append_message_line_if_new(&path, &json!({"id": "m2"}), Some("m2")).unwrap());
+        let read = read_messages_from_file(tmp.path(), label).unwrap();
+        let ids: Vec<_> = read.iter().map(|m| m["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec!["m1", "m2"]);
+    }
+}
+
+#[test]
+fn cache_dropped_on_rewrite() {
+    let (_tmp, path) = thread("cache-rewrite");
+    assert!(append_message_line_if_new(&path, &json!({"id": "a"}), Some("a")).unwrap());
+    // Rewriting without "a" must make "a" appendable again.
+    write_messages_to_file(&[json!({"id": "z"})], &path).unwrap();
+    assert!(append_message_line_if_new(&path, &json!({"id": "a"}), Some("a")).unwrap());
 }

@@ -53,6 +53,36 @@ async function insertOrRollback(
   }
 }
 
+/** The attached copy is stale: both sizes are known and they differ. */
+function isEdited(attached: { size?: number | null }, incoming: VectorDBFileInput): boolean {
+  return (
+    typeof attached.size === 'number' &&
+    typeof incoming.size === 'number' &&
+    attached.size !== incoming.size
+  )
+}
+
+/** Files being ingested right now, keyed `collection\0path`. */
+const ingestsInFlight = new Set<string>()
+
+/** Run `fn` unless the same file is already being ingested into `collection`. */
+async function guardIngest<T>(
+  collection: string,
+  file: VectorDBFileInput,
+  fn: () => Promise<T>
+): Promise<T> {
+  const key = `${collection}\0${file.path}`
+  if (ingestsInFlight.has(key)) {
+    throw new Error(`File '${file.name}' is already being attached`)
+  }
+  ingestsInFlight.add(key)
+  try {
+    return await fn()
+  } finally {
+    ingestsInFlight.delete(key)
+  }
+}
+
 export default class VectorDBExt extends VectorDBExtension {
   async onLoad(): Promise<void> {
     // no-op
@@ -127,12 +157,22 @@ export default class VectorDBExt extends VectorDBExtension {
   }
 
   async ingestFileForProject(projectId: string, file: VectorDBFileInput, opts: VectorDBIngestOptions): Promise<AttachmentFileInfo> {
+    return guardIngest(this.collectionForProject(projectId), file, () =>
+      this.doIngestFileForProject(projectId, file, opts)
+    )
+  }
+
+  private async doIngestFileForProject(projectId: string, file: VectorDBFileInput, opts: VectorDBIngestOptions): Promise<AttachmentFileInfo> {
     // Reject a duplicate before the costly parse and embedding work. A missing
-    // collection has no attachments yet.
+    // collection has no attachments yet. A file whose size changed since it was
+    // attached was edited: drop the old copy and index it again.
     const existingFiles = await vecdb.listAttachments(this.collectionForProject(projectId)).catch(() => [])
     const duplicate = existingFiles.find((f: any) => f.name === file.name && f.path === file.path)
     if (duplicate) {
-      throw new Error(`File '${file.name}' has already been attached to this project`)
+      if (!isEdited(duplicate, file)) {
+        throw new Error(`File '${file.name}' has already been attached to this project`)
+      }
+      await vecdb.deleteFile(this.collectionForProject(projectId), duplicate.id)
     }
 
     const text = await ragApi.parseDocument(file.path, file.type || 'application/octet-stream')
@@ -263,11 +303,21 @@ export default class VectorDBExt extends VectorDBExtension {
   }
 
   async ingestFile(threadId: string, file: VectorDBFileInput, opts: VectorDBIngestOptions): Promise<AttachmentFileInfo> {
-    // Check for duplicate file (same name + path)
+    return guardIngest(this.collectionForThread(threadId), file, () =>
+      this.doIngestFile(threadId, file, opts)
+    )
+  }
+
+  private async doIngestFile(threadId: string, file: VectorDBFileInput, opts: VectorDBIngestOptions): Promise<AttachmentFileInfo> {
+    // Check for duplicate file (same name + path). A file whose size changed
+    // since it was attached was edited: drop the old copy and index it again.
     const existingFiles = await vecdb.listAttachments(this.collectionForThread(threadId)).catch(() => [])
     const duplicate = existingFiles.find((f: any) => f.name === file.name && f.path === file.path)
     if (duplicate) {
-      throw new Error(`File '${file.name}' has already been attached to this thread`)
+      if (!isEdited(duplicate, file)) {
+        throw new Error(`File '${file.name}' has already been attached to this thread`)
+      }
+      await vecdb.deleteFile(this.collectionForThread(threadId), duplicate.id)
     }
 
     const text = await ragApi.parseDocument(file.path, file.type || 'application/octet-stream')

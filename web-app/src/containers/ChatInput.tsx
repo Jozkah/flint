@@ -1951,7 +1951,9 @@ const ChatInput = memo(function ChatInput({
     if (withinLimit.length === 0) return
     try {
       const paths = await Promise.all(
-        withinLimit.map((f) => serviceHub.uploads().saveDroppedFile(f))
+        withinLimit.map((f) =>
+          serviceHub.uploads().saveDroppedFile(f, currentThreadId)
+        )
       )
       await attachDocumentPaths(paths)
     } catch (e) {

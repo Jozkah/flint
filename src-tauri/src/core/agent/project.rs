@@ -327,6 +327,10 @@ pub(crate) fn drop_loosening_keys(cfg: &mut AgentToml) -> Vec<&'static str> {
         tools.allow_home_read = None;
         dropped.push("[tools] allow_home_read");
     }
+    if tools.diagnostics == Some(true) {
+        tools.diagnostics = None;
+        dropped.push("[tools] diagnostics");
+    }
     if !tools.fs.allow_read.is_empty() {
         tools.fs.allow_read.clear();
         dropped.push("[tools.fs] allow_read");
@@ -650,6 +654,11 @@ pub(crate) struct ToolsSection {
     /// `$HOME` entirely. Writes are confined to the workspace either way.
     #[serde(default)]
     pub allow_home_read: Option<bool>,
+    /// Whether the project's own checker (`cargo check`, `tsc`) is run after
+    /// edits. It executes repository-controlled build code, so an untrusted
+    /// folder cannot turn it on (see [`drop_loosening_keys`]).
+    #[serde(default)]
+    pub diagnostics: Option<bool>,
     /// `[tools.fs]`: path allow/deny lists for the sandboxed shell.
     #[serde(default)]
     pub fs: FsSection,
@@ -1304,6 +1313,26 @@ soft_deny = ["git push"]
         assert!(cfg.auto_mode.allow.is_empty() && cfg.auto_mode.soft_deny.is_empty());
         assert_eq!(cfg.tools.deny, vec!["web_fetch".to_string()]);
         assert_eq!(cfg.tools.ask, vec!["bash:git push".to_string()]);
+    }
+
+    #[test]
+    fn untrusted_project_cannot_enable_diagnostics() {
+        let mut cfg: AgentToml = toml::from_str("[tools]
+diagnostics = true
+").unwrap();
+        let dropped = drop_loosening_keys(&mut cfg);
+        assert_eq!(dropped, ["[tools] diagnostics"]);
+        assert_eq!(cfg.tools.diagnostics, None);
+    }
+
+    #[test]
+    fn trusted_project_can_enable_diagnostics() {
+        // Unit tests read project files as trusted.
+        let root = project_with("[tools]
+diagnostics = true
+");
+        let cfg = load_agent_config(&root).unwrap();
+        assert_eq!(cfg.tools.diagnostics, Some(true));
     }
 
     #[test]

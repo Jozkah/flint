@@ -123,10 +123,19 @@ struct DeviceFile {
 /// rewrite the file on every request.
 const LAST_SEEN_PERSIST_EVERY_MS: u64 = 60_000;
 
+/// A device not seen for this long is no longer accepted; it stays listed so
+/// the user can unpair it.
+pub const DEVICE_IDLE_EXPIRY_MS: u64 = 90 * 24 * 60 * 60 * 1000;
+/// Most devices that can be paired at once.
+pub const MAX_DEVICES: usize = 16;
+
 #[derive(Debug)]
 pub struct DeviceStore {
     path: Option<PathBuf>,
     devices: Vec<Device>,
+    /// `last_seen` changed since the file was last written; a background
+    /// flush writes it, so the request path never touches the disk.
+    dirty: bool,
 }
 
 impl DeviceStore {
@@ -135,6 +144,7 @@ impl DeviceStore {
         Self {
             path: None,
             devices: Vec::new(),
+            dirty: false,
         }
     }
 
@@ -142,18 +152,41 @@ impl DeviceStore {
     /// worst outcome is re-pairing, never a phone that stays trusted by
     /// accident.
     pub fn load(path: PathBuf) -> Self {
-        let devices = std::fs::read_to_string(&path)
+        let mut devices = std::fs::read_to_string(&path)
             .ok()
             .and_then(|raw| serde_json::from_str::<DeviceFile>(&raw).ok())
             .map(|f| f.devices)
             .unwrap_or_default();
+        // A device from before `last_seen` was kept counts as seen now, so
+        // the upgrade does not lock it out.
+        let now = now_ms();
+        for d in devices.iter_mut().filter(|d| d.last_seen.is_none()) {
+            d.last_seen = Some(now);
+        }
         Self {
             path: Some(path),
             devices,
+            dirty: false,
         }
     }
 
-    fn save(&self) {
+    /// Serialized file content and its path when `last_seen` changes are
+    /// waiting to be written. The caller writes it after releasing the lock.
+    pub fn take_dirty_snapshot(&mut self) -> Option<(PathBuf, Vec<u8>)> {
+        if !self.dirty {
+            return None;
+        }
+        let path = self.path.clone()?;
+        let file = DeviceFile {
+            devices: self.devices.clone(),
+        };
+        let bytes = serde_json::to_vec_pretty(&file).ok()?;
+        self.dirty = false;
+        Some((path, bytes))
+    }
+
+    fn save(&mut self) {
+        self.dirty = false;
         let Some(path) = &self.path else { return };
         let file = DeviceFile {
             devices: self.devices.clone(),
@@ -186,28 +219,37 @@ impl DeviceStore {
     /// The device a presented token belongs to. Every stored hash is compared,
     /// match or not, so the time taken does not depend on where it matched.
     pub fn verify(&self, token: &str) -> Option<Device> {
+        self.verify_at(token, now_ms())
+    }
+
+    /// [`Self::verify`] at a given time: a device idle for longer than
+    /// [`DEVICE_IDLE_EXPIRY_MS`] is not accepted.
+    pub fn verify_at(&self, token: &str, now: u64) -> Option<Device> {
         let presented = hash_token(token);
         let mut found = None;
         for d in &self.devices {
             if constant_time_eq(presented.as_bytes(), d.token_hash.as_bytes()) {
-                found = Some(d.clone());
+                found = Some(d);
             }
         }
         found
+            .filter(|d| {
+                let seen = d.last_seen.unwrap_or(d.paired_at);
+                now.saturating_sub(seen) <= DEVICE_IDLE_EXPIRY_MS
+            })
+            .cloned()
     }
 
+    /// Records activity in memory only; the file is written by the
+    /// background flush ([`Self::take_dirty_snapshot`]).
     pub fn touch(&mut self, id: &str, at: u64) {
-        let mut dirty = false;
         if let Some(d) = self.devices.iter_mut().find(|d| d.id == id) {
             if d.last_seen.is_none_or(|prev| {
                 at.saturating_sub(prev) >= LAST_SEEN_PERSIST_EVERY_MS
             }) {
-                dirty = true;
+                self.dirty = true;
             }
             d.last_seen = Some(at);
-        }
-        if dirty {
-            self.save();
         }
     }
 
@@ -346,6 +388,8 @@ pub enum PairError {
     /// Wrong, expired or already-used code: one answer for all three.
     InvalidCode,
     NoSuchRequest,
+    /// [`MAX_DEVICES`] phones are already paired.
+    TooManyDevices,
 }
 
 #[derive(Debug, Default)]

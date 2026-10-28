@@ -363,7 +363,10 @@ impl Store {
         }
         let mut state = self.load_state()?;
         state.version = SCHEMA_VERSION;
-        state.watermarks.extend(new.iter().map(|(k, v)| (k.clone(), *v)));
+        // A mark far ahead of the real clock would silence its task; clamp it.
+        let now = Utc::now();
+        let limit = now + chrono::Duration::seconds(super::engine::MAX_FUTURE_SKEW_SECS);
+        state.watermarks.extend(new.iter().map(|(k, v)| (k.clone(), if *v > limit { now } else { *v })));
         write_json(&self.state_path(), &state)
     }
 
@@ -706,6 +709,14 @@ mod tests {
         assert_eq!(s.watermarks().len(), 2);
         fs::write(s.root().join("state.json"), "{ not json").unwrap();
         assert!(s.watermarks().is_empty());
+    }
+
+    #[test]
+    fn merge_watermarks_clamps_future() {
+        let (_d, s) = store();
+        let far = Utc::now() + chrono::Duration::days(30);
+        s.merge_watermarks(&[("a".to_string(), far)].into()).unwrap();
+        assert!(s.watermarks()["a"] < Utc::now() + chrono::Duration::hours(1));
     }
 
     #[test]
