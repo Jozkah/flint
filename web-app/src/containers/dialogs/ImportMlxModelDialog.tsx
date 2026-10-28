@@ -67,7 +67,7 @@ export const ImportMlxModelDialog = ({
     // Validate model name - only allow alphanumeric, underscore, hyphen, and dot
     //eslint-disable-next-line
     if (
-      !/^[a-zA-Z0-9/_.\-]+$/.test(modelName) ||
+      !/^[a-zA-Z0-9/_.-]+$/.test(modelName) ||
       modelName.startsWith('/') ||
       modelName.endsWith('/') ||
       modelName.split('/').some((seg) => seg === '..' || seg === '')

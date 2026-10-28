@@ -19,7 +19,7 @@ export function isMethodNotFound(text: string | undefined | null): boolean {
   if (!text) return false
   return (
     /method\s+'?[^'\s]*'?\s*not\s+found/i.test(text) ||
-    /\b-32601\b/.test(text)
+    /(^|[^\w])-32601(?!\d)/.test(text)
   )
 }
 

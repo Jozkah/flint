@@ -101,7 +101,8 @@ function LocalAPIServerContent() {
     setDefaultModelLocalApiServer,
   } = useLocalApiServer()
 
-  const { serverStatus, setServerStatus } = useAppState()
+  const serverStatus = useAppState((state) => state.serverStatus)
+  const setServerStatus = useAppState((state) => state.setServerStatus)
   const [showApiKeyError, setShowApiKeyError] = useState(false)
   const setActiveModels = useAppState((state) => state.setActiveModels)
 
