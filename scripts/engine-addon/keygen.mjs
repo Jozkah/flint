@@ -13,8 +13,15 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const pubFile =
-  process.argv[2] ??
+  process.argv.slice(2).find((a) => !a.startsWith('--')) ??
   path.resolve(here, '../../src-tauri/plugins/tauri-plugin-llamacpp/addon-signing.pub')
+
+// Rotating the key invalidates every pack signed with the old one, so an
+// existing public key is never replaced by accident.
+if (fs.existsSync(pubFile) && !process.argv.includes('--force')) {
+  console.error(`${pubFile} already exists; rerun with --force to rotate the signing key`)
+  process.exit(1)
+}
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519')
 const seed = privateKey.export({ format: 'der', type: 'pkcs8' }).subarray(-32)
