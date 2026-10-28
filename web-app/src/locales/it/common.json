@@ -852,7 +852,15 @@
     "openCodeFolderInCowork": "Apri la cartella del codice in Cowork",
     "openCodeFolder": "Apri la cartella del codice",
     "openCodeFolderDescription": "Scegli una cartella del tuo computer in cui Flint possa lavorare.",
-    "setUpEmbeddingModel": "Configura un modello di embedding"
+    "setUpEmbeddingModel": "Configura un modello di embedding",
+    "mcpServers": {
+      "title": "Server MCP",
+      "useAll": "Usa tutti i server attivi (predefinito)",
+      "onlyThese": "Solo questi server",
+      "noneConfigured": "Nessun server MCP configurato.",
+      "filterActive": "Questo progetto usa solo: {{servers}}",
+      "filterNone": "Questo progetto non usa server MCP"
+    }
   },
   "attachmentsIngestion": {
     "title": "Scegli come elaborare gli allegati",

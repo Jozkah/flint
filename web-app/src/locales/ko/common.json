@@ -847,7 +847,15 @@
     "openCodeFolderInCowork": "Cowork에서 코드 폴더 열기",
     "openCodeFolder": "코드 폴더 열기",
     "openCodeFolderDescription": "Flint가 작업할 컴퓨터의 폴더를 선택하세요.",
-    "setUpEmbeddingModel": "임베딩 모델 설정"
+    "setUpEmbeddingModel": "임베딩 모델 설정",
+    "mcpServers": {
+      "title": "MCP 서버",
+      "useAll": "활성화된 모든 서버 사용(기본값)",
+      "onlyThese": "이 서버만 사용",
+      "noneConfigured": "구성된 MCP 서버가 없습니다.",
+      "filterActive": "이 프로젝트는 다음만 사용합니다: {{servers}}",
+      "filterNone": "이 프로젝트는 MCP 서버를 사용하지 않습니다"
+    }
   },
   "attachmentsIngestion": {
     "title": "첨부 파일 수집 방식 선택",

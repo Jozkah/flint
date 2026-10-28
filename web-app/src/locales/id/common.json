@@ -843,7 +843,15 @@
     "openCodeFolderInCowork": "Buka folder kode di Cowork",
     "openCodeFolder": "Buka folder kode",
     "openCodeFolderDescription": "Pilih folder di komputer Anda untuk dikerjakan Flint.",
-    "setUpEmbeddingModel": "Siapkan model embedding"
+    "setUpEmbeddingModel": "Siapkan model embedding",
+    "mcpServers": {
+      "title": "Server MCP",
+      "useAll": "Gunakan semua server yang aktif (bawaan)",
+      "onlyThese": "Hanya server ini",
+      "noneConfigured": "Belum ada server MCP yang dikonfigurasi.",
+      "filterActive": "Proyek ini hanya menggunakan: {{servers}}",
+      "filterNone": "Proyek ini tidak menggunakan server MCP"
+    }
   },
   "attachmentsIngestion": {
     "title": "Pilih cara menyerap lampiran",

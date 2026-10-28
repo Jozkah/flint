@@ -864,7 +864,15 @@
     "openCodeFolderInCowork": "Открыть папку с кодом в Cowork",
     "openCodeFolder": "Открыть папку с кодом",
     "openCodeFolderDescription": "Выберите папку на вашем компьютере, в которой будет работать Flint.",
-    "setUpEmbeddingModel": "Настроить модель эмбеддингов"
+    "setUpEmbeddingModel": "Настроить модель эмбеддингов",
+    "mcpServers": {
+      "title": "Серверы MCP",
+      "useAll": "Использовать все включённые серверы (по умолчанию)",
+      "onlyThese": "Только эти серверы",
+      "noneConfigured": "Серверы MCP не настроены.",
+      "filterActive": "Этот проект использует только: {{servers}}",
+      "filterNone": "Этот проект не использует серверы MCP"
+    }
   },
   "attachmentsIngestion": {
     "title": "Выберите способ обработки вложений",

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import ProjectFiles from '@/containers/ProjectFiles'
+import ProjectMcpServers from '@/containers/ProjectMcpServers'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import {
   DropdownMenu,
@@ -248,6 +249,8 @@ function ProjectPageContent() {
                   <span>{t('common:edit')}</span>
                 </Button>
               </div>
+
+              <ProjectMcpServers projectId={projectId} />
 
               {/* Files Section */}
               <ProjectFiles projectId={projectId} lng={i18n.language} />

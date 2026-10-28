@@ -847,7 +847,15 @@
     "openCodeFolderInCowork": "Kod klasörünü Cowork'te aç",
     "openCodeFolder": "Kod klasörünü aç",
     "openCodeFolderDescription": "Flint'in çalışacağı, bilgisayarınızdaki bir klasörü seçin.",
-    "setUpEmbeddingModel": "Gömme modeli kur"
+    "setUpEmbeddingModel": "Gömme modeli kur",
+    "mcpServers": {
+      "title": "MCP sunucuları",
+      "useAll": "Tüm etkin sunucuları kullan (varsayılan)",
+      "onlyThese": "Yalnızca bu sunucular",
+      "noneConfigured": "Yapılandırılmış MCP sunucusu yok.",
+      "filterActive": "Bu proje yalnızca şunları kullanır: {{servers}}",
+      "filterNone": "Bu proje MCP sunucusu kullanmıyor"
+    }
   },
   "attachmentsIngestion": {
     "title": "Eklerin nasıl işleneceğini seçin",

@@ -849,7 +849,15 @@
     "openCodeFolder": "打开代码文件夹",
     "openCodeFolderDescription": "选择你电脑上供 Flint 工作的文件夹。",
     "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。",
-    "setUpEmbeddingModel": "设置嵌入模型"
+    "setUpEmbeddingModel": "设置嵌入模型",
+    "mcpServers": {
+      "title": "MCP 服务器",
+      "useAll": "使用所有已启用的服务器（默认）",
+      "onlyThese": "仅使用这些服务器",
+      "noneConfigured": "尚未配置 MCP 服务器。",
+      "filterActive": "此项目仅使用：{{servers}}",
+      "filterNone": "此项目不使用任何 MCP 服务器"
+    }
   },
   "attachmentsIngestion": {
     "title": "选择附件的导入方式",
