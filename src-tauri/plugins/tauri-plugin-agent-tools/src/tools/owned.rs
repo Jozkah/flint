@@ -185,6 +185,56 @@ pub async fn output_with_timeout(
     }
 }
 
+/// `cmd.output()` for sync callers, with a deadline (W10): stdin is null, both
+/// streams are drained on threads so a chatty child cannot block on a full
+/// pipe, and a child still running at `timeout` is killed. `TimedOut` then.
+pub fn output_blocking(
+    cmd: &mut std::process::Command,
+    timeout: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let out_t = std::thread::spawn(move || {
+        let mut v = Vec::new();
+        if let Some(p) = out_pipe.as_mut() {
+            let _ = p.take(CAPTURE_CAP as u64).read_to_end(&mut v);
+            let _ = std::io::copy(p, &mut std::io::sink());
+        }
+        v
+    });
+    let err_t = std::thread::spawn(move || {
+        let mut v = Vec::new();
+        if let Some(p) = err_pipe.as_mut() {
+            let _ = p.take(CAPTURE_CAP as u64).read_to_end(&mut v);
+            let _ = std::io::copy(p, &mut std::io::sink());
+        }
+        v
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        if let Some(s) = child.try_wait()? {
+            break Some(s);
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    };
+    let stdout = out_t.join().unwrap_or_default();
+    let stderr = err_t.join().unwrap_or_default();
+    match status {
+        Some(status) => Ok(std::process::Output { status, stdout, stderr }),
+        None => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out")),
+    }
+}
+
 /// Most bytes kept from each output stream (W33). A child that prints more has
 /// the rest read and discarded, so it never blocks on a full pipe and Flint
 /// never holds more than this per stream.
@@ -289,5 +339,23 @@ mod tests {
         let _ = child.wait();
         let left: Vec<u32> = everyone.into_iter().filter(|p| process_exists(*p)).collect();
         assert!(left.is_empty(), "still running after the owner was dropped: {left:?}");
+    }
+
+    /// A query that never answers is stopped at its deadline (W10).
+    #[test]
+    fn git_inspect_times_out() {
+        let mut cmd = if cfg!(windows) {
+            let mut c = std::process::Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        } else {
+            let mut c = std::process::Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let start = std::time::Instant::now();
+        let r = output_blocking(&mut cmd, std::time::Duration::from_millis(300));
+        assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::TimedOut);
+        assert!(start.elapsed() < std::time::Duration::from_secs(10));
     }
 }
