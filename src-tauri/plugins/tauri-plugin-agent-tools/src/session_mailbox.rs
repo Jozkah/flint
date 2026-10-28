@@ -882,6 +882,14 @@ impl Mailbox {
         out
     }
 
+    /// Every registered session with its current status, from one registry
+    /// read: for a caller that looks up several sessions in one decision.
+    pub fn sessions_now(&self) -> BTreeMap<String, SessionRecord> {
+        self.read_registry()
+            .map(|r| r.iter().map(|(k, v)| (k.clone(), self.view(v))).collect())
+            .unwrap_or_default()
+    }
+
     /// One session's record with its current status, if registered.
     pub fn session(&self, session_id: &str) -> Option<SessionRecord> {
         self.read_registry()

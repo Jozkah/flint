@@ -188,6 +188,20 @@ const LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(30);
 /// processes, and a lock abandoned by a crashed writer expires.
 struct ScopeLock {
     path: PathBuf,
+    /// What this holder wrote into the lock; only a lock still holding it is
+    /// removed on drop, so a holder whose lock was taken over as stale never
+    /// deletes the new owner's.
+    token: String,
+}
+
+/// A token no other holder shares: pid, time and a per-process counter.
+fn lock_token() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!("{}-{nanos}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 impl ScopeLock {
@@ -199,7 +213,12 @@ impl ScopeLock {
         let deadline = std::time::Instant::now() + LOCK_WAIT;
         loop {
             match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-                Ok(_) => return Ok(Self { path }),
+                Ok(mut file) => {
+                    use std::io::Write as _;
+                    let token = lock_token();
+                    let _ = file.write_all(token.as_bytes());
+                    return Ok(Self { path, token });
+                }
                 // Windows reports a lock file another writer has just deleted
                 // -- still "delete pending" while its handle closes -- as
                 // access denied rather than as existing. That is contention,
@@ -215,7 +234,24 @@ impl ScopeLock {
                         .and_then(|t| t.elapsed().ok())
                         .is_some_and(|age| age > LOCK_STALE);
                     if stale {
-                        let _ = std::fs::remove_file(&path);
+                        // Renamed aside, not deleted: of two writers taking over
+                        // the same stale lock only one rename succeeds, so the
+                        // other cannot delete the winner's fresh lock.
+                        let aside = path.with_extension(format!("jsonl.lock.stale-{}", lock_token()));
+                        if std::fs::rename(&path, &aside).is_ok() {
+                            let still_stale = std::fs::metadata(&aside)
+                                .and_then(|m| m.modified())
+                                .ok()
+                                .and_then(|t| t.elapsed().ok())
+                                .is_some_and(|age| age > LOCK_STALE);
+                            if still_stale {
+                                let _ = std::fs::remove_file(&aside);
+                            } else {
+                                // Another writer took over in between and this
+                                // moved its fresh lock: hand it back.
+                                let _ = std::fs::rename(&aside, &path);
+                            }
+                        }
                         continue;
                     }
                     if std::time::Instant::now() >= deadline {
@@ -234,7 +270,9 @@ impl ScopeLock {
 
 impl Drop for ScopeLock {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        if std::fs::read_to_string(&self.path).is_ok_and(|held| held == self.token) {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -319,6 +357,24 @@ mod tests {
     fn unique_root() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         std::env::temp_dir().join(format!("jan_memstore_test_{}_{}", std::process::id(), n))
+    }
+
+    /// A holder whose lock was taken over leaves the new owner's lock alone.
+    #[test]
+    fn a_superseded_holder_does_not_delete_the_live_lock() {
+        let root = unique_root();
+        let old = ScopeLock::acquire(&root, Scope::Project).unwrap();
+        // Another writer took the lock over (as after a stale takeover).
+        std::fs::write(&old.path, "someone-else").unwrap();
+        let path = old.path.clone();
+        drop(old);
+        assert!(path.exists(), "the live lock must survive");
+        std::fs::remove_file(&path).unwrap();
+        let fresh = ScopeLock::acquire(&root, Scope::Project).unwrap();
+        let path = fresh.path.clone();
+        drop(fresh);
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn rec(id: &str, content: &str, scope: Scope) -> MemoryRecord {

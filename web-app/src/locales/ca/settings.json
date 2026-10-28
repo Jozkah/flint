@@ -278,7 +278,7 @@
     "caBundleBroken": "Aquest paquet no es pot usar ({{kind}}): l'HTTPS de sortida no confia en res fins que es corregeixi o s'elimini.",
     "ignoreSslScope": "S'aplica a tot el trànsit passat pel proxy. Un sol proveïdor també pot permetre certificats no vàlids per a la seva pròpia adreça, a la seva pàgina a Proveïdors de models.",
     "proxyUrlInvalid": "Això no sembla una adreça de servidor intermediari. Utilitza amfitrió:port o http://amfitrió:port.",
-    "proxyUrlScheme": "Només es admeten servidors intermediaris http i https.",
+    "proxyUrlScheme": "Només s'admeten proxies http, https, socks5 i socks5h.",
     "ignoreSslConfirmTitle": "Ignorar els certificats SSL?",
     "ignoreSslConfirmBody": "Flint acceptarà certificats autofirmats, caducats o que no coincideixin per a tot el trànsit passat pel servidor intermediari, de manera que qualsevol persona al camí podria llegir-lo o alterar-lo. Continua només si confies en el servidor intermediari i en la xarxa.",
     "ignoreSslConfirm": "Ignora els certificats",
@@ -478,7 +478,9 @@
     "usageUnsaved": "Canvis sense desar",
     "stopServerToEdit": "Atura el servidor per editar",
     "trustedHostsInvalid": "No és un amfitrió vàlid: {{hosts}}. Fes servir un amfitrió o amfitrió:port, com example.com o 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Sense desar. Prem Retorn per desar, Escape per desfer."
+    "trustedHostsUnsaved": "Sense desar. Prem Retorn per desar, Escape per desfer.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analítica",
@@ -552,6 +554,15 @@
     "closeToTrayDesc": "En tancar la finestra, Flint s'amaga a la safata del sistema en lloc de sortir. Surt des del menú de la safata.",
     "downloadLimit": "Límit de velocitat de descàrrega",
     "downloadLimitDesc": "Limita les descàrregues de models a aquests MB per segon. 0 vol dir sense límit.",
+    "hfEndpoint": "Punt d'accés de Hugging Face",
+    "hfEndpointDesc": "On van les cerques i les baixades de models. Tria un mirall si huggingface.co està bloquejat o va lent on ets.",
+    "hfEndpointDefault": "Per defecte (huggingface.co)",
+    "hfEndpointCustom": "URL personalitzada",
+    "hfEndpointSave": "Desa",
+    "hfEndpointSaved": "Punt d'accés de Hugging Face desat",
+    "hfEndpointEnvOverride": "La variable d'entorn HF_ENDPOINT val {{value}} i té prioritat sobre aquest ajust.",
+    "hfEndpointSendToken": "Envia el meu token a aquest mirall",
+    "hfEndpointSendTokenDesc": "Desactivat per defecte: el token de Hugging Face només s'envia a huggingface.co. Activa-ho només si confies en aquest mirall.",
     "exportLogs": "Exporta els registres (amb dades ocultes)",
     "exportLogsDesc": "Desa el registre de l'aplicació amb les claus d'API i els tokens coneguts eliminats, per adjuntar-lo a un informe d'error. Revisa'l abans de compartir-lo.",
     "importChatGpt": "Importa una exportació de ChatGPT",
@@ -592,7 +603,11 @@
       "installing": "S'està instal·lant…",
       "uninstall": "Desinstal·la",
       "uninstalling": "S'està desinstal·lant…",
-      "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia."
+      "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Inici i safata",
     "cliGroup": "Línia d'ordres",
@@ -694,6 +709,9 @@
     "title": "Compactació del context",
     "auto": "Compacta automàticament",
     "autoDescription": "Fa espai abans que una conversa superi la finestra de context del model. Compartit entre Xat, Cowork i la CLI.",
+    "compactAt": "Compacta a",
+    "compactAtDescription": "Quan la conversa arriba a aquesta part de la finestra de context, primer es resumeixen els missatges antics. Automàtic manté el punt per defecte. S'executa abans que el desplaçament de context de llama.cpp descarti res.",
+    "compactAtAuto": "Automàtic",
     "reserveTokens": "Tokens reservats",
     "reserveDescription": "Marge que es manté lliure: la compactació comença quan una conversa usa més que la finestra menys això.",
     "keepRecent": "Missatges recents conservats",
@@ -924,6 +942,7 @@
         "working": "Treballant: {{done}} de {{total}} tasques fetes",
         "attention_one": "Necessita la teva atenció: {{count}} tasca t'està esperant",
         "attention_other": "Necessita la teva atenció: {{count}} tasques t'estan esperant",
+        "attention_many": "Necessita la teva atenció: {{count}} tasques t'estan esperant",
         "review": "A punt perquè la revisis",
         "merging": "Ajuntant els resultats",
         "paused": "En pausa: {{done}} de {{total}} tasques fetes",
@@ -987,8 +1006,10 @@
       "story": {
         "wrote_one": "Ha escrit {{count}} fitxer, +{{added}} −{{removed}} línies",
         "wrote_other": "Ha escrit {{count}} fitxers, +{{added}} −{{removed}} línies",
+        "wrote_many": "Ha escrit {{count}} fitxers, +{{added}} −{{removed}} línies",
         "wroteUncounted_one": "Ha escrit {{count}} fitxer",
         "wroteUncounted_other": "Ha escrit {{count}} fitxers",
+        "wroteUncounted_many": "Ha escrit {{count}} fitxers",
         "stop": {
           "none": "S'ha aturat abans d'acabar.",
           "one": "S'ha aturat després que fallés una ordre.",
@@ -1000,6 +1021,7 @@
           "finishedNoFiles": "Acabada sense canviar cap fitxer.",
           "working_one": "Treballant-hi: {{count}} pas fins ara.",
           "working_other": "Treballant-hi: {{count}} passos fins ara.",
+          "working_many": "Treballant-hi: {{count}} passos fins ara.",
           "starting": "Just començant.",
           "conflict": "Acabada, però els seus canvis xoquen amb el que han escrit altres tasques.",
           "waiting": "Esperant que acabi {{tasks}} primer.",
@@ -1018,15 +1040,19 @@
         "noRecord": "No hi ha cap registre pas a pas d'aquesta tasca.",
         "more_one": "i {{count}} pas més",
         "more_other": "i {{count}} passos més",
+        "more_many": "i {{count}} passos més",
         "step": {
           "read": "Ha llegit {{label}}",
           "readMany_one": "Ha llegit {{count}} fitxer",
           "readMany_other": "Ha llegit {{count}} fitxers",
+          "readMany_many": "Ha llegit {{count}} fitxers",
           "search_one": "Ha cercat al projecte",
           "search_other": "Ha cercat al projecte {{count}} vegades",
+          "search_many": "Ha cercat al projecte {{count}} vegades",
           "write": "Ha escrit {{label}}",
           "writeMany_one": "Ha escrit {{count}} fitxer",
           "writeMany_other": "Ha escrit {{count}} fitxers",
+          "writeMany_many": "Ha escrit {{count}} fitxers",
           "ran": "Ha executat {{label}}",
           "ranFailed": "Ha executat {{label}} i ha fallat"
         },
@@ -1048,6 +1074,7 @@
         "plan": "Com s'ha dividit",
         "sideBySide_one": "{{count}} tasca s'ha executat sola",
         "sideBySide_other": "Aquestes {{count}} tasques s'han executat en paral·lel",
+        "sideBySide_many": "Aquestes {{count}} tasques s'han executat en paral·lel",
         "waitsFor": "{{task}} espera {{tasks}}",
         "time": "Temps",
         "timeSoFar": "{{time}} fins ara",
@@ -1118,8 +1145,10 @@
         "title": "Ometre \"{{task}}\"?",
         "body_one": "{{count}} altra tasca l'espera. Vols ometre-la també o deixar que s'executi sense aquesta?",
         "body_other": "{{count}} altres tasques l'esperen. Vols ometre-les també o deixar que s'executin sense aquesta?",
+        "body_many": "{{count}} altres tasques l'esperen. Vols ometre-les també o deixar que s'executin sense aquesta?",
         "cascade_one": "Omet-la i la tasca que l'espera",
         "cascade_other": "Omet-la i les {{count}} tasques que l'esperen",
+        "cascade_many": "Omet-la i les {{count}} tasques que l'esperen",
         "release": "Omet-la i executa les altres sense ella"
       },
       "gate": {
@@ -1149,6 +1178,7 @@
       "none": "Aquesta tasca no ha canviat cap fitxer.",
       "files_one": "{{count}} fitxer",
       "files_other": "{{count}} fitxers",
+      "files_many": "{{count}} fitxers",
       "namesOnly": "Només es coneixen els noms dels fitxers d'aquesta tasca.",
       "uncommitted": "Una part d'aquest treball encara no s'ha desat a la branca de la tasca.",
       "cut": "S'ha escurçat una llista llarga.",
@@ -1163,6 +1193,7 @@
       "renamedFrom": "Canviat de nom des de {{from}}",
       "showMore_one": "Mostra {{count}} línia més",
       "showMore_other": "Mostra {{count}} línies més",
+      "showMore_many": "Mostra {{count}} línies més",
       "fileCut": "Aquest canvi és llarg, així que només se'n mostra el principi.",
       "noPatch": "No hi ha vista línia per línia per a aquest fitxer."
     },
@@ -1192,7 +1223,6 @@
       "updated": "Actualitzada {{when}}",
       "loading": "Carregant les campanyes",
       "loadFailed": "No s'han pogut carregar les campanyes.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "S'ha omès {{count}} registre de campanya il·legible. Els fitxers s'han deixat al seu lloc.",
       "skipped_other": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
       "skipped_many": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
@@ -1381,6 +1411,7 @@
       "pinned": "fixat",
       "used_one": "utilitzat {{count}} vegada",
       "used_other": "utilitzat {{count}} vegades",
+      "used_many": "utilitzat {{count}} vegades",
       "lastUsed": "darrer ús {{when}}",
       "never": "mai"
     },
@@ -1420,12 +1451,15 @@
       "saveFailed": "No s'ha pogut desar aquest record",
       "forgotCount_one": "S'ha oblidat {{count}} record",
       "forgotCount_other": "S'han oblidat {{count}} records",
+      "forgotCount_many": "S'han oblidat {{count}} records",
       "forgetManyFailed": "No s'han pogut oblidar aquests records",
       "exportedCount_one": "S'ha exportat {{count}} record",
       "exportedCount_other": "S'han exportat {{count}} records",
+      "exportedCount_many": "S'han exportat {{count}} records",
       "exportFailed": "No s'han pogut exportar els records",
       "importedCount_one": "S'ha importat {{count}} record",
       "importedCount_other": "S'han importat {{count}} records",
+      "importedCount_many": "S'han importat {{count}} records",
       "importFailed": "No s'han pogut importar els records"
     },
     "fileActionsAria": "Exporta o importa memòries",
@@ -1433,7 +1467,19 @@
     "emptyHint": "Escriu-ne una a dalt, o deixa que Flint recordi mentre xateges.",
     "footerCount_one": "1 memòria en aquest àmbit",
     "footerCount_other": "{{count}} memòries en aquest àmbit",
-    "agentNotes": "Notes de l'agent"
+    "footerCount_many": "{{count}} memòries en aquest àmbit",
+    "agentNotes": "Notes de l'agent",
+    "report": {
+      "summary_one": "S'ha importat {{count}} record de l'exportació",
+      "summary_many": "S'han importat {{count}} records de l'exportació",
+      "summary_other": "S'han importat {{count}} records de l'exportació",
+      "duplicates_one": "{{count}} duplicat omès",
+      "duplicates_many": "{{count}} duplicats omesos",
+      "duplicates_other": "{{count}} duplicats omesos",
+      "refused_one": "{{count}} rebutjat",
+      "refused_many": "{{count}} rebutjats",
+      "refused_other": "{{count}} rebutjats"
+    }
   },
   "chatMentions": {
     "title": "Mencions de converses",
@@ -1491,8 +1537,10 @@
     "doneTitle": "Acabat",
     "archived_one": "{{count}} element arxivat.",
     "archived_other": "{{count}} elements arxivats.",
+    "archived_many": "{{count}} elements arxivats.",
     "deleted_one": "{{count}} element eliminat.",
     "deleted_other": "{{count}} elements eliminats.",
+    "deleted_many": "{{count}} elements eliminats.",
     "stoppedEarly": "Aturat abans d’acabar. {{n}} sense tocar.",
     "inArchive": "Els trobaràs a la pàgina Arxiu.",
     "problems": "No s’han pogut acabar {{n}}:",
@@ -1517,7 +1565,16 @@
     "reasoningDefaultDesc": "Si el raonament comença activat o desactivat en un xat nou. El paràmetre de raonament del model i el commutador del compositor continuen tenint prioritat. Els models que no poden canviar el raonament no es modifiquen.",
     "reasoningDefaultModel": "Per defecte del model",
     "reasoningDefaultOn": "Activat",
-    "reasoningDefaultOff": "Desactivat"
+    "reasoningDefaultOff": "Desactivat",
+    "rulesGroup": "Regles",
+    "rulesDesc": "Instruccions permanents afegides als xats després de les instruccions de l'assistent. Desactiva'n una per a un sol xat des del panell d'opcions d'aquell xat.",
+    "rulesEnabled": "Regla activa",
+    "rulesRemove": "Elimina la regla",
+    "rulesAllChats": "Tots els xats",
+    "rulesNoGroups": "Encara no hi ha grups",
+    "rulesPlaceholder": "Afegeix una regla, p. ex. \"Respon en unitats mètriques\"",
+    "rulesAdd": "Afegeix",
+    "rulesTooLong": "Les regles actives ocupen uns {{tokens}} tokens, més dels {{budget}} suggerits. Les regles llargues consumeixen context a cada xat."
   },
   "data": {
     "tabStorage": "Emmagatzematge",
@@ -1536,6 +1593,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

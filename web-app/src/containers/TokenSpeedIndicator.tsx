@@ -35,7 +35,7 @@ interface TokenSpeedIndicatorProps {
 
 export const TokenSpeedIndicator = memo(
   ({ metadata, streaming }: TokenSpeedIndicatorProps) => {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const showTokenSpeed = useInterfaceSettings((s) => s.showTokenSpeed)
 
     const nonStreamingAssistantParam =
@@ -87,6 +87,11 @@ export const TokenSpeedIndicator = memo(
       return null
     }
 
+    const fmt2 = (n: number) =>
+      new Intl.NumberFormat(i18n?.language, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(n)
     const details = (
       <PopoverContent
         align="start"
@@ -97,13 +102,17 @@ export const TokenSpeedIndicator = memo(
           {rawSpeed > 0 && (
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">{t('uiLeftovers:tokenSpeed.generation')}</span>
-              <span className="font-mono">{rawSpeed.toFixed(2)} tps</span>
+              <span className="font-mono">
+                {t('uiLeftovers:tokenSpeed.tps', { n: fmt2(rawSpeed) })}
+              </span>
             </div>
           )}
           {promptSpeed && promptSpeed > 0 && (
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">{t('uiLeftovers:tokenSpeed.reading')}</span>
-              <span className="font-mono">{promptSpeed.toFixed(2)} tps</span>
+              <span className="font-mono">
+                {t('uiLeftovers:tokenSpeed.tps', { n: fmt2(promptSpeed) })}
+              </span>
             </div>
           )}
           {draftPercent !== null && (

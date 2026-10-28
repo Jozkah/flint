@@ -40,6 +40,8 @@ function Section({
   rows: AttributionBucket[]
   callsLabel: (n: number) => string
 }) {
+  const { t, i18n } = useTranslation()
+  const num = (n: number) => n.toLocaleString(i18n?.language)
   if (rows.length === 0) return null
   return (
     <div className="space-y-1">
@@ -48,9 +50,15 @@ function Section({
         <div key={r.name} className="flex justify-between gap-3 text-sm">
           <span className="truncate">{r.name}</span>
           <span className="shrink-0 tabular-nums text-muted-foreground">
-            {callsLabel(r.calls)} · ~{r.resultTokens.toLocaleString()} tok
+            {callsLabel(r.calls)} ·{' '}
+            {t('settings:usageAttribution.approxTokens', {
+              n: num(r.resultTokens),
+            })}
             {r.inputTokens !== undefined && r.outputTokens !== undefined
-              ? ` · ${r.inputTokens.toLocaleString()} in / ${r.outputTokens.toLocaleString()} out`
+              ? ` · ${t('settings:usageAttribution.inOut', {
+                  in: num(r.inputTokens),
+                  out: num(r.outputTokens),
+                })}`
               : ''}
           </span>
         </div>
@@ -104,7 +112,11 @@ export function UsageAttributionCard() {
                 <span className="truncate">{u.name}</span>
                 <span className="shrink-0 text-muted-foreground">
                   {u.kind}
-                  {u.contextTokens !== undefined ? ` · ~${u.contextTokens} tok` : ''}
+                  {u.contextTokens !== undefined
+                    ? ` · ${t('settings:usageAttribution.approxTokens', {
+                        n: u.contextTokens,
+                      })}`
+                    : ''}
                 </span>
               </div>
             ))}

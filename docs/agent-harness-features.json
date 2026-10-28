@@ -148,7 +148,7 @@
         "web-app/src/lib/__tests__/chatRun.test.ts",
         "src-tauri/src/core/agent/loop.rs::each_request_gets_one_invocation_id_and_records_under_it",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs::one_call_id_reused_by_two_invocations_stays_two_items",
-        "src-tauri/examples/cowork_smoke.rs::chat-execution-record",
+        "src-tauri/examples/cowork_smoke/main.rs::chat-execution-record",
         "src-tauri/src/core/agent/loop.rs::steering_and_compaction_are_recorded_in_the_order_they_happened",
         "src-tauri/src/core/agent/loop.rs::a_streamed_reply_is_recorded_once_with_what_arrived_first",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs::a_full_log_stops_at_a_readable_boundary",
@@ -314,7 +314,7 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/identity.rs::an_id_that_could_escape_its_record_is_refused",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/identity.rs::a_forged_parent_is_refused",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs::an_event_is_refused_rather_than_stored_under_an_unparsed_id",
-        "src-tauri/examples/cowork_smoke.rs::identity-boundary"
+        "src-tauri/examples/cowork_smoke/main.rs::identity-boundary"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -899,7 +899,7 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs",
         "src-tauri/src/bin/flint.rs",
@@ -1125,7 +1125,7 @@
         "src-tauri/src/core/agent/replay.rs::a_run_of_another_session_is_refused",
         "src-tauri/src/core/agent/replay.rs::a_redacted_or_missing_snapshot_is_planned_but_not_sendable",
         "src-tauri/src/core/agent/replay.rs::a_replay_is_a_new_run_that_names_its_source",
-        "src-tauri/examples/cowork_smoke.rs::replay-from-record",
+        "src-tauri/examples/cowork_smoke/main.rs::replay-from-record",
         "src-tauri/src/core/agent/replay.rs::a_plan_over_a_cut_off_record_does_not_claim_to_be_whole",
         "src-tauri/src/core/agent/replay.rs::a_replay_of_a_replay_still_names_what_it_came_from",
         "src-tauri/src/core/agent/replay.rs::a_forged_session_or_run_id_plans_nothing"
@@ -1758,9 +1758,9 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "web-app/src/lib/__tests__/toolActivity.test.ts",
         "web-app/src/lib/__tests__/toolActivityRecord.test.ts",
-        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline",
-        "src-tauri/examples/cowork_smoke.rs::execution-record",
-        "src-tauri/examples/cowork_smoke.rs::execution-record-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::tool-activity-timeline",
+        "src-tauri/examples/cowork_smoke/main.rs::execution-record",
+        "src-tauri/examples/cowork_smoke/main.rs::execution-record-restart",
         "tauri-plugin-agent-tools::activity::tests::a_change_says_whether_it_created_edited_or_deleted_the_file",
         "Jan::core::agent::r#loop::tests::the_loops_calls_are_recorded_in_the_session_log"
       ],
@@ -2383,7 +2383,7 @@
         "web-app/src/lib/__tests__/projectTooling.test.ts",
         "web-app/src/containers/__tests__/CoworkReadinessCard.test.tsx",
         "web-app/src/lib/__tests__/coworkPrompt.test.ts",
-        "src-tauri/examples/cowork_smoke.rs (project-tooling-is-detected-and-told-to-the-model)"
+        "src-tauri/examples/cowork_smoke/main.rs (project-tooling-is-detected-and-told-to-the-model)"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -2425,7 +2425,7 @@
         "web-app/src/lib/__tests__/projectTooling.test.ts",
         "web-app/src/containers/__tests__/CoworkReadinessCard.test.tsx",
         "web-app/src/lib/__tests__/coworkPrompt.test.ts",
-        "src-tauri/examples/cowork_smoke.rs (project-tooling-is-detected-and-told-to-the-model)"
+        "src-tauri/examples/cowork_smoke/main.rs (project-tooling-is-detected-and-told-to-the-model)"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -2467,7 +2467,7 @@
         "web-app/src/lib/__tests__/projectTooling.test.ts",
         "web-app/src/containers/__tests__/CoworkReadinessCard.test.tsx",
         "web-app/src/lib/__tests__/coworkPrompt.test.ts",
-        "src-tauri/examples/cowork_smoke.rs (project-tooling-is-detected-and-told-to-the-model)"
+        "src-tauri/examples/cowork_smoke/main.rs (project-tooling-is-detected-and-told-to-the-model)"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -2580,7 +2580,7 @@
       "tests": [
         "web-app/src/lib/__tests__/payloadUsage.test.ts",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
-        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline"
+        "src-tauri/examples/cowork_smoke/main.rs::tool-activity-timeline"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -2659,7 +2659,7 @@
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/compaction_policy.rs",
         "src-tauri/src/bin/flint.rs",
         "src-tauri/src/core/agent/commands.rs",
@@ -2899,8 +2899,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
         "scripts/memory-e2e.mjs",
-        "src-tauri/examples/cowork_smoke.rs::memory-session-scope",
-        "src-tauri/examples/cowork_smoke.rs::memory-session-after-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-session-scope",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-session-after-restart",
         "web-app/src/lib/__tests__/coworkTransport.test.ts",
         "web-app/src/hooks/__tests__/useMemoryConversations.test.ts"
       ],
@@ -2952,8 +2952,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::user_memory_tests",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/settings.rs",
         "web-app/src/routes/settings/__tests__/memory.user.test.tsx",
-        "src-tauri/examples/cowork_smoke.rs::memory-user-scope",
-        "src-tauri/examples/cowork_smoke.rs::memory-user-after-restart"
+        "src-tauri/examples/cowork_smoke/main.rs::memory-user-scope",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-user-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -3006,16 +3006,16 @@
         "scripts/memory-e2e.mjs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::provenance_tests",
         "web-app/src/lib/__tests__/memoryUses.test.ts",
-        "src-tauri/examples/cowork_smoke.rs::memory-provenance",
-        "src-tauri/examples/cowork_smoke.rs::memory-provenance-after-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-provenance",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-provenance-after-restart",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/transfer.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs::an_imported_memory_is_marked_imported_where_it_is_injected",
         "web-app/src/routes/settings/__tests__/memory.user.test.tsx",
-        "src-tauri/examples/cowork_smoke.rs::memory-export-import",
-        "src-tauri/examples/cowork_smoke.rs::memory-export-import-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-export-import",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-export-import-restart",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::forgotten_text_leaves_the_prompts_it_was_sent_in",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::forgetting_a_memory_redacts_it_from_the_prompts_it_reached",
-        "src-tauri/examples/cowork_smoke.rs::memory-forget-redacts-prompts"
+        "src-tauri/examples/cowork_smoke/main.rs::memory-forget-redacts-prompts"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -3064,7 +3064,7 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/precedence.rs::tests",
         "src-tauri/src/core/agent/context.rs::a_skill_outranks_a_contradicting_memory_in_the_prompt",
         "web-app/src/lib/__tests__/coworkTransport.test.ts",
-        "src-tauri/examples/cowork_smoke.rs::memory-precedence"
+        "src-tauri/examples/cowork_smoke/main.rs::memory-precedence"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -3112,9 +3112,9 @@
         "scripts/memory-e2e.mjs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::conflicts_are_listed_with_both_sides_and_only_where_they_apply",
         "web-app/src/routes/settings/__tests__/memory.conflicts.test.tsx",
-        "src-tauri/examples/cowork_smoke.rs::memory-conflict-settle",
-        "src-tauri/examples/cowork_smoke.rs::memory-conflict-scope",
-        "src-tauri/examples/cowork_smoke.rs::memory-conflict-after-restart"
+        "src-tauri/examples/cowork_smoke/main.rs::memory-conflict-settle",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-conflict-scope",
+        "src-tauri/examples/cowork_smoke/main.rs::memory-conflict-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -3736,8 +3736,8 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/examples/cowork_smoke.rs::background-job-record",
-        "src-tauri/examples/cowork_smoke.rs::background-job-record-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::background-job-record",
+        "src-tauri/examples/cowork_smoke/main.rs::background-job-record-restart",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs::a_restart_never_adopts_a_process_it_cannot_identify",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs::a_job_is_only_ours_when_all_three_agree",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs::an_argv_job_runs_this_program_with_its_arguments_and_no_shell",
@@ -3785,8 +3785,8 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/examples/cowork_smoke.rs::background-job-record",
-        "src-tauri/examples/cowork_smoke.rs::background-job-record-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::background-job-record",
+        "src-tauri/examples/cowork_smoke/main.rs::background-job-record-restart",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs::a_restart_never_adopts_a_process_it_cannot_identify",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/worker.rs::a_job_is_only_ours_when_all_three_agree",
@@ -4106,8 +4106,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs::the_execution_record_carries_the_agents_identity",
         "web-app/src/lib/__tests__/changeActor.test.ts",
         "web-app/src/containers/__tests__/CoworkTurnUndo.test.tsx",
-        "src-tauri/examples/cowork_smoke.rs::agent-provenance",
-        "src-tauri/examples/cowork_smoke.rs::agent-provenance-restart"
+        "src-tauri/examples/cowork_smoke/main.rs::agent-provenance",
+        "src-tauri/examples/cowork_smoke/main.rs::agent-provenance-restart"
       ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
@@ -4128,7 +4128,7 @@
       ],
       "owner": "lane-06-agents-worktrees",
       "files": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "web-app/src/containers/CoworkTasksPanel.tsx",
         "web-app/src/hooks/useTeamControls.ts",
         "web-app/src/lib/coworkActivity.ts",
@@ -5085,7 +5085,7 @@
       ],
       "tests": [
         "src-tauri/src/core/mcp/tests.rs::liveness_tests",
-        "src-tauri/examples/cowork_smoke.rs::mcp-liveness-uses-the-protocol-ping"
+        "src-tauri/examples/cowork_smoke/main.rs::mcp-liveness-uses-the-protocol-ping"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -5104,7 +5104,7 @@
       ],
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/src/core/cli/mcp.rs",
         "src-tauri/src/core/mcp/commands.rs",
         "src-tauri/src/core/mcp/helpers.rs",
@@ -5122,7 +5122,7 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/src/core/mcp/server_log.rs",
         "web-app/src/containers/dialogs/__tests__/McpServerLogDialog.test.tsx"
       ],
@@ -6303,12 +6303,12 @@
       "tests": [
         "web-app/src/lib/__tests__/coworkActivityTimeline.test.ts",
         "web-app/src/lib/__tests__/coworkToolActivity.test.ts",
-        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline",
+        "src-tauri/examples/cowork_smoke/main.rs::tool-activity-timeline",
         "web-app::CoworkTimelinePanel.test.tsx",
         "web-app::executionTimeline.test.ts",
         "cowork-smoke::execution-timeline",
         "cowork-smoke::execution-timeline-restart",
-        "src-tauri/examples/cowork_smoke.rs::timeline-stays-bounded",
+        "src-tauri/examples/cowork_smoke/main.rs::timeline-stays-bounded",
         "web-app/src/lib/__tests__/executionTimeline.test.ts::says what kind of failure a call was, and never invents one",
         "web-app/src/lib/__tests__/executionTimeline.test.ts::shows a provider fall-back as something that happened"
       ],
@@ -6365,7 +6365,7 @@
       ],
       "owner": "lane-09-ux-observability",
       "files": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
@@ -6450,7 +6450,7 @@
       ],
       "owner": "lane-09-ux-observability",
       "files": [
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/run_replay.rs",
         "src-tauri/src/core/agent/commands.rs",
         "src-tauri/src/core/cli/journal.rs",
@@ -6943,7 +6943,7 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/examples/cowork_smoke.rs::network-ca-bundle-in-the-desktop",
+        "src-tauri/examples/cowork_smoke/main.rs::network-ca-bundle-in-the-desktop",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/org_policy.rs::a_machine_policy_can_forbid_custom_certificate_authorities",
         "src-tauri/src/core/agent/genai_bridge.rs::a_certificate_failure_is_not_retried_and_names_the_reason",
         "src-tauri/src/core/net/tls.rs::a_bundle_that_cannot_be_used_is_refused_by_kind",
@@ -7745,7 +7745,7 @@
         "src-tauri/src/core/server/converters.rs",
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
-        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/examples/cowork_smoke/main.rs",
         "web-app/src/containers/TokenSpeedIndicator.tsx",
         "web-app/src/lib/sessionBundle.ts",
         "src-tauri/src/core/agent/session_bundle.rs",
@@ -7770,9 +7770,9 @@
         "src-tauri/src/core/server/converters.rs",
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
-        "src-tauri/examples/cowork_smoke.rs::token-usage-cache",
-        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-cowork",
-        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-after-restart",
+        "src-tauri/examples/cowork_smoke/main.rs::token-usage-cache",
+        "src-tauri/examples/cowork_smoke/main.rs::token-usage-cache-cowork",
+        "src-tauri/examples/cowork_smoke/main.rs::token-usage-cache-after-restart",
         "web-app/src/lib/__tests__/sessionBundle.test.ts",
         "src-tauri/src/core/agent/session_bundle.rs",
         "web-app::cacheStatus.test.ts",

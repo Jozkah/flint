@@ -69,8 +69,13 @@ pub fn write(project: &str, name: &str, content: &str) -> Result<(), String> {
 
 /// `skills delete <name>`: idempotent.
 pub fn delete(project: &str, name: &str) -> Result<(), String> {
+    let existed = skills::list_meta(&store(project)).iter().any(|m| m.name == name);
     skills::delete(&store(project), name)?;
-    println!("Deleted skill {name}.");
+    if existed {
+        println!("Deleted skill {name}.");
+    } else {
+        println!("No skill named {name}; nothing deleted.");
+    }
     Ok(())
 }
 
@@ -83,6 +88,17 @@ pub fn enabled(project: &str, names: &[String], all: bool) -> Result<(), String>
             return Err("give skill names or --all, not both".to_string());
         }
         ensure_project(&r)?;
+        // A typo would otherwise whitelist nothing, hiding every skill.
+        let known: Vec<String> = skills::list_meta(&store(project)).into_iter().map(|m| m.name).collect();
+        let unknown: Vec<&str> = names.iter().map(String::as_str).filter(|n| !known.iter().any(|k| k == n)).collect();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "unknown skill{}: {}. Known: {}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+                if known.is_empty() { "(none)".to_string() } else { known.join(", ") }
+            ));
+        }
         set_skills_enabled_in_agent_toml(&agent_toml_path(&r), names)?;
     }
     let now = load_agent_config(&r).map(|c| c.skills.enabled).unwrap_or_default();

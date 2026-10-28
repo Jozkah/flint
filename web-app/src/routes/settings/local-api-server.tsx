@@ -41,8 +41,8 @@ import {
 import { LoaderCircle } from 'lucide-react'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.local_api_server as any)({
+ 
+export const Route = createFileRoute(route.settings.local_api_server)({
   component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
 
@@ -527,8 +527,8 @@ function LocalAPIServerContent() {
           <Card title={t('settings:agentTools.tabBehaviour')}>
             <CardItem
               anchor="settings-local-api-server-server-tools"
-              title="Execute tools on server"
-              description="Run tools server-side for chat endpoints."
+              title={t('settings:localApiServer.serverTools')}
+              description={t('settings:localApiServer.serverToolsDesc')}
               actions={
                 <Switch
                   checked={enableServerToolExecution}

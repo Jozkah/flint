@@ -56,7 +56,17 @@ impl ProviderOverrides {
         }
         if self.api_key.is_none() {
             if let Some(provider) = &self.provider {
-                let var = format!("{}_API_KEY", provider.to_ascii_uppercase());
+                // A display name such as `Qwen 3.8 (8080)` is not a valid
+                // variable name: anything but letters and digits becomes `_`,
+                // and runs collapse.
+                let mut name = String::new();
+                for c in provider.chars() {
+                    let c = if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' };
+                    if c != '_' || !name.ends_with('_') {
+                        name.push(c);
+                    }
+                }
+                let var = format!("{}_API_KEY", name.trim_matches('_'));
                 if let Ok(k) = std::env::var(&var) {
                     if !k.is_empty() {
                         self.api_key = Some(k);
@@ -380,6 +390,19 @@ pub async fn fetch_missing_models(
     Ok(populated)
 }
 
+/// `url` with any `user:password@` removed, for messages. Unparseable text is
+/// returned as is.
+fn without_userinfo(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut parsed) if !parsed.username().is_empty() || parsed.password().is_some() => {
+            let _ = parsed.set_username("");
+            let _ = parsed.set_password(None);
+            parsed.to_string()
+        }
+        _ => url.to_string(),
+    }
+}
+
 /// Query an OpenAI-compatible `GET {base_url}/models` with Bearer auth (trying
 /// each key in the chain on 401/403, matching upstream resolution) and return
 /// the parsed, sorted, deduped ids from the response body. A provider with no
@@ -395,11 +418,15 @@ async fn fetch_models(
         || (base_url.starts_with("http://") && is_loopback_url(base_url)))
     {
         return Err(format!(
-            "base URL must be https:// (or http:// for localhost): {base_url}"
+            "base URL must be https:// (or http:// for localhost): {}",
+            without_userinfo(base_url)
         ));
     }
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let mut last_err = format!("GET {url} failed");
+    // Only this form reaches an error or a log: a `user:pass@` in the base URL
+    // must not.
+    let shown = without_userinfo(&url);
+    let mut last_err = format!("GET {shown} failed");
     let attempts: Vec<Option<&String>> = if keys.is_empty() {
         vec![None]
     } else {
@@ -413,20 +440,20 @@ async fn fetch_models(
         let response = request
             .send()
             .await
-            .map_err(|e| format!("could not reach {url}: {e}"))?;
+            .map_err(|e| format!("could not reach {shown}: {}", e.without_url()))?;
         let status = response.status();
         if status.is_success() {
             let body = response.text().await.unwrap_or_default();
             let parsed: serde_json::Value = serde_json::from_str(&body)
-                .map_err(|e| format!("{url} returned a response we could not read: {e}"))?;
+                .map_err(|e| format!("{shown} returned a response we could not read: {e}"))?;
             return Ok(super::tokamak::parse_models(&parsed));
         }
         if status != reqwest::StatusCode::UNAUTHORIZED && status != reqwest::StatusCode::FORBIDDEN {
             // A non-auth error (rate limit, upstream down) won't be fixed by
             // trying another key, so report it and stop.
-            return Err(format!("GET {url} returned {status}"));
+            return Err(format!("GET {shown} returned {status}"));
         }
-        last_err = format!("{url} rejected the key ({status})");
+        last_err = format!("{shown} rejected the key ({status})");
     }
     Err(last_err)
 }
@@ -632,7 +659,15 @@ fn is_private_endpoint(base_url: &str) -> bool {
     };
     match host {
         url::Host::Ipv4(ip) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
-        url::Host::Ipv6(ip) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+        url::Host::Ipv6(ip) => match ip.to_ipv4_mapped() {
+            // `::ffff:192.168.1.5` is the IPv4 address, whatever the notation.
+            Some(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+            None => {
+                ip.is_loopback()
+                    || (ip.segments()[0] & 0xfe00) == 0xfc00 // unique local
+                    || (ip.segments()[0] & 0xffc0) == 0xfe80 // link local
+            }
+        },
         url::Host::Domain(name) => {
             let name = name.to_ascii_lowercase();
             !name.contains('.')
@@ -2670,6 +2705,8 @@ mod server_settings_tests {
             "http://192.168.1.5/v1",
             "http://box.lan/v1",
             "http://[::1]:8080",
+            "http://[fe80::1]:8080",
+            "http://[::ffff:192.168.1.5]/v1",
         ] {
             assert!(is_private_endpoint(url), "{url}");
         }

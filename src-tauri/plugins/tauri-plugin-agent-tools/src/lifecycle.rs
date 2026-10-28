@@ -894,6 +894,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn report_for(session: &str, run: &str, call: &str) -> StopReport {
+        StopReport {
+            stopped: 0,
+            already_stopped: 0,
+            live_children: 0,
+            complete: true,
+            session: session.into(),
+            run: run.into(),
+            call: call.into(),
+        }
+    }
+
+    #[test]
+    fn an_app_wide_stop_is_not_recorded() {
+        let dir = kill_dir("appwide");
+        record_killed(&dir, &report_for("", "", ""));
+        assert!(!was_killed(&dir, &scope("fresh-s", "r", "c")));
+    }
+
+    #[test]
+    fn the_kill_log_stays_bounded() {
+        let dir = kill_dir("bounded");
+        for i in 0..(KILLED_LOG_KEEP + 3000) {
+            record_killed(&dir, &report_for(&format!("bound-{i}"), "", ""));
+        }
+        let text = std::fs::read_to_string(killed_path(&dir)).unwrap();
+        assert!(text.lines().count() <= KILLED_LOG_KEEP + 2000);
+        let last = format!("bound-{}", KILLED_LOG_KEEP + 2999);
+        assert!(was_killed(&dir, &scope(&last, "r", "c")));
+    }
+
     #[test]
     fn no_kill_log_means_nothing_was_killed() {
         let dir = kill_dir("absent");
@@ -1020,6 +1051,11 @@ fn killed_path(data_folder: &std::path::Path) -> std::path::PathBuf {
 /// Record that a scope was killed. Best effort, like the audit log: failing to
 /// record must not change what was stopped.
 pub fn record_killed(data_folder: &std::path::Path, report: &StopReport) {
+    // An app-wide stop names no session: recorded, it would contain every
+    // scope and refuse all later work for good. It stops what runs now only.
+    if report.session.is_empty() && report.run.is_empty() && report.call.is_empty() {
+        return;
+    }
     let entry = KilledScope {
         at: crate::audit::now(),
         session: report.session.clone(),
@@ -1041,11 +1077,33 @@ pub fn record_killed(data_folder: &std::path::Path, report: &StopReport) {
             .open(&path)
             .map_err(|e| e.to_string())?;
         file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-        file.flush().map_err(|e| e.to_string())
+        file.flush().map_err(|e| e.to_string())?;
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        drop(file);
+        if len > KILLED_LOG_MAX_BYTES {
+            trim_killed_log(&path)?;
+        }
+        Ok(())
     };
     if let Err(e) = write() {
         eprintln!("emergency stop: could not record the killed scope: {e}");
     }
+}
+
+/// The kill log is rewritten to its newest [`KILLED_LOG_KEEP`] lines once it
+/// grows past this size.
+const KILLED_LOG_MAX_BYTES: u64 = 256 * 1024;
+const KILLED_LOG_KEEP: usize = 1000;
+
+fn trim_killed_log(path: &std::path::Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() <= KILLED_LOG_KEEP {
+        return Ok(());
+    }
+    let mut kept = lines[lines.len() - KILLED_LOG_KEEP..].join("\n");
+    kept.push('\n');
+    crate::atomic_file::write_atomic(path, kept.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// Whether this scope was killed in an earlier session.

@@ -259,6 +259,10 @@ pub fn forget_text(
         let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
             return Ok((false, false));
         };
+        // Already forgotten: nothing to take, and its timestamp stays.
+        if matches!(record.status, Status::Deleted) {
+            return Ok((false, false));
+        }
         forgotten = Some(std::mem::take(&mut record.content));
         record.status = Status::Deleted;
         record.updated_at = now;
@@ -989,7 +993,7 @@ mod tests {
         forget_text(&root, Scope::Project, &id, 20).unwrap();
         write_note(&root, "deploy.md", "Deploy with make ship");
 
-        forget_text(&root, Scope::Project, &id, 21).unwrap();
+        assert_eq!(forget_text(&root, Scope::Project, &id, 21).unwrap(), None);
 
         assert!(memory_file(&root, "deploy.md").exists());
         let _ = std::fs::remove_dir_all(&root);

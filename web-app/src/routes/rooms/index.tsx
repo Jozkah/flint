@@ -44,8 +44,8 @@ import { AvatarStack, RoomCard } from '@/containers/rooms/RoomCard'
 import { roomFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.rooms as any)({
+ 
+export const Route = createFileRoute('/rooms/')({
   component: RoomsList,
   // `?new=1` opens the create dialog: the sidebar's "New room" lands here, and
   // navigating to the page it is already on did nothing. `group` names the

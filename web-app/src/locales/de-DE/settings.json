@@ -275,7 +275,7 @@
     "caBundleBroken": "Dieses Bundle kann nicht verwendet werden ({{kind}}): Ausgehendes HTTPS vertraut nichts, bis es repariert oder entfernt wird.",
     "ignoreSslScope": "Gilt für den gesamten Proxy-Verkehr. Ein einzelner Anbieter kann ungültige Zertifikate auch nur für seine eigene Adresse zulassen, auf seiner Seite unter Modellanbieter.",
     "proxyUrlInvalid": "Das sieht nicht nach einer Proxy-Adresse aus. Verwende Host:Port oder http://Host:Port.",
-    "proxyUrlScheme": "Es werden nur http- und https-Proxys unterstützt.",
+    "proxyUrlScheme": "Nur http-, https-, socks5- und socks5h-Proxys werden unterstützt.",
     "ignoreSslConfirmTitle": "SSL-Zertifikate ignorieren?",
     "ignoreSslConfirmBody": "Flint akzeptiert selbstsignierte, abgelaufene oder nicht passende Zertifikate für den gesamten Proxy-Verkehr, sodass jeder auf dem Weg ihn mitlesen oder verändern könnte. Fahre nur fort, wenn du dem Proxy und dem Netzwerk vertraust.",
     "ignoreSslConfirm": "Zertifikate ignorieren",
@@ -474,7 +474,9 @@
     "usageUnsaved": "Ungespeicherte Änderungen",
     "stopServerToEdit": "Server stoppen, um zu bearbeiten",
     "trustedHostsInvalid": "Kein gültiger Host: {{hosts}}. Verwende einen Host oder Host:Port, z. B. example.com oder 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Nicht gespeichert. Enter speichert, Escape macht rückgängig."
+    "trustedHostsUnsaved": "Nicht gespeichert. Enter speichert, Escape macht rückgängig.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analytik",
@@ -548,6 +550,15 @@
     "closeToTrayDesc": "Beim Schließen des Fensters wird Flint in den Infobereich verkleinert, statt beendet zu werden. Beende die App über das Menü im Infobereich.",
     "downloadLimit": "Download-Geschwindigkeitslimit",
     "downloadLimitDesc": "Begrenzt Modell-Downloads auf so viele MB pro Sekunde. 0 bedeutet unbegrenzt.",
+    "hfEndpoint": "Hugging-Face-Endpunkt",
+    "hfEndpointDesc": "Wohin Modellsuche und Downloads gehen. Wähle einen Spiegel, wenn huggingface.co bei dir gesperrt oder langsam ist.",
+    "hfEndpointDefault": "Standard (huggingface.co)",
+    "hfEndpointCustom": "Eigene URL",
+    "hfEndpointSave": "Speichern",
+    "hfEndpointSaved": "Hugging-Face-Endpunkt gespeichert",
+    "hfEndpointEnvOverride": "Die Umgebungsvariable HF_ENDPOINT ist auf {{value}} gesetzt und hat Vorrang vor dieser Einstellung.",
+    "hfEndpointSendToken": "Meinen Token an diesen Spiegel senden",
+    "hfEndpointSendTokenDesc": "Standardmäßig aus: Dein Hugging-Face-Token geht nur an huggingface.co. Nur einschalten, wenn du diesem Spiegel vertraust.",
     "exportLogs": "Protokolle exportieren (geschwärzt)",
     "exportLogsDesc": "Speichert das App-Protokoll ohne bekannte API-Schlüssel und Tokens, um es einem Fehlerbericht beizufügen. Prüfe es vor dem Teilen.",
     "importChatGpt": "ChatGPT-Export importieren",
@@ -588,7 +599,11 @@
       "installing": "Wird installiert …",
       "uninstall": "Deinstallieren",
       "uninstalling": "Wird deinstalliert …",
-      "foreignDesc": "Gefunden unter {{path}}, installiert von einer anderen Flint-Kopie. Hier installieren, um die CLI dieser Kopie zu nutzen."
+      "foreignDesc": "Gefunden unter {{path}}, installiert von einer anderen Flint-Kopie. Hier installieren, um die CLI dieser Kopie zu nutzen.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Start und Infobereich",
     "cliGroup": "Befehlszeile",
@@ -690,6 +705,9 @@
     "title": "Kontextverdichtung",
     "auto": "Automatisch verdichten",
     "autoDescription": "Schafft Platz, bevor eine Unterhaltung das Kontextfenster des Modells sprengt. Gilt gemeinsam für Chat, Cowork und die CLI.",
+    "compactAt": "Komprimieren bei",
+    "compactAtDescription": "Erreicht die Unterhaltung diesen Anteil des Kontextfensters, werden ältere Nachrichten zuerst zusammengefasst. Automatisch behält den eingebauten Punkt bei. Läuft, bevor die Kontextverschiebung von llama.cpp etwas verwirft.",
+    "compactAtAuto": "Automatisch",
     "reserveTokens": "Reservierte Tokens",
     "reserveDescription": "Freigehaltener Spielraum: Die Verdichtung beginnt, sobald eine Unterhaltung mehr als das Fenster abzüglich dieses Werts belegt.",
     "keepRecent": "Behaltene neueste Nachrichten",
@@ -1188,7 +1206,6 @@
       "updated": "Aktualisiert {{when}}",
       "loading": "Kampagnen werden geladen",
       "loadFailed": "Kampagnen konnten nicht geladen werden.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} nicht lesbarer Kampagneneintrag übersprungen. Die Dateien blieben an ihrem Platz.",
       "skipped_other": "{{count}} nicht lesbare Kampagneneinträge übersprungen. Die Dateien blieben an ihrem Platz.",
       "retry": "Wiederholen",
@@ -1428,7 +1445,15 @@
     "emptyHint": "Schreiben Sie oben etwas auf, oder lassen Sie Flint beim Chatten lernen.",
     "footerCount_one": "1 Erinnerung in diesem Bereich",
     "footerCount_other": "{{count}} Erinnerungen in diesem Bereich",
-    "agentNotes": "Agent-Notizen"
+    "agentNotes": "Agent-Notizen",
+    "report": {
+      "summary_one": "{{count}} Erinnerung aus dem Export importiert",
+      "summary_other": "{{count}} Erinnerungen aus dem Export importiert",
+      "duplicates_one": "{{count}} Duplikat übersprungen",
+      "duplicates_other": "{{count}} Duplikate übersprungen",
+      "refused_one": "{{count}} abgelehnt",
+      "refused_other": "{{count}} abgelehnt"
+    }
   },
   "chatMentions": {
     "title": "Erwähnte Unterhaltungen",
@@ -1512,7 +1537,16 @@
     "reasoningDefaultDesc": "Ob das Nachdenken in einem neuen Chat ein- oder ausgeschaltet beginnt. Die eigene Reasoning-Einstellung des Modells und der Schalter im Eingabefeld haben weiterhin Vorrang. Modelle, die das Nachdenken nicht umschalten können, bleiben unverändert.",
     "reasoningDefaultModel": "Modellstandard",
     "reasoningDefaultOn": "An",
-    "reasoningDefaultOff": "Aus"
+    "reasoningDefaultOff": "Aus",
+    "rulesGroup": "Regeln",
+    "rulesDesc": "Dauerhafte Anweisungen, die nach den Anweisungen des Assistenten in Chats eingefügt werden. Im Optionsfeld eines Chats lässt sich eine Regel nur für diesen Chat ausschalten.",
+    "rulesEnabled": "Regel aktiv",
+    "rulesRemove": "Regel entfernen",
+    "rulesAllChats": "Alle Chats",
+    "rulesNoGroups": "Noch keine Gruppen",
+    "rulesPlaceholder": "Regel hinzufügen, z. B. „Antworte in metrischen Einheiten“",
+    "rulesAdd": "Hinzufügen",
+    "rulesTooLong": "Aktive Regeln umfassen etwa {{tokens}} Tokens, mehr als die empfohlenen {{budget}}. Lange Regeln belegen in jedem Chat Kontext."
   },
   "data": {
     "tabStorage": "Speicher",
@@ -1531,6 +1565,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

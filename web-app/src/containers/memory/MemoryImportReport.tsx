@@ -14,14 +14,14 @@ export function MemoryImportReport({ report }: { report: Report }) {
         data-refused={report.refused.length}
       >
         <p>
-          {t('settings:memoryPage.report.summary', {
+          {t('settings:memoryPage.importReport.summary', {
             count: report.imported.length,
           })}{' '}
           <span className="font-mono">{report.exportId}</span>
           {report.duplicates.length > 0 &&
-            ` · ${t('settings:memoryPage.report.duplicates', { count: report.duplicates.length })}`}
+            ` · ${t('settings:memoryPage.importReport.duplicates', { count: report.duplicates.length })}`}
           {report.refused.length > 0 &&
-            ` · ${t('settings:memoryPage.report.refused', { count: report.refused.length })}`}
+            ` · ${t('settings:memoryPage.importReport.refused', { count: report.refused.length })}`}
         </p>
         {report.refused.length > 0 && (
           <ul className="mt-1 list-disc pl-4" data-testid="memory-import-refused">

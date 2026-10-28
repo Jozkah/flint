@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -25,27 +25,38 @@ export function useSchedules() {
   const [views, setViews] = useState<ScheduledTaskView[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Each read takes a number; only the newest read may change state, so a slow
+  // reply cannot overwrite a fresher list, and an unmounted page ignores all.
+  const requestId = useRef(0)
 
   const refresh = useCallback(async () => {
+    const id = ++requestId.current
     if (!inTauri()) {
       setLoading(false)
       setError(t('schedules:unavailable'))
       return
     }
     try {
-      setViews(await schedulesList())
+      const next = await schedulesList()
+      if (id !== requestId.current) return
+      setViews(next)
       setError(null)
     } catch (e) {
+      if (id !== requestId.current) return
+      // The last good list stays; the page shows the error above it.
       setError(errorText(e))
     } finally {
-      setLoading(false)
+      if (id === requestId.current) setLoading(false)
     }
   }, [t])
 
   useEffect(() => {
     void refresh()
     const timer = setInterval(() => void refresh(), REFRESH_MS)
-    return () => clearInterval(timer)
+    return () => {
+      clearInterval(timer)
+      requestId.current++
+    }
   }, [refresh])
 
   // The driver says when a run starts or ends; the page re-reads on each.

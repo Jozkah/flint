@@ -327,9 +327,19 @@ fn read_blob(data_folder: &Path, id: &str) -> Result<Vec<u8>, String> {
 }
 
 pub fn load(data_folder: &Path, session: &str) -> Journal {
-    std::fs::read_to_string(journal_path(data_folder, session))
+    let path = journal_path(data_folder, session);
+    let parsed = std::fs::read_to_string(&path)
         .ok()
-        .and_then(|t| serde_json::from_str::<Journal>(&t).ok())
+        .map(|t| serde_json::from_str::<Journal>(&t));
+    if let Some(Err(e)) = &parsed {
+        // Not silently replaced by an empty journal: set aside, so the undo
+        // history stays inspectable and `collect_blobs` keeps every blob.
+        let aside = path.with_extension("json.corrupt");
+        eprintln!("undo: the journal {} could not be read ({e}); moved to {}", path.display(), aside.display());
+        let _ = std::fs::rename(&path, &aside);
+    }
+    parsed
+        .and_then(Result::ok)
         .filter(|j| j.session == session)
         .unwrap_or(Journal {
             v: SCHEMA_VERSION,
@@ -654,7 +664,14 @@ fn swap(
     } else {
         TurnState::Applied
     };
-    save(data_folder, &journal).map_err(UndoError::Io)?;
+    // A journal that cannot record the new state must not leave the files in
+    // it: the next undo or redo would judge them against the wrong side.
+    if let Err(e) = save(data_folder, &journal) {
+        for back in done.iter().rev() {
+            let _ = put(&back.0, back.1.as_deref());
+        }
+        return Err(UndoError::Io(e));
+    }
     Ok(UndoReport {
         run: run.to_string(),
         state: journal.turns[idx].state,
@@ -699,6 +716,10 @@ pub fn collect_blobs(data_folder: &Path) {
     let mut referenced = std::collections::HashSet::new();
     for entry in entries.flatten() {
         let path = entry.path();
+        // A journal set aside as unreadable may still name blobs.
+        if path.extension().and_then(|e| e.to_str()) == Some("corrupt") {
+            return;
+        }
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
@@ -955,6 +976,22 @@ mod tests {
             .find(|t| t.run == "user-edit-1")
             .expect("the edit is journaled");
         assert_eq!(turn.files[0].actor.as_ref().unwrap().kind, ActorKind::User);
+    }
+
+    /// An unreadable journal is set aside, not silently reset, and blob
+    /// collection then removes nothing.
+    #[test]
+    fn a_corrupt_journal_is_set_aside_and_blobs_are_kept() {
+        let (data, ws) = dirs("corrupt");
+        let f = ws.join("a.txt");
+        tool_write_as(&data, "run-1", &f, Some("x"), Some(&actor("agent", "")));
+        let path = journal_path(&data, "s1");
+        std::fs::write(&path, "{not json").unwrap();
+        assert!(load(&data, "s1").turns.is_empty());
+        assert!(path.with_extension("json.corrupt").exists());
+        let blobs = std::fs::read_dir(root_dir(&data).join("blobs")).unwrap().count();
+        collect_blobs(&data);
+        assert_eq!(std::fs::read_dir(root_dir(&data).join("blobs")).unwrap().count(), blobs);
     }
 
     /// One session's changes never appear in another's journal.

@@ -140,6 +140,7 @@
     "tabRouting": "Routage et limites",
     "toolsCount_one": "{{count}} outil",
     "toolsCount_other": "{{count}} outils",
+    "toolsCount_many": "{{count}} outils",
     "filterLabel": "Afficher les serveurs",
     "filterAll": "Tous",
     "filterOn": "Activés",

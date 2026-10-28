@@ -20,6 +20,11 @@ import React from 'react'
 import { useAppState } from '@/hooks/useAppState'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { useRouter } from '@tanstack/react-router'
+import { useThreads } from '@/hooks/useThreads'
+import { useThreadManagement } from '@/hooks/useThreadManagement'
+import { useMCPServers } from '@/hooks/useMCPServers'
+import { projectMcpAllowList } from '@/lib/projectMcpServers'
 
 interface DropdownToolsAvailableProps {
   children: (isOpen: boolean, toolsCount: number) => React.ReactNode
@@ -35,6 +40,18 @@ export default memo(function DropdownToolsAvailable({
   const tools = allTools.filter((tool) => tool.server !== 'Jan Browser MCP')
   const [isOpen, setIsOpen] = useState(false)
   const { t } = useTranslation()
+  // The chat's project may limit which MCP servers it gets tools from.
+  // Read from the router without subscribing (no router in some hosts and
+  // tests); opening the popover re-renders, so it is current when shown.
+  const pathname = useRouter({ warn: false })?.state?.location?.pathname ?? ''
+  const routeThreadId = /^\/threads\/([^/]+)/.exec(pathname)?.[1]
+  const routeProjectId = /^\/project\/([^/]+)/.exec(pathname)?.[1]
+  const threadProject = useThreads((s) =>
+    routeThreadId ? s.threads[routeThreadId]?.metadata?.project?.id : undefined
+  )
+  useThreadManagement((s) => s.folders)
+  useMCPServers((s) => s.mcpServers)
+  const projectAllow = projectMcpAllowList(threadProject ?? routeProjectId)
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)
@@ -124,6 +141,15 @@ export default memo(function DropdownToolsAvailable({
         <DropDrawerLabel className="sticky -top-1 z-10 flex items-center gap-2 px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground uppercase">
           {t('common:availableTools')}
         </DropDrawerLabel>
+        {projectAllow && (
+          <p className="px-2 pb-1.5 text-xs text-muted-foreground">
+            {projectAllow.size === 0
+              ? t('projects.mcpServers.filterNone')
+              : t('projects.mcpServers.filterActive', {
+                  servers: [...projectAllow].sort().join(', '),
+                })}
+          </p>
+        )}
         <div className="max-h-64 overflow-y-auto">
           <DropDrawerGroup>
             {Object.entries(toolsByServer).map(([serverName, serverTools]) => (

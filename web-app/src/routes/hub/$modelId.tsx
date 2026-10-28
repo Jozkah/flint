@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import {
   ArrowLeft,
   Copy,
@@ -51,7 +51,7 @@ import {
 import { fitSummary } from '@/lib/hubFitSummary'
 import type { KvArchitecture } from '@/lib/modelCompatibility'
 
-export const Route = createFileRoute(route.hub.model as any)({
+export const Route = createFileRoute(route.hub.model)({
   component: HuggingFaceModelDetail,
   validateSearch: (search: Record<string, unknown>) => ({
     repo: typeof search.repo === 'string' ? search.repo : '',

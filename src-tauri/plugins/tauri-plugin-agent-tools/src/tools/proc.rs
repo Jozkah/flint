@@ -1542,14 +1542,29 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
             classify_open_error(error)
         }
     };
+    let mut tree = tree;
     for member in &tree {
         unsafe { TerminateProcess(member.handle, 1) };
     }
-    // Anything a member started while the first pass ran.
-    for member in &tree {
-        for late in win_tree::descendants(member) {
-            unsafe { TerminateProcess(late.handle, 1) };
+    // Anything a member started while a pass ran, as `kill_descendants` does:
+    // a few sweeps, each also from the members already ended (their children
+    // no longer chain back to the root).
+    for _ in 0..3 {
+        let mut late: Vec<win_tree::Owned> = Vec::new();
+        for parent in std::iter::once(&root).chain(tree.iter()) {
+            for found in win_tree::descendants(parent) {
+                if !tree.iter().chain(late.iter()).any(|m| m.pid == found.pid && m.created == found.created) {
+                    late.push(found);
+                }
+            }
         }
+        if late.is_empty() {
+            break;
+        }
+        for member in &late {
+            unsafe { TerminateProcess(member.handle, 1) };
+        }
+        tree.extend(late);
     }
     outcome
 }

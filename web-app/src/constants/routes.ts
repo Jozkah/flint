@@ -53,7 +53,7 @@ export const route = {
   localApiServerlogs: '/local-api-server/logs',
   systemMonitor: '/system-monitor',
   threadsDetail: '/threads/$threadId',
-}
+} as const
 
 /**
  * Routes belonging to the Cowork surface, so the sidebar keeps the Cowork nav

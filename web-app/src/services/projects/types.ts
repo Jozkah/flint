@@ -10,6 +10,11 @@ export interface ThreadFolder {
   assistantId?: string
   /** Model new chats in this project start on. Unset = the global pick. */
   model?: ProjectModel
+  /**
+   * MCP servers this project's chats are offered tools from. Unset = every
+   * enabled server. Names no longer configured are ignored.
+   */
+  mcpServers?: string[]
 }
 
 export interface ProjectModel {
@@ -29,7 +34,9 @@ export interface ProjectsService {
   addProject(
     name: string,
     assistantId?: string,
-    model?: ProjectModel
+    model?: ProjectModel,
+    /** Use this id instead of generating one (the home group's id). */
+    id?: string
   ): Promise<ThreadFolder>
 
   /**

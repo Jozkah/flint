@@ -251,10 +251,24 @@ fn io(e: impl std::fmt::Display) -> ReplayError {
     ReplayError::new(ReplayErrorKind::Io, e.to_string())
 }
 
+/// A replay file larger than this is not read whole into memory.
+const MAX_SESSION_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
 fn read_session(data_folder: &Path, session: &str) -> SessionFile {
-    let parsed = std::fs::read_to_string(session_path(data_folder, session))
-        .ok()
-        .and_then(|t| serde_json::from_str::<SessionFile>(&t).ok());
+    let path = session_path(data_folder, session);
+    let oversized = std::fs::metadata(&path).is_ok_and(|m| m.len() > MAX_SESSION_FILE_BYTES);
+    let parsed = if oversized {
+        None
+    } else {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<SessionFile>(&t).ok())
+    };
+    // A file that exists but cannot be used is set aside, not overwritten by
+    // the next save, so a corrupt or oversized record stays recoverable.
+    if parsed.is_none() && path.exists() {
+        let _ = std::fs::rename(&path, path.with_extension("json.bad"));
+    }
     match parsed {
         // A file holding another session's replays was not written here.
         Some(file) if file.session == session => file,

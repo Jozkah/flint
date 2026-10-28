@@ -321,6 +321,14 @@ pub(crate) fn index(project: Option<String>, symbol: Option<String>, limit: usiz
 /// `flint agent spend`.
 pub(crate) fn spend(since: Option<String>, session: Option<String>, json: bool, by_item: bool) -> Result<(), HarnessError> {
     let data = app_lib::core::app::commands::resolve_jan_data_folder();
+    if by_item && session.is_some() {
+        // The per-item report covers every conversation; accepting --session
+        // and then ignoring it would show numbers for the wrong scope.
+        return Err(HarnessError::new(
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+            "--by-item cannot be combined with --session",
+        ));
+    }
     if by_item {
         let root = std::env::current_dir().ok();
         app_lib::core::agent::attribution::report(&data, since.as_deref(), root.as_deref())

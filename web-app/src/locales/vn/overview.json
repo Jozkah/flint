@@ -26,10 +26,13 @@
   "newActivities": {
     "today_one": "hoạt động mới hôm nay",
     "today_other": "hoạt động mới hôm nay",
+    "today_many": "hoạt động mới hôm nay",
     "yesterday_one": "hoạt động hôm qua",
     "yesterday_other": "hoạt động hôm qua",
+    "yesterday_many": "hoạt động hôm qua",
     "week_one": "hoạt động trong tuần này",
-    "week_other": "hoạt động trong tuần này"
+    "week_other": "hoạt động trong tuần này",
+    "week_many": "hoạt động trong tuần này"
   },
   "noActivity": "Chưa có gì",
   "noActivityHint": "Các phê duyệt, lỗi công cụ và lần nén sẽ hiện ở đây khi chúng xảy ra.",

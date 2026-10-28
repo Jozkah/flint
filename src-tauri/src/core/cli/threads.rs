@@ -16,12 +16,19 @@ pub fn list_threads_in(base: &std::path::Path) -> Result<Vec<serde_json::Value>,
     if !data_dir.exists() {
         return Ok(threads);
     }
+    // Only the threads folder itself being unreadable is an error. One thread
+    // that cannot be read is skipped, like one whose JSON does not parse, so it
+    // cannot take `--continue` and `/resume` down with it.
     for entry in fs::read_dir(&data_dir).map_err(|e| e.to_string())? {
-        let path = entry.map_err(|e| e.to_string())?.path();
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
         if path.is_dir() {
             let metadata_path = path.join(THREADS_FILE);
             if metadata_path.exists() {
-                let data = fs::read_to_string(&metadata_path).map_err(|e| e.to_string())?;
+                let Ok(data) = fs::read_to_string(&metadata_path) else {
+                    log::warn!("skipping unreadable thread {}", metadata_path.display());
+                    continue;
+                };
                 if let Ok(thread) = serde_json::from_str(&data) {
                     threads.push(thread);
                 }
@@ -248,6 +255,9 @@ pub(crate) const SNAPSHOT_REPO_KEY: &str = "snapshot_repo";
 pub(crate) fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
     use std::fs;
 
+    // An id naming anything but one thread directory must never reach
+    // `remove_dir_all`.
+    crate::core::threads::utils::validate_thread_id(thread_id)?;
     // Read where the snapshots live before the thread's files go away.
     let snapshot_repo = fs::read_to_string(get_thread_metadata_path(data_folder, thread_id))
         .ok()
@@ -284,6 +294,7 @@ pub fn cli_get_thread_in(
     base: &std::path::Path,
     thread_id: &str,
 ) -> Result<serde_json::Value, String> {
+    crate::core::threads::utils::validate_thread_id(thread_id)?;
     let path = get_thread_metadata_path(base, thread_id);
     if !path.exists() {
         return Err(format!("Thread '{thread_id}' not found"));
@@ -316,6 +327,7 @@ pub fn cli_save_thread(
     let id = thread_id
         .map(str::to_string)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    crate::core::threads::utils::validate_thread_id(&id)?;
     std::fs::create_dir_all(get_thread_dir(base, &id)).map_err(|e| e.to_string())?;
 
     let now = std::time::SystemTime::now()
@@ -606,6 +618,7 @@ pub fn fork_thread(
     source_id: &str,
     at_user_turn: Option<usize>,
 ) -> Result<String, String> {
+    crate::core::threads::utils::validate_thread_id(source_id)?;
     let source = std::fs::read_to_string(get_thread_metadata_path(base, source_id))
         .map_err(|e| format!("thread '{source_id}' not found: {e}"))?;
     let source: serde_json::Value = serde_json::from_str(&source).map_err(|e| e.to_string())?;

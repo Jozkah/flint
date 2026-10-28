@@ -276,7 +276,7 @@
     "caBundleBroken": "Ce bundle est inutilisable ({{kind}}) : le HTTPS sortant n'approuve rien tant qu'il n'est pas corrigé ou retiré.",
     "ignoreSslScope": "S'applique à tout le trafic via le proxy. Un fournisseur peut aussi autoriser les certificats non valides pour sa propre adresse, sur sa page dans Fournisseurs de Modèles.",
     "proxyUrlInvalid": "Cela ne ressemble pas à une adresse de proxy. Utilisez hôte:port ou http://hôte:port.",
-    "proxyUrlScheme": "Seuls les proxys http et https sont pris en charge.",
+    "proxyUrlScheme": "Seuls les proxys http, https, socks5 et socks5h sont pris en charge.",
     "ignoreSslConfirmTitle": "Ignorer les certificats SSL ?",
     "ignoreSslConfirmBody": "Flint acceptera les certificats auto-signés, expirés ou non concordants pour tout le trafic passant par le proxy, si bien que n'importe qui sur le trajet pourrait le lire ou le modifier. Ne continuez que si vous faites confiance au proxy et au réseau.",
     "ignoreSslConfirm": "Ignorer les certificats",
@@ -476,7 +476,9 @@
     "usageUnsaved": "Modifications non enregistrées",
     "stopServerToEdit": "Arrêtez le serveur pour modifier",
     "trustedHostsInvalid": "Hôte non valide : {{hosts}}. Utilisez un hôte ou hôte:port, comme example.com ou 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler."
+    "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analytique",
@@ -550,6 +552,15 @@
     "closeToTrayDesc": "Fermer la fenêtre masque Flint dans la zone de notification au lieu de quitter. Quittez depuis le menu de la zone de notification.",
     "downloadLimit": "Limite de vitesse de téléchargement",
     "downloadLimitDesc": "Limite les téléchargements de modèles à ce nombre de Mo par seconde. 0 signifie illimité.",
+    "hfEndpoint": "Point d'accès Hugging Face",
+    "hfEndpointDesc": "Destination des recherches et téléchargements de modèles. Choisissez un miroir si huggingface.co est bloqué ou lent chez vous.",
+    "hfEndpointDefault": "Par défaut (huggingface.co)",
+    "hfEndpointCustom": "URL personnalisée",
+    "hfEndpointSave": "Enregistrer",
+    "hfEndpointSaved": "Point d'accès Hugging Face enregistré",
+    "hfEndpointEnvOverride": "La variable d'environnement HF_ENDPOINT vaut {{value}} et prime sur ce réglage.",
+    "hfEndpointSendToken": "Envoyer mon jeton à ce miroir",
+    "hfEndpointSendTokenDesc": "Désactivé par défaut : votre jeton Hugging Face n'est envoyé qu'à huggingface.co. Activez-le seulement si vous faites confiance à ce miroir.",
     "exportLogs": "Exporter les journaux (expurgés)",
     "exportLogsDesc": "Enregistre le journal de l'application sans les clés d'API et jetons connus, à joindre à un rapport de bogue. Relisez-le avant de le partager.",
     "importChatGpt": "Importer un export ChatGPT",
@@ -590,7 +601,11 @@
       "installing": "Installation…",
       "uninstall": "Désinstaller",
       "uninstalling": "Désinstallation…",
-      "foreignDesc": "Trouvée dans {{path}}, installée par une autre copie de Flint. Installez ici pour utiliser la CLI de cette copie."
+      "foreignDesc": "Trouvée dans {{path}}, installée par une autre copie de Flint. Installez ici pour utiliser la CLI de cette copie.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Démarrage et zone de notification",
     "cliGroup": "Ligne de commande",
@@ -692,6 +707,9 @@
     "title": "Compactage du contexte",
     "auto": "Compacter automatiquement",
     "autoDescription": "Faire de la place avant qu'une conversation ne dépasse la fenêtre de contexte du modèle. Partagé par Chat, Cowork et la CLI.",
+    "compactAt": "Compacter à",
+    "compactAtDescription": "Quand la conversation atteint cette part de la fenêtre de contexte, les anciens messages sont d'abord résumés. Automatique garde le point par défaut. S'exécute avant que le décalage de contexte de llama.cpp ne supprime quoi que ce soit.",
+    "compactAtAuto": "Automatique",
     "reserveTokens": "Tokens réservés",
     "reserveDescription": "Marge laissée libre : le compactage démarre dès qu'une conversation dépasse la fenêtre moins cette valeur.",
     "keepRecent": "Messages récents conservés",
@@ -922,6 +940,7 @@
         "working": "En cours : {{done}} tâches sur {{total}} terminées",
         "attention_one": "Votre attention est requise : {{count}} tâche vous attend",
         "attention_other": "Votre attention est requise : {{count}} tâches vous attendent",
+        "attention_many": "Votre attention est requise : {{count}} tâches vous attendent",
         "review": "Prête pour votre relecture",
         "merging": "Assemblage des résultats",
         "paused": "En pause : {{done}} tâches sur {{total}} terminées",
@@ -985,8 +1004,10 @@
       "story": {
         "wrote_one": "{{count}} fichier écrit, +{{added}} −{{removed}} lignes",
         "wrote_other": "{{count}} fichiers écrits, +{{added}} −{{removed}} lignes",
+        "wrote_many": "{{count}} fichiers écrits, +{{added}} −{{removed}} lignes",
         "wroteUncounted_one": "{{count}} fichier écrit",
         "wroteUncounted_other": "{{count}} fichiers écrits",
+        "wroteUncounted_many": "{{count}} fichiers écrits",
         "stop": {
           "none": "S'est arrêtée avant la fin.",
           "one": "S'est arrêtée après l'échec d'une commande.",
@@ -998,6 +1019,7 @@
           "finishedNoFiles": "Terminée sans modifier aucun fichier.",
           "working_one": "En cours : {{count}} étape jusqu'ici.",
           "working_other": "En cours : {{count}} étapes jusqu'ici.",
+          "working_many": "En cours : {{count}} étapes jusqu'ici.",
           "starting": "Vient de démarrer.",
           "conflict": "Terminée, mais ses modifications entrent en conflit avec ce que d'autres tâches ont écrit.",
           "waiting": "En attente de la fin de {{tasks}}.",
@@ -1016,15 +1038,19 @@
         "noRecord": "Aucun historique étape par étape n'est disponible pour cette tâche.",
         "more_one": "et {{count}} étape de plus",
         "more_other": "et {{count}} étapes de plus",
+        "more_many": "et {{count}} étapes de plus",
         "step": {
           "read": "A lu {{label}}",
           "readMany_one": "A lu {{count}} fichier",
           "readMany_other": "A lu {{count}} fichiers",
+          "readMany_many": "A lu {{count}} fichiers",
           "search_one": "A cherché dans le projet",
           "search_other": "A cherché dans le projet {{count}} fois",
+          "search_many": "A cherché dans le projet {{count}} fois",
           "write": "A écrit {{label}}",
           "writeMany_one": "A écrit {{count}} fichier",
           "writeMany_other": "A écrit {{count}} fichiers",
+          "writeMany_many": "A écrit {{count}} fichiers",
           "ran": "A exécuté {{label}}",
           "ranFailed": "A exécuté {{label}} sans succès"
         },
@@ -1046,6 +1072,7 @@
         "plan": "Comment c'était découpé",
         "sideBySide_one": "{{count}} tâche s'est exécutée seule",
         "sideBySide_other": "Ces {{count}} tâches se sont exécutées en parallèle",
+        "sideBySide_many": "Ces {{count}} tâches se sont exécutées en parallèle",
         "waitsFor": "{{task}} attend {{tasks}}",
         "time": "Durée",
         "timeSoFar": "{{time}} jusqu'ici",
@@ -1116,8 +1143,10 @@
         "title": "Ignorer « {{task}} » ?",
         "body_one": "{{count}} autre tâche l'attend. L'ignorer aussi, ou la laisser s'exécuter sans celle-ci ?",
         "body_other": "{{count}} autres tâches l'attendent. Les ignorer aussi, ou les laisser s'exécuter sans celle-ci ?",
+        "body_many": "{{count}} autres tâches l'attendent. Les ignorer aussi, ou les laisser s'exécuter sans celle-ci ?",
         "cascade_one": "L'ignorer ainsi que la tâche qui l'attend",
         "cascade_other": "L'ignorer ainsi que les {{count}} tâches qui l'attendent",
+        "cascade_many": "L'ignorer ainsi que les {{count}} tâches qui l'attendent",
         "release": "L'ignorer et exécuter les autres sans elle"
       },
       "gate": {
@@ -1147,6 +1176,7 @@
       "none": "Cette tâche n'a modifié aucun fichier.",
       "files_one": "{{count}} fichier",
       "files_other": "{{count}} fichiers",
+      "files_many": "{{count}} fichiers",
       "namesOnly": "Seuls les noms de fichiers sont connus pour cette tâche.",
       "uncommitted": "Une partie de ce travail n'est pas encore enregistrée sur la branche de la tâche.",
       "cut": "Une longue liste a été raccourcie.",
@@ -1161,6 +1191,7 @@
       "renamedFrom": "Renommé depuis {{from}}",
       "showMore_one": "Afficher {{count}} ligne de plus",
       "showMore_other": "Afficher {{count}} lignes de plus",
+      "showMore_many": "Afficher {{count}} lignes de plus",
       "fileCut": "Cette modification est longue, seul le début est affiché.",
       "noPatch": "Il n'y a pas de vue ligne par ligne pour ce fichier."
     },
@@ -1190,7 +1221,6 @@
       "updated": "Mise à jour {{when}}",
       "loading": "Chargement des campagnes",
       "loadFailed": "Impossible de charger les campagnes.",
-      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "{{count}} fiche de campagne illisible ignorée. Les fichiers sont restés en place.",
       "skipped_other": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",
       "skipped_many": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",
@@ -1379,6 +1409,7 @@
       "pinned": "épinglé",
       "used_one": "utilisé {{count}} fois",
       "used_other": "utilisé {{count}} fois",
+      "used_many": "utilisé {{count}} fois",
       "lastUsed": "dernière utilisation {{when}}",
       "never": "jamais"
     },
@@ -1418,12 +1449,15 @@
       "saveFailed": "Impossible d'enregistrer ce souvenir",
       "forgotCount_one": "{{count}} souvenir oublié",
       "forgotCount_other": "{{count}} souvenirs oubliés",
+      "forgotCount_many": "{{count}} souvenirs oubliés",
       "forgetManyFailed": "Impossible d'oublier ces souvenirs",
       "exportedCount_one": "{{count}} souvenir exporté",
       "exportedCount_other": "{{count}} souvenirs exportés",
+      "exportedCount_many": "{{count}} souvenirs exportés",
       "exportFailed": "Impossible d'exporter les souvenirs",
       "importedCount_one": "{{count}} souvenir importé",
       "importedCount_other": "{{count}} souvenirs importés",
+      "importedCount_many": "{{count}} souvenirs importés",
       "importFailed": "Impossible d'importer les souvenirs"
     },
     "fileActionsAria": "Exporter ou importer des souvenirs",
@@ -1431,7 +1465,19 @@
     "emptyHint": "Écrivez-en un ci-dessus, ou laissez Flint retenir au fil des conversations.",
     "footerCount_one": "1 souvenir dans cette portée",
     "footerCount_other": "{{count}} souvenirs dans cette portée",
-    "agentNotes": "Notes de l'agent"
+    "footerCount_many": "{{count}} souvenirs dans cette portée",
+    "agentNotes": "Notes de l'agent",
+    "report": {
+      "summary_one": "{{count}} souvenir importé depuis l'export",
+      "summary_many": "{{count}} souvenirs importés depuis l'export",
+      "summary_other": "{{count}} souvenirs importés depuis l'export",
+      "duplicates_one": "{{count}} doublon ignoré",
+      "duplicates_many": "{{count}} doublons ignorés",
+      "duplicates_other": "{{count}} doublons ignorés",
+      "refused_one": "{{count}} refusé",
+      "refused_many": "{{count}} refusés",
+      "refused_other": "{{count}} refusés"
+    }
   },
   "chatMentions": {
     "title": "Mentions de conversations",
@@ -1489,8 +1535,10 @@
     "doneTitle": "Terminé",
     "archived_one": "{{count}} élément archivé.",
     "archived_other": "{{count}} éléments archivés.",
+    "archived_many": "{{count}} éléments archivés.",
     "deleted_one": "{{count}} élément supprimé.",
     "deleted_other": "{{count}} éléments supprimés.",
+    "deleted_many": "{{count}} éléments supprimés.",
     "stoppedEarly": "Arrêté en cours de route. {{n}} laissés intacts.",
     "inArchive": "Retrouvez-les sur la page Archives.",
     "problems": "{{n}} n’ont pas pu être traités :",
@@ -1515,7 +1563,16 @@
     "reasoningDefaultDesc": "Indique si la réflexion démarre activée ou désactivée dans une nouvelle discussion. Le réglage de raisonnement propre au modèle et le bouton du champ de saisie restent prioritaires. Les modèles qui ne peuvent pas changer la réflexion ne sont pas modifiés.",
     "reasoningDefaultModel": "Par défaut du modèle",
     "reasoningDefaultOn": "Activé",
-    "reasoningDefaultOff": "Désactivé"
+    "reasoningDefaultOff": "Désactivé",
+    "rulesGroup": "Règles",
+    "rulesDesc": "Instructions permanentes ajoutées aux discussions après les instructions de l'assistant. Désactivez-en une pour une seule discussion depuis son panneau d'options.",
+    "rulesEnabled": "Règle active",
+    "rulesRemove": "Supprimer la règle",
+    "rulesAllChats": "Toutes les discussions",
+    "rulesNoGroups": "Aucun groupe pour l'instant",
+    "rulesPlaceholder": "Ajoutez une règle, p. ex. « Réponds en unités métriques »",
+    "rulesAdd": "Ajouter",
+    "rulesTooLong": "Les règles actives font environ {{tokens}} jetons, au-delà des {{budget}} conseillés. Les règles longues consomment du contexte dans chaque discussion."
   },
   "data": {
     "tabStorage": "Stockage",
@@ -1534,6 +1591,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

@@ -161,6 +161,23 @@ pub async fn output_with_timeout(
     cmd: &mut tokio::process::Command,
     timeout: std::time::Duration,
 ) -> Result<std::io::Result<std::process::Output>, tokio::time::error::Elapsed> {
+    output_with_timeout_kept(cmd, timeout, false).await
+}
+
+/// As [`output_with_timeout`], but each stream keeps its first and its last
+/// `CAPTURE_CAP / 2` bytes, so a long build log still ends with its result.
+pub async fn output_with_timeout_head_tail(
+    cmd: &mut tokio::process::Command,
+    timeout: std::time::Duration,
+) -> Result<std::io::Result<std::process::Output>, tokio::time::error::Elapsed> {
+    output_with_timeout_kept(cmd, timeout, true).await
+}
+
+async fn output_with_timeout_kept(
+    cmd: &mut tokio::process::Command,
+    timeout: std::time::Duration,
+    keep_tail: bool,
+) -> Result<std::io::Result<std::process::Output>, tokio::time::error::Elapsed> {
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -170,7 +187,7 @@ pub async fn output_with_timeout(
         Err(e) => return Ok(Err(e)),
     };
     let owner = child.id().and_then(|pid| OwnedChild::own(pid).ok());
-    match tokio::time::timeout(timeout, bounded_output(child)).await {
+    match tokio::time::timeout(timeout, bounded_output_with(child, CAPTURE_CAP, keep_tail)).await {
         Ok(out) => {
             if let Some(owner) = owner {
                 owner.release();
@@ -240,34 +257,51 @@ pub fn output_blocking(
 /// never holds more than this per stream.
 pub const CAPTURE_CAP: usize = 1024 * 1024;
 
-async fn read_capped<R: tokio::io::AsyncRead + Unpin>(reader: Option<R>, cap: usize) -> Vec<u8> {
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(reader: Option<R>, cap: usize, keep_tail: bool) -> Vec<u8> {
     use tokio::io::AsyncReadExt;
     let Some(mut reader) = reader else { return Vec::new() };
+    let head_cap = if keep_tail { cap / 2 } else { cap };
+    let tail_cap = cap - head_cap;
     let mut kept = Vec::new();
+    let mut tail: std::collections::VecDeque<u8> = std::collections::VecDeque::new();
+    let mut dropped = 0usize;
     let mut chunk = [0u8; 16 * 1024];
     loop {
         match reader.read(&mut chunk).await {
             Ok(0) | Err(_) => break,
             Ok(n) => {
-                let room = cap.saturating_sub(kept.len());
-                kept.extend_from_slice(&chunk[..n.min(room)]);
+                let room = head_cap.saturating_sub(kept.len());
+                let take = n.min(room);
+                kept.extend_from_slice(&chunk[..take]);
+                if tail_cap > 0 {
+                    tail.extend(&chunk[take..n]);
+                    while tail.len() > tail_cap {
+                        let over = tail.len() - tail_cap;
+                        tail.drain(..over);
+                        dropped += over;
+                    }
+                }
             }
         }
     }
+    if dropped > 0 {
+        kept.extend_from_slice(format!("\n[... {dropped} bytes of output left out ...]\n").as_bytes());
+    }
+    kept.extend(tail);
     kept
 }
 
 /// `wait_with_output` with each stream capped at `cap` bytes.
-async fn bounded_output_with(mut child: tokio::process::Child, cap: usize) -> std::io::Result<std::process::Output> {
-    let out = read_capped(child.stdout.take(), cap);
-    let err = read_capped(child.stderr.take(), cap);
+async fn bounded_output_with(
+    mut child: tokio::process::Child,
+    cap: usize,
+    keep_tail: bool,
+) -> std::io::Result<std::process::Output> {
+    let out = read_capped(child.stdout.take(), cap, keep_tail);
+    let err = read_capped(child.stderr.take(), cap, keep_tail);
     let (stdout, stderr) = tokio::join!(out, err);
     let status = child.wait().await?;
     Ok(std::process::Output { status, stdout, stderr })
-}
-
-async fn bounded_output(child: tokio::process::Child) -> std::io::Result<std::process::Output> {
-    bounded_output_with(child, CAPTURE_CAP).await
 }
 
 impl Drop for OwnedChild {
@@ -298,9 +332,22 @@ mod tests {
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
         let child = cmd.spawn().expect("spawn");
-        let out = bounded_output_with(child, 64 * 1024).await.expect("output");
+        let out = bounded_output_with(child, 64 * 1024, false).await.expect("output");
         assert_eq!(out.stdout.len(), 64 * 1024);
         assert!(out.status.success());
+    }
+
+    /// Head-and-tail capture keeps the start and the end of a long stream.
+    #[tokio::test]
+    async fn head_tail_capture_keeps_the_end() {
+        let data: Vec<u8> = (0..100_000u32).map(|i| b'a' + (i % 26) as u8).collect();
+        let kept = read_capped(Some(&data[..]), 1000, true).await;
+        assert!(kept.starts_with(&data[..500]));
+        assert!(kept.ends_with(&data[data.len() - 500..]));
+        let text = String::from_utf8_lossy(&kept);
+        assert!(text.contains("[... 99000 bytes of output left out ...]"), "{text}");
+        let short = read_capped(Some(&data[..800]), 1000, true).await;
+        assert_eq!(short, &data[..800]);
     }
 
     #[test]

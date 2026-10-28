@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { createFileRoute } from '@tanstack/react-router'
 import {
   useCallback,
@@ -50,7 +50,7 @@ import {
 } from '@/lib/systemMonitor'
 import { Checkbox } from '@/components/ui/checkbox'
 
-export const Route = createFileRoute(route.systemMonitor as any)({
+export const Route = createFileRoute(route.systemMonitor)({
   component: SystemMonitorContent,
 })
 

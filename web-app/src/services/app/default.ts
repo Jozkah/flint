@@ -5,6 +5,7 @@
 import type {
   AppService,
   FactoryResetOptions,
+  HfEndpointSetting,
   LogChunk,
   LogEntry,
 } from './types'
@@ -61,6 +62,18 @@ export class DefaultAppService implements AppService {
 
   async setDownloadSpeedLimit(bytesPerSec: number): Promise<void> {
     void bytesPerSec
+  }
+
+  async getHfEndpointSetting(): Promise<HfEndpointSetting> {
+    return { endpoint: '', sendTokenToMirror: false, envOverride: null }
+  }
+
+  async setHfEndpointSetting(
+    endpoint: string,
+    sendTokenToMirror: boolean
+  ): Promise<void> {
+    void endpoint
+    void sendTokenToMirror
   }
 
   async exportRedactedLogs(): Promise<string | null> {
