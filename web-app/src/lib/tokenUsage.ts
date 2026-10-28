@@ -479,7 +479,34 @@ export function createUsageCollector() {
       if (steps.length > 0) return steps.reduce(combineTokenUsage)
       return normalizeLanguageModelUsage(fallback)
     },
+    /**
+     * What the turn's last request occupies in the context window: its input
+     * plus its output. `total()` adds every step of a tool loop, and each step
+     * re-sends the whole prompt, so the sum is not the context fill.
+     */
+    contextTokens(): number | undefined {
+      return stepContextTokens(steps[steps.length - 1])
+    },
   }
+}
+
+const stepContextTokens = (step: TokenUsage | undefined): number | undefined => {
+  if (!step) return undefined
+  if (step.inputTokens === undefined && step.outputTokens === undefined)
+    return step.totalTokens
+  return (step.inputTokens ?? 0) + (step.outputTokens ?? 0)
+}
+
+/**
+ * The context fill a message's metadata records: `contextTokens` (the last
+ * request of its turn), else, for messages saved before that existed, the
+ * usage total.
+ */
+export function readContextTokens(metadata: unknown): number | undefined {
+  if (!isRecord(metadata)) return undefined
+  const ctx = tokenCount(metadata.contextTokens)
+  if (ctx !== undefined && ctx > 0) return ctx
+  return readTokenUsage(metadata.usage)?.totalTokens
 }
 
 /**

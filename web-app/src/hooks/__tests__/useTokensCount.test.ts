@@ -75,6 +75,21 @@ describe('useTokensCount', () => {
 
   // C012: a stopped reply has no usage record, and the local ring stayed at
   // the figure from before it until the next completed request.
+  it('fills the context with the last step of a tool turn, not the sum of its steps', async () => {
+    const messages = [
+      makeMessage({
+        metadata: {
+          usage: { inputTokens: 3300, outputTokens: 100, totalTokens: 3400 },
+          contextTokens: 1250,
+        },
+      }),
+    ]
+    const { result } = renderHook(() => useTokensCount(messages))
+    await waitFor(() => expect(result.current.tokenCount).toBe(1250))
+    // The breakdown keeps the turn's summed usage.
+    expect(result.current.usage?.totalTokens).toBe(3400)
+  })
+
   it('counts a stopped local reply that never got usage', async () => {
     const messages = [
       makeMessage({ metadata: { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } } }),
