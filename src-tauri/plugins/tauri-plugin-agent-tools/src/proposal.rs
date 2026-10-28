@@ -1250,6 +1250,35 @@ fn existing_mode(_target: &Path) -> Option<std::fs::Permissions> {
     None
 }
 
+/// Whether `file` no longer matches what the plan read: its destination now
+/// passes through a link, or holds different bytes than were planned against.
+fn changed_since_plan(dest_root: &Path, file: &PlannedFile) -> Option<ProposalError> {
+    if passes_through_link(dest_root, &file.path) {
+        return Some(ProposalError::LinkedDestination(file.path.clone()));
+    }
+    match read_current(dest_root, &file.path) {
+        Ok(now) if now == file.current => None,
+        Ok(_) => Some(ProposalError::Conflicts(vec![Conflict {
+            path: file.path.clone(),
+            hunk: String::new(),
+            reason: "the file changed at the destination after the plan was made; nothing was applied"
+                .into(),
+        }])),
+        Err(e) => Some(e),
+    }
+}
+
+/// Put back files already written, in reverse; the paths that could not be.
+fn roll_back(dest_root: &Path, written: &[&PlannedFile]) -> Vec<String> {
+    let mut not_restored = Vec::new();
+    for done in written.iter().rev() {
+        if write_file(dest_root, &done.path, done.current.as_deref()).is_err() {
+            not_restored.push(done.path.clone());
+        }
+    }
+    not_restored
+}
+
 /// Apply an approval. All files land, or none do.
 pub fn apply(
     data_folder: &Path,
@@ -1286,15 +1315,24 @@ pub fn apply(
 
     let mut written: Vec<&PlannedFile> = Vec::new();
     for file in &planned {
+        // Looked at again immediately before this file is written: the plan
+        // was made earlier, and a file edited (or a folder turned into a link)
+        // in between must not be overwritten from a stale read.
+        if let Some(err) = changed_since_plan(dest_root, file) {
+            let not_restored = roll_back(dest_root, &written);
+            audit(data_folder, &record, "rolled-back", format!("{}: {err:?}", file.path));
+            return Err(match (err, not_restored.is_empty()) {
+                (err, true) => err,
+                (err, false) => ProposalError::WriteFailed {
+                    error: format!("{err:?}"),
+                    not_restored,
+                },
+            });
+        }
         if let Err(e) = write_file(dest_root, &file.path, file.content.as_deref()) {
             // Put back everything already written, in reverse, and say which
             // could not be (Jozkah/jan#264).
-            let mut not_restored = Vec::new();
-            for done in written.iter().rev() {
-                if write_file(dest_root, &done.path, done.current.as_deref()).is_err() {
-                    not_restored.push(done.path.clone());
-                }
-            }
+            let not_restored = roll_back(dest_root, &written);
             audit(data_folder, &record, "rolled-back", format!("{}: {e}", file.path));
             return Err(ProposalError::WriteFailed { error: e, not_restored });
         }
@@ -1816,6 +1854,36 @@ mod tests {
                 || matches!(&err, ProposalError::Io(_)),
             "{err:?}"
         );
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a\n");
+    }
+
+    #[test]
+    fn apply_conflict_when_file_changed_after_plan() {
+        let (_data, dest) = dirs("changed-after-plan");
+        std::fs::write(dest.join("a.txt"), "edited later\n").unwrap();
+        let planned = PlannedFile {
+            path: "a.txt".into(),
+            content: Some(b"A\n".to_vec()),
+            current: Some(b"a\n".to_vec()),
+        };
+        assert!(matches!(
+            changed_since_plan(&dest, &planned),
+            Some(ProposalError::Conflicts(_))
+        ));
+        let fresh = PlannedFile { current: Some(b"edited later\n".to_vec()), ..planned };
+        assert!(changed_since_plan(&dest, &fresh).is_none());
+    }
+
+    #[test]
+    fn apply_rolls_back_on_conflict() {
+        let (_data, dest) = dirs("rollback-conflict");
+        std::fs::write(dest.join("a.txt"), "A\n").unwrap();
+        let first = PlannedFile {
+            path: "a.txt".into(),
+            content: Some(b"A\n".to_vec()),
+            current: Some(b"a\n".to_vec()),
+        };
+        assert!(roll_back(&dest, &[&first]).is_empty());
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a\n");
     }
 
