@@ -203,9 +203,15 @@ pub fn data_folder_has_history(data_folder: &Path) -> bool {
     let Some(serde_json::Value::String(sessions)) = map.get("code-sessions") else {
         return false;
     };
+    // The store keeps one key per session: the index lists them in
+    // `sessionIds`. An older build wrote them inline as `sessions`.
     serde_json::from_str::<serde_json::Value>(sessions)
         .ok()
-        .and_then(|v| v.pointer("/state/sessions").and_then(|s| s.as_array()).map(|s| !s.is_empty()))
+        .map(|v| {
+            ["/state/sessions", "/state/sessionIds"]
+                .iter()
+                .any(|p| v.pointer(p).and_then(|s| s.as_array()).is_some_and(|s| !s.is_empty()))
+        })
         .unwrap_or(false)
 }
 
@@ -541,6 +547,18 @@ mod tests {
         let later = with_hooks(dir.path(), "later");
         assert!(grandfather_in(&store, vec![later.clone()]).is_empty());
         assert!(!is_trusted_in(&store, &later));
+    }
+
+    #[test]
+    fn a_sharded_session_index_counts_as_history() {
+        let dir = temp();
+        let index = r#"{"state":{"sessionIds":["s1"],"currentId":"s1"},"version":5}"#;
+        let settings = serde_json::json!({ "code-sessions": index });
+        std::fs::write(dir.path().join("settings.json"), settings.to_string()).unwrap();
+        assert!(data_folder_has_history(dir.path()));
+        let empty = serde_json::json!({ "code-sessions": r#"{"state":{"sessionIds":[]},"version":5}"# });
+        std::fs::write(dir.path().join("settings.json"), empty.to_string()).unwrap();
+        assert!(!data_folder_has_history(dir.path()));
     }
 
     #[test]

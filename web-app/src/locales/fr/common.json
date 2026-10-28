@@ -1647,7 +1647,8 @@
       "empty": "Ce fichier est vide",
       "needs-file-dialog": "Utilisez « Joindre un fichier » pour les documents — une copie déposée n'a pas de chemin pour le lecteur",
       "sensitive": "Ressemble à des identifiants ou à une clé, il n'a donc pas été lu",
-      "binary": "Ce n'est pas un fichier texte, quelle que soit son extension"
+      "binary": "Ce n'est pas un fichier texte, quelle que soit son extension",
+      "unreadable": "Impossible de lire ce fichier"
     },
     "addFiles": "Ajouter des fichiers",
     "addFilesOrImages": "Ajouter des fichiers ou des images",
@@ -3027,6 +3028,50 @@
       "medium": "Moyenne",
       "low": "Basse"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Arrêter",
+    "title": "Arrêter le travail en cours",
+    "description": "Choisissez la portée. Action irréversible : le travail arrêté n'est pas repris, même après un redémarrage.",
+    "legend": "Quoi arrêter",
+    "stopping": "Arrêt en cours. Fin des processus appartenant à Flint…",
+    "report": {
+      "clean": "Arrêté. {{stopped}} arrêtés, {{already}} déjà arrêtés, plus rien en cours.",
+      "partial_one": "{{stopped}} arrêtés, mais {{count}} processus tourne encore. Le nettoyage n'est pas terminé.",
+      "partial_other": "{{stopped}} arrêtés, mais {{count}} processus tournent encore. Le nettoyage n'est pas terminé."
+    },
+    "error": "Impossible d'arrêter : {{error}}",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "confirmBusy": "Arrêt en cours…",
+    "scope": {
+      "call": {
+        "name": "Cet appel d'outil",
+        "desc": "Cet appel d'outil uniquement ({{id}}). Tout le reste de l'exécution continue.",
+        "confirm": "Arrêter l'appel d'outil"
+      },
+      "run": {
+        "name": "Cette exécution",
+        "desc": "Cette exécution ({{id}}), avec ses appels d'outils, commandes shell, appels MCP et sous-agents. Les autres exécutions ne sont pas touchées.",
+        "confirm": "Arrêter l'exécution"
+      },
+      "session": {
+        "name": "Cette session",
+        "desc": "Chaque exécution de cette session ({{id}}). Les autres sessions ne sont pas touchées.",
+        "confirm": "Arrêter la session"
+      },
+      "application": {
+        "name": "Tout dans Flint",
+        "desc": "Tout le travail partout dans Flint, dans chaque session. Rien de ce qui tourne n'est épargné.",
+        "confirm": "Tout arrêter"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Afficher la clé API",
+    "hide": "Masquer la clé API",
+    "copy": "Copier la clé API",
+    "copied": "Copié"
   },
   "proposal": {
     "flag": {

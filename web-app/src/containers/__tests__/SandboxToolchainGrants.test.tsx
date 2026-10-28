@@ -116,6 +116,9 @@ describe('SandboxToolchainGrants', () => {
     sandboxToolchainRevoke.mockResolvedValue(undefined)
     render(<SandboxToolchainGrants />)
     fireEvent.click(await screen.findByTestId('toolchain-revoke-python'))
+    // The permission entry is only removed after the user confirms.
+    expect(sandboxToolchainRevoke).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('toolchain-revoke-confirm'))
     await waitFor(() =>
       expect(sandboxToolchainRevoke).toHaveBeenCalledWith('C:\\Users\\me\\Python311')
     )
@@ -146,5 +149,34 @@ describe('SandboxToolchainGrants', () => {
     fireEvent.click(screen.getByTestId('toolchain-copy-command-node'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(command))
     expect(sandboxToolchainGrant).not.toHaveBeenCalled()
+  })
+
+  it('shows a retry instead of throwing when the toolchain read fails', async () => {
+    getSandboxToolchains.mockRejectedValueOnce(new Error('boom'))
+    sandboxToolchainGrants.mockResolvedValue([])
+    render(<SandboxToolchainGrants />)
+    expect(await screen.findByText('boom')).toBeInTheDocument()
+    getSandboxToolchains.mockResolvedValue({ runnable: [], unavailable: [] })
+    fireEvent.click(screen.getByTestId('toolchain-retry'))
+    await waitFor(() => expect(getSandboxToolchains).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText('boom')).toBeNull())
+  })
+
+  it('a failed refresh after a grant does not raise an error toast', async () => {
+    const { toast } = await import('sonner')
+    getSandboxToolchains.mockResolvedValueOnce({
+      runnable: [],
+      unavailable: ['python'],
+      grantable: [{ program: 'python', folder: 'C:\Py' }],
+    })
+    sandboxToolchainGrants.mockResolvedValue([])
+    sandboxToolchainGrant.mockResolvedValue({})
+    render(<SandboxToolchainGrants />)
+    fireEvent.click(await screen.findByTestId('toolchain-grant-python'))
+    getSandboxToolchains.mockRejectedValue(new Error('refresh failed'))
+    fireEvent.click(screen.getByTestId('toolchain-grant-confirm'))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    await screen.findByText('refresh failed')
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })

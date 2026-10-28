@@ -21,6 +21,8 @@ macro_rules! println {
     }};
 }
 
+#[path = "flint/agent_cmd.rs"]
+mod agent_cmd;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use console::Style;
 
@@ -479,8 +481,12 @@ enum McpServeCommands {
         #[arg(long, default_value_t = 0)]
         port: u16,
         /// Bearer token for --transport http; a random one is generated and printed if omitted
+        /// (visible in the process list: prefer --token-file)
         #[arg(long)]
         token: Option<String>,
+        /// Read the bearer token from a file (`-` for stdin) instead of the command line
+        #[arg(long, value_name = "PATH", conflicts_with = "token")]
+        token_file: Option<std::path::PathBuf>,
     },
 }
 
@@ -1006,9 +1012,64 @@ struct ProviderArgs {
     /// Target a single provider (e.g. anthropic); required to synthesize creds from flags alone
     #[arg(long)]
     provider: Option<String>,
-    /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY)
+    /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY).
+    /// `-` reads the key from stdin
     #[arg(long)]
     api_key: Option<String>,
+    /// Read the API key from a file instead of the command line (trailing whitespace is dropped)
+    #[arg(long, value_name = "PATH", conflicts_with = "api_key")]
+    api_key_file: Option<std::path::PathBuf>,
+}
+
+/// The key stored in `path`, trimmed. An empty file is an error rather than an
+/// empty key.
+fn read_api_key_file(path: &std::path::Path) -> Result<String, String> {
+    read_secret_file(path, "--api-key-file")
+}
+
+/// A secret read from `path` (`-` is stdin), trimmed; empty is an error.
+fn read_secret_file(path: &std::path::Path, flag: &str) -> Result<String, String> {
+    let raw = if path.as_os_str() == "-" {
+        read_stdin_secret().map_err(|e| format!("{flag} -: {e}"))?
+    } else {
+        std::fs::read_to_string(path).map_err(|e| format!("{flag} {}: {e}", path.display()))?
+    };
+    let key = raw.trim();
+    if key.is_empty() {
+        return Err(format!("{flag} {} is empty", path.display()));
+    }
+    Ok(key.to_string())
+}
+
+fn read_stdin_secret() -> std::io::Result<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::io::stdin().read_to_string(&mut text)?;
+    Ok(text)
+}
+
+/// The API key the flags name: inline (warned about), `-` for stdin, or a file.
+/// `stdin` is injected so the `-` form can be tested.
+fn resolve_api_key(
+    inline: Option<String>,
+    file: Option<&std::path::Path>,
+    stdin: impl FnOnce() -> std::io::Result<String>,
+) -> Result<Option<String>, String> {
+    match (inline, file) {
+        (Some(key), _) if key == "-" => {
+            let key = stdin().map_err(|e| format!("--api-key -: {e}"))?.trim().to_string();
+            if key.is_empty() {
+                return Err("--api-key - read nothing from stdin".to_string());
+            }
+            Ok(Some(key))
+        }
+        (Some(key), _) => {
+            eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file, --api-key - (stdin) or JAN_API_KEY");
+            Ok(Some(key))
+        }
+        (None, Some(path)) => read_api_key_file(path).map(Some),
+        (None, None) => Ok(None),
+    }
 }
 
 impl ProviderArgs {
@@ -1019,9 +1080,16 @@ impl ProviderArgs {
         let provider = self
             .provider
             .or_else(|| app_lib::core::cli::providers::desktop_selection().provider);
+        let api_key = match resolve_api_key(self.api_key, self.api_key_file.as_deref(), read_stdin_secret) {
+            Ok(key) => key,
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(2);
+            }
+        };
         ProviderOverrides {
             provider,
-            api_key: self.api_key,
+            api_key,
             pin,
         }
         .with_env()
@@ -2185,6 +2253,12 @@ fn main() {
     if let Some(dir) = pre_parse_data_dir(std::env::args().skip(1)) {
         std::env::set_var("JAN_DATA_FOLDER", dir);
     }
+    // `schedule tick --data` and `schedule run-spec` need the same, plus the
+    // unattended flag; applied here, not inside the async command.
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    for (key, value) in app_lib::core::cli::schedule::process_env_for(&raw) {
+        std::env::set_var(key, value);
+    }
     let worker = std::thread::Builder::new()
         .name("jan-main".to_string())
         .stack_size(32 * 1024 * 1024)
@@ -2241,7 +2315,13 @@ fn resolve_json_schema(arg: &str) -> Result<serde_json::Value, String> {
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
 /// stopping at `--` so a task text can never be mistaken for it.
 fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
-    let mut args = args.take_while(|a| a != "--");
+    let args: Vec<String> = args.take_while(|a| a != "--").collect();
+    // Another command's own `--data-dir` (or a task text naming one) must not
+    // move the data folder, so only `serve` and `stop` are looked at.
+    if !matches!(args.iter().find(|a| !a.starts_with('-')).map(String::as_str), Some("serve" | "stop")) {
+        return None;
+    }
+    let mut args = args.into_iter();
     let mut found = None;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
@@ -2250,7 +2330,8 @@ fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
             found = Some(v.to_string());
         }
     }
-    found.filter(|v| !v.is_empty())
+    // A value shaped like a flag is the next option, not a directory.
+    found.filter(|v| !v.is_empty() && !v.starts_with('-'))
 }
 
 /// Whether a panic message is the standard library giving up on a write to
@@ -2607,7 +2688,23 @@ async fn handle_mcp_serve(cmd: McpServeCommands) {
         tools,
         port,
         token,
+        token_file,
     } = cmd;
+    let token = match token_file {
+        Some(path) => match read_secret_file(&path, "--token-file") {
+            Ok(token) => Some(token),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(2);
+            }
+        },
+        None => {
+            if token.is_some() {
+                eprintln!("warning: --token is visible in the process list; prefer --token-file");
+            }
+            token
+        }
+    };
     let flags = ServeFlags {
         allow_write,
         allow_exec,
@@ -2858,7 +2955,7 @@ async fn handle_cli(cmd: CliCommands) {
         }
         CliCommands::Trust { folder, revoke, list } => handle_trust(folder, revoke, list),
         CliCommands::Models { cmd } => handle_models(cmd).await,
-        CliCommands::Agent { cmd } => handle_agent(cmd).await,
+        CliCommands::Agent { cmd } => agent_cmd::handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
             if let Err(e) = handle_mcp(cmd).await {
                 eprintln!("Error: {e}");
@@ -3187,938 +3284,6 @@ fn handle_job(cmd: JobCommands) {
     if let Err(e) = result {
         eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
         std::process::exit(e.exit_code());
-    }
-}
-
-async fn handle_agent(cmd: AgentCommands) {
-    let result = match cmd {
-        AgentCommands::Run {
-            project,
-            task,
-            model,
-            safe,
-            mode,
-            providers,
-            sandbox,
-            budget,
-            worktree,
-            resume,
-            output_format,
-            input_format,
-            host_tools,
-            host_gate,
-            events,
-            profile,
-            output_density,
-            append_system_prompt,
-            append_system_prompt_file,
-            allow_tools,
-            deny_tools,
-            effort,
-            ephemeral,
-            json_schema,
-            json_schema_attempts,
-        } => {
-            let json_schema = match json_schema.as_deref().map(resolve_json_schema).transpose() {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(2);
-                }
-            };
-            let append_system_prompt = match resolve_append_prompt(
-                append_system_prompt,
-                append_system_prompt_file.as_deref(),
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(2);
-                }
-            };
-            if let Some(level) = effort.as_deref() {
-                if !matches!(level, "low" | "medium" | "high") {
-                    eprintln!("Error: --effort '{level}' is not one of: low, medium, high");
-                    std::process::exit(2);
-                }
-            }
-            // AH-183: before the run, so a destination that cannot be written
-            // fails the command instead of silently streaming nowhere.
-            if let Some(destination) = events.as_deref() {
-                if let Err(e) = app_lib::core::cli::stream_events_to(destination) {
-                    eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
-                    std::process::exit(e.exit_code());
-                }
-            }
-            let mode_switches =
-                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("Error: {e}");
-                        std::process::exit(2);
-                    }
-                };
-            cli_agent_run(
-                &project,
-                &task,
-                model,
-                providers.into_overrides(),
-                SessionFlags {
-                    auto_approve: mode_switches.0,
-                    bypass: app_lib::core::cli::PermissionMode::requests_bypass(mode.as_deref()),
-                    plan: mode_switches.1,
-                    sandbox: sandbox.into_flag(),
-                    worktree: worktree.into_flag(),
-                    profile,
-                    density: match output_density
-                        .as_deref()
-                        .map(app_lib::core::cli::Density::parse)
-                    {
-                        Some(Ok(density)) => Some(density),
-                        Some(Err(e)) => {
-                            let refusal = HarnessError::new(
-                                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                                e,
-                            );
-                            eprintln!(
-                                "Error [{}]: {}",
-                                refusal.kind().tag(),
-                                refusal.message()
-                            );
-                            std::process::exit(refusal.exit_code());
-                        }
-                        None => None,
-                    },
-                    interrupted: resume.interrupted,
-                    max_turns: budget.max_turns,
-                    max_session_tokens: budget.max_session_tokens,
-                    max_budget_usd: budget.max_budget_usd,
-                    append_system_prompt,
-                    allow_tools,
-                    deny_tools,
-                    effort,
-                    ephemeral,
-                    json_schema,
-                    json_schema_attempts,
-                    ..Default::default()
-                },
-                resume.into_request(),
-                output_format,
-                input_format,
-                host_tools.as_deref(),
-                host_gate,
-            )
-            .await
-        }
-        AgentCommands::RunSubagent { spec } => {
-            app_lib::core::cli::run_durable_subagent(std::path::Path::new(&spec)).await
-        }
-        AgentCommands::Serve => {
-            app_lib::core::cli::json_api::serve_stdio().await;
-            Ok(())
-        }
-        AgentCommands::Step {
-            project,
-            task,
-            model,
-            safe,
-            mode,
-            providers,
-            sandbox,
-            profile,
-        } => {
-            let mode_switches =
-                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("Error: {e}");
-                        std::process::exit(2);
-                    }
-                };
-            cli_agent_step(
-                &project,
-                &task,
-                model,
-                providers.into_overrides(),
-                SessionFlags {
-                    auto_approve: mode_switches.0,
-                    bypass: app_lib::core::cli::PermissionMode::requests_bypass(mode.as_deref()),
-                    plan: mode_switches.1,
-                    sandbox: sandbox.into_flag(),
-                    profile,
-                    ..Default::default()
-                },
-            )
-            .await
-        }
-        AgentCommands::Tree { session, json } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            tauri_plugin_agent_tools::run_tree::of_session(&data, &session).map(|tree| {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&tree).unwrap_or_default());
-                } else {
-                    print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
-                }
-            })
-        }
-        AgentCommands::TestTriage {
-            project,
-            command,
-            no_retry,
-            json,
-        } => {
-            use app_lib::core::agent::test_triage;
-            let root = std::path::PathBuf::from(&project);
-            let command = if command.is_empty() {
-                vec!["cargo".to_string(), "test".to_string()]
-            } else {
-                command
-            };
-            test_triage::triage(&root, &command, !no_retry).and_then(|triage| {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&triage).unwrap_or_default());
-                } else {
-                    print!("{}", test_triage::render(&triage));
-                }
-                // A suite with failures that happened twice is a suite with
-                // failures; one whose only failures did not reproduce is not
-                // the same thing, and the exit code says which.
-                let real = triage.reproduced.values().any(|r| {
-                    *r == test_triage::Reproduced::Yes || *r == test_triage::Reproduced::NotChecked
-                }) && !triage.failures.is_empty();
-                if real || triage.unreadable {
-                    Err(HarnessError::new(
-                        tauri_plugin_agent_tools::harness_error::ErrorKind::ToolFailed,
-                        if triage.unreadable {
-                            "the test run failed and its output could not be read".to_string()
-                        } else {
-                            format!(
-                                "{} failure(s) in {} group(s)",
-                                triage.failures.len(),
-                                triage.clusters.len()
-                            )
-                        },
-                    ))
-                } else {
-                    Ok(())
-                }
-            })
-        }
-        AgentCommands::Health {
-            project,
-            only,
-            dry_run,
-            json,
-        } => {
-            use app_lib::core::agent::health;
-            let root = std::path::PathBuf::from(&project);
-            let selected: std::result::Result<Vec<health::Kind>, String> =
-                only.iter().map(|o| health::Kind::parse(o)).collect();
-            selected
-                .map_err(|e| {
-                    HarnessError::new(
-                        tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                        e,
-                    )
-                })
-                .and_then(|selected| {
-                    if dry_run {
-                        let planned: Vec<health::Check> = health::checks(&root)
-                            .into_iter()
-                            .filter(|c| selected.is_empty() || selected.contains(&c.kind))
-                            .collect();
-                        if json {
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&planned).unwrap_or_default()
-                            );
-                        } else {
-                            print!("{}", health::render_plan(&planned));
-                        }
-                        return Ok(());
-                    }
-                    let report = health::scan(&root, &selected)?;
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
-                    } else {
-                        print!("{}", health::render(&report));
-                    }
-                    // A scan that found something broken says so in its exit
-                    // code: this is the thing somebody runs before starting
-                    // work, and "it printed a failure and exited 0" is how a
-                    // broken tree gets worked in anyway.
-                    if health::healthy(&report) {
-                        Ok(())
-                    } else {
-                        Err(HarnessError::new(
-                            tauri_plugin_agent_tools::harness_error::ErrorKind::ToolFailed,
-                            "at least one of this project's own checks did not pass",
-                        ))
-                    }
-                })
-        }
-        AgentCommands::Licenses {
-            project,
-            allow,
-            record,
-            json,
-        } => {
-            use app_lib::core::agent::licenses;
-            let root = std::path::PathBuf::from(&project);
-            let allow = if allow.is_empty() {
-                app_lib::core::agent::project::allowed_licenses(&root)
-            } else {
-                allow
-            };
-            licenses::scan(&root, &allow).and_then(|report| {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
-                } else {
-                    print!("{}", licenses::render(&report));
-                }
-                if record {
-                    let path = licenses::record(&root, &report.dependencies)?;
-                    println!("recorded {} dependenc(ies) in {}", report.dependencies.len(), path.display());
-                }
-                // A dependency the project does not allow is a finding, and a
-                // command that finds something says so in its exit code.
-                if report.disallowed.is_empty() {
-                    Ok(())
-                } else {
-                    Err(HarnessError::new(
-                        tauri_plugin_agent_tools::harness_error::ErrorKind::PolicyViolation,
-                        format!(
-                            "{} dependenc(ies) are not licensed under anything this project allows",
-                            report.disallowed.len()
-                        ),
-                    ))
-                }
-            })
-        }
-        AgentCommands::Search {
-            query,
-            project,
-            regex,
-            session,
-            role,
-            limit,
-            json,
-        } => {
-            use app_lib::core::agent::transcript;
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            transcript::search(
-                Some(std::path::Path::new(&project)),
-                (!data.as_os_str().is_empty()).then_some(data.as_path()),
-                &transcript::Query {
-                    text: query,
-                    regex,
-                    session,
-                    role,
-                    limit,
-                },
-            )
-            .map(|found| {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&found).unwrap_or_default());
-                } else {
-                    print!("{}", transcript::render(&found));
-                }
-            })
-        }
-        AgentCommands::Transcript {
-            session,
-            project,
-            format,
-            out,
-        } => {
-            use app_lib::core::agent::transcript;
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            let format = match format.as_str() {
-                "text" => Ok(transcript::Format::Text),
-                "markdown" | "md" => Ok(transcript::Format::Markdown),
-                "json" => Ok(transcript::Format::Json),
-                other => Err(HarnessError::new(
-                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                    format!("{other:?} is not a format; use text, markdown or json"),
-                )),
-            };
-            format
-                .and_then(|format| {
-                    transcript::export(
-                        Some(std::path::Path::new(&project)),
-                        (!data.as_os_str().is_empty()).then_some(data.as_path()),
-                        &session,
-                        format,
-                    )
-                })
-                .and_then(|text| match out {
-                    Some(path) => std::fs::write(&path, &text)
-                        .map(|()| println!("wrote {path}"))
-                        .map_err(|e| {
-                            HarnessError::new(
-                                tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
-                                format!("the transcript could not be written to {path}: {e}"),
-                            )
-                        }),
-                    None => {
-                        print!("{text}");
-                        Ok(())
-                    }
-                })
-        }
-        AgentCommands::Quota { json } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            use app_lib::core::agent::quota;
-            quota::quotas(&data)
-                .and_then(|declared| quota::standing(&data, &declared))
-                .map_err(|e| HarnessError::from(&e))
-                .map(|standings| {
-                    if json {
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&standings).unwrap_or_default()
-                        );
-                    } else {
-                        print!("{}", quota::render(&standings));
-                    }
-                })
-        }
-        AgentCommands::Compaction { project } => {
-            tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
-                Some(&app_lib::core::app::commands::resolve_jan_data_folder()),
-                Some(std::path::Path::new(&project)),
-                None,
-            )
-            .map(|p| println!("{}", serde_json::to_string_pretty(&p).unwrap_or_default()))
-        }
-        AgentCommands::BundleExport { project, out } => {
-            use app_lib::core::agent::agent_bundle;
-            agent_bundle::export(std::path::Path::new(&project)).and_then(|(bundle, report)| {
-                let text = serde_json::to_string_pretty(&bundle).unwrap_or_default();
-                let tmp = format!("{out}.partial");
-                std::fs::write(&tmp, format!("{text}\n"))
-                    .and_then(|()| std::fs::rename(&tmp, &out))
-                    .map_err(|e| {
-                        let _ = std::fs::remove_file(&tmp);
-                        HarnessError::new(
-                            tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
-                            format!("the bundle could not be written to {out}: {e}"),
-                        )
-                    })?;
-                println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
-                Ok(())
-            })
-        }
-        AgentCommands::BundleImport { project, file, overwrite, accept_widening, dry_run } => {
-            use app_lib::core::agent::agent_bundle;
-            std::fs::read_to_string(&file)
-                .map_err(|e| {
-                    HarnessError::new(
-                        tauri_plugin_agent_tools::harness_error::ErrorKind::NotFound,
-                        format!("{file} could not be read: {e}"),
-                    )
-                })
-                .and_then(|text| agent_bundle::parse(&text))
-                .and_then(|bundle| {
-                    agent_bundle::import(std::path::Path::new(&project), &bundle, overwrite, accept_widening, dry_run)
-                })
-                .map(|report| println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default()))
-        }
-        AgentCommands::ImportAgents {
-            path,
-            scope,
-            project,
-            overwrite,
-            dry_run,
-        } => {
-            use app_lib::core::agent::subagent::SubagentScope;
-            let resolved = match scope.as_str() {
-                "user" => app_lib::core::agent::subagent::user_subagents_dir()
-                    .map(|dir| (SubagentScope::User, dir))
-                    .ok_or_else(|| {
-                        HarnessError::new(
-                            tauri_plugin_agent_tools::harness_error::ErrorKind::NotFound,
-                            "the home directory could not be resolved, so there is no user scope to import into",
-                        )
-                    }),
-                "project" => Ok((
-                    SubagentScope::Project,
-                    app_lib::core::agent::subagent::project_subagents_dir(std::path::Path::new(
-                        &project,
-                    )),
-                )),
-                other => Err(HarnessError::new(
-                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                    format!("'{other}' is not a scope; use 'user' or 'project'"),
-                )),
-            };
-            resolved.and_then(|(scope, dir)| {
-                app_lib::core::agent::agent_import::import(
-                    std::path::Path::new(&path),
-                    &dir,
-                    scope,
-                    overwrite,
-                    dry_run,
-                )
-                .map(|report| {
-                    print!("{}", app_lib::core::agent::agent_import::render(&report));
-                    if !report.dry_run {
-                        println!("written to {}", dir.display());
-                    }
-                })
-            })
-        }
-        AgentCommands::PolicyExport { project, out } => {
-            app_lib::core::cli::cli_policy_export(&project).and_then(|document| {
-                let text = tauri_plugin_agent_tools::policy_transfer::render(&document);
-                match out {
-                    Some(path) => std::fs::write(&path, format!("{text}\n")).map_err(|e| {
-                        HarnessError::new(
-                            tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
-                            format!("the policy could not be written to {path}: {e}"),
-                        )
-                    }),
-                    None => {
-                        println!("{text}");
-                        Ok(())
-                    }
-                }
-            })
-        }
-        AgentCommands::PolicyImport {
-            file,
-            project,
-            accept_widening,
-        } => {
-            let text = if file == "-" {
-                use std::io::Read;
-                let mut buffer = String::new();
-                std::io::stdin().read_to_string(&mut buffer).map(|_| buffer).map_err(|e| {
-                    HarnessError::new(
-                        tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
-                        format!("the policy could not be read from stdin: {e}"),
-                    )
-                })
-            } else {
-                std::fs::read_to_string(&file).map_err(|e| {
-                    HarnessError::new(
-                        tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
-                        format!("{file} could not be read: {e}"),
-                    )
-                })
-            };
-            text.and_then(|text| {
-                app_lib::core::cli::cli_policy_import(&project, &text, accept_widening)
-            })
-            .map(|change| {
-                if change.is_empty() {
-                    println!("The policy is already what this document says.");
-                    return;
-                }
-                println!("Policy updated.");
-                for (label, rules) in [
-                    ("added allow", &change.allow_added),
-                    ("added deny", &change.deny_added),
-                    ("added allow_write", &change.allow_write_added),
-                    ("removed allow", &change.allow_removed),
-                    ("removed deny", &change.deny_removed),
-                    ("removed allow_write", &change.allow_write_removed),
-                ] {
-                    for rule in rules {
-                        println!("  {label}: {rule}");
-                    }
-                }
-                if let Some(default) = change.default_changed_to.as_deref() {
-                    println!("  default is now: {default}");
-                }
-            })
-        }
-        AgentCommands::Context {
-            session,
-            snapshot,
-            window,
-            json,
-        } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            tauri_plugin_agent_tools::context_report::of_snapshot(
-                &data,
-                &session,
-                snapshot.as_deref(),
-                window,
-                0,
-            )
-            .map(|breakdown| {
-                if json {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&breakdown).unwrap_or_default()
-                    );
-                } else {
-                    print!(
-                        "{}",
-                        tauri_plugin_agent_tools::context_report::render(&breakdown)
-                    );
-                }
-            })
-        }
-        AgentCommands::Index {
-            project,
-            symbol,
-            limit,
-            json,
-        } => {
-            let root = project
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            // Nothing cancels a one-shot command, but the index takes the flag
-            // rather than assuming: the same call is made from a run, where
-            // stopping it has to leave no half index behind.
-            let cancel = std::sync::atomic::AtomicBool::new(false);
-            app_lib::core::agent::index::refresh(&data, &root, &cancel)
-                .map_err(|e| HarnessError::from(&e))
-                .map(|(index, update)| {
-                    if let Some(name) = symbol {
-                        let found = app_lib::core::agent::index::find_symbol(&index, &name, limit);
-                        if json {
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&found).unwrap_or_default()
-                            );
-                            return;
-                        }
-                        if found.is_empty() {
-                            println!("nothing named {name:?} is defined in {} files", index.files.len());
-                        }
-                        for hit in found {
-                            println!("{}:{} {:?} {}", hit.path, hit.line, hit.kind, hit.name);
-                        }
-                        return;
-                    }
-                    if json {
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&serde_json::json!({
-                                "files": index.files.len(),
-                                "symbols": index.files.values().map(|f| f.symbols.len()).sum::<usize>(),
-                                "commit": index.commit,
-                                "truncated": index.truncated,
-                                "update": update,
-                            }))
-                            .unwrap_or_default()
-                        );
-                        return;
-                    }
-                    println!(
-                        "{} files, {} symbols{}",
-                        index.files.len(),
-                        index.files.values().map(|f| f.symbols.len()).sum::<usize>(),
-                        if index.truncated { " (a bound stopped the walk)" } else { "" }
-                    );
-                    println!(
-                        "  read {} new, {} changed; reused {} without reading; {} gone{}",
-                        update.added,
-                        update.changed,
-                        update.unchanged,
-                        update.removed,
-                        if update.reconciled { "; the checkout moved, so every entry was re-checked" } else { "" }
-                    );
-                })
-        }
-        AgentCommands::Spend {
-            since,
-            session,
-            json,
-            by_item,
-        } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            if by_item {
-                let root = std::env::current_dir().ok();
-                app_lib::core::agent::attribution::report(&data, since.as_deref(), root.as_deref())
-                    .map_err(|e| HarnessError::from(&e))
-                    .map(|a| {
-                        if json {
-                            println!("{}", serde_json::to_string_pretty(&a).unwrap_or_default());
-                        } else {
-                            print!("{}", app_lib::core::agent::attribution::render(&a));
-                        }
-                    })
-            } else {
-            app_lib::core::agent::spend::report(&data, since.as_deref(), session.as_deref())
-                .map_err(|e| HarnessError::from(&e))
-                .map(|report| {
-                    if json {
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&report).unwrap_or_default()
-                        );
-                    } else {
-                        print!("{}", app_lib::core::agent::spend::render(&report));
-                    }
-                })
-            }
-        }
-        AgentCommands::State { json } => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&app_lib::core::agent::state_schema::stores())
-                        .unwrap_or_default()
-                );
-            } else {
-                print!("{}", app_lib::core::agent::state_schema::render());
-            }
-            Ok(())
-        }
-        AgentCommands::Mail {
-            run,
-            session,
-            from,
-            body,
-            subject,
-            peek,
-        } => {
-            use tauri_plugin_agent_tools::identity::{RunId, SessionId};
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            let to = RunId::parse(run);
-            match (to, from, body) {
-                (Err(e), _, _) => Err(e),
-                (Ok(to), Some(from), Some(body)) => session
-                    .ok_or_else(|| {
-                        HarnessError::new(
-                            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                            "sending needs --session: a message belongs to one conversation",
-                        )
-                    })
-                    .and_then(SessionId::parse)
-                    .and_then(|session| RunId::parse(from).map(|from| (session, from)))
-                    .and_then(|(session, from)| {
-                        tauri_plugin_agent_tools::mailbox::send(
-                            &data, &session, &from, &to, &subject, &body,
-                        )
-                        .map_err(|e| HarnessError::from(&e))
-                    })
-                    .map(|message| {
-                        println!("delivered to {} as message {}", message.to, message.seq);
-                    }),
-                (Ok(to), _, _) => {
-                    tauri_plugin_agent_tools::mailbox::read(&data, &to, !peek)
-                        .map_err(|e| HarnessError::from(&e))
-                        .map(|messages| {
-                            if messages.is_empty() {
-                                println!("no messages");
-                            }
-                            for message in messages {
-                                println!(
-                                    "{} from {}{} [{}]",
-                                    message.at,
-                                    message.from,
-                                    if message.subject.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!(" -- {}", message.subject)
-                                    },
-                                    if message.delivered_at.is_some() { "read" } else { "unread" }
-                                );
-                                println!("  {}", message.body);
-                            }
-                        })
-                }
-            }
-        }
-        AgentCommands::Vcs { project, json } => {
-            let root = project
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            app_lib::core::agent::vcs::divergence(&root)
-                .and_then(|divergence| {
-                    app_lib::core::agent::vcs::conflicts(&root).map(|merge| (divergence, merge))
-                })
-                .map_err(|e| HarnessError::from(&e))
-                .map(|(divergence, merge)| {
-                    if json {
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&serde_json::json!({
-                                "divergence": divergence,
-                                "merge": merge,
-                            }))
-                            .unwrap_or_default()
-                        );
-                        return;
-                    }
-                    match (&divergence.branch, &divergence.upstream) {
-                        (Some(branch), Some(upstream)) => println!(
-                            "{branch} vs {upstream}: {} ahead, {} behind",
-                            divergence.ahead, divergence.behind
-                        ),
-                        (Some(branch), None) => println!("{branch}: tracks nothing"),
-                        _ => println!("HEAD is detached"),
-                    }
-                    for option in &divergence.options {
-                        println!("  - {option}");
-                    }
-                    if divergence.needs_a_person {
-                        println!("  this needs a decision, not a command");
-                    }
-                    println!();
-                    match app_lib::core::agent::vcs::branches(&root) {
-                        Ok(branches) => {
-                            for b in &branches {
-                                println!(
-                                    "{}{}{}{}",
-                                    if b.current { "* " } else { "  " },
-                                    b.name,
-                                    b.upstream.as_ref().map(|u| format!(" -> {u}")).unwrap_or_default(),
-                                    if b.checked_out_elsewhere { " (held by another worktree)" } else { "" }
-                                );
-                            }
-                        }
-                        Err(e) => println!("branches: {}", e.message),
-                    }
-                    if merge.in_progress {
-                        println!(
-                            "a merge is stopped, with {} file(s) unresolved:",
-                            merge.files.len()
-                        );
-                        for file in &merge.files {
-                            println!(
-                                "  {} ({:?}, {} region(s))",
-                                file.path,
-                                file.kind,
-                                file.hunks.len()
-                            );
-                        }
-                        println!("  {}", merge.note);
-                    }
-                })
-        }
-        AgentCommands::Impact {
-            changed,
-            project,
-            json,
-        } => {
-            let root = project
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-            let runner = app_lib::core::agent::impact::detected_runner(&root);
-            app_lib::core::agent::impact::selection(&root, &changed, runner.as_deref())
-                .map_err(|e| HarnessError::from(&e))
-                .map(|selection| {
-                    if json {
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&selection).unwrap_or_default()
-                        );
-                    } else {
-                        println!("{}", selection.reason);
-                        for test in &selection.impact.tests {
-                            println!("  test: {test}");
-                        }
-                        for unknown in &selection.impact.unknown {
-                            println!("  not seen: {unknown}");
-                        }
-                        match selection.command.as_deref() {
-                            // Printed, never run: what to do about it is the
-                            // caller's decision, not this command's.
-                            Some(command) => println!("run: {command}"),
-                            None => println!("run: (this project does not say)"),
-                        }
-                    }
-                })
-        }
-        AgentCommands::EventsExport { session, run, include_content } => {
-            app_lib::core::cli::run_data_cmd::events_export(
-                &app_lib::core::app::commands::resolve_jan_data_folder(),
-                &session,
-                run.as_deref(),
-                include_content,
-            )
-            .map_err(HarnessError::legacy)
-        }
-        AgentCommands::EventsInspect { file } => {
-            app_lib::core::cli::run_data_cmd::events_inspect(&file).map_err(HarnessError::legacy)
-        }
-        AgentCommands::Replays { session } => app_lib::core::cli::run_data_cmd::replays(
-            &app_lib::core::app::commands::resolve_jan_data_folder(),
-            &session,
-        )
-        .map_err(HarnessError::legacy),
-        AgentCommands::Replay { session, run } => app_lib::core::cli::run_data_cmd::replay(
-            &app_lib::core::app::commands::resolve_jan_data_folder(),
-            &session,
-            &run,
-        )
-        .map_err(HarnessError::legacy),
-        AgentCommands::Audit { session, run, agent, tool, decision, limit } => {
-            app_lib::core::cli::run_data_cmd::audit_cmd(
-                &app_lib::core::app::commands::resolve_jan_data_folder(),
-                session,
-                run,
-                agent,
-                tool,
-                decision,
-                limit,
-            )
-            .map_err(HarnessError::legacy)
-        }
-        AgentCommands::Prompts { session, show } => agent_prompts_text(
-            &app_lib::core::app::commands::resolve_jan_data_folder(),
-            &session,
-            show.as_deref(),
-        )
-        .map(|text| print!("{text}"))
-        .map_err(HarnessError::legacy),
-        AgentCommands::Ledger { run, json } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            match app_lib::core::agent::ledger::read(&data, &run) {
-                Ok(entries) if json => {
-                    println!("{}", serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string()));
-                    Ok(())
-                }
-                Ok(entries) => {
-                    print!("{}", app_lib::core::agent::ledger::render_text(&entries));
-                    Ok(())
-                }
-                Err(e) => Err(HarnessError::legacy(e)),
-            }
-        }
-        AgentCommands::Status { project, providers } => {
-            match cli_agent_status(&project, &providers.into_overrides()) {
-                Ok(status) => {
-                    println!("{}", serde_json::to_string_pretty(&status).unwrap());
-                    Ok(())
-                }
-                Err(e) => Err(HarnessError::legacy(e)),
-            }
-        }
-        // No project and no provider: the schema comes from the types alone, so
-        // it is the same document on any machine and in any directory.
-        AgentCommands::Schema { out } => {
-            app_lib::core::cli::protocol_schema::run(out.as_deref()).map_err(HarnessError::legacy)
-        }
-        AgentCommands::Rpc => app_lib::core::cli::rpc::serve().await.map_err(HarnessError::legacy),
-        // Like `schema`: no project root and no provider are involved, so the
-        // artifact is the same one on any machine. `--out` is what CI and
-        // `make protocol-rpc-schema` use.
-        AgentCommands::RpcSchema { out } => {
-            app_lib::core::cli::rpc_schema::run(out.as_deref()).map_err(HarnessError::legacy)
-        }
-    };
-    if let Err(e) = result {
-        // AH-009: what ended the run decides how it is reported and what the
-        // process exits with. A run the user stopped is not a failure, and a
-        // rejected credential is not an outage -- a script reading the status
-        // can tell them apart without parsing this line.
-        if e.is_cancellation() {
-            eprintln!("Stopped: {}", e.message());
-        } else {
-            eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
-            for cause in e.chain().into_iter().skip(1) {
-                eprintln!("  caused by [{}]: {}", cause.kind().tag(), cause.message());
-            }
-        }
-        std::process::exit(run_exit_code(&e));
     }
 }
 
@@ -5066,660 +4231,5 @@ fn build_mcp_config(
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn model_delete_ids_stay_inside_the_models_folder() {
-        assert!(super::is_model_dir_name("qwen3-8b"));
-        assert!(super::is_model_dir_name("model.v2"));
-        for bad in ["..", ".", "", "../x", "a/b", "a\\b", "/etc", "C:\\x", "C:"] {
-            assert!(!super::is_model_dir_name(bad), "{bad}");
-        }
-    }
-
-    #[test]
-    fn data_dir_is_pre_parsed_before_the_task_separator() {
-        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter();
-        assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "D"])).as_deref(), Some("D"));
-        assert_eq!(super::pre_parse_data_dir(args(&["stop", "--data-dir=E"])).as_deref(), Some("E"));
-        assert_eq!(super::pre_parse_data_dir(args(&["x", "--", "--data-dir", "D"])), None);
-    }
-
-    /// A closed stdout/stderr pipe is recognised; nothing else is.
-    #[test]
-    fn closed_output_panics_are_recognised() {
-        assert!(super::is_closed_output_panic(
-            "failed printing to stdout: Broken pipe (os error 32)"
-        ));
-        assert!(super::is_closed_output_panic(
-            "failed printing to stdout: The pipe is being closed. (os error 232)"
-        ));
-        assert!(super::is_closed_output_panic("failed printing to stderr: Broken pipe (os error 32)"));
-        assert!(!super::is_closed_output_panic("index out of bounds"));
-        assert!(!super::is_closed_output_panic(""));
-    }
-
-    /// Running out of turns while the model is still calling tools is the one
-    /// failure the shell can read as a limit rather than a crash. The message is
-    /// the only marker it has, so the classifier must match that message and not
-    /// some phrase inside a different one.
-    #[test]
-    fn turn_limit_exhaustion_has_its_own_exit_code() {
-        use tauri_plugin_agent_tools::harness_error::ErrorKind;
-        let limit = super::HarnessError::new(
-            ErrorKind::BudgetExhausted,
-            "reached the 8-turn limit while the model was still calling tools",
-        );
-        assert_eq!(super::run_exit_code(&limit), 53);
-        let tokens = super::HarnessError::new(ErrorKind::BudgetExhausted, "session token budget spent");
-        assert_eq!(super::run_exit_code(&tokens), tokens.exit_code());
-        let upstream = super::HarnessError::new(ErrorKind::Upstream, "upstream returned 500");
-        assert_eq!(super::run_exit_code(&upstream), upstream.exit_code());
-    }
-
-    #[test]
-    fn usage_subcommands_parse() {
-        let view = |argv: &[&str]| {
-            let mut full = vec!["flint", "usage"];
-            full.extend_from_slice(argv);
-            match Cli::parse_from(full).command {
-                Some(Commands::Usage { cmd, .. }) => cmd,
-                other => panic!("expected a usage command, got {:?}", other.is_some()),
-            }
-        };
-        assert!(matches!(view(&["account"]), Some(UsageCommands::Account)));
-        assert!(matches!(view(&["daily"]), Some(UsageCommands::Daily)));
-        assert!(matches!(view(&["requests"]), Some(UsageCommands::Requests)));
-        assert!(matches!(view(&["limits"]), Some(UsageCommands::Limits)));
-        match view(&["generation", "exec-1"]) {
-            Some(UsageCommands::Generation { id }) => assert_eq!(id, "exec-1"),
-            _ => panic!("expected a generation lookup"),
-        }
-        match view(&["correlate", "my-app-request-001"]) {
-            Some(UsageCommands::Correlate { client_request_id }) => {
-                assert_eq!(client_request_id, "my-app-request-001");
-            }
-            _ => panic!("expected a correlation lookup"),
-        }
-        assert!(view(&[]).is_none(), "the subcommand is optional");
-        assert!(Cli::try_parse_from(["flint", "usage", "generation"]).is_err());
-        assert!(Cli::try_parse_from(["flint", "usage", "correlate"]).is_err());
-        assert!(matches!(
-            Cli::parse_from(["flint", "usage", "account", "--json"]).command,
-            Some(Commands::Usage {
-                cmd: Some(UsageCommands::Account),
-                json: true
-            })
-        ));
-    }
-
-    /// Parse `flint cli agent run <task> <extra...>` and pull out its budget args.
-    fn parsed_budget(extra: &[&str]) -> BudgetArgs {
-        let mut argv = vec!["flint", "cli", "agent", "run", "task"];
-        argv.extend_from_slice(extra);
-        match Cli::parse_from(argv).command {
-            Some(Commands::Cli {
-                cmd:
-                    CliCommands::Agent {
-                        cmd: AgentCommands::Run { budget, .. },
-                    },
-            }) => budget,
-            _ => panic!("expected `cli agent run`"),
-        }
-    }
-
-    /// An unpassed limit is `None` so the config files (or nothing, for turns)
-    /// decide; `0` must survive parsing as the engine's unbounded marker.
-    #[test]
-    fn run_limits_parse_and_default_to_unset() {
-        let none = parsed_budget(&[]);
-        assert_eq!(none.max_turns, None);
-        assert_eq!(none.max_session_tokens, None);
-
-        let set = parsed_budget(&["--max-turns", "5", "--max-session-tokens", "20000"]);
-        assert_eq!(set.max_turns, Some(5));
-        assert_eq!(set.max_session_tokens, Some(20_000));
-
-        let zero = parsed_budget(&["--max-turns", "0", "--max-session-tokens", "0"]);
-        assert_eq!(zero.max_turns, Some(0));
-        assert_eq!(zero.max_session_tokens, Some(0));
-
-        // A decimal amount, not a token count, and `0` is a real ceiling.
-        assert_eq!(parsed_budget(&[]).max_budget_usd, None);
-        assert_eq!(
-            parsed_budget(&["--max-budget-usd", "2.50"]).max_budget_usd,
-            Some(2.50)
-        );
-        assert_eq!(
-            parsed_budget(&["--max-budget-usd", "0"]).max_budget_usd,
-            Some(0.0)
-        );
-    }
-
-    #[test]
-    fn per_run_flags_parse_on_agent_run() {
-        let cli = Cli::parse_from([
-            "flint", "cli", "agent", "run", "task", "--append-system-prompt", "be brief",
-            "--allow-tool", "read", "--allow-tool", "grep", "--deny-tool", "bash",
-            "--effort", "high", "--ephemeral",
-        ]);
-        let Some(Commands::Cli { cmd: CliCommands::Agent { cmd: AgentCommands::Run {
-            append_system_prompt, allow_tools, deny_tools, effort, ephemeral, ..
-        }}}) = cli.command else { panic!("expected `cli agent run`") };
-        assert_eq!(append_system_prompt.as_deref(), Some("be brief"));
-        assert_eq!(allow_tools, ["read", "grep"]);
-        assert_eq!(deny_tools, ["bash"]);
-        assert_eq!(effort.as_deref(), Some("high"));
-        assert!(ephemeral);
-    }
-
-    #[test]
-    fn append_prompt_joins_text_and_file_and_refuses_an_empty_file() {
-        let dir = std::env::temp_dir().join(format!("flint-append-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let full = dir.join("p.txt");
-        let empty = dir.join("e.txt");
-        std::fs::write(&full, "from file").unwrap();
-        std::fs::write(&empty, "  ").unwrap();
-        assert_eq!(resolve_append_prompt(None, None).unwrap(), None);
-        assert_eq!(
-            resolve_append_prompt(Some("a".into()), full.to_str()).unwrap().as_deref(),
-            Some("a\n\nfrom file")
-        );
-        assert!(resolve_append_prompt(None, empty.to_str()).is_err());
-        assert!(resolve_append_prompt(None, Some("/no/such/file")).is_err());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn tool_flag_names_follow_the_schedule_rule() {
-        use app_lib::core::cli::validate_tool_flags;
-        assert!(validate_tool_flags(&["read".into()], &["bash".into()]).is_ok());
-        assert!(validate_tool_flags(&["*".into()], &[]).is_err());
-        assert!(validate_tool_flags(&[], &["has space".into()]).is_err());
-    }
-
-    #[test]
-    fn mcp_serve_parses_and_defaults_to_read_only_stdio() {
-        let cli = Cli::parse_from(["flint", "mcp", "serve"]);
-        let Some(Commands::Mcp {
-            cmd:
-                McpServeCommands::Serve {
-                    project,
-                    transport,
-                    allow_write,
-                    allow_exec,
-                    tools,
-                    port,
-                    token,
-                },
-        }) = cli.command
-        else {
-            panic!("expected mcp serve");
-        };
-        assert_eq!(project, ".");
-        assert_eq!(transport, ServeTransport::Stdio);
-        assert!(!allow_write);
-        assert!(!allow_exec);
-        assert!(tools.is_empty());
-        assert_eq!(port, 0);
-        assert!(token.is_none());
-    }
-
-    #[test]
-    fn mcp_serve_http_flags_parse() {
-        let cli = Cli::parse_from([
-            "flint",
-            "mcp",
-            "serve",
-            "--transport",
-            "http",
-            "--port",
-            "7331",
-            "--token",
-            "abc",
-            "--allow-write",
-            "--allow-exec",
-            "--tool",
-            "read",
-            "--tool",
-            "grep",
-        ]);
-        let Some(Commands::Mcp {
-            cmd:
-                McpServeCommands::Serve {
-                    transport,
-                    allow_write,
-                    allow_exec,
-                    tools,
-                    port,
-                    token,
-                    ..
-                },
-        }) = cli.command
-        else {
-            panic!("expected mcp serve");
-        };
-        assert_eq!(transport, ServeTransport::Http);
-        assert!(allow_write);
-        assert!(allow_exec);
-        assert_eq!(tools, vec!["read".to_string(), "grep".to_string()]);
-        assert_eq!(port, 7331);
-        assert_eq!(token.as_deref(), Some("abc"));
-    }
-
-    /// The client direction keeps its own place; `flint mcp` must not shadow it.
-    #[test]
-    fn mcp_client_subcommand_still_lives_under_cli() {
-        let cli = Cli::parse_from(["flint", "cli", "mcp", "list"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Cli {
-                cmd: CliCommands::Mcp {
-                    cmd: McpCommands::List { .. }
-                }
-            })
-        ));
-    }
-
-    use super::*;
-
-    #[test]
-    fn verbose_flag_is_accepted_bare_and_after_a_subcommand() {
-        for args in [
-            vec!["jan", "--verbose"],
-            vec!["jan", "-v"],
-            vec!["jan", "plugin", "list", "--verbose"],
-            vec!["jan", "-v", "plugin", "list"],
-        ] {
-            let cli = Cli::try_parse_from(&args)
-                .unwrap_or_else(|e| panic!("{args:?} should parse: {e}"));
-            assert!(cli.verbose, "{args:?} should set verbose");
-        }
-        assert!(!Cli::try_parse_from(["jan", "plugin", "list"]).unwrap().verbose);
-    }
-
-    #[test]
-    fn bug_report_parses_its_flags_and_nothing_else() {
-        let cli = Cli::parse_from([
-            "jan",
-            "bug-report",
-            "--thread",
-            "abc123",
-            "--show",
-            "logs/jan.log",
-        ]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::BugReport { thread, show, yes: false, out: None })
-                if thread.as_deref() == Some("abc123") && show.as_deref() == Some("logs/jan.log")
-        ));
-        let cli = Cli::parse_from(["jan", "bug-report", "--yes", "--out", "."]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::BugReport { yes: true, out: Some(_), .. })
-        ));
-        // There is deliberately no flag that sends the bundle anywhere.
-        for flag in ["--upload", "--submit", "--send", "--open-issue"] {
-            assert!(
-                Cli::try_parse_from(["jan", "bug-report", flag]).is_err(),
-                "{flag} must not exist"
-            );
-        }
-    }
-
-    /// `--from` without `--body` (or the reverse) is half a send; it must be
-    /// refused rather than fall through to reading the mailbox (#150).
-    #[test]
-    fn agent_mail_refuses_half_a_send() {
-        let base = ["jan", "cli", "agent", "mail", "--run", "r1"];
-        let with = |extra: &[&'static str]| {
-            let mut args = base.to_vec();
-            args.extend_from_slice(extra);
-            Cli::try_parse_from(args)
-        };
-        assert!(with(&["--from", "r2"]).is_err(), "--from alone was accepted");
-        assert!(with(&["--body", "hi"]).is_err(), "--body alone was accepted");
-        assert!(with(&[]).is_ok(), "a plain read must still parse");
-        assert!(with(&["--from", "r2", "--body", "hi", "--session", "s"]).is_ok());
-    }
-
-    // `--plan` is a per-invocation startup toggle mirroring `--safe`; it must
-    // parse on the top-level `jan` command and default off.
-    #[test]
-    fn top_level_plan_flag_parses() {
-        let cli = Cli::parse_from(["jan", "--plan"]);
-        assert!(cli.plan);
-        assert!(!cli.safe);
-        assert!(cli.command.is_none());
-
-        let cli = Cli::parse_from(["jan"]);
-        assert!(!cli.plan);
-    }
-
-    // Permission prompts are opt-in: auto-approval inside the OS sandbox is the
-    // default, and `--safe` is what turns the gate back on.
-    #[test]
-    fn console_accepts_worktree_flags() {
-        assert_eq!(Cli::parse_from(["flint", "--worktree"]).worktree.into_flag(), Some(true));
-        assert_eq!(Cli::parse_from(["flint", "--no-worktree"]).worktree.into_flag(), Some(false));
-        assert_eq!(Cli::parse_from(["flint"]).worktree.into_flag(), None);
-        assert!(Cli::try_parse_from(["flint", "--worktree", "--no-worktree"]).is_err());
-    }
-
-    #[test]
-    fn mode_flag_parses_and_replaces_safe() {
-        assert_eq!(Cli::parse_from(["flint", "--mode", "ask"]).mode.as_deref(), Some("ask"));
-        let cli = Cli::parse_from(["flint", "--mode", "ask", "--safe"]);
-        assert!(app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan).is_err());
-    }
-
-    #[test]
-    fn new_management_commands_parse() {
-        for argv in [
-            vec!["flint", "cli", "schedule", "add", "--name", "n", "--prompt", "p", "--model", "m/x", "--daily", "09:00", "--allow-tool", "read"],
-            vec!["flint", "cli", "schedule", "preview", "--weekly", "mon@09:00"],
-            vec!["flint", "cli", "archive", "list", "--kind", "thread"],
-            vec!["flint", "cli", "threads", "export", "abc", "--format", "obsidian"],
-            vec!["flint", "cli", "skills", "enabled", "a", "b"],
-            vec!["flint", "cli", "memory", "list", "project"],
-            vec!["flint", "cli", "memory", "audit", "--json", "--stale-days", "30"],
-            vec!["flint", "cli", "worktree", "discard", "abcd1234", "--force"],
-            vec!["flint", "cli", "mcp", "trust", "demo", "--yes"],
-            vec!["flint", "cli", "models", "search", "qwen"],
-            vec!["flint", "cli", "net", "endpoint", "localhost", "8080"],
-            vec!["flint", "cli", "agent", "audit", "--decision", "refused"],
-            vec!["flint", "cli", "import-claude", "scan"],
-            vec!["flint", "cli", "data-folder"],
-            vec!["flint", "migrate", "plan", "--mode", "copy"],
-        ] {
-            assert!(Cli::try_parse_from(argv.clone()).is_ok(), "{argv:?}");
-        }
-    }
-
-    #[test]
-    fn safe_flag_parses_and_defaults_off() {
-        assert!(!Cli::parse_from(["jan"]).safe);
-        assert!(Cli::parse_from(["jan", "--safe"]).safe);
-    }
-
-    /// Parse `flint cli agent run <task> <extra...>` and pull out its output format.
-    fn parsed_output_format(extra: &[&str]) -> OutputFormat {
-        let mut argv = vec!["jan", "cli", "agent", "run", "task"];
-        argv.extend_from_slice(extra);
-        match Cli::parse_from(argv).command {
-            Some(Commands::Cli {
-                cmd:
-                    CliCommands::Agent {
-                        cmd: AgentCommands::Run { output_format, .. },
-                    },
-            }) => output_format,
-            _ => panic!("expected `cli agent run`"),
-        }
-    }
-
-    /// AH-087: a session's requests are listed, the last or a named one is
-    /// printed in full, and another session's request is not readable by id.
-    #[test]
-    fn agent_prompts_lists_and_prints_a_sessions_requests_only() {
-        use tauri_plugin_agent_tools::snapshot::{append, capture, Identity};
-        let data = std::env::temp_dir().join(format!("jan-prompts-cli-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&data);
-        std::fs::create_dir_all(&data).unwrap();
-        let ident = |session: &str| Identity { session: session.into(), ..Default::default() };
-        let first = capture(
-            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "first question" }] }),
-            &ident("s1"),
-        );
-        let second = capture(
-            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "second question" }] }),
-            &ident("s1"),
-        );
-        let other = capture(
-            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "someone else's" }] }),
-            &ident("s2"),
-        );
-        for s in [&first, &second, &other] {
-            append(&data, s);
-        }
-
-        let list = agent_prompts_text(&data, "s1", None).unwrap();
-        assert!(list.starts_with("2 request(s) for session s1"), "{list}");
-        assert!(list.contains(&first.id) && list.contains(&second.id) && !list.contains(&other.id));
-
-        let last = agent_prompts_text(&data, "s1", Some("last")).unwrap();
-        assert!(last.contains("second question") && !last.contains("first question"), "{last}");
-        let named = agent_prompts_text(&data, "s1", Some(&first.id)).unwrap();
-        assert!(named.contains("first question"), "{named}");
-
-        assert!(agent_prompts_text(&data, "s1", Some(&other.id)).is_err(), "another session's request was readable");
-        assert!(agent_prompts_text(&data, "s3", None).unwrap_err().contains("no requests"));
-        assert!(agent_prompts_text(&data, " ", None).is_err());
-        let _ = std::fs::remove_dir_all(&data);
-    }
-
-    #[test]
-    fn prompts_is_a_cli_agent_command() {
-        let cli = Cli::try_parse_from(["jan", "cli", "agent", "prompts", "s1", "--show", "last"]);
-        assert!(cli.is_ok(), "`flint cli agent prompts <session> --show last` must parse");
-    }
-
-    #[test]
-    fn output_format_parses_and_defaults_to_text() {
-        assert_eq!(parsed_output_format(&[]), OutputFormat::Text);
-        assert_eq!(
-            parsed_output_format(&["--output-format", "json"]),
-            OutputFormat::Json
-        );
-        assert_eq!(
-            parsed_output_format(&["--output-format=text"]),
-            OutputFormat::Text
-        );
-        assert!(Cli::try_parse_from([
-            "jan",
-            "cli",
-            "agent",
-            "run",
-            "task",
-            "--output-format",
-            "yaml"
-        ])
-        .is_err());
-    }
-
-    #[test]
-    fn login_command_parses_and_takes_no_args() {
-        let cli = Cli::parse_from(["jan", "login"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Login { paste_token: false })
-        ));
-        assert!(Cli::try_parse_from(["jan", "login", "sk-key"]).is_err());
-    }
-
-    #[test]
-    fn login_command_accepts_paste_token_flag() {
-        let cli = Cli::parse_from(["jan", "login", "--paste-token"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Login { paste_token: true })
-        ));
-    }
-
-    #[test]
-    fn auth_subcommands_parse() {
-        let cli = Cli::parse_from(["jan", "auth", "status"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Auth {
-                cmd: AuthCommands::Status
-            })
-        ));
-        let cli = Cli::parse_from(["jan", "auth", "logout"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Auth {
-                cmd: AuthCommands::Logout
-            })
-        ));
-    }
-
-    /// Parse a `flint cli mcp <cmd> <extra...>` argv and pull out the subcommand.
-    fn parsed_mcp(extra: &[&str]) -> McpCommands {
-        let mut argv = vec!["jan", "cli", "mcp"];
-        argv.extend_from_slice(extra);
-        match Cli::parse_from(argv).command {
-            Some(Commands::Cli {
-                cmd: CliCommands::Mcp { cmd },
-            }) => cmd,
-            _ => panic!("expected `cli mcp`"),
-        }
-    }
-
-    #[test]
-    fn mcp_list_parses_and_redacts_by_default() {
-        let cmd = parsed_mcp(&["list"]);
-        assert!(matches!(
-            cmd,
-            McpCommands::List {
-                show_secrets: false
-            }
-        ));
-        let cmd = parsed_mcp(&["list", "--show-secrets"]);
-        assert!(matches!(cmd, McpCommands::List { show_secrets: true }));
-    }
-
-    #[test]
-    fn mcp_add_parses_stdio_fields() {
-        let cmd = parsed_mcp(&[
-            "add",
-            "files",
-            "--command",
-            "npx",
-            "--arg",
-            "-y",
-            "--arg",
-            "my-mcp",
-            "--env",
-            "K=V",
-            "--active",
-        ]);
-        match cmd {
-            McpCommands::Add {
-                name,
-                command,
-                args,
-                env,
-                r#type,
-                url,
-                header,
-                scope,
-                active,
-            } => {
-                assert!(scope.is_empty(), "no --scope was given");
-                assert_eq!(name, "files");
-                assert_eq!(command.as_deref(), Some("npx"));
-                assert_eq!(args, vec!["-y", "my-mcp"]);
-                assert_eq!(env, vec!["K=V"]);
-                assert_eq!(r#type, "stdio");
-                assert!(url.is_none());
-                assert!(header.is_empty());
-                assert!(active);
-            }
-            _ => panic!("expected add"),
-        }
-    }
-
-    #[test]
-    fn mcp_build_rejects_http_without_url() {
-        let err = build_mcp_config(None, vec![], vec![], "http", None, vec![], false, Vec::new()).unwrap_err();
-        assert!(err.contains("url"), "{err}");
-        let err = build_mcp_config(None, vec![], vec![], "sse", None, vec![], false, Vec::new()).unwrap_err();
-        assert!(err.contains("url"), "{err}");
-        assert!(build_mcp_config(None, vec![], vec![], "bogus", None, vec![], false, Vec::new()).is_err());
-        // stdio needs a command.
-        assert!(build_mcp_config(None, vec![], vec![], "stdio", None, vec![], false, Vec::new()).is_err());
-    }
-
-    #[test]
-    fn mcp_remove_enable_disable_take_one_name() {
-        assert!(matches!(
-            parsed_mcp(&["remove", "files"]),
-            McpCommands::Remove { name } if name == "files"
-        ));
-        assert!(matches!(
-            parsed_mcp(&["enable", "files"]),
-            McpCommands::Enable { name } if name == "files"
-        ));
-        assert!(matches!(
-            parsed_mcp(&["disable", "files"]),
-            McpCommands::Disable { name } if name == "files"
-        ));
-    }
-    #[test]
-    fn plugin_list_defaults_to_compact_output_and_supports_json() {
-        let cli = Cli::try_parse_from(["jan", "plugin", "list"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Plugin {
-                cmd: PluginCommands::List { project, json }
-            }) if project == "." && !json
-        ));
-
-        let cli = Cli::try_parse_from(["jan", "plugin", "list", "--json"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Plugin {
-                cmd: PluginCommands::List { json, .. }
-            }) if json
-        ));
-    }
-
-    #[test]
-    fn split_kv_rejects_without_separator() {
-        assert_eq!(
-            split_kv("K=V", "env").unwrap(),
-            ("K".to_string(), "V".to_string())
-        );
-        assert!(split_kv("novalue", "env").is_err());
-        assert!(split_kv("=V", "header").is_err());
-    }
-
-    #[test]
-    fn compact_plugin_list_omits_long_metadata() {
-        let plugins = vec![
-            InstalledPlugin {
-                name: "alpha".into(),
-                description: "A long description that should not appear".into(),
-                version: "1.2.3".into(),
-                repo: "https://example.com/alpha".into(),
-                skills: 2,
-                commands: 1,
-                agents: 3,
-                ..Default::default()
-            },
-            InstalledPlugin {
-                name: "beta".into(),
-                description: "Another description".into(),
-                version: "0.0.0".into(),
-                repo: String::new(),
-                skills: 0,
-                commands: 0,
-                agents: 0,
-                ..Default::default()
-            },
-        ];
-
-        let output = format_plugin_list(&plugins);
-        assert_eq!(output.lines().count(), 3);
-        assert!(output.lines().next().unwrap().contains("PLUGIN"));
-        assert!(output.lines().next().unwrap().contains("COMMANDS"));
-        assert!(output.lines().next().unwrap().contains("AGENTS"));
-        assert!(output.contains("alpha"));
-        assert!(output.contains("1.2.3"));
-        assert!(output.contains("2"));
-        assert!(output.contains("1"));
-        assert!(output.contains("3"));
-        assert!(!output.contains("long description"));
-        assert!(!output.contains("example.com"));
-    }
-}
+#[path = "flint/tests.rs"]
+mod tests;

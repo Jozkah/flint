@@ -352,7 +352,11 @@
       "confirmBody": "Dadurch werden die Berechtigungen des unten genannten Ordners geändert, in dem {{program}} installiert ist, und nur dieses Ordners samt Inhalt: Es wird ein Eintrag hinzugefügt, der jeder Sandbox-Windows-App (ALL APPLICATION PACKAGES) erlaubt, die darin enthaltenen Dateien zu lesen und auszuführen. Sonst wird nichts in deinem Benutzerprofil geöffnet. Du kannst das hier jederzeit widerrufen, wodurch genau dieser Eintrag entfernt wird.",
       "confirm": "Erlauben",
       "needsAdmin": "Installiert in {{folder}}, was nur ein Administrator ändern kann. Administratorrechte erforderlich: Führe dies in einem Terminal mit erhöhten Rechten aus:",
-      "copyCommand": "Befehl kopieren"
+      "copyCommand": "Befehl kopieren",
+      "loadError": "Die Sandbox-Toolchains konnten nicht gelesen werden.",
+      "retry": "Erneut versuchen",
+      "revokeTitle": "Der Sandbox die Nutzung von {{program}} entziehen?",
+      "revokeBody": "Dadurch wird der Berechtigungseintrag entfernt, der dem unten genannten Ordner hinzugefügt wurde. Befehle in der Sandbox können {{program}} daraus nicht mehr ausführen."
     },
     "title": "Agent-Tools",
     "description": "Gib Modellen für jede Unterhaltung einen privaten Arbeitsbereich für Zwischendateien sowie Erinnerungen und Skills, die dauerhaft in deinem Flint-Datenordner gespeichert bleiben.",

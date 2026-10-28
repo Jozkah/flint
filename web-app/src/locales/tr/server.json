@@ -20,6 +20,7 @@
   "auto": "Başlangıçta aç",
   "autoDesc": "Uygulama başladığında, bu cihazı seçebileceğiniz birkaç saniyenin ardından sunucuyu aç.",
   "opening": "{{host}} {{seconds}} sn içinde açılıyor",
+  "openingNotice": "{{host}} birazdan açılacak. Bu cihazda kalmak için Esc'ye bas.",
   "useDevice": "Bu cihazı kullan",
   "limitsTitle": "Ne nerede çalışır",
   "limits": "Sohbet, odalar, modeller ve araçlar sunucuda çalışır. Birlikte Çalış oturumları ve Kampanyalar, Flint'in açık olduğu bir bilgisayarda çalışan bir ajan gerektirir: o bilgisayara Uzaktan erişim ve telefon uygulaması üzerinden ulaşın. Başsız bir sunucu kampanyaları listeleyebilir ve önerileri inceleyebilir, ancak oturum çalıştırmaz."

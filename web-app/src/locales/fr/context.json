@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "échec",
     "chatStarted": "Conversation démarrée"
+  },
+  "promptSnapshot": {
+    "summary": "Ce que le modèle a reçu",
+    "loading": "Chargement…",
+    "gone": "Cet instantané n'est plus sur le disque.",
+    "unavailable": "Aucune charge utile n'a été enregistrée. {{reason}}",
+    "reason": {
+      "not-serializable": "La requête n'a pas pu être sérialisée, donc rien n'a été enregistré.",
+      "disabled": "Les instantanés sont désactivés pour cette exécution.",
+      "too-large": "La requête était trop volumineuse pour être enregistrée en entier."
+    },
+    "meta": {
+      "provider": "Fournisseur",
+      "model": "Modèle",
+      "reasoning": "Raisonnement",
+      "session": "Session",
+      "run": "Exécution",
+      "agent": "Agent",
+      "sent": "Envoyé",
+      "hash": "Empreinte",
+      "redacted": "Masqué",
+      "nothing": "rien",
+      "redactedList_one": "{{count}} champ : {{list}}",
+      "redactedList_other": "{{count}} champs : {{list}}"
+    },
+    "view": {
+      "label": "Afficher en",
+      "tree": "Arbre",
+      "json": "JSON"
+    },
+    "copy": "Copier la charge utile masquée",
+    "copied": "Copié",
+    "diff": {
+      "run": "Comparer avec la requête précédente",
+      "loading": "Comparaison…",
+      "first": "C'est la première requête enregistrée de la session ; il n'y a rien d'antérieur à comparer.",
+      "summary": "Par rapport à {{id}} : {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} entrés",
+      "left": "{{count}} sortis",
+      "keptMessages_one": "{{count}} message conservé",
+      "keptMessages_other": "{{count}} messages conservés",
+      "keptTools_one": "{{count}} outil conservé",
+      "keptTools_other": "{{count}} outils conservés",
+      "systemChanged": "prompt système modifié",
+      "enteredHeading": "Entrés",
+      "leftHeading": "Sortis",
+      "nothingNew": "Rien de nouveau.",
+      "nothingLeft": "Rien n'est sorti de la fenêtre."
+    },
+    "replay": {
+      "label": "Rejeux de ce contexte",
+      "run": "Rejouer ce contexte",
+      "hint": "Renvoie exactement cette requête. Les outils demandés par le modèle ne sont pas exécutés.",
+      "needsSession": "Le rejeu a besoin de la session à laquelle appartient ce tour.",
+      "redactedBlock_one": "Rejeu impossible : {{count}} champ a été masqué avant l'enregistrement, le modèle ne recevrait donc pas ce qu'il a reçu alors.",
+      "redactedBlock_other": "Rejeu impossible : {{count}} champs ont été masqués avant l'enregistrement, le modèle ne recevrait donc pas ce qu'il a reçu alors.",
+      "state": {
+        "running": "Rejeu en cours…",
+        "interrupted": "Interrompu : Flint s'est arrêté pendant l'exécution",
+        "completed": "Terminé",
+        "failed": "Échec",
+        "cancelled": "Arrêté",
+        "refused": "Refusé"
+      },
+      "matched": "Même contexte que le tour (les empreintes correspondent)",
+      "differed": "La requête envoyée différait de celle du tour",
+      "finish": "fin : {{reason}}",
+      "stop": "Arrêter",
+      "asked": "A demandé {{tools}} (non exécuté)"
+    }
   }
 }

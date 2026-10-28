@@ -1648,7 +1648,8 @@
       "empty": "Este arquivo está vazio",
       "needs-file-dialog": "Use “Anexar arquivo” para documentos — uma cópia arrastada não tem caminho para o leitor",
       "sensitive": "Parece conter credenciais ou uma chave, então não foi lido",
-      "binary": "Este não é um arquivo de texto, seja qual for a extensão"
+      "binary": "Este não é um arquivo de texto, seja qual for a extensão",
+      "unreadable": "Não foi possível ler este arquivo"
     },
     "addFiles": "Adicionar arquivos",
     "addFilesOrImages": "Adicionar arquivos ou imagens",
@@ -3024,6 +3025,50 @@
       "medium": "Média",
       "low": "Baixa"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Parar",
+    "title": "Parar o trabalho em andamento",
+    "description": "Escolha até onde isso alcança. Não dá para desfazer: o trabalho parado não é retomado, nem após reiniciar.",
+    "legend": "O que parar",
+    "stopping": "Parando. Encerrando os processos próprios…",
+    "report": {
+      "clean": "Parado. {{stopped}} parados, {{already}} já parados, nada mais em execução.",
+      "partial_one": "{{stopped}} parados, mas {{count}} processo ainda está em execução. A limpeza não terminou.",
+      "partial_other": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou."
+    },
+    "error": "Não foi possível parar: {{error}}",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "confirmBusy": "Parando…",
+    "scope": {
+      "call": {
+        "name": "Esta chamada de ferramenta",
+        "desc": "Somente esta chamada de ferramenta ({{id}}). Todo o resto da execução continua.",
+        "confirm": "Parar a chamada"
+      },
+      "run": {
+        "name": "Esta execução",
+        "desc": "Esta execução ({{id}}), incluindo chamadas de ferramentas, comandos de shell, chamadas MCP e subagentes. Outras execuções não são afetadas.",
+        "confirm": "Parar a execução"
+      },
+      "session": {
+        "name": "Esta sessão",
+        "desc": "Todas as execuções desta sessão ({{id}}). Outras sessões não são afetadas.",
+        "confirm": "Parar a sessão"
+      },
+      "application": {
+        "name": "Tudo no Flint",
+        "desc": "Todo o trabalho em qualquer lugar do Flint, em todas as sessões. Nada em execução é poupado.",
+        "confirm": "Parar tudo"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Mostrar a chave de API",
+    "hide": "Ocultar a chave de API",
+    "copy": "Copiar a chave de API",
+    "copied": "Copiado"
   },
   "proposal": {
     "flag": {

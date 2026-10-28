@@ -346,39 +346,69 @@ pub async fn try_graceful_stop_engine<R: tauri::Runtime>(
 ) -> Result<Option<Vec<String>>, String> {
     use tauri::Manager;
     let state: State<Arc<LlamacppState>> = app_handle.state();
-    let maybe_handle = {
-        let mut guard = state.engine.lock().await;
-        guard.take()
-    };
-    let Some(handle) = maybe_handle else {
-        return Ok(None);
-    };
-
-    let busy = tokio::time::timeout(
-        std::time::Duration::from_secs(deadline_secs.max(1)),
-        busy_models(handle.port, &handle.api_key),
-    )
-    .await
-    .unwrap_or_else(|_| Err("timed out asking the engine what is busy".to_string()));
-
-    let busy = match busy {
-        Ok(b) => b,
-        // Unknown is not idle: exiting here would kill a live generation. The
-        // caller shows the exit gate, which lets the user quit anyway.
-        Err(why) => {
-            log::warn!("could not tell whether the engine is busy: {why}");
-            vec!["(engine did not answer)".to_string()]
+    let deadline = std::time::Duration::from_secs(deadline_secs.max(1));
+    let outcome = take_if_idle(&state.engine, |port, key| async move {
+        tokio::time::timeout(deadline, busy_models(port, &key))
+            .await
+            .unwrap_or_else(|_| Err("timed out asking the engine what is busy".to_string()))
+    })
+    .await;
+    match outcome {
+        IdleCheck::NotRunning => Ok(None),
+        IdleCheck::Busy(busy) => Ok(Some(busy)),
+        IdleCheck::Idle(handle) => {
+            abort_unload_watcher(&state).await;
+            handle.stop().await;
+            Ok(None)
         }
-    };
-
-    if !busy.is_empty() {
-        *state.engine.lock().await = Some(handle);
-        return Ok(Some(busy));
     }
+}
 
-    abort_unload_watcher(&state).await;
-    handle.stop().await;
-    Ok(None)
+/// What asking the engine whether it is busy found.
+#[cfg(any(feature = "tauri", test))]
+enum IdleCheck {
+    NotRunning,
+    /// The models still generating; the engine is still in its slot.
+    Busy(Vec<String>),
+    /// Idle, and now out of its slot for the caller to stop.
+    Idle(WorkerHandle),
+}
+
+/// Decides whether the engine may be stopped, without ever hiding it: the
+/// handle stays in `engine` while `probe` runs, so a start or a status read
+/// during the (up to deadline-long) probe still sees the worker, and it is
+/// taken only when the slot still holds the worker that was probed. If a
+/// different worker took the slot meanwhile, that one is probed instead.
+#[cfg(any(feature = "tauri", test))]
+async fn take_if_idle<F, Fut>(engine: &tokio::sync::Mutex<Option<WorkerHandle>>, probe: F) -> IdleCheck
+where
+    F: Fn(u16, String) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<String>, String>>,
+{
+    loop {
+        let (port, key) = match engine.lock().await.as_ref() {
+            Some(h) => (h.port, h.api_key.clone()),
+            None => return IdleCheck::NotRunning,
+        };
+        let busy = match probe(port, key).await {
+            Ok(b) => b,
+            // Unknown is not idle: exiting here would kill a live generation. The
+            // caller shows the exit gate, which lets the user quit anyway.
+            Err(why) => {
+                log::warn!("could not tell whether the engine is busy: {why}");
+                vec!["(engine did not answer)".to_string()]
+            }
+        };
+        let mut guard = engine.lock().await;
+        match guard.as_ref() {
+            // Gone while we asked: nothing left to stop.
+            None => return IdleCheck::NotRunning,
+            // Replaced while we asked: the answer is about another worker.
+            Some(h) if h.port != port => continue,
+            Some(_) if !busy.is_empty() => return IdleCheck::Busy(busy),
+            Some(_) => return guard.take().map_or(IdleCheck::NotRunning, IdleCheck::Idle),
+        }
+    }
 }
 
 /// Drops the `/models/sse` subscription. Called from every stop path: the feed
@@ -502,6 +532,8 @@ pub async fn engine_devices<R: tauri::Runtime>(
     super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);
+    // Same cwd pin as a running worker: --list-devices loads every backend.
+    super::worker::pin_cwd(&mut cmd, &exe);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     // A driver that hangs during backend probing must not leave the worker
@@ -829,6 +861,72 @@ pub async fn erase_thread_slot_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn idle_child() -> tokio::process::Child {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = tokio::process::Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = tokio::process::Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_keeps_engine_visible_during_probe() {
+        let engine = tokio::sync::Mutex::new(Some(WorkerHandle::for_test(idle_child(), 4001)));
+        let outcome = take_if_idle(&engine, |_, _| async {
+            // While the probe is in flight, the worker is still reported.
+            assert!(engine.try_lock().map(|g| g.is_some()).unwrap_or(true));
+            Ok(vec!["m".to_string()])
+        })
+        .await;
+        assert!(matches!(outcome, IdleCheck::Busy(ref b) if b == &["m".to_string()]));
+        assert!(engine.lock().await.is_some(), "a busy engine stays in place");
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_does_not_overwrite_new_worker() {
+        let engine = tokio::sync::Mutex::new(Some(WorkerHandle::for_test(idle_child(), 4001)));
+        let calls = std::sync::atomic::AtomicU32::new(0);
+        let outcome = take_if_idle(&engine, |port, _| {
+            let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let engine = &engine;
+            async move {
+                if n == 0 {
+                    // A restart lands while the first worker is being asked.
+                    assert_eq!(port, 4001);
+                    *engine.lock().await = Some(WorkerHandle::for_test(idle_child(), 4002));
+                } else {
+                    assert_eq!(port, 4002, "the replacement is the one probed next");
+                }
+                Ok(Vec::new())
+            }
+        })
+        .await;
+        match outcome {
+            IdleCheck::Idle(h) => assert_eq!(h.port, 4002),
+            _ => panic!("expected the replacement worker to be taken"),
+        }
+        assert!(engine.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_of_nothing_is_not_running() {
+        let engine: tokio::sync::Mutex<Option<WorkerHandle>> = tokio::sync::Mutex::new(None);
+        let outcome = take_if_idle(&engine, |_, _| async { Ok(Vec::new()) }).await;
+        assert!(matches!(outcome, IdleCheck::NotRunning));
+    }
 
     /// Regression for #151: a worker that accepts the connection but never
     /// answers must not hang `busy_models` (and so `engine_slots_idle`).

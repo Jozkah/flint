@@ -352,7 +352,11 @@
       "confirmBody": "Việc này thay đổi quyền của thư mục bên dưới, nơi {{program}} được cài, và chỉ thư mục đó cùng nội dung bên trong: nó thêm một mục cho phép mọi ứng dụng Windows trong sandbox (ALL APPLICATION PACKAGES) đọc và chạy các tệp bên trong. Không có gì khác trong hồ sơ người dùng của bạn được mở. Bạn có thể thu hồi tại đây bất cứ lúc nào, việc đó gỡ đúng mục này.",
       "confirm": "Cho phép",
       "needsAdmin": "Đã cài trong {{folder}}, mà chỉ quản trị viên mới thay đổi được. Cần quyền quản trị: hãy chạy lệnh này trong terminal có quyền nâng cao:",
-      "copyCommand": "Sao chép lệnh"
+      "copyCommand": "Sao chép lệnh",
+      "loadError": "Không thể đọc các toolchain của sandbox.",
+      "retry": "Thử lại",
+      "revokeTitle": "Ngừng cho sandbox dùng {{program}}?",
+      "revokeBody": "Thao tác này gỡ mục quyền đã thêm vào thư mục bên dưới. Lệnh trong sandbox sẽ không thể chạy {{program}} từ đó nữa."
     },
     "title": "Công cụ tác tử",
     "description": "Cung cấp cho mô hình một không gian làm việc tạm riêng cho mỗi cuộc trò chuyện, cùng ký ức và kỹ năng được giữ lâu dài trong thư mục dữ liệu Flint của bạn.",

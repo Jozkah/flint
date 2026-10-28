@@ -20,6 +20,7 @@
   "auto": "Ouvrir au démarrage",
   "autoDesc": "Ouvre le serveur au démarrage de l'application, après quelques secondes pendant lesquelles vous pouvez choisir cet appareil.",
   "opening": "Ouverture de {{host}} dans {{seconds}} s",
+  "openingNotice": "Ouverture de {{host}} imminente. Appuyez sur Échap pour rester sur cet appareil.",
   "useDevice": "Utiliser cet appareil",
   "limitsTitle": "Ce qui s'exécute où",
   "limits": "Le chat, les salons, les modèles et les outils s'exécutent sur le serveur. Les sessions Cowork et les campagnes nécessitent un agent qui s'exécute sur un ordinateur où Flint est ouvert : joignez cet ordinateur via l'accès à distance et l'application mobile. Un serveur sans interface peut lister les campagnes et relire les propositions, mais n'exécute pas de sessions."

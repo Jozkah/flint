@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Check,
@@ -40,26 +40,17 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useGlobalExtensions, type Scope } from '@/hooks/useGlobalExtensions'
-import { useServiceHub } from '@/hooks/useServiceHub'
+import { usePluginInstallForm } from '@/hooks/usePluginInstall'
+import { newPluginOperationId, usePluginManager } from '@/hooks/usePluginManager'
 import { invalidateSkills } from '@/hooks/useSkills'
 import {
   cancelPluginInstall,
-  checkGitUrl,
-  getPluginDetails,
-  getPluginSources,
   installPlugin,
-  listPlugins,
   pluginErrorText,
-  removePlugin,
-  setPluginEnabled,
-  updatePlugin,
   toPluginError,
   urlHost,
-  type InstallSource,
   type InstalledPlugin,
-  type PluginDetails,
   type PluginSourceKind,
-  type PluginSources,
 } from '@/lib/pluginStore'
 
 type InstallState = {
@@ -72,10 +63,7 @@ type InstallState = {
 /** An inline error: always an icon and words, next to what failed. */
 const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
 
-const newOperationId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `install-${Date.now()}-${Math.random().toString(36).slice(2)}`
+const newOperationId = newPluginOperationId
 
 function PluginListRow({
   plugin: p,
@@ -210,152 +198,70 @@ export default function PluginsManagerDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
-  const serviceHub = useServiceHub()
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   const folder = sessions.find((s) => s.id === currentId)?.folder ?? null
 
   const globalExt = useGlobalExtensions()
 
-  const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [sources, setSources] = useState<PluginSources | null>(null)
-
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [details, setDetails] = useState<PluginDetails | null>(null)
-  const [detailsError, setDetailsError] = useState<string | null>(null)
-  const [toggling, setToggling] = useState<string | null>(null)
-  const [toggleError, setToggleError] = useState<string | null>(null)
+  const manager = usePluginManager({ scopeFolder: folder, active: open })
+  const {
+    plugins,
+    loading,
+    loadError,
+    sources,
+    selectedId,
+    setSelectedId,
+    details,
+    setDetails,
+    detailsError,
+    toggling,
+    toggleError,
+    confirmRemove,
+    setConfirmRemove,
+    removing,
+    removeError,
+    setRemoveError,
+    updating,
+    refresh,
+    loadDetails,
+    toggle,
+    runUpdate,
+    confirmRemoval,
+  } = manager
 
   const [mode, setMode] = useState<'browse' | 'install'>('browse')
-  const [kind, setKind] = useState<PluginSourceKind>('local')
-  const [localPath, setLocalPath] = useState('')
-  const [gitUrl, setGitUrl] = useState('')
-  const [marketName, setMarketName] = useState('')
-  const [fieldError, setFieldError] = useState<string | null>(null)
+  const {
+    kind,
+    setKind,
+    localPath,
+    setLocalPath,
+    gitUrl,
+    setGitUrl,
+    marketName,
+    setMarketName,
+    fieldError,
+    setFieldError,
+    gitHost,
+    chooseFolder,
+    buildSource,
+  } = usePluginInstallForm()
   const [installing, setInstalling] = useState<InstallState | null>(null)
   const [installError, setInstallError] = useState<string | null>(null)
   const [installNotice, setInstallNotice] = useState<string | null>(null)
   const installingRef = useRef<InstallState | null>(null)
 
-  const [confirmRemove, setConfirmRemove] = useState<PluginDetails | null>(null)
-  const [removing, setRemoving] = useState(false)
-  const [removeError, setRemoveError] = useState<string | null>(null)
-  const [updating, setUpdating] = useState<string | null>(null)
-
   const fieldErrorId = useId()
   const noticeId = useId()
 
-  // Loaders read `t` through a ref so an unstable `t` identity cannot
-  // re-trigger the load effect on every render.
-  const tRef = useRef(t)
-  tRef.current = t
-
-  const refresh = useCallback(async () => {
-    if (!folder) {
-      setPlugins([])
-      return []
-    }
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const list = await listPlugins(folder)
-      setPlugins(list)
-      return list
-    } catch (e) {
-      setLoadError(pluginErrorText(tRef.current, e))
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [folder])
-
+  // Switching project resets the pane.
   useEffect(() => {
-    if (!open || !folder) return
-    void refresh()
-    getPluginSources(folder)
-      .then(setSources)
-      // Unknown sources are not an error worth blocking on: the install
-      // itself reports a missing git or marketplace precisely.
-      .catch(() => setSources(null))
-  }, [open, folder, refresh])
-
-  // Reset per-folder state when the project changes.
-  useEffect(() => {
-    setSelectedId(null)
-    setDetails(null)
     setMode('browse')
   }, [folder])
-
-  // The plugin whose details were asked for last. A slower request for a
-  // plugin the user already left must not overwrite the current one's details
-  // (the pane would then show "loading" forever).
-  const detailsForRef = useRef<string | null>(null)
-
-  const loadDetails = useCallback(
-    async (id: string): Promise<PluginDetails | null> => {
-      if (!folder) return null
-      detailsForRef.current = id
-      setDetails(null)
-      setDetailsError(null)
-      try {
-        const d = await getPluginDetails(folder, id)
-        if (detailsForRef.current === id) setDetails(d)
-        return d
-      } catch (e) {
-        if (detailsForRef.current === id) {
-          setDetailsError(pluginErrorText(tRef.current, e))
-        }
-        if (toPluginError(e).code === 'not_installed') void refresh()
-        return null
-      }
-    },
-    [folder, refresh]
-  )
 
   const select = (id: string) => {
     setMode('browse')
-    setSelectedId(id)
-    setToggleError(null)
-    setRemoveError(null)
-    void loadDetails(id)
-  }
-
-  const toggle = async (plugin: InstalledPlugin, enabled: boolean) => {
-    if (!folder) return
-    const apply = (value: boolean) => {
-      setPlugins((list) =>
-        list.map((p) => (p.id === plugin.id ? { ...p, enabled: value } : p))
-      )
-      setDetails((d) => (d && d.id === plugin.id ? { ...d, enabled: value } : d))
-    }
-    setToggleError(null)
-    setToggling(plugin.id)
-    apply(enabled)
-    try {
-      const state = await setPluginEnabled(folder, plugin.id, enabled)
-      apply(state.enabled)
-      // The plugin's skills join or leave the Cowork skill list.
-      invalidateSkills()
-      toast.success(
-        t(state.enabled ? 'plugins:toggle.enabled' : 'plugins:toggle.disabled', {
-          name: plugin.name,
-        })
-      )
-    } catch (e) {
-      // Revert: the switch must show what is on disk, not what was asked.
-      apply(!enabled)
-      setToggleError(
-        t('plugins:toggle.failed', {
-          name: plugin.name,
-          error: pluginErrorText(t, e),
-        })
-      )
-      if (toPluginError(e).code === 'not_installed') void refresh()
-    } finally {
-      setToggling(null)
-    }
+    manager.select(id)
   }
 
   const openInstall = () => {
@@ -365,46 +271,6 @@ export default function PluginsManagerDialog({
     setFieldError(null)
     setInstallError(null)
     setInstallNotice(null)
-  }
-
-  const chooseFolder = async () => {
-    const picked = await serviceHub.dialog().open({ directory: true })
-    const path = Array.isArray(picked) ? picked[0] : picked
-    if (path) {
-      setLocalPath(path)
-      setFieldError(null)
-    }
-  }
-
-  const gitCheck = checkGitUrl(gitUrl)
-  const gitHost = gitCheck.ok ? gitCheck.host : null
-
-  const buildSource = (): InstallSource | null => {
-    if (kind === 'local') {
-      if (!localPath.trim()) {
-        setFieldError(t('plugins:install.errors.pathRequired'))
-        return null
-      }
-      return { kind: 'local', path: localPath.trim() }
-    }
-    if (kind === 'git') {
-      if (!gitCheck.ok) {
-        setFieldError(
-          t(
-            gitCheck.reason === 'empty'
-              ? 'plugins:install.errors.urlRequired'
-              : 'plugins:install.errors.urlFormat'
-          )
-        )
-        return null
-      }
-      return { kind: 'git', url: gitUrl.trim() }
-    }
-    if (!marketName.trim()) {
-      setFieldError(t('plugins:install.errors.nameRequired'))
-      return null
-    }
-    return { kind: 'marketplace', name: marketName.trim() }
   }
 
   const startInstall = async () => {
@@ -454,67 +320,6 @@ export default function PluginsManagerDialog({
       await cancelPluginInstall(current.id)
     } catch {
       // The install promise still settles and reports the real outcome.
-    }
-  }
-
-  const runUpdate = async (plugin: PluginDetails) => {
-    if (!folder) return
-    setUpdating(plugin.id)
-    setRemoveError(null)
-    try {
-      const report = await updatePlugin(folder, plugin.id, newOperationId())
-      toast.success(
-        report.updated
-          ? t('plugins:update.done', { name: plugin.name })
-          : t('plugins:update.upToDate', { name: plugin.name })
-      )
-      if (report.updated) invalidateSkills()
-      await refresh()
-      await loadDetails(report.id)
-    } catch (e) {
-      setRemoveError(
-        t('plugins:update.failed', { name: plugin.name, error: pluginErrorText(t, e) })
-      )
-    } finally {
-      setUpdating(null)
-    }
-  }
-
-  const confirmRemoval = async () => {
-    if (!folder || !confirmRemove) return
-    const target = confirmRemove
-    setRemoving(true)
-    setRemoveError(null)
-    try {
-      const report = await removePlugin(folder, target.id)
-      toast.success(
-        t('plugins:remove.done', { name: report.name, path: report.removedPath }),
-        report.removedSkillEntries.length > 0 || report.removedFromDisabled
-          ? {
-              description: t('plugins:remove.doneConfig', {
-                entries: [
-                  ...(report.removedFromDisabled ? ['[plugins].disabled'] : []),
-                  ...report.removedSkillEntries.map((e) => `[skills].enabled "${e}"`),
-                ].join(', '),
-              }),
-            }
-          : undefined
-      )
-      setConfirmRemove(null)
-      setSelectedId(null)
-      setDetails(null)
-      await refresh()
-    } catch (e) {
-      setRemoveError(
-        t('plugins:remove.failed', { name: target.name, error: pluginErrorText(t, e) })
-      )
-      setConfirmRemove(null)
-      void refresh()
-    } finally {
-      // Also after a failure: the directory may be gone even when the config
-      // cleanup that follows it was refused.
-      invalidateSkills()
-      setRemoving(false)
     }
   }
 

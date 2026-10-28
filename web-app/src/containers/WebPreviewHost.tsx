@@ -154,7 +154,9 @@ export function WebPreviewHost() {
   })
 
   // Publish the pane's box (side panel width, PIP moves/resizes) so the
-  // toaster can step around it. Sampled per frame, written only on change.
+  // toaster can step around it. Measured when something that can move it
+  // happens, one frame at a time, and written only when it changed; an idle
+  // pane costs nothing.
   const [paneEl, setPaneEl] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!paneEl) {
@@ -162,19 +164,48 @@ export function WebPreviewHost() {
       return
     }
     let frame = 0
-    const tick = () => {
+    let last = ''
+    const measure = () => {
+      frame = 0
       const r = paneEl.getBoundingClientRect()
-      useWebPreview.getState().setPaneRect({
+      const next = {
         left: Math.round(r.left),
         top: Math.round(r.top),
         right: Math.round(r.right),
         bottom: Math.round(r.bottom),
-      })
-      frame = requestAnimationFrame(tick)
+      }
+      const key = `${next.left},${next.top},${next.right},${next.bottom}`
+      if (key === last) return
+      last = key
+      useWebPreview.getState().setPaneRect(next)
     }
-    tick()
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure)
+    }
+    measure()
+    // The pane resizing, or the layout around it (a sidebar opening, a
+    // splitter dragged) resizing the window's content.
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(schedule)
+    observer?.observe(paneEl)
+    observer?.observe(document.body)
+    window.addEventListener('resize', schedule)
+    // A moved PIP or splitter is a pointer drag; ancestors scrolling or a
+    // layout animation ending can shift the box without resizing it.
+    document.addEventListener('pointermove', schedule, true)
+    document.addEventListener('scroll', schedule, true)
+    document.addEventListener('transitionend', schedule, true)
+    document.addEventListener('animationend', schedule, true)
     return () => {
-      cancelAnimationFrame(frame)
+      if (frame) cancelAnimationFrame(frame)
+      observer?.disconnect()
+      window.removeEventListener('resize', schedule)
+      document.removeEventListener('pointermove', schedule, true)
+      document.removeEventListener('scroll', schedule, true)
+      document.removeEventListener('transitionend', schedule, true)
+      document.removeEventListener('animationend', schedule, true)
       useWebPreview.getState().setPaneRect(null)
     }
   }, [paneEl])

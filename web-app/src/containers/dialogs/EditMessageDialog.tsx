@@ -44,7 +44,9 @@ export function EditMessageDialog({
     [message]
   )
   const [draft, setDraft] = useState(initialCleanPrompt)
-  const [keptImages, setKeptImages] = useState<string[]>(imageUrls || [])
+  // Images are shown, not editable: onSave carries text and files only, so an
+  // image control here would offer an action that changes nothing.
+  const keptImages = imageUrls || []
   const [keptFiles, setKeptFiles] = useState<FileMetadata[]>(initialFiles)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { selectedModel } = useConversationModel()
@@ -52,9 +54,8 @@ export function EditMessageDialog({
   useEffect(() => {
     const { files, cleanPrompt } = extractFilesFromPrompt(message)
     setDraft(cleanPrompt)
-    setKeptImages(imageUrls || [])
     setKeptFiles(files)
-  }, [message, imageUrls])
+  }, [message])
 
   useEffect(() => {
     if (isOpen && textareaRef.current) {
@@ -130,18 +131,6 @@ export function EditMessageDialog({
                       src={imageUrl}
                       alt={`Attached image ${index + 1}`}
                     />
-                    <button
-                      type="button"
-                      aria-label={t('common:dismiss')}
-                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-border-strong bg-card text-fg-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
-                      onClick={() =>
-                        setKeptImages((prev) =>
-                          prev.filter((_, i) => i !== index)
-                        )
-                      }
-                    >
-                      <X className="size-3.5" />
-                    </button>
                   </div>
                 ))}
                 {keptFiles.map((file) => (
@@ -189,8 +178,6 @@ export function EditMessageDialog({
             <Button
               disabled={
                 (draft === initialCleanPrompt &&
-                  JSON.stringify(imageUrls || []) ===
-                    JSON.stringify(keptImages) &&
                   JSON.stringify(initialFiles) === JSON.stringify(keptFiles)) ||
                 !draft.trim()
               }

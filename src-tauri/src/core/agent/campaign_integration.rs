@@ -13,8 +13,9 @@
 //! * **The user's checkout is never written here.** The end of the line is a
 //!   proposal in the ordinary store; applying it is the user's approval.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -70,6 +71,18 @@ pub fn mentions_files(acceptance: &[String]) -> bool {
             None => false,
         }
     })
+}
+
+/// The lock one campaign's git-touching steps (merge, integrate, resolve,
+/// finalize) run under, so two of them never interleave on the integration
+/// branch. Taken before the campaign record is read, and the record is only
+/// held briefly inside it, never across git, so the order is always this lock
+/// and then the records.
+fn campaign_lock(data_folder: &Path, id: &str) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+    let key = format!("{}\u{0}{id}", data_folder.display());
+    let mut map = LOCKS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    map.entry(key).or_default().clone()
 }
 
 fn err(kind: CampaignErrorKind, message: impl Into<String>) -> CampaignError {
@@ -1087,6 +1100,14 @@ fn ready_for_review(c: &Campaign) -> bool {
 /// Merge one verified task into the integration branch.
 pub fn merge_task(data_folder: &Path, roots: &Path, id: &str, task_id: &str) -> Result<MergeReport, CampaignError> {
     campaign::check_id("task", task_id)?;
+    let lock = campaign_lock(data_folder, id);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    merge_task_locked(data_folder, roots, id, task_id)
+}
+
+/// [`merge_task`] for a caller already holding the campaign's lock. The
+/// campaign and the task's status are read fresh, inside the lock.
+fn merge_task_locked(data_folder: &Path, roots: &Path, id: &str, task_id: &str) -> Result<MergeReport, CampaignError> {
     let c = campaign::get(data_folder, id)?;
     if c.status != CampaignStatus::Running {
         return Err(err(
@@ -1188,6 +1209,8 @@ pub struct ConflictInfo {
 /// Merge every verified task that can merge, in topological order, until
 /// nothing more can. A conflict parks that task and everything depending on it.
 pub fn integrate(data_folder: &Path, roots: &Path, id: &str) -> Result<IntegrateReport, CampaignError> {
+    let lock = campaign_lock(data_folder, id);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let mut merged = Vec::new();
     let mut conflicts = Vec::new();
     let mut errors = Vec::new();
@@ -1196,7 +1219,7 @@ pub fn integrate(data_folder: &Path, roots: &Path, id: &str) -> Result<Integrate
         let c = campaign::get(data_folder, id)?;
         let next = merge_order(&c).into_iter().find(|t| !parked.contains(t));
         let Some(task_id) = next else { break };
-        match merge_task(data_folder, roots, id, &task_id) {
+        match merge_task_locked(data_folder, roots, id, &task_id) {
             Ok(r) if r.merged => merged.push(task_id),
             Ok(r) => {
                 conflicts.push(ConflictInfo { task_id: task_id.clone(), files: r.conflicts });
@@ -1304,6 +1327,8 @@ pub fn resolve_prepare(
 ) -> Result<ResolvePlan, CampaignError> {
     campaign::check_id("task", task_id)?;
     campaign::check_id("session", session_id)?;
+    let lock = campaign_lock(data_folder, id);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let c = campaign::get(data_folder, id)?;
     if c.status != CampaignStatus::Running {
         return Err(err(
@@ -1500,6 +1525,8 @@ pub fn gate_plan(data_folder: &Path, roots: &Path, id: &str) -> Result<GateChoic
 /// to the user's checkout. A failing gate keeps the campaign in `reviewing`
 /// with the output. The user's checkout is not written.
 pub fn finalize(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Result<FinalizeReport, CampaignError> {
+    let lock = campaign_lock(data_folder, id);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let c = campaign::get(data_folder, id)?;
     if c.status != CampaignStatus::Reviewing {
         return Err(err(
@@ -1836,6 +1863,19 @@ mod tests {
             &EnsureOptions { title: Some("campaign it".into()), base: None },
         )
         .unwrap();
+        // A plan must now declare paths; these tests are about what happens to a
+        // task that declares none, so the paths are cleared again after create.
+        let mut blank = Vec::new();
+        let tasks: Vec<PlanTask> = tasks
+            .into_iter()
+            .map(|mut t| {
+                if t.paths.is_empty() && t.kind != campaign::KIND_CHECK {
+                    blank.push(t.id.clone());
+                    t.paths = vec![format!("__fixture__{}", t.id)];
+                }
+                t
+            })
+            .collect();
         let c = create(
             &data,
             CreateInput {
@@ -1854,6 +1894,13 @@ mod tests {
                 driver: None,
             },
         )
+        .unwrap();
+        let (c, ()) = campaign::update(&data, "c1", |c| {
+            for id in &blank {
+                c.task_mut(id)?.paths.clear();
+            }
+            Ok(((), vec![]))
+        })
         .unwrap();
         Fx { data, roots, src, id: c.id, integration }
     }
@@ -1919,6 +1966,40 @@ mod tests {
 
     fn integration_file(f: &Fx, name: &str) -> Option<String> {
         std::fs::read_to_string(Path::new(&f.integration.path).join(name)).ok().map(|t| t.replace('\r', ""))
+    }
+
+    #[test]
+    fn two_concurrent_merges_of_one_task_second_is_rejected() {
+        let f = fixture("race", vec![plan("a", &[])]);
+        start(&f);
+        work(&f, "a", "a.txt", "from a\n");
+        let results: Vec<_> = std::thread::scope(|s| {
+            let hs: Vec<_> = (0..2).map(|_| s.spawn(|| merge_task(&f.data, &f.roots, &f.id, "a"))).collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let merged = results.iter().filter(|r| r.as_ref().is_ok_and(|r| r.merged)).count();
+        assert_eq!(merged, 1, "{results:?}");
+        assert_eq!(results.iter().filter(|r| r.is_err()).count(), 1, "{results:?}");
+        assert_eq!(status(&f, "a"), TaskStatus::Merged);
+    }
+
+    #[test]
+    fn merge_and_integrate_do_not_overlap() {
+        let f = fixture("overlap", vec![plan("a", &[]), plan("b", &[])]);
+        start(&f);
+        work(&f, "a", "a.txt", "a\n");
+        work(&f, "b", "b.txt", "b\n");
+        let (i, m) = std::thread::scope(|s| {
+            let i = s.spawn(|| integrate(&f.data, &f.roots, &f.id));
+            let m = s.spawn(|| merge_task(&f.data, &f.roots, &f.id, "a"));
+            (i.join().unwrap(), m.join().unwrap())
+        });
+        let i = i.unwrap();
+        // `a` was merged exactly once, by whichever got the lock first.
+        let merged_a = i.merged.iter().filter(|t| *t == "a").count() + usize::from(m.as_ref().is_ok_and(|r| r.merged));
+        assert_eq!(merged_a, 1, "{i:?} {m:?}");
+        assert_eq!(status(&f, "a"), TaskStatus::Merged);
+        assert_eq!(status(&f, "b"), TaskStatus::Merged);
     }
 
     #[test]

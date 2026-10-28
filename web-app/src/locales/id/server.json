@@ -20,6 +20,7 @@
   "auto": "Buka saat mulai",
   "autoDesc": "Buka server saat aplikasi dimulai, setelah beberapa detik di mana Anda bisa memilih perangkat ini.",
   "opening": "Membuka {{host}} dalam {{seconds}} dtk",
+  "openingNotice": "{{host}} segera dibuka. Tekan Esc untuk tetap di perangkat ini.",
   "useDevice": "Gunakan perangkat ini",
   "limitsTitle": "Apa yang berjalan di mana",
   "limits": "Obrolan, ruang, model, dan tool berjalan di server. Sesi Cowork dan Campaign membutuhkan agen yang berjalan di komputer dengan Flint terbuka: jangkau komputer itu lewat Akses jarak jauh dan aplikasi ponsel. Server headless bisa menampilkan daftar campaign dan meninjau proposal, tetapi tidak menjalankan sesi."

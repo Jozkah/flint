@@ -1,21 +1,34 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useReducer, useState } from 'react'
 import { ChevronDown, Info, Lock, Pencil, Plus, Settings2, Trash2, Users } from 'lucide-react'
 import type {
   ModeratorConfig,
-  Participant,
   ParticipantReasoning,
   Room,
   RoomLimits,
-  RoomModelRef,
-  RoomToolBudget,
   SpeakingMode,
   ToolAccess,
 } from '@/lib/rooms/types'
-import { ROOM_LIMIT_CEILINGS, compareRunOf, type CompareRun } from '@/lib/rooms/types'
-import { MAX_EXTRA_FOLDERS } from '@/lib/rooms/controller'
-import type { WorkProfileId } from '@/lib/workProfiles'
+import { ROOM_LIMIT_CEILINGS, type CompareRun } from '@/lib/rooms/types'
+import {
+  LIMIT_KEYS,
+  MINUTE_MS,
+  BUDGET_KEYS,
+  budgetFromDraft,
+  draftFromRoom,
+  parsePricing,
+  roomDraftReducer,
+  type BudgetKey,
+  type DraftField,
+  type DraftParticipant,
+  type LimitDraft,
+  type RoomDraft,
+} from '@/lib/rooms/roomDraft'
+import { AUTOSAVE_MS, useRoomAutosave } from '@/hooks/useRoomAutosave'
+import { AddParticipantForm } from './AddParticipantForm'
 import { ParticipantPersonaFields } from './ParticipantPersonaFields'
+import { FieldError, norm, type Errors } from './roomEditorShared'
+import { MAX_EXTRA_FOLDERS } from '@/lib/rooms/controller'
 import { ParticipantToolsField } from './ParticipantToolsField'
 import { knownWindowFor } from '@/lib/rooms/availability'
 import { noteIsolation, useIsolationNotes } from '@/lib/rooms/isolation'
@@ -64,32 +77,10 @@ const COMPARE_RUNS: CompareRun[] = ['together', 'one-by-one']
 /** Providers that run on this machine, where two models at once compete for memory. */
 const LOCAL_PROVIDERS = ['llamacpp', 'mlx']
 
-export const LIMIT_KEYS: (keyof RoomLimits)[] = [
-  'maxRounds',
-  'maxTurns',
-  'maxConsecutivePerParticipant',
-  'maxTotalTokens',
-  'maxOutputTokensPerTurn',
-  'maxDurationMs',
-  'maxRepetitiveTurns',
-  'repetitionSimilarity',
-  'maxCostUsd',
-]
+// Re-exported: tests and the limits fields import it from here.
+export { LIMIT_KEYS }
 
-const MINUTE = 60_000
-
-type LimitDraft = Record<keyof RoomLimits, string>
-
-/** Limits are edited as text; duration is shown in minutes. */
-function toLimitDraft(l: RoomLimits): LimitDraft {
-  const out = {} as LimitDraft
-  for (const key of LIMIT_KEYS) {
-    const v = l[key]
-    out[key] =
-      v === null ? '' : key === 'maxDurationMs' ? String(Math.round((v as number) / MINUTE)) : String(v)
-  }
-  return out
-}
+const MINUTE = MINUTE_MS
 
 /** Displayed ceiling for a limit, in the unit the field is edited in. */
 function displayCeiling(key: keyof RoomLimits): number | null {
@@ -127,36 +118,6 @@ function limitsFromDraft(draft: LimitDraft): RoomLimits {
 
 const showLimit = (key: keyof RoomLimits, value: number | null) =>
   value === null ? '' : key === 'maxDurationMs' ? String(Math.round(value / MINUTE)) : String(value)
-
-type DraftParticipant = {
-  id: string
-  name: string
-  role: string
-  model: RoomModelRef
-  toolAccess: ToolAccess
-  priceIn: string
-  priceOut: string
-  reasoning?: ParticipantReasoning
-  assistantId?: string
-  workProfile?: WorkProfileId
-  disabledTools: string[]
-  source: Participant
-}
-
-const toDraftParticipant = (p: Participant): DraftParticipant => ({
-  id: p.id,
-  name: p.name,
-  role: p.role,
-  model: p.model,
-  toolAccess: p.toolAccess,
-  priceIn: p.pricing ? String(p.pricing.inputPerMTokUsd) : '',
-  priceOut: p.pricing ? String(p.pricing.outputPerMTokUsd) : '',
-  reasoning: p.reasoning,
-  assistantId: p.assistantId,
-  workProfile: p.workProfile,
-  disabledTools: p.disabledTools ?? [],
-  source: p,
-})
 
 /**
  * A participant's Reasoning control: the same choices, labels and defaults as
@@ -269,18 +230,6 @@ function ParticipantSection({ title, children }: { title: string; children: Reac
   )
 }
 
-function parsePricing(d: Pick<DraftParticipant, 'priceIn' | 'priceOut'>) {
-  const i = Number(d.priceIn)
-  const o = Number(d.priceOut)
-  if (d.priceIn.trim() === '' || d.priceOut.trim() === '') return undefined
-  if (!Number.isFinite(i) || !Number.isFinite(o) || i < 0 || o < 0) return undefined
-  return { inputPerMTokUsd: i, outputPerMTokUsd: o }
-}
-
-const norm = (s: string) => s.trim().toLowerCase()
-
-type Errors = Record<string, string>
-
 function validate(
   participants: DraftParticipant[],
   moderator: ModeratorConfig,
@@ -307,16 +256,6 @@ function validate(
   return errors
 }
 
-function FieldError({ id, message }: { id: string; message?: string }) {
-  if (!message) return null
-  return (
-    <p id={id} className="text-xs text-destructive">
-      {message}
-    </p>
-  )
-}
-
-
 type SettingsTab = 'general' | 'discussion' | 'limits'
 
 const TOOL_PILL: Record<ToolAccess, string> = {
@@ -335,22 +274,6 @@ const toolKey = (v: ToolAccess) =>
         ? 'rooms:editor.toolEdit'
         : 'rooms:editor.toolFull'
 
-type BudgetKey = 'maxToolCalls' | 'maxSteps' | 'toolTimeoutSec'
-const BUDGET_KEYS: BudgetKey[] = ['maxToolCalls', 'maxSteps', 'toolTimeoutSec']
-type BudgetDraft = Record<BudgetKey, string>
-const toBudgetDraft = (b: RoomToolBudget | undefined): BudgetDraft => ({
-  maxToolCalls: b?.maxToolCalls != null ? String(b.maxToolCalls) : '',
-  maxSteps: b?.maxSteps != null ? String(b.maxSteps) : '',
-  toolTimeoutSec: b?.toolTimeoutSec != null ? String(b.toolTimeoutSec) : '',
-})
-const budgetFromDraft = (d: BudgetDraft): RoomToolBudget | null => {
-  const out: RoomToolBudget = {}
-  for (const k of BUDGET_KEYS) {
-    const n = Number(d[k])
-    if (d[k].trim() !== '' && Number.isFinite(n)) out[k] = n
-  }
-  return Object.keys(out).length ? out : null
-}
 /** What an empty budget field means: steps depend on access, so both are named. */
 const budgetDefault = (k: BudgetKey): string =>
   k === 'maxSteps'
@@ -428,8 +351,8 @@ function CompareIsolationNote({
   )
 }
 
-/** How long after the last edit the editor saves by itself. */
-export const AUTOSAVE_MS = 700
+// Re-exported: tests use it to advance fake timers.
+export { AUTOSAVE_MS }
 
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
@@ -444,43 +367,34 @@ export function RoomEditor({ room }: { room: Room }) {
   const uid = useId()
   const locked = !isEditable(room.status)
 
-  const [title, setTitle] = useState(room.title)
-  const [objective, setObjective] = useState(room.objective)
-  const [mode, setMode] = useState<SpeakingMode>(room.mode)
-  const [compareRun, setCompareRun] = useState<CompareRun>(compareRunOf(room))
-  const [moderator, setModerator] = useState<ModeratorConfig>(room.moderator)
-  const [limits, setLimits] = useState<LimitDraft>(() => toLimitDraft(room.limits))
-  const [budget, setBudget] = useState<BudgetDraft>(() => toBudgetDraft(room.toolBudget))
-  const [participants, setParticipants] = useState<DraftParticipant[]>(() =>
-    activeParticipants(room).map(toDraftParticipant)
+  const [draft, dispatch] = useReducer(roomDraftReducer, room, (r) =>
+    draftFromRoom(r, activeParticipants(r))
   )
+  const { title, objective, mode, compareRun, moderator, limits, budget, participants } = draft
+  const field =
+    <K extends DraftField>(key: K) =>
+    (value: RoomDraft[K]) =>
+      dispatch({ type: 'edit', field: key, value })
+  const setTitle = field('title')
+  const setObjective = field('objective')
+  const setMode = field('mode')
+  const setCompareRun = field('compareRun')
+  const setModerator = field('moderator')
+  const setLimits = field('limits')
+  const setBudget = field('budget')
   const [showErrors, setShowErrors] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [tab, setTab] = useState<SettingsTab>('general')
   // Participant rows fold to one line; these are the ones opened for editing.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set())
   // A room without enough participants opens straight onto the add form.
   const [addOpen, setAddOpen] = useState(() => activeParticipants(room).length < 2)
-  const dirty = useRef(false)
-  const draftRoomId = useRef(room.id)
-  // Every edit bumps this; a save clears `dirty` only when nothing changed
-  // while it was in flight.
-  const editGen = useRef(0)
-  // Edits save themselves shortly after the last change (R-041).
-  const [autosaveTick, setAutosaveTick] = useState(0)
-
-  const [newName, setNewName] = useState('')
-  const [newRole, setNewRole] = useState('')
-  const [newPersona, setNewPersona] = useState<{ assistantId?: string; workProfile?: WorkProfileId }>({})
-  const [newModel, setNewModel] = useState<RoomModelRef | null>(null)
-  const [newErrors, setNewErrors] = useState<Errors>({})
+  const autosave = useRoomAutosave(room.id)
+  const { dirty, draftRoomId, editGen, saving, setSaving, saved, setSaved, markEdited, saveRef } = autosave
 
   // A new revision from the engine: reset when nothing is being edited,
   // otherwise only pick up added and removed participants.
   useEffect(() => {
-    const fresh = activeParticipants(room).map(toDraftParticipant)
     // A different room: the draft belongs to the previous one, drop it.
     const switched = draftRoomId.current !== room.id
     if (switched) {
@@ -488,35 +402,12 @@ export function RoomEditor({ room }: { room: Room }) {
       dirty.current = false
     }
     if (!dirty.current) {
-      setTitle(room.title)
-      setObjective(room.objective)
-      setMode(room.mode)
-      setCompareRun(compareRunOf(room))
-      setModerator(room.moderator)
-      setLimits(toLimitDraft(room.limits))
-      setBudget(toBudgetDraft(room.toolBudget))
-      setParticipants(fresh)
+      dispatch({ type: 'reset', room, participants: activeParticipants(room) })
       return
     }
-    setParticipants((prev) => {
-      // Kept drafts keep the user's edits but take the new revision's
-      // participant as their source, so availability stays current (#165).
-      const kept = prev.flatMap((d) => {
-        const f = fresh.find((x) => x.id === d.id)
-        return f ? [{ ...d, source: f.source }] : []
-      })
-      const added = fresh.filter((f) => !prev.some((d) => d.id === f.id))
-      return [...kept, ...added]
-    })
+    dispatch({ type: 'syncParticipants', participants: activeParticipants(room) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id, room.rev])
-
-  const markEdited = () => {
-    dirty.current = true
-    editGen.current += 1
-    setSaved(false)
-    setAutosaveTick((n) => n + 1)
-  }
 
   const edit = <V,>(setter: (v: V) => void) => (v: V) => {
     markEdited()
@@ -548,7 +439,7 @@ export function RoomEditor({ room }: { room: Room }) {
 
   const updateParticipant = (id: string, patch: Partial<DraftParticipant>) => {
     markEdited()
-    setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+    dispatch({ type: 'updateParticipant', id, patch })
   }
 
   const save = async (auto = false) => {
@@ -619,20 +510,7 @@ export function RoomEditor({ room }: { room: Room }) {
   }
 
   // The latest save, for the timer and the unmount flush.
-  const saveRef = useRef(save)
   saveRef.current = save
-  useEffect(() => {
-    if (autosaveTick === 0) return
-    const timer = setTimeout(() => void saveRef.current(true), AUTOSAVE_MS)
-    return () => clearTimeout(timer)
-  }, [autosaveTick])
-  // Leaving the editor (another room, another page) still saves the edit.
-  useEffect(
-    () => () => {
-      if (dirty.current) void saveRef.current(true)
-    },
-    []
-  )
 
   const saveStatus = saving ? (
     <span role="status" data-testid="room-save-status" className="text-xs text-muted-foreground">
@@ -643,36 +521,6 @@ export function RoomEditor({ room }: { room: Room }) {
       {t('rooms:editor.saved')}
     </span>
   ) : null
-
-  const add = async () => {
-    const errs: Errors = {}
-    const taken = participants.some((p) => norm(p.name) === norm(newName))
-    if (!newName.trim()) errs.name = t('rooms:editor.errors.nameRequired')
-    else if (taken) errs.name = t('rooms:editor.errors.nameDuplicate', { name: newName.trim() })
-    else if (moderator.enabled && norm(newName) === norm(moderator.name))
-      errs.name = t('rooms:editor.errors.nameModerator')
-    if (!newModel) errs.model = t('rooms:editor.errors.modelRequired')
-    setNewErrors(errs)
-    if (Object.keys(errs).length > 0 || !newModel) return
-    setError(null)
-    try {
-      await api.addParticipant(room, {
-        name: newName.trim(),
-        role: newRole.trim(),
-        assistantId: newPersona.assistantId,
-        workProfile: newPersona.workProfile,
-        model: newModel,
-        // Omitted so the controller applies its default (read-only for a
-        // tool-capable model), rather than starting the participant tool-less.
-      })
-      setNewName('')
-      setNewRole('')
-      setNewPersona({})
-      setNewModel(null)
-    } catch (err) {
-      setError(normalizeError(err))
-    }
-  }
 
   const remove = async (id: string) => {
     setError(null)
@@ -1014,70 +862,17 @@ export function RoomEditor({ room }: { room: Room }) {
               )
             })}
 
-            <div
-              id={`${uid}-add`}
+            <AddParticipantForm
+              room={room}
+              uid={uid}
               hidden={!addOpen}
-              className="@container mt-1.5 flex min-w-0 flex-col gap-2 rounded-[10px] border border-dashed border-border-strong p-3 motion-safe:animate-dd-in"
-            >
-              <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
-              {participants.length < 2 && (
-                <p className="text-xs text-muted-foreground">
-                  {t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-                </p>
-              )}
-              {atMax ? (
-                <p className="text-xs text-muted-foreground">
-                  {t('rooms:editor.maxReached', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-                </p>
-              ) : (
-                <>
-                  <div className="grid gap-2 @[26rem]:grid-cols-2">
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`${uid}-new-name`}>{t('rooms:editor.participantName')}</Label>
-                      <Input
-                        id={`${uid}-new-name`}
-                        value={newName}
-                        aria-invalid={Boolean(newErrors.name) || undefined}
-                        aria-describedby={`${uid}-new-name-error`}
-                        onChange={(e) => setNewName(e.target.value)}
-                      />
-                      <FieldError id={`${uid}-new-name-error`} message={newErrors.name} />
-                    </div>
-                  </div>
-                  <ParticipantPersonaFields
-                    idPrefix={`${uid}-new`}
-                    role={newRole}
-                    assistantId={newPersona.assistantId}
-                    workProfile={newPersona.workProfile}
-                    disabled={disabled}
-                    onChange={({ role, ...patch }) => {
-                      if (role !== undefined) setNewRole(role)
-                      setNewPersona((prev) => ({ ...prev, ...patch }))
-                    }}
-                  />
-                  <div className="flex min-w-0 flex-col gap-1.5">
-                    <Label htmlFor={`${uid}-new-model`}>{t('rooms:editor.participantModel')}</Label>
-                    <RoomModelSelect
-                      id={`${uid}-new-model`}
-                      value={newModel}
-                      disabled={disabled}
-                      invalid={Boolean(newErrors.model)}
-                      describedBy={`${uid}-new-model-error`}
-                      onChange={setNewModel}
-                    />
-                    <FieldError id={`${uid}-new-model-error`} message={newErrors.model} />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" onClick={() => void add()}>
-                      {t('rooms:editor.add')}
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setAddOpen(false)}>
-                      {t('rooms:controls.cancel')}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
+              participants={participants}
+              moderator={moderator}
+              disabled={disabled}
+              atMax={atMax}
+              onCancel={() => setAddOpen(false)}
+              onError={setError}
+            />
           </fieldset>
         </FrameBody>
       </Frame>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   ChevronDown,
@@ -484,7 +484,13 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   }, [navigate])
   const uploading = !!uploadProgress
 
+  // Only the newest request may write: two overlapping loads (a quick project
+  // switch, an upload finishing during one) can resolve out of order.
+  const loadRequest = useRef(0)
+  const loadedProject = useRef(projectId)
+
   const loadProjectFiles = useCallback(async () => {
+    const id = ++loadRequest.current
     setLoading(true)
     try {
       const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
@@ -492,20 +498,28 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
       )
       if (ext?.listAttachmentsForProject) {
         const projectFiles = await ext.listAttachmentsForProject(projectId)
+        if (id !== loadRequest.current) return
         setFiles(projectFiles)
       } else {
+        if (id !== loadRequest.current) return
         setFiles([])
       }
     } catch {
+      if (id !== loadRequest.current) return
       setFiles([])
     } finally {
-      setLoading(false)
+      if (id === loadRequest.current) setLoading(false)
     }
   }, [projectId])
 
   useEffect(() => {
+    // Another project's files must not show under this one while it loads.
+    if (loadedProject.current !== projectId) {
+      loadedProject.current = projectId
+      setFiles([])
+    }
     loadProjectFiles()
-  }, [loadProjectFiles, completedTick])
+  }, [loadProjectFiles, completedTick, projectId])
 
   const processFilePaths = useCallback(
     async (paths: string[]) => {
@@ -785,6 +799,8 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   }
 
   const isEmpty = !loading && files.length === 0
+  // A reload keeps the list on screen; the spinner is for an empty first load.
+  const showSpinner = loading && files.length === 0
 
   return (
     <div className="p-4">
@@ -856,7 +872,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         </ul>
       )}
 
-      {loading ? (
+      {showSpinner ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="size-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
         </div>

@@ -1627,7 +1627,8 @@
       "empty": "Diese Datei ist leer",
       "needs-file-dialog": "Verwende für Dokumente „Datei anhängen“ – eine abgelegte Kopie hat keinen Pfad für den Leser",
       "sensitive": "Sieht nach Zugangsdaten oder einem Schlüssel aus und wurde daher nicht gelesen",
-      "binary": "Das ist keine Textdatei, was auch immer die Endung behauptet"
+      "binary": "Das ist keine Textdatei, was auch immer die Endung behauptet",
+      "unreadable": "Diese Datei konnte nicht gelesen werden"
     },
     "addFiles": "Dateien hinzufügen",
     "addFilesOrImages": "Dateien oder Bilder hinzufügen",
@@ -2977,6 +2978,50 @@
       "medium": "Mittel",
       "low": "Niedrig"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Stopp",
+    "title": "Laufende Arbeit stoppen",
+    "description": "Wähle, wie weit das reicht. Das lässt sich nicht rückgängig machen: Gestoppte Arbeit wird nicht fortgesetzt, auch nicht nach einem Neustart.",
+    "legend": "Was gestoppt werden soll",
+    "stopping": "Wird gestoppt. Eigene Prozesse werden beendet…",
+    "report": {
+      "clean": "Gestoppt. {{stopped}} gestoppt, {{already}} bereits gestoppt, nichts läuft mehr.",
+      "partial_one": "{{stopped}} gestoppt, aber {{count}} Prozess läuft noch. Die Bereinigung wurde nicht abgeschlossen.",
+      "partial_other": "{{stopped}} gestoppt, aber {{count}} Prozesse laufen noch. Die Bereinigung wurde nicht abgeschlossen."
+    },
+    "error": "Konnte nicht stoppen: {{error}}",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "confirmBusy": "Wird gestoppt…",
+    "scope": {
+      "call": {
+        "name": "Dieser Tool-Aufruf",
+        "desc": "Nur dieser Tool-Aufruf ({{id}}). Alles andere im Lauf läuft weiter.",
+        "confirm": "Tool-Aufruf stoppen"
+      },
+      "run": {
+        "name": "Dieser Lauf",
+        "desc": "Dieser Lauf ({{id}}) samt Tool-Aufrufen, Shell-Befehlen, MCP-Aufrufen und Subagenten. Andere Läufe bleiben unberührt.",
+        "confirm": "Lauf stoppen"
+      },
+      "session": {
+        "name": "Diese Sitzung",
+        "desc": "Jeder Lauf in dieser Sitzung ({{id}}). Andere Sitzungen bleiben unberührt.",
+        "confirm": "Sitzung stoppen"
+      },
+      "application": {
+        "name": "Alles in Flint",
+        "desc": "Alle Arbeit überall in Flint, in jeder Sitzung. Nichts Laufendes wird verschont.",
+        "confirm": "Alles stoppen"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "API-Schlüssel anzeigen",
+    "hide": "API-Schlüssel ausblenden",
+    "copy": "API-Schlüssel kopieren",
+    "copied": "Kopiert"
   },
   "proposal": {
     "flag": {

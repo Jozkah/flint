@@ -142,6 +142,8 @@ export type RejectionReason =
    * model through the text path.
    */
   | 'binary'
+  /** The browser could not read the bytes (file moved, locked, or gone). */
+  | 'unreadable'
 
 export type AttachmentDecision =
   | { ok: true; kind: AttachmentKind }

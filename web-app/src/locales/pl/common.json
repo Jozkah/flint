@@ -1683,7 +1683,8 @@
       "empty": "Ten plik jest pusty",
       "needs-file-dialog": "Użyj „Załącz plik” dla dokumentów — upuszczona kopia nie ma ścieżki dla czytnika",
       "sensitive": "Wygląda na dane uwierzytelniające lub klucz, więc nie został odczytany",
-      "binary": "To nie jest plik tekstowy, niezależnie od rozszerzenia"
+      "binary": "To nie jest plik tekstowy, niezależnie od rozszerzenia",
+      "unreadable": "Nie udało się odczytać tego pliku"
     },
     "addFiles": "Dodaj pliki",
     "addFilesOrImages": "Dodaj pliki lub obrazy",
@@ -3101,6 +3102,52 @@
       "medium": "Średni",
       "low": "Niski"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Zatrzymaj",
+    "title": "Zatrzymaj trwającą pracę",
+    "description": "Wybierz zasięg. Nie można tego cofnąć: zatrzymana praca nie jest wznawiana, także po ponownym uruchomieniu.",
+    "legend": "Co zatrzymać",
+    "stopping": "Zatrzymywanie. Kończenie własnych procesów…",
+    "report": {
+      "clean": "Zatrzymano. Zatrzymano: {{stopped}}, już wcześniej zatrzymano: {{already}}, nic już nie działa.",
+      "partial_one": "Zatrzymano: {{stopped}}, ale {{count}} proces nadal działa. Czyszczenie nie zostało ukończone.",
+      "partial_few": "Zatrzymano: {{stopped}}, ale {{count}} procesy nadal działają. Czyszczenie nie zostało ukończone.",
+      "partial_many": "Zatrzymano: {{stopped}}, ale {{count}} procesów nadal działa. Czyszczenie nie zostało ukończone.",
+      "partial_other": "Zatrzymano: {{stopped}}, ale procesy nadal działają: {{count}}. Czyszczenie nie zostało ukończone."
+    },
+    "error": "Nie udało się zatrzymać: {{error}}",
+    "cancel": "Anuluj",
+    "close": "Zamknij",
+    "confirmBusy": "Zatrzymywanie…",
+    "scope": {
+      "call": {
+        "name": "To wywołanie narzędzia",
+        "desc": "Tylko to wywołanie narzędzia ({{id}}). Reszta uruchomienia działa dalej.",
+        "confirm": "Zatrzymaj wywołanie"
+      },
+      "run": {
+        "name": "To uruchomienie",
+        "desc": "To uruchomienie ({{id}}), w tym jego wywołania narzędzi, polecenia powłoki, wywołania MCP i podagenci. Inne uruchomienia pozostają nietknięte.",
+        "confirm": "Zatrzymaj uruchomienie"
+      },
+      "session": {
+        "name": "Ta sesja",
+        "desc": "Każde uruchomienie w tej sesji ({{id}}). Inne sesje pozostają nietknięte.",
+        "confirm": "Zatrzymaj sesję"
+      },
+      "application": {
+        "name": "Wszystko we Flint",
+        "desc": "Cała praca wszędzie we Flint, w każdej sesji. Nic z tego, co działa, nie zostanie oszczędzone.",
+        "confirm": "Zatrzymaj wszystko"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Pokaż klucz API",
+    "hide": "Ukryj klucz API",
+    "copy": "Kopiuj klucz API",
+    "copied": "Skopiowano"
   },
   "proposal": {
     "flag": {

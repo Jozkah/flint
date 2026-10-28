@@ -1604,7 +1604,8 @@
       "empty": "File ini kosong",
       "needs-file-dialog": "Gunakan “Lampirkan file” untuk dokumen — salinan yang dijatuhkan tidak memiliki path untuk pembaca",
       "sensitive": "Tampak seperti kredensial atau kunci, jadi tidak dibaca",
-      "binary": "Ini bukan file teks, apa pun kata ekstensinya"
+      "binary": "Ini bukan file teks, apa pun kata ekstensinya",
+      "unreadable": "Berkas ini tidak dapat dibaca"
     },
     "addFiles": "Tambah file",
     "addFilesOrImages": "Tambah file atau gambar",
@@ -2920,6 +2921,50 @@
       "medium": "Sedang",
       "low": "Rendah"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Hentikan",
+    "title": "Hentikan pekerjaan yang berjalan",
+    "description": "Pilih jangkauannya. Tidak dapat dibatalkan: pekerjaan yang dihentikan tidak dilanjutkan, termasuk setelah dimulai ulang.",
+    "legend": "Yang dihentikan",
+    "stopping": "Menghentikan. Mengakhiri proses milik sendiri…",
+    "report": {
+      "clean": "Dihentikan. {{stopped}} dihentikan, {{already}} sudah dihentikan, tidak ada yang tersisa.",
+      "partial_one": "{{stopped}} dihentikan, tetapi {{count}} proses masih berjalan. Pembersihan belum selesai.",
+      "partial_other": "{{stopped}} dihentikan, tetapi {{count}} proses masih berjalan. Pembersihan belum selesai."
+    },
+    "error": "Tidak dapat menghentikan: {{error}}",
+    "cancel": "Batal",
+    "close": "Tutup",
+    "confirmBusy": "Menghentikan…",
+    "scope": {
+      "call": {
+        "name": "Panggilan alat ini",
+        "desc": "Hanya panggilan alat ini ({{id}}). Semua yang lain dalam proses tetap berjalan.",
+        "confirm": "Hentikan panggilan alat"
+      },
+      "run": {
+        "name": "Proses ini",
+        "desc": "Proses ini ({{id}}), termasuk panggilan alat, perintah shell, panggilan MCP, dan subagen. Proses lain tidak tersentuh.",
+        "confirm": "Hentikan proses"
+      },
+      "session": {
+        "name": "Sesi ini",
+        "desc": "Setiap proses dalam sesi ini ({{id}}). Sesi lain tidak tersentuh.",
+        "confirm": "Hentikan sesi"
+      },
+      "application": {
+        "name": "Semua di Flint",
+        "desc": "Semua pekerjaan di mana pun di Flint, di setiap sesi. Tidak ada yang berjalan yang dikecualikan.",
+        "confirm": "Hentikan semuanya"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Tampilkan kunci API",
+    "hide": "Sembunyikan kunci API",
+    "copy": "Salin kunci API",
+    "copied": "Disalin"
   },
   "proposal": {
     "flag": {

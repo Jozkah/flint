@@ -1625,7 +1625,8 @@
       "empty": "Bu dosya boş",
       "needs-file-dialog": "Belgeler için \"Dosya ekle\"yi kullanın — bırakılan bir kopyanın okuyucu için yolu yok",
       "sensitive": "Kimlik bilgilerine veya bir anahtara benziyor, bu nedenle okunmadı",
-      "binary": "Bu bir metin dosyası değil, uzantısı ne derse desin"
+      "binary": "Bu bir metin dosyası değil, uzantısı ne derse desin",
+      "unreadable": "Bu dosya okunamadı"
     },
     "addFiles": "Dosya ekle",
     "addFilesOrImages": "Dosya veya görsel ekle",
@@ -2975,6 +2976,50 @@
       "medium": "Orta",
       "low": "Düşük"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Durdur",
+    "title": "Çalışan işi durdur",
+    "description": "Kapsamın ne kadar geniş olacağını seçin. Bu geri alınamaz: durdurulan iş, yeniden başlatmadan sonra bile sürdürülmez.",
+    "legend": "Neyin durdurulacağı",
+    "stopping": "Durduruluyor. Kendi süreçleri sonlandırılıyor…",
+    "report": {
+      "clean": "Durduruldu. {{stopped}} durduruldu, {{already}} zaten durdurulmuştu, çalışan bir şey kalmadı.",
+      "partial_one": "{{stopped}} durduruldu, ancak {{count}} süreç hâlâ çalışıyor. Temizlik tamamlanmadı.",
+      "partial_other": "{{stopped}} durduruldu, ancak {{count}} süreç hâlâ çalışıyor. Temizlik tamamlanmadı."
+    },
+    "error": "Durdurulamadı: {{error}}",
+    "cancel": "İptal",
+    "close": "Kapat",
+    "confirmBusy": "Durduruluyor…",
+    "scope": {
+      "call": {
+        "name": "Bu araç çağrısı",
+        "desc": "Yalnızca bu araç çağrısı ({{id}}). Çalıştırmadaki her şey sürer.",
+        "confirm": "Araç çağrısını durdur"
+      },
+      "run": {
+        "name": "Bu çalıştırma",
+        "desc": "Bu çalıştırma ({{id}}); araç çağrıları, kabuk komutları, MCP çağrıları ve alt ajanlar dahil. Diğer çalıştırmalara dokunulmaz.",
+        "confirm": "Çalıştırmayı durdur"
+      },
+      "session": {
+        "name": "Bu oturum",
+        "desc": "Bu oturumdaki her çalıştırma ({{id}}). Diğer oturumlara dokunulmaz.",
+        "confirm": "Oturumu durdur"
+      },
+      "application": {
+        "name": "Flint'teki her şey",
+        "desc": "Flint'te her yerdeki tüm iş, her oturumda. Çalışan hiçbir şey esirgenmez.",
+        "confirm": "Hepsini durdur"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "API anahtarını göster",
+    "hide": "API anahtarını gizle",
+    "copy": "API anahtarını kopyala",
+    "copied": "Kopyalandı"
   },
   "proposal": {
     "flag": {

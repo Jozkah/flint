@@ -35,9 +35,39 @@ const SOURCE_ROOTS = [
   'core/src',
   'extensions',
   'src-tauri/src',
+  'src-tauri/tauri.conf.json',
+  'src-tauri/capabilities',
+  'scripts',
 ]
 
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.rs'])
+const SOURCE_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.rs',
+  '.mjs',
+  '.cjs',
+  '.mts',
+  '.cts',
+  '.html',
+  '.toml',
+  '.css',
+  '.json',
+])
+
+/** Locale bundles hold user-facing copy with legitimate links, not code. */
+const SKIP_PATH_SEGMENTS = ['locales']
+
+/** Whether a file path is one the source scan should read. */
+export function isScannableFile(file) {
+  const normalized = file.split(path.sep).join('/')
+  if (!SOURCE_EXTENSIONS.has(path.extname(normalized))) return false
+  if (SKIP_FILE.test(path.posix.basename(normalized))) return false
+  return !normalized
+    .split('/')
+    .some((segment) => SKIP_PATH_SEGMENTS.includes(segment))
+}
 
 const SKIP_DIRECTORIES = new Set([
   'node_modules',
@@ -117,6 +147,10 @@ const FORBIDDEN_HOSTS = [
 const URL_LITERAL = /https?:\/\/[^\s"'`)\\<>]+/gi
 
 function* walk(dir) {
+  if (fs.existsSync(dir) && fs.statSync(dir).isFile()) {
+    yield dir
+    return
+  }
   let entries
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -174,8 +208,7 @@ function scanSources() {
   const violations = []
   for (const root of SOURCE_ROOTS) {
     for (const file of walk(path.join(repoRoot, root))) {
-      if (!SOURCE_EXTENSIONS.has(path.extname(file))) continue
-      if (SKIP_FILE.test(path.basename(file))) continue
+      if (!isScannableFile(file)) continue
       violations.push(
         ...inspectSourceText(fs.readFileSync(file, 'utf8'), relative(file))
       )
