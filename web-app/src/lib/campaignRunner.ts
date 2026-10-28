@@ -42,6 +42,10 @@ import { buildTaskSeed, defang, retryHintLead } from '@/lib/campaignSeed'
 import type { CoworkMode } from '@/lib/coworkMode'
 import type { CampaignLink } from '@/types/coworkSession'
 import { errorText } from '@/lib/errorText'
+import { createNotifier, noticeFor } from '@/lib/campaign/notifications'
+import { createSweeper, START_GRACE_MS } from '@/lib/campaign/limits'
+
+export { noticeFor, START_GRACE_MS }
 
 /** What the runner needs from the app, injected so tests need no stores. */
 export type RunnerHost = {
@@ -144,57 +148,6 @@ export type RunnerHost = {
   now?: () => number
 }
 
-/**
- * The one desktop notification a campaign's state calls for, or null. The key
- * is what makes it once per transition: the same state yields the same key.
- */
-export function noticeFor(
-  c: Campaign
-): { key: string; title: string; body: string } | null {
-  if (c.status === 'done') {
-    return {
-      key: 'done',
-      title: `Campaign done: ${c.title}`,
-      body: 'Its changes were applied.',
-    }
-  }
-  if (c.status === 'failed') {
-    return {
-      key: 'failed',
-      title: `Campaign failed: ${c.title}`,
-      body: 'Open the board to see why.',
-    }
-  }
-  if (c.status === 'reviewing') {
-    return {
-      key: `reviewing:${c.proposalId ?? ''}:${c.gate?.at ?? ''}`,
-      title: `Ready for your review: ${c.title}`,
-      body: 'Every task is merged. Review the changes.',
-    }
-  }
-  if (c.status !== 'running' && c.status !== 'paused') return null
-  const waiting = c.tasks
-    .filter(
-      (t) =>
-        t.status === 'awaiting_input' ||
-        t.status === 'awaiting_approval' ||
-        t.status === 'failed' ||
-        (t.status === 'conflict' && (t.resolver?.attempts ?? 0) >= 1) ||
-        (t.status === 'completed' && t.verdict === 'BLOCKED')
-    )
-    .map((t) => `${t.id}@${t.status}`)
-    .sort()
-  if (waiting.length === 0) return null
-  return {
-    key: `needs-you:${waiting.join(',')}`,
-    title: `Needs you: ${c.title}`,
-    body:
-      waiting.length === 1
-        ? '1 task is waiting for you.'
-        : `${waiting.length} tasks are waiting for you.`,
-  }
-}
-
 /** Reasoning blocks removed, as the backend does before it reads a verdict. */
 export function stripReasoning(text: string): string {
   let out = text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '')
@@ -232,8 +185,6 @@ const VERDICT_REMINDER =
 /** Re-verifications a resume starts for one task before leaving it to a person. */
 export const MAX_REVERIFY = 2
 
-/** How long after starting a task its run may take to appear before the pane is judged closed. */
-export const START_GRACE_MS = 15_000
 
 export type RunnerResult = {
   started: string[]
@@ -970,121 +921,21 @@ export function createCampaignRunner(
   }
 
   // -------------------------------------------------------------------------
-  // Desktop notifications
+  // Limits, waiting state, closed panes (campaign/limits.ts), notifications
+  // (campaign/notifications.ts)
   // -------------------------------------------------------------------------
 
-  /** Keys already claimed by this process; the log covers earlier ones. */
-  const claimed = new Set<string>()
-
-  /**
-   * One desktop notification per transition into needs-you, reviewing, done
-   * or failed. Claimed in the campaign's event log first, so a restart or a
-   * second window does not repeat it.
-   */
-  const announce = async (c: Campaign): Promise<boolean> => {
-    if (!host.desktopNotify || !api.claimNotice) return false
-    const notice = noticeFor(c)
-    if (!notice) return false
-    const memo = `${c.id}/${notice.key}`
-    if (claimed.has(memo)) return false
-    claimed.add(memo)
-    let first = false
-    try {
-      first = await api.claimNotice(c.id, notice.key)
-    } catch {
-      return false
-    }
-    if (!first) return false
-    return host.desktopNotify(notice.title, notice.body)
-  }
-
-  // -------------------------------------------------------------------------
-  // Limits, waiting state, closed panes
-  // -------------------------------------------------------------------------
-
-  /**
-   * One pass over a campaign's live tasks: stop a run that went over its
-   * wall-clock, step or token limit (it fails with that reason), mirror who a
-   * run waits on, and re-queue a task whose pane closed before its run began.
-   */
-  const sweep = (id: string): Promise<void> =>
-    serialize(id, async () => {
-      const c = await api.get(id)
-      if (isServerDriven(c)) return
-      if (c.status !== 'running') {
-        await announce(c).catch(() => undefined)
-        return
-      }
-      const t0 = now()
-      const live = host.liveSessions()
-      for (const t of c.tasks) {
-        if (!isLiveTask(t.status) || !t.sessionId) continue
-        const sid = t.sessionId
-        const running = live.has(sid)
-
-        if (running) {
-          const info = host.runInfo?.(sid)
-          if (info) {
-            const secs = c.limits.wallClockSecs
-            const steps = c.limits.taskSteps
-            const tokens = c.limits.taskTokens
-            const why =
-              secs && t0 - info.startedAt > secs * 1000
-                ? `wall-clock limit of ${secs}s reached`
-                : steps && info.steps >= steps
-                  ? `step limit of ${steps} reached`
-                  : tokens && info.tokens >= tokens
-                    ? `token limit of ${tokens} reached`
-                    : null
-            if (why && !limitReasons.has(sid)) {
-              limitReasons.set(sid, why)
-              host.abortRun(sid)
-              continue
-            }
-          }
-          const waiting = host.waitingOn?.(sid) ?? null
-          const want =
-            waiting === 'approval'
-              ? 'awaiting_approval'
-              : waiting === 'input'
-                ? 'awaiting_input'
-                : 'running'
-          if (want !== t.status) {
-            // A waiting task goes back through `running` before another wait.
-            if (t.status !== 'running' && want !== 'running') {
-              await api
-                .transition(id, { task: { id: t.id, to: 'running' } })
-                .catch(() => undefined)
-            }
-            await api
-              .transition(id, { task: { id: t.id, to: want } })
-              .catch(() => undefined)
-          }
-          continue
-        }
-
-        // No run. If it ended, onRunEnded settles it. If it never began and
-        // nobody can see the session, the pane was closed: queue it again.
-        if (host.hasEnded?.(sid)) continue
-        if (host.isShown?.(sid) !== false) continue
-        const began = startedAt.get(t.id)
-        if (began !== undefined && t0 - began < START_GRACE_MS) continue
-        await api
-          .transition(id, { task: { id: t.id, to: 'interrupted' } })
-          .catch(() => undefined)
-        await api
-          .transition(id, {
-            task: {
-              id: t.id,
-              to: 'queued',
-              patch: { detail: 'its pane closed before the run started' },
-            },
-          })
-          .catch(() => undefined)
-      }
-      await tick(id).catch(() => undefined)
-      await announce(await api.get(id)).catch(() => undefined)
-    })
+  const { announce } = createNotifier({ host, api })
+  const { sweep } = createSweeper({
+    host,
+    api,
+    now,
+    serialize,
+    tick: (id) => tick(id),
+    announce,
+    limitReasons,
+    startedAt,
+  })
 
   /**
    * After a restart: re-queue what was interrupted and run again. Unfinished
