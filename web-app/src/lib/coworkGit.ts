@@ -112,7 +112,10 @@ export function loadCommitPr(project: string, sha: string): Promise<CommitPr> {
   if (!hit) {
     hit = (
       invoke('agent_git_pr_for_commit', { project, sha }) as Promise<CommitPr>
-    ).catch(() => null)
+    ).catch(() => {
+      prCache.delete(key)
+      return null
+    })
     prCache.set(key, hit)
   }
   return hit

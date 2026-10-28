@@ -146,6 +146,15 @@ function segmentIsReadOnly(segment: string): boolean {
   if (words.length === 0) return false
   const first = words[0].toLowerCase()
 
+  // Following a file never ends, so it is not a read.
+  if (words.some((w) => w.toLowerCase() === '-wait')) return false
+  if (
+    first === 'tail' &&
+    words.some((w) => /^-[A-Za-z]*[fF]/.test(w) || /^--follow/i.test(w))
+  ) {
+    return false
+  }
+
   if (READ_ONLY_COMMANDS.has(first)) return true
 
   // `<tool> --version`, for a known tool only, and nothing else.
