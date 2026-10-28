@@ -4,7 +4,12 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { AppConfiguration } from '@janhq/core'
-import type { FactoryResetOptions, LogChunk, LogEntry } from './types'
+import type {
+  FactoryResetOptions,
+  HfEndpointSetting,
+  LogChunk,
+  LogEntry,
+} from './types'
 import { DefaultAppService } from './default'
 import { pruneLocalStorageByFlags } from './reset-localstorage'
 
@@ -143,6 +148,17 @@ export class TauriAppService extends DefaultAppService {
 
   async setDownloadSpeedLimit(bytesPerSec: number): Promise<void> {
     await invoke('set_download_speed_limit', { bytesPerSec })
+  }
+
+  async getHfEndpointSetting(): Promise<HfEndpointSetting> {
+    return await invoke<HfEndpointSetting>('get_hf_endpoint_setting')
+  }
+
+  async setHfEndpointSetting(
+    endpoint: string,
+    sendTokenToMirror: boolean
+  ): Promise<void> {
+    await invoke('set_hf_endpoint_setting', { endpoint, sendTokenToMirror })
   }
 
   async exportRedactedLogs(): Promise<string | null> {
