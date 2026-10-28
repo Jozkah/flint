@@ -202,6 +202,28 @@ export function attachPromptSnapshotToTurns(
   return [...turns, { role: 'assistant', content: '', promptSnapshot: ref }]
 }
 
+/**
+ * Settle every tool row still `running` as an interrupted error: the run that
+ * would have finished the call is gone. Returns the same array when nothing
+ * was running, so callers can keep object identity.
+ */
+export function interruptRunningTools(turns: CoworkTurn[]): CoworkTurn[] {
+  let changed = false
+  const next = turns.map((tn) => {
+    if (tn.role !== 'tool' || tn.status !== 'running') return tn
+    changed = true
+    return {
+      ...tn,
+      status: 'done' as const,
+      isError: true,
+      result: tn.result || '(interrupted)',
+      toolState: 'stale' as const,
+      endedAt: Date.now(),
+    }
+  })
+  return changed ? next : turns
+}
+
 // Apply one wrapped inner subagent event to that subagent's own turn lane
 // (token append / tool_call push / tool_result merge). Pure.
 /** Exported so the event-to-turn mapping is testable on its own. */
@@ -788,22 +810,18 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
     // Run-level failure surfaces via `useMessageErrors` (Generation-failed
     // banner), not as a synthetic tool-error turn — that used to render a
     // misleading error-styled tool card even though no tool call failed.
-    const turns: CoworkTurn[] = (get().liveTurns[sid] ?? []).map((tn) =>
-      tn.role === 'tool' && tn.status === 'running'
-        ? {
-            ...tn,
-            status: 'done' as const,
-            isError: true,
-            result: tn.result || '(interrupted)',
-            // The run that would have finished this call is gone.
-            toolState: 'stale' as const,
-            endedAt: Date.now(),
-          }
-        : tn
-    )
-    const subs = (get().subagents[sid] ?? []).map((r) =>
-      r.status !== 'done' ? { ...r, status: 'done' as const, endedAt: Date.now() } : r
-    )
+    const turns: CoworkTurn[] = interruptRunningTools(get().liveTurns[sid] ?? [])
+    const subs = (get().subagents[sid] ?? []).map((r) => {
+      const subTurns = interruptRunningTools(r.turns ?? [])
+      // A record already done with nothing left running keeps its identity.
+      if (r.status === 'done' && subTurns === r.turns) return r
+      return {
+        ...r,
+        turns: subTurns,
+        status: 'done' as const,
+        endedAt: r.endedAt ?? Date.now(),
+      }
+    })
     set((s) => ({
       liveTurns: { ...s.liveTurns, [sid]: turns },
       subagents: { ...s.subagents, [sid]: subs },

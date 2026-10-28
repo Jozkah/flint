@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useCoworkRun, applyInnerToTurns } from '../useCoworkRun'
+import { useCoworkRun, applyInnerToTurns, interruptRunningTools } from '../useCoworkRun'
 
 // Covers only the llamacpp-attribution slice (llamacppRuns/pendingLlamacppError)
 // added for Cowork's model-load/OOM feedback parity with regular chat — see
@@ -280,5 +280,51 @@ describe('questions in the transcript', () => {
     useCoworkRun.getState().settleAsk('s1', 'call-1', 'answered', [])
     const { turns } = useCoworkRun.getState().finalizeRun('s1')
     expect(turns[0].asks?.[0].state).toBe('answered')
+  })
+})
+
+describe('finalizeRun - subagent tools', () => {
+  const runningTool = { role: 'tool', status: 'running', toolName: 'x', content: '' } as never
+
+  beforeEach(() => {
+    useCoworkRun.setState({ liveTurns: {}, subagents: {} })
+  })
+
+  it('settles a running tool inside a subagent', () => {
+    useCoworkRun.setState({
+      subagents: {
+        s1: [{ runId: 'r', name: 'n', status: 'running', startedAt: 1, turns: [runningTool] }],
+      },
+    } as never)
+    const { subagents } = useCoworkRun.getState().finalizeRun('s1')
+    const tool = subagents[0].turns[0] as { status: string; isError: boolean; result: string; toolState: string }
+    expect(subagents[0].status).toBe('done')
+    expect(tool.status).toBe('done')
+    expect(tool.isError).toBe(true)
+    expect(tool.result).toBe('(interrupted)')
+    expect(tool.toolState).toBe('stale')
+  })
+
+  it('settles a leaked running row on an already-done subagent and keeps its endedAt', () => {
+    useCoworkRun.setState({
+      subagents: {
+        s1: [{ runId: 'r', name: 'n', status: 'done', startedAt: 1, endedAt: 5, turns: [runningTool] }],
+      },
+    } as never)
+    const { subagents } = useCoworkRun.getState().finalizeRun('s1')
+    expect(subagents[0].endedAt).toBe(5)
+    expect((subagents[0].turns[0] as { status: string }).status).toBe('done')
+  })
+
+  it('keeps the identity of a done subagent with nothing running', () => {
+    const rec = { runId: 'r', name: 'n', status: 'done', startedAt: 1, endedAt: 5, turns: [] }
+    useCoworkRun.setState({ subagents: { s1: [rec] } } as never)
+    const { subagents } = useCoworkRun.getState().finalizeRun('s1')
+    expect(subagents[0]).toBe(rec)
+  })
+
+  it('interruptRunningTools returns the same array when nothing is running', () => {
+    const turns = [{ role: 'assistant', content: 'hi' }] as never[]
+    expect(interruptRunningTools(turns)).toBe(turns)
   })
 })
