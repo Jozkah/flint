@@ -89,7 +89,9 @@ async fn bounded_read_only_call<F: Future<Output = ToolOutcome>>(
 }
 
 mod stuck;
+#[allow(unused_imports)]
 use stuck::*;
+#[allow(unused_imports)]
 pub(crate) use stuck::{StuckDetector, StuckReason, UserGuidance};
 
 #[cfg(not(feature = "cli"))]
@@ -103,7 +105,9 @@ use crate::core::{
 use tauri_plugin_agent_tools::tools::gate::{DenyReason, NetworkPolicy, PermissionDecision};
 
 mod approvals;
+#[allow(unused_imports)]
 use approvals::*;
+#[allow(unused_imports)]
 pub(crate) use approvals::{PermissionRegistry, approval_digest, record_deny_reason, secret_denied_message, secret_prompt_text, secret_unattended_msg};
 
 /// Outstanding unsandboxed-retry offers for `bash` calls the null device
@@ -743,7 +747,9 @@ impl Invocations {
 }
 
 mod model_invoker;
+#[allow(unused_imports)]
 use model_invoker::*;
+#[allow(unused_imports)]
 pub(crate) use model_invoker::{ProviderLane, is_failover_worthy};
 
 struct McpToolInvoker {
@@ -1492,7 +1498,6 @@ fn base36(mut value: u64) -> String {
 }
 
 mod composite;
-use composite::*;
 
 /// Message for a tool blocked by policy, naming the file the rule is actually
 /// in so the block is actionable, not mysterious.
