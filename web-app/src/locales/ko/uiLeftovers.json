@@ -47,7 +47,8 @@
     "memoriesSent": "전송된 기억",
     "withheld": "충돌로 보류됨: {{ids}}",
     "perSec": "{{n}} 토큰/초",
-    "count": "{{n}} 토큰"
+    "count": "{{n}} 토큰",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "서버 호스트 편집"

@@ -149,6 +149,49 @@ fn json(value: &impl serde::Serialize) -> Resp {
     }
 }
 
+#[cfg(unix)]
+type TermSignal = tokio::signal::unix::Signal;
+#[cfg(not(unix))]
+type TermSignal = std::convert::Infallible;
+
+/// A SIGTERM listener, registered once so a signal between two loop turns is
+/// not lost to the default action. `None` off Unix.
+fn term_signal() -> Option<TermSignal> {
+    #[cfg(unix)]
+    {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok()
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
+/// Resolves when SIGTERM arrives; never on a platform without it.
+#[cfg_attr(not(unix), allow(unused_variables))]
+async fn terminated(signal: &mut Option<TermSignal>) {
+    #[cfg(unix)]
+    if let Some(signal) = signal {
+        signal.recv().await;
+        return;
+    }
+    std::future::pending::<()>().await
+}
+
+/// A command failure as a reply: a plain-text message stays text, anything
+/// else is sent as JSON.
+fn failure_reply(failure: super::agent::Fail) -> Resp {
+    let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+    match failure.body {
+        serde_json::Value::String(message) => reply(status, "text/plain; charset=utf-8", message),
+        other => reply(
+            status,
+            "application/json",
+            serde_json::to_vec(&other).unwrap_or_default(),
+        ),
+    }
+}
+
 fn json_created(value: &impl serde::Serialize) -> Resp {
     let mut response = json(value);
     if response.status() == StatusCode::OK {
@@ -832,19 +875,7 @@ async fn rpc_route(
         };
         return match agent.call_campaign(command, &args, caller).await {
             Ok(value) => json(&value),
-            Err(failure) => {
-                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
-                match failure.body {
-                    serde_json::Value::String(message) => {
-                        reply(status, "text/plain; charset=utf-8", message)
-                    }
-                    other => reply(
-                        status,
-                        "application/json",
-                        serde_json::to_vec(&other).unwrap_or_default(),
-                    ),
-                }
-            }
+            Err(failure) => failure_reply(failure),
         };
     }
     if super::runner::handles(command) {
@@ -856,19 +887,7 @@ async fn rpc_route(
         };
         return match agent.call_run(command, &args, caller).await {
             Ok(value) => json(&value),
-            Err(failure) => {
-                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
-                match failure.body {
-                    serde_json::Value::String(message) => {
-                        reply(status, "text/plain; charset=utf-8", message)
-                    }
-                    other => reply(
-                        status,
-                        "application/json",
-                        serde_json::to_vec(&other).unwrap_or_default(),
-                    ),
-                }
-            }
+            Err(failure) => failure_reply(failure),
         };
     }
     if files::handles(command) {
@@ -914,19 +933,7 @@ async fn rpc_route(
         };
         return match outcome {
             Ok(value) => json(&value),
-            Err(failure) => {
-                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
-                match failure.body {
-                    serde_json::Value::String(message) => {
-                        reply(status, "text/plain; charset=utf-8", message)
-                    }
-                    other => reply(
-                        status,
-                        "application/json",
-                        serde_json::to_vec(&other).unwrap_or_default(),
-                    ),
-                }
-            }
+            Err(failure) => failure_reply(failure),
         };
     }
     match command {
@@ -1895,6 +1902,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
     // At most this many connections at once, so idle sockets cannot use up the
     // process's file descriptors and take the server down with them.
     let connections = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
+    let mut term_signal = term_signal();
     loop {
         let (socket, peer) = tokio::select! {
             accepted = listener.accept() => match accepted {
@@ -1908,6 +1916,12 @@ pub async fn serve(options: Options) -> io::Result<()> {
                 }
             },
             _ = tokio::signal::ctrl_c() => {
+                engine::stop(&state.engine, false).await;
+                break;
+            }
+            // `kill` / systemd stop: shut down like Ctrl-C so the engine is
+            // stopped and the run file removed.
+            _ = terminated(&mut term_signal) => {
                 engine::stop(&state.engine, false).await;
                 break;
             }

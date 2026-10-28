@@ -287,7 +287,16 @@ fn too_large() -> Resp {
 async fn read_bytes(body: Incoming, limit: usize) -> Result<Bytes, Resp> {
     match tokio::time::timeout(BODY_DEADLINE, Limited::new(body, limit).collect()).await {
         Ok(Ok(collected)) => Ok(collected.to_bytes()),
-        Ok(Err(_)) => Err(too_large()),
+        // Only the limit is "too large"; a connection that dropped or sent a
+        // broken body mid-read is the client's malformed request.
+        Ok(Err(e)) if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() => {
+            Err(too_large())
+        }
+        Ok(Err(_)) => Err(error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "The request body could not be read",
+        )),
         Err(_) => Err(error(
             StatusCode::REQUEST_TIMEOUT,
             "request_timeout",
@@ -397,7 +406,15 @@ async fn route(
         if method != Method::GET && method != Method::HEAD {
             return error(StatusCode::METHOD_NOT_ALLOWED, "method", "Method not allowed");
         }
-        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, outside, listener.https).await;
+        // The cookie only has to be (re)set when the phone does not already
+        // hold this ticket's; every asset response repeating it is noise.
+        let has_cookie = req
+            .headers()
+            .get(header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(preview::ticket_from_cookie)
+            .is_some_and(|t| t == ticket);
+        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, outside, listener.https, has_cookie).await;
     }
 
     if path == "/" || path == "/m" {
@@ -732,7 +749,7 @@ fn preview_headers(b: hyper::http::response::Builder) -> hyper::http::response::
         .header(header::CACHE_CONTROL, "no-store")
 }
 
-async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, outside: bool, https: bool) -> Resp {
+async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, outside: bool, https: bool, has_cookie: bool) -> Resp {
     let Some(origin) = hub.preview_origin_for(ticket) else {
         return error(StatusCode::NOT_FOUND, "not_found", "This preview has ended");
     };
@@ -744,7 +761,7 @@ async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool
             .body(Full::new(Bytes::new()))
             .expect("static response parts are valid");
     }
-    let set_cookie = true;
+    let set_cookie = !has_cookie;
     let Some(url) = preview::upstream_url(&origin, upstream) else {
         return error(StatusCode::FORBIDDEN, "forbidden", "Forbidden");
     };

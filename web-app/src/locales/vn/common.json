@@ -333,7 +333,8 @@
       "settings": "Cài đặt",
       "threads": "Cuộc trò chuyện"
     },
-    "openItem": "Mở {{item}}"
+    "openItem": "Mở {{item}}",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "Trang",
@@ -895,7 +896,9 @@
         "httpError": "Trang web trả về lỗi: {{message}}",
         "failed": "Không thể tải trang: {{message}}"
       }
-    }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "Chọn cách nạp tệp đính kèm",
@@ -2613,7 +2616,15 @@
     "noMatches": "Không có tham số nào khớp",
     "noneForProvider": "Nhà cung cấp này không có tham số điều chỉnh được.",
     "maybeUnsupported": "Có thể không được {{providers}} hỗ trợ",
-    "modelReports": "Mô hình: {{value}}"
+    "modelReports": "Mô hình: {{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "Ghim tiến độ phía trên cuộc trò chuyện",
@@ -2631,7 +2642,76 @@
     "restartManually": "Hãy khởi động lại Flint để bắt đầu dùng dữ liệu đã di chuyển.",
     "chooseNote": "Không có gì được sao chép cho đến khi bạn xác nhận. Dữ liệu của JAN không bao giờ bị sửa đổi hoặc xóa.",
     "copyDescription": "Sao chép các cuộc trò chuyện, cài đặt và khóa nhà cung cấp của JAN vào Flint, cho các mục bạn chọn bên dưới. Bản thân JAN không bao giờ bị thay đổi hoặc xóa.",
-    "freshDescription": "Khởi động Flint trống. Không có gì được đọc hoặc sao chép từ JAN, kể cả khóa nhà cung cấp, bây giờ hay ở các lần khởi chạy sau. Bạn vẫn có thể nhập từ Cài đặt, Thư mục dữ liệu bất cứ lúc nào."
+    "freshDescription": "Khởi động Flint trống. Không có gì được đọc hoặc sao chép từ JAN, kể cả khóa nhà cung cấp, bây giờ hay ở các lần khởi chạy sau. Bạn vẫn có thể nhập từ Cài đặt, Thư mục dữ liệu bất cứ lúc nào.",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "fileCount_many": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "conflictCount_many": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "Hình ảnh {{n}}",
@@ -3200,7 +3280,13 @@
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}"
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
   },
   "imageLoadFailed": "This image could not be loaded.",
   "attachedImage": "Attached image {{n}}",

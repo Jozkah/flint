@@ -61,6 +61,8 @@ pub fn parse(args: &Value) -> Result<Request, String> {
     let rest = url
         .strip_prefix("http://")
         .ok_or("ERROR: local_http only takes http:// addresses on this computer.")?;
+    // The fragment is client-side only; never send it.
+    let rest = rest.split('#').next().unwrap_or("");
     let (authority, target) = match rest.find(['/', '?']) {
         Some(i) if rest.as_bytes()[i] == b'/' => (&rest[..i], rest[i..].to_string()),
         Some(i) => (&rest[..i], format!("/{}", &rest[i..])),
@@ -72,6 +74,7 @@ pub fn parse(args: &Value) -> Result<Request, String> {
     if target.chars().any(|c| c.is_control() || c == ' ') {
         return Err("ERROR: local_http addresses may not contain spaces or control characters.".into());
     }
+    let target = percent_encode_non_ascii(&target);
     let bad_port = "ERROR: the port is not a number from 0 to 65535.";
     let (host, port) = if let Some(inner) = authority.strip_prefix('[') {
         let (h, after) = inner.split_once(']').ok_or("ERROR: the address is malformed.")?;
@@ -81,6 +84,8 @@ pub fn parse(args: &Value) -> Result<Request, String> {
             None => return Err("ERROR: the address is malformed.".into()),
         };
         (h.to_string(), port)
+    } else if authority.matches(':').count() > 1 {
+        return Err("ERROR: write an IPv6 address in brackets, like http://[::1]:8080/.".into());
     } else if let Some((h, p)) = authority.rsplit_once(':') {
         (h.to_string(), p.parse::<u16>().map_err(|_| bad_port)?)
     } else {
@@ -90,6 +95,22 @@ pub fn parse(args: &Value) -> Result<Request, String> {
         return Err("ERROR: the host name is malformed.".into());
     }
     Ok(Request { head, host, port, target, max_bytes })
+}
+
+/// Non-ASCII characters in the request target, percent-encoded as UTF-8.
+fn percent_encode_non_ascii(target: &str) -> String {
+    let mut out = String::with_capacity(target.len());
+    for c in target.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            let mut buf = [0u8; 4];
+            for b in c.encode_utf8(&mut buf).bytes() {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+    }
+    out
 }
 
 /// The one address a request may use: every resolved address must be loopback.
@@ -110,12 +131,18 @@ fn ip_is_loopback(ip: IpAddr) -> bool {
 }
 
 /// Status line, the headers worth showing, then the body as text.
-fn render(raw: &[u8], head: bool, truncated: bool) -> String {
+fn render(raw: &[u8], head: bool, max_bytes: usize, truncated: bool) -> String {
     let split = raw.windows(4).position(|w| w == b"\r\n\r\n");
-    let (header_bytes, body) = match split {
+    let (header_bytes, mut body) = match split {
         Some(i) => (&raw[..i], &raw[i + 4..]),
         None => (raw, &raw[raw.len()..]),
     };
+    // The read limit leaves room for headers; the body itself stops at max_bytes.
+    let mut truncated = truncated;
+    if body.len() > max_bytes {
+        body = &body[..max_bytes];
+        truncated = true;
+    }
     let header_text = String::from_utf8_lossy(header_bytes);
     let mut lines = header_text.lines();
     let status = lines.next().unwrap_or("").to_string();
@@ -206,7 +233,7 @@ pub async fn local_http(args: &Value) -> String {
     match tokio::time::timeout(Duration::from_secs(TIMEOUT_SECS), exchange).await {
         Err(_) => format!("ERROR: {} did not answer within {TIMEOUT_SECS} seconds.", req.host),
         Ok(Err(message)) => message,
-        Ok(Ok((raw, truncated))) => render(&raw, req.head, truncated),
+        Ok(Ok((raw, truncated))) => render(&raw, req.head, req.max_bytes, truncated),
     }
 }
 
@@ -237,6 +264,22 @@ mod tests {
         assert_eq!((r.port, r.target.as_str(), r.head), (80, "/", true));
         let r = parse(&json!({ "url": "http://[::1]:8080?q=1" })).unwrap();
         assert_eq!((r.host.as_str(), r.port, r.target.as_str()), ("::1", 8080, "/?q=1"));
+    }
+
+    #[test]
+    fn strips_fragment_encodes_non_ascii_and_wants_brackets() {
+        let r = parse(&json!({ "url": "http://localhost:1/a#frag?x" })).unwrap();
+        assert_eq!(r.target, "/a");
+        let r = parse(&json!({ "url": "http://localhost:1/caf\u{e9}" })).unwrap();
+        assert_eq!(r.target, "/caf%C3%A9");
+        assert!(parse(&json!({ "url": "http://::1:8080/" })).is_err());
+    }
+
+    #[test]
+    fn body_over_max_bytes_is_cut() {
+        let raw = b"HTTP/1.0 200 OK\r\n\r\nabcdefghij";
+        let out = render(raw, false, 4, false);
+        assert!(out.contains("\n\nabcd\n[body cut"), "{out}");
     }
 
     #[test]
@@ -272,11 +315,11 @@ mod tests {
     #[test]
     fn renders_status_chosen_headers_and_a_redacted_body() {
         let raw = b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nSet-Cookie: a=b\r\nServer: x\r\n\r\nhello";
-        let out = render(raw, false, false);
+        let out = render(raw, false, 1024, false);
         assert!(out.starts_with("HTTP/1.0 200 OK\nContent-Type: text/plain\nServer: x"));
         assert!(!out.contains("Set-Cookie"));
         assert!(out.ends_with("hello"));
-        assert!(!render(raw, true, false).contains("hello"));
+        assert!(!render(raw, true, 1024, false).contains("hello"));
     }
 
     #[tokio::test]

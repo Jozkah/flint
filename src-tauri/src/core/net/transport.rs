@@ -93,6 +93,8 @@ impl Resolve for EndpointResolver {
 
 /// One client per endpoint, because the resolver has to know the port and the
 /// `Resolve` trait is only given the hostname.
+const MAX_CACHED_CLIENTS: usize = 64;
+
 fn clients() -> &'static Mutex<HashMap<(String, u16), Client>> {
     static CLIENTS: OnceLock<Mutex<HashMap<(String, u16), Client>>> = OnceLock::new();
     CLIENTS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -110,16 +112,10 @@ fn endpoint_of(url: &str) -> Result<(String, u16), String> {
     Ok((host, port))
 }
 
-/// Whether `host` is this machine. A proxy configured for the system or the
-/// environment (a VPN client, `HTTP_PROXY`) must not carry a request to a local
-/// engine: it either cannot reach it or sends the model's traffic elsewhere.
-fn is_loopback_host(host: &str) -> bool {
-    let host = host.trim_matches(|c| c == '[' || c == ']');
-    host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback())
-}
+// A proxy configured for the system or the environment (a VPN client,
+// `HTTP_PROXY`) must not carry a request to a local engine: it either cannot
+// reach it or sends the model's traffic elsewhere.
+use super::proxy::is_loopback_host;
 
 fn client_for(host: &str, port: u16) -> Result<Client, String> {
     // AH-190: clients built under another CA bundle are not reused.
@@ -176,6 +172,11 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
     .build()
         .map_err(|e| format!("could not build an HTTP client for {host}:{port}: {e}"))?;
     if let Ok(mut cache) = clients().lock() {
+        // Bounded: a client per endpoint ever dialled would grow for the life
+        // of the process. Rebuilding one is cheap, so a full cache starts over.
+        if cache.len() >= MAX_CACHED_CLIENTS {
+            cache.clear();
+        }
         cache.insert(key, client.clone());
     }
     Ok(client)

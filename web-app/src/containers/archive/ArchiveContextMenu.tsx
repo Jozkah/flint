@@ -57,6 +57,14 @@ export function ArchiveContextMenu({
     setAt(fitToViewport(x, y, box?.width ?? 0, box?.height ?? 0))
   }, [x, y])
 
+  // Focus returns to whatever opened the menu when it closes.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    return () => {
+      if (opener && opener.isConnected) opener.focus?.()
+    }
+  }, [])
+
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus()
     const away = (e: MouseEvent) => {
@@ -72,11 +80,24 @@ export function ArchiveContextMenu({
       onClose()
       return
     }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    // Tab would walk out of a floating menu: close it instead.
+    if (e.key === 'Tab') {
+      onClose()
+      return
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
     e.preventDefault()
     const items = Array.from(
       ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? []
     )
+    if (e.key === 'Home') {
+      items[0]?.focus()
+      return
+    }
+    if (e.key === 'End') {
+      items[items.length - 1]?.focus()
+      return
+    }
     const at = items.indexOf(document.activeElement as HTMLButtonElement)
     const step = e.key === 'ArrowDown' ? 1 : -1
     items[(at + step + items.length) % items.length]?.focus()

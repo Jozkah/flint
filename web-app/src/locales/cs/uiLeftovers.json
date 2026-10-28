@@ -47,7 +47,8 @@
     "memoriesSent": "Odeslané vzpomínky",
     "withheld": "Zadrženo kvůli rozporu: {{ids}}",
     "perSec": "{{n}} tokenů/s",
-    "count": "{{n}} tokenů"
+    "count": "{{n}} tokenů",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Upravit hostitele serveru"
