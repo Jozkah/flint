@@ -393,7 +393,8 @@ mod tests {
         let tmp = tempfile::Builder::new().prefix("flint-shared-browser-").tempdir().unwrap();
         let exe = tmp.path().join("brave-browser");
         std::fs::write(&exe, b"x").unwrap();
-        set_chosen_browser(exe.to_str().unwrap()).unwrap();
+        // set_chosen_browser would probe the file; this test only checks sharing.
+        browser_discovery::restore_chosen_browser(Some(exe.to_str().unwrap().to_string()));
         let info = find_browser();
         assert_eq!(info.path.as_deref(), Some(exe.to_str().unwrap()));
         assert_eq!(info.name.as_deref(), Some("Brave"));

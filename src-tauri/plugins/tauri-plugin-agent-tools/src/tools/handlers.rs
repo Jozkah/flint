@@ -9530,7 +9530,8 @@ export function verifyPassword(password: string, stored: string) {
         let exe = root.join("brave-browser");
         std::fs::write(&exe, b"x").unwrap();
         let before = crate::browser_discovery::chosen_browser();
-        crate::browser_discovery::set_chosen_browser(exe.to_str().unwrap()).unwrap();
+        // set_chosen_browser would probe the file; this test only checks sharing.
+        crate::browser_discovery::restore_chosen_browser(Some(exe.to_str().unwrap().to_string()));
         let found = chrome_binary();
         crate::browser_discovery::restore_chosen_browser(before);
         assert_eq!(found.as_deref(), Some(exe.as_path()));
