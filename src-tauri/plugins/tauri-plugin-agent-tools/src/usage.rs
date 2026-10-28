@@ -9,7 +9,7 @@
 //! request": a run makes many model calls, and a count shown beside the wrong
 //! payload is worse than no count, because it looks authoritative.
 
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -97,9 +97,7 @@ pub fn read_all(data_folder: &Path) -> Vec<PayloadUsage> {
     let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
         return Vec::new();
     };
-    std::io::BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
+    crate::retention::lossy_lines(file)
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect()
@@ -196,6 +194,20 @@ mod tests {
         r.snapshot_hash = "fnv1a64:abc".into();
         r.prompt_tokens = Some(prompt);
         r
+    }
+
+    #[test]
+    fn usage_reader_survives_invalid_utf8_line() {
+        let dir = scratch();
+        append(&dir, &seed("i1", UsageSource::Provider, 100));
+        let path = log_path(&dir);
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(b"{\"bad\":\"\xFF\"\n");
+        std::fs::write(&path, bytes).unwrap();
+        append(&dir, &seed("i2", UsageSource::Provider, 900));
+
+        assert_eq!(read_all(&dir).len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
