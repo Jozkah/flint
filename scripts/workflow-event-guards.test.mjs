@@ -47,3 +47,12 @@ for (const name of ['jan-linter-and-test.yml']) {
     }
   })
 }
+
+// Releases made with GITHUB_TOKEN emit no `release: published`, so
+// release-please has to dispatch the CLI release and the website itself.
+test('release-please dispatches cli release and website', () => {
+  const text = read('release-please.yml')
+  assert.match(text, /gh workflow run flint-cli-release\.yml .*-f tag=/)
+  assert.match(text, /gh workflow run website\.yml/)
+  assert.match(text, /^ {6}HAS_PAT: /m)
+})
