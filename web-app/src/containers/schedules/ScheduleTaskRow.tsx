@@ -18,7 +18,7 @@ type Props = {
 
 /** One task: what it does and when, its controls, and its run history. */
 export function ScheduleTaskRow({ view, onToggle, onRunNow, onEdit, onDelete }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [showHistory, setShowHistory] = useState(false)
   const { task, nextFires, lastRun, running } = view
   const next = nextFires[0]
@@ -39,15 +39,15 @@ export function ScheduleTaskRow({ view, onToggle, onRunNow, onEdit, onDelete }: 
             )}
             {!task.enabled && <Chip>{t('schedules:list.disabled')}</Chip>}
           </div>
-          <p className="text-xs text-muted-foreground">{describeSchedule(task.schedule, t)}</p>
+          <p className="text-xs text-muted-foreground">{describeSchedule(task.schedule, t, i18n?.language)}</p>
           <p className="text-xs text-muted-foreground">
             {task.enabled && next
-              ? t('schedules:list.nextRun', { when: formatWhen(next) })
+              ? t('schedules:list.nextRun', { when: formatWhen(next, i18n?.language) })
               : t('schedules:list.noNextRun')}
             {' · '}
             {lastRun ? (
               <>
-                {t('schedules:list.lastRun', { when: formatWhen(lastRun.startedAtMs) })}{' '}
+                {t('schedules:list.lastRun', { when: formatWhen(lastRun.startedAtMs, i18n?.language) })}{' '}
                 <Chip tone={statusTone(lastRun.status)} dot className="ml-1 align-middle">
                   {t(`schedules:status.${lastRun.status}`)}
                 </Chip>

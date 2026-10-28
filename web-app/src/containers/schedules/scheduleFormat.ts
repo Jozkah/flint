@@ -12,24 +12,31 @@ export function weekdayName(day: number, locale?: string): string {
 }
 
 /** "Every day at 09:00, 17:30" in the user's language. */
-export function describeSchedule(spec: ScheduleSpec, t: Translate): string {
+export function describeSchedule(
+  spec: ScheduleSpec,
+  t: Translate,
+  locale?: string
+): string {
   if (spec.kind === 'cron') return t('schedules:summary.cron', { expr: spec.expr })
   if (spec.kind === 'once') return t('schedules:summary.once', { at: spec.at.replace('T', ' ') })
   const times = spec.times.map(formatTime).join(', ')
   if (spec.kind === 'weekly') {
     return t('schedules:summary.weekly', {
-      days: spec.days.map((d) => weekdayName(d)).join(', '),
+      days: spec.days.map((d) => weekdayName(d, locale)).join(', '),
       times,
     })
   }
   return t(`schedules:summary.${spec.kind}`, { times })
 }
 
-export function formatWhen(value: string | number | null | undefined): string {
+export function formatWhen(
+  value: string | number | null | undefined,
+  locale?: string
+): string {
   if (value === null || value === undefined) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
