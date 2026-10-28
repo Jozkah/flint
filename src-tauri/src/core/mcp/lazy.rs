@@ -100,7 +100,15 @@ impl LazyMcp {
             .lock()
             .unwrap()
             .insert(name.to_string(), Transient::Starting);
+        // If the caller is dropped mid-start, the guard clears `Starting` so the
+        // server does not show as starting forever and a later call retries.
+        let mut guard = StartGuard {
+            transient: &self.transient,
+            name,
+            done: false,
+        };
         let result = start().await;
+        guard.done = true;
         let mut transient = self.transient.lock().unwrap();
         match &result {
             Ok(()) => {
@@ -184,6 +192,28 @@ impl LazyMcp {
             })
             .cloned()
             .collect()
+    }
+}
+
+/// Clears a `Starting` entry when the start future is dropped before it
+/// finishes. The per-name gate is held for the whole start, so no newer
+/// attempt can have replaced the entry; it is only removed if still `Starting`.
+struct StartGuard<'a> {
+    transient: &'a StdMutex<HashMap<String, Transient>>,
+    name: &'a str,
+    done: bool,
+}
+
+impl Drop for StartGuard<'_> {
+    fn drop(&mut self) {
+        if self.done {
+            return;
+        }
+        if let Ok(mut transient) = self.transient.lock() {
+            if matches!(transient.get(self.name), Some(Transient::Starting)) {
+                transient.remove(self.name);
+            }
+        }
     }
 }
 
@@ -405,6 +435,38 @@ mod tests {
             .await;
         assert!(r.is_ok());
         assert_eq!(starts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn ensure_cancelled_mid_start_clears_starting() {
+        let lazy = LazyMcp::default();
+        let cancelled = tokio::time::timeout(
+            Duration::from_millis(30),
+            lazy.ensure("a", || async { false }, || std::future::pending::<Result<(), String>>()),
+        )
+        .await;
+        assert!(cancelled.is_err());
+        assert_eq!(lazy.status("a", false), ServerStatus::Stopped);
+    }
+
+    #[tokio::test]
+    async fn ensure_cancelled_then_retry_starts() {
+        let lazy = LazyMcp::default();
+        let _ = tokio::time::timeout(
+            Duration::from_millis(30),
+            lazy.ensure("a", || async { false }, || std::future::pending::<Result<(), String>>()),
+        )
+        .await;
+        let starts = Arc::new(AtomicUsize::new(0));
+        let s = starts.clone();
+        let r = lazy
+            .ensure("a", || async { false }, || async move {
+                s.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            })
+            .await;
+        assert!(r.is_ok());
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
