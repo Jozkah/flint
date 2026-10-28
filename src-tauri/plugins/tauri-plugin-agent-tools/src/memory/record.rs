@@ -605,12 +605,58 @@ pub fn incompatible_subject(
     a: &str,
     b: &str,
 ) -> Option<(&'static str, &'static str, &'static str)> {
-    let (ta, tb) = (a.to_lowercase(), b.to_lowercase());
+    subject_of_masks(word_mask(a), word_mask(b))
+}
+
+/// The distinct words of [`INCOMPATIBLE`], in first-seen order. Each has one
+/// bit in a [`word_mask`].
+fn incompatible_words() -> &'static [&'static str] {
+    static WORDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    WORDS.get_or_init(|| {
+        let mut words: Vec<&'static str> = Vec::new();
+        for (left, right, _) in INCOMPATIBLE {
+            for w in [*left, *right] {
+                if !words.contains(&w) {
+                    words.push(w);
+                }
+            }
+        }
+        assert!(words.len() <= 64, "one bit per word");
+        words
+    })
+}
+
+fn bit(word: &str) -> u64 {
+    let index = incompatible_words().iter().position(|w| *w == word).expect("an INCOMPATIBLE word");
+    1u64 << index
+}
+
+/// Which [`INCOMPATIBLE`] words `text` mentions as whole words, one bit each.
+/// Lower-cased and tokenised once, so a record is read once however many it
+/// is compared with.
+fn word_mask(text: &str) -> u64 {
+    let lower = text.to_lowercase();
+    let words = incompatible_words();
+    let mut mask = 0u64;
+    for word in lower.split(|c: char| !c.is_alphanumeric()) {
+        if let Some(i) = words.iter().position(|w| *w == word) {
+            mask |= 1u64 << i;
+        }
+    }
+    mask
+}
+
+/// [`incompatible_subject`] from two masks: the same rule, in the same order.
+fn subject_of_masks(ma: u64, mb: u64) -> Option<(&'static str, &'static str, &'static str)> {
+    if ma == 0 || mb == 0 {
+        return None;
+    }
     for (left, right, subject) in INCOMPATIBLE {
-        let a_left = mentions(&ta, left) && !mentions(&ta, right);
-        let b_right = mentions(&tb, right) && !mentions(&tb, left);
-        let a_right = mentions(&ta, right) && !mentions(&ta, left);
-        let b_left = mentions(&tb, left) && !mentions(&tb, right);
+        let (l, r) = (bit(left), bit(right));
+        let a_left = ma & l != 0 && ma & r == 0;
+        let b_right = mb & r != 0 && mb & l == 0;
+        let a_right = ma & r != 0 && ma & l == 0;
+        let b_left = mb & l != 0 && mb & r == 0;
         if a_left && b_right {
             return Some((subject, left, right));
         }
@@ -621,6 +667,27 @@ pub fn incompatible_subject(
     None
 }
 
+/// The conflicts `candidate` would have with `existing`, as
+/// [`detect_conflicts`] reports them with `candidate` last: one pass, the
+/// candidate read once.
+pub fn conflicts_with(candidate: &MemoryRecord, existing: &[MemoryRecord]) -> Vec<Conflict> {
+    let mc = word_mask(&candidate.content);
+    if mc == 0 {
+        return Vec::new();
+    }
+    existing
+        .iter()
+        .filter(|a| could_apply_together(a, candidate))
+        .filter_map(|a| {
+            subject_of_masks(word_mask(&a.content), mc).map(|(subject, _, _)| Conflict {
+                left: a.id.clone(),
+                right: candidate.id.clone(),
+                subject: subject.to_string(),
+            })
+        })
+        .collect()
+}
+
 /// Find conflicts among applicable records.
 ///
 /// Deliberately conservative: it reports a pair only when both records mention
@@ -629,8 +696,17 @@ pub fn incompatible_subject(
 /// records -- being noisy would quietly stop good memories being used.
 pub fn detect_conflicts(records: &[MemoryRecord]) -> Vec<Conflict> {
     let mut out = Vec::new();
+    // Each record tokenised once; a record naming none of the words is in no
+    // pair at all.
+    let masks: Vec<u64> = records.iter().map(|r| word_mask(&r.content)).collect();
     for (i, a) in records.iter().enumerate() {
-        for b in records.iter().skip(i + 1) {
+        if masks[i] == 0 {
+            continue;
+        }
+        for (j, b) in records.iter().enumerate().skip(i + 1) {
+            if masks[j] == 0 {
+                continue;
+            }
             // Records that cannot apply together cannot conflict: a memory in
             // another session or project is not in the argument. Either
             // mismatch alone is enough to keep them apart; a differing scope
@@ -638,7 +714,7 @@ pub fn detect_conflicts(records: &[MemoryRecord]) -> Vec<Conflict> {
             if !could_apply_together(a, b) {
                 continue;
             }
-            if let Some((subject, _, _)) = incompatible_subject(&a.content, &b.content) {
+            if let Some((subject, _, _)) = subject_of_masks(masks[i], masks[j]) {
                 out.push(Conflict {
                     left: a.id.clone(),
                     right: b.id.clone(),
@@ -661,6 +737,7 @@ fn could_apply_together(a: &MemoryRecord, b: &MemoryRecord) -> bool {
 }
 
 /// Whole-word containment, so "npm" does not match inside "npmrc-free".
+#[cfg(test)]
 fn mentions(haystack: &str, needle: &str) -> bool {
     haystack
         .split(|c: char| !c.is_alphanumeric())
@@ -941,6 +1018,76 @@ mod tests {
             b.updated_at = ub;
             assert_eq!(prefer(&a, &b).0.id, prefer(&b, &a).0.id, "asymmetric");
         }
+    }
+
+    /// The old all-pairs comparison, kept as the oracle for the mask version.
+    fn old_subject(a: &str, b: &str) -> Option<(&'static str, &'static str, &'static str)> {
+        let (ta, tb) = (a.to_lowercase(), b.to_lowercase());
+        for (left, right, subject) in INCOMPATIBLE {
+            let a_left = mentions(&ta, left) && !mentions(&ta, right);
+            let b_right = mentions(&tb, right) && !mentions(&tb, left);
+            let a_right = mentions(&ta, right) && !mentions(&ta, left);
+            let b_left = mentions(&tb, left) && !mentions(&tb, right);
+            if a_left && b_right {
+                return Some((subject, left, right));
+            }
+            if a_right && b_left {
+                return Some((subject, right, left));
+            }
+        }
+        None
+    }
+
+    /// Golden: 500 records give the same conflicts, in the same order, as the
+    /// all-pairs comparison did; and `conflicts_with` matches the filtered set.
+    #[test]
+    fn mask_conflicts_match_the_all_pairs_comparison() {
+        let words = [
+            "npm", "yarn", "pnpm", "briefly", "detailed", "brief", "verbose", "concise", "tabs",
+            "spaces", "jest", "vitest", "mocha", "rebase", "merge", "lf", "crlf", "black", "ruff",
+            "prettier", "biome", "NPM", "npmrc", "other", "words", "Use",
+        ];
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let records: Vec<MemoryRecord> = (0..500)
+            .map(|i| {
+                let n = (next() % 4) as usize;
+                let text: Vec<&str> = (0..n).map(|_| words[(next() % words.len() as u64) as usize]).collect();
+                let mut r = rec(&format!("r{i}"), &text.join(" ,"), Scope::Project);
+                r.project_id = Some("p".into());
+                r
+            })
+            .collect();
+        let mut old = Vec::new();
+        for (i, a) in records.iter().enumerate() {
+            for b in records.iter().skip(i + 1) {
+                if let Some((subject, _, _)) = old_subject(&a.content, &b.content) {
+                    old.push((a.id.clone(), b.id.clone(), subject.to_string()));
+                }
+            }
+        }
+        let new: Vec<_> = detect_conflicts(&records)
+            .into_iter()
+            .map(|c| (c.left, c.right, c.subject))
+            .collect();
+        assert!(!old.is_empty());
+        assert_eq!(new, old);
+        for (i, a) in records.iter().enumerate().take(40) {
+            for b in records.iter().take(40) {
+                assert_eq!(incompatible_subject(&a.content, &b.content), old_subject(&a.content, &b.content), "{i}");
+            }
+        }
+        let (last, rest) = records.split_last().unwrap();
+        let filtered: Vec<_> = detect_conflicts(&records)
+            .into_iter()
+            .filter(|c| c.right == last.id)
+            .collect();
+        assert_eq!(conflicts_with(last, rest), filtered);
     }
 
     #[test]

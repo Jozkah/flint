@@ -424,6 +424,56 @@ pub fn list(data_folder: &Path, project: &str) -> Vec<ProposalRecord> {
     out
 }
 
+/// Remove settled (not pending) proposals created before `cutoff` (Unix
+/// seconds), then every blob no remaining proposal names. A blob younger than
+/// an hour is kept: a proposal being created stores its blobs before its
+/// record. Returns how many proposals were removed.
+pub fn prune_settled(data_folder: &Path, cutoff: i64) -> usize {
+    let root = proposals_root(data_folder);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return 0;
+    };
+    let mut removed = 0;
+    let mut referenced = BTreeSet::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|x| x != "json") {
+            continue;
+        }
+        let Some(record) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<ProposalRecord>(&t).ok())
+        else {
+            // Unreadable: its blobs cannot be known, so none are removed.
+            return removed;
+        };
+        let old = crate::retention::parse_rfc3339(&record.created_at).is_some_and(|t| t < cutoff);
+        if old && record.state != ProposalState::Pending && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+            continue;
+        }
+        for f in &record.files {
+            referenced.extend(f.base_blob.iter().cloned());
+            referenced.extend(f.proposed_blob.iter().cloned());
+        }
+    }
+    if let Ok(blobs) = std::fs::read_dir(root.join("blobs")) {
+        for blob in blobs.flatten() {
+            let name = blob.file_name().to_string_lossy().to_string();
+            let young = blob
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_none_or(|age| age < std::time::Duration::from_secs(3600));
+            if !referenced.contains(&name) && !young {
+                let _ = std::fs::remove_file(blob.path());
+            }
+        }
+    }
+    removed
+}
+
 fn valid_id(id: &str) -> bool {
     id.starts_with("prop-")
         && id.len() <= 80
@@ -759,11 +809,16 @@ pub fn create(
             (Some(_), None) => Change::Deleted,
             _ => Change::Modified,
         };
+        // Judged before anything is written: a credential the agent proposed
+        // is never stored, so it is not left on disk for a proposal that can
+        // never be applied anyway.
+        let sensitive = is_sensitive(&path, input.proposed.as_deref());
         let base_blob = match &input.base {
             Some(b) => Some(store_blob(data_folder, b).map_err(ProposalError::Io)?),
             None => None,
         };
         let proposed_blob = match &input.proposed {
+            Some(_) if sensitive => None,
             Some(b) => Some(store_blob(data_folder, b).map_err(ProposalError::Io)?),
             None => None,
         };
@@ -775,7 +830,6 @@ pub fn create(
             .map_or(0, Vec::len)
             .max(input.proposed.as_ref().map_or(0, Vec::len));
         let oversized = size > OVERSIZED_BYTES;
-        let sensitive = is_sensitive(&path, input.proposed.as_deref());
         let flags = crate::review_flags::flags_for(
             &path,
             input.base.as_deref(),
@@ -783,7 +837,8 @@ pub fn create(
         );
 
         let (mut additions, mut deletions, mut hunks) = (0, 0, Vec::new());
-        if !binary && !oversized {
+        // No hunks for a sensitive file either: their lines are the secret.
+        if !binary && !oversized && !sensitive {
             let base_text = input.base.as_deref().map(|b| String::from_utf8_lossy(b).to_string());
             let new_text = input
                 .proposed
@@ -1749,9 +1804,29 @@ mod tests {
         )
         .unwrap();
         assert!(record.files[0].sensitive);
+        // The proposed secret was never written to the blob store.
+        assert!(record.files[0].proposed_blob.is_none() && record.files[0].hunks.is_empty());
+        let blobs = std::fs::read_dir(proposals_root(&data).join("blobs")).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(blobs, 0);
         let err = apply(&data, &dest, &approve(&record, &dest, vec![all("config.txt")])).unwrap_err();
         assert_eq!(err, ProposalError::Sensitive("config.txt".into()));
         assert!(!dest.join("config.txt").exists());
+    }
+
+    #[test]
+    fn prune_removes_old_settled_proposals_and_keeps_pending() {
+        let (data, dest) = dirs("prune");
+        let input = || vec![FileInput { path: "a.txt".into(), base: None, proposed: Some(b"x\n".to_vec()) }];
+        let pending = create(&data, scope(&dest), "", input()).unwrap();
+        let mut settled = create(&data, scope(&dest), "", input()).unwrap();
+        settled.state = ProposalState::Rejected;
+        save(&data, &settled).unwrap();
+        let future = crate::retention::parse_rfc3339(&settled.created_at).unwrap() + 10;
+        assert_eq!(prune_settled(&data, future), 1);
+        assert!(load(&data, &pending.id).is_ok());
+        assert!(load(&data, &settled.id).is_err());
+        // The pending proposal still names its blob, which is kept.
+        assert!(blob_path(&data, pending.files[0].proposed_blob.as_ref().unwrap()).exists());
     }
 
     #[test]
