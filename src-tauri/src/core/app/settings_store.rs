@@ -516,6 +516,24 @@ pub fn flush_settings() {
     }
 }
 
+/// Every entry whose key is one of `prefixes` or starts with `<prefix>:`.
+pub fn entries_with_prefixes(prefixes: &[&str]) -> Vec<(String, String)> {
+    let store = store();
+    lock(store)
+        .map
+        .iter()
+        .filter(|(key, _)| {
+            prefixes.iter().any(|p| {
+                key.as_str() == *p
+                    || key
+                        .strip_prefix(p)
+                        .is_some_and(|rest| rest.starts_with(':'))
+            })
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
 #[tauri::command]
 pub fn settings_get(key: String) -> Option<String> {
     let store = store();

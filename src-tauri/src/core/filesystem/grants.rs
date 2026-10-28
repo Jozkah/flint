@@ -318,7 +318,144 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
     };
     let store = get_configuration_file_path(app.clone()).with_file_name(STORE_FILE_NAME);
     let data_folder = get_jan_data_folder_path(app.clone());
-    grants.attach_store(store, &data_folder, || in_place_model_paths(&data_folder));
+    grants.attach_store(store, &data_folder, || {
+        let settings = crate::core::app::settings_store::entries_with_prefixes(SETTINGS_KEYS);
+        let mut paths = in_place_model_paths(&data_folder);
+        paths.extend(recorded_user_paths(&data_folder, &settings));
+        paths
+    });
+}
+
+/// Settings-store keys (and their `<key>:<id>` shards) that hold folders and
+/// files the user chose before grants existed: the model library's scan
+/// folders, Cowork sessions' project folders, conversation-group folders,
+/// `@` reference aliases, agent-tools settings and project-init drafts.
+pub const SETTINGS_KEYS: &[&str] = &[
+    "model-library",
+    "code-sessions",
+    "conversation-groups",
+    "reference-aliases",
+    "setting-agent-tools",
+    "project-init-drafts",
+];
+
+/// JSON field names whose string values are user-chosen paths in those
+/// records, thread metadata and message attachments.
+const PATH_FIELDS: &[&str] = &[
+    "folder",
+    "folders",
+    "extrafolders",
+    "extra_folders",
+    "path",
+    "paths",
+    "root",
+    "roots",
+    "folderpath",
+    "projectpath",
+    "project_path",
+    "cwd",
+];
+
+/// Paths the user chose before this version and Flint recorded, for the
+/// one-time migration seed: absolute paths under [`PATH_FIELDS`] in the
+/// given settings entries, in `threads/*/thread.json` and the attachments of
+/// `threads/*/messages.jsonl`, and every folder in the agent-tools trust list
+/// (`trusted-folders.json`). Only paths that exist are returned; each still
+/// goes through the grant caps (no roots, home or secret stores).
+///
+/// These records are webview-writable, so this runs once, on the first start
+/// with grants. Running it on every start would let the webview grant itself
+/// any path by writing a setting.
+pub fn recorded_user_paths(data_folder: &Path, settings: &[(String, String)]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for (_, value) in settings {
+        collect_from_text(value, None, &mut out);
+    }
+    if let Ok(threads) = fs::read_dir(data_folder.join("threads")) {
+        for thread in threads.flatten() {
+            if let Ok(text) = fs::read_to_string(thread.path().join("thread.json")) {
+                collect_from_text(&text, None, &mut out);
+            }
+            if let Ok(text) = fs::read_to_string(thread.path().join("messages.jsonl")) {
+                // Only attachments: tool calls carry `path` arguments the
+                // agent chose, not the user.
+                for line in text.lines() {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+                        collect_attachments(&value, &mut out);
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(text) = fs::read_to_string(data_folder.join("trusted-folders.json")) {
+        if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&text) {
+            collect_paths(&doc, Some("folders"), &mut out);
+        }
+    }
+    let mut seen = Vec::<PathBuf>::new();
+    out.retain(|p| {
+        let keep = p.exists() && !seen.contains(p);
+        if keep {
+            seen.push(p.clone());
+        }
+        keep
+    });
+    out
+}
+
+fn collect_attachments(value: &serde_json::Value, out: &mut Vec<PathBuf>) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            for (k, v) in map {
+                if k.eq_ignore_ascii_case("attachments") {
+                    collect_paths(v, None, out);
+                } else {
+                    collect_attachments(v, out);
+                }
+            }
+        }
+        Value::Array(items) => items.iter().for_each(|v| collect_attachments(v, out)),
+        _ => {}
+    }
+}
+
+fn collect_from_text(text: &str, field: Option<&str>, out: &mut Vec<PathBuf>) {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        collect_paths(&value, field, out);
+    }
+}
+
+/// Walks JSON, taking absolute strings under a path field. Strings that are
+/// themselves JSON (zustand's persisted state) are parsed and walked.
+fn collect_paths(value: &serde_json::Value, field: Option<&str>, out: &mut Vec<PathBuf>) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            for (k, v) in map {
+                collect_paths(v, Some(k), out);
+            }
+        }
+        Value::Array(items) => {
+            for v in items {
+                collect_paths(v, field, out);
+            }
+        }
+        Value::String(s) => {
+            let trimmed = s.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                collect_from_text(s, field, out);
+            } else if field.is_some_and(|f| PATH_FIELDS.contains(&f.to_lowercase().as_str()))
+                && Path::new(s).is_absolute()
+                // A UNC path would make the OS reach that host while seeding.
+                && !s.starts_with("\\\\")
+                && !s.starts_with("//")
+            {
+                out.push(PathBuf::from(s));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Whether a typed `@path` reference may read `canonical`: the home folder or
@@ -653,6 +790,112 @@ mod tests {
         again.attach_store(store, &data, || panic!("seeded twice"));
         assert!(again.allows(&canon(&gguf), &f.data));
         assert!(again.allows(&canon(&picked), &f.data));
+    }
+
+    /// Upgrade path: what the user chose before grants existed, as Flint
+    /// recorded it, stays readable after the first start with grants.
+    fn upgrade(f: &Fx, settings: &[(String, String)]) -> ReadGrants {
+        let data = f.data.clone();
+        let settings = settings.to_vec();
+        let g = ReadGrants::default();
+        g.attach_store(f.root.join("cfg").join(STORE_FILE_NAME), &data, || {
+            recorded_user_paths(&data, &settings)
+        });
+        g
+    }
+
+    #[test]
+    fn a_project_folder_recorded_before_the_upgrade_stays_readable() {
+        let f = fx();
+        // Stands in for a project on another drive: outside home and data.
+        let project = f.root.join("other-drive").join("repo");
+        let file = project.join("src").join("main.rs");
+        touch(&file);
+        let session = serde_json::json!({
+            "state": { "sessions": [{ "id": "s1", "folder": project, "extraFolders": [] }] }
+        });
+        let g = upgrade(&f, &[("code-sessions:s1".into(), session.to_string())]);
+        assert!(g.allows(&canon(&file), &f.data));
+        assert!(!g.allows(&canon(&f.root.join("other-drive")), &f.data));
+    }
+
+    #[test]
+    fn a_model_library_scan_folder_stays_importable() {
+        let f = fx();
+        let folder = f.root.join("models-on-d");
+        let gguf = folder.join("org").join("m.gguf");
+        touch(&gguf);
+        let state = serde_json::json!({ "state": { "folders": [folder] }, "version": 0 });
+        let g = upgrade(&f, &[("model-library".into(), state.to_string())]);
+        assert!(g.allows(&canon(&gguf), &f.data));
+    }
+
+    #[test]
+    fn attachments_threads_and_trusted_folders_are_seeded_but_tool_paths_are_not() {
+        let f = fx();
+        let attached = f.root.join("docs").join("report.pdf");
+        let tool_touched = f.root.join("docs").join("agent.txt");
+        let trusted = f.root.join("trusted");
+        let thread_folder = f.root.join("thread-folder");
+        touch(&attached);
+        touch(&tool_touched);
+        fs::create_dir_all(&trusted).unwrap();
+        fs::create_dir_all(&thread_folder).unwrap();
+        let thread = f.data.join("threads").join("t1");
+        fs::create_dir_all(&thread).unwrap();
+        fs::write(
+            thread.join("thread.json"),
+            serde_json::json!({ "metadata": { "project": { "folder": thread_folder } } })
+                .to_string(),
+        )
+        .unwrap();
+        let line1 = serde_json::json!({ "attachments": [{ "path": attached }] });
+        let line2 = serde_json::json!({ "tool_calls": [{ "args": { "path": tool_touched } }] });
+        fs::write(thread.join("messages.jsonl"), format!("{line1}\n{line2}\n")).unwrap();
+        fs::write(
+            f.data.join("trusted-folders.json"),
+            serde_json::json!({ "version": 1, "folders": [trusted] }).to_string(),
+        )
+        .unwrap();
+
+        let g = upgrade(&f, &[]);
+        assert!(g.allows(&canon(&attached), &f.data));
+        assert!(g.allows(&canon(&trusted), &f.data));
+        assert!(g.allows(&canon(&thread_folder), &f.data));
+        assert!(!g.allows(&canon(&tool_touched), &f.data));
+    }
+
+    #[test]
+    fn recorded_paths_keep_the_caps_and_seed_only_once() {
+        let f = fx();
+        let home = f.root.join("home");
+        let ssh = home.join(".ssh");
+        fs::create_dir_all(&ssh).unwrap();
+        let fs_root: PathBuf = f.root.ancestors().last().unwrap().to_path_buf();
+        let state = serde_json::json!({ "state": { "folders": [fs_root, home, ssh] } });
+        let settings = vec![("model-library".to_string(), state.to_string())];
+        let store = f.root.join("cfg").join(STORE_FILE_NAME);
+        let g = ReadGrants::with_home(Some(home.clone()));
+        let data = f.data.clone();
+        g.attach_store(store.clone(), &data, || {
+            recorded_user_paths(&data, &settings)
+        });
+        assert!(g.lock().grants.is_empty(), "{:?}", g.lock().grants);
+
+        // A setting written after the first start grants nothing.
+        let later = f.root.join("later");
+        fs::create_dir_all(&later).unwrap();
+        let again = ReadGrants::default();
+        again.attach_store(store, &data, || {
+            recorded_user_paths(
+                &data,
+                &[(
+                    "model-library".into(),
+                    serde_json::json!({"folders": [later.clone()]}).to_string(),
+                )],
+            )
+        });
+        assert!(!again.allows(&canon(&later), &f.data));
     }
 
     #[test]
