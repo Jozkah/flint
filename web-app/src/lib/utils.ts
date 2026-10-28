@@ -154,6 +154,12 @@ export const getDefaultProviderTitle = (provider: string) => {
       return 'NVIDIA NIM'
     case 'litellm':
       return 'LiteLLM'
+    case 'claude-cli':
+      return 'Claude (subscription)'
+    case 'codex-cli':
+      return 'ChatGPT (subscription)'
+    case 'gemini-cli':
+      return 'Gemini (subscription)'
     case 'deepseek':
       return 'DeepSeek'
     case 'moonshot':

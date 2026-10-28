@@ -37,6 +37,10 @@ import { FavoriteModelAction } from '@/containers/FavoriteModelAction'
 import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
+import {
+  SubscriptionConnect,
+  isSubscriptionProvider,
+} from '@/containers/SubscriptionConnect'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { BedrockCredentials } from '@/containers/BedrockCredentials'
@@ -2265,6 +2269,9 @@ function ProviderDetail() {
       <SettingsPageHeader title={title} />
       <SettingsWithSections>
       <EnginePage testId="provider-page">
+        {isSubscriptionProvider(providerName) && (
+          <SubscriptionConnect providerName={providerName} />
+        )}
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-[14px] bg-muted bg-[repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.06)_10px_10.8px)] p-4 shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in">
           <div className="flex min-w-0 items-center gap-3.5">
             <BrandMark

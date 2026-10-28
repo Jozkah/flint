@@ -1682,7 +1682,14 @@ pub async fn start_server<H: Host>(
         wall_clock_secs: options.wall_clock_secs.filter(|b| *b > 0),
         ..Default::default()
     };
-    let note = format!("goal: {}; planner tokens {tokens}", clip(goal, 300));
+    let mut limits = limits;
+    let mut note = format!("goal: {}; planner tokens {tokens}", clip(goal, 300));
+    // A subscription model runs through the user's own vendor CLI: one task at
+    // a time, and the record says why.
+    if model.as_deref().is_some_and(crate::core::cli_bridge::is_bridge_model) {
+        limits.max_parallel = 1;
+        note.push_str("; subscription model through a vendor CLI, run one task at a time (vendor terms limit subscriptions to ordinary individual use; use an API key for large unattended runs)");
+    }
     record_campaign(host, &facts, &title, tasks, model, limits, "server", &note)
 }
 

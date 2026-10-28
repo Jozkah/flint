@@ -383,6 +383,21 @@ enum Commands {
         #[arg(long)]
         paste_token: bool,
     },
+    /// Use a Claude, ChatGPT or Gemini subscription through the vendor's own CLI
+    ///
+    /// Flint runs your signed-in `claude`, `codex` or `gemini` and never sees
+    /// the vendor login. Vendor terms still apply: Anthropic and Google limit
+    /// subscriptions to ordinary individual use, so keep large unattended jobs
+    /// on an API key.
+    #[command(display_order = 3)]
+    Connect {
+        /// claude, codex or gemini
+        #[arg(value_parser = ["claude", "codex", "gemini"])]
+        provider: String,
+        /// Remove the provider instead of adding it
+        #[arg(long)]
+        disconnect: bool,
+    },
     /// Show or manage the Tokamak sign-in
     #[command(display_order = 3)]
     Auth {
@@ -2634,6 +2649,28 @@ async fn run() {
         }
         Commands::Login { paste_token } => {
             if let Err(e) = app_lib::core::cli::login::run_login(paste_token).await {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Connect { provider, disconnect } => {
+            use app_lib::core::cli_bridge::{backend::Backend, connect};
+            let backend = Backend::ALL
+                .into_iter()
+                .find(|b| b.binary() == provider)
+                .expect("clap restricts the value");
+            println!("{}\n", app_lib::core::cli_bridge::DISCLAIMER);
+            let result = if disconnect {
+                connect::disconnect(backend).map(|()| println!("Disconnected {}.", backend.display_name()))
+            } else {
+                connect::connect(backend).await.map(|done| {
+                    println!("Connected {}. Models: {}", backend.display_name(), done.models.join(", "));
+                    if let Some(model) = done.default_model {
+                        println!("Default model set to {model}.");
+                    }
+                })
+            };
+            if let Err(e) = result {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }

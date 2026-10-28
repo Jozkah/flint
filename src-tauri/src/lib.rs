@@ -338,6 +338,8 @@ macro_rules! invoke_commands_with_extras {
         core::server::remote_provider_commands::set_model_param_defaults,
         core::server::remote_provider_commands::get_provider_config,
         core::server::remote_provider_commands::get_provider_keys,
+        core::cli_bridge::commands::cli_bridge_status,
+        core::cli_bridge::commands::cli_bridge_connect,
         core::server::remote_provider_commands::has_provider_keys,
         core::server::remote_provider_commands::export_provider_keys_for_backup,
         core::server::remote_provider_commands::list_provider_configs,
@@ -905,6 +907,14 @@ pub fn build_app() -> tauri::App {
             // A marker left by the previous run means it did not shut down
             // cleanly; say so in the log, once, so a crash report has a lead.
             let data_folder = get_jan_data_folder_path(app.handle().clone());
+            // Claude, ChatGPT and Gemini subscription providers are served by a
+            // loopback bridge to the vendor CLIs; token-gated, so starting it
+            // always costs nothing until a provider uses it.
+            tauri::async_runtime::spawn(async {
+                if let Err(error) = core::cli_bridge::ensure_started().await {
+                    log::warn!("subscription bridge did not start: {error}");
+                }
+            });
             // Engine add-ons (the CUDA pack) live in the data folder, so a test
             // instance with its own folder never touches the user's.
             if let Some(llama) = app.try_state::<std::sync::Arc<tauri_plugin_llamacpp::LlamacppState>>() {
