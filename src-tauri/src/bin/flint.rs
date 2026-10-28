@@ -1009,6 +1009,20 @@ struct ProviderArgs {
     /// API key for the target provider (else JAN_API_KEY / <PROVIDER>_API_KEY)
     #[arg(long)]
     api_key: Option<String>,
+    /// Read the API key from a file instead of the command line (trailing whitespace is dropped)
+    #[arg(long, value_name = "PATH", conflicts_with = "api_key")]
+    api_key_file: Option<std::path::PathBuf>,
+}
+
+/// The key stored in `path`, trimmed. An empty file is an error rather than an
+/// empty key.
+fn read_api_key_file(path: &std::path::Path) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("--api-key-file {}: {e}", path.display()))?;
+    let key = raw.trim();
+    if key.is_empty() {
+        return Err(format!("--api-key-file {} is empty", path.display()));
+    }
+    Ok(key.to_string())
 }
 
 impl ProviderArgs {
@@ -1019,9 +1033,23 @@ impl ProviderArgs {
         let provider = self
             .provider
             .or_else(|| app_lib::core::cli::providers::desktop_selection().provider);
+        let api_key = match (self.api_key, self.api_key_file) {
+            (Some(key), _) => {
+                eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file or JAN_API_KEY");
+                Some(key)
+            }
+            (None, Some(path)) => match read_api_key_file(&path) {
+                Ok(key) => Some(key),
+                Err(message) => {
+                    eprintln!("{message}");
+                    std::process::exit(2);
+                }
+            },
+            (None, None) => None,
+        };
         ProviderOverrides {
             provider,
-            api_key: self.api_key,
+            api_key,
             pin,
         }
         .with_env()
@@ -5089,6 +5117,19 @@ mod tests {
         assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "D"])).as_deref(), Some("D"));
         assert_eq!(super::pre_parse_data_dir(args(&["stop", "--data-dir=E"])).as_deref(), Some("E"));
         assert_eq!(super::pre_parse_data_dir(args(&["x", "--", "--data-dir", "D"])), None);
+    }
+
+    #[test]
+    fn api_key_file_reads_trimmed() {
+        let path = std::env::temp_dir().join(format!("flint_key_{}.txt", std::process::id()));
+        std::fs::write(&path, "sk-test-123
+").unwrap();
+        assert_eq!(super::read_api_key_file(&path).as_deref(), Ok("sk-test-123"));
+        std::fs::write(&path, "  
+").unwrap();
+        assert!(super::read_api_key_file(&path).is_err());
+        let _ = std::fs::remove_file(&path);
+        assert!(super::read_api_key_file(&path).is_err());
     }
 
     #[test]
