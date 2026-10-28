@@ -166,6 +166,16 @@ pub fn gguf_shard_paths(path: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether a GPU adds a memory pool of its own. An integrated GPU's "VRAM" is a
+/// slice of system RAM, a virtual one is a hypervisor shim and a `Cpu` device
+/// is the software rasterizer: none has memory beyond the RAM already counted.
+/// A card with no Vulkan record (Metal, an NVML-only card) counts.
+fn counts_as_vram(gpu: &tauri_plugin_hardware::GpuInfo) -> bool {
+    !gpu.vulkan_info
+        .as_ref()
+        .is_some_and(|v| matches!(v.device_type.as_str(), "IntegratedGpu" | "VirtualGpu" | "Cpu"))
+}
+
 /// Bytes that must fit in VRAM: with KV offload disabled the cache lives in
 /// system RAM, so only the rest competes for the GPU.
 fn vram_required_bytes(total_required: u64, kv_cache_size: u64, no_kv_offload: bool) -> u64 {
@@ -195,7 +205,10 @@ pub async fn is_model_supported(
     let model_size = get_model_size(path.clone()).await?;
 
     // Get system info
-    let system_info = get_system_info();
+    // Enumerating hardware (NVML, Vulkan, ADL) blocks; keep it off the runtime.
+    let system_info = tokio::task::spawn_blocking(get_system_info)
+        .await
+        .map_err(|e| format!("could not read the hardware: {e}"))?;
 
     log::info!("modelSize: {}", model_size);
 
@@ -272,15 +285,7 @@ pub async fn is_model_supported(
     // An integrated GPU has no memory of its own: its "VRAM" is a slice of
     // system RAM. Counting it as VRAM and then adding system RAM again would
     // count that slice twice, so only discrete GPUs form a separate pool.
-    let discrete_gpus: Vec<_> = system_info
-        .gpus
-        .iter()
-        .filter(|g| {
-            !g.vulkan_info
-                .as_ref()
-                .is_some_and(|v| v.device_type == "IntegratedGpu")
-        })
-        .collect();
+    let discrete_gpus: Vec<_> = system_info.gpus.iter().filter(|g| counts_as_vram(g)).collect();
 
     let total_system_memory: u64 = match discrete_gpus.is_empty() {
         // No discrete GPU: treat all RAM as the execution pool, no separate system bucket
@@ -401,6 +406,38 @@ fn check_apple_silicon_compatibility(
 mod tests {
     use super::*;
     use tauri_plugin_hardware::{CpuStaticInfo, SystemInfo};
+
+    fn gpu(uuid: &str, device_type: Option<&str>) -> tauri_plugin_hardware::GpuInfo {
+        use tauri_plugin_hardware::vendor::vulkan::VulkanInfo;
+        tauri_plugin_hardware::GpuInfo {
+            name: uuid.to_string(),
+            total_memory: 8192,
+            vendor: tauri_plugin_hardware::Vendor::Unknown(0),
+            uuid: uuid.to_string(),
+            driver_version: String::new(),
+            nvidia_info: None,
+            vulkan_info: device_type.map(|t| VulkanInfo {
+                index: 0,
+                device_type: t.to_string(),
+                api_version: "1.3.0".to_string(),
+                device_id: 0,
+                pci_bus_info: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn vram_pool_ignores_cpu_and_virtual_devices() {
+        assert!(!counts_as_vram(&gpu("igpu", Some("IntegratedGpu"))));
+        assert!(!counts_as_vram(&gpu("vm", Some("VirtualGpu"))));
+        assert!(!counts_as_vram(&gpu("llvmpipe", Some("Cpu"))));
+        assert!(counts_as_vram(&gpu("dgpu", Some("DiscreteGpu"))));
+    }
+
+    #[test]
+    fn vram_pool_keeps_a_card_with_no_vulkan_record() {
+        assert!(counts_as_vram(&gpu("metal", None)));
+    }
 
     fn apple_silicon(total_memory_mib: u64) -> SystemInfo {
         SystemInfo {
