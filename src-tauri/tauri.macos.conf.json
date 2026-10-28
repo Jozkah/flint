@@ -46,7 +46,8 @@
       "resources/bin/mlx-swift_Cmlx.bundle",
       "resources/bin/flint",
       "resources/bin/flint-llama-worker",
-      "resources/bin/libggml*"
+      "resources/bin/libggml*",
+      "resources/bin/sqlite-vec.dylib"
     ],
     "externalBin": [
       "resources/bin/bun",

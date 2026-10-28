@@ -358,7 +358,8 @@ export function formatDuration(startTime: number, endTime?: number): string {
 
 /** Compact token count for badges and labels, e.g. 24567 -> "24.6K". */
 export function formatTokenCount(num: number): string {
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`
+  // Round first, so 999_950 reads 1.0M and never 1000.0K.
+  if (num >= 999_950) return `${(num / 1_000_000).toFixed(1)}M`
   if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`
   return num.toString()
 }

@@ -536,6 +536,7 @@
   "threadImage": "スレッド画像",
   "editMessage": "メッセージを編集",
   "deleteMessage": "メッセージを削除",
+  "deleteMessageDescription": "このメッセージを削除してもよろしいですか？この操作は元に戻せません。",
   "deleteThread": "スレッドを削除",
   "renameThread": "スレッド名を変更",
   "threadTitle": "スレッドのタイトル",
@@ -847,7 +848,28 @@
     "openCodeFolderInCowork": "コードフォルダーを Cowork で開く",
     "openCodeFolder": "コードフォルダーを開く",
     "openCodeFolderDescription": "Flint が作業するフォルダーをコンピューターから選択してください。",
-    "setUpEmbeddingModel": "埋め込みモデルを設定"
+    "setUpEmbeddingModel": "埋め込みモデルを設定",
+    "webPage": {
+      "open": "Webページを追加",
+      "title": "Webページを追加",
+      "description": "ページを取得し、読み取れるテキストをプロジェクトファイルとして保存します。公開されている http / https のアドレスのみ使えます。",
+      "urlLabel": "ページのアドレス",
+      "add": "ページを追加",
+      "refresh": "更新",
+      "added": "「{{name}}」を追加しました",
+      "refreshed": "「{{name}}」を更新しました",
+      "truncated": "ページがサイズ上限を超えていたため、先頭部分のみ保存しました。",
+      "refreshFailed": "ページを更新できませんでした",
+      "errors": {
+        "invalidUrl": "http:// または https:// で始まる完全なアドレスを入力してください。",
+        "blocked": "このアドレスはこのコンピューターまたはプライベートネットワークを指しているため、取得しませんでした。",
+        "timeout": "ページの応答に時間がかかりすぎました。後でもう一度お試しください。",
+        "notHtml": "このアドレスは読み取れるテキストのある Web ページではありません（PDF、画像、ダウンロードなど）。",
+        "tooLarge": "ページが大きすぎて取得できません。",
+        "httpError": "サイトがエラーを返しました: {{message}}",
+        "failed": "ページを取得できませんでした: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "添付ファイルの取り込み方法を選択",
@@ -1203,6 +1225,7 @@
     "btwFailed": "補足の質問に答えられませんでした。"
   },
   "autoCompactNeedsWindow": "自動圧縮にはコンテキストサイズが必要ですが、Flint は {{model}} のコンテキストサイズを見つけられません。長いチャットがいっぱいになる前に圧縮されるよう、このモデルの最大コンテキストトークン数を設定してください。長さを理由にプロバイダーがリクエストを拒否した場合、Flint は圧縮して 1 回だけ再試行します。",
+  "ollamaWindowTruncating": "Ollama は {{model}} を {{tokens}} トークンのコンテキストで実行しており、それを超える古いメッセージを通知なしに削除します。Flint はこのサイズに合わせて圧縮するようになりました。より多くの履歴を残すには、Ollama サーバー側で OLLAMA_CONTEXT_LENGTH を設定するか、モデルの Modelfile に PARAMETER num_ctx を追加してください。",
   "compaction": {
     "working": "会話を圧縮しています…",
     "divider_one": "コンテキストを圧縮しました — 以前のメッセージ {{count}} 件を要約",
@@ -2720,7 +2743,11 @@
     "noVision": "このモデルは画像を読み取れません",
     "details": "{{name}} の詳細",
     "previewLoading": "プレビューを読み込んでいます…",
-    "previewNone": "プレビューはありません"
+    "previewNone": "プレビューはありません",
+    "pagesAsImages": "ページを画像として送信",
+    "pagesAsImagesHint": "この PDF のページを画像として送信し、モデルがスキャン・グラフ・レイアウトを読めるようにします",
+    "pdfPagesCut": "{{name}} の全 {{total}} ページのうち最初の {{sent}} ページを画像として送信しました",
+    "pdfScannedAsImages": "{{name}} にはテキストがないため、ページを画像として送信しました"
   },
   "fileViewer": {
     "openFull": "完全なプレビューを開く",
@@ -2736,6 +2763,10 @@
     "truncatedOnAdd": "{{total}} のうち最初の {{shown}} を表示しています（添付ファイルは追加時に切り詰められました）"
   },
   "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
+  "chatPaneDrop": {
+    "overlay": "ファイルをドロップして添付",
+    "unsupported": "{{names}} を添付できません: このファイル形式はサポートされていません。"
+  },
   "sampler": {
     "label": "サンプリングパラメータ",
     "notSupported": "{{provider}} では未対応"
@@ -2783,6 +2814,10 @@
   "threadSaveFailed": "このスレッドの変更を保存できませんでした。元に戻しました。",
   "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした",
   "attachmentMissingFile": "添付ファイルが見つかりません。削除して添付し直してください。メッセージは入力欄に残っています。",
+  "factoryResetIncomplete": {
+    "title": "初期化が完了しませんでした",
+    "description": "{{count}} 件の項目を削除できず、ディスク上に残っています:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "設定ファイルを読み取れませんでした",
     "withBackup": "{{file}} が破損していたため、Flint は既定の設定で起動しました。破損したファイルは {{backup}} として保存されています。",
@@ -3057,5 +3092,10 @@
     "reject": "却下",
     "applying": "適用中…",
     "applySelected": "選択を適用"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

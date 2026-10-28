@@ -5,6 +5,7 @@
  *
  * Everything here is pure. The engine owns the clock and passes `now` in.
  */
+import { rt } from './text'
 import { estimateTokens } from '@/lib/context-manager'
 import {
   DEFAULT_ROOM_LIMITS,
@@ -242,18 +243,18 @@ export function addCallUsage(
 export function describeBreach(limit: LimitBreach): string {
   switch (limit) {
     case 'ceiling':
-      return 'The room reached the hard ceiling on model calls for one run.'
+      return rt('breachCeiling')
     case 'maxTurns':
-      return 'The room reached its turn limit.'
+      return rt('breachTurns')
     case 'maxRounds':
-      return 'The room reached its round limit.'
+      return rt('breachRounds')
     case 'maxTotalTokens':
-      return 'The room reached its token limit.'
+      return rt('breachTokens')
     case 'maxDurationMs':
-      return 'The room reached its time limit.'
+      return rt('breachTime')
     case 'maxCostUsd':
-      return 'The room reached its cost limit.'
+      return rt('breachCost')
     default:
-      return `The room reached its limit (${limit}).`
+      return rt('breachOther', { limit })
   }
 }

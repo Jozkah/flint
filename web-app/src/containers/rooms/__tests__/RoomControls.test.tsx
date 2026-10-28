@@ -8,8 +8,8 @@ import { RoomControls } from '../RoomControls'
 import { useModelProvider } from '@/hooks/useModelProvider'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 
 const prompt = vi.hoisted(() => vi.fn())

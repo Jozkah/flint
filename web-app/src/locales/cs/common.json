@@ -552,6 +552,7 @@
   "threadImage": "Obrázek vlákna",
   "editMessage": "Upravit zprávu",
   "deleteMessage": "Smazat zprávu",
+  "deleteMessageDescription": "Opravdu chcete tuto zprávu smazat? Tuto akci nelze vrátit zpět.",
   "deleteThread": "Smazat vlákno",
   "renameThread": "Přejmenovat vlákno",
   "threadTitle": "Název vlákna",
@@ -864,7 +865,28 @@
     "openCodeFolderInCowork": "Otevřít složku s kódem v Cowork",
     "openCodeFolder": "Otevřít složku s kódem",
     "openCodeFolderDescription": "Vyberte složku ve svém počítači, ve které má Flint pracovat.",
-    "setUpEmbeddingModel": "Nastavit embedding model"
+    "setUpEmbeddingModel": "Nastavit embedding model",
+    "webPage": {
+      "open": "Přidat webovou stránku",
+      "title": "Přidat webovou stránku",
+      "description": "Stáhne stránku a uloží její čitelný text jako soubor projektu. Fungují jen veřejné adresy http a https.",
+      "urlLabel": "Adresa stránky",
+      "add": "Přidat stránku",
+      "refresh": "Obnovit",
+      "added": "Přidáno „{{name}}“",
+      "refreshed": "Obnoveno „{{name}}“",
+      "truncated": "Stránka překročila limit velikosti, uložena byla jen její první část.",
+      "refreshFailed": "Stránku se nepodařilo obnovit",
+      "errors": {
+        "invalidUrl": "Zadejte úplnou webovou adresu začínající http:// nebo https://.",
+        "blocked": "Tato adresa vede na tento počítač nebo do soukromé sítě, proto nebyla stažena.",
+        "timeout": "Stránka odpovídala příliš dlouho. Zkuste to později.",
+        "notHtml": "Tato adresa není webová stránka s čitelným textem (například PDF, obrázek nebo soubor ke stažení).",
+        "tooLarge": "Stránka je příliš velká.",
+        "httpError": "Web vrátil chybu: {{message}}",
+        "failed": "Stránku se nepodařilo stáhnout: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Zvolte, jak zpracovat přílohy",
@@ -1230,6 +1252,7 @@
     "btwFailed": "Na vedlejší otázku se nepodařilo odpovědět."
   },
   "autoCompactNeedsWindow": "Automatické zhušťování potřebuje velikost kontextu a pro {{model}} žádnou Flint nenašel. Nastavte pro tento model Max. počet tokenů kontextu, aby se dlouhé chaty zhustily dřív, než ho zaplní. Pokud poskytovatel odmítne požadavek kvůli jeho délce, Flint zhustí a zkusí to jednou znovu.",
+  "ollamaWindowTruncating": "Ollama spouští {{model}} s kontextem {{tokens}} tokenů a nejstarší zprávy nad tento limit tiše zahazuje. Flint nyní kompaktuje podle této velikosti. Chcete-li zachovat více historie, zvyšte ji na serveru Ollama: nastavte OLLAMA_CONTEXT_LENGTH nebo přidejte PARAMETER num_ctx do Modelfile modelu.",
   "compaction": {
     "working": "Zhušťování konverzace…",
     "divider_one": "Kontext zhuštěn — shrnuta {{count}} starší zpráva",
@@ -2826,7 +2849,11 @@
     "noVision": "Tento model neumí číst obrázky",
     "details": "Podrobnosti o {{name}}",
     "previewLoading": "Načítání náhledu…",
-    "previewNone": "Náhled není k dispozici"
+    "previewNone": "Náhled není k dispozici",
+    "pagesAsImages": "Odeslat stránky jako obrázky",
+    "pagesAsImagesHint": "Odeslat stránky tohoto PDF jako obrázky, aby model viděl skeny, grafy a rozvržení",
+    "pdfPagesCut": "Jako obrázky bylo odesláno prvních {{sent}} z {{total}} stránek souboru {{name}}",
+    "pdfScannedAsImages": "{{name}} neobsahuje text, proto byly jeho stránky odeslány jako obrázky"
   },
   "fileViewer": {
     "openFull": "Otevřít celý náhled",
@@ -2845,6 +2872,10 @@
     "truncatedOnAdd": "Zobrazeno prvních {{shown}} z {{total}} (příloha byla při přidání zkrácena)"
   },
   "dropAttachFailed": "Přetažené soubory se nepodařilo připojit",
+  "chatPaneDrop": {
+    "overlay": "Přetáhněte soubory sem a připojte je",
+    "unsupported": "{{names}} nelze připojit: tento typ souboru není podporován."
+  },
   "sampler": {
     "label": "Parametry vzorkování",
     "notSupported": "Nepodporuje {{provider}}"
@@ -2895,6 +2926,10 @@
   "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena.",
   "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána",
   "attachmentMissingFile": "Přiložený soubor už není dostupný. Odeberte ho a připojte znovu; zpráva zůstala v poli.",
+  "factoryResetIncomplete": {
+    "title": "Obnovení není úplné",
+    "description": "Nepodařilo se odstranit položky ({{count}}); zůstávají na disku:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Soubor nastavení se nepodařilo přečíst",
     "withBackup": "Soubor {{file}} byl poškozen, proto Flint spustil s výchozím nastavením. Poškozený soubor byl uložen jako {{backup}}.",
@@ -3207,5 +3242,10 @@
     "reject": "Zamítnout",
     "applying": "Uplatňuji…",
     "applySelected": "Uplatnit výběr"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

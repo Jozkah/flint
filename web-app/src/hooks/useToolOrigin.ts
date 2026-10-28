@@ -19,6 +19,8 @@ export const useToolOrigin = (toolName: string): ToolOrigin | undefined => {
     (s) => getProviderMeta(s.searchProvider).label
   )
 
+  const nativeWebEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
+
   return useMemo(
     () =>
       resolveToolOrigin(toolName, {
@@ -26,7 +28,8 @@ export const useToolOrigin = (toolName: string): ToolOrigin | undefined => {
         isRagTool,
         isAgentTool,
         webSearchProviderLabel,
+        nativeWebEnabled,
       }),
-    [toolName, mcpServer, isRagTool, isAgentTool, webSearchProviderLabel]
+    [toolName, mcpServer, isRagTool, isAgentTool, webSearchProviderLabel, nativeWebEnabled]
   )
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useAppState } from '@/hooks/useAppState'
 import { useMessages } from '@/hooks/useMessages'
+import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { recordRunWebTools, resetRunWebTools } from '@/lib/webSearchTool'
 import {
   DETAILS_OPEN_KEY,
   isAutoAllowedTool,
@@ -35,6 +37,32 @@ describe('isAutoAllowedTool', () => {
 
   it('still asks about an unknown external tool', () => {
     expect(isAutoAllowedTool('some_mcp_tool_nobody_registered')).toBe(false)
+  })
+
+  // A Settings toggle mid-run must not change how that run's calls are gated:
+  // the run's own tool set decides, not the global setting.
+  describe('web tools follow the run, not the setting', () => {
+    afterEach(() => {
+      resetRunWebTools()
+      useWebSearchConfig.setState({ webSearchEnabled: true })
+    })
+
+    it('keeps asking about an MCP web_search after web search is turned on mid-run', () => {
+      recordRunWebTools('t1', { some_mcp_tool: {} })
+      useWebSearchConfig.setState({ webSearchEnabled: true })
+      expect(isAutoAllowedTool('web_search', 't1')).toBe(false)
+    })
+
+    it('keeps the native web tools allowed after web search is turned off mid-run', () => {
+      recordRunWebTools('t1', { web_search: {}, web_fetch: {} })
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+      expect(isAutoAllowedTool('web_fetch', 't1')).toBe(true)
+    })
+
+    it('falls back to the setting for a thread with no recorded run', () => {
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+      expect(isAutoAllowedTool('web_search', 'other')).toBe(false)
+    })
   })
 })
 

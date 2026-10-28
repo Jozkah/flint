@@ -145,6 +145,8 @@ impl<P> Offers<P> {
 
     fn redeem_at(&self, id: &str, session: &str, now: Instant) -> Option<P> {
         let mut map = self.inner.lock().ok()?;
+        // Expired offers go on every redemption, not only when a new one is made.
+        map.retain(|_, o| now.duration_since(o.issued) < OFFER_TTL);
         // Another session's id is left in place: guessing it must not let a
         // caller cancel someone else's prompt either.
         if map.get(id)?.session != session {
@@ -160,29 +162,29 @@ impl<P> Offers<P> {
     }
 }
 
-/// Process-local and never shown to a model; unique, and not trivially
-/// guessable, without a dependency.
+/// 128 random bits from the OS generator: an id redeems an unsandboxed run, so
+/// it must not be predictable from a counter or the clock.
 fn new_id() -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    let mut h = RandomState::new().build_hasher();
-    h.write_u64(n);
-    h.write_u128(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0),
-    );
-    format!("nulretry-{n}-{:016x}", h.finish())
+    let bytes: [u8; 16] = rand::random();
+    format!("nulretry-{}", hex::encode(bytes))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tools::jail::NULL_DEVICE_REFUSED_HINT;
+
+    #[test]
+    fn ids_are_random_and_an_expired_offer_is_purged_on_redeem() {
+        let offers: Offers<u8> = Offers::default();
+        let t0 = Instant::now();
+        let a = offers.offer_at("s", 1, t0);
+        let b = offers.offer_at("s", 2, t0);
+        assert_ne!(a, b);
+        assert_eq!(a.len(), "nulretry-".len() + 32);
+        assert_eq!(offers.redeem_at(&a, "s", t0 + OFFER_TTL + std::time::Duration::from_secs(1)), None);
+        assert!(offers.inner.lock().unwrap().is_empty(), "the other expired offer went too");
+    }
 
     #[test]
     fn only_a_sandboxed_bash_failure_with_the_null_device_note_qualifies() {

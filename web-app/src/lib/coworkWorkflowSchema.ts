@@ -68,10 +68,12 @@ export function validateAgainst(schema: Schema, value: unknown, at = '$'): strin
   if (isObject(value)) {
     const props = isObject(schema.properties) ? schema.properties : {}
     for (const key of (schema.required as string[] | undefined) ?? []) {
-      if (!(key in value)) return `${at}.${key} is required`
+      if (!Object.prototype.hasOwnProperty.call(value, key)) {
+        return `${at}.${key} is required`
+      }
     }
     for (const [key, item] of Object.entries(value)) {
-      if (key in props) {
+      if (Object.prototype.hasOwnProperty.call(props, key)) {
         const problem = validateAgainst(props[key] as Schema, item, `${at}.${key}`)
         if (problem) return problem
       } else if (schema.additionalProperties === false) {

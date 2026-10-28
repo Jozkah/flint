@@ -116,4 +116,14 @@ fn main() {
 
     #[cfg(not(feature = "tauri"))]
     let _ = COMMANDS;
+
+    // Resolve the sandbox helper's DLL imports from System32 only, never the
+    // current directory or PATH. It starts inside the workspace a tool call
+    // runs in, so a DLL planted there must not load. All its imports are
+    // System32 or API-set DLLs.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        println!("cargo:rustc-link-arg-bin=jan-sandbox-helper=/DEPENDENTLOADFLAG:0x800");
+    }
 }

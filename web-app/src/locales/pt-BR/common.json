@@ -540,6 +540,7 @@
   "threadImage": "Imagem da conversa",
   "editMessage": "Editar Mensagem",
   "deleteMessage": "Apagar Mensagem",
+  "deleteMessageDescription": "Tem certeza de que deseja excluir esta mensagem? Esta ação não pode ser desfeita.",
   "deleteThread": "Apagar Conversa",
   "renameThread": "Renomear Conversa",
   "threadTitle": "Título da Conversa",
@@ -852,7 +853,28 @@
     "openCodeFolderInCowork": "Abrir pasta de código no Cowork",
     "openCodeFolder": "Abrir pasta de código",
     "openCodeFolderDescription": "Escolha uma pasta no seu computador para o Flint trabalhar.",
-    "setUpEmbeddingModel": "Configurar um modelo de embedding"
+    "setUpEmbeddingModel": "Configurar um modelo de embedding",
+    "webPage": {
+      "open": "Adicionar página web",
+      "title": "Adicionar uma página web",
+      "description": "Busca uma página e guarda o texto legível como arquivo do projeto. Só funcionam endereços públicos http e https.",
+      "urlLabel": "Endereço da página",
+      "add": "Adicionar página",
+      "refresh": "Atualizar",
+      "added": "\"{{name}}\" adicionado",
+      "refreshed": "\"{{name}}\" atualizado",
+      "truncated": "A página passou do limite de tamanho, então só a primeira parte foi guardada.",
+      "refreshFailed": "Não foi possível atualizar a página",
+      "errors": {
+        "invalidUrl": "Digite um endereço web completo que comece com http:// ou https://.",
+        "blocked": "Esse endereço aponta para este computador ou para uma rede privada, então não foi buscado.",
+        "timeout": "A página demorou demais para responder. Tente de novo mais tarde.",
+        "notHtml": "Esse endereço não é uma página web com texto legível (por exemplo, um PDF, imagem ou download).",
+        "tooLarge": "A página é grande demais.",
+        "httpError": "O site retornou um erro: {{message}}",
+        "failed": "Não foi possível buscar a página: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Escolha como ingerir os anexos",
@@ -1212,6 +1234,7 @@
     "btwFailed": "Não foi possível responder à pergunta paralela."
   },
   "autoCompactNeedsWindow": "A compactação automática precisa de um tamanho de contexto, e o {{model}} não tem nenhum que o Flint consiga encontrar. Defina Máx. de tokens de contexto para este modelo para que chats longos sejam compactados antes de enchê-lo. Se o provedor recusar uma requisição por causa do tamanho, o Flint compacta e tenta uma vez mais.",
+  "ollamaWindowTruncating": "O Ollama executa {{model}} com um contexto de {{tokens}} tokens e descarta silenciosamente as mensagens mais antigas além disso. O Flint agora compacta com base nesse tamanho. Para manter mais histórico, aumente-o no servidor Ollama: defina OLLAMA_CONTEXT_LENGTH ou adicione PARAMETER num_ctx ao Modelfile do modelo.",
   "compaction": {
     "working": "Compactando a conversa…",
     "divider_one": "Contexto compactado — {{count}} mensagem anterior resumida",
@@ -2768,7 +2791,11 @@
     "noVision": "Este modelo não consegue ler imagens",
     "details": "Detalhes de {{name}}",
     "previewLoading": "Carregando pré-visualização…",
-    "previewNone": "Nenhuma pré-visualização disponível"
+    "previewNone": "Nenhuma pré-visualização disponível",
+    "pagesAsImages": "Enviar páginas como imagens",
+    "pagesAsImagesHint": "Envie as páginas deste PDF como imagens para que o modelo veja digitalizações, gráficos e layout",
+    "pdfPagesCut": "As primeiras {{sent}} de {{total}} páginas de {{name}} foram enviadas como imagens",
+    "pdfScannedAsImages": "{{name}} não tem texto, então suas páginas foram enviadas como imagens"
   },
   "fileViewer": {
     "openFull": "Abrir prévia completa",
@@ -2785,6 +2812,10 @@
     "truncatedOnAdd": "Mostrando os primeiros {{shown}} de {{total}} (o anexo foi cortado quando foi adicionado)"
   },
   "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
+  "chatPaneDrop": {
+    "overlay": "Solte arquivos para anexar",
+    "unsupported": "Não é possível anexar {{names}}: este tipo de arquivo não é compatível."
+  },
   "sampler": {
     "label": "Parâmetros de amostragem",
     "notSupported": "Não suportado por {{provider}}"
@@ -2834,6 +2865,10 @@
   "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
   "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada",
   "attachmentMissingFile": "Um arquivo anexado não está mais disponível. Remova e anexe de novo; sua mensagem continua na caixa.",
+  "factoryResetIncomplete": {
+    "title": "Redefinição incompleta",
+    "description": "{{count}} item(ns) não puderam ser removidos e continuam no disco:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Não foi possível ler o arquivo de configurações",
     "withBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. O arquivo danificado foi mantido como {{backup}}.",
@@ -3123,5 +3158,10 @@
     "reject": "Rejeitar",
     "applying": "Aplicando…",
     "applySelected": "Aplicar seleção"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

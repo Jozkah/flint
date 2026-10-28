@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { PenLine } from 'lucide-react'
+import { ChatPaneDropZone } from '@/components/ChatPaneDropZone'
 import ChatInput from '@/containers/ChatInput'
 import HeaderPage from '@/containers/HeaderPage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -18,10 +19,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 /** Below Tailwind's `sm`: the page header has room for one button. */
 const PHONE_QUERY = '(max-width: 639px)'
 
-type ThreadModel = {
-  id: string
-  provider: string
-}
+import { parseThreadModel, type ThreadModel } from '@/lib/parseThreadModel'
 
 type SearchParams = {
   threadModel?: ThreadModel
@@ -40,7 +38,7 @@ export const Route = createFileRoute(route.home as any)({
   component: Index,
   validateSearch: (search: Record<string, unknown>): SearchParams => {
     const result: SearchParams = {
-      threadModel: search.threadModel as ThreadModel | undefined,
+      threadModel: parseThreadModel(search.threadModel),
     }
 
     return result
@@ -82,7 +80,7 @@ function Index() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-1 pt-3.5 pb-4">
+    <ChatPaneDropZone className="flex h-full min-h-0 flex-col px-1 pt-3.5 pb-4">
       <HeaderPage>
         <PageHeaderRow>
           <div className="flex-1" />
@@ -172,6 +170,6 @@ function Index() {
           </div>
         </FrameBody>
       </Frame>
-    </div>
+    </ChatPaneDropZone>
   )
 }

@@ -524,6 +524,14 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn run_end_hooks(&self, _final_text: &str) -> Option<String> {
         None
     }
+
+    /// Mail other runs sent this one since its last turn (AH-103), rendered
+    /// as one fenced block and marked delivered, or `None` when there is none
+    /// or this invoker has no mailbox. Read at every turn boundary, so a
+    /// subagent's message reaches its parent without the parent polling.
+    fn deliver_mail(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The `!cmd` command a composer put on the run body, if any.
@@ -1866,6 +1874,14 @@ impl ToolInvoker for CompositeToolInvoker {
         }
     }
 
+    fn deliver_mail(&self) -> Option<String> {
+        // The same identity `message_send` stamps as the sender, so what is
+        // addressed to this run is what it reads.
+        let data = self.record_to.as_deref()?;
+        let run = tauri_plugin_agent_tools::identity::RunId::parse(self.cancel_scope.run.clone()).ok()?;
+        tauri_plugin_agent_tools::mailbox::deliver(data, &run)
+    }
+
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
         self.invoke_streaming(tool_calls, &|_| {}).await
     }
@@ -2307,6 +2323,12 @@ fn advertise_local_tools(
     #[cfg(feature = "cli")] host_tools: &crate::core::agent::host_tools::HostToolSet,
 ) {
     let planning = run_mode == crate::core::agent::plan::RunMode::Plan;
+    // The one answer to "may this run be offered `name`": not denied for this
+    // subject by agent.toml, and inside the request's allowlist when it set one.
+    // Every gated schema below asks here, so the two cannot drift apart.
+    let permitted = |name: &str| -> bool {
+        !permissions.is_denied(name, subject) && allowed_names.is_none_or(|allow| allow.contains(name))
+    };
     if project_root.is_some() {
         // Built-ins are governed by the capability gate at execution time, so here
         // we only drop tools explicitly denied in agent.toml (and honor allowed_tools
@@ -2376,7 +2398,7 @@ fn advertise_local_tools(
                 }
             });
             let named = lsp_schema["function"]["name"].as_str().unwrap_or_default();
-            if !permissions.is_denied(named, subject) && allowed_names.is_none_or(|allow| allow.contains(named)) {
+            if permitted(named) {
                 openai_tools.push(lsp_schema);
             }
             // AH-059/060/061: looking a name up in the project's own index,
@@ -2399,8 +2421,7 @@ fn advertise_local_tools(
                 }
             });
             let named = schema["function"]["name"].as_str().unwrap_or_default();
-            let offered = !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named));
+            let offered = permitted(named);
             if offered {
                 openai_tools.push(schema);
             }
@@ -2450,8 +2471,7 @@ fn advertise_local_tools(
                 }
             });
             let named = review["function"]["name"].as_str().unwrap_or_default();
-            let offered = !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named));
+            let offered = permitted(named);
             if offered {
                 openai_tools.push(review);
             }
@@ -2475,8 +2495,7 @@ fn advertise_local_tools(
             });
             let named = message["function"]["name"].as_str().unwrap_or_default();
             let offered = !planning
-                && !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named));
+                && permitted(named);
             if offered {
                 openai_tools.push(message);
             }
@@ -2485,8 +2504,7 @@ fn advertise_local_tools(
             #[cfg(feature = "cli")]
             if matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
                 && crate::core::agent::global_config::advisor_model().is_some()
-                && !permissions.is_denied("advisor", subject)
-                && allowed_names.is_none_or(|allow| allow.contains("advisor"))
+                && permitted("advisor")
             {
                 openai_tools.push(serde_json::json!({
                     "type": "function",
@@ -2509,8 +2527,7 @@ fn advertise_local_tools(
             // schedules, and nothing in Plan mode does.
             if !planning
                 && matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
-                && !permissions.is_denied("schedule_task", subject)
-                && allowed_names.is_none_or(|allow| allow.contains("schedule_task"))
+                && permitted("schedule_task")
             {
                 openai_tools.push(serde_json::json!({
                     "type": "function",
@@ -2548,8 +2565,7 @@ fn advertise_local_tools(
                 .any(|t| t["function"]["name"].as_str() == Some("bash"));
             if !planning
                 && bash_offered
-                && !permissions.is_denied("monitor", subject)
-                && allowed_names.is_none_or(|allow| allow.contains("monitor"))
+                && permitted("monitor")
             {
                 openai_tools.push(serde_json::json!({
                     "type": "function",
@@ -2570,8 +2586,7 @@ fn advertise_local_tools(
 
             let named = branches["function"]["name"].as_str().unwrap_or_default();
             let offered = !planning
-                && !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named));
+                && permitted(named);
             if offered {
                 openai_tools.push(branches);
             }
@@ -2605,8 +2620,7 @@ fn advertise_local_tools(
             });
             let named = split["function"]["name"].as_str().unwrap_or_default();
             if !planning
-                && !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named))
+                && permitted(named)
             {
                 openai_tools.push(split);
             }
@@ -2648,8 +2662,7 @@ fn advertise_local_tools(
             });
             let named = semantic["function"]["name"].as_str().unwrap_or_default();
             if !planning
-                && !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named))
+                && permitted(named)
             {
                 openai_tools.push(semantic);
             }
@@ -2674,16 +2687,14 @@ fn advertise_local_tools(
             });
             let named = pull["function"]["name"].as_str().unwrap_or_default();
             if !planning
-                && !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named))
+                && permitted(named)
             {
                 openai_tools.push(pull);
             }
 
             let named = history["function"]["name"].as_str().unwrap_or_default();
             if !planning
-                && !permissions.is_denied(named, subject)
-                && allowed_names.is_none_or(|allow| allow.contains(named))
+                && permitted(named)
             {
                 openai_tools.push(history);
             }
@@ -2719,8 +2730,7 @@ fn advertise_local_tools(
                 }),
             ] {
                 let named = schema["function"]["name"].as_str().unwrap_or_default();
-                let offered = !permissions.is_denied(named, subject)
-                    && allowed_names.is_none_or(|allow| allow.contains(named));
+                let offered = permitted(named);
                 if offered {
                     openai_tools.push(schema);
                 }
@@ -3139,6 +3149,38 @@ async fn should_force_goal_todo_plan(
     }
 }
 
+/// The proactive compaction thresholds for a run.
+///
+/// `configured` is the window the project or the client stated; `learned` is
+/// what an earlier overflow taught about this model, consulted only when
+/// nothing was configured. Reserved output is the one feature-independent
+/// source: the resolved compaction `Policy` (its `reserve_tokens` already folds
+/// in the legacy `[agent].compaction_reserve_tokens`), scaled with the window (a
+/// tenth, 2K at least, the policy's reserve at most) so a learned or small
+/// window keeps its room for the conversation while a big one keeps the full 16K.
+///
+/// A learned window never refuses a run: with no usable threshold the run goes
+/// on without proactive compaction and the overflow path still catches a real
+/// overflow. A configured window that cannot produce a safe threshold does.
+fn thresholds_for(
+    compaction: &tauri_plugin_agent_tools::compaction_policy::Policy,
+    configured: Option<u64>,
+    learned: Option<u64>,
+) -> Result<Option<crate::core::agent::compaction_policy::Thresholds>, String> {
+    use crate::core::agent::compaction_policy as cpol;
+    let ctx_window = configured.or(learned);
+    let reserve = Some(compaction.effective_reserve(ctx_window.unwrap_or(128_000)));
+    let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
+    match cpol::thresholds(&window_cfg) {
+        Ok(resolved) => Ok(resolved),
+        Err(e) if learned.is_some() => {
+            log::warn!("agent: learned context window {learned:?} gives no compaction threshold ({e}); compacting only on overflow");
+            Ok(None)
+        }
+        Err(e) => Err(format!("[agent] compaction config: {e}")),
+    }
+}
+
 async fn orchestrate_inner(
     events: &mpsc::UnboundedSender<StreamEvent>,
     json_body: &serde_json::Value,
@@ -3283,12 +3325,8 @@ async fn orchestrate_inner(
     // `compaction_policy` module owns the math; a window that cannot produce a
     // safe threshold refuses the run rather than compacting at a useless point.
     {
-        use crate::core::agent::compaction_policy as cpol;
-        // Reserved output is the one feature-independent source: the resolved
-        // compaction Policy above (its `reserve_tokens` already folds in the
-        // legacy `[agent].compaction_reserve_tokens`). The context window is a
-        // CLI-only `[agent]` key; elsewhere the documented 128K default applies.
-        let reserve = Some(compaction.reserve_tokens);
+        // The context window is a CLI-only `[agent]` key; elsewhere the
+        // documented 128K default applies (see `thresholds_for`).
         #[cfg(feature = "cli")]
         let ctx_window = project_root
             .as_deref()
@@ -3321,23 +3359,7 @@ async fn orchestrate_inner(
                 .and_then(|m| m.as_str())
                 .and_then(crate::core::agent::learned_window::lookup),
         };
-        let ctx_window = ctx_window.or(learned);
-        // The buffer scales with the window (a tenth, 2K at least, the policy's
-        // reserve at most): a learned or small window keeps its room for the
-        // conversation, a big one keeps the full 16K.
-        let reserve = reserve.map(|_| compaction.effective_reserve(ctx_window.unwrap_or(128_000)));
-        let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
-        let resolved = match cpol::thresholds(&window_cfg) {
-            Ok(resolved) => resolved,
-            // What a model once said about its window never refuses a run: with
-            // no usable threshold the run goes on without proactive compaction
-            // and the overflow path still catches a real overflow.
-            Err(e) if learned.is_some() => {
-                log::warn!("agent: learned context window {learned:?} gives no compaction threshold ({e}); compacting only on overflow");
-                None
-            }
-            Err(e) => return Err(format!("[agent] compaction config: {e}").into()),
-        };
+        let resolved = thresholds_for(&compaction, ctx_window, learned)?;
         if let (Some(t), Some(obj)) = (resolved, annotated_body.as_object_mut()) {
             obj.insert(
                 BODY_COMPACT_AT.to_string(),
@@ -5277,6 +5299,13 @@ async fn run_turn_cycle(
             shells_scanned = conversation_messages.len();
         }
         if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+            shells_scanned = conversation_messages.len();
+        }
+        // AH-103: what other runs said to this one since its last turn, after
+        // the results of whatever it was doing when they wrote. Its own block,
+        // apart from subagent results, and marked read as it is shown.
+        if let Some(text) = tools.deliver_mail() {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
         }

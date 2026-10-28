@@ -854,69 +854,165 @@ pub async fn call_tool<R: Runtime>(
     // is every call to a server they have.
     approval_ticket: Option<String>,
 ) -> Result<CallToolResult, String> {
-    let (timeout_duration, tool_output_cap) = {
-        let settings = state.mcp_settings.lock().await;
-        (
-            settings.tool_call_timeout_duration(),
-            settings.tool_output_cap(max_output_chars),
-        )
-    };
-    // Lazy start: the server this call needs is started first (once, shared).
-    // A start failure is this call's error, so it shows in the chat like any
-    // other MCP failure.
-    {
-        let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
-        let enabled: HashSet<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
-        let needed: Vec<String> = match &server_name {
-            Some(server) => vec![server.clone()],
-            None => {
-                let last_known = state.mcp_last_known_tools.lock().await;
-                let owners: Vec<String> = last_known
-                    .iter()
-                    .filter(|(_, tools)| tools.iter().any(|t| t.name == tool_name))
-                    .map(|(n, _)| n.clone())
-                    .collect();
-                if owners.iter().any(|n| running.contains(n)) {
-                    Vec::new()
-                } else if owners.is_empty() {
-                    enabled.iter().cloned().collect()
-                } else {
-                    owners
-                }
-            }
-        };
-        let to_start: Vec<String> = needed
-            .into_iter()
-            .filter(|n| enabled.contains(n) && !running.contains(n))
-            .collect();
-        if server_name.is_some() {
-            // The caller named the server: its start failure is the answer.
-            for name in &to_start {
-                super::helpers::ensure_mcp_server_started(&app, name).await?;
-            }
-        } else {
-            // No server named: any enabled server might own the tool. Start
-            // them a few at a time and let a failing one be logged, not fatal,
-            // so one broken server cannot hide the owner behind it.
-            let started = start_candidates(&to_start, |n| {
-                let app = app.clone();
-                async move { super::helpers::ensure_mcp_server_started(&app, &n).await }
-            })
-            .await;
-            for (name, err) in started {
-                log::warn!("MCP server {name} failed to start while looking for tool {tool_name}: {err}");
+    let (timeout_duration, tool_output_cap) = resolve_limits(&state, max_output_chars).await;
+    start_lazy_servers(&app, &state, &server_name, &tool_name).await?;
+
+    // Set up cancellation if token is provided. The guard removes the token on
+    // every way out, including this future being dropped mid-call.
+    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+    let mut cancellation = CancellationGuard::register(&state, cancellation_token.clone(), cancel_tx).await;
+
+    let outcome = find_and_call(
+        &app,
+        &state,
+        CallRequest {
+            tool_name: &tool_name,
+            server_name: &server_name,
+            arguments: &arguments,
+            cancellation_token: &cancellation_token,
+            approval_ticket: &approval_ticket,
+            timeout_duration,
+            tool_output_cap,
+        },
+        cancel_rx,
+    )
+    .await;
+    cancellation.finish().await;
+    outcome
+}
+
+/// The per-call timeout and output cap from the MCP settings.
+async fn resolve_limits(state: &AppState, max_output_chars: Option<u64>) -> (Duration, u64) {
+    let settings = state.mcp_settings.lock().await;
+    (
+        settings.tool_call_timeout_duration(),
+        settings.tool_output_cap(max_output_chars),
+    )
+}
+
+/// Lazy start: the server this call needs is started first (once, shared).
+/// A start failure is this call's error, so it shows in the chat like any
+/// other MCP failure.
+async fn start_lazy_servers<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    server_name: &Option<String>,
+    tool_name: &str,
+) -> Result<(), String> {
+    let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
+    let enabled: HashSet<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
+    let needed: Vec<String> = match server_name {
+        Some(server) => vec![server.clone()],
+        None => {
+            let last_known = state.mcp_last_known_tools.lock().await;
+            let owners: Vec<String> = last_known
+                .iter()
+                .filter(|(_, tools)| tools.iter().any(|t| t.name == tool_name))
+                .map(|(n, _)| n.clone())
+                .collect();
+            if owners.iter().any(|n| running.contains(n)) {
+                Vec::new()
+            } else if owners.is_empty() {
+                enabled.iter().cloned().collect()
+            } else {
+                owners
             }
         }
+    };
+    let to_start: Vec<String> = needed
+        .into_iter()
+        .filter(|n| enabled.contains(n) && !running.contains(n))
+        .collect();
+    if server_name.is_some() {
+        // The caller named the server: its start failure is the answer.
+        for name in &to_start {
+            super::helpers::ensure_mcp_server_started(app, name).await?;
+        }
+    } else {
+        // No server named: any enabled server might own the tool. Start
+        // them a few at a time and let a failing one be logged, not fatal,
+        // so one broken server cannot hide the owner behind it.
+        let started = start_candidates(&to_start, |n| {
+            let app = app.clone();
+            async move { super::helpers::ensure_mcp_server_started(&app, &n).await }
+        })
+        .await;
+        for (name, err) in started {
+            log::warn!("MCP server {name} failed to start while looking for tool {tool_name}: {err}");
+        }
+    }
+    Ok(())
+}
+
+/// Removes a call's cancellation token from the shared map on every exit path.
+///
+/// `finish` does it in order, awaited, on the normal paths. If the call's
+/// future is dropped before that (the webview went away mid-call) `Drop`
+/// hands the removal to the runtime, so a token cannot outlive its call.
+struct CancellationGuard {
+    token: Option<String>,
+    map: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, oneshot::Sender<()>>>>,
+}
+
+impl CancellationGuard {
+    async fn register(
+        state: &AppState,
+        token: Option<String>,
+        cancel_tx: oneshot::Sender<()>,
+    ) -> Self {
+        if let Some(token) = &token {
+            let mut cancellations = state.tool_call_cancellations.lock().await;
+            cancellations.insert(token.clone(), cancel_tx);
+        }
+        Self { token, map: state.tool_call_cancellations.clone() }
     }
 
-    // Set up cancellation if token is provided
-    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-
-    if let Some(token) = &cancellation_token {
-        let mut cancellations = state.tool_call_cancellations.lock().await;
-        cancellations.insert(token.clone(), cancel_tx);
+    async fn finish(&mut self) {
+        if let Some(token) = self.token.take() {
+            self.map.lock().await.remove(&token);
+        }
     }
+}
 
+impl Drop for CancellationGuard {
+    fn drop(&mut self) {
+        let Some(token) = self.token.take() else { return };
+        let map = self.map.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                map.lock().await.remove(&token);
+            });
+        }
+    }
+}
+
+/// What one `call_tool` is asking for, borrowed from its arguments.
+struct CallRequest<'a> {
+    tool_name: &'a str,
+    server_name: &'a Option<String>,
+    arguments: &'a Option<Map<String, Value>>,
+    cancellation_token: &'a Option<String>,
+    approval_ticket: &'a Option<String>,
+    timeout_duration: Duration,
+    tool_output_cap: u64,
+}
+
+/// How asking one server about a tool went.
+enum ServerAttempt {
+    /// The server does not have the tool (or could not list its tools); try
+    /// the next one. `transport_error` marks a dead connection.
+    Skip { transport_error: bool },
+    /// The server had the tool: this is the call's final answer.
+    Answer(Result<CallToolResult, String>),
+}
+
+/// Finds the server that has the tool and calls it there.
+async fn find_and_call<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    req: CallRequest<'_>,
+    cancel_rx: oneshot::Receiver<()>,
+) -> Result<CallToolResult, String> {
     // Snapshotted before `mcp_servers` is locked, so the trust check below
     // never holds both locks at once.
     let data_folder = crate::core::app::commands::resolve_jan_data_folder();
@@ -928,190 +1024,215 @@ pub async fn call_tool<R: Runtime>(
         let servers = state.mcp_servers.lock().await;
         servers
             .iter()
-            .filter(|(name, _)| server_name.as_ref().is_none_or(|s| *name == s.as_str()))
+            .filter(|(name, _)| req.server_name.as_ref().is_none_or(|s| *name == s.as_str()))
             .map(|(name, s)| (name.clone(), s.peer().clone()))
             .collect()
     };
-    let list_timeout = timeout_duration.min(MCP_LIST_TOOLS_TIMEOUT);
+    let list_timeout = req.timeout_duration.min(MCP_LIST_TOOLS_TIMEOUT);
 
     if servers_to_check.is_empty() {
-        cleanup_cancellation_token(&state, &cancellation_token).await;
-        if let Some(server) = server_name {
+        if let Some(server) = req.server_name {
             return Err(format!("Server '{server}' not found"));
         }
         return Err(format!(
-            "Tool {tool_name} not found — no MCP servers connected"
+            "Tool {} not found — no MCP servers connected",
+            req.tool_name
         ));
     }
 
     let mut transport_error_servers: Vec<String> = Vec::new();
+    let mut cancel_rx = Some(cancel_rx);
 
     // Iterate through servers and find the one that contains the tool
     for (srv_name, service) in servers_to_check.iter() {
-        // Idle shutdown never stops a server while this call is in flight,
-        // including while its tools are being listed.
-        let _in_flight = state.mcp_lazy.begin_call(srv_name);
-        let tools = match timeout(list_timeout, service.list_all_tools()).await {
-            Ok(Ok(tools)) => tools,
-            Err(_) => {
-                log::warn!("MCP server {srv_name} timed out listing tools during call_tool");
-                continue;
-            }
-            Ok(Err(e)) => {
-                let err_str = e.to_string();
-                log::warn!(
-                    "MCP server {} failed to list tools during call_tool: {}",
-                    srv_name,
-                    err_str
-                );
-                if is_transport_error(&err_str) {
+        match try_server(
+            app,
+            state,
+            &req,
+            srv_name,
+            service,
+            &active_configs,
+            &data_folder,
+            list_timeout,
+            &mut cancel_rx,
+        )
+        .await
+        {
+            ServerAttempt::Answer(result) => return result,
+            ServerAttempt::Skip { transport_error } => {
+                if transport_error {
                     transport_error_servers.push(srv_name.to_string());
                 }
-                continue;
-            }
-        };
-
-        let Some(found_tool) = tools.iter().find(|t| t.name == tool_name) else {
-            continue; // Tool not found in this server, try next
-        };
-        // Models write the argument names of the tool they know best (Flint's
-        // `edit` says old_string, the filesystem server's edit_file says
-        // oldText); the server's own schema decides the spelling.
-        let aligned_arguments = arguments
-            .clone()
-            .map(|args| super::arg_align::align_arguments(args, &found_tool.input_schema));
-
-        log::info!("Found tool {tool_name} in server {srv_name}");
-
-        // AH-041. Checked here, against the server the tool was actually found
-        // on -- not against `server_name`, which the request may not have set
-        // at all. A request that names no server is answered by whichever
-        // connected server publishes a matching tool name, and a tool name is
-        // chosen by the server publishing it, so it identifies nobody. The
-        // decision has to be about the server that is going to receive the
-        // arguments.
-        //
-        // Before the check, not after: a refusal that has already sent the
-        // arguments to the server has not refused anything.
-        //
-        // The grant or ticket must also be for the definition this server is
-        // running now: an approval given before its command or endpoint was
-        // edited was an approval of a different program.
-        let current = server_fingerprint_from(
-            &active_configs,
-            &saved_server_configs(&data_folder),
-            srv_name,
-        );
-        if let Err(refusal) = tauri_plugin_agent_tools::mcp_trust::permits(
-            &data_folder,
-            srv_name,
-            &tool_name,
-            current.as_deref(),
-            approval_ticket.as_deref(),
-        ) {
-            cleanup_cancellation_token(&state, &cancellation_token).await;
-            return Err(refusal.message());
-        }
-
-        // AH-144: the server's own budget, before its arguments are sent.
-        let budget = crate::core::mcp::budget::ServerBudget::for_server(
-            &crate::core::app::commands::resolve_jan_data_folder(),
-            srv_name,
-        );
-        if let Err(refusal) = crate::core::mcp::budget::check(srv_name, &budget) {
-            cleanup_cancellation_token(&state, &cancellation_token).await;
-            return Err(refusal);
-        }
-        let server_cap = budget.result_cap(tool_output_cap);
-        let charged_server = srv_name.to_string();
-
-        // Call the tool with timeout and cancellation support
-        let mut params = CallToolRequestParams::new(tool_name.clone());
-        if let Some(args) = aligned_arguments {
-            params = params.with_arguments(args);
-        }
-        // The timeout rides on the request, so a stuck call is cancelled on the
-        // server too, and a server that keeps timing out is stopped below.
-        let call_timeout = super::stall::server_timeout(active_configs.get(srv_name), timeout_duration);
-        // A user cancel reaches the server as notifications/cancelled, like a timeout.
-        let has_token = cancellation_token.is_some();
-        let cancel_signal = async move {
-            if has_token {
-                let _ = cancel_rx.await;
-            } else {
-                std::future::pending::<()>().await;
-            }
-        };
-        let tool_call =
-            super::stall::call_tool_until(service, params, call_timeout, cancel_signal);
-        let timed_out_message = format!(
-            "Tool call '{tool_name}' timed out after {} seconds",
-            call_timeout.as_secs()
-        );
-        let to_message = |failure: super::stall::CallFailure| match failure {
-            super::stall::CallFailure::TimedOut => timed_out_message.clone(),
-            super::stall::CallFailure::Cancelled => format!("Tool call '{tool_name}' was cancelled"),
-            super::stall::CallFailure::Other(e) => e,
-        };
-
-        let outcome = tool_call.await;
-        let stop_stalled = super::stall::note_outcome(srv_name, &outcome);
-        let result = outcome.map_err(to_message);
-        let result = if stop_stalled {
-            log::warn!(
-                "MCP server {srv_name} timed out {} calls in a row; stopping it (restarts on next use)",
-                super::stall::STALL_STOP_THRESHOLD
-            );
-            let _ =
-                super::helpers::stop_running_mcp_server(&app, srv_name, active_configs.get(srv_name))
-                    .await;
-            super::helpers::emit_mcp_update_event(&app, srv_name);
-            result.map_err(|e| {
-                format!("{e}. The server was stopped after repeated timeouts and starts again on its next use.")
-            })
-        } else {
-            result
-        };
-
-        // Signal reconnect if the tool call itself hit a transport error
-        if let Err(ref e) = result {
-            if is_transport_error(e) {
-                log::warn!(
-                    "MCP server {} transport error during tool call: {}",
-                    srv_name,
-                    e
-                );
-                state.mcp_reconnect_notify.notify_waiters();
             }
         }
-
-        cleanup_cancellation_token(&state, &cancellation_token).await;
-        // Cap here rather than at each caller: this is the single point every
-        // desktop MCP tool result passes through on its way into conversation
-        // history, so an unbounded result can never reach the model.
-        return result.map(|res| {
-            let capped = truncate_tool_result(&res, server_cap);
-            crate::core::mcp::budget::charge(
-                &charged_server,
-                crate::core::mcp::budget::result_chars(&capped),
-            );
-            capped
-        });
     }
 
     // No server had the tool — check if it's because of transport errors
     if !transport_error_servers.is_empty() {
         state.mcp_reconnect_notify.notify_waiters();
-        cleanup_cancellation_token(&state, &cancellation_token).await;
         return Err(format!(
             "MCP server(s) [{}] disconnected while looking for tool '{}'. Reconnecting — please retry.",
             transport_error_servers.join(", "),
-            tool_name
+            req.tool_name
         ));
     }
 
-    cleanup_cancellation_token(&state, &cancellation_token).await;
-    Err(format!("Tool {tool_name} not found"))
+    Err(format!("Tool {} not found", req.tool_name))
+}
+
+/// Asks one server whether it has the tool and, if so, runs the call there.
+#[allow(clippy::too_many_arguments)]
+async fn try_server<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    req: &CallRequest<'_>,
+    srv_name: &str,
+    service: &rmcp::Peer<rmcp::RoleClient>,
+    active_configs: &std::collections::HashMap<String, Value>,
+    data_folder: &Path,
+    list_timeout: Duration,
+    cancel_rx: &mut Option<oneshot::Receiver<()>>,
+) -> ServerAttempt {
+    let tool_name = req.tool_name;
+    // Idle shutdown never stops a server while this call is in flight,
+    // including while its tools are being listed.
+    let _in_flight = state.mcp_lazy.begin_call(srv_name);
+    let tools = match timeout(list_timeout, service.list_all_tools()).await {
+        Ok(Ok(tools)) => tools,
+        Err(_) => {
+            log::warn!("MCP server {srv_name} timed out listing tools during call_tool");
+            return ServerAttempt::Skip { transport_error: false };
+        }
+        Ok(Err(e)) => {
+            let err_str = e.to_string();
+            log::warn!(
+                "MCP server {} failed to list tools during call_tool: {}",
+                srv_name,
+                err_str
+            );
+            return ServerAttempt::Skip { transport_error: is_transport_error(&err_str) };
+        }
+    };
+
+    let Some(found_tool) = tools.iter().find(|t| t.name == tool_name) else {
+        return ServerAttempt::Skip { transport_error: false }; // Tool not found in this server, try next
+    };
+    // Models write the argument names of the tool they know best (Flint's
+    // `edit` says old_string, the filesystem server's edit_file says
+    // oldText); the server's own schema decides the spelling.
+    let aligned_arguments = req
+        .arguments
+        .clone()
+        .map(|args| super::arg_align::align_arguments(args, &found_tool.input_schema));
+
+    log::info!("Found tool {tool_name} in server {srv_name}");
+
+    // AH-041. Checked here, against the server the tool was actually found
+    // on -- not against `server_name`, which the request may not have set
+    // at all. A request that names no server is answered by whichever
+    // connected server publishes a matching tool name, and a tool name is
+    // chosen by the server publishing it, so it identifies nobody. The
+    // decision has to be about the server that is going to receive the
+    // arguments.
+    //
+    // Before the check, not after: a refusal that has already sent the
+    // arguments to the server has not refused anything.
+    //
+    // The grant or ticket must also be for the definition this server is
+    // running now: an approval given before its command or endpoint was
+    // edited was an approval of a different program.
+    let current = server_fingerprint_from(active_configs, &saved_server_configs(data_folder), srv_name);
+    if let Err(refusal) = tauri_plugin_agent_tools::mcp_trust::permits(
+        data_folder,
+        srv_name,
+        tool_name,
+        current.as_deref(),
+        req.approval_ticket.as_deref(),
+    ) {
+        return ServerAttempt::Answer(Err(refusal.message()));
+    }
+
+    // AH-144: the server's own budget, before its arguments are sent.
+    let budget = crate::core::mcp::budget::ServerBudget::for_server(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+        srv_name,
+    );
+    if let Err(refusal) = crate::core::mcp::budget::check(srv_name, &budget) {
+        return ServerAttempt::Answer(Err(refusal));
+    }
+    let server_cap = budget.result_cap(req.tool_output_cap);
+    let charged_server = srv_name.to_string();
+
+    // Call the tool with timeout and cancellation support
+    let mut params = CallToolRequestParams::new(tool_name.to_string());
+    if let Some(args) = aligned_arguments {
+        params = params.with_arguments(args);
+    }
+    // The timeout rides on the request, so a stuck call is cancelled on the
+    // server too, and a server that keeps timing out is stopped below.
+    let call_timeout = super::stall::server_timeout(active_configs.get(srv_name), req.timeout_duration);
+    // A user cancel reaches the server as notifications/cancelled, like a timeout.
+    let has_token = req.cancellation_token.is_some();
+    let cancel_rx = cancel_rx.take();
+    let cancel_signal = async move {
+        match (has_token, cancel_rx) {
+            (true, Some(rx)) => {
+                let _ = rx.await;
+            }
+            _ => std::future::pending::<()>().await,
+        }
+    };
+    let tool_call = super::stall::call_tool_until(service, params, call_timeout, cancel_signal);
+    let timed_out_message = format!(
+        "Tool call '{tool_name}' timed out after {} seconds",
+        call_timeout.as_secs()
+    );
+    let to_message = |failure: super::stall::CallFailure| match failure {
+        super::stall::CallFailure::TimedOut => timed_out_message.clone(),
+        super::stall::CallFailure::Cancelled => format!("Tool call '{tool_name}' was cancelled"),
+        super::stall::CallFailure::Other(e) => e,
+    };
+
+    let outcome = tool_call.await;
+    let stop_stalled = super::stall::note_outcome(srv_name, &outcome);
+    let result = outcome.map_err(to_message);
+    let result = if stop_stalled {
+        log::warn!(
+            "MCP server {srv_name} timed out {} calls in a row; stopping it (restarts on next use)",
+            super::stall::STALL_STOP_THRESHOLD
+        );
+        let _ = super::helpers::stop_running_mcp_server(app, srv_name, active_configs.get(srv_name)).await;
+        super::helpers::emit_mcp_update_event(app, srv_name);
+        result.map_err(|e| {
+            format!("{e}. The server was stopped after repeated timeouts and starts again on its next use.")
+        })
+    } else {
+        result
+    };
+
+    // Signal reconnect if the tool call itself hit a transport error
+    if let Err(ref e) = result {
+        if is_transport_error(e) {
+            log::warn!(
+                "MCP server {} transport error during tool call: {}",
+                srv_name,
+                e
+            );
+            state.mcp_reconnect_notify.notify_waiters();
+        }
+    }
+
+    // Cap here rather than at each caller: this is the single point every
+    // desktop MCP tool result passes through on its way into conversation
+    // history, so an unbounded result can never reach the model.
+    ServerAttempt::Answer(result.map(|res| {
+        let capped = truncate_tool_result(&res, server_cap);
+        crate::core::mcp::budget::charge(
+            &charged_server,
+            crate::core::mcp::budget::result_chars(&capped),
+        );
+        capped
+    }))
 }
 
 /// At most this many lazy servers are started at once while a call names none.
@@ -1226,7 +1347,14 @@ pub async fn authorize_mcp_server<R: Runtime>(
     }
     // Best-effort: the url has already been emitted, so a session with no
     // browser can still finish by opening it by hand.
-    if let Err(e) = app
+    // The url comes from the MCP server's metadata: only a web url may reach
+    // the OS opener, never file: or a custom protocol handler.
+    let scheme_ok = url::Url::parse(&pending.authorization_url)
+        .map(|u| matches!(u.scheme(), "http" | "https"))
+        .unwrap_or(false);
+    if !scheme_ok {
+        log::warn!("Refusing to open a non-http(s) authorization url for '{name}'");
+    } else if let Err(e) = app
         .opener()
         .open_url(&pending.authorization_url, None::<&str>)
     {
@@ -1762,5 +1890,54 @@ mod stale_write_tests {
         let merged = merge_mcp_servers(&base, &ours, &disk);
         assert_eq!(merged["a"]["active"], json!(true));
         assert!(!merged.contains_key("gone"));
+    }
+}
+
+#[cfg(test)]
+mod cancellation_guard_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    type Map = Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<()>>>>;
+
+    async fn map_with(token: &str) -> (Map, oneshot::Receiver<()>) {
+        let map: Map = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let (tx, rx) = oneshot::channel();
+        map.lock().await.insert(token.to_string(), tx);
+        (map, rx)
+    }
+
+    #[tokio::test]
+    async fn finish_removes_the_token_in_order() {
+        let (map, _rx) = map_with("t").await;
+        let mut guard = CancellationGuard { token: Some("t".into()), map: map.clone() };
+        guard.finish().await;
+        assert!(map.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dropping_the_guard_mid_call_still_removes_the_token() {
+        let (map, _rx) = map_with("t").await;
+        {
+            let _guard = CancellationGuard { token: Some("t".into()), map: map.clone() };
+            // the call's future is dropped here without finish()
+        }
+        for _ in 0..50 {
+            if map.lock().await.is_empty() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("the token outlived its call");
+    }
+
+    #[tokio::test]
+    async fn a_call_without_a_token_touches_nothing() {
+        let (map, _rx) = map_with("other").await;
+        let mut guard = CancellationGuard { token: None, map: map.clone() };
+        guard.finish().await;
+        drop(guard);
+        assert_eq!(map.lock().await.len(), 1);
     }
 }

@@ -536,6 +536,7 @@
   "threadImage": "थ्रेड की छवि",
   "editMessage": "संदेश संपादित करें",
   "deleteMessage": "संदेश हटाएं",
+  "deleteMessageDescription": "क्या आप वाकई इस संदेश को हटाना चाहते हैं? यह कार्रवाई पूर्ववत नहीं की जा सकती।",
   "deleteThread": "थ्रेड हटाएं",
   "renameThread": "थ्रेड का नाम बदलें",
   "threadTitle": "थ्रेड शीर्षक",
@@ -847,7 +848,28 @@
     "openCodeFolderInCowork": "कोड फ़ोल्डर Cowork में खोलें",
     "openCodeFolder": "कोड फ़ोल्डर खोलें",
     "openCodeFolderDescription": "अपने कंप्यूटर पर वह फ़ोल्डर चुनें जिसमें Flint काम करे।",
-    "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें"
+    "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें",
+    "webPage": {
+      "open": "वेब पेज जोड़ें",
+      "title": "वेब पेज जोड़ें",
+      "description": "पेज लाकर उसका पढ़ने योग्य टेक्स्ट प्रोजेक्ट फ़ाइल के रूप में रखें। केवल सार्वजनिक http और https पते काम करते हैं।",
+      "urlLabel": "पेज का पता",
+      "add": "पेज जोड़ें",
+      "refresh": "रीफ़्रेश करें",
+      "added": "\"{{name}}\" जोड़ा गया",
+      "refreshed": "\"{{name}}\" रीफ़्रेश किया गया",
+      "truncated": "पेज आकार सीमा से बड़ा था, इसलिए केवल पहला भाग रखा गया।",
+      "refreshFailed": "पेज रीफ़्रेश नहीं हो सका",
+      "errors": {
+        "invalidUrl": "http:// या https:// से शुरू होने वाला पूरा वेब पता दर्ज करें।",
+        "blocked": "यह पता इस कंप्यूटर या किसी निजी नेटवर्क की ओर जाता है, इसलिए इसे नहीं लाया गया।",
+        "timeout": "पेज ने जवाब देने में बहुत समय लिया। बाद में फिर कोशिश करें।",
+        "notHtml": "यह पता पढ़ने योग्य टेक्स्ट वाला वेब पेज नहीं है (जैसे PDF, चित्र या डाउनलोड)।",
+        "tooLarge": "पेज लाने के लिए बहुत बड़ा है।",
+        "httpError": "साइट ने त्रुटि लौटाई: {{message}}",
+        "failed": "पेज नहीं लाया जा सका: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "संलग्नकों को कैसे प्रोसेस करना है चुनें",
@@ -1203,6 +1225,7 @@
     "btwFailed": "साइड सवाल का जवाब नहीं दिया जा सका।"
   },
   "autoCompactNeedsWindow": "ऑटो-कॉम्पैक्ट के लिए कॉन्टेक्स्ट आकार चाहिए, और {{model}} का कोई आकार Flint को नहीं मिल रहा। इस मॉडल के लिए Max Context Tokens सेट करें ताकि लंबी चैट भरने से पहले संक्षिप्त हो जाएँ। अगर प्रोवाइडर लंबाई के कारण अनुरोध अस्वीकार करता है, तो Flint संक्षिप्त करके एक बार दोबारा कोशिश करता है।",
+  "ollamaWindowTruncating": "Ollama {{model}} को {{tokens}} टोकन के कॉन्टेक्स्ट के साथ चलाता है और इससे आगे के सबसे पुराने संदेश चुपचाप हटा देता है। Flint अब इसी आकार के अनुसार कॉम्पैक्ट करता है। अधिक इतिहास रखने के लिए Ollama सर्वर पर इसे बढ़ाएँ: OLLAMA_CONTEXT_LENGTH सेट करें, या मॉडल की Modelfile में PARAMETER num_ctx जोड़ें।",
   "compaction": {
     "working": "बातचीत संक्षिप्त की जा रही है…",
     "divider_one": "कॉन्टेक्स्ट संक्षिप्त — {{count}} पुराना संदेश सारांशित",
@@ -2725,7 +2748,11 @@
     "noVision": "यह मॉडल छवियाँ नहीं पढ़ सकता",
     "details": "{{name}} का विवरण",
     "previewLoading": "पूर्वावलोकन लोड हो रहा है…",
-    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं"
+    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं",
+    "pagesAsImages": "पेज इमेज के रूप में भेजें",
+    "pagesAsImagesHint": "इस PDF के पेज इमेज के रूप में भेजें, ताकि मॉडल स्कैन, चार्ट और लेआउट देख सके",
+    "pdfPagesCut": "{{name}} के {{total}} में से पहले {{sent}} पेज इमेज के रूप में भेजे गए",
+    "pdfScannedAsImages": "{{name}} में कोई टेक्स्ट नहीं है, इसलिए इसके पेज इमेज के रूप में भेजे गए"
   },
   "fileViewer": {
     "openFull": "पूरा पूर्वावलोकन खोलें",
@@ -2742,6 +2769,10 @@
     "truncatedOnAdd": "{{total}} में से पहले {{shown}} दिखाए जा रहे हैं (जोड़ते समय अटैचमेंट छोटा कर दिया गया था)"
   },
   "dropAttachFailed": "छोड़ी गई फ़ाइलें संलग्न नहीं हो सकीं",
+  "chatPaneDrop": {
+    "overlay": "संलग्न करने के लिए फ़ाइलें यहाँ छोड़ें",
+    "unsupported": "{{names}} संलग्न नहीं की जा सकती: यह फ़ाइल प्रकार समर्थित नहीं है।"
+  },
   "sampler": {
     "label": "सैंपलिंग पैरामीटर",
     "notSupported": "{{provider}} द्वारा समर्थित नहीं"
@@ -2790,6 +2821,10 @@
   "threadSaveFailed": "इस थ्रेड का बदलाव सहेजा नहीं जा सका। उसे वापस कर दिया गया।",
   "attachmentsProcessFailed": "अटैचमेंट तैयार नहीं हो सके, इसलिए संदेश नहीं भेजा गया",
   "attachmentMissingFile": "एक अटैच की गई फ़ाइल अब उपलब्ध नहीं है। उसे हटाकर दोबारा अटैच करें; आपका संदेश बॉक्स में ही है।",
+  "factoryResetIncomplete": {
+    "title": "रीसेट अधूरा रहा",
+    "description": "{{count}} आइटम हटाए नहीं जा सके और अभी भी डिस्क पर हैं:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "सेटिंग्स फ़ाइल पढ़ी नहीं जा सकी",
     "withBackup": "{{file}} क्षतिग्रस्त थी, इसलिए Flint डिफ़ॉल्ट सेटिंग्स के साथ शुरू हुआ। क्षतिग्रस्त फ़ाइल {{backup}} नाम से रखी गई है।",
@@ -3076,5 +3111,10 @@
     "reject": "अस्वीकार करें",
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

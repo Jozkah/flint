@@ -18,6 +18,7 @@ vi.mock('@/hooks/useHuggingFaceDownloads', () => ({
   resumeHuggingFaceBundle: vi.fn(),
   retryHuggingFaceBundle: vi.fn(),
   startHuggingFaceBundle: vi.fn(),
+  resolveBundleId: (_state: unknown, id: string) => id,
   useHuggingFaceDownloads: (
     sel: (s: { tasks: Record<string, Task> }) => unknown
   ) => sel({ tasks: { 'hf:llamacpp:org/model': state.task } }),

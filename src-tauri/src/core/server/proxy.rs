@@ -1030,6 +1030,353 @@ fn verbose_request_line(method: &hyper::Method, uri: &hyper::Uri) -> String {
     format!("API server request: {method} {}", uri.path())
 }
 
+/// Answers a CORS preflight (`OPTIONS`): the host, the requested method and the
+/// requested headers are checked, and the origin is reflected only when trusted.
+fn handle_preflight(
+    req: &Request<Incoming>,
+    config: &ProxyConfig,
+) -> Result<Response<ResBody>, hyper::Error> {
+    log::debug!(
+        "Handling CORS preflight request from {:?} {:?}",
+        req.headers().get(hyper::header::HOST),
+        req.headers()
+            .get(hyper::header::ACCESS_CONTROL_REQUEST_METHOD)
+    );
+
+    let host = req
+        .headers()
+        .get(hyper::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let origin = req
+        .headers()
+        .get(hyper::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let requested_method = req
+        .headers()
+        .get("Access-Control-Request-Method")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"];
+    let method_allowed = requested_method.is_empty()
+        || allowed_methods
+            .iter()
+            .any(|&method| method.eq_ignore_ascii_case(requested_method));
+
+    if !method_allowed {
+        log::warn!("CORS preflight: Method '{requested_method}' not allowed");
+        return Ok(Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .body(full("Method not allowed"))
+            .unwrap());
+    }
+
+    let request_path = req.uri().path();
+    let whitelisted_paths = ["/", "/openapi.json", "/favicon.ico"];
+    let is_whitelisted_path = whitelisted_paths.contains(&request_path);
+
+    let is_trusted = if is_whitelisted_path {
+        log::debug!(
+            "CORS preflight: Bypassing host check for whitelisted path: {request_path}"
+        );
+        true
+    } else if !host.is_empty() {
+        log::debug!(
+            "CORS preflight: Host is '{host}', trusted hosts: {:?}",
+            config.trusted_hosts
+        );
+        is_valid_host(host, &config.trusted_hosts)
+    } else {
+        log::warn!("CORS preflight: No Host header present");
+        false
+    };
+
+    if !is_trusted {
+        log::warn!("CORS preflight: Host '{host}' not trusted for path '{request_path}'");
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(full("Host not allowed"))
+            .unwrap());
+    }
+
+    let requested_headers = req
+        .headers()
+        .get("Access-Control-Request-Headers")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let allowed_headers = [
+        "accept",
+        "accept-language",
+        "authorization",
+        "cache-control",
+        "connection",
+        "content-type",
+        "dnt",
+        "host",
+        "if-modified-since",
+        "keep-alive",
+        "origin",
+        "user-agent",
+        "x-api-key",
+        "x-csrf-token",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-proto",
+        "x-requested-with",
+        "x-stainless-arch",
+        "x-stainless-lang",
+        "x-stainless-os",
+        "x-stainless-package-version",
+        "x-stainless-retry-count",
+        "x-stainless-runtime",
+        "x-stainless-runtime-version",
+        "x-stainless-timeout",
+    ];
+
+    let headers_valid = if requested_headers.is_empty() {
+        true
+    } else {
+        requested_headers
+            .split(',')
+            .map(|h| h.trim())
+            .all(|header| {
+                allowed_headers
+                    .iter()
+                    .any(|&allowed| allowed.eq_ignore_ascii_case(header))
+            })
+    };
+
+    if !headers_valid {
+        log::warn!("CORS preflight: Some requested headers not allowed: {requested_headers}");
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(full("Headers not allowed"))
+            .unwrap());
+    }
+
+    let mut response = Response::builder()
+        .status(StatusCode::OK)
+        .header("Access-Control-Allow-Methods", allowed_methods.join(", "))
+        .header("Access-Control-Allow-Headers", allowed_headers.join(", "))
+        .header("Access-Control-Max-Age", "86400")
+        .header(
+            "Vary",
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+        );
+
+    if !origin.is_empty() {
+        if origin_is_trusted(origin, &config.trusted_hosts) {
+            response = response
+                .header("Access-Control-Allow-Origin", origin)
+                .header("Access-Control-Allow-Credentials", "true");
+        } else {
+            log::warn!(
+                "CORS preflight: Origin '{origin}' is not trusted, not reflecting origin"
+            );
+        }
+    }
+
+    log::debug!("CORS preflight response: host_trusted={is_trusted}, origin='{origin}'");
+    return Ok(response.body(empty()).unwrap());
+}
+
+/// Paths served without a host check or credentials: the docs and the root page.
+const WHITELISTED_PATHS: [&str; 6] = [
+    "/",
+    "/openapi.json",
+    "/favicon.ico",
+    "/docs/swagger-ui.css",
+    "/docs/swagger-ui-bundle.js",
+    "/docs/swagger-ui-standalone-preset.js",
+];
+
+/// The checks every request passes before it is routed: a trusted `Host`, no
+/// foreign `Origin` when no key is set, the API key, and the hidden `/configs`.
+/// `Some(response)` refuses the request with CORS headers already applied;
+/// `None` lets it through. Order is the security model: host, origin, key.
+fn check_request(
+    parts: &hyper::http::request::Parts,
+    path: &str,
+    host_header: &str,
+    origin_header: &str,
+    config: &ProxyConfig,
+) -> Option<Response<ResBody>> {
+    let is_whitelisted_path = WHITELISTED_PATHS.contains(&path);
+
+    if !is_whitelisted_path {
+        if !host_header.is_empty() {
+            if !is_valid_host(host_header, &config.trusted_hosts) {
+                let mut error_response = Response::builder().status(StatusCode::FORBIDDEN);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    host_header,
+                    origin_header,
+                    &config.trusted_hosts,
+                );
+                return Some(error_response.body(full("Invalid host header")).unwrap());
+            }
+        } else {
+            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                host_header,
+                origin_header,
+                &config.trusted_hosts,
+            );
+            return Some(error_response.body(full("Missing host header")).unwrap());
+        }
+    } else {
+        log::debug!("Bypassing host validation for whitelisted path: {path}");
+    }
+
+    // A page in the user's browser can send a "simple" cross-origin request to
+    // 127.0.0.1 without a preflight; CORS only hides the answer, the request
+    // still runs. With no API key that would spend credits or load models on
+    // behalf of any website, so a foreign Origin is refused outright.
+    if !is_whitelisted_path
+        && !origin_header.is_empty()
+        && config.proxy_api_key.is_empty()
+        && !origin_is_trusted(origin_header, &config.trusted_hosts)
+    {
+        let mut error_response = Response::builder().status(StatusCode::FORBIDDEN);
+        error_response = add_cors_headers_with_host_and_origin(
+            error_response,
+            host_header,
+            origin_header,
+            &config.trusted_hosts,
+        );
+        return Some(error_response.body(full("Untrusted origin")).unwrap());
+    }
+
+    if !is_whitelisted_path && !config.proxy_api_key.is_empty() {
+        // Check Authorization header (Bearer token)
+        let auth_valid = parts
+            .headers
+            .get(hyper::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(bearer_token)
+            .map(|token| keys_equal(token, &config.proxy_api_key))
+            .unwrap_or(false);
+
+        // Check X-Api-Key header
+        let api_key_valid = parts
+            .headers
+            .get("X-Api-Key")
+            .and_then(|v| v.to_str().ok())
+            .map(|key| keys_equal(key, &config.proxy_api_key))
+            .unwrap_or(false);
+
+        if !auth_valid && !api_key_valid {
+            let mut error_response = Response::builder().status(StatusCode::UNAUTHORIZED);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                host_header,
+                origin_header,
+                &config.trusted_hosts,
+            );
+            return Some(error_response
+                .body(full("Invalid or missing authorization token"))
+                .unwrap());
+        }
+    } else if is_whitelisted_path {
+        log::debug!("Bypassing authorization check for whitelisted path: {path}");
+    }
+
+    if path.contains("/configs") {
+        let mut error_response = Response::builder().status(StatusCode::NOT_FOUND);
+        error_response = add_cors_headers_with_host_and_origin(
+            error_response,
+            host_header,
+            origin_header,
+            &config.trusted_hosts,
+        );
+        return Some(error_response.body(full("Not Found")).unwrap());
+    }
+
+    None
+}
+
+/// Answers on these routes spend tokens, so they count toward the rolling
+/// ceilings in quotas.toml and are refused with a 429 once one is reached.
+fn is_metered(method: &hyper::Method, destination_path: &str) -> bool {
+    *method == hyper::Method::POST
+        && matches!(
+            destination_path,
+            "/chat/completions" | "/completions" | "/messages" | "/orchestrations"
+        )
+}
+
+/// Refuses a metered request (a route that spends tokens) once a rolling
+/// ceiling in `quotas.toml` is reached: a 429 with the retry and headroom headers.
+fn quota_refusal(
+    method: &hyper::Method,
+    destination_path: &str,
+    host_header: &str,
+    origin_header: &str,
+    config: &ProxyConfig,
+    jan_data_folder: &str,
+) -> Option<Response<ResBody>> {
+    if is_metered(method, destination_path) {
+        if let Some(refused) =
+            super::usage_meter::refusal(std::path::Path::new(&jan_data_folder))
+        {
+            let mut error_response = Response::builder()
+                .status(StatusCode::TOO_MANY_REQUESTS)
+                .header("Content-Type", "application/json")
+                .header("Retry-After", refused.retry_after_secs.to_string());
+            if let Some(room) =
+                super::usage_meter::headroom(std::path::Path::new(&jan_data_folder))
+            {
+                for (name, value) in room.headers() {
+                    error_response = error_response.header(name, value);
+                }
+            }
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                host_header,
+                origin_header,
+                &config.trusted_hosts,
+            );
+            return Some(error_response
+                .body(full(error_json(
+                    &refused.message,
+                    "rate_limit_error",
+                    "rate_limit_exceeded",
+                )))
+                .unwrap());
+        }
+    }
+
+    None
+}
+
+/// What route resolution decides for a request that is forwarded upstream; the
+/// routes fill it in and the forwarding code below the route match reads it.
+#[derive(Default)]
+struct ForwardPlan {
+    session_api_keys: Vec<String>,
+    /// The provider's configured headers (Azure `api-key`, APIM subscription
+    /// keys, ...), sent on every upstream attempt like the bearer key.
+    provider_headers: Vec<(String, String)>,
+    buffered_body: Option<Bytes>,
+    target_base_url: Option<String>,
+    is_anthropic_messages: bool,
+    /// Set when the resolved remote provider fronts a non-chat/completions native
+    /// API; drives request rewrite + response translation back to chat shape.
+    upstream_converter: Option<Box<dyn UpstreamConverter>>,
+    /// Model id when the request resolves to an MLX session -- MLX has no preset,
+    /// so sampling defaults are injected into the body before forwarding.
+    mlx_model_id: Option<String>,
+    /// The id a request to the bundled engine named. The engine answers with the
+    /// model's file path in `model`; the response is given this id back.
+    engine_model_id: Option<String>,
+}
+
 /// Handles the proxy request logic
 #[allow(clippy::too_many_arguments)]
 async fn proxy_request(
@@ -1049,153 +1396,7 @@ async fn proxy_request(
         log::info!("{}", verbose_request_line(req.method(), req.uri()));
     }
     if req.method() == hyper::Method::OPTIONS {
-        log::debug!(
-            "Handling CORS preflight request from {:?} {:?}",
-            req.headers().get(hyper::header::HOST),
-            req.headers()
-                .get(hyper::header::ACCESS_CONTROL_REQUEST_METHOD)
-        );
-
-        let host = req
-            .headers()
-            .get(hyper::header::HOST)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        let origin = req
-            .headers()
-            .get(hyper::header::ORIGIN)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        let requested_method = req
-            .headers()
-            .get("Access-Control-Request-Method")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        let allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"];
-        let method_allowed = requested_method.is_empty()
-            || allowed_methods
-                .iter()
-                .any(|&method| method.eq_ignore_ascii_case(requested_method));
-
-        if !method_allowed {
-            log::warn!("CORS preflight: Method '{requested_method}' not allowed");
-            return Ok(Response::builder()
-                .status(StatusCode::METHOD_NOT_ALLOWED)
-                .body(full("Method not allowed"))
-                .unwrap());
-        }
-
-        let request_path = req.uri().path();
-        let whitelisted_paths = ["/", "/openapi.json", "/favicon.ico"];
-        let is_whitelisted_path = whitelisted_paths.contains(&request_path);
-
-        let is_trusted = if is_whitelisted_path {
-            log::debug!(
-                "CORS preflight: Bypassing host check for whitelisted path: {request_path}"
-            );
-            true
-        } else if !host.is_empty() {
-            log::debug!(
-                "CORS preflight: Host is '{host}', trusted hosts: {:?}",
-                config.trusted_hosts
-            );
-            is_valid_host(host, &config.trusted_hosts)
-        } else {
-            log::warn!("CORS preflight: No Host header present");
-            false
-        };
-
-        if !is_trusted {
-            log::warn!("CORS preflight: Host '{host}' not trusted for path '{request_path}'");
-            return Ok(Response::builder()
-                .status(StatusCode::FORBIDDEN)
-                .body(full("Host not allowed"))
-                .unwrap());
-        }
-
-        let requested_headers = req
-            .headers()
-            .get("Access-Control-Request-Headers")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        let allowed_headers = [
-            "accept",
-            "accept-language",
-            "authorization",
-            "cache-control",
-            "connection",
-            "content-type",
-            "dnt",
-            "host",
-            "if-modified-since",
-            "keep-alive",
-            "origin",
-            "user-agent",
-            "x-api-key",
-            "x-csrf-token",
-            "x-forwarded-for",
-            "x-forwarded-host",
-            "x-forwarded-proto",
-            "x-requested-with",
-            "x-stainless-arch",
-            "x-stainless-lang",
-            "x-stainless-os",
-            "x-stainless-package-version",
-            "x-stainless-retry-count",
-            "x-stainless-runtime",
-            "x-stainless-runtime-version",
-            "x-stainless-timeout",
-        ];
-
-        let headers_valid = if requested_headers.is_empty() {
-            true
-        } else {
-            requested_headers
-                .split(',')
-                .map(|h| h.trim())
-                .all(|header| {
-                    allowed_headers
-                        .iter()
-                        .any(|&allowed| allowed.eq_ignore_ascii_case(header))
-                })
-        };
-
-        if !headers_valid {
-            log::warn!("CORS preflight: Some requested headers not allowed: {requested_headers}");
-            return Ok(Response::builder()
-                .status(StatusCode::FORBIDDEN)
-                .body(full("Headers not allowed"))
-                .unwrap());
-        }
-
-        let mut response = Response::builder()
-            .status(StatusCode::OK)
-            .header("Access-Control-Allow-Methods", allowed_methods.join(", "))
-            .header("Access-Control-Allow-Headers", allowed_headers.join(", "))
-            .header("Access-Control-Max-Age", "86400")
-            .header(
-                "Vary",
-                "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
-            );
-
-        if !origin.is_empty() {
-            if origin_is_trusted(origin, &config.trusted_hosts) {
-                response = response
-                    .header("Access-Control-Allow-Origin", origin)
-                    .header("Access-Control-Allow-Credentials", "true");
-            } else {
-                log::warn!(
-                    "CORS preflight: Origin '{origin}' is not trusted, not reflecting origin"
-                );
-            }
-        }
-
-        log::debug!("CORS preflight response: host_trusted={is_trusted}, origin='{origin}'");
-        return Ok(response.body(empty()).unwrap());
+        return handle_preflight(&req, &config);
     }
 
     let (parts, body) = req.into_parts();
@@ -1220,165 +1421,27 @@ async fn proxy_request(
     let path = get_destination_path(original_path, &config.prefix);
     let method = parts.method.clone();
 
-    let whitelisted_paths = [
-        "/",
-        "/openapi.json",
-        "/favicon.ico",
-        "/docs/swagger-ui.css",
-        "/docs/swagger-ui-bundle.js",
-        "/docs/swagger-ui-standalone-preset.js",
-    ];
-    let is_whitelisted_path = whitelisted_paths.contains(&path.as_str());
-
-    if !is_whitelisted_path {
-        if !host_header.is_empty() {
-            if !is_valid_host(&host_header, &config.trusted_hosts) {
-                let mut error_response = Response::builder().status(StatusCode::FORBIDDEN);
-                error_response = add_cors_headers_with_host_and_origin(
-                    error_response,
-                    &host_header,
-                    &origin_header,
-                    &config.trusted_hosts,
-                );
-                return Ok(error_response.body(full("Invalid host header")).unwrap());
-            }
-        } else {
-            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-            error_response = add_cors_headers_with_host_and_origin(
-                error_response,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-            return Ok(error_response.body(full("Missing host header")).unwrap());
-        }
-    } else {
-        log::debug!("Bypassing host validation for whitelisted path: {path}");
-    }
-
-    // A page in the user's browser can send a "simple" cross-origin request to
-    // 127.0.0.1 without a preflight; CORS only hides the answer, the request
-    // still runs. With no API key that would spend credits or load models on
-    // behalf of any website, so a foreign Origin is refused outright.
-    if !is_whitelisted_path
-        && !origin_header.is_empty()
-        && config.proxy_api_key.is_empty()
-        && !origin_is_trusted(&origin_header, &config.trusted_hosts)
-    {
-        let mut error_response = Response::builder().status(StatusCode::FORBIDDEN);
-        error_response = add_cors_headers_with_host_and_origin(
-            error_response,
-            &host_header,
-            &origin_header,
-            &config.trusted_hosts,
-        );
-        return Ok(error_response.body(full("Untrusted origin")).unwrap());
-    }
-
-    if !is_whitelisted_path && !config.proxy_api_key.is_empty() {
-        // Check Authorization header (Bearer token)
-        let auth_valid = parts
-            .headers
-            .get(hyper::header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|auth_str| auth_str.strip_prefix("Bearer "))
-            .map(|token| keys_equal(token, &config.proxy_api_key))
-            .unwrap_or(false);
-
-        // Check X-Api-Key header
-        let api_key_valid = parts
-            .headers
-            .get("X-Api-Key")
-            .and_then(|v| v.to_str().ok())
-            .map(|key| keys_equal(key, &config.proxy_api_key))
-            .unwrap_or(false);
-
-        if !auth_valid && !api_key_valid {
-            let mut error_response = Response::builder().status(StatusCode::UNAUTHORIZED);
-            error_response = add_cors_headers_with_host_and_origin(
-                error_response,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-            return Ok(error_response
-                .body(full("Invalid or missing authorization token"))
-                .unwrap());
-        }
-    } else if is_whitelisted_path {
-        log::debug!("Bypassing authorization check for whitelisted path: {path}");
-    }
-
-    if path.contains("/configs") {
-        let mut error_response = Response::builder().status(StatusCode::NOT_FOUND);
-        error_response = add_cors_headers_with_host_and_origin(
-            error_response,
-            &host_header,
-            &origin_header,
-            &config.trusted_hosts,
-        );
-        return Ok(error_response.body(full("Not Found")).unwrap());
+    if let Some(refusal) = check_request(&parts, &path, &host_header, &origin_header, &config) {
+        return Ok(refusal);
     }
 
     let original_path = parts.uri.path();
     let destination_path = get_destination_path(original_path, &config.prefix);
 
-    // Answers on these routes spend tokens, so they count toward the rolling
-    // ceilings in quotas.toml and are refused with a 429 once one is reached.
-    let metered = method == hyper::Method::POST
-        && matches!(
-            destination_path.as_str(),
-            "/chat/completions" | "/completions" | "/messages" | "/orchestrations"
-        );
-    if metered {
-        if let Some(refused) =
-            super::usage_meter::refusal(std::path::Path::new(&jan_data_folder))
-        {
-            let mut error_response = Response::builder()
-                .status(StatusCode::TOO_MANY_REQUESTS)
-                .header("Content-Type", "application/json")
-                .header("Retry-After", refused.retry_after_secs.to_string());
-            if let Some(room) =
-                super::usage_meter::headroom(std::path::Path::new(&jan_data_folder))
-            {
-                for (name, value) in room.headers() {
-                    error_response = error_response.header(name, value);
-                }
-            }
-            error_response = add_cors_headers_with_host_and_origin(
-                error_response,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-            return Ok(error_response
-                .body(full(error_json(
-                    &refused.message,
-                    "rate_limit_error",
-                    "rate_limit_exceeded",
-                )))
-                .unwrap());
-        }
+    if let Some(refusal) = quota_refusal(
+        &method,
+        &destination_path,
+        &host_header,
+        &origin_header,
+        &config,
+        &jan_data_folder,
+    ) {
+        return Ok(refusal);
     }
+    let metered = is_metered(&method, &destination_path);
 
-    // Initialize variables that will be set in the match
-    let mut session_api_keys: Vec<String> = Vec::new();
-    // The provider's configured headers (Azure `api-key`, APIM subscription
-    // keys, ...), sent on every upstream attempt like the bearer key.
-    let mut provider_headers: Vec<(String, String)> = Vec::new();
-    #[allow(unused_assignments)]
-    let mut buffered_body: Option<Bytes> = None;
-    let mut target_base_url: Option<String> = None;
-    let mut is_anthropic_messages = false;
-    // Set when the resolved remote provider fronts a non-chat/completions native
-    // API; drives request rewrite + response translation back to chat shape.
-    let mut upstream_converter: Option<Box<dyn UpstreamConverter>> = None;
-    // Model id when the request resolves to an MLX session — MLX has no preset,
-    // so sampling defaults are injected into the body before forwarding.
-    let mut mlx_model_id: Option<String> = None;
-    // The id a request to the bundled engine named. The engine answers with the
-    // model's file path in `model`; the response is given this id back.
-    let mut engine_model_id: Option<String> = None;
+    // What route resolution decides for a request that is forwarded upstream.
+    let mut plan = ForwardPlan::default();
 
     match (method.clone(), destination_path.as_str()) {
         // OpenAI Responses API: rewritten to a chat/completions call on this
@@ -1408,7 +1471,7 @@ async fn proxy_request(
         }
         // Anthropic /messages endpoint - tries /messages first, falls back to /chat/completions on error
         (hyper::Method::POST, "/messages") => {
-            is_anthropic_messages = true;
+            plan.is_anthropic_messages = true;
             log::info!(
                 "Handling POST request to /messages with chat/completions fallback on error",
             );
@@ -1423,7 +1486,7 @@ async fn proxy_request(
                     ));
                 }
             };
-            buffered_body = Some(body_bytes.clone());
+            plan.buffered_body = Some(body_bytes.clone());
 
             // Parse body to get model_id for routing (don't transform yet)
             match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
@@ -1433,7 +1496,7 @@ async fn proxy_request(
                     // upstream prompt caching or reach the model.
                     strip_billing_header_in_body(&mut json_body);
                     if let Ok(cleaned) = serde_json::to_vec(&json_body) {
-                        buffered_body = Some(cleaned.into());
+                        plan.buffered_body = Some(cleaned.into());
                     }
 
                     if config.enable_server_tool_execution
@@ -1518,11 +1581,11 @@ async fn proxy_request(
                             drop(pc2);
 
                             if let Some(provider_cfg) = provider_config {
-                                target_base_url = provider_cfg.base_url.clone().map(|url| {
+                                plan.target_base_url = provider_cfg.base_url.clone().map(|url| {
                                     format!("{}{}", url.trim_end_matches('/'), "/messages")
                                 });
-                                session_api_keys = provider_cfg.bearer_key_chain();
-                                provider_headers = custom_header_pairs(&provider_cfg);
+                                plan.session_api_keys = provider_cfg.bearer_key_chain();
+                                plan.provider_headers = custom_header_pairs(&provider_cfg);
                             }
                         } else {
                             let mlx_session_info = {
@@ -1535,15 +1598,15 @@ async fn proxy_request(
 
                             if let Some(info) = mlx_session_info {
                                 let target_port = info.port;
-                                session_api_keys = vec![info.api_key.clone()];
-                                mlx_model_id = Some(info.model_id.clone());
-                                target_base_url =
+                                plan.session_api_keys = vec![info.api_key.clone()];
+                                plan.mlx_model_id = Some(info.model_id.clone());
+                                plan.target_base_url =
                                     Some(format!("http://127.0.0.1:{}/v1/messages", target_port));
                             } else if let Some((url, key)) =
                                 engine_upstream(&llama_state, "/messages").await
                             {
-                                session_api_keys = vec![key];
-                                target_base_url = Some(url);
+                                plan.session_api_keys = vec![key];
+                                plan.target_base_url = Some(url);
                             } else {
                                 log::warn!("No running session found for model_id: {model_id}");
                                 let mut error_response =
@@ -1946,7 +2009,7 @@ async fn proxy_request(
                     ));
                 }
             };
-            buffered_body = Some(body_bytes.clone());
+            plan.buffered_body = Some(body_bytes.clone());
 
             match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
                 Ok(mut json_body) => {
@@ -1960,7 +2023,7 @@ async fn proxy_request(
                     // bodies too (it lands in the first message content here).
                     strip_billing_header_in_body(&mut json_body);
                     if let Ok(cleaned) = serde_json::to_vec(&json_body) {
-                        buffered_body = Some(cleaned.into());
+                        plan.buffered_body = Some(cleaned.into());
                     }
 
                     if config.enable_server_tool_execution
@@ -2050,13 +2113,13 @@ async fn proxy_request(
                                         .as_ref()
                                         .map(|c| c.upstream_path(&json_body))
                                         .unwrap_or_else(|| destination_path.clone());
-                                    target_base_url = Some(format!("{api_url}{path}"));
+                                    plan.target_base_url = Some(format!("{api_url}{path}"));
                                 } else {
-                                    target_base_url = None;
+                                    plan.target_base_url = None;
                                 }
-                                upstream_converter = converter;
-                                session_api_keys = provider_cfg.bearer_key_chain();
-                                provider_headers = custom_header_pairs(&provider_cfg);
+                                plan.upstream_converter = converter;
+                                plan.session_api_keys = provider_cfg.bearer_key_chain();
+                                plan.provider_headers = custom_header_pairs(&provider_cfg);
                             } else {
                                 log::error!("Provider config not found for '{provider}'");
                             }
@@ -2098,17 +2161,17 @@ async fn proxy_request(
 
                             if let Some(info) = mlx_session_info {
                                 let target_port = info.port;
-                                session_api_keys = vec![info.api_key.clone()];
-                                mlx_model_id = Some(info.model_id.clone());
+                                plan.session_api_keys = vec![info.api_key.clone()];
+                                plan.mlx_model_id = Some(info.model_id.clone());
                                 log::debug!("Found MLX session for model_id {model_id}");
-                                target_base_url = Some(format!(
+                                plan.target_base_url = Some(format!(
                                     "http://127.0.0.1:{target_port}/v1{destination_path}"
                                 ));
                             } else if let Some((url, key)) = router_up {
                                 log::debug!("Routing model_id {model_id} via llamacpp router");
-                                engine_model_id = Some(model_id.to_string());
-                                session_api_keys = vec![key];
-                                target_base_url = Some(url);
+                                plan.engine_model_id = Some(model_id.to_string());
+                                plan.session_api_keys = vec![key];
+                                plan.target_base_url = Some(url);
                             } else {
                                 log::warn!("No running session found for model_id: {model_id}");
                                 let mut error_response =
@@ -2444,7 +2507,7 @@ async fn proxy_request(
 
         _ => {
             let is_explicitly_whitelisted_get = method == hyper::Method::GET
-                && whitelisted_paths.contains(&destination_path.as_str());
+                && WHITELISTED_PATHS.contains(&destination_path.as_str());
             if is_explicitly_whitelisted_get {
                 log::debug!("Handled whitelisted GET path: {destination_path}");
                 let mut error_response = Response::builder().status(StatusCode::NOT_FOUND);
@@ -2471,7 +2534,7 @@ async fn proxy_request(
         }
     }
 
-    let upstream_url = match target_base_url.clone() {
+    let upstream_url = match plan.target_base_url.clone() {
         Some(p) => p,
         None => {
             log::error!(
@@ -2491,7 +2554,7 @@ async fn proxy_request(
         "Proxying request to model server at base URL {upstream_url}, path: {destination_path}"
     );
 
-    let mut body_bytes_for_proxy = match buffered_body.clone() {
+    let mut body_bytes_for_proxy = match plan.buffered_body.clone() {
         Some(b) => b,
         None => {
             log::error!(
@@ -2511,7 +2574,7 @@ async fn proxy_request(
     };
 
     // Rewrite the chat/completions body into the provider's native request shape.
-    if let Some(converter) = &upstream_converter {
+    if let Some(converter) = &plan.upstream_converter {
         if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body_bytes_for_proxy) {
             let native = converter.convert_request(&v);
             if let Ok(bytes) = serde_json::to_vec(&native) {
@@ -2523,7 +2586,7 @@ async fn proxy_request(
     // MLX targets carry no router preset, so apply the model's stored sampling
     // defaults here for keys the caller omitted (llamacpp uses the preset;
     // remote providers are intentionally left untouched).
-    if let Some(mid) = &mlx_model_id {
+    if let Some(mid) = &plan.mlx_model_id {
         let defaults = {
             let guard = model_param_defaults.lock().await;
             guard.get(mid).cloned()
@@ -2538,10 +2601,10 @@ async fn proxy_request(
         }
     }
 
-    let key_attempts: Vec<Option<String>> = if session_api_keys.is_empty() {
+    let key_attempts: Vec<Option<String>> = if plan.session_api_keys.is_empty() {
         vec![None]
     } else {
-        session_api_keys.iter().cloned().map(Some).collect()
+        plan.session_api_keys.iter().cloned().map(Some).collect()
     };
 
     // For Anthropic /messages, we need to track if we should transform the response
@@ -2561,12 +2624,12 @@ async fn proxy_request(
 
         if let Some(key) = key_opt {
             // The converter decides the auth scheme (Google uses x-goog-api-key).
-            let (auth_name, auth_value) = match &upstream_converter {
+            let (auth_name, auth_value) = match &plan.upstream_converter {
                 Some(conv) => conv.auth_header(key),
                 None => ("authorization", format!("Bearer {key}")),
             };
             outbound_req = outbound_req.header(auth_name, auth_value);
-            if let Some(conv) = &upstream_converter {
+            if let Some(conv) = &plan.upstream_converter {
                 for (name, value) in conv.credential_headers(key) {
                     outbound_req = outbound_req.header(name, value);
                 }
@@ -2575,12 +2638,12 @@ async fn proxy_request(
             log::debug!("No session API key for this attempt");
         }
 
-        for (name, value) in &provider_headers {
+        for (name, value) in &plan.provider_headers {
             outbound_req = outbound_req.header(name.as_str(), value.as_str());
         }
 
         // Fixed headers the native API requires (Anthropic: anthropic-version).
-        if let Some(conv) = &upstream_converter {
+        if let Some(conv) = &plan.upstream_converter {
             for (name, value) in conv.extra_headers() {
                 outbound_req = outbound_req.header(name, value);
             }
@@ -2604,7 +2667,7 @@ async fn proxy_request(
                 }
 
                 // For Anthropic /messages requests with errors, try /chat/completions
-                if is_error && is_anthropic_messages {
+                if is_error && plan.is_anthropic_messages {
                     log::warn!("Request failed for /messages with status {status}, trying /chat/completions...");
 
                     // Read the error body to return to client if fallback fails
@@ -2614,7 +2677,7 @@ async fn proxy_request(
                         .unwrap_or_else(|e| format!("Failed to read error body: {}", e));
 
                     // Clone what we need for the fallback request
-                    let fallback_url = target_base_url.clone().map(|url| {
+                    let fallback_url = plan.target_base_url.clone().map(|url| {
                         url.trim_end_matches("/messages")
                             .trim_end_matches('/')
                             .to_string()
@@ -2658,7 +2721,7 @@ async fn proxy_request(
                             fallback_req = fallback_req.header(name, value);
                         }
                     }
-                    for (name, value) in &provider_headers {
+                    for (name, value) in &plan.provider_headers {
                         fallback_req = fallback_req.header(name.as_str(), value.as_str());
                     }
                     if let Some(key) = fallback_api_key {
@@ -2800,7 +2863,7 @@ async fn proxy_request(
 
                 // When the provider fronts a non-chat/completions API, translate the
                 // response back to chat shape; otherwise forward bytes verbatim.
-                if let Some(converter) = upstream_converter.take() {
+                if let Some(converter) = plan.upstream_converter.take() {
                     let is_sse = response
                         .headers()
                         .get(hyper::header::CONTENT_TYPE)
@@ -2838,7 +2901,7 @@ async fn proxy_request(
                     .flatten();
                 let meter_folder = jan_data_folder.clone();
 
-                let mut model_rewriter = engine_model_id.take().map(ModelFieldRewriter::new);
+                let mut model_rewriter = plan.engine_model_id.take().map(ModelFieldRewriter::new);
                 tokio::spawn(async move {
                     let mut tap = super::usage_meter::UsageTap::default();
                     // Regular passthrough - when /messages succeeds directly,
@@ -3034,6 +3097,12 @@ fn bind_addr(host: &str, port: u16) -> Result<SocketAddr, String> {
         .map_err(|e| format!("Invalid address: {e}"))
 }
 
+/// Token of an `Authorization: Bearer <token>` header; the scheme is case-insensitive (RFC 7235).
+fn bearer_token(header: &str) -> Option<&str> {
+    let (scheme, token) = header.split_once(' ')?;
+    scheme.eq_ignore_ascii_case("bearer").then(|| token.trim_start())
+}
+
 /// Constant-time comparison of a presented key against the configured one.
 fn keys_equal(presented: &str, expected: &str) -> bool {
     let (a, b) = (presented.as_bytes(), expected.as_bytes());
@@ -3046,22 +3115,64 @@ fn origin_is_trusted(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
     is_trusted_origin(origin, trusted_hosts)
 }
 
+/// True when the process is a leftover Flint/Jan app or llama worker. Matched
+/// on the exact executable name, so an unrelated program whose name merely
+/// contains "jan" or "llama" is not called a leftover.
+fn is_leftover_flint_process(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    let stem = n.strip_suffix(".exe").unwrap_or(&n);
+    matches!(
+        stem,
+        "flint" | "jan" | "flint-llama-worker" | "jan-llama-worker" | "llama-server"
+    )
+}
+
+/// Look up which process holds `port`. It shells out (netstat/lsof), so it
+/// only runs after a bind failure and is capped by a short timeout.
+async fn lookup_port_owner(port: u16) -> Option<jan_utils::network::ProcessUsingPort> {
+    let task =
+        tokio::task::spawn_blocking(move || jan_utils::network::find_process_using_port(port));
+    match tokio::time::timeout(std::time::Duration::from_secs(2), task).await {
+        Ok(Ok(owner)) => owner,
+        _ => None,
+    }
+}
+
 /// Convert a TCP bind failure into a user-facing message. Address-in-use
 /// (Windows error 10048 / WSAEADDRINUSE, Unix EADDRINUSE) almost always means
 /// a leftover Flint process or another service still owns the port after a
 /// restart, so name the port and the remedy instead of surfacing a bare OS
-/// errno. Any other error is passed through unchanged.
+/// errno. When `owner` is known (looked up after the failure), the message
+/// names it and says whether it looks like a leftover Flint process. Any
+/// other error is passed through unchanged.
 fn map_bind_error(
     addr: SocketAddr,
     err: std::io::Error,
+    owner: Option<&jan_utils::network::ProcessUsingPort>,
 ) -> Box<dyn std::error::Error + Send + Sync> {
     if err.kind() == std::io::ErrorKind::AddrInUse {
-        let msg = format!(
-            "Port {port} ({addr}) is already in use. A previous Flint process may still be \
-             running or another application may be using the port. Close the leftover \
-             process and try again, or pick a different port in Settings > Local API Server.",
-            port = addr.port()
-        );
+        let port = addr.port();
+        let msg = match owner {
+            Some(p) if is_leftover_flint_process(&p.name) => format!(
+                "Port {port} ({addr}) is already in use, held by {name} (PID {pid}). This looks \
+                 like a leftover Flint process; close it (or end it in Task Manager) and try \
+                 again, or pick a different port in Settings > Local API Server.",
+                name = p.name,
+                pid = p.pid
+            ),
+            Some(p) => format!(
+                "Port {port} ({addr}) is already in use, held by {name} (PID {pid}). Close that \
+                 application and try again, or pick a different port in Settings > Local API \
+                 Server.",
+                name = p.name,
+                pid = p.pid
+            ),
+            None => format!(
+                "Port {port} ({addr}) is already in use. A previous Flint process may still be \
+                 running or another application may be using the port. Close the leftover \
+                 process and try again, or pick a different port in Settings > Local API Server."
+            ),
+        };
         return msg.into();
     }
     if err.kind() == std::io::ErrorKind::PermissionDenied {
@@ -3267,7 +3378,12 @@ async fn start_server_internal(
         Ok(bound) => bound,
         Err(e) => {
             log::error!("Failed to bind to {addr}: {e}");
-            return Err(map_bind_error(addr, e));
+            let owner = if e.kind() == std::io::ErrorKind::AddrInUse {
+                lookup_port_owner(addr.port()).await
+            } else {
+                None
+            };
+            return Err(map_bind_error(addr, e, owner.as_ref()));
         }
     };
     let bound_addr = listener.local_addr().unwrap_or(addr);
@@ -3961,6 +4077,15 @@ mod redirect_tests {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn bearer_scheme_is_case_insensitive() {
+        assert_eq!(super::bearer_token("Bearer k"), Some("k"));
+        assert_eq!(super::bearer_token("bearer k"), Some("k"));
+        assert_eq!(super::bearer_token("BEARER k"), Some("k"));
+        assert_eq!(super::bearer_token("Basic k"), None);
+        assert_eq!(super::bearer_token("Bearerk"), None);
+    }
+
+    #[test]
     fn engine_responses_name_the_model_id_not_its_file_path() {
         use super::ModelFieldRewriter;
         let mut r = ModelFieldRewriter::new("gemma-3-4b-it-Q4_K_M".into());
@@ -4189,7 +4314,7 @@ mod tests {
     fn addr_in_use_maps_to_actionable_message() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "Address already in use");
-        let msg = map_bind_error(addr, err).to_string();
+        let msg = map_bind_error(addr, err, None).to_string();
         assert!(msg.contains("1337"), "should name the port: {msg}");
         assert!(
             msg.contains("already in use") && msg.contains("process"),
@@ -4197,11 +4322,54 @@ mod tests {
         );
     }
 
+    fn fake_owner(name: &str) -> jan_utils::network::ProcessUsingPort {
+        jan_utils::network::ProcessUsingPort {
+            pid: 4242,
+            name: name.to_string(),
+            cmd: vec![],
+        }
+    }
+
+    #[test]
+    fn addr_in_use_names_a_foreign_owner() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "in use");
+        let owner = fake_owner("nginx.exe");
+        let msg = map_bind_error(addr, err, Some(&owner)).to_string();
+        assert!(msg.contains("1337") && msg.contains("nginx.exe (PID 4242)"), "{msg}");
+        assert!(!msg.contains("leftover Flint"), "{msg}");
+    }
+
+    #[test]
+    fn addr_in_use_flags_a_leftover_flint_owner() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        for name in ["Flint.exe", "jan", "llama-server.exe"] {
+            let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "in use");
+            let owner = fake_owner(name);
+            let msg = map_bind_error(addr, err, Some(&owner)).to_string();
+            assert!(
+                msg.contains("(PID 4242)") && msg.contains("leftover Flint"),
+                "{msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn addr_in_use_does_not_call_a_lookalike_name_a_leftover() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        for name in ["janitor.exe", "ollama", "llamafile.exe"] {
+            let err = std::io::Error::new(std::io::ErrorKind::AddrInUse, "in use");
+            let owner = fake_owner(name);
+            let msg = map_bind_error(addr, err, Some(&owner)).to_string();
+            assert!(!msg.contains("leftover Flint"), "{msg}");
+        }
+    }
+
     #[test]
     fn non_addr_in_use_error_passes_through() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
-        let msg = map_bind_error(addr, err).to_string();
+        let msg = map_bind_error(addr, err, None).to_string();
         assert!(
             msg.contains("denied"),
             "should keep the original error: {msg}"
@@ -4212,7 +4380,7 @@ mod tests {
     fn permission_denied_names_the_reserved_port_range() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
-        let msg = map_bind_error(addr, err).to_string();
+        let msg = map_bind_error(addr, err, None).to_string();
         assert!(msg.contains("1337") && msg.contains("reserved"), "{msg}");
     }
 
@@ -4448,5 +4616,87 @@ mod provider_routing_tests {
         assert_eq!(resolve_provider_name(&pc, "zeta/shared").as_deref(), Some("zeta"));
         // Nobody lists it, but the prefix names a configured provider.
         assert_eq!(resolve_provider_name(&pc, "openai/gpt-x").as_deref(), Some("openai"));
+    }
+}
+
+#[cfg(test)]
+mod request_check_tests {
+    use super::*;
+
+    fn config(key: &str) -> ProxyConfig {
+        ProxyConfig {
+            prefix: "/v1".into(),
+            proxy_api_key: key.into(),
+            trusted_hosts: vec![],
+            host: "127.0.0.1".into(),
+            port: 1337,
+            enable_server_tool_execution: false,
+            cors_enabled: true,
+        }
+    }
+
+    fn parts(uri: &str, headers: &[(&str, &str)]) -> hyper::http::request::Parts {
+        let mut builder = Request::builder().uri(uri);
+        for (k, v) in headers {
+            builder = builder.header(*k, *v);
+        }
+        builder.body(()).unwrap().into_parts().0
+    }
+
+    fn status_of(refusal: Option<Response<ResBody>>) -> Option<u16> {
+        refusal.map(|r| r.status().as_u16())
+    }
+
+    #[test]
+    fn host_origin_and_key_are_checked_in_that_order() {
+        let cfg = config("secret");
+        // Foreign host: refused before the key is even looked at.
+        let p = parts("/v1/models", &[("host", "evil.example"), ("authorization", "Bearer secret")]);
+        assert_eq!(status_of(check_request(&p, "/models", "evil.example", "", &cfg)), Some(403));
+        // No host header at all.
+        let p = parts("/v1/models", &[]);
+        assert_eq!(status_of(check_request(&p, "/models", "", "", &cfg)), Some(400));
+        // Good host, no key.
+        let p = parts("/v1/models", &[("host", "127.0.0.1:1337")]);
+        assert_eq!(status_of(check_request(&p, "/models", "127.0.0.1:1337", "", &cfg)), Some(401));
+        // Good host, wrong key, then the right one in either header.
+        let p = parts("/v1/models", &[("host", "127.0.0.1:1337"), ("authorization", "Bearer nope")]);
+        assert_eq!(status_of(check_request(&p, "/models", "127.0.0.1:1337", "", &cfg)), Some(401));
+        let p = parts("/v1/models", &[("host", "127.0.0.1:1337"), ("authorization", "Bearer secret")]);
+        assert_eq!(status_of(check_request(&p, "/models", "127.0.0.1:1337", "", &cfg)), None);
+        let p = parts("/v1/models", &[("host", "127.0.0.1:1337"), ("x-api-key", "secret")]);
+        assert_eq!(status_of(check_request(&p, "/models", "127.0.0.1:1337", "", &cfg)), None);
+    }
+
+    #[test]
+    fn a_foreign_origin_is_refused_when_no_key_is_set() {
+        let cfg = config("");
+        let p = parts("/v1/models", &[("host", "127.0.0.1:1337"), ("origin", "https://evil.example")]);
+        assert_eq!(
+            status_of(check_request(&p, "/models", "127.0.0.1:1337", "https://evil.example", &cfg)),
+            Some(403)
+        );
+        // No origin (curl, an SDK): fine.
+        let p = parts("/v1/models", &[("host", "127.0.0.1:1337")]);
+        assert_eq!(status_of(check_request(&p, "/models", "127.0.0.1:1337", "", &cfg)), None);
+    }
+
+    #[test]
+    fn whitelisted_paths_skip_the_host_and_key_checks_and_configs_is_hidden() {
+        let cfg = config("secret");
+        let p = parts("/", &[]);
+        assert_eq!(status_of(check_request(&p, "/", "", "", &cfg)), None);
+        assert_eq!(status_of(check_request(&p, "/openapi.json", "", "", &cfg)), None);
+        let p = parts("/v1/configs", &[("host", "127.0.0.1:1337"), ("authorization", "Bearer secret")]);
+        assert_eq!(status_of(check_request(&p, "/configs", "127.0.0.1:1337", "", &cfg)), Some(404));
+    }
+
+    #[test]
+    fn quota_refusal_ignores_unmetered_requests() {
+        let cfg = config("");
+        let none = quota_refusal(&hyper::Method::GET, "/models", "", "", &cfg, "no-such-folder");
+        assert!(none.is_none());
+        let none = quota_refusal(&hyper::Method::POST, "/embeddings", "", "", &cfg, "no-such-folder");
+        assert!(none.is_none());
     }
 }

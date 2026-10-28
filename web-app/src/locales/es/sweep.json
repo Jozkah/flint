@@ -79,6 +79,8 @@
     "privateUntilUsed": "Privado hasta que lo uses",
     "recentlyUpdated": "Actualizados recientemente",
     "pausedDownloads": "Descargas en pausa",
+    "retryingIn": "Reintento en {{seconds}} s",
+    "retryingNow": "Reintentando…",
     "resume": "Reanudar",
     "retry": "Reintentar",
     "searchPlaceholder": "Busca modelos, autores o pega una URL de Hugging Face…",

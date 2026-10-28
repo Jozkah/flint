@@ -72,7 +72,7 @@ import {
   resolveKvCacheTypes,
   shouldRetryLoadWithF16Kv,
 } from './kvCache'
-import { shouldRetryLoadOnCpu } from './cpuFallback'
+import { isGpuCrashDuringLoad, shouldRetryLoadOnCpu } from './cpuFallback'
 import {
   evaluateEmbeddingVector,
   evaluateGpuOffload,
@@ -116,6 +116,7 @@ import {
   DeviceList,
   EngineVersion,
 } from '@janhq/tauri-plugin-llamacpp-api'
+import { overrideAmdVulkanMemory } from './deviceMemory'
 import { getSystemUsage, getSystemInfo } from '@janhq/tauri-plugin-hardware-api'
 
 const EMBEDDING_CHECK_VERSION = 3
@@ -1924,8 +1925,22 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return kwargs
   }
 
+  /**
+   * Models the last `list()` left out because their model.yml resolves outside
+   * the data folder (janhq/jan#8374: a junction or symlink under
+   * `llamacpp/models` pointing at another drive). `read_yaml` refuses those on
+   * purpose; this only records them so the UI can say why they are missing.
+   */
+  private skippedLinkedModels: { id: string; path: string; reason: 'outside_data_folder' }[] = []
+
+  getSkippedModels(): { id: string; path: string; reason: 'outside_data_folder' }[] {
+    return [...this.skippedLinkedModels]
+  }
+
   // Implement the required LocalProvider interface methods
   override async list(): Promise<modelInfo[]> {
+    const skipped: { id: string; path: string; reason: 'outside_data_folder' }[] = []
+    this.skippedLinkedModels = skipped
     const modelsDir = await joinPath([await this.getProviderPath(), 'models'])
     if (!(await fs.existsSync(modelsDir))) {
       await fs.mkdir(modelsDir)
@@ -2030,6 +2045,13 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         modelInfos.push(modelInfo)
       } catch (err) {
         logger.warn(`list: skipping model ${modelId}: ${String(err)}`)
+        if (String(err).includes('outside of Jan data folder')) {
+          skipped.push({
+            id: modelId,
+            path: await joinPath([modelsDir, modelId]),
+            reason: 'outside_data_folder',
+          })
+        }
       }
     }
 
@@ -2553,6 +2575,17 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       })
   }
 
+  /**
+   * Loads a model with it kept off the GPU for the rest of this run, after
+   * the person agreed to it when the GPU driver crashed during a load.
+   */
+  async loadOnCpu(modelId: string): Promise<SessionInfo> {
+    this.cpuFallbackModels.add(modelId)
+    await this.refreshEnginePreset()
+    await this.ensureEngineReady()
+    return this.load(modelId)
+  }
+
   override async load(
     modelId: string,
     settings?: unknown,
@@ -2695,6 +2728,19 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           await this.refreshEnginePreset()
           await this.ensureEngineReady()
           info = await loadLlamaModel(modelId, isEmbedding)
+        } else if (
+          error &&
+          typeof error === 'object' &&
+          isGpuCrashDuringLoad({
+            error,
+            alreadyOnCpu: this.cpuFallbackModels.has(modelId),
+            configuredDevice: (this.config as { device?: unknown }).device,
+          })
+        ) {
+          // The GPU driver crashed the engine while the model was loading.
+          // The CPU may well run it, but slower, so the app asks first and
+          // calls `loadOnCpu` on a yes instead of this switching silently.
+          throw { ...(error as object), cpu_fallback_offered: true }
         } else {
           throw error
         }
@@ -3392,62 +3438,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         if (sysInfo?.os_type === 'linux' && Array.isArray(sysInfo.gpus)) {
           const usage = await getSystemUsage()
           if (usage && Array.isArray(usage.gpus)) {
-            const uuidToUsage: Record<
-              string,
-              { total_memory: number; used_memory: number }
-            > = {}
-            for (const u of usage.gpus as any[]) {
-              if (u && typeof u.uuid === 'string') {
-                uuidToUsage[u.uuid] = u
-              }
-            }
-
-            const indexToAmdUuid = new Map<number, string>()
-            for (const gpu of sysInfo.gpus as any[]) {
-              const vendorStr =
-                typeof gpu?.vendor === 'string'
-                  ? gpu.vendor
-                  : typeof gpu?.vendor === 'object' && gpu.vendor !== null
-                    ? String(gpu.vendor)
-                    : ''
-              if (
-                vendorStr.toUpperCase().includes('AMD') &&
-                gpu?.vulkan_info &&
-                typeof gpu.vulkan_info.index === 'number' &&
-                typeof gpu.uuid === 'string'
-              ) {
-                indexToAmdUuid.set(gpu.vulkan_info.index, gpu.uuid)
-              }
-            }
-
-            if (indexToAmdUuid.size > 0) {
-              const adjusted = dList.map((dev) => {
-                if (dev.id?.startsWith('Vulkan')) {
-                  const match = /^Vulkan(\d+)/.exec(dev.id)
-                  if (match) {
-                    const vIdx = Number(match[1])
-                    const uuid = indexToAmdUuid.get(vIdx)
-                    if (uuid) {
-                      const u = uuidToUsage[uuid]
-                      if (
-                        u &&
-                        typeof u.total_memory === 'number' &&
-                        typeof u.used_memory === 'number'
-                      ) {
-                        const total = Math.max(0, Math.floor(u.total_memory))
-                        const free = Math.max(
-                          0,
-                          Math.floor(u.total_memory - u.used_memory)
-                        )
-                        return { ...dev, mem: total, free }
-                      }
-                    }
-                  }
-                }
-                return dev
-              })
-              return adjusted
-            }
+            return overrideAmdVulkanMemory(dList, sysInfo.gpus, usage.gpus)
           }
         }
       } catch (e) {

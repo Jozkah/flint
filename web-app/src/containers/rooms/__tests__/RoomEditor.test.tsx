@@ -7,8 +7,9 @@ import { RoomEditor } from '../RoomEditor'
 import { RoomsApiProvider } from '../roomsBindings'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  const hook = { t: u.t }
+  return { useTranslation: () => hook, i18n: { language: 'en', t: u.t } }
 })
 const trust = vi.hoisted(() => ({
   status: vi.fn(async (): Promise<unknown> => null),

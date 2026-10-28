@@ -541,6 +541,7 @@
   "threadImage": "Image de la discussion",
   "editMessage": "Modifier le message",
   "deleteMessage": "Supprimer le message",
+  "deleteMessageDescription": "Voulez-vous vraiment supprimer ce message ? Cette action est irréversible.",
   "deleteThread": "Supprimer la discussion",
   "renameThread": "Renommer la discussion",
   "threadTitle": "Titre de la discussion",
@@ -853,7 +854,28 @@
     "openCodeFolderInCowork": "Ouvrir le dossier de code dans Cowork",
     "openCodeFolder": "Ouvrir le dossier de code",
     "openCodeFolderDescription": "Choisissez un dossier de votre ordinateur dans lequel Flint travaillera.",
-    "setUpEmbeddingModel": "Configurer un modèle d'embedding"
+    "setUpEmbeddingModel": "Configurer un modèle d'embedding",
+    "webPage": {
+      "open": "Ajouter une page web",
+      "title": "Ajouter une page web",
+      "description": "Récupère une page et conserve son texte lisible comme fichier du projet. Seules les adresses publiques http et https fonctionnent.",
+      "urlLabel": "Adresse de la page",
+      "add": "Ajouter la page",
+      "refresh": "Actualiser",
+      "added": "« {{name}} » ajouté",
+      "refreshed": "« {{name}} » actualisé",
+      "truncated": "La page dépassait la taille maximale ; seule la première partie a été conservée.",
+      "refreshFailed": "Impossible d'actualiser la page",
+      "errors": {
+        "invalidUrl": "Saisissez une adresse web complète commençant par http:// ou https://.",
+        "blocked": "Cette adresse pointe vers cet ordinateur ou un réseau privé, elle n'a donc pas été récupérée.",
+        "timeout": "La page a mis trop de temps à répondre. Réessayez plus tard.",
+        "notHtml": "Cette adresse n'est pas une page web avec du texte lisible (par exemple un PDF, une image ou un téléchargement).",
+        "tooLarge": "La page est trop volumineuse.",
+        "httpError": "Le site a renvoyé une erreur : {{message}}",
+        "failed": "Impossible de récupérer la page : {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Choisir comment ingérer les pièces jointes",
@@ -1210,6 +1232,7 @@
     "btwFailed": "Impossible de répondre à la question annexe."
   },
   "autoCompactNeedsWindow": "Le compactage automatique nécessite une taille de contexte, et Flint n'en trouve aucune pour {{model}}. Définissez le nombre maximal de jetons de contexte pour ce modèle afin que les longues conversations soient compactées avant de le saturer. Si le fournisseur refuse une requête à cause de sa longueur, Flint compacte et réessaie une fois.",
+  "ollamaWindowTruncating": "Ollama exécute {{model}} avec un contexte de {{tokens}} jetons et supprime silencieusement les messages les plus anciens au-delà. Flint compacte désormais selon cette taille. Pour conserver plus d'historique, augmentez-la sur le serveur Ollama : définissez OLLAMA_CONTEXT_LENGTH ou ajoutez PARAMETER num_ctx au Modelfile du modèle.",
   "compaction": {
     "working": "Compactage de la conversation…",
     "divider_one": "Contexte compacté — {{count}} message précédent résumé",
@@ -2771,7 +2794,11 @@
     "noVision": "Ce modèle ne peut pas lire les images",
     "details": "Détails de {{name}}",
     "previewLoading": "Chargement de l'aperçu…",
-    "previewNone": "Aucun aperçu disponible"
+    "previewNone": "Aucun aperçu disponible",
+    "pagesAsImages": "Envoyer les pages en images",
+    "pagesAsImagesHint": "Envoyer les pages de ce PDF en images pour que le modèle voie les scans, graphiques et la mise en page",
+    "pdfPagesCut": "Les {{sent}} premières pages sur {{total}} de {{name}} ont été envoyées en images",
+    "pdfScannedAsImages": "{{name}} ne contient pas de texte, ses pages ont donc été envoyées en images"
   },
   "fileViewer": {
     "openFull": "Ouvrir l’aperçu complet",
@@ -2788,6 +2815,10 @@
     "truncatedOnAdd": "Affichage des {{shown}} premiers sur {{total}} (la pièce jointe a été tronquée lors de son ajout)"
   },
   "dropAttachFailed": "Impossible de joindre les fichiers déposés",
+  "chatPaneDrop": {
+    "overlay": "Déposez des fichiers pour les joindre",
+    "unsupported": "Impossible de joindre {{names}} : ce type de fichier n'est pas pris en charge."
+  },
   "sampler": {
     "label": "Paramètres d'échantillonnage",
     "notSupported": "Non pris en charge par {{provider}}"
@@ -2837,6 +2868,10 @@
   "threadSaveFailed": "Impossible d'enregistrer la modification de cette conversation. Elle a été annulée.",
   "attachmentsProcessFailed": "Impossible de préparer les pièces jointes, le message n'a donc pas été envoyé",
   "attachmentMissingFile": "Un fichier joint n'est plus disponible. Retirez-le et joignez-le de nouveau ; votre message est toujours dans la zone de saisie.",
+  "factoryResetIncomplete": {
+    "title": "Réinitialisation incomplète",
+    "description": "{{count}} élément(s) n'ont pas pu être supprimés et sont toujours sur le disque :\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Le fichier de paramètres n'a pas pu être lu",
     "withBackup": "{{file}} était endommagé, donc Flint a démarré avec les paramètres par défaut. Le fichier endommagé a été conservé sous le nom {{backup}}.",
@@ -3126,5 +3161,10 @@
     "reject": "Rejeter",
     "applying": "Application…",
     "applySelected": "Appliquer la sélection"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

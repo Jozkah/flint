@@ -111,10 +111,10 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::open_app_directory,
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
+        core::system::commands::take_factory_reset_report,
         core::system::commands::read_logs,
         core::system::commands::read_logs_since,
         core::system::commands::export_redacted_logs,
-        core::system::commands::is_library_available,
         core::system::commands::launch_claude_code_with_config,
         core::system::commands::check_jan_cli_installed,
         core::system::commands::install_jan_cli,
@@ -472,6 +472,13 @@ macro_rules! invoke_commands_with_extras {
 
 #[cfg(not(feature = "cli"))]
 static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Mark the app as exiting so the exit handlers let it go without a graceful
+/// engine stop (factory reset restarts right after its own cleanup).
+#[cfg(not(feature = "cli"))]
+pub(crate) fn mark_shutting_down() {
+    SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
 /// Set once the webview has flushed its deferred writes for this close, so the
 /// close that follows goes through.
 #[cfg(not(feature = "cli"))]
@@ -903,6 +910,9 @@ pub fn build_app() -> tauri::App {
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
             mcp_lazy: Default::default(),
         })
+        .manage(core::filesystem::grants::ReadGrants::with_home(
+            dirs::home_dir(),
+        ))
         .setup(|app| {
             // A marker left by the previous run means it did not shut down
             // cleanly; say so in the log, once, so a crash report has a lead.
@@ -948,6 +958,9 @@ pub fn build_app() -> tauri::App {
                 (None, None) => {}
             }
             crash_notes.extend(stack_note);
+            // Load the webview read grants before any IPC is served, so a path
+            // the user picked in an earlier session stays readable.
+            core::filesystem::grants::init(app.handle());
             core::diffusion::register(app.handle());
             core::browser_verify::commands::install_activity_mirror(app.handle());
             // Project folders the user trusted to run their own hooks and

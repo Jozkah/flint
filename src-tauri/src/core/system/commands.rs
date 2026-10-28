@@ -16,65 +16,104 @@ use crate::core::mcp::helpers::{stop_mcp_servers_with_context, ShutdownContext};
 use crate::core::state::AppState;
 
 fn is_safe_to_delete(path: &std::path::Path) -> bool {
-    let count = path.components().count();
-    count >= 3
+    // Count real folder names: a drive prefix and root do not make `C:\Users` deeper.
+    let depth = path
+        .components()
+        .filter(|c| matches!(c, std::path::Component::Normal(_)))
+        .count();
+    depth >= 2
 }
 
-fn remove_dir(data_folder: &std::path::Path, name: &str) {
+fn remove_dir(data_folder: &std::path::Path, name: &str) -> Vec<String> {
     let path = data_folder.join(name);
+    let mut failures = Vec::new();
     if path.is_dir() {
         log::info!("Removing directory: {}", path.display());
         if let Err(e) = fs::remove_dir_all(&path) {
             log::warn!("Failed to remove {}: {e}", path.display());
+            failures.push(format!("{}: {e}", path.display()));
         }
     }
+    failures
 }
 
-fn remove_file(data_folder: &std::path::Path, name: &str) {
+fn remove_file(data_folder: &std::path::Path, name: &str) -> Vec<String> {
     let path = data_folder.join(name);
+    let mut failures = Vec::new();
     if path.is_file() {
         log::info!("Removing file: {}", path.display());
         if let Err(e) = fs::remove_file(&path) {
             log::warn!("Failed to remove {}: {e}", path.display());
+            failures.push(format!("{}: {e}", path.display()));
         }
     }
+    failures
 }
 
-/// Delete conversations and user data (threads, assistants).
-fn delete_conversations(data_folder: &std::path::Path) {
-    log::info!("Deleting conversations (threads, assistants)");
-    for dir in JAN_DATA_DIRS_CONVERSATIONS {
-        remove_dir(data_folder, dir);
-    }
+/// Delete conversations and user content (threads, assistants, archive,
+/// attachments, rooms, schedules, Studio output, vector databases).
+fn delete_conversations(data_folder: &std::path::Path) -> Vec<String> {
+    log::info!("Deleting conversations and user content");
+    JAN_DATA_DIRS_CONVERSATIONS
+        .iter()
+        .flat_map(|dir| remove_dir(data_folder, dir))
+        .collect()
 }
 
 /// Delete downloaded models, engine binaries, and configuration files
 /// (engine settings, MCP config, etc.).
-fn delete_models_and_configs(data_folder: &std::path::Path) {
+fn delete_models_and_configs(data_folder: &std::path::Path) -> Vec<String> {
     log::info!("Deleting models, engines, and configurations");
-    for dir in JAN_DATA_DIRS_MODELS {
-        remove_dir(data_folder, dir);
-    }
+    let mut failures: Vec<String> = JAN_DATA_DIRS_MODELS
+        .iter()
+        .flat_map(|dir| remove_dir(data_folder, dir))
+        .collect();
     for file in JAN_DATA_FILES_CONFIGS {
-        remove_file(data_folder, file);
+        failures.extend(remove_file(data_folder, file));
     }
+    failures
 }
 
-/// Delete extensions, logs, caches — always cleaned during any reset.
-fn delete_common_data(data_folder: &std::path::Path) {
+/// Delete extensions, logs, caches - always cleaned during any reset.
+fn delete_common_data(data_folder: &std::path::Path) -> Vec<String> {
     log::info!("Deleting common data (extensions, logs, caches)");
-    for dir in JAN_DATA_DIRS_COMMON {
-        remove_dir(data_folder, dir);
-    }
+    JAN_DATA_DIRS_COMMON
+        .iter()
+        .flat_map(|dir| remove_dir(data_folder, dir))
+        .collect()
 }
 
-/// Delete cross-category settings (store.json) — only during a full wipe
+/// Delete cross-category settings (store.json) - only during a full wipe
 /// when the user is not keeping any data.
-fn delete_settings(data_folder: &std::path::Path) {
+fn delete_settings(data_folder: &std::path::Path) -> Vec<String> {
     log::info!("Deleting cross-category settings (store.json)");
-    for file in JAN_DATA_FILES_SETTINGS {
-        remove_file(data_folder, file);
+    JAN_DATA_FILES_SETTINGS
+        .iter()
+        .flat_map(|file| remove_file(data_folder, file))
+        .collect()
+}
+
+/// Full wipe only: remove every remaining top-level entry so a feature
+/// directory added later is cleaned by default.
+fn delete_remaining_top_level(data_folder: &std::path::Path) -> Vec<String> {
+    let mut failures = Vec::new();
+    let entries = match fs::read_dir(data_folder) {
+        Ok(e) => e,
+        Err(e) => return vec![format!("{}: {e}", data_folder.display())],
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let res = if path.is_dir() {
+            fs::remove_dir_all(&path)
+        } else {
+            fs::remove_file(&path)
+        };
+        if let Err(e) = res {
+            log::warn!("Failed to remove {}: {e}", path.display());
+            failures.push(format!("{}: {e}", path.display()));
+        }
     }
+    failures
 }
 
 /// Clear the WebKit/WRY webview profile (localStorage, cookies, IndexedDB,
@@ -132,6 +171,73 @@ fn webdata_reset_sentinel_path<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> 
     get_configuration_file_path(app_handle.clone())
         .parent()
         .map(|dir| dir.join(WEBDATA_RESET_SENTINEL))
+}
+
+const FACTORY_RESET_REPORT: &str = "factory-reset-report.json";
+
+/// What a factory reset could not remove. Written to the app config dir (which
+/// survives the data-folder wipe) so the next start can tell the user once.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct FactoryResetReport {
+    pub failures: Vec<String>,
+}
+
+fn factory_reset_report_path<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> Option<PathBuf> {
+    get_configuration_file_path(app_handle.clone())
+        .parent()
+        .map(|dir| dir.join(FACTORY_RESET_REPORT))
+}
+
+fn write_report_at(path: &Path, failures: &[String]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(&FactoryResetReport {
+        failures: failures.to_vec(),
+    })
+    .map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// Read and remove the report. An empty or unreadable file yields `None`.
+fn take_report_at(path: &Path) -> Option<FactoryResetReport> {
+    if !path.is_file() {
+        return None;
+    }
+    let report = fs::read_to_string(path)
+        .ok()
+        .and_then(|c| serde_json::from_str::<FactoryResetReport>(&c).ok())
+        .filter(|r| !r.failures.is_empty());
+    if let Err(e) = fs::remove_file(path) {
+        log::warn!("Failed to remove factory reset report: {e}");
+    }
+    report
+}
+
+/// The one-shot list of paths the last factory reset could not remove, for the
+/// webview to show once on the start after the reset.
+#[tauri::command]
+pub fn take_factory_reset_report<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+) -> Option<FactoryResetReport> {
+    take_report_at(&factory_reset_report_path(&app_handle)?)
+}
+
+/// Log what a reset could not remove and persist it for the next start. Does
+/// nothing for an empty list.
+fn report_failures<R: Runtime>(app_handle: &tauri::AppHandle<R>, failures: &[String]) {
+    if failures.is_empty() {
+        return;
+    }
+    log::error!("Factory reset incomplete: {}", failures.join("; "));
+    match factory_reset_report_path(app_handle) {
+        Some(path) => {
+            if let Err(e) = write_report_at(&path, failures) {
+                log::warn!("Failed to write factory reset report: {e}");
+            }
+        }
+        None => log::warn!("No config dir for the factory reset report"),
+    }
 }
 
 fn write_webdata_reset_sentinel<R: Runtime>(
@@ -418,25 +524,56 @@ fn claude_code_env_keys_to_clear(recorded: Vec<String>) -> Vec<String> {
     keys
 }
 
+/// Delete the data-folder categories selected by the keep flags. Returns the
+/// paths that could not be removed. A full wipe also sweeps every remaining
+/// top-level entry and the stored secrets.
+fn wipe_data_folder(
+    data_folder: &std::path::Path,
+    keep_app_data: bool,
+    keep_models_and_configs: bool,
+) -> Vec<String> {
+    let mut failures = delete_common_data(data_folder);
+    if !keep_app_data {
+        failures.extend(delete_conversations(data_folder));
+    }
+    if !keep_models_and_configs {
+        failures.extend(delete_models_and_configs(data_folder));
+    }
+    // store.json spans all categories; only wipe it when nothing is kept
+    if !keep_app_data && !keep_models_and_configs {
+        failures.extend(delete_settings(data_folder));
+        failures.extend(delete_remaining_top_level(data_folder));
+    }
+    failures
+}
+
 #[tauri::command]
-pub fn factory_reset<R: Runtime>(
+pub async fn factory_reset<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     state: State<'_, AppState>,
     keep_app_data: Option<bool>,
     keep_models_and_configs: Option<bool>,
     clear_web_data: Option<bool>,
-) {
+) -> Result<(), String> {
+    // Async so the slow stops and deletes run off the main thread: a sync
+    // command blocked the event loop, the window froze and never closed.
+    // Ok in every case that reaches the restart: the windows are hidden by
+    // now, so an error would leave the app running with no visible window.
     let keep_app_data = keep_app_data.unwrap_or(false);
     let keep_models_and_configs = keep_models_and_configs.unwrap_or(false);
     let clear_web_data = clear_web_data.unwrap_or(false);
+    let full_wipe = !keep_app_data && !keep_models_and_configs;
 
+    // The exit handler must not hold the restart for a graceful engine stop.
+    #[cfg(not(feature = "cli"))]
+    crate::mark_shutting_down();
+
+    // Hide instead of close: the restart tears the windows down anyway, and
+    // the user sees the app go away at once instead of a frozen window.
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    {
-        let windows = app_handle.webview_windows();
-        for (label, window) in windows.iter() {
-            window.close().unwrap_or_else(|_| {
-                log::warn!("Failed to close window: {label:?}");
-            });
+    for (label, window) in app_handle.webview_windows().iter() {
+        if window.hide().is_err() {
+            log::warn!("Failed to hide window: {label:?}");
         }
     }
     let data_folder = get_jan_data_folder_path(app_handle.clone());
@@ -448,84 +585,92 @@ pub fn factory_reset<R: Runtime>(
         data_folder
     );
 
-    tauri::async_runtime::block_on(async {
-        let _ =
-            stop_mcp_servers_with_context(&app_handle, &state, ShutdownContext::FactoryReset).await;
+    let mut failures: Vec<String> = Vec::new();
+    let _ = stop_mcp_servers_with_context(&app_handle, &state, ShutdownContext::FactoryReset).await;
 
-        {
-            let mut active_servers = state.mcp_active_servers.lock().await;
-            active_servers.clear();
+    {
+        let mut active_servers = state.mcp_active_servers.lock().await;
+        active_servers.clear();
+    }
+
+    use crate::core::mcp::lockfile::cleanup_own_locks;
+    if let Err(e) = cleanup_own_locks(&app_handle) {
+        log::warn!("Failed to cleanup lock files: {}", e);
+    }
+    let _ = cleanup_llama_processes(app_handle.clone()).await;
+
+    if data_folder.exists() {
+        if !is_safe_to_delete(&data_folder) {
+            let msg = format!(
+                "Refusing factory reset: path is too close to filesystem root: {}",
+                data_folder.display()
+            );
+            report_failures(&app_handle, &[msg]);
+            // Nothing was removed; just bring the window back.
+            app_handle.restart();
         }
 
-        use crate::core::mcp::lockfile::cleanup_own_locks;
-        if let Err(e) = cleanup_own_locks(&app_handle) {
-            log::warn!("Failed to cleanup lock files: {}", e);
-        }
-        let _ = cleanup_llama_processes(app_handle.clone()).await;
-
-        if data_folder.exists() {
-            if !is_safe_to_delete(&data_folder) {
-                log::error!(
-                    "Refusing factory reset: path is too close to filesystem root: {}",
-                    data_folder.display()
-                );
-                return;
-            }
-
-            // Always clean common data (extensions, logs, caches)
-            delete_common_data(&data_folder);
-
-            // Delete conversations (threads, assistants) unless user chose to keep it
-            if !keep_app_data {
-                delete_conversations(&data_folder);
-            }
-
-            // Delete models and configs unless user chose to keep them
-            if !keep_models_and_configs {
-                delete_models_and_configs(&data_folder);
-            }
-
-            // store.json spans all categories; only wipe it when nothing is kept
-            if !keep_app_data && !keep_models_and_configs {
-                // Secrets live mostly in the OS keyring, not the data folder;
-                // clear them while the index can still name them.
+        let folder = data_folder.clone();
+        let wiped = tauri::async_runtime::spawn_blocking(move || {
+            use crate::core::app::settings_store::{discard_settings, flush_settings};
+            if full_wipe {
+                // settings.json goes with the full wipe: stop the in-memory
+                // store first so no debounced or exit flush writes it back.
+                discard_settings();
+                // Secrets live mostly in the OS keyring; clear them while the
+                // index can still name them (kept out of wipe_data_folder so
+                // tests never touch the real keyring).
                 let wiped = crate::core::server::provider_secrets::wipe_all_secrets();
                 log::info!("Factory reset: wiped {wiped} stored secret(s)");
-                delete_settings(&data_folder);
+            } else {
+                // settings.json is kept: write pending changes now.
+                flush_settings();
             }
+            wipe_data_folder(&folder, keep_app_data, keep_models_and_configs)
+        })
+        .await;
+        match wiped {
+            Ok(f) => failures.extend(f),
+            Err(e) => failures.push(format!("Factory reset task failed: {e}")),
         }
+    }
 
-        // Reset app configuration to defaults unless user chose to keep configs
-        if !keep_models_and_configs {
-            let default_config = AppConfiguration {
-                data_folder: default_data_folder_path(app_handle.clone()),
-                unavailable_data_folder: None,
-            };
-            let _ = update_app_configuration(app_handle.clone(), default_config);
-        }
+    // Restart even when something could not be removed (the windows are
+    // already hidden); the next start shows the list once.
+    report_failures(&app_handle, &failures);
 
-        // Persisted UI state (model-provider, setup flag) lives in webview
-        // localStorage, not the data folder. Renderer-side removal races the
-        // restart flush, and the on-disk localStorage location is
-        // platform-specific (esp. macOS WKWebView), so instead drop a sentinel
-        // that the frontend consumes on next startup to clear localStorage via
-        // the webview API before stores hydrate. File-level profile deletion
-        // (Linux cookies/cache) stays as a best-effort supplement.
-        let full_wipe = !keep_app_data && !keep_models_and_configs;
-        if !keep_app_data || !keep_models_and_configs || clear_web_data {
-            write_webdata_reset_sentinel(
-                &app_handle,
-                keep_app_data,
-                keep_models_and_configs,
-                clear_web_data,
-            );
-        }
-        if clear_web_data || full_wipe {
-            clear_webview_profile(&app_handle, &data_folder);
-        }
+    // Reset app configuration to defaults unless user chose to keep configs
+    if !keep_models_and_configs {
+        let default_config = AppConfiguration {
+            data_folder: default_data_folder_path(app_handle.clone()),
+            unavailable_data_folder: None,
+        };
+        let _ = update_app_configuration(app_handle.clone(), default_config);
+    }
 
-        app_handle.restart();
-    });
+    // Persisted UI state (model-provider, setup flag) lives in webview
+    // localStorage, not the data folder. Renderer-side removal races the
+    // restart flush, and the on-disk localStorage location is
+    // platform-specific (esp. macOS WKWebView), so instead drop a sentinel
+    // that the frontend consumes on next startup to clear localStorage via
+    // the webview API before stores hydrate. File-level profile deletion
+    // (Linux cookies/cache) stays as a best-effort supplement.
+    if !keep_app_data || !keep_models_and_configs || clear_web_data {
+        write_webdata_reset_sentinel(
+            &app_handle,
+            keep_app_data,
+            keep_models_and_configs,
+            clear_web_data,
+        );
+    }
+    if clear_web_data || full_wipe {
+        let app = app_handle.clone();
+        let folder = data_folder.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || clear_webview_profile(&app, &folder))
+            .await;
+    }
+
+    app_handle.restart();
 }
 
 #[tauri::command]
@@ -674,51 +819,6 @@ Known secrets are stripped; the scan is best-effort, so review before sharing.
     }
     write_atomically(&path, report.as_bytes())?;
     Ok(Some(path.to_string_lossy().into_owned()))
-}
-
-const PROBEABLE_LIBRARIES: &[&str] = &[
-    "vulkan-1.dll",
-    "libvulkan.so.1",
-    "libvulkan.so",
-    "libvulkan.1.dylib",
-    "nvcuda.dll",
-    "libcuda.so.1",
-    "libcuda.so",
-    "cudart64_12.dll",
-    "cudart64_11.dll",
-    "libcudart.so",
-    "nvml.dll",
-    "libnvidia-ml.so.1",
-    "OpenCL.dll",
-    "libOpenCL.so.1",
-    "libOpenCL.so",
-    "libgomp.so.1",
-    "vcruntime140.dll",
-    "msvcp140.dll",
-];
-
-fn is_probeable_library(name: &str) -> bool {
-    PROBEABLE_LIBRARIES
-        .iter()
-        .any(|l| l.eq_ignore_ascii_case(name))
-}
-
-// check if a system library is available
-#[tauri::command]
-pub fn is_library_available(library: &str) -> bool {
-    // Loading a library runs its initializers, so only well-known driver and
-    // runtime names may be probed, never a path the caller supplies.
-    if !is_probeable_library(library) {
-        log::warn!("Refusing to probe unlisted library {library:?}");
-        return false;
-    }
-    match unsafe { libloading::Library::new(library) } {
-        Ok(_) => true,
-        Err(e) => {
-            log::info!("Library {library} is not available: {e}");
-            false
-        }
-    }
 }
 
 #[tauri::command]
@@ -1912,8 +2012,6 @@ mod tests {
         assert!(is_blocked_env_key("dyld_insert_libraries"));
         assert!(is_blocked_env_key("PATH"));
         assert!(!is_blocked_env_key("CLAUDE_CODE_MAX_OUTPUT_TOKENS"));
-        assert!(is_probeable_library("vulkan-1.dll"));
-        assert!(!is_probeable_library("C:\\evil\\x.dll"));
         assert!(is_valid_env_key("_MY_VAR1"));
         assert!(!is_valid_env_key("1ABC"));
         assert!(!is_valid_env_key(""));
@@ -2045,6 +2143,133 @@ mod tests {
     }
 
     #[test]
+    fn factory_reset_removes_archive_attachments_rooms_schedules_images() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        let failures = wipe_data_folder(d, false, false);
+        assert!(failures.is_empty());
+        for n in [".archive", "attachments", "rooms", "schedules", "images", "videos", "vectordb"] {
+            assert!(!d.join(n).exists(), "{n} survived");
+        }
+    }
+
+    #[test]
+    fn keep_app_data_true_keeps_archive_and_attachments() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        let failures = wipe_data_folder(d, true, false);
+        assert!(failures.is_empty());
+        assert!(d.join(".archive").exists());
+        assert!(d.join("attachments").exists());
+        assert!(d.join("threads").exists());
+        assert!(!d.join("models").exists());
+    }
+
+    #[test]
+    fn keep_models_keeps_models_but_wipes_conversation_extras() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        let failures = wipe_data_folder(d, false, true);
+        assert!(failures.is_empty());
+        assert!(exists_all(d, JAN_DATA_DIRS_MODELS));
+        assert!(!d.join(".archive").exists());
+        assert!(!d.join("rooms").exists());
+        assert!(d.join("settings.json").exists());
+    }
+
+    #[test]
+    fn full_wipe_removes_unknown_top_level_dirs() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        fs::create_dir_all(d.join("some-future-feature")).unwrap();
+        fs::write(d.join("stray.bin"), "x").unwrap();
+        let failures = wipe_data_folder(d, false, false);
+        assert!(failures.is_empty());
+        assert_eq!(fs::read_dir(d).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn keep_flags_never_sweep_unknown_top_level_dirs() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        fs::create_dir_all(d.join("some-future-feature")).unwrap();
+        wipe_data_folder(d, true, false);
+        assert!(d.join("some-future-feature").exists());
+    }
+
+    #[test]
+    fn removal_failures_are_reported() {
+        let tmp = tempdir().unwrap();
+        let not_a_dir = tmp.path().join("f");
+        fs::write(&not_a_dir, "x").unwrap();
+        assert!(!delete_remaining_top_level(&not_a_dir).is_empty());
+    }
+
+    #[test]
+    fn agent_session_stores_follow_keep_app_data() {
+        let agent = [
+            "events", "mailbox", "campaigns", "team-children", "replays", "reviews",
+            "pull_requests", "consensus", "semantic", "undo", "proposals", "imports",
+            "exports", "approvals", "audit", "jobs", "agent-workspace",
+        ];
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        assert!(wipe_data_folder(d, true, false).is_empty());
+        assert!(agent.iter().all(|n| d.join(n).exists()), "kept with conversations");
+        assert!(wipe_data_folder(d, false, true).is_empty());
+        assert!(agent.iter().all(|n| !d.join(n).exists()), "wiped without");
+    }
+
+    #[test]
+    fn failure_report_round_trips_and_is_taken_once() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("cfg").join(FACTORY_RESET_REPORT);
+        write_report_at(&path, &["a: denied".into(), "b: busy".into()]).unwrap();
+        let got = take_report_at(&path).unwrap();
+        assert_eq!(got.failures, vec!["a: denied".to_string(), "b: busy".to_string()]);
+        assert!(!path.exists());
+        assert!(take_report_at(&path).is_none());
+    }
+
+    #[test]
+    fn empty_or_garbage_report_yields_nothing() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join(FACTORY_RESET_REPORT);
+        write_report_at(&path, &[]).unwrap();
+        assert!(take_report_at(&path).is_none());
+        assert!(!path.exists());
+        fs::write(&path, "not json").unwrap();
+        assert!(take_report_at(&path).is_none());
+    }
+
+    /// The reset must not block the main thread: a sync command with
+    /// `block_on` froze the window for up to 30 s and its close never landed.
+    #[test]
+    fn factory_reset_is_async_and_never_blocks_on() {
+        let src = include_str!("commands.rs");
+        let start = src
+            .find("pub async fn factory_reset<")
+            .expect("factory_reset must be an async command");
+        let body = &src[start..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(!body.contains(concat!("block", "_on")));
+        assert!(body.contains("spawn_blocking"));
+    }
+
+    #[test]
+    fn delete_helpers_report_nothing_for_missing_paths() {
+        let tmp = tempdir().unwrap();
+        assert!(remove_dir(tmp.path(), "threads").is_empty());
+        assert!(remove_file(tmp.path(), "settings.json").is_empty());
+    }
+
+    #[test]
     fn test_full_wipe_list_includes_the_secret_index() {
         assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.enc"));
         assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.index.json"));
@@ -2065,6 +2290,11 @@ mod tests {
     fn test_is_safe_to_delete() {
         assert!(!is_safe_to_delete(std::path::Path::new("/")));
         assert!(!is_safe_to_delete(std::path::Path::new("/home")));
+        #[cfg(windows)]
+        {
+            assert!(!is_safe_to_delete(std::path::Path::new(r"C:\Users")));
+            assert!(is_safe_to_delete(std::path::Path::new(r"C:\Users\name")));
+        }
         assert!(is_safe_to_delete(std::path::Path::new("/home/user/jan")));
         assert!(is_safe_to_delete(std::path::Path::new(
             "/home/user/.local/share/jan"

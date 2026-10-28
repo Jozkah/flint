@@ -3,6 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import {
+  isReasoningDefault,
+  type ReasoningDefault,
+} from '@/lib/reasoningDefault'
 
 // Namespaced (#138): the bare 'huggingface' entry is also where the built-in
 // huggingface provider keeps its API keys, so the two overwrote and deleted
@@ -67,10 +71,16 @@ type GeneralSettingState = {
   enterKeyInsertsNewline: boolean
   tokenCounterCompact: boolean
   stripReasoningFromContext: boolean
+  /** Where thinking starts for a chat with no override of its own (#8417). */
+  reasoningDefault: ReasoningDefault
+  setReasoningDefault: (value: ReasoningDefault) => void
   /** Hide to the tray instead of quitting when the window is closed. */
   closeToTray: boolean
   /** Hold off system sleep while an agent run is live (Windows). */
   keepAwakeDuringRuns: boolean
+  /** Fetch each cited site's own favicon; off shows a letter and contacts nobody. */
+  loadSiteIcons: boolean
+  setLoadSiteIcons: (value: boolean) => void
   setKeepAwakeDuringRuns: (value: boolean) => void
   setCloseToTray: (value: boolean) => void
   /** Cap on model download speed in MB/s; 0 is unlimited. */
@@ -97,9 +107,14 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       enterKeyInsertsNewline: false,
       tokenCounterCompact: true,
       stripReasoningFromContext: false,
+      reasoningDefault: 'model',
+      setReasoningDefault: (value) =>
+        set({ reasoningDefault: isReasoningDefault(value) ? value : 'model' }),
       closeToTray: false,
       setCloseToTray: (value) => set({ closeToTray: value }),
       keepAwakeDuringRuns: true,
+      loadSiteIcons: true,
+      setLoadSiteIcons: (value) => set({ loadSiteIcons: value }),
       setKeepAwakeDuringRuns: (value) => set({ keepAwakeDuringRuns: value }),
       downloadLimitMBps: 0,
       setDownloadLimitMBps: (value) =>
@@ -153,8 +168,10 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         enterKeyInsertsNewline: state.enterKeyInsertsNewline,
         tokenCounterCompact: state.tokenCounterCompact,
         stripReasoningFromContext: state.stripReasoningFromContext,
+        reasoningDefault: state.reasoningDefault,
         closeToTray: state.closeToTray,
         keepAwakeDuringRuns: state.keepAwakeDuringRuns,
+        loadSiteIcons: state.loadSiteIcons,
         downloadLimitMBps: state.downloadLimitMBps,
       }),
     }

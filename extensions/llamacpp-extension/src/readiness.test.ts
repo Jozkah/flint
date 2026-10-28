@@ -25,6 +25,14 @@ describe('backendFromDeviceIds', () => {
     expect(backendFromDeviceIds(['', '  '])).toBe('')
   })
 
+  // macOS lists BLAS before MTL0; an OpenBLAS Linux build can list BLAS first too.
+  it('skips host-only ids and prefers the accelerator', () => {
+    expect(backendFromDeviceIds(['BLAS', 'MTL0'])).toBe('mtl')
+    expect(backendFromDeviceIds(['BLAS', 'Vulkan0'])).toBe('vulkan')
+    expect(backendFromDeviceIds(['CPU', 'CUDA0'])).toBe('cuda')
+    expect(backendFromDeviceIds(['BLAS'])).toBe('blas')
+  })
+
   // A multi-digit index must not eat part of the name.
   it('only strips trailing digits', () => {
     expect(backendFromDeviceIds(['Vulkan10'])).toBe('vulkan')

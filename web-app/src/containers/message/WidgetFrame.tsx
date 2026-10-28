@@ -33,6 +33,9 @@ export const LOAD_AFTER_READY_GRACE_MS = 1_000
 
 /** Heights measured so far, so a remounted widget does not collapse and jump. */
 const measured = new Map<string, number>()
+/** Cap on remembered heights, and on any one height a widget may report. */
+const MEASURED_CAP = 200
+const MAX_REPORTED_HEIGHT = 4000
 
 export type WidgetFrameProps = {
   title: string
@@ -120,8 +123,18 @@ export const WidgetFrame = memo(function WidgetFrame({
           lastBeat.current = Date.now()
           break
         case 'height': {
-          const h = Math.max(MIN_WIDGET_HEIGHT, msg.h)
-          if (cacheKey) measured.set(cacheKey, h)
+          const h = Math.min(
+            MAX_REPORTED_HEIGHT,
+            Math.max(MIN_WIDGET_HEIGHT, msg.h)
+          )
+          if (cacheKey) {
+            measured.delete(cacheKey)
+            measured.set(cacheKey, h)
+            if (measured.size > MEASURED_CAP) {
+              const oldest = measured.keys().next().value
+              if (oldest !== undefined) measured.delete(oldest)
+            }
+          }
           setHeight(h)
           break
         }

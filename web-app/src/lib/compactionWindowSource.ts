@@ -32,6 +32,12 @@ export type CompactionWindow = {
 export type CompactionWindowInput = {
   /** Window from the model's settings or a loaded engine; 0 when unknown. */
   known: number
+  /**
+   * The window a server says it really runs the model in (Ollama's loaded
+   * `num_ctx`). Asked right after `known`: the server truncates to it, so it
+   * beats the model's own described window.
+   */
+  fetchLoaded?: () => Promise<number | null>
   /** What the provider describes for the model (`knownContextWindow`). */
   provider?: number | null
   /** What the endpoint's model list named (`listedWindow`). */
@@ -51,6 +57,15 @@ export async function resolveCompactionWindow(
   input: CompactionWindowInput
 ): Promise<CompactionWindow> {
   if (input.known > 0) return { tokens: input.known, source: 'configured' }
+  if (input.fetchLoaded) {
+    let loaded: number | null = null
+    try {
+      loaded = usableContextValue(await input.fetchLoaded())
+    } catch {
+      // Unreachable: fall through to what else is known.
+    }
+    if (loaded != null) return { tokens: loaded, source: 'server' }
+  }
   const steps: Array<[CompactionWindowSource, number | null | undefined]> = [
     ['provider', input.provider],
     ['listed', input.listed],

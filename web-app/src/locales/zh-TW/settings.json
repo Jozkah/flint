@@ -155,6 +155,15 @@
     "composerRailButtonsDesc": "在 Cowork 訊息方塊下方顯示「預覽」「程式碼」「變更」「活動」和「時間軸」。關閉時，標題列中的一個「輸出」按鈕會開啟該面板。",
     "autoGenerateTitle": "自動產生聊天標題",
     "autoGenerateTitleDesc": "自動將新對話摘要為對話串標題。關閉可保留預設標題，直到你自己重新命名。",
+    "titleModel": "標題模型",
+    "titleModelDesc": "用於自動產生聊天標題的模型。若無法使用，則使用該聊天本身的模型。",
+    "titleModelDefault": "聊天的模型",
+    "titleModelSearch": "搜尋模型",
+    "titleModelEmpty": "沒有可用的模型",
+    "titleModelEmptySearch": "沒有符合「{{query}}」的模型",
+    "titlePrompt": "標題提示詞",
+    "titlePromptDesc": "產生標題時隨對話一起傳送的指令。",
+    "titlePromptReset": "恢復預設值",
     "windowBackground": "視窗背景",
     "windowBackgroundDesc": "設定應用程式視窗的背景顏色。",
     "appMainView": "應用程式主視圖",
@@ -462,7 +471,10 @@
     "usageWeekAria": "每週的 token 數",
     "usageWindow": "時間窗",
     "usageLimit": "上限",
-    "usageUnsaved": "未儲存的變更"
+    "usageUnsaved": "未儲存的變更",
+    "stopServerToEdit": "停止伺服器後才能編輯",
+    "trustedHostsInvalid": "無效的主機：{{hosts}}。請使用主機或 主機:連接埠，例如 example.com 或 192.168.1.5:3000。",
+    "trustedHostsUnsaved": "未儲存。按 Enter 儲存，按 Escape 復原。"
   },
   "privacy": {
     "analytics": "分析",
@@ -493,6 +505,7 @@
     "failedToRelocateDataFolder": "無法重新定位資料夾",
     "couldNotRelocateToRoot": "無法將資料夾重新定位到根目錄。請選擇其他位置。",
     "couldNotResetRootDirectory": "當資料檔案夾設定為根目錄時，無法重置。請手動刪除資料檔案夾。",
+    "factoryResetFailed": "恢復原廠設定失敗：{{error}}",
     "failedToRelocateDataFolderDesc": "無法重新定位資料夾。請重試。",
     "devVersion": "檢測到開發版本",
     "noUpdateAvailable": "您正在運行最新版本",
@@ -580,7 +593,9 @@
     "startupGroup": "啟動與系統匣",
     "cliGroup": "命令列",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "擴充功能"
@@ -1377,6 +1392,7 @@
       "settleFailed": "無法解決該衝突",
       "forgotten": "已忘記記憶",
       "forgetFailed": "無法忘記該記憶",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "無法變更該記憶",
       "updated": "記憶已更新",
       "updateFailed": "無法更新該記憶",
@@ -1475,7 +1491,12 @@
     "composerGroup": "輸入框",
     "repliesGroup": "回覆",
     "linksGroup": "連結",
-    "artifactsGroup": "成品與小工具"
+    "artifactsGroup": "成品與小工具",
+    "reasoningDefault": "新聊天的推理",
+    "reasoningDefaultDesc": "新聊天中思考預設開啟還是關閉。模型自身的推理設定和輸入框中的開關仍然優先。無法切換思考的模型不受影響。",
+    "reasoningDefaultModel": "模型預設",
+    "reasoningDefaultOn": "開啟",
+    "reasoningDefaultOff": "關閉"
   },
   "data": {
     "tabStorage": "儲存空間",

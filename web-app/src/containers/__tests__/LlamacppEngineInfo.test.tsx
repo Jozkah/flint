@@ -47,6 +47,20 @@ describe('LlamacppEngineInfo', () => {
       screen.getByRole('link', { name: /engineReleaseNotes/ })
     ).toHaveAttribute(
       'href',
+      'https://github.com/ggml-org/llama.cpp/releases/tag/v0.4.1'
+    )
+  })
+
+  // The b-tag page holds only binaries, but it always exists: use it when no
+  // version is known rather than linking a release that 404s.
+  it('falls back to the build tag when the version is unknown', async () => {
+    getEngineVersion.mockResolvedValue({ ...PIN, version: '' })
+    render(<LlamacppEngineInfo />)
+
+    expect(
+      await screen.findByRole('link', { name: /engineReleaseNotes/ })
+    ).toHaveAttribute(
+      'href',
       'https://github.com/ggml-org/llama.cpp/releases/tag/b10964'
     )
   })

@@ -156,6 +156,15 @@
     "composerRailButtonsDesc": "Muestra Vista previa, Código, Cambios, Actividad y Cronología bajo el cuadro de mensaje de Cowork. Desactivado, un solo botón Salida en el encabezado abre el panel.",
     "autoGenerateTitle": "Generar automáticamente el título del chat",
     "autoGenerateTitleDesc": "Resume automáticamente las conversaciones nuevas en un título de hilo. Desactívalo para conservar el título predeterminado hasta que lo renombres tú mismo.",
+    "titleModel": "Modelo de títulos",
+    "titleModelDesc": "El modelo que escribe los títulos automáticos de los chats. Si no está disponible, se usa el modelo del propio chat.",
+    "titleModelDefault": "Modelo del chat",
+    "titleModelSearch": "Buscar modelos",
+    "titleModelEmpty": "No hay modelos disponibles",
+    "titleModelEmptySearch": "Ningún modelo coincide con \"{{query}}\"",
+    "titlePrompt": "Instrucción del título",
+    "titlePromptDesc": "La instrucción que se envía con la conversación al generar un título.",
+    "titlePromptReset": "Restablecer valor predeterminado",
     "windowBackground": "Fondo de ventana",
     "windowBackgroundDesc": "Establecer el color de fondo de la ventana.",
     "appMainView": "Vista principal",
@@ -464,7 +473,10 @@
     "usageWeekAria": "Tokens por semana",
     "usageWindow": "Ventana",
     "usageLimit": "Límite",
-    "usageUnsaved": "Cambios sin guardar"
+    "usageUnsaved": "Cambios sin guardar",
+    "stopServerToEdit": "Detén el servidor para editar",
+    "trustedHostsInvalid": "Host no válido: {{hosts}}. Usa un host o host:puerto, como example.com o 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Sin guardar. Pulsa Intro para guardar, Escape para deshacer."
   },
   "privacy": {
     "analytics": "Analíticas",
@@ -495,6 +507,7 @@
     "failedToRelocateDataFolder": "Error al reubicar la carpeta de datos",
     "couldNotRelocateToRoot": "No se puede reubicar la carpeta de datos al directorio raíz. Por favor elige otra ubicación.",
     "couldNotResetRootDirectory": "No se puede restablecer la carpeta de datos cuando está en un directorio raíz. Por favor elimina la carpeta de datos manualmente.",
+    "factoryResetFailed": "El restablecimiento de fábrica falló: {{error}}",
     "failedToRelocateDataFolderDesc": "Error al reubicar la carpeta de datos. Por favor, inténtalo de nuevo.",
     "devVersion": "Versión de desarrollo detectada",
     "noUpdateAvailable": "Estás usando la última versión",
@@ -582,7 +595,9 @@
     "startupGroup": "Inicio y bandeja",
     "cliGroup": "Línea de comandos",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "Extensiones"
@@ -1553,6 +1568,7 @@
       "settleFailed": "No se pudo resolver ese conflicto",
       "forgotten": "Recuerdo olvidado",
       "forgetFailed": "No se pudo olvidar ese recuerdo",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "No se pudo cambiar ese recuerdo",
       "updated": "Recuerdo actualizado",
       "updateFailed": "No se pudo actualizar ese recuerdo",
@@ -1654,7 +1670,12 @@
     "composerGroup": "Compositor",
     "repliesGroup": "Respuestas",
     "linksGroup": "Enlaces",
-    "artifactsGroup": "Artefactos y widgets"
+    "artifactsGroup": "Artefactos y widgets",
+    "reasoningDefault": "Razonamiento en chats nuevos",
+    "reasoningDefaultDesc": "Si el razonamiento empieza activado o desactivado en un chat nuevo. El ajuste de razonamiento propio del modelo y el interruptor del editor siguen teniendo prioridad. Los modelos que no pueden cambiar el razonamiento no se modifican.",
+    "reasoningDefaultModel": "Predeterminado del modelo",
+    "reasoningDefaultOn": "Activado",
+    "reasoningDefaultOff": "Desactivado"
   },
   "data": {
     "tabStorage": "Almacenamiento",

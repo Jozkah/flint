@@ -10,6 +10,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  cargoDependencyNames,
   inspectDependencyNames,
   inspectSourceText,
   isScannableFile,
@@ -136,5 +137,23 @@ describe('which files are scanned', () => {
     assert.equal(isScannableFile('web-app/src/locales/en/common.json'), false)
     assert.equal(isScannableFile('scripts/a.test.mjs'), false)
     assert.equal(isScannableFile('scripts/readme.md'), false)
+  })
+})
+
+describe('gap closures', () => {
+  it('catches a protocol-relative analytics URL', () => {
+    const found = inspectSourceText("const s = '//eu.posthog.com/capture'", 'fake.ts')
+    assert.equal(found.length, 1)
+  })
+
+  it('does not treat a comment or path fragment as a host', () => {
+    assert.equal(inspectSourceText("// a comment about posthog", 'fake.ts').length, 0)
+  })
+
+  it('reads [dependencies.name] table headers in Cargo.toml', () => {
+    const names = cargoDependencyNames('[dependencies.sentry]\nversion = "1"\n[target.\'cfg(windows)\'.dependencies.posthog-rs]\nx = 1\n')
+    assert.deepEqual(names.slice(0, 1), [{ name: 'sentry', line: 1 }])
+    assert.ok(names.some((n) => n.name === 'posthog-rs'))
+    assert.equal(inspectDependencyNames(names.map((n) => n.name)).length, 2)
   })
 })

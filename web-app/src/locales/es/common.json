@@ -541,6 +541,7 @@
   "threadImage": "Imagen del hilo",
   "editMessage": "Editar mensaje",
   "deleteMessage": "Eliminar mensaje",
+  "deleteMessageDescription": "¿Seguro que quieres eliminar este mensaje? Esta acción no se puede deshacer.",
   "deleteThread": "Eliminar hilo",
   "renameThread": "Renombrar hilo",
   "threadTitle": "Título del hilo",
@@ -852,7 +853,28 @@
     "openCodeFolderInCowork": "Abrir carpeta de código en Cowork",
     "openCodeFolder": "Abrir carpeta de código",
     "openCodeFolderDescription": "Elige una carpeta de tu equipo en la que Flint trabajará.",
-    "setUpEmbeddingModel": "Configurar un modelo de embeddings"
+    "setUpEmbeddingModel": "Configurar un modelo de embeddings",
+    "webPage": {
+      "open": "Añadir página web",
+      "title": "Añadir una página web",
+      "description": "Descarga una página y guarda su texto legible como archivo del proyecto. Solo funcionan direcciones públicas http y https.",
+      "urlLabel": "Dirección de la página",
+      "add": "Añadir página",
+      "refresh": "Actualizar",
+      "added": "Se añadió \"{{name}}\"",
+      "refreshed": "Se actualizó \"{{name}}\"",
+      "truncated": "La página superaba el límite de tamaño, así que solo se guardó la primera parte.",
+      "refreshFailed": "No se pudo actualizar la página",
+      "errors": {
+        "invalidUrl": "Escribe una dirección web completa que empiece por http:// o https://.",
+        "blocked": "Esa dirección apunta a este equipo o a una red privada, así que no se descargó.",
+        "timeout": "La página tardó demasiado en responder. Inténtalo más tarde.",
+        "notHtml": "Esa dirección no es una página web con texto legible (por ejemplo, un PDF, una imagen o una descarga).",
+        "tooLarge": "La página es demasiado grande.",
+        "httpError": "El sitio devolvió un error: {{message}}",
+        "failed": "No se pudo descargar la página: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Elige cómo procesar los adjuntos",
@@ -1213,6 +1235,7 @@
     "btwFailed": "No se pudo responder la pregunta aparte."
   },
   "autoCompactNeedsWindow": "La compactación automática necesita un tamaño de contexto, y {{model}} no tiene ninguno que Flint pueda encontrar. Define los tokens de contexto máximos para este modelo para que los chats largos se compacten antes de llenarlo. Si el proveedor rechaza una solicitud por su longitud, Flint compacta y reintenta una vez.",
+  "ollamaWindowTruncating": "Ollama ejecuta {{model}} con un contexto de {{tokens}} tokens y descarta en silencio los mensajes más antiguos que lo superan. Flint ahora compacta según ese tamaño. Para conservar más historial, auméntalo en el servidor de Ollama: define OLLAMA_CONTEXT_LENGTH o añade PARAMETER num_ctx al Modelfile del modelo.",
   "compaction": {
     "working": "Compactando la conversación…",
     "divider_one": "Contexto compactado: {{count}} mensaje anterior resumido",
@@ -2772,7 +2795,11 @@
     "noVision": "Este modelo no puede leer imágenes",
     "details": "Detalles de {{name}}",
     "previewLoading": "Cargando la vista previa…",
-    "previewNone": "No hay vista previa disponible"
+    "previewNone": "No hay vista previa disponible",
+    "pagesAsImages": "Enviar páginas como imágenes",
+    "pagesAsImagesHint": "Envía las páginas de este PDF como imágenes para que el modelo vea escaneos, gráficos y diseño",
+    "pdfPagesCut": "Se enviaron las primeras {{sent}} de {{total}} páginas de {{name}} como imágenes",
+    "pdfScannedAsImages": "{{name}} no tiene texto, así que sus páginas se enviaron como imágenes"
   },
   "fileViewer": {
     "openFull": "Abrir vista previa completa",
@@ -2789,6 +2816,10 @@
     "truncatedOnAdd": "Se muestran los primeros {{shown}} de {{total}} (el adjunto se recortó al añadirlo)"
   },
   "dropAttachFailed": "No se pudieron adjuntar los archivos soltados",
+  "chatPaneDrop": {
+    "overlay": "Suelta archivos para adjuntarlos",
+    "unsupported": "No se puede adjuntar {{names}}: este tipo de archivo no es compatible."
+  },
   "sampler": {
     "label": "Parámetros de muestreo",
     "notSupported": "No compatible con {{provider}}"
@@ -2838,6 +2869,10 @@
   "threadSaveFailed": "No se pudo guardar el cambio en este hilo. Se revirtió.",
   "attachmentsProcessFailed": "No se pudieron preparar los adjuntos, así que el mensaje no se envió",
   "attachmentMissingFile": "Un archivo adjunto ya no está disponible. Quítalo y adjúntalo de nuevo; tu mensaje sigue en el cuadro.",
+  "factoryResetIncomplete": {
+    "title": "Restablecimiento incompleto",
+    "description": "No se pudieron eliminar {{count}} elemento(s); siguen en el disco:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "No se pudo leer el archivo de ajustes",
     "withBackup": "{{file}} estaba dañado, así que Flint se inició con los ajustes predeterminados. El archivo dañado se conservó como {{backup}}.",
@@ -3127,5 +3162,10 @@
     "reject": "Rechazar",
     "applying": "Aplicando…",
     "applySelected": "Aplicar selección"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

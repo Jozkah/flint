@@ -33,6 +33,8 @@ const nextId = () => `hf:test:${++n}`
 
 beforeEach(() => {
   download.mockReset()
+  // Rows left by earlier tests share a repo and files; a new start would join them.
+  useHuggingFaceDownloads.setState({ tasks: {}, aliases: {} })
   localStorage.clear()
   resetInterruptedDownloadsCache()
 })

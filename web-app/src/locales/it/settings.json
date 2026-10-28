@@ -156,6 +156,15 @@
     "composerRailButtonsDesc": "Mostra Anteprima, Codice, Modifiche, Attività e Cronologia sotto la casella dei messaggi di Cowork. Se disattivato, un solo pulsante Output nell'intestazione apre il pannello.",
     "autoGenerateTitle": "Genera automaticamente il titolo della chat",
     "autoGenerateTitleDesc": "Riassume automaticamente le nuove conversazioni in un titolo. Disattiva per mantenere il titolo predefinito finché non lo rinomini tu.",
+    "titleModel": "Modello per i titoli",
+    "titleModelDesc": "Il modello che scrive i titoli automatici delle chat. Se non è disponibile, viene usato il modello della chat.",
+    "titleModelDefault": "Modello della chat",
+    "titleModelSearch": "Cerca modelli",
+    "titleModelEmpty": "Nessun modello disponibile",
+    "titleModelEmptySearch": "Nessun modello corrisponde a \"{{query}}\"",
+    "titlePrompt": "Prompt del titolo",
+    "titlePromptDesc": "L'istruzione inviata con la conversazione quando viene generato un titolo.",
+    "titlePromptReset": "Ripristina predefinito",
     "windowBackground": "Sfondo della finestra",
     "windowBackgroundDesc": "Imposta il colore di sfondo della finestra dell'app.",
     "appMainView": "Vista principale dell'app",
@@ -464,7 +473,10 @@
     "usageWeekAria": "Token a settimana",
     "usageWindow": "Finestra",
     "usageLimit": "Limite",
-    "usageUnsaved": "Modifiche non salvate"
+    "usageUnsaved": "Modifiche non salvate",
+    "stopServerToEdit": "Arresta il server per modificare",
+    "trustedHostsInvalid": "Host non valido: {{hosts}}. Usa un host o host:porta, come example.com o 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Non salvato. Premi Invio per salvare, Esc per annullare."
   },
   "privacy": {
     "analytics": "Analisi dati",
@@ -495,6 +507,7 @@
     "failedToRelocateDataFolder": "Impossibile spostare la cartella dati",
     "couldNotRelocateToRoot": "Impossibile spostare la cartella dati nella directory principale (root). Scegli un'altra posizione.",
     "couldNotResetRootDirectory": "Impossibile ripristinare la cartella dati quando è impostata su una directory principale. Elimina manualmente la cartella dati.",
+    "factoryResetFailed": "Ripristino delle impostazioni di fabbrica non riuscito: {{error}}",
     "failedToRelocateDataFolderDesc": "Impossibile spostare la cartella dati. Riprova.",
     "devVersion": "Rilevata versione di sviluppo",
     "noUpdateAvailable": "Stai utilizzando l'ultima versione",
@@ -582,7 +595,9 @@
     "startupGroup": "Avvio e area di notifica",
     "cliGroup": "Riga di comando",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "Estensioni"
@@ -1380,6 +1395,7 @@
       "settleFailed": "Impossibile risolvere il conflitto",
       "forgotten": "Ricordo dimenticato",
       "forgetFailed": "Impossibile dimenticare il ricordo",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Impossibile modificare il ricordo",
       "updated": "Ricordo aggiornato",
       "updateFailed": "Impossibile aggiornare il ricordo",
@@ -1481,7 +1497,12 @@
     "composerGroup": "Compositore",
     "repliesGroup": "Risposte",
     "linksGroup": "Link",
-    "artifactsGroup": "Artefatti e widget"
+    "artifactsGroup": "Artefatti e widget",
+    "reasoningDefault": "Ragionamento per le nuove chat",
+    "reasoningDefaultDesc": "Se il ragionamento parte attivo o disattivo in una nuova chat. L'impostazione di ragionamento del modello e l'interruttore del compositore hanno comunque la precedenza. I modelli che non possono cambiare il ragionamento non vengono toccati.",
+    "reasoningDefaultModel": "Predefinito del modello",
+    "reasoningDefaultOn": "Attivo",
+    "reasoningDefaultOff": "Disattivo"
   },
   "data": {
     "tabStorage": "Archiviazione",

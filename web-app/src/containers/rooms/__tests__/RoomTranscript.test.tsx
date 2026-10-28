@@ -6,8 +6,8 @@ import { RoomTranscript } from '../RoomTranscript'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 
 // The markdown renderer is defer-rendered and covered by its own tests; here we

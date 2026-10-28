@@ -5,6 +5,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl as osOpenUrl } from '@tauri-apps/plugin-opener'
 import { DefaultOpenerService } from './default'
+import { isExternalUrl } from './externalUrl'
 
 export class TauriOpenerService extends DefaultOpenerService {
   /**
@@ -36,6 +37,12 @@ export class TauriOpenerService extends DefaultOpenerService {
   }
 
   async openUrl(url: string): Promise<void> {
+    // Only web and mail links leave the app. A file:, javascript: or custom
+    // protocol url (from a model, a link or an MCP server) is refused here so
+    // no caller can hand the OS an arbitrary handler.
+    if (!isExternalUrl(url)) {
+      throw new Error(`Refusing to open a non-http(s)/mailto url: ${url.slice(0, 80)}`)
+    }
     try {
       await osOpenUrl(url)
     } catch (error) {

@@ -80,7 +80,7 @@ pub async fn web_fetch(
     if url.is_empty() {
         return Err(WebSearchError::new("web_fetch 'url' must not be empty."));
     }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
+    if !has_http_scheme(url) {
         return Err(WebSearchError::new(format!(
             "web_fetch 'url' must be an http(s) URL, got: {url}"
         )));
@@ -91,6 +91,13 @@ pub async fn web_fetch(
         .await
         .map_err(|e| WebSearchError::new(augment_code_host_error(url, &e)))?;
     Ok(strip_front_matter(page))
+}
+
+/// Whether `url` starts with an http(s) scheme. URL schemes are
+/// case-insensitive, so `HTTPS://example.com` is accepted too.
+fn has_http_scheme(url: &str) -> bool {
+    let starts = |p: &str| url.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p));
+    starts("http://") || starts("https://")
 }
 
 /// Drop a leading YAML front matter block (`---` ... `---`) from fetched text.
@@ -248,5 +255,24 @@ mod code_host_error_tests {
                 "must not augment {url}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod scheme_tests {
+    use super::has_http_scheme;
+
+    #[test]
+    fn accepts_http_schemes_in_any_case() {
+        assert!(has_http_scheme("https://example.com"));
+        assert!(has_http_scheme("HTTPS://example.com"));
+        assert!(has_http_scheme("Http://example.com"));
+    }
+
+    #[test]
+    fn rejects_other_schemes() {
+        assert!(!has_http_scheme("file:///etc/passwd"));
+        assert!(!has_http_scheme("ftp://example.com"));
+        assert!(!has_http_scheme("http"));
     }
 }

@@ -536,6 +536,7 @@
   "threadImage": "会话图片",
   "editMessage": "编辑消息",
   "deleteMessage": "删除消息",
+  "deleteMessageDescription": "确定要删除这条消息吗？此操作无法撤销。",
   "deleteThread": "删除会话",
   "renameThread": "重命名会话",
   "threadTitle": "会话标题",
@@ -849,7 +850,28 @@
     "openCodeFolder": "打开代码文件夹",
     "openCodeFolderDescription": "选择你电脑上供 Flint 工作的文件夹。",
     "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。",
-    "setUpEmbeddingModel": "设置嵌入模型"
+    "setUpEmbeddingModel": "设置嵌入模型",
+    "webPage": {
+      "open": "添加网页",
+      "title": "添加网页",
+      "description": "获取网页并将其可读文本保存为项目文件。仅支持公开的 http 和 https 地址。",
+      "urlLabel": "网页地址",
+      "add": "添加网页",
+      "refresh": "刷新",
+      "added": "已添加“{{name}}”",
+      "refreshed": "已刷新“{{name}}”",
+      "truncated": "网页超过大小限制，仅保存了前面部分。",
+      "refreshFailed": "无法刷新网页",
+      "errors": {
+        "invalidUrl": "请输入以 http:// 或 https:// 开头的完整网址。",
+        "blocked": "该地址指向本机或私有网络，因此未获取。",
+        "timeout": "网页响应超时，请稍后重试。",
+        "notHtml": "该地址不是包含可读文本的网页（例如 PDF、图片或下载文件）。",
+        "tooLarge": "网页过大，无法获取。",
+        "httpError": "网站返回错误：{{message}}",
+        "failed": "无法获取网页：{{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "选择附件的导入方式",
@@ -1205,6 +1227,7 @@
     "btwFailed": "无法回答旁支问题。"
   },
   "autoCompactNeedsWindow": "自动压缩需要上下文大小，而 Flint 找不到 {{model}} 的上下文大小。请为此模型设置最大上下文 Token 数，以便长聊天在填满之前被压缩。如果提供商因长度拒绝请求，Flint 会压缩并重试一次。",
+  "ollamaWindowTruncating": "Ollama 以 {{tokens}} token 的上下文运行 {{model}}，并会静默丢弃超出部分中最早的消息。Flint 现在会按此大小进行压缩。如需保留更多历史，请在 Ollama 服务器上调大：设置 OLLAMA_CONTEXT_LENGTH，或在模型的 Modelfile 中添加 PARAMETER num_ctx。",
   "compaction": {
     "working": "正在压缩对话…",
     "divider_one": "上下文已压缩 — 已总结 {{count}} 条较早的消息",
@@ -2725,7 +2748,11 @@
     "noVision": "此模型无法读取图片",
     "details": "{{name}} 的详情",
     "previewLoading": "正在加载预览…",
-    "previewNone": "没有可用的预览"
+    "previewNone": "没有可用的预览",
+    "pagesAsImages": "将页面作为图片发送",
+    "pagesAsImagesHint": "将此 PDF 的页面作为图片发送，让模型能看到扫描件、图表和版式",
+    "pdfPagesCut": "已将 {{name}} 共 {{total}} 页中的前 {{sent}} 页作为图片发送",
+    "pdfScannedAsImages": "{{name}} 没有文本，因此已将其页面作为图片发送"
   },
   "fileViewer": {
     "openFull": "打开完整预览",
@@ -2741,6 +2768,10 @@
     "truncatedOnAdd": "显示 {{total}} 中的前 {{shown}}（附件在添加时已被截断）"
   },
   "dropAttachFailed": "无法附加拖放的文件",
+  "chatPaneDrop": {
+    "overlay": "拖放文件以添加附件",
+    "unsupported": "无法添加 {{names}}：不支持此文件类型。"
+  },
   "sampler": {
     "label": "采样参数",
     "notSupported": "{{provider}} 不支持"
@@ -2788,6 +2819,10 @@
   "threadSaveFailed": "无法保存对此对话的更改，已还原。",
   "attachmentsProcessFailed": "无法准备附件，因此消息未发送",
   "attachmentMissingFile": "某个附件已不可用。请移除后重新添加；消息仍保留在输入框中。",
+  "factoryResetIncomplete": {
+    "title": "重置未完成",
+    "description": "有 {{count}} 项无法删除，仍留在磁盘上：\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "无法读取设置文件",
     "withBackup": "{{file}} 已损坏，因此 Flint 使用默认设置启动。损坏的文件已保留为 {{backup}}。",
@@ -3062,5 +3097,10 @@
     "reject": "拒绝",
     "applying": "正在应用…",
     "applySelected": "应用所选"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

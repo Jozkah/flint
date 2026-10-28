@@ -36,6 +36,8 @@ function General() {
   const closeToTray = useGeneralSetting((s) => s.closeToTray)
   const setCloseToTray = useGeneralSetting((s) => s.setCloseToTray)
   const keepAwakeDuringRuns = useGeneralSetting((s) => s.keepAwakeDuringRuns)
+  const loadSiteIcons = useGeneralSetting((s) => s.loadSiteIcons)
+  const setLoadSiteIcons = useGeneralSetting((s) => s.setLoadSiteIcons)
   const setKeepAwakeDuringRuns = useGeneralSetting((s) => s.setKeepAwakeDuringRuns)
   const navigate = useNavigate()
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null)
@@ -116,6 +118,18 @@ function General() {
             anchor="settings-general-language"
             title={t('common:language')}
             actions={<LanguageSwitcher />}
+          />
+          <CardItem
+            anchor="settings-general-site-icons"
+            title={t('settings:general.siteIcons')}
+            description={t('settings:general.siteIconsDesc')}
+            actions={
+              <Switch
+                checked={loadSiteIcons}
+                aria-label={t('settings:general.siteIcons')}
+                onCheckedChange={(e) => setLoadSiteIcons(e)}
+              />
+            }
           />
           <CardItem
             title={t('onboarding:reopenGuide')}

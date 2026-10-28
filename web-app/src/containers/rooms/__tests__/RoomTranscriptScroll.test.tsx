@@ -6,8 +6,8 @@ import { RoomTranscript } from '../RoomTranscript'
 import type { LiveTurn } from '@/lib/rooms/types'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 
 /**

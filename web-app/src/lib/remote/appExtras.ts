@@ -114,7 +114,7 @@ function memoryFrom(messages: ThreadMessage[], threadId: string): ScopedMemoryRe
 
 async function dataFolder(): Promise<string> {
   const folder = await getServiceHub().app().getJanDataFolder()
-  if (!folder) throw new Error('The data folder is not available')
+  if (!folder) throw new Error(t('remote:phone.noDataFolder'))
   return folder
 }
 
@@ -377,12 +377,12 @@ export const appExtras: RemoteExtras = {
     if (!chosen) return empty
     const raw = previewKindFor(chosen)
     const kind: CoworkPreviewResult['kind'] = raw === 'html' || raw === 'svg' || raw === 'markdown' || raw === 'text' || raw === 'image' ? raw : 'other'
-    if (!folder) return { ...empty, kind, note: 'This session has no folder to read the preview from.' }
-    if (kind === 'image' || kind === 'other') return { ...empty, kind, note: 'Open this preview on the computer.' }
+    if (!folder) return { ...empty, kind, note: t('remote:phone.previewNoFolder') }
+    if (kind === 'image' || kind === 'other') return { ...empty, kind, note: t('remote:phone.previewOnComputer') }
     try {
       const file = await projectReadFile(await dataFolder(), folder, chosen, false)
       if (file.oversized || file.binary || file.content.length > MAX_PREVIEW_BYTES) {
-        return { ...empty, kind, note: 'This file is too large to preview on the phone.' }
+        return { ...empty, kind, note: t('remote:phone.previewTooLarge') }
       }
       return { ...empty, kind, content: file.content }
     } catch (e) {
@@ -445,7 +445,7 @@ export const appExtras: RemoteExtras = {
     const group: HuggingFaceFileGroup | undefined = quant
       ? models.find((g) => g.quantization === quant || g.primary.name === quant)
       : [...models].sort((a, b) => quantPreference(b.quantization) - quantPreference(a.quantization))[0]
-    if (!group) throw new Error('This repository has no GGUF file to download.')
+    if (!group) throw new Error(t('remote:phone.noGguf'))
     const modelId = modelIdForGroup(repo, group)
     const bundleId = `hf:llamacpp:${modelId}`
     await startGgufBundle({ bundleId, repo, modelId, group, groups, token, models: getServiceHub().models() })

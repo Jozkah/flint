@@ -156,6 +156,15 @@
     "composerRailButtonsDesc": "Mostra Pré-visualização, Código, Alterações, Atividade e Linha do tempo abaixo da caixa de mensagem do Cowork. Desativado, um botão Saída no cabeçalho abre o painel.",
     "autoGenerateTitle": "Gerar título do chat automaticamente",
     "autoGenerateTitleDesc": "Resume automaticamente novas conversas em um título. Desative para manter o título padrão até você renomeá-lo.",
+    "titleModel": "Modelo de títulos",
+    "titleModelDesc": "O modelo que escreve os títulos automáticos dos chats. Se não estiver disponível, o modelo do próprio chat é usado.",
+    "titleModelDefault": "Modelo do chat",
+    "titleModelSearch": "Pesquisar modelos",
+    "titleModelEmpty": "Nenhum modelo disponível",
+    "titleModelEmptySearch": "Nenhum modelo corresponde a \"{{query}}\"",
+    "titlePrompt": "Prompt do título",
+    "titlePromptDesc": "A instrução enviada com a conversa quando um título é gerado.",
+    "titlePromptReset": "Restaurar padrão",
     "windowBackground": "Fundo da janela",
     "windowBackgroundDesc": "Define a cor de fundo da janela do app.",
     "appMainView": "Visualização principal do app",
@@ -464,7 +473,10 @@
     "usageWeekAria": "Tokens por semana",
     "usageWindow": "Janela",
     "usageLimit": "Limite",
-    "usageUnsaved": "Alterações não salvas"
+    "usageUnsaved": "Alterações não salvas",
+    "stopServerToEdit": "Pare o servidor para editar",
+    "trustedHostsInvalid": "Host inválido: {{hosts}}. Use um host ou host:porta, como example.com ou 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Não salvo. Pressione Enter para salvar, Esc para desfazer."
   },
   "privacy": {
     "analytics": "Analytics",
@@ -495,6 +507,7 @@
     "failedToRelocateDataFolder": "Falha ao realocar pasta de dados",
     "couldNotRelocateToRoot": "Não é possível realocar pasta de dados para diretório raiz. Por favor, escolha outra localização.",
     "couldNotResetRootDirectory": "Não é possível redefinir pasta de dados quando está definida para um diretório raiz. Por favor, delete a pasta de dados manualmente.",
+    "factoryResetFailed": "A redefinição de fábrica falhou: {{error}}",
     "failedToRelocateDataFolderDesc": "Falha ao realocar pasta de dados. Tente novamente.",
     "devVersion": "Versão de desenvolvimento detectada",
     "noUpdateAvailable": "Você está executando a versão mais recente",
@@ -582,7 +595,9 @@
     "startupGroup": "Inicialização e bandeja",
     "cliGroup": "Linha de comando",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "Extensões"
@@ -1409,6 +1424,7 @@
       "settleFailed": "Não foi possível resolver esse conflito",
       "forgotten": "Memória esquecida",
       "forgetFailed": "Não foi possível esquecer essa memória",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Não foi possível alterar essa memória",
       "updated": "Memória atualizada",
       "updateFailed": "Não foi possível atualizar essa memória",
@@ -1510,7 +1526,12 @@
     "composerGroup": "Compositor",
     "repliesGroup": "Respostas",
     "linksGroup": "Links",
-    "artifactsGroup": "Artefatos e widgets"
+    "artifactsGroup": "Artefatos e widgets",
+    "reasoningDefault": "Raciocínio em novos chats",
+    "reasoningDefaultDesc": "Se o raciocínio começa ativado ou desativado em um novo chat. A configuração de raciocínio do próprio modelo e o botão do editor continuam tendo prioridade. Modelos que não podem alternar o raciocínio não são alterados.",
+    "reasoningDefaultModel": "Padrão do modelo",
+    "reasoningDefaultOn": "Ativado",
+    "reasoningDefaultOff": "Desativado"
   },
   "data": {
     "tabStorage": "Armazenamento",

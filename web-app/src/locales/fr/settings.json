@@ -156,6 +156,15 @@
     "composerRailButtonsDesc": "Afficher Aperçu, Code, Modifications, Activité et Chronologie sous la zone de message Cowork. Désactivé, un seul bouton Sortie dans l'en-tête ouvre le panneau.",
     "autoGenerateTitle": "Générer automatiquement le titre de la conversation",
     "autoGenerateTitleDesc": "Résumer automatiquement les nouvelles conversations en un titre de fil. Désactivez pour garder le titre par défaut jusqu'à ce que vous le renommiez vous-même.",
+    "titleModel": "Modèle des titres",
+    "titleModelDesc": "Le modèle qui rédige les titres automatiques des discussions. S'il n'est pas disponible, le modèle de la discussion est utilisé.",
+    "titleModelDefault": "Modèle de la discussion",
+    "titleModelSearch": "Rechercher des modèles",
+    "titleModelEmpty": "Aucun modèle disponible",
+    "titleModelEmptySearch": "Aucun modèle ne correspond à « {{query}} »",
+    "titlePrompt": "Consigne du titre",
+    "titlePromptDesc": "La consigne envoyée avec la conversation lors de la génération d'un titre.",
+    "titlePromptReset": "Rétablir la valeur par défaut",
     "windowBackground": "Arrière-plan de la fenêtre",
     "windowBackgroundDesc": "Définissez la couleur d'arrière-plan de la fenêtre de l'application.",
     "appMainView": "Vue principale de l'application",
@@ -464,7 +473,10 @@
     "usageWeekAria": "Tokens par semaine",
     "usageWindow": "Fenêtre",
     "usageLimit": "Limite",
-    "usageUnsaved": "Modifications non enregistrées"
+    "usageUnsaved": "Modifications non enregistrées",
+    "stopServerToEdit": "Arrêtez le serveur pour modifier",
+    "trustedHostsInvalid": "Hôte non valide : {{hosts}}. Utilisez un hôte ou hôte:port, comme example.com ou 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler."
   },
   "privacy": {
     "analytics": "Analytique",
@@ -495,6 +507,7 @@
     "failedToRelocateDataFolder": "Échec du déplacement du dossier de données",
     "couldNotRelocateToRoot": "Impossible de déplacer le dossier de données vers le répertoire racine. Veuillez choisir un autre emplacement.",
     "couldNotResetRootDirectory": "Impossible de réinitialiser le dossier de données lorsqu'il est défini sur un répertoire racine. Veuillez supprimer le dossier de données manuellement.",
+    "factoryResetFailed": "La réinitialisation d'usine a échoué : {{error}}",
     "failedToRelocateDataFolderDesc": "Échec du déplacement du dossier de données. Veuillez réessayer.",
     "devVersion": "Version de développement détectée",
     "noUpdateAvailable": "Vous utilisez la dernière version",
@@ -582,7 +595,9 @@
     "startupGroup": "Démarrage et zone de notification",
     "cliGroup": "Ligne de commande",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "Extensions"
@@ -1380,6 +1395,7 @@
       "settleFailed": "Impossible de résoudre ce conflit",
       "forgotten": "Souvenir oublié",
       "forgetFailed": "Impossible d'oublier ce souvenir",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Impossible de modifier ce souvenir",
       "updated": "Souvenir mis à jour",
       "updateFailed": "Impossible de mettre à jour ce souvenir",
@@ -1481,7 +1497,12 @@
     "composerGroup": "Zone de saisie",
     "repliesGroup": "Réponses",
     "linksGroup": "Liens",
-    "artifactsGroup": "Artefacts et widgets"
+    "artifactsGroup": "Artefacts et widgets",
+    "reasoningDefault": "Raisonnement pour les nouvelles discussions",
+    "reasoningDefaultDesc": "Indique si la réflexion démarre activée ou désactivée dans une nouvelle discussion. Le réglage de raisonnement propre au modèle et le bouton du champ de saisie restent prioritaires. Les modèles qui ne peuvent pas changer la réflexion ne sont pas modifiés.",
+    "reasoningDefaultModel": "Par défaut du modèle",
+    "reasoningDefaultOn": "Activé",
+    "reasoningDefaultOff": "Désactivé"
   },
   "data": {
     "tabStorage": "Stockage",

@@ -2,6 +2,7 @@
  * Votes: prompt, lenient parsing and a derived tally
  * (docs/DISCUSSION_ROOMS.md, "Controls").
  */
+import { rt } from './text'
 import type { RoomMessage, VoteChoice } from './types'
 
 export function votePrompt(proposal: string): string {
@@ -119,5 +120,5 @@ export function latestVoteCall(messages: RoomMessage[]): RoomMessage | null {
 }
 
 export function renderTally(t: VoteTally): string {
-  return `Vote result: ${t.agree} agree, ${t.disagree} disagree, ${t.abstain} abstain (${t.total} voted).`
+  return rt('voteResult', { agree: t.agree, disagree: t.disagree, abstain: t.abstain, total: t.total })
 }

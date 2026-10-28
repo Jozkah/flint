@@ -511,6 +511,27 @@ function sanitizeSender(from: QueuedMessageSender): QueuedMessageSender {
   }
 }
 
+/**
+ * What of a session is written to disk. A flush maps every session, but the
+ * store replaces a session object when it changes, so the result for an
+ * unchanged one is reused instead of walking its history again.
+ */
+const savedForDisk = new WeakMap<CoworkSession, CoworkSession>()
+function sessionForDisk(session: CoworkSession): CoworkSession {
+  const known = savedForDisk.get(session)
+  if (known) return known
+  const saved = stripSessionToolImages(session)
+  let out: CoworkSession
+  // A server session is a pointer: its transcript lives on the server.
+  if (saved.remote) {
+    out = { ...saved, turns: [], messages: [], inFlight: undefined, pendingInput: undefined }
+  } else {
+    out = saved.mode === 'bypass' ? { ...saved, mode: 'ask' as const } : saved
+  }
+  savedForDisk.set(session, out)
+  return out
+}
+
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
     (set, get) => ({
@@ -1111,14 +1132,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // the model to see; the saved session keeps only the text of the result.
       partialize: (state) => ({
         ...state,
-        sessions: state.sessions.map((session) => {
-          const saved = stripSessionToolImages(session)
-          // A server session is a pointer: its transcript lives on the server.
-          if (saved.remote) {
-            return { ...saved, turns: [], messages: [], inFlight: undefined, pendingInput: undefined }
-          }
-          return saved.mode === 'bypass' ? { ...saved, mode: 'ask' as const } : saved
-        }),
+        sessions: state.sessions.map(sessionForDisk),
       }),
       // Blank sessions left over from earlier launches are dropped as the
       // store loads, except the one that is selected.

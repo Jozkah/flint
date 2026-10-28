@@ -2,7 +2,7 @@ import { useAppState } from '@/hooks/useAppState'
 import { useMessages } from '@/hooks/useMessages'
 import { OUT_OF_CONTEXT_SIZE } from '@/utils/error'
 import { CHAT_DELEGATION_TOOL_NAMES } from '@/lib/chatDelegation'
-import { isNativeWebTool } from '@/lib/webSearchTool'
+import { isNativeWebToolInRun } from '@/lib/webSearchTool'
 import { isImageTool } from '@/lib/chatImageTools'
 import { AGENT_TOOL_NAMES } from '@/lib/agentTools'
 import { isVisualizeTool } from '@/lib/visualize/constants'
@@ -25,10 +25,12 @@ export function serverForTool(toolName: string): string | undefined {
 // Internal tools never prompt: RAG and the native web tools are Flint's own, and
 // the built-in agent tools are gated in Rust (execute_tool refuses anything
 // needing approval), so only workspace-confined calls ever reach here.
-export function isAutoAllowedTool(toolName: string): boolean {
+// `threadId` ties the web tool check to the tool set that thread's run was sent
+// with rather than the global setting, which may have changed mid-run.
+export function isAutoAllowedTool(toolName: string, threadId?: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
-    isNativeWebTool(toolName) ||
+    isNativeWebToolInRun(toolName, threadId) ||
     isVisualizeTool(toolName) ||
     // Reads only conversations the user mentioned, from local stores.
     isChatReadTool(toolName) ||

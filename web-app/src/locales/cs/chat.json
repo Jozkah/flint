@@ -44,6 +44,9 @@
     "description": "Indexování přiložených souborů, aby v nich šlo vyhledávat a citovat z nich. U velkých dokumentů to může chvíli trvat."
   },
   "actions": {
+    "readAloud": "Přečíst nahlas",
+    "stopReading": "Zastavit čtení",
+    "codeOmitted": "kód vynechán",
     "copy": "Kopírovat",
     "regenerate": "Vygenerovat odpověď znovu",
     "continue": "Pokračovat v generování",

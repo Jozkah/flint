@@ -143,4 +143,26 @@ describe('shardedSessionStorage', () => {
     await store.removeItem('k')
     expect([...data.keys()]).toEqual([])
   })
+
+  it('stringifies a session object it has already written only once', async () => {
+    const { inner } = memory()
+    const store = shardedSessionStorage<S>(inner)
+    const calls = { a: 0, b: 0 }
+    const make = (id: 'a' | 'b') => ({
+      id,
+      title: `t-${id}`,
+      toJSON() {
+        calls[id] += 1
+        return { id, title: `t-${id}` }
+      },
+    })
+    const a = make('a')
+    const b = make('b')
+    await store.setItem('k', value([a, b]))
+    expect(calls).toEqual({ a: 1, b: 1 })
+    const b2 = make('b')
+    await store.setItem('k', value([a, b2]))
+    // a is the same object: not stringified again. b2 is new: it is.
+    expect(calls).toEqual({ a: 1, b: 2 })
+  })
 })

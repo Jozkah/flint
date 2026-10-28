@@ -30,6 +30,7 @@ import { SaveChatPicturesItem } from '@/components/SaveChatPicturesItem'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { ChatPaneDropZone } from '@/components/ChatPaneDropZone'
 import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import { ChatTasks } from '@/containers/ChatTasks'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
@@ -64,6 +65,7 @@ import {
   stampContextErrorOnThread,
   writeDetailsOpen,
 } from '@/lib/chat/threadHelpers'
+import { requestAlwaysAskApproval, requestToolApproval } from '@/lib/chat/requestToolApproval'
 import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { BRANCH_CHANGED_EVENT, repairActiveRoot, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
 import { useMessageErrors } from '@/stores/message-errors'
@@ -211,7 +213,7 @@ import {
   useThreadStatus,
 } from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
-import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
+import { executeWebTool, isNativeWebToolInRun } from '@/lib/webSearchTool'
 import { isImageTool, runImageTool } from '@/lib/chatImageTools'
 import {
   countOutputImages,
@@ -554,6 +556,14 @@ export function ThreadConversation({
   const backendError = isLlamacppActive ? backendErrorRaw : undefined
 
   const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  const regenerateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A pending post-resize regenerate must not fire into another thread.
+  useEffect(
+    () => () => {
+      if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    },
+    [threadId]
+  )
   // Compacts and continues a reply that stopped because the window filled;
   // resolves false when it could not, and the banner is shown instead.
   const recoverContextLimitRef = useRef<
@@ -1032,11 +1042,11 @@ export function ThreadConversation({
                     .filter(Boolean)
                     .join(' '),
                 }
-              : isAutoAllowedTool(toolName) && !git
+              : isAutoAllowedTool(toolName, threadId) && !git
                 ? await chatForcedPrompt(toolName, toolCall.input, threadId)
                 : null
             const needsApproval =
-              !isAutoAllowedTool(toolName) || forced !== null || git !== null
+              !isAutoAllowedTool(toolName, threadId) || forced !== null || git !== null
             if (needsApproval) {
               openPermission = { ...permissionEvent, phase: 'failed' }
               void recordToolActivity({
@@ -1047,40 +1057,15 @@ export function ThreadConversation({
             const approved = !needsApproval
               ? true
               : forced
-                ? await useToolApprovalRequests
-                    .getState()
-                    .requestApproval(
-                      toolCall.toolCallId,
-                      toolName,
-                      threadId,
-                      undefined,
-                      {
-                        input: toolCall.input,
-                        alwaysAsk: true,
-                        taskContext: forced.reason,
-                        // Checked above through the filesystem, with the
-                        // thread's real workspace.
-                        destructiveChecked: true,
-                        threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                        signal,
-                      }
-                    )
+                ? await requestAlwaysAskApproval(
+                    { ...toolCall, toolName },
+                    threadId,
+                    { taskContext: forced.reason, signal }
+                  )
                 : await (toolApprovalPromises.current.get(
                     toolCall.toolCallId
                   ) ??
-                    useToolApprovalRequests
-                      .getState()
-                      .requestApproval(
-                        toolCall.toolCallId,
-                        toolName,
-                        threadId,
-                        serverForTool(toolName),
-                        {
-                          input: toolCall.input,
-                          threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                          autoApproveStreak: threadId,
-                        }
-                      ))
+                    requestToolApproval({ ...toolCall, toolName }, threadId))
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             openPermission = null
@@ -1142,7 +1127,7 @@ export function ThreadConversation({
             const deadRefusal = deadToolRefusal(threadId, toolName)
             if (deadRefusal) return { error: deadRefusal }
 
-            if (isNativeWebTool(toolName)) {
+            if (isNativeWebToolInRun(toolName, threadId)) {
               // Bound a fetched page to the window this model has, as for MCP
               // results below, so a small-context model is not flooded.
               const webSelection = getModelSelection()
@@ -1228,23 +1213,11 @@ export function ThreadConversation({
                   failureResources: rest.resources,
                   program: commandProgram(toolCall.input),
                   ask: () =>
-                    useToolApprovalRequests
-                      .getState()
-                      .requestApproval(
-                        toolCall.toolCallId,
-                        toolName,
-                        threadId,
-                        undefined,
-                        {
-                          input: toolCall.input,
-                          alwaysAsk: true,
-                          taskContext: NULL_DEVICE_RETRY_REASON,
-                          ...nullRerunApprovalScope(threadId, toolCall.input),
-                          destructiveChecked: true,
-                          threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                          signal,
-                        }
-                      ),
+                    requestAlwaysAskApproval({ ...toolCall, toolName }, threadId, {
+                      taskContext: NULL_DEVICE_RETRY_REASON,
+                      scope: nullRerunApprovalScope(threadId, toolCall.input),
+                      signal,
+                    }),
                 })
                 if (settled.firstAttempt) {
                   useToolCallRuntime
@@ -1543,24 +1516,12 @@ export function ThreadConversation({
       // never prompt (see isAutoAllowedTool).
       sessionData.tools.push(toolCall)
       if (
-        !isAutoAllowedTool(toolCall.toolName) &&
+        !isAutoAllowedTool(toolCall.toolName, threadId) &&
         !toolApprovalPromises.current.has(toolCall.toolCallId)
       ) {
         toolApprovalPromises.current.set(
           toolCall.toolCallId,
-          useToolApprovalRequests
-            .getState()
-            .requestApproval(
-              toolCall.toolCallId,
-              toolCall.toolName,
-              threadId,
-              serverForTool(toolCall.toolName),
-              {
-                input: toolCall.input,
-                threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
-                autoApproveStreak: threadId,
-              }
-            )
+          requestToolApproval(toolCall, threadId)
         )
       }
     },
@@ -2142,6 +2103,7 @@ export function ThreadConversation({
             serviceHub,
             selectedProvider,
             modelSupportsTools: toolsEnabled,
+            modelSupportsVision: !!selectedModel?.capabilities?.includes('vision'),
             parsePreference,
             contextThreshold,
             estimateTokens: estimateAttachmentTokens,
@@ -2735,7 +2697,9 @@ export function ThreadConversation({
       continueReplaceIdRef.current = pending.message.id
     }
 
-    setTimeout(() => {
+    if (regenerateTimerRef.current) clearTimeout(regenerateTimerRef.current)
+    regenerateTimerRef.current = setTimeout(() => {
+      regenerateTimerRef.current = null
       handleRegenerate(pending?.message.id)
     }, 1000)
   }, [
@@ -3252,7 +3216,7 @@ export function ThreadConversation({
   return (
     <PathRootsContext.Provider value={chatPathRoots}>
     <WidgetHostContext.Provider value={widgetHost}>
-    <div
+    <ChatPaneDropZone
       className={cn(
         'flex h-full min-h-0 flex-col',
         // The page's own breathing room; a split pane sits flush in its half.
@@ -3534,10 +3498,10 @@ export function ThreadConversation({
                       </div>
                       {oomError && (
                         <ul className="mt-2 list-disc pl-5 text-xs text-fg-2 space-y-0.5">
-                          <li>Reduce context size (ctx-size)</li>
-                          <li>Disable MTP (Multi-Token Prediction)</li>
-                          <li>Lower n-gpu-layers or switch to a CPU backend</li>
-                          <li>Use a smaller / more quantized model</li>
+                          <li>{t('chat:errorBanner.oomReduceContext')}</li>
+                          <li>{t('chat:errorBanner.oomDisableMtp')}</li>
+                          <li>{t('chat:errorBanner.oomLowerGpuLayers')}</li>
+                          <li>{t('chat:errorBanner.oomSmallerModel')}</li>
                         </ul>
                       )}
                       {((error ?? contextLimitError)?.message
@@ -3581,7 +3545,7 @@ export function ThreadConversation({
                               onClick={handleContextSizeIncrease}
                             >
                               <CircleAlert className="size-4" />
-                              Increase Context Size
+                              {t('common:outOfContextError.increaseContextSize')}
                             </Button>
                           ) : (
                             <div className="mt-3 space-y-2">
@@ -3589,9 +3553,7 @@ export function ThreadConversation({
                                 PREFLIGHT_CONTEXT_ERROR_PREFIX
                               ) && (
                                 <p className="text-sm text-fg-2">
-                                  This model's context window is set by its server,
-                                  so Flint cannot enlarge it. Start a new chat, shorten
-                                  the conversation, or raise the limit on the server.
+                                  {t('chat:errorBanner.serverContext')}
                                 </p>
                               )}
                               <Button
@@ -3601,7 +3563,7 @@ export function ThreadConversation({
                                 onClick={() => handleRegenerate()}
                               >
                                 <RefreshCw className="size-4" />
-                                Regenerate
+                                {t('chat:errorBanner.regenerate')}
                               </Button>
                             </div>
                           )}
@@ -3614,7 +3576,9 @@ export function ThreadConversation({
                           onClick={() => handleRegenerate()}
                         >
                           <RefreshCw className="size-4" />
-                          {oomError || backendError ? 'Reload' : 'Regenerate'}
+                          {oomError || backendError
+                            ? t('chat:errorBanner.reload')
+                            : t('chat:errorBanner.regenerate')}
                         </Button>
                       )}
                     </div>
@@ -3710,7 +3674,7 @@ export function ThreadConversation({
         />
         </div>
       </div>
-    </div>
+    </ChatPaneDropZone>
     </WidgetHostContext.Provider>
     </PathRootsContext.Provider>
   )

@@ -4,6 +4,7 @@
 // text, tool arguments or paths: a notification shows on a lock screen and
 // passes through the browser vendor's push service (encrypted, but still).
 
+import { pt } from './text'
 import { useAppState } from '@/hooks/useAppState'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
@@ -33,7 +34,7 @@ const clip = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : 
 export function approvalNotice(a: { requestId: string; toolName: string; threadId: string }, where: { kind: SessionKind; title?: string }): PushNotice {
   return {
     category: 'approval',
-    title: 'Approval waiting',
+    title: pt('approvalWaiting'),
     body: where.title ? `${clip(where.title)}: ${a.toolName}` : a.toolName,
     url: pushUrl(where.kind, a.threadId),
     tag: `approval-${a.requestId}`,
@@ -47,8 +48,8 @@ export function approvalNotice(a: { requestId: string; toolName: string; threadI
 export function askNotice(threadId: string, title: string | undefined): PushNotice {
   return {
     category: 'approval',
-    title: 'Flint has a question',
-    body: title ? clip(title) : 'Your Cowork session is waiting for your answer',
+    title: pt('question'),
+    body: title ? clip(title) : pt('questionBody'),
     url: pushUrl('cowork', threadId),
     tag: `ask-${threadId}`,
   }
@@ -59,16 +60,16 @@ export function askNotice(threadId: string, title: string | undefined): PushNoti
 export function promptNotice(p: { id: string; kind: string; threadId?: string }, where?: { kind: SessionKind; title?: string }): PushNotice {
   const what =
     p.kind === 'access'
-      ? 'Flint asks for access to a folder'
+      ? pt('accessPush')
       : p.kind === 'domain'
-        ? 'Flint asks to open a site'
+        ? pt('domainPush')
         : p.kind === 'conflict'
-          ? 'Team tasks overlap'
-          : 'A model needs your decision'
+          ? pt('conflictPush')
+          : pt('decisionPush')
   return {
     category: 'approval',
     title: what,
-    body: where?.title ? clip(where.title) : 'Open Flint to answer',
+    body: where?.title ? clip(where.title) : pt('openToAnswer'),
     url: p.threadId && where ? pushUrl(where.kind, p.threadId) : '/m/#/notifications',
     tag: `prompt-${p.id}`,
   }
@@ -107,10 +108,10 @@ type PrLike = { number: number; title: string; state: string; checks: { failed: 
 export function prNotice(prev: PrLike | undefined, next: PrLike, sessionId: string | null): PushNotice | null {
   const url = sessionId ? pushUrl('cowork', sessionId) : '/m/'
   if (next.state === 'merged' && prev && prev.state !== 'merged') {
-    return { category: 'pr', title: `PR #${next.number} merged`, body: clip(next.title), url, tag: `pr-${next.number}` }
+    return { category: 'pr', title: pt('prMerged', { number: next.number }), body: clip(next.title), url, tag: `pr-${next.number}` }
   }
   if (next.checks.failed > 0 && prev && prev.checks.failed === 0) {
-    return { category: 'pr', title: `Checks failed on PR #${next.number}`, body: clip(next.title), url, tag: `pr-${next.number}` }
+    return { category: 'pr', title: pt('checksFailed', { number: next.number }), body: clip(next.title), url, tag: `pr-${next.number}` }
   }
   return null
 }
@@ -178,13 +179,13 @@ export function startPushForwarding(emit: PushEmit): () => void {
     useRoomsStore.subscribe((s) => {
       const room = s.room
       if (room && room.status !== roomStatus && room.status === 'awaiting-user') {
-        send({ category: 'roomWaiting', title: 'A Room is waiting for you', body: clip(room.title), url: pushUrl('room', room.id), tag: `room-${room.id}` })
+        send({ category: 'roomWaiting', title: pt('roomWaiting'), body: clip(room.title), url: pushUrl('room', room.id), tag: `room-${room.id}` })
       }
       roomStatus = room?.status
       if (room && s.journal.length > journalLen) {
         const fresh = s.journal.slice(journalLen)
         if (fresh.some((r) => r.type === 'message' && r.message.kind === 'synthesis')) {
-          send({ category: 'synthesis', title: 'Synthesis ready', body: clip(room.title), url: pushUrl('room', room.id), tag: `synthesis-${room.id}` })
+          send({ category: 'synthesis', title: pt('synthesisReady'), body: clip(room.title), url: pushUrl('room', room.id), tag: `synthesis-${room.id}` })
         }
       }
       journalLen = s.journal.length

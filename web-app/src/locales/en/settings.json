@@ -155,6 +155,15 @@
     "composerRailButtonsDesc": "Show Preview, Code, Changes, Activity and Timeline under the Cowork message box. Off, one Output button in the header opens the panel.",
     "autoGenerateTitle": "Auto-generate chat title",
     "autoGenerateTitleDesc": "Automatically summarize new conversations into a thread title. Turn off to keep the default title until you rename it yourself.",
+    "titleModel": "Title model",
+    "titleModelDesc": "The model that writes automatic chat titles. If it is unavailable, the chat's own model is used.",
+    "titleModelDefault": "Chat's model",
+    "titleModelSearch": "Search models",
+    "titleModelEmpty": "No models available",
+    "titleModelEmptySearch": "No models match \"{{query}}\"",
+    "titlePrompt": "Title prompt",
+    "titlePromptDesc": "The instruction sent with the conversation when a title is generated.",
+    "titlePromptReset": "Reset to default",
     "windowBackground": "Window Background",
     "windowBackgroundDesc": "Set the app window's background color.",
     "appMainView": "App Main View",
@@ -462,7 +471,10 @@
     "usageWeekAria": "Tokens per week",
     "usageWindow": "Window",
     "usageLimit": "Limit",
-    "usageUnsaved": "Unsaved changes"
+    "usageUnsaved": "Unsaved changes",
+    "stopServerToEdit": "Stop the server to edit",
+    "trustedHostsInvalid": "Not a valid host: {{hosts}}. Use a host or host:port, like example.com or 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Unsaved. Press Enter to save, Escape to undo."
   },
   "privacy": {
     "analytics": "Analytics",
@@ -493,6 +505,7 @@
     "failedToRelocateDataFolder": "Failed to relocate data folder",
     "couldNotRelocateToRoot": "Cannot relocate data folder to root directory. Please choose another location.",
     "couldNotResetRootDirectory": "Cannot reset data folder when it's set to a root directory. Please delete the data folder manually.",
+    "factoryResetFailed": "Factory reset failed: {{error}}",
     "failedToRelocateDataFolderDesc": "Failed to relocate data folder. Please try again.",
     "devVersion": "Development version detected",
     "noUpdateAvailable": "You're running the latest version",
@@ -531,6 +544,18 @@
     "reset": "Reset",
     "huggingfaceToken": "HuggingFace Token",
     "huggingfaceTokenDesc": "Your HuggingFace API token for accessing models.",
+    "hfToken": {
+      "empty": "Please enter a Hugging Face token to validate",
+      "valid": "Token is valid",
+      "signedInAs": "Signed in as {{name}}",
+      "validDesc": "Your Hugging Face token is valid.",
+      "invalid": "Token invalid",
+      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
+      "timedOut": "Validation timed out",
+      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
+      "failed": "Validation failed",
+      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+    },
     "closeToTray": "Close to tray",
     "closeToTrayDesc": "Closing the window hides Flint to the system tray instead of quitting. Quit from the tray menu.",
     "downloadLimit": "Download speed limit",
@@ -580,7 +605,9 @@
     "startupGroup": "Startup and tray",
     "cliGroup": "Command line",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "Extensions"
@@ -1377,6 +1404,7 @@
       "settleFailed": "Could not settle that conflict",
       "forgotten": "Memory forgotten",
       "forgetFailed": "Could not forget that memory",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Could not change that memory",
       "updated": "Memory updated",
       "updateFailed": "Could not update that memory",
@@ -1478,7 +1506,12 @@
     "composerGroup": "Composer",
     "repliesGroup": "Replies",
     "linksGroup": "Links",
-    "artifactsGroup": "Artifacts and widgets"
+    "artifactsGroup": "Artifacts and widgets",
+    "reasoningDefault": "Reasoning for new chats",
+    "reasoningDefaultDesc": "Whether thinking starts on or off in a new chat. A model's own Reasoning setting and the composer toggle still win. Models that cannot switch thinking are left alone.",
+    "reasoningDefaultModel": "Model default",
+    "reasoningDefaultOn": "On",
+    "reasoningDefaultOff": "Off"
   },
   "data": {
     "tabStorage": "Storage",

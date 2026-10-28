@@ -79,6 +79,8 @@
     "privateUntilUsed": "Kullanana kadar gizli",
     "recentlyUpdated": "Son güncellenenler",
     "pausedDownloads": "Duraklatılan indirmeler",
+    "retryingIn": "{{seconds}} sn sonra yeniden denenecek",
+    "retryingNow": "Yeniden deneniyor…",
     "resume": "Devam et",
     "retry": "Yeniden dene",
     "searchPlaceholder": "Model, yazar ara veya bir Hugging Face URL'si yapıştır…",

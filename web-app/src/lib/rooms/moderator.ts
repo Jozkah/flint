@@ -3,6 +3,7 @@
  * "moderator-selected"). A directive can only choose a speaker, pass a
  * request, record disagreements or close the room. It never changes settings.
  */
+import { rt } from './text'
 import { activeParticipants } from './policy'
 import type { ModeratorDirective, Room } from './types'
 
@@ -118,14 +119,14 @@ export function parseDirective(raw: string): ModeratorDirective | null {
 /** Readable text for the `moderator-note` that records a directive. */
 export function renderDirective(d: ModeratorDirective, nextName: string | null): string {
   const lines: string[] = []
-  if (d.converged) lines.push('The moderator judged that the discussion has converged.')
-  else if (d.stop) lines.push('The moderator closed the discussion.')
-  else if (nextName) lines.push(`Next: ${nextName}.`)
-  if (d.request) lines.push(`Request: ${d.request}`)
+  if (d.converged) lines.push(rt('dConverged'))
+  else if (d.stop) lines.push(rt('dClosed'))
+  else if (nextName) lines.push(rt('dNext', { name: nextName }))
+  if (d.request) lines.push(rt('dRequest', { request: d.request }))
   if (d.disagreements.length) {
-    lines.push('Open disagreements:')
+    lines.push(rt('dDisagreements'))
     for (const x of d.disagreements) lines.push(`- ${x}`)
   }
-  if (d.reason) lines.push(`Reason: ${d.reason}`)
-  return lines.join('\n') || 'The moderator gave no details.'
+  if (d.reason) lines.push(rt('dReason', { reason: d.reason }))
+  return lines.join('\n') || rt('dNoDetails')
 }

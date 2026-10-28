@@ -552,6 +552,7 @@
   "threadImage": "Obraz wątku",
   "editMessage": "Edytuj Wiadomość",
   "deleteMessage": "Usuń Wiadomość",
+  "deleteMessageDescription": "Czy na pewno chcesz usunąć tę wiadomość? Tej czynności nie można cofnąć.",
   "deleteThread": "Usuń Wątek",
   "renameThread": "Zmień Nazwę Wątku",
   "threadTitle": "Tytuł Wątku",
@@ -865,7 +866,28 @@
     "openCodeFolderInCowork": "Otwórz folder z kodem w Cowork",
     "openCodeFolder": "Otwórz folder z kodem",
     "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować.",
-    "setUpEmbeddingModel": "Skonfiguruj model embeddingów"
+    "setUpEmbeddingModel": "Skonfiguruj model embeddingów",
+    "webPage": {
+      "open": "Dodaj stronę internetową",
+      "title": "Dodaj stronę internetową",
+      "description": "Pobiera stronę i zapisuje jej czytelny tekst jako plik projektu. Działają tylko publiczne adresy http i https.",
+      "urlLabel": "Adres strony",
+      "add": "Dodaj stronę",
+      "refresh": "Odśwież",
+      "added": "Dodano „{{name}}”",
+      "refreshed": "Odświeżono „{{name}}”",
+      "truncated": "Strona przekraczała limit rozmiaru, więc zapisano tylko jej pierwszą część.",
+      "refreshFailed": "Nie udało się odświeżyć strony",
+      "errors": {
+        "invalidUrl": "Wpisz pełny adres zaczynający się od http:// lub https://.",
+        "blocked": "Ten adres wskazuje na ten komputer lub sieć prywatną, więc nie został pobrany.",
+        "timeout": "Strona odpowiadała zbyt długo. Spróbuj ponownie później.",
+        "notHtml": "Ten adres nie jest stroną internetową z czytelnym tekstem (np. PDF, obraz lub plik do pobrania).",
+        "tooLarge": "Strona jest zbyt duża.",
+        "httpError": "Witryna zwróciła błąd: {{message}}",
+        "failed": "Nie udało się pobrać strony: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Wybierz sposób wczytania załączników",
@@ -1231,6 +1253,7 @@
     "btwFailed": "Nie udało się odpowiedzieć na pytanie poboczne."
   },
   "autoCompactNeedsWindow": "Automatyczne kompaktowanie wymaga rozmiaru kontekstu, a {{model}} nie ma żadnego, który Flint potrafiłby znaleźć. Ustaw Maks. tokeny kontekstu dla tego modelu, aby długie czaty były kompaktowane, zanim go zapełnią. Jeśli dostawca odrzuci żądanie z powodu jego długości, Flint skompaktuje i spróbuje raz jeszcze.",
+  "ollamaWindowTruncating": "Ollama uruchamia {{model}} z kontekstem {{tokens}} tokenów i po cichu odrzuca najstarsze wiadomości ponad ten limit. Flint kompaktuje teraz według tego rozmiaru. Aby zachować więcej historii, zwiększ go na serwerze Ollama: ustaw OLLAMA_CONTEXT_LENGTH lub dodaj PARAMETER num_ctx do Modelfile modelu.",
   "compaction": {
     "working": "Kompaktowanie rozmowy…",
     "divider_one": "Kontekst skompaktowany — podsumowano {{count}} wcześniejszą wiadomość",
@@ -2827,7 +2850,11 @@
     "noVision": "Ten model nie czyta obrazów",
     "details": "Szczegóły: {{name}}",
     "previewLoading": "Wczytywanie podglądu…",
-    "previewNone": "Podgląd niedostępny"
+    "previewNone": "Podgląd niedostępny",
+    "pagesAsImages": "Wyślij strony jako obrazy",
+    "pagesAsImagesHint": "Wyślij strony tego PDF jako obrazy, aby model widział skany, wykresy i układ",
+    "pdfPagesCut": "Wysłano jako obrazy pierwsze {{sent}} z {{total}} stron pliku {{name}}",
+    "pdfScannedAsImages": "{{name}} nie zawiera tekstu, więc jego strony wysłano jako obrazy"
   },
   "fileViewer": {
     "openFull": "Otwórz pełny podgląd",
@@ -2846,6 +2873,10 @@
     "truncatedOnAdd": "Wyświetlono pierwsze {{shown}} z {{total}} (załącznik został przycięty przy dodawaniu)"
   },
   "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
+  "chatPaneDrop": {
+    "overlay": "Upuść pliki, aby je załączyć",
+    "unsupported": "Nie można załączyć {{names}}: ten typ pliku nie jest obsługiwany."
+  },
   "sampler": {
     "label": "Parametry próbkowania",
     "notSupported": "Nieobsługiwane przez {{provider}}"
@@ -2896,6 +2927,10 @@
   "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
   "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana",
   "attachmentMissingFile": "Załączony plik nie jest już dostępny. Usuń go i załącz ponownie; wiadomość nadal jest w polu.",
+  "factoryResetIncomplete": {
+    "title": "Reset nie został ukończony",
+    "description": "Nie udało się usunąć elementów: {{count}}. Nadal są na dysku:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Nie udało się odczytać pliku ustawień",
     "withBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Uszkodzony plik zachowano jako {{backup}}.",
@@ -3208,5 +3243,10 @@
     "reject": "Odrzuć",
     "applying": "Stosowanie…",
     "applySelected": "Zastosuj wybrane"
+  },
+  "handoff": {
+    "menu": "Hand off to another computer…",
+    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
+    "failed": "The handoff could not be saved: {{message}}"
   }
 }

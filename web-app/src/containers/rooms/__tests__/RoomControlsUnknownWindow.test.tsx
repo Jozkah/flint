@@ -9,8 +9,8 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { resetAcceptedWindows } from '@/lib/rooms/unknownWindows'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
-  const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  const u = await import('./roomsT')
+  return { useTranslation: () => ({ t: u.t }), i18n: { t: u.t } }
 })
 
 beforeEach(() => {

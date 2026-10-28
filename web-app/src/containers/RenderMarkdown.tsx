@@ -430,7 +430,16 @@ function RenderMarkdownComponent({
           </a>
         )
       }
-      return <a {...props}>{children}</a>
+      // mailto opens the mail client; an in-page #fragment (footnotes) cannot
+      // leave the document. Every other scheme (javascript:, data:, file:,
+      // jan://, relative or protocol-relative paths) renders as plain text.
+      if (
+        typeof href === 'string' &&
+        (/^mailto:/i.test(href) || /^#[^/\\]*$/.test(href))
+      ) {
+        return <a {...props}>{children}</a>
+      }
+      return <>{children}</>
     }
     return {
       a: Anchor,

@@ -9,6 +9,7 @@ import {
   finalizeTokenUsage,
   fromCoworkUsage,
   normalizeLanguageModelUsage,
+  readContextTokens,
   readTokenUsage,
   toCoworkUsage,
   usageValueKinds,
@@ -333,6 +334,23 @@ describe('combineTokenUsage', () => {
 })
 
 describe('createUsageCollector', () => {
+  it('records the last step as the context fill while the total still sums every step', () => {
+    const collector = createUsageCollector()
+    for (const [input, output] of [[1000, 20], [1100, 30], [1200, 50]]) {
+      collector.observe({ type: 'finish-step', usage: sdkUsage({ inputTokens: input, outputTokens: output }) })
+    }
+    expect(collector.total().inputTokens).toBe(3300)
+    expect(collector.total().outputTokens).toBe(100)
+    expect(collector.total().totalTokens).toBe(3400)
+    expect(collector.contextTokens()).toBe(1250)
+  })
+
+  it('reads the context fill, falling back to the usage total on older messages', () => {
+    expect(readContextTokens({ usage: { totalTokens: 3400 }, contextTokens: 1250 })).toBe(1250)
+    expect(readContextTokens({ usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } })).toBe(15)
+    expect(readContextTokens(undefined)).toBeUndefined()
+  })
+
   it('uses the per-step usage with raw, not the summed finish total', () => {
     const collector = createUsageCollector()
     collector.observe({

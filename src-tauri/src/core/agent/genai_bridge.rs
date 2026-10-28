@@ -955,11 +955,60 @@ pub(crate) async fn stream_chat_completions(
     events: &mpsc::UnboundedSender<StreamEvent>,
     client_request_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    let plan = plan_chat(http, upstream_url, api_keys, api_type, body)?;
+    let mut state = RetryState {
+        spent: Duration::ZERO,
+        last_err: String::from("Upstream request failed"),
+        // R13: diagnosed once per call, the first time a failure has no response.
+        diagnosed: false,
+        started: std::time::Instant::now(),
+    };
+    for (key_index, key) in plan.keys.iter().enumerate() {
+        match attempt_with_key(
+            &plan,
+            upstream_url,
+            client_request_id,
+            events,
+            key_index,
+            *key,
+            &mut state,
+        )
+        .await
+        {
+            KeyOutcome::Done(result) => return result,
+            KeyOutcome::NextKey => {}
+        }
+    }
+
+    Err(state.last_err)
+}
+
+/// Everything one call to [`stream_chat_completions`] derives from its inputs
+/// before the first attempt.
+struct ChatPlan<'a> {
+    model: String,
+    chat_req: ChatRequest,
+    options: ChatOptions,
+    endpoint_base: String,
+    adapter: AdapterKind,
+    http: reqwest13::Client,
+    /// The keys to try in order; `[None]` when the endpoint takes none.
+    keys: Vec<Option<&'a str>>,
+    local: bool,
+}
+
+fn plan_chat<'a>(
+    http: &reqwest13::Client,
+    upstream_url: &str,
+    api_keys: &'a [String],
+    api_type: Option<&str>,
+    body: &serde_json::Value,
+) -> Result<ChatPlan<'a>, String> {
     let (model, chat_req) = chat_request_from_body(body)?;
     let options = options_from_body(body);
     let endpoint_base = endpoint_base_from_chat_url(upstream_url);
     let adapter = adapter_kind_for(api_type);
-    let http = &http_client_for_url(http, upstream_url);
+    let http = http_client_for_url(http, upstream_url);
 
     let keys: Vec<Option<&str>> = if api_keys.is_empty() {
         vec![None]
@@ -967,174 +1016,219 @@ pub(crate) async fn stream_chat_completions(
         api_keys.iter().map(|k| Some(k.as_str())).collect()
     };
 
-    let mut spent = Duration::ZERO;
-    let mut last_err = String::from("Upstream request failed");
-    // R13: diagnosed once per call, the first time a failure has no response.
-    let mut diagnosed = false;
+    Ok(ChatPlan {
+        model,
+        chat_req,
+        options,
+        endpoint_base,
+        adapter,
+        http,
+        keys,
+        local: is_local_endpoint(upstream_url),
+    })
+}
 
-    let local = is_local_endpoint(upstream_url);
-    let started = std::time::Instant::now();
-    for (key_index, key) in keys.iter().enumerate() {
-        let client = client_for(
-            http,
-            &endpoint_base,
-            upstream_url,
-            *key,
-            adapter,
-            client_request_id,
-        );
+/// What changes across the attempts of one call.
+struct RetryState {
+    spent: Duration,
+    last_err: String,
+    diagnosed: bool,
+    started: std::time::Instant,
+}
 
-        // Timeouts on this key, counted apart from other failures: `attempt`
-        // also counts 5xx and connect errors, which are not timeouts.
-        let mut timeouts: u32 = 0;
-        for attempt in 0..MAX_ATTEMPTS {
-            let mut progressed = false;
-            match run_once(
-                &client,
-                &model,
-                chat_req.clone(),
-                &options,
-                events,
-                &mut progressed,
-                local,
-            )
-            .await
-            {
-                Ok(completion) => return Ok(completion),
-                Err(AttemptError::Truncated { partial }) => {
-                    return Err(truncated_stream_message(partial));
+/// How a key's attempts ended.
+enum KeyOutcome {
+    /// The call is over: a completion, or the error to report.
+    Done(Result<serde_json::Value, String>),
+    /// This key is spent; try the next one.
+    NextKey,
+}
+
+/// Whether a retryable failure should move on to the next key instead of
+/// waiting: a 429 with more keys available rotates rather than waiting, since
+/// another key usually has its own quota.
+fn should_try_next(status: Option<u16>, key_index: usize, key_count: usize) -> bool {
+    status == Some(429) && key_index + 1 < key_count
+}
+
+/// The attempts (with backoff) for one key.
+async fn attempt_with_key(
+    plan: &ChatPlan<'_>,
+    upstream_url: &str,
+    client_request_id: Option<&str>,
+    events: &mpsc::UnboundedSender<StreamEvent>,
+    key_index: usize,
+    key: Option<&str>,
+    state: &mut RetryState,
+) -> KeyOutcome {
+    let http = &plan.http;
+    let client = client_for(
+        http,
+        &plan.endpoint_base,
+        upstream_url,
+        key,
+        plan.adapter,
+        client_request_id,
+    );
+
+    // Timeouts on this key, counted apart from other failures: `attempt`
+    // also counts 5xx and connect errors, which are not timeouts.
+    let mut timeouts: u32 = 0;
+    for attempt in 0..MAX_ATTEMPTS {
+        let mut progressed = false;
+        match run_once(
+            &client,
+            &plan.model,
+            plan.chat_req.clone(),
+            &plan.options,
+            events,
+            &mut progressed,
+            plan.local,
+        )
+        .await
+        {
+            Ok(completion) => return KeyOutcome::Done(Ok(completion)),
+            Err(AttemptError::Truncated { partial }) => {
+                return KeyOutcome::Done(Err(truncated_stream_message(partial)));
+            }
+            Err(AttemptError::Upstream(err)) => {
+                let (status, err_body, headers) = http_parts(&err);
+                let described = describe_error(&err);
+                state.last_err = upstream_failure_message(status, &described);
+                // A context overflow is not a transport problem: the caller
+                // compacts and retries the turn itself, so mark it and stop.
+                let overflow_text = err_body.unwrap_or(described.as_str());
+                if super::upstream::is_context_overflow_body(overflow_text) {
+                    return KeyOutcome::Done(Err(format!(
+                        "[{}] {}",
+                        super::upstream::CONTEXT_OVERFLOW_MARKER,
+                        state.last_err
+                    )));
                 }
-                Err(AttemptError::Upstream(err)) => {
-                    let (status, err_body, headers) = http_parts(&err);
-                    let described = describe_error(&err);
-                    last_err = upstream_failure_message(status, &described);
-                    // A context overflow is not a transport problem: the caller
-                    // compacts and retries the turn itself, so mark it and stop.
-                    let overflow_text = err_body.unwrap_or(described.as_str());
-                    if super::upstream::is_context_overflow_body(overflow_text) {
-                        return Err(format!(
-                            "[{}] {last_err}",
-                            super::upstream::CONTEXT_OVERFLOW_MARKER
-                        ));
-                    }
 
-                    // Anything already streamed to the consumer makes a retry
-                    // unsafe -- it would replay tokens the user has seen.
-                    if progressed {
-                        return Err(last_err);
-                    }
+                // Anything already streamed to the consumer makes a retry
+                // unsafe -- it would replay tokens the user has seen.
+                if progressed {
+                    return KeyOutcome::Done(Err(state.last_err.clone()));
+                }
 
-                    let disposition = match status {
-                        Some(s) => disposition_for_status(s),
-                        // No HTTP response at all: connect failure, timeout, or a
-                        // stream that died before its first event. Nothing was
-                        // received, so another attempt is safe -- unless the
-                        // reason is the server's certificate, which no attempt
-                        // changes (R13). genai keeps only the text of the
-                        // transport error, so the cause is asked of the endpoint
-                        // itself, once, through the same client.
-                        None => {
-                            if !diagnosed && could_be_a_certificate_failure(upstream_url) {
-                                diagnosed = true;
-                                if let Some(reason) = diagnose_certificate(http, upstream_url).await {
-                                    return Err(format!(
-                                        "{last_err} -- {reason}; not retried, because a certificate failure does not change on another attempt"
-                                    ));
-                                }
+                let disposition = match status {
+                    Some(s) => disposition_for_status(s),
+                    // No HTTP response at all: connect failure, timeout, or a
+                    // stream that died before its first event. Nothing was
+                    // received, so another attempt is safe -- unless the
+                    // reason is the server's certificate, which no attempt
+                    // changes (R13). genai keeps only the text of the
+                    // transport error, so the cause is asked of the endpoint
+                    // itself, once, through the same client.
+                    None => {
+                        if !state.diagnosed && could_be_a_certificate_failure(upstream_url) {
+                            state.diagnosed = true;
+                            if let Some(reason) = diagnose_certificate(http, upstream_url).await {
+                                return KeyOutcome::Done(Err(format!(
+                                    "{} -- {reason}; not retried, because a certificate failure does not change on another attempt",
+                                    state.last_err
+                                )));
                             }
-                            let timed_out = is_timeout_text(&described);
-                            if timed_out {
-                                timeouts += 1;
-                            }
-                            if timed_out && timeouts >= MAX_TIMEOUT_ATTEMPTS {
-                                // Another key may reach a healthy route; only
-                                // give up when this was the last one.
-                                if key_index + 1 < keys.len() {
-                                    log::warn!(
-                                        "genai: {timeouts} timeouts with API key index {key_index}, trying next key"
-                                    );
-                                    break;
-                                }
-                                return Err(format!(
-                                    "{last_err} (timed out {timeouts} times; not retried again)"
-                                ));
-                            }
-                            Disposition::Retry
                         }
-                    };
-
-                    match disposition {
-                        Disposition::Fatal => return Err(last_err),
-                        Disposition::NextKey => {
-                            if key_index + 1 < keys.len() {
+                        let timed_out = is_timeout_text(&described);
+                        if timed_out {
+                            timeouts += 1;
+                        }
+                        if timed_out && timeouts >= MAX_TIMEOUT_ATTEMPTS {
+                            // Another key may reach a healthy route; only
+                            // give up when this was the last one.
+                            if key_index + 1 < plan.keys.len() {
                                 log::warn!(
-                                    "genai: HTTP {} with API key index {key_index}, trying next key",
-                                    status.unwrap_or(0)
+                                    "genai: {timeouts} timeouts with API key index {key_index}, trying next key"
                                 );
+                                return KeyOutcome::NextKey;
                             }
-                            break;
+                            return KeyOutcome::Done(Err(format!(
+                                "{} (timed out {timeouts} times; not retried again)",
+                                state.last_err
+                            )));
                         }
-                        Disposition::Retry if attempt + 1 == MAX_ATTEMPTS => {
-                            return Err(format!("{last_err} (after {MAX_ATTEMPTS} attempts)"));
-                        }
-                        Disposition::Retry if started.elapsed() >= RETRY_WALL_BUDGET => {
-                            return Err(format!(
-                                "{last_err} (gave up after {}s of retries)",
-                                started.elapsed().as_secs()
-                            ));
-                        }
-                        Disposition::Retry => {
-                            // A 429 with more keys available rotates rather than
-                            // waiting: another key usually has its own quota.
-                            if status == Some(429) && key_index + 1 < keys.len() {
-                                break;
-                            }
-                            // Independent clients failing against the same
-                            // provider at the same moment would otherwise
-                            // wake together and retry in lockstep.
-                            let delay = next_delay(
-                                attempt,
-                                headers.and_then(provider_retry_after),
-                                rand::random::<f64>(),
-                            );
-                            let Some(delay) = budgeted(delay, spent) else {
-                                return Err(format!("{last_err} (retry budget exhausted)"));
-                            };
-                            spent += delay;
+                        Disposition::Retry
+                    }
+                };
+
+                match disposition {
+                    Disposition::Fatal => return KeyOutcome::Done(Err(state.last_err.clone())),
+                    Disposition::NextKey => {
+                        if key_index + 1 < plan.keys.len() {
                             log::warn!(
-                                "genai: {last_err} -- retrying in {}ms (attempt {}/{MAX_ATTEMPTS})",
-                                delay.as_millis(),
-                                attempt + 2
+                                "genai: HTTP {} with API key index {key_index}, trying next key",
+                                status.unwrap_or(0)
                             );
-                            // The TUI mutes the log, so the warning above never
-                            // reaches the user; the event is what they see.
-                            let _ = events.send(StreamEvent::Retry {
-                                attempt: attempt + 2,
-                                max_attempts: MAX_ATTEMPTS,
-                                delay_ms: delay.as_millis() as u64,
-                                // genai's errors span lines (Cause/Status/Body);
-                                // a status row has one.
-                                reason: last_err.split_whitespace().collect::<Vec<_>>().join(" "),
-                            });
-                            // AH-023. A run cancelled during a two-minute
-                            // backoff should stop then, not two minutes later.
-                            if let Some(reason) =
-                                tauri_plugin_agent_tools::lifecycle::sleep_unless_stopped(delay)
-                                    .await
-                            {
-                                return Err(format!(
-                                    "{last_err} (retry {} while waiting to retry)",
-                                    reason.as_str()
-                                ));
-                            }
+                        }
+                        return KeyOutcome::NextKey;
+                    }
+                    Disposition::Retry if attempt + 1 == MAX_ATTEMPTS => {
+                        return KeyOutcome::Done(Err(format!(
+                            "{} (after {MAX_ATTEMPTS} attempts)",
+                            state.last_err
+                        )));
+                    }
+                    Disposition::Retry if state.started.elapsed() >= RETRY_WALL_BUDGET => {
+                        return KeyOutcome::Done(Err(format!(
+                            "{} (gave up after {}s of retries)",
+                            state.last_err,
+                            state.started.elapsed().as_secs()
+                        )));
+                    }
+                    Disposition::Retry => {
+                        if should_try_next(status, key_index, plan.keys.len()) {
+                            return KeyOutcome::NextKey;
+                        }
+                        // Independent clients failing against the same
+                        // provider at the same moment would otherwise
+                        // wake together and retry in lockstep.
+                        let delay = next_delay(
+                            attempt,
+                            headers.and_then(provider_retry_after),
+                            rand::random::<f64>(),
+                        );
+                        let Some(delay) = budgeted(delay, state.spent) else {
+                            return KeyOutcome::Done(Err(format!(
+                                "{} (retry budget exhausted)",
+                                state.last_err
+                            )));
+                        };
+                        state.spent += delay;
+                        log::warn!(
+                            "genai: {} -- retrying in {}ms (attempt {}/{MAX_ATTEMPTS})",
+                            state.last_err,
+                            delay.as_millis(),
+                            attempt + 2
+                        );
+                        // The TUI mutes the log, so the warning above never
+                        // reaches the user; the event is what they see.
+                        let _ = events.send(StreamEvent::Retry {
+                            attempt: attempt + 2,
+                            max_attempts: MAX_ATTEMPTS,
+                            delay_ms: delay.as_millis() as u64,
+                            // genai's errors span lines (Cause/Status/Body);
+                            // a status row has one.
+                            reason: state.last_err.split_whitespace().collect::<Vec<_>>().join(" "),
+                        });
+                        // AH-023. A run cancelled during a two-minute
+                        // backoff should stop then, not two minutes later.
+                        if let Some(reason) =
+                            tauri_plugin_agent_tools::lifecycle::sleep_unless_stopped(delay).await
+                        {
+                            return KeyOutcome::Done(Err(format!(
+                                "{} (retry {} while waiting to retry)",
+                                state.last_err,
+                                reason.as_str()
+                            )));
                         }
                     }
                 }
             }
         }
     }
-
-    Err(last_err)
+    KeyOutcome::NextKey
 }
 
 /// The error text kept for a failed attempt: the HTTP status when the provider
@@ -1371,6 +1465,37 @@ mod tests {
     fn failure_message_names_the_status_or_the_transport() {
         assert_eq!(upstream_failure_message(Some(503), "overloaded"), "Upstream returned HTTP 503: overloaded");
         assert_eq!(upstream_failure_message(None, "connection refused"), "Upstream request failed: connection refused");
+    }
+
+    #[test]
+    fn should_try_next_rotates_only_on_a_429_with_keys_left() {
+        // (status, key_index, key_count, rotates)
+        for (status, index, count, want) in [
+            (Some(429), 0, 2, true),
+            (Some(429), 1, 2, false),
+            (Some(429), 0, 1, false),
+            (Some(503), 0, 3, false),
+            (Some(500), 1, 3, false),
+            (None, 0, 3, false),
+        ] {
+            assert_eq!(should_try_next(status, index, count), want, "{status:?} {index}/{count}");
+        }
+    }
+
+    #[test]
+    fn plan_chat_orders_keys_and_defaults_to_one_keyless_attempt() {
+        let http = reqwest13::Client::new();
+        let body = serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "hi" }] });
+        let none: [String; 0] = [];
+        let plan = plan_chat(&http, "http://127.0.0.1:1/v1/chat/completions", &none, None, &body).unwrap();
+        assert_eq!(plan.keys, vec![None]);
+        assert!(plan.local);
+        assert_eq!(plan.model, "m");
+        let keys = ["a".to_string(), "b".to_string()];
+        let plan = plan_chat(&http, "https://api.example.com/v1/chat/completions", &keys, None, &body).unwrap();
+        assert_eq!(plan.keys, vec![Some("a"), Some("b")]);
+        assert!(!plan.local);
+        assert!(plan_chat(&http, "https://x/v1/chat/completions", &keys, None, &serde_json::json!({})).is_err());
     }
 
     #[test]

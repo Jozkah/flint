@@ -134,6 +134,23 @@ describe('createAssistant', () => {
   })
 })
 
+describe('assistant id path safety', () => {
+  it.each(['../threads/x', 'a/b', '..', '.hidden', '', 'a\\b'])(
+    'refuses %j on create and delete',
+    async (id) => {
+      const ext = makeExt()
+      await expect(ext.createAssistant({ id, name: 'X' } as any)).rejects.toThrow(
+        /Invalid assistant id/
+      )
+      await expect(ext.deleteAssistant({ id } as any)).rejects.toThrow(
+        /Invalid assistant id/
+      )
+      expect(fs.writeFileSync).not.toHaveBeenCalled()
+      expect(fs.rm).not.toHaveBeenCalled()
+    }
+  )
+})
+
 describe('deleteAssistant', () => {
   it('removes assistant.json when it exists', async () => {
     seedAssistant('gone', { id: 'gone' })

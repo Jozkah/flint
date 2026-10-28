@@ -155,6 +155,15 @@
     "composerRailButtonsDesc": "Cowork संदेश बॉक्स के नीचे प्रीव्यू, कोड, बदलाव, गतिविधि और टाइमलाइन दिखाएँ। बंद होने पर हेडर में एक आउटपुट बटन पैनल खोलता है।",
     "autoGenerateTitle": "चैट का शीर्षक अपने-आप बनाएँ",
     "autoGenerateTitleDesc": "नई बातचीत का सार निकालकर थ्रेड का शीर्षक अपने-आप बनाएँ। बंद करने पर जब तक आप खुद नाम नहीं बदलते, डिफ़ॉल्ट शीर्षक रहता है।",
+    "titleModel": "शीर्षक मॉडल",
+    "titleModelDesc": "वह मॉडल जो चैट के स्वचालित शीर्षक लिखता है। यदि यह उपलब्ध नहीं है, तो चैट का अपना मॉडल उपयोग होता है।",
+    "titleModelDefault": "चैट का मॉडल",
+    "titleModelSearch": "मॉडल खोजें",
+    "titleModelEmpty": "कोई मॉडल उपलब्ध नहीं",
+    "titleModelEmptySearch": "\"{{query}}\" से कोई मॉडल मेल नहीं खाता",
+    "titlePrompt": "शीर्षक प्रॉम्प्ट",
+    "titlePromptDesc": "शीर्षक बनाते समय बातचीत के साथ भेजा जाने वाला निर्देश।",
+    "titlePromptReset": "डिफ़ॉल्ट पर रीसेट करें",
     "windowBackground": "विंडो पृष्ठभूमि",
     "windowBackgroundDesc": "विंडो की पृष्ठभूमि का रंग सेट करें।",
     "appMainView": "मुख्य दृश्य",
@@ -462,7 +471,10 @@
     "usageWeekAria": "प्रति सप्ताह टोकन",
     "usageWindow": "अवधि",
     "usageLimit": "सीमा",
-    "usageUnsaved": "सहेजे नहीं गए बदलाव"
+    "usageUnsaved": "सहेजे नहीं गए बदलाव",
+    "stopServerToEdit": "संपादित करने के लिए सर्वर बंद करें",
+    "trustedHostsInvalid": "मान्य होस्ट नहीं: {{hosts}}. होस्ट या होस्ट:पोर्ट लिखें, जैसे example.com या 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "सहेजा नहीं गया। सहेजने के लिए Enter, पूर्ववत करने के लिए Escape दबाएँ।"
   },
   "privacy": {
     "analytics": "विश्लेषण",
@@ -493,6 +505,7 @@
     "failedToRelocateDataFolder": "डेटा फ़ोल्डर को स्थानांतरित करने में त्रुटि",
     "couldNotRelocateToRoot": "डेटा फ़ोल्डर को रूट डायरेक्टरी में स्थानांतरित नहीं किया जा सकता। कृपया कोई अन्य स्थान चुनें।",
     "couldNotResetRootDirectory": "जब डेटा फ़ोल्डर रूट डायरेक्टरी में हो, तब इसे रीसेट नहीं किया जा सकता। कृपया डेटा फ़ोल्डर को मैन्युअल रूप से हटाएं।",
+    "factoryResetFailed": "फ़ैक्टरी रीसेट विफल रहा: {{error}}",
     "failedToRelocateDataFolderDesc": "डेटा फ़ोल्डर को स्थानांतरित करने में त्रुटि हुई। कृपया पुनः प्रयास करें।",
     "devVersion": "डेवलपमेंट संस्करण पाया गया",
     "noUpdateAvailable": "आप नवीनतम संस्करण का उपयोग कर रहे हैं",
@@ -580,7 +593,9 @@
     "startupGroup": "स्टार्टअप और ट्रे",
     "cliGroup": "कमांड लाइन",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "एक्सटेंशन"
@@ -1550,6 +1565,7 @@
       "settleFailed": "यह टकराव सुलझाया नहीं जा सका",
       "forgotten": "याद भुला दी गई",
       "forgetFailed": "यह याद भुलाई नहीं जा सकी",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "यह याद बदली नहीं जा सकी",
       "updated": "याद अपडेट की गई",
       "updateFailed": "यह याद अपडेट नहीं हो सकी",
@@ -1651,7 +1667,12 @@
     "composerGroup": "कंपोज़र",
     "repliesGroup": "जवाब",
     "linksGroup": "लिंक",
-    "artifactsGroup": "आर्टिफ़ैक्ट और विजेट"
+    "artifactsGroup": "आर्टिफ़ैक्ट और विजेट",
+    "reasoningDefault": "नई चैट के लिए रीज़निंग",
+    "reasoningDefaultDesc": "नई चैट में सोचना चालू से शुरू हो या बंद से। मॉडल की अपनी रीज़निंग सेटिंग और कंपोज़र का टॉगल अब भी प्राथमिक रहते हैं। जो मॉडल सोचना बदल नहीं सकते, उन्हें नहीं छुआ जाता।",
+    "reasoningDefaultModel": "मॉडल डिफ़ॉल्ट",
+    "reasoningDefaultOn": "चालू",
+    "reasoningDefaultOff": "बंद"
   },
   "data": {
     "tabStorage": "स्टोरेज",

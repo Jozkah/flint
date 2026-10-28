@@ -155,6 +155,15 @@
     "composerRailButtonsDesc": "Cowork のメッセージ欄の下に、プレビュー、コード、変更、アクティビティ、タイムラインを表示します。オフにすると、ヘッダーの 1 つの「出力」ボタンでパネルを開きます。",
     "autoGenerateTitle": "チャットタイトルを自動生成",
     "autoGenerateTitleDesc": "新しい会話を自動的に要約して、スレッドのタイトルにします。オフにすると、自分で名前を変更するまで既定のタイトルが保たれます。",
+    "titleModel": "タイトル用モデル",
+    "titleModelDesc": "チャットのタイトルを自動で作成するモデルです。利用できない場合はチャット自体のモデルが使われます。",
+    "titleModelDefault": "チャットのモデル",
+    "titleModelSearch": "モデルを検索",
+    "titleModelEmpty": "利用できるモデルがありません",
+    "titleModelEmptySearch": "「{{query}}」に一致するモデルはありません",
+    "titlePrompt": "タイトル用プロンプト",
+    "titlePromptDesc": "タイトルを生成するときに会話と一緒に送られる指示です。",
+    "titlePromptReset": "デフォルトに戻す",
     "windowBackground": "ウィンドウの背景",
     "windowBackgroundDesc": "アプリウィンドウの背景色を設定します。",
     "appMainView": "アプリのメインビュー",
@@ -462,7 +471,10 @@
     "usageWeekAria": "1 週間あたりのトークン数",
     "usageWindow": "期間",
     "usageLimit": "上限",
-    "usageUnsaved": "未保存の変更"
+    "usageUnsaved": "未保存の変更",
+    "stopServerToEdit": "編集するにはサーバーを停止してください",
+    "trustedHostsInvalid": "無効なホスト: {{hosts}}。example.com や 192.168.1.5:3000 のようにホストまたはホスト:ポートで入力してください。",
+    "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。"
   },
   "privacy": {
     "analytics": "分析",
@@ -493,6 +505,7 @@
     "failedToRelocateDataFolder": "データフォルダの移動に失敗しました",
     "couldNotRelocateToRoot": "データフォルダをルートディレクトリに移動できません。別の場所を選択してください。",
     "couldNotResetRootDirectory": "データフォルダがルートディレクトリに設定されている場合、リセットできません。データフォルダを手動で削除してください。",
+    "factoryResetFailed": "初期化に失敗しました: {{error}}",
     "failedToRelocateDataFolderDesc": "データフォルダの移動に失敗しました。もう一度お試しください。",
     "devVersion": "開発バージョンが検出されました",
     "noUpdateAvailable": "最新バージョンを実行しています",
@@ -580,7 +593,9 @@
     "startupGroup": "起動とトレイ",
     "cliGroup": "コマンドライン",
     "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
+    "siteIcons": "Load site icons",
+    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead."
   },
   "extensions": {
     "title": "拡張機能"
@@ -1377,6 +1392,7 @@
       "settleFailed": "矛盾を解決できませんでした",
       "forgotten": "メモリを忘れました",
       "forgetFailed": "メモリを忘れられませんでした",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "メモリを変更できませんでした",
       "updated": "メモリを更新しました",
       "updateFailed": "メモリを更新できませんでした",
@@ -1475,7 +1491,12 @@
     "composerGroup": "入力欄",
     "repliesGroup": "返信",
     "linksGroup": "リンク",
-    "artifactsGroup": "アーティファクトとウィジェット"
+    "artifactsGroup": "アーティファクトとウィジェット",
+    "reasoningDefault": "新しいチャットの推論",
+    "reasoningDefaultDesc": "新しいチャットで思考をオンで始めるかオフで始めるか。モデル自体の推論設定と入力欄のトグルが引き続き優先されます。思考を切り替えられないモデルはそのままです。",
+    "reasoningDefaultModel": "モデルの既定",
+    "reasoningDefaultOn": "オン",
+    "reasoningDefaultOff": "オフ"
   },
   "data": {
     "tabStorage": "ストレージ",

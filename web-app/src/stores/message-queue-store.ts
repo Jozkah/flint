@@ -200,7 +200,7 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
         queues: {
           ...state.queues,
           [threadId]: queue.map((m) =>
-            m.id === messageId ? { ...m, held: true } : m
+            m.id === messageId ? { ...m, steer: undefined, held: true } : m
           ),
         },
       }

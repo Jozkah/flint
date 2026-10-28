@@ -2025,70 +2025,10 @@ pub(super) fn panel_budget(frame_h: u16, input_h: u16) -> usize {
         .min(PANEL_MAX_ROWS as u16) as usize
 }
 
-pub(super) fn draw(f: &mut Frame, app: &mut App) {
-    // Cached before anything reads it: the status panel sizes the layout, so a
-    // stale width would mis-size the frame a resize lands on. The body spans
-    // the full frame width (its border is top-only).
-    app.view_width = f.area().width.max(1);
-    let prompt_owns = app.prompt_owns_screen();
-    if let Some(picker) = app.model_picker.as_ref().filter(|_| !prompt_owns) {
-        draw_model_picker(f, f.area(), picker, &app.model);
-        return;
-    }
-    // Every frame, so a finished plan hides on wall-clock time even with the
-    // session idle -- the loop redraws on its tick either way, and ratatui
-    // emits nothing until the panel actually changes.
-    app.refresh_todo_deadline();
-    // Before the layout reads `scrollback`: a drag held past an edge keeps
-    // pulling content into view a row per frame.
-    autoscroll_selection(app);
-    let input_h = input_box_height(app, f.area().width);
-    // Live state -- the plan and the running fan-out -- is docked, not woven
-    // into the transcript: it describes *now*, and it is what the eye wants
-    // right where the typing happens. Built at most once per frame, since its
-    // own height sizes the layout, and clamped to what the frame can spare so a
-    // short terminal loses panel rows rather than conversation.
-    let panel_lines = app
-        .picker
-        .is_none()
-        .then(|| {
-            let width = f.area().width.max(1);
-            status_panel(app, width, panel_budget(f.area().height, input_h))
-        })
-        .filter(|l| !l.is_empty());
-    let panel_h = panel_lines.as_ref().map_or(0, |l| l.len() as u16);
-    // The header stays pinned at the top; the working dir/branch and the
-    // transient key hints share the single row *below* the input, so the whole
-    // "where am I, what's happening" block reads as one unit at the bottom edge
-    // next to where the user types, instead of being split across both ends and
-    // spending two rows on it. The panel sits directly above the input box --
-    // the last thing in view right before where the user types, not competing
-    // with the header for attention. The separator rule is its own row *below*
-    // the panel (rather than the body's own bottom border) so the live state
-    // reads as part of the input dock, above the line, instead of stranded
-    // between the rule and the prompt. A zero-length slot collapses away, so a
-    // session with neither todos nor subagents renders exactly as before.
-    let raw = Layout::vertical([
-        Constraint::Length(1),                     // 0: header
-        Constraint::Min(1),                        // 1: body
-        Constraint::Length(TRANSCRIPT_BOTTOM_PAD), // 2: air
-        Constraint::Length(panel_h),               // 3: status panel
-        Constraint::Length(1),                     // 4: separator rule
-        Constraint::Length(input_h),               // 5: input
-        Constraint::Length(1),                     // 6: path + key hints
-    ])
-    .split(f.area());
-    let panel_area = raw[3];
-    let chunks = [raw[0], raw[1], raw[5], raw[6]];
-
-    f.render_widget(header(app), chunks[0]);
-    // Drawn for every path (picker included) so the dock always reads the same.
-    f.render_widget(Block::default().borders(Borders::TOP), raw[4]);
-
-    // Top border only, so wrapping uses the full width; the border row reduces
-    // the vertical viewport.
-    let width = chunks[1].width.max(1);
-
+/// The `/agents` and background-shell inspectors are live views: rebuild their
+/// rows from the running fan-out each frame so a finishing or newly-dispatched
+/// child appears without reopening.
+fn refresh_live_pickers(app: &mut App) {
     // The /agents inspector is a live view: rebuild its rows from the running
     // fan-out each frame so a finishing or newly-dispatched child appears
     // without reopening. Sequential borrows: read subagents, then write picker.
@@ -2109,7 +2049,11 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             p.items = items;
         }
     }
+}
 
+/// Draw the open picker over the body, with the input and dock beneath it. True
+/// when a picker owned the screen and the frame is finished.
+fn draw_picker_screen(f: &mut Frame, app: &mut App, chunks: [Rect; 4], prompt_owns: bool) -> bool {
     if let Some(picker) = app.picker.as_ref().filter(|_| !prompt_owns) {
         app.row_index.clear();
         let toml_path = app.agent_dir.join("agent.toml");
@@ -2132,20 +2076,22 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
         if let Some(confirm) = &app.browser_confirm {
             draw_browser_confirm_overlay(f, confirm, chunks[2], chunks[1]);
         }
-        return;
+        return true;
     }
+    false
+}
 
-    // ---- Measure ----
-    // Every committed row contributes only its *height* here, read from the row
-    // cache in O(1); the rows the viewport actually shows are the only ones
-    // materialized and word-wrapped, in the pass below. Laying the whole
-    // session out every frame is what made a long transcript crawl: the body
-    // Paragraph wrapped all of it twice (once to count, once to render), so the
-    // per-frame cost tracked history rather than what was on screen.
+/// Measure the committed transcript: one segment per visible row (and per
+/// expanded detail block), the total content height, and where a requested
+/// reveal landed.
+fn build_transcript_segments(
+    app: &mut App,
+    width: u16,
+    frame: &'static str,
+) -> (Vec<Segment>, u16, Option<u16>) {
     let mut segs: Vec<Segment> = Vec::with_capacity(app.transcript.len() + 8);
     let mut content_h: u16 = 0;
     let mut reveal_at: Option<u16> = None;
-    let frame = app.spinner();
     // Traces fold their run of reasoning/tool rows to one header unless the user
     // expanded it. A finished run (an answer follows) folds whole to a static
     // `Thought/Worked` header. The active run's settled steps fold to a live
@@ -2249,7 +2195,12 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             }
         }
     }
+    (segs, content_h, reveal_at)
+}
 
+/// The trailing segment: streaming prose, awaiting throbbers and in-progress
+/// tool calls. It has no transcript index and is rebuilt every frame.
+fn build_tail(app: &mut App, width: u16, frame: &'static str) -> Vec<Line<'static>> {
     // Streaming prose and the awaiting throbbers have no transcript index; they
     // are rebuilt every frame and ride along as one trailing segment.
     let mut tail: Vec<Line<'static>> = Vec::new();
@@ -2321,41 +2272,19 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     for call in &mut app.starting {
         tail.extend(starting_call_lines(call, frame, width));
     }
-    if !tail.is_empty() {
-        let seg = Segment::eager(None, tail, width);
-        content_h = content_h.saturating_add(seg.height);
-        segs.push(seg);
-    }
+    tail
+}
 
-    // TOP border only: the rule under the transcript is now its own row below
-    // the todo HUD (see the layout above), not this block's bottom border.
-    let inner_h = chunks[1].height.saturating_sub(1);
-    let pad = transcript_top_padding(content_h, inner_h);
-    if pad > 0 {
-        segs.insert(
-            0,
-            Segment {
-                idx: None,
-                height: pad,
-                lines: Some(vec![Line::raw(""); pad as usize]),
-            },
-        );
-        reveal_at = reveal_at.map(|n| n.saturating_add(pad));
-    }
-    let total = content_h.saturating_add(pad);
-    let max_back = total.saturating_sub(inner_h);
-    if let Some(target) = reveal_at {
-        // Position the region near the top of the viewport; clamps to pinned
-        // bottom when it is already close enough to the end.
-        app.scrollback = max_back.saturating_sub(target);
-    }
-    app.reveal = None;
-    app.scrollback = app.scrollback.min(max_back);
-    let scroll = max_back - app.scrollback;
-
-    // ---- Materialize the visible window ----
-    // Only segments overlapping [scroll, scroll + inner_h) are cloned, so the
-    // Paragraph below wraps a viewport's worth of lines instead of the session.
+/// Clone out only the segments overlapping the viewport. Returns the lines to
+/// paint, which transcript index owns each screen row, and where the first
+/// materialized segment starts.
+fn materialize_visible(
+    app: &App,
+    segs: Vec<Segment>,
+    scroll: u16,
+    inner_h: u16,
+    width: u16,
+) -> (Vec<Line<'static>>, Vec<Option<usize>>, Option<u16>) {
     let end = scroll.saturating_add(inner_h);
     let mut visible: Vec<Line<'static>> = Vec::new();
     // Parallel to the *screen* rows of the body, in wrapped coordinates: which
@@ -2386,58 +2315,11 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
         }
     }
     row_index.resize(inner_h as usize, None);
+    (visible, row_index, first_start)
+}
 
-    // What the body still has to skip inside the first partially-scrolled
-    // segment; everything before it was never materialized.
-    let offset = scroll.saturating_sub(first_start.unwrap_or(scroll));
-    let body = Paragraph::new(visible)
-        .wrap(Wrap { trim: false })
-        .block(Block::default().borders(Borders::TOP));
-    f.render_widget(body.scroll((offset, 0)), chunks[1]);
-    // The anchor is a screen cell, so content moving under it has to move it
-    // too, or an auto-scrolled drag would keep re-selecting the same rows.
-    if let Some(sel) = app.selection.as_mut().filter(|s| s.dragging) {
-        let delta = scroll as i32 - app.last_scroll as i32;
-        if delta != 0 {
-            sel.anchor.1 = (sel.anchor.1 as i32 - delta).clamp(0, u16::MAX as i32) as u16;
-            sel.moved = true;
-        }
-    }
-    app.transcript_rect = chunks[1];
-    app.last_scroll = scroll;
-    app.row_index = row_index;
-
-    // Keep the caret row visible when the input outgrows the box, wherever the
-    // caret is and whether or not a turn is running (steering types here too),
-    // and put the terminal's own cursor on it so an IME composes at the caret.
-    let mut input_scroll = 0u16;
-    let mut caret_at = None;
-    if composer_live(app) && chunks[2].width > 0 {
-        let visible = chunks[2].height.saturating_sub(1);
-        let (total, col, row) = composer_caret(&app.input, app.cursor, chunks[2].width);
-        input_scroll = row.saturating_sub(visible.saturating_sub(1)).min(total.saturating_sub(visible));
-        if visible > 0 && app.context_view.is_none() {
-            caret_at = Some((chunks[2].x + col, chunks[2].y + row - input_scroll));
-        }
-    }
-    if let Some(lines) = panel_lines {
-        f.render_widget(Paragraph::new(lines), panel_area);
-    }
-    f.render_widget(input_box(app).scroll((input_scroll, 0)), chunks[2]);
-    if let Some(at) = caret_at {
-        f.set_cursor_position(at);
-    }
-    f.render_widget(dock_line(app, chunks[3].width), chunks[3]);
-    // The `/context` overlay renders on top of (never instead of) the finished
-    // frame, so the spinner and streamed output keep animating behind it
-    // mid-turn. A centered bordered popup over the body, titled like the
-    // pickers, with the readout re-laid out by the same `context_lines` the
-    // old transcript row used - the numbers and layout are unchanged, only the
-    // surface (a popup the user closes with Esc) differs. The rect is clamped
-    // to the frame and never indexes a zero-width/zero-height area, so it
-    // stays correct at tiny terminal sizes.
-    if let Some(view) = &app.context_view {
-        let body = chunks[1];
+/// The `/context` popup: a centered bordered readout over the body.
+fn draw_context_overlay(f: &mut Frame, view: &ContextView, body: Rect) {
         // The rect is sized before the content, because the readout's height
         // depends on the width it is laid out at. Borders cost two columns and
         // two rows, so the content width is the popup's inner width -- laying
@@ -2475,11 +2357,12 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
         if inner.width > 0 && inner.height > 0 {
             f.render_widget(Paragraph::new(lines), inner);
         }
-    }
+}
 
-    // Login prompts are modal and user-initiated (only reachable while idle), so
-    // they outrank the queues below: nothing else may take keystrokes meant for
-    // a secret.
+/// The modal prompt docked above the input, in precedence order: login, browser
+/// confirm, settings, MCP and provider docks, ask queue, permission queue, and
+/// finally the slash and path hint popups.
+fn draw_prompt_overlays(f: &mut Frame, app: &mut App, chunks: [Rect; 4]) {
     if let Some(prompt) = &app.login {
         let height = (LOGIN_PROMPT_ROWS + u16::from(prompt.error.is_some())).min(chunks[1].height);
         let y = chunks[2].y.saturating_sub(height).max(chunks[1].y);
@@ -2579,9 +2462,10 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             draw_path_hints(f, rect, &app.path_hints, app.path_hint_selected);
         }
     }
+}
 
-    // Last, over the finished frame, so the highlight covers every surface --
-    // transcript, dock, overlays -- without each having to know about it.
+/// Highlight the selection (and answer a pending copy) over the finished frame.
+fn draw_selection_overlay(f: &mut Frame, app: &mut App) {
     if let Some(sel) = app.selection {
         let area = f.area();
         let buf = f.buffer_mut();
@@ -2601,6 +2485,188 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             }
         }
     }
+}
+
+pub(super) fn draw(f: &mut Frame, app: &mut App) {
+    // Cached before anything reads it: the status panel sizes the layout, so a
+    // stale width would mis-size the frame a resize lands on. The body spans
+    // the full frame width (its border is top-only).
+    app.view_width = f.area().width.max(1);
+    let prompt_owns = app.prompt_owns_screen();
+    if let Some(picker) = app.model_picker.as_ref().filter(|_| !prompt_owns) {
+        draw_model_picker(f, f.area(), picker, &app.model);
+        return;
+    }
+    // Every frame, so a finished plan hides on wall-clock time even with the
+    // session idle -- the loop redraws on its tick either way, and ratatui
+    // emits nothing until the panel actually changes.
+    app.refresh_todo_deadline();
+    // Before the layout reads `scrollback`: a drag held past an edge keeps
+    // pulling content into view a row per frame.
+    autoscroll_selection(app);
+    let input_h = input_box_height(app, f.area().width);
+    // Live state -- the plan and the running fan-out -- is docked, not woven
+    // into the transcript: it describes *now*, and it is what the eye wants
+    // right where the typing happens. Built at most once per frame, since its
+    // own height sizes the layout, and clamped to what the frame can spare so a
+    // short terminal loses panel rows rather than conversation.
+    let panel_lines = app
+        .picker
+        .is_none()
+        .then(|| {
+            let width = f.area().width.max(1);
+            status_panel(app, width, panel_budget(f.area().height, input_h))
+        })
+        .filter(|l| !l.is_empty());
+    let panel_h = panel_lines.as_ref().map_or(0, |l| l.len() as u16);
+    // The header stays pinned at the top; the working dir/branch and the
+    // transient key hints share the single row *below* the input, so the whole
+    // "where am I, what's happening" block reads as one unit at the bottom edge
+    // next to where the user types, instead of being split across both ends and
+    // spending two rows on it. The panel sits directly above the input box --
+    // the last thing in view right before where the user types, not competing
+    // with the header for attention. The separator rule is its own row *below*
+    // the panel (rather than the body's own bottom border) so the live state
+    // reads as part of the input dock, above the line, instead of stranded
+    // between the rule and the prompt. A zero-length slot collapses away, so a
+    // session with neither todos nor subagents renders exactly as before.
+    let raw = Layout::vertical([
+        Constraint::Length(1),                     // 0: header
+        Constraint::Min(1),                        // 1: body
+        Constraint::Length(TRANSCRIPT_BOTTOM_PAD), // 2: air
+        Constraint::Length(panel_h),               // 3: status panel
+        Constraint::Length(1),                     // 4: separator rule
+        Constraint::Length(input_h),               // 5: input
+        Constraint::Length(1),                     // 6: path + key hints
+    ])
+    .split(f.area());
+    let panel_area = raw[3];
+    let chunks = [raw[0], raw[1], raw[5], raw[6]];
+
+    f.render_widget(header(app), chunks[0]);
+    // Drawn for every path (picker included) so the dock always reads the same.
+    f.render_widget(Block::default().borders(Borders::TOP), raw[4]);
+
+    // Top border only, so wrapping uses the full width; the border row reduces
+    // the vertical viewport.
+    let width = chunks[1].width.max(1);
+    refresh_live_pickers(app);
+
+    if draw_picker_screen(f, app, chunks, prompt_owns) {
+        return;
+    }
+
+    // ---- Measure ----
+    // Every committed row contributes only its *height* here, read from the row
+    // cache in O(1); the rows the viewport actually shows are the only ones
+    // materialized and word-wrapped, in the pass below. Laying the whole
+    // session out every frame is what made a long transcript crawl: the body
+    // Paragraph wrapped all of it twice (once to count, once to render), so the
+    // per-frame cost tracked history rather than what was on screen.
+    let frame = app.spinner();
+    let (mut segs, mut content_h, mut reveal_at) = build_transcript_segments(app, width, frame);
+
+    // Streaming prose and the awaiting throbbers have no transcript index; they
+    // are rebuilt every frame and ride along as one trailing segment.
+    let tail = build_tail(app, width, frame);
+    if !tail.is_empty() {
+        let seg = Segment::eager(None, tail, width);
+        content_h = content_h.saturating_add(seg.height);
+        segs.push(seg);
+    }
+
+    // TOP border only: the rule under the transcript is now its own row below
+    // the todo HUD (see the layout above), not this block's bottom border.
+    let inner_h = chunks[1].height.saturating_sub(1);
+    let pad = transcript_top_padding(content_h, inner_h);
+    if pad > 0 {
+        segs.insert(
+            0,
+            Segment {
+                idx: None,
+                height: pad,
+                lines: Some(vec![Line::raw(""); pad as usize]),
+            },
+        );
+        reveal_at = reveal_at.map(|n| n.saturating_add(pad));
+    }
+    let total = content_h.saturating_add(pad);
+    let max_back = total.saturating_sub(inner_h);
+    if let Some(target) = reveal_at {
+        // Position the region near the top of the viewport; clamps to pinned
+        // bottom when it is already close enough to the end.
+        app.scrollback = max_back.saturating_sub(target);
+    }
+    app.reveal = None;
+    app.scrollback = app.scrollback.min(max_back);
+    let scroll = max_back - app.scrollback;
+
+    // ---- Materialize the visible window ----
+    // Only segments overlapping [scroll, scroll + inner_h) are cloned, so the
+    // Paragraph below wraps a viewport's worth of lines instead of the session.
+    let (visible, row_index, first_start) = materialize_visible(app, segs, scroll, inner_h, width);
+
+    // What the body still has to skip inside the first partially-scrolled
+    // segment; everything before it was never materialized.
+    let offset = scroll.saturating_sub(first_start.unwrap_or(scroll));
+    let body = Paragraph::new(visible)
+        .wrap(Wrap { trim: false })
+        .block(Block::default().borders(Borders::TOP));
+    f.render_widget(body.scroll((offset, 0)), chunks[1]);
+    // The anchor is a screen cell, so content moving under it has to move it
+    // too, or an auto-scrolled drag would keep re-selecting the same rows.
+    if let Some(sel) = app.selection.as_mut().filter(|s| s.dragging) {
+        let delta = scroll as i32 - app.last_scroll as i32;
+        if delta != 0 {
+            sel.anchor.1 = (sel.anchor.1 as i32 - delta).clamp(0, u16::MAX as i32) as u16;
+            sel.moved = true;
+        }
+    }
+    app.transcript_rect = chunks[1];
+    app.last_scroll = scroll;
+    app.row_index = row_index;
+
+    // Keep the caret row visible when the input outgrows the box, wherever the
+    // caret is and whether or not a turn is running (steering types here too),
+    // and put the terminal's own cursor on it so an IME composes at the caret.
+    let mut input_scroll = 0u16;
+    let mut caret_at = None;
+    if composer_live(app) && chunks[2].width > 0 {
+        let visible = chunks[2].height.saturating_sub(1);
+        let (total, col, row) = composer_caret(&app.input, app.cursor, chunks[2].width);
+        input_scroll = row.saturating_sub(visible.saturating_sub(1)).min(total.saturating_sub(visible));
+        if visible > 0 && app.context_view.is_none() {
+            caret_at = Some((chunks[2].x + col, chunks[2].y + row - input_scroll));
+        }
+    }
+    if let Some(lines) = panel_lines {
+        f.render_widget(Paragraph::new(lines), panel_area);
+    }
+    f.render_widget(input_box(app).scroll((input_scroll, 0)), chunks[2]);
+    if let Some(at) = caret_at {
+        f.set_cursor_position(at);
+    }
+    f.render_widget(dock_line(app, chunks[3].width), chunks[3]);
+    // The `/context` overlay renders on top of (never instead of) the finished
+    // frame, so the spinner and streamed output keep animating behind it
+    // mid-turn. A centered bordered popup over the body, titled like the
+    // pickers, with the readout re-laid out by the same `context_lines` the
+    // old transcript row used - the numbers and layout are unchanged, only the
+    // surface (a popup the user closes with Esc) differs. The rect is clamped
+    // to the frame and never indexes a zero-width/zero-height area, so it
+    // stays correct at tiny terminal sizes.
+    if let Some(view) = &app.context_view {
+        draw_context_overlay(f, view, chunks[1]);
+    }
+
+    // Login prompts are modal and user-initiated (only reachable while idle), so
+    // they outrank the queues below: nothing else may take keystrokes meant for
+    // a secret.
+    draw_prompt_overlays(f, app, chunks);
+
+    // Last, over the finished frame, so the highlight covers every surface --
+    // transcript, dock, overlays -- without each having to know about it.
+    draw_selection_overlay(f, app);
 }
 
 pub(super) fn draw_ask(f: &mut Frame, area: Rect, ask: &mut PendingAsk, queue_len: usize) {

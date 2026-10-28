@@ -32,6 +32,10 @@ export type HuggingFaceDownloadProgress = {
   taskId: string
   downloaded: number
   total?: number | null
+  /** Set while the download waits to retry: milliseconds to the next attempt. */
+  retryInMs?: number | null
+  /** The failed attempt count behind `retryInMs`. */
+  attempt?: number | null
 }
 
 type NativeResponse = {
@@ -81,6 +85,10 @@ export async function searchHuggingFaceModelsByWords(
 ): Promise<HuggingFaceModel[]> {
   const [typed, ...variants] = searchVariants(query)
   const first = searchHuggingFaceModels(typed, token, format, limit)
+  // `first` is awaited only after the variants settle; without this a fast
+  // rejection is reported as unhandled in the meantime. The error still
+  // surfaces at `await first`.
+  first.catch(() => {})
   const rest = await Promise.allSettled(
     variants.map((variant) =>
       searchHuggingFaceModels(variant, token, format, limit)

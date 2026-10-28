@@ -77,6 +77,8 @@
     "privateUntilUsed": "使うまでプライベート",
     "recentlyUpdated": "最近更新順",
     "pausedDownloads": "一時停止中のダウンロード",
+    "retryingIn": "{{seconds}} 秒後に再試行",
+    "retryingNow": "再試行中…",
     "resume": "再開",
     "retry": "再試行",
     "searchPlaceholder": "モデル名・作者を検索、または Hugging Face の URL を貼り付け…",

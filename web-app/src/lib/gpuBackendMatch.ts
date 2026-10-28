@@ -68,6 +68,8 @@ const FAMILY_MARKERS: [BackendGpuFamily, RegExp][] = [
   ['cuda', /cuda|\bcu\d/i],
   ['vulkan', /vulkan/i],
   ['hip', /\bhip\b|rocm/i],
+  // The engine names Metal devices `MTL<N>`, so the observed backend is `mtl`.
+  ['metal', /\bmtl|metal/i],
 ]
 
 /**
