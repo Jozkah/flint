@@ -34,7 +34,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useTitleSettings } from '@/hooks/useTitleSettings'
 import { DEFAULT_TITLE_PROMPT } from '@/lib/thread-title-summarizer'
 
- 
+
 export const Route = createFileRoute(route.settings.chat)({
   component: ChatSettings,
 })

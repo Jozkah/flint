@@ -27,7 +27,7 @@ import {
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import { isForeignBundledCli } from '@/utils/path'
 
- 
+
 export const Route = createFileRoute(route.settings.general)({
   component: General,
 })

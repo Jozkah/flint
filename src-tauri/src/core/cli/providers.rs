@@ -1022,6 +1022,13 @@ pub const REACHABILITY_TIMEOUT: Duration = Duration::from_secs(2);
 /// reachable.
 pub async fn probe_base_url(base_url: &str, timeout: Duration) -> bool {
     let trimmed = base_url.trim();
+    // The CLI bridge lives in this process: start it rather than report a
+    // signed-in subscription provider as down.
+    if crate::core::cli_bridge::is_bridge_url(trimmed)
+        && crate::core::cli_bridge::ensure_started().await.is_err()
+    {
+        return false;
+    }
     let parsed = if trimmed.contains("://") {
         url::Url::parse(trimmed)
     } else {

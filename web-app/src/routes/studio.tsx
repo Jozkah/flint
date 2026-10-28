@@ -1,4 +1,4 @@
- 
+
 import { createFileRoute } from '@tanstack/react-router'
 import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { route } from '@/constants/routes'

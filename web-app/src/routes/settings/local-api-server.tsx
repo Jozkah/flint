@@ -41,7 +41,7 @@ import {
 import { LoaderCircle } from 'lucide-react'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
- 
+
 export const Route = createFileRoute(route.settings.local_api_server)({
   component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
