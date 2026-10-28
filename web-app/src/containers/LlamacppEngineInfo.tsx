@@ -8,6 +8,16 @@ import type { EngineVersionInfo } from '@/services/models/types'
 const UPSTREAM_REPO = 'https://github.com/ggml-org/llama.cpp'
 const SHORT_SHA = 8
 
+/**
+ * The `b<N>` tag page holds only binaries; the changelog lives on the versioned
+ * `v<version>` release. Fall back to the build tag when no version is known so
+ * the link never points at a release that does not exist.
+ */
+function releaseTag(engine: EngineVersionInfo): string {
+  const version = engine.version?.trim()
+  return version ? `v${version.replace(/^v/i, '')}` : engine.tag
+}
+
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-1.5">
@@ -60,7 +70,7 @@ export function LlamacppEngineInfo() {
           </span>
         </div>
         <a
-          href={`${UPSTREAM_REPO}/releases/tag/${engine.tag}`}
+          href={`${UPSTREAM_REPO}/releases/tag/${releaseTag(engine)}`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
