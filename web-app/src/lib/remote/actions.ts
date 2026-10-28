@@ -370,7 +370,7 @@ export function createActionHandlers(
       // The server already refused these; the window checks again, since it
       // is the one that records the grant.
       const perms = await a.permissions()
-      if (perms && !perms.approvals) {
+      if (!perms?.approvals) {
         throw new RemoteRpcError('forbidden', 'Approvals from phones are turned off on the computer')
       }
       if (p.decision === 'allow' && scope === 'always' && !perms?.alwaysAllow) {
@@ -435,7 +435,7 @@ export function createActionHandlers(
       // The server already refused it when approvals from phones are off; the
       // window checks again, since it is the one that acts.
       const perms = await a.permissions()
-      if (perms && !perms.approvals) {
+      if (!perms?.approvals) {
         throw new RemoteRpcError('forbidden', 'Approvals from phones are turned off on the computer')
       }
       const prompt = a.findPrompt(id)

@@ -85,6 +85,12 @@ describe('approvals.prompt', () => {
     expect(a.respondPrompt).not.toHaveBeenCalled()
   })
 
+  it('fails closed when the permissions lookup returns nothing', async () => {
+    const { a, call } = setup({ permissions: vi.fn(async () => null) })
+    expect(await call({ id: ACCESS.id, action: 'deny' })).toMatchObject({ error: { code: 'forbidden' } })
+    expect(a.respondPrompt).not.toHaveBeenCalled()
+  })
+
   it('says gone when it was answered elsewhere', async () => {
     const { call } = setup()
     expect(await call({ id: 'access:old', action: 'deny' })).toEqual({ result: { status: 'gone' } })

@@ -183,6 +183,12 @@ describe('approvals.respond', () => {
     expect(a.resolveApproval).not.toHaveBeenCalled()
   })
 
+  it('fails closed when the permissions lookup returns nothing', async () => {
+    setup({ permissions: vi.fn(async () => null) })
+    expect(await call('approvals.respond', { requestId: 'ap1', decision: 'deny' })).toMatchObject({ error: { code: 'forbidden' } })
+    expect(a.resolveApproval).not.toHaveBeenCalled()
+  })
+
   it('checks the phone permissions again, and the scopes offered', async () => {
     expect(await call('approvals.respond', { requestId: 'ap1', decision: 'allow', scope: 'always' })).toMatchObject({
       error: { code: 'forbidden' },

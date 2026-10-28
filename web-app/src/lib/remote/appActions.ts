@@ -96,6 +96,15 @@ export function appActions(navigate: Navigate): RemoteActions {
     return m?.id && m.provider ? { id: m.id, provider: m.provider } : undefined
   }
 
+  // The chat's composer, opening the chat first when it is not mounted (a
+  // stop from a phone must reach a conversation the window is not showing).
+  const ensureChatComposer = async (id: string) => {
+    const mounted = composerFor('chat', id)
+    if (mounted) return mounted
+    navigate({ to: route.threadsDetail, params: { threadId: id } })
+    return waitForComposer('chat', id)
+  }
+
   return {
     chatExists: (id) => Boolean(useThreads.getState().threads[id]),
     chatBusy: (id) => Boolean(useAppState.getState().busyThreads[id]),
@@ -131,10 +140,17 @@ export function appActions(navigate: Navigate): RemoteActions {
       if (docs?.length) useChatAttachments.getState().setAttachments(thread.id, (prev) => [...prev, ...docs])
       // The first-message hand-off ChatInput uses: the conversation sends it
       // through its own path when it mounts.
-      sessionStorage.setItem(
-        `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${thread.id}`,
-        JSON.stringify({ text, files: files ?? [] })
-      )
+      try {
+        sessionStorage.setItem(
+          `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${thread.id}`,
+          JSON.stringify({ text, files: files ?? [] })
+        )
+      } catch {
+        // Quota or storage blocked: no hand-off is possible, so do not leave
+        // an empty thread behind for a request that reports failure.
+        useThreads.getState().deleteThread(thread.id)
+        throw new RemoteRpcError('unavailable', 'The attached files are too large to hand to a new chat')
+      }
       navigate({ to: route.threadsDetail, params: { threadId: thread.id } })
       return thread.id
     },
@@ -263,8 +279,10 @@ export function appActions(navigate: Navigate): RemoteActions {
       }
       if (kind === 'chat') {
         if (!useAppState.getState().busyThreads[id]) return false
-        const entry = composerFor('chat', id)
-        if (!entry?.stop) return false
+        const entry = await ensureChatComposer(id)
+        if (!entry?.stop) {
+          throw new RemoteRpcError('unavailable', 'Could not reach the chat to stop it')
+        }
         entry.stop()
         return true
       }
@@ -286,7 +304,8 @@ export function appActions(navigate: Navigate): RemoteActions {
         return 1
       }
       if (kind === 'chat') {
-        composerFor('chat', id)?.stop?.()
+        const composer = await ensureChatComposer(id)
+        composer?.stop?.()
       } else if (useCoworkRun.getState().runs[id]) {
         holdQueueThenStop([id], () => abortRun(id))
       }
