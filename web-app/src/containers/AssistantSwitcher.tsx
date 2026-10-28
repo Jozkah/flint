@@ -111,7 +111,7 @@ export function AssistantSwitcher({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Switch assistant ({shortcutHint})</p>
+          <p>{t('common:switchAssistant', { shortcut: shortcutHint })}</p>
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">

@@ -74,6 +74,14 @@ describe('embedTexts', () => {
     await expect(embedTexts(['a'])).rejects.toThrow('llamacpp extension not available')
   })
 
+  it('rejects a partial or out-of-range response', async () => {
+    withExtension(engine)
+    engine.embed.mockResolvedValue({ data: [{ index: 0, embedding: [1] }] })
+    await expect(embedTexts(['a', 'b'])).rejects.toThrow('missing input 1')
+    engine.embed.mockResolvedValue({ data: [{ index: 5, embedding: [1] }] })
+    await expect(embedTexts(['a'])).rejects.toThrow('out-of-range')
+  })
+
   it('tolerates a response with no data', async () => {
     withExtension(engine)
     engine.embed.mockResolvedValue({})

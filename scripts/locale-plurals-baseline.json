@@ -1,0 +1,917 @@
+{
+  "ca/chat.json": {
+    "plurals": [
+      "composer.*"
+    ]
+  },
+  "ca/common.json": {
+    "plurals": [
+      "coworkDisplay.hiddenCount",
+      "emergencyStop.report.partial",
+      "fileViewer.lines",
+      "nesting.*",
+      "promptLibrary.imported",
+      "proposal.applied",
+      "proposal.appliedPartial",
+      "proposal.moreLines",
+      "sharedFolder.others",
+      "sharedFolder.sidebarMark",
+      "sharedFolder.waitingApproval"
+    ],
+    "extra": [
+      "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "ca/context.json": {
+    "plurals": [
+      "promptSnapshot.*"
+    ]
+  },
+  "ca/engine.json": {
+    "plurals": [
+      "mcp.toolsCount"
+    ]
+  },
+  "ca/mcp-servers.json": {
+    "extra": [
+      "proactiveMode",
+      "proactiveModeDesc"
+    ]
+  },
+  "ca/messaging.json": {
+    "plurals": [
+      "heldBanner",
+      "waitingCount",
+      "waitingIn"
+    ]
+  },
+  "ca/mobile.json": {
+    "plurals": [
+      "campaigns.files",
+      "campaigns.headline.attention",
+      "campaigns.review.changes"
+    ]
+  },
+  "ca/permissions.json": {
+    "plurals": [
+      "accessRequest.moreWaiting",
+      "folderTrust.kept"
+    ]
+  },
+  "ca/rooms.json": {
+    "plurals": [
+      "apply.*",
+      "transcript.catchUp"
+    ]
+  },
+  "ca/settings.json": {
+    "plurals": [
+      "bulk.archived",
+      "bulk.deleted",
+      "campaigns.*",
+      "memoryPage.*"
+    ],
+    "extra": [
+      "interface.chatWidth",
+      "interface.chatWidthDesc"
+    ]
+  },
+  "ca/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "ca/studio.json": {
+    "plurals": [
+      "model.localNote",
+      "video.frames",
+      "video.steps"
+    ]
+  },
+  "ca/sweep.json": {
+    "plurals": [
+      "chat.alreadyInList",
+      "hub.modelCount"
+    ]
+  },
+  "cs/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "cs/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "de-DE/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess",
+      "projects.deleteProjectDialog.description"
+    ]
+  },
+  "de-DE/hub.json": {
+    "extra": [
+      "editTheme"
+    ]
+  },
+  "de-DE/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "es/chat.json": {
+    "plurals": [
+      "composer.*"
+    ]
+  },
+  "es/common.json": {
+    "plurals": [
+      "coworkDisplay.hiddenCount",
+      "emergencyStop.report.partial",
+      "fileViewer.lines",
+      "nesting.*",
+      "promptLibrary.imported",
+      "proposal.applied",
+      "proposal.appliedPartial",
+      "proposal.moreLines",
+      "sharedFolder.others",
+      "sharedFolder.sidebarMark",
+      "sharedFolder.waitingApproval"
+    ],
+    "extra": [
+      "openclaw",
+      "openclawAgent"
+    ]
+  },
+  "es/context.json": {
+    "plurals": [
+      "promptSnapshot.*"
+    ]
+  },
+  "es/engine.json": {
+    "plurals": [
+      "mcp.toolsCount"
+    ]
+  },
+  "es/messaging.json": {
+    "plurals": [
+      "heldBanner",
+      "waitingCount",
+      "waitingIn"
+    ]
+  },
+  "es/mobile.json": {
+    "plurals": [
+      "campaigns.files",
+      "campaigns.headline.attention",
+      "campaigns.review.changes"
+    ]
+  },
+  "es/permissions.json": {
+    "plurals": [
+      "accessRequest.moreWaiting",
+      "folderTrust.kept"
+    ]
+  },
+  "es/rooms.json": {
+    "plurals": [
+      "apply.*",
+      "transcript.catchUp"
+    ]
+  },
+  "es/settings.json": {
+    "plurals": [
+      "bulk.archived",
+      "bulk.deleted",
+      "campaigns.*",
+      "memoryPage.*"
+    ],
+    "extra": [
+      "remoteAccess.*"
+    ]
+  },
+  "es/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "es/studio.json": {
+    "plurals": [
+      "model.localNote",
+      "video.frames",
+      "video.steps"
+    ]
+  },
+  "es/sweep.json": {
+    "plurals": [
+      "chat.alreadyInList",
+      "hub.modelCount"
+    ]
+  },
+  "fr/chat.json": {
+    "plurals": [
+      "composer.*"
+    ]
+  },
+  "fr/common.json": {
+    "plurals": [
+      "coworkDisplay.hiddenCount",
+      "emergencyStop.report.partial",
+      "fileViewer.lines",
+      "nesting.*",
+      "promptLibrary.imported",
+      "proposal.applied",
+      "proposal.appliedPartial",
+      "proposal.moreLines",
+      "sharedFolder.others",
+      "sharedFolder.sidebarMark",
+      "sharedFolder.waitingApproval"
+    ],
+    "extra": [
+      "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "fr/context.json": {
+    "plurals": [
+      "promptSnapshot.*"
+    ]
+  },
+  "fr/engine.json": {
+    "plurals": [
+      "mcp.toolsCount"
+    ]
+  },
+  "fr/messaging.json": {
+    "plurals": [
+      "heldBanner",
+      "waitingCount",
+      "waitingIn"
+    ]
+  },
+  "fr/mobile.json": {
+    "plurals": [
+      "campaigns.files",
+      "campaigns.headline.attention",
+      "campaigns.review.changes"
+    ]
+  },
+  "fr/permissions.json": {
+    "plurals": [
+      "accessRequest.moreWaiting",
+      "folderTrust.kept"
+    ]
+  },
+  "fr/rooms.json": {
+    "plurals": [
+      "apply.*",
+      "transcript.catchUp"
+    ]
+  },
+  "fr/settings.json": {
+    "plurals": [
+      "bulk.archived",
+      "bulk.deleted",
+      "campaigns.*",
+      "memoryPage.*"
+    ]
+  },
+  "fr/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "fr/studio.json": {
+    "plurals": [
+      "model.localNote",
+      "video.frames",
+      "video.steps"
+    ]
+  },
+  "fr/sweep.json": {
+    "plurals": [
+      "chat.alreadyInList",
+      "hub.modelCount"
+    ]
+  },
+  "hi/common.json": {
+    "extra": [
+      "openclaw",
+      "openclawAgent"
+    ]
+  },
+  "hi/settings.json": {
+    "extra": [
+      "remoteAccess.*"
+    ]
+  },
+  "hi/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "id/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess",
+      "projects.deleteProjectDialog.description"
+    ]
+  },
+  "id/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "it/chat.json": {
+    "plurals": [
+      "composer.*"
+    ]
+  },
+  "it/common.json": {
+    "plurals": [
+      "coworkDisplay.hiddenCount",
+      "emergencyStop.report.partial",
+      "fileViewer.lines",
+      "nesting.*",
+      "promptLibrary.imported",
+      "proposal.applied",
+      "proposal.appliedPartial",
+      "proposal.moreLines",
+      "rowPreview.morePrs",
+      "sharedFolder.others",
+      "sharedFolder.sidebarMark",
+      "sharedFolder.waitingApproval"
+    ],
+    "extra": [
+      "connectors"
+    ]
+  },
+  "it/context.json": {
+    "plurals": [
+      "promptSnapshot.*"
+    ]
+  },
+  "it/engine.json": {
+    "plurals": [
+      "mcp.toolsCount"
+    ]
+  },
+  "it/messaging.json": {
+    "plurals": [
+      "heldBanner",
+      "waitingCount",
+      "waitingIn"
+    ]
+  },
+  "it/mobile.json": {
+    "plurals": [
+      "campaigns.files",
+      "campaigns.headline.attention",
+      "campaigns.review.changes"
+    ]
+  },
+  "it/permissions.json": {
+    "plurals": [
+      "accessRequest.moreWaiting",
+      "folderTrust.kept"
+    ]
+  },
+  "it/rooms.json": {
+    "plurals": [
+      "apply.*",
+      "transcript.catchUp"
+    ]
+  },
+  "it/settings.json": {
+    "plurals": [
+      "bulk.archived",
+      "bulk.deleted",
+      "campaigns.*",
+      "memoryPage.*"
+    ]
+  },
+  "it/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "it/studio.json": {
+    "plurals": [
+      "model.localNote",
+      "video.frames",
+      "video.steps"
+    ]
+  },
+  "it/sweep.json": {
+    "plurals": [
+      "chat.alreadyInList",
+      "hub.modelCount"
+    ]
+  },
+  "ja/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "ko/common.json": {
+    "extra": [
+      "openclaw",
+      "openclawAgent"
+    ]
+  },
+  "ko/settings.json": {
+    "extra": [
+      "remoteAccess.*"
+    ]
+  },
+  "ko/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "pl/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess",
+      "projects.deleteProjectDialog.description"
+    ]
+  },
+  "pl/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "pt-BR/chat.json": {
+    "plurals": [
+      "composer.*"
+    ]
+  },
+  "pt-BR/common.json": {
+    "plurals": [
+      "changes.truncated",
+      "coworkDisplay.hiddenCount",
+      "emergencyStop.report.partial",
+      "fileActivity.eventCount",
+      "fileViewer.lines",
+      "nesting.*",
+      "promptLibrary.imported",
+      "proposal.applied",
+      "proposal.appliedPartial",
+      "proposal.moreLines",
+      "rowPreview.morePrs",
+      "sharedFolder.others",
+      "sharedFolder.sidebarMark",
+      "sharedFolder.waitingApproval"
+    ],
+    "extra": [
+      "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "pt-BR/context.json": {
+    "plurals": [
+      "promptSnapshot.*"
+    ]
+  },
+  "pt-BR/engine.json": {
+    "plurals": [
+      "mcp.toolsCount"
+    ]
+  },
+  "pt-BR/messaging.json": {
+    "plurals": [
+      "heldBanner",
+      "waitingCount",
+      "waitingIn"
+    ]
+  },
+  "pt-BR/mobile.json": {
+    "plurals": [
+      "campaigns.files",
+      "campaigns.headline.attention",
+      "campaigns.review.changes"
+    ]
+  },
+  "pt-BR/permissions.json": {
+    "plurals": [
+      "accessRequest.moreWaiting",
+      "folderTrust.kept"
+    ]
+  },
+  "pt-BR/rooms.json": {
+    "plurals": [
+      "apply.*",
+      "transcript.catchUp"
+    ]
+  },
+  "pt-BR/settings.json": {
+    "plurals": [
+      "bulk.archived",
+      "bulk.deleted",
+      "campaigns.*",
+      "memoryPage.*"
+    ],
+    "extra": [
+      "appearance.*"
+    ]
+  },
+  "pt-BR/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "pt-BR/studio.json": {
+    "plurals": [
+      "model.localNote",
+      "video.frames",
+      "video.steps"
+    ]
+  },
+  "pt-BR/sweep.json": {
+    "plurals": [
+      "chat.alreadyInList",
+      "hub.modelCount"
+    ]
+  },
+  "ru/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "ru/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "vn/chat.json": {
+    "plurals": [
+      "composer.*",
+      "transcriptView.*"
+    ]
+  },
+  "vn/common.json": {
+    "plurals": [
+      "artifactsCount",
+      "attachFiles.visionDisabled.description",
+      "attachFiles.visionDisabled.proceed",
+      "attachFiles.visionDisabled.title",
+      "browserVerify.blocked",
+      "browserVerify.consoleErrors",
+      "changes.applyAllConfirm",
+      "changes.truncated",
+      "compaction.divider",
+      "coworkDisplay.hiddenCount",
+      "coworkOrigins.checks",
+      "coworkOrigins.files",
+      "coworkReview.ready",
+      "coworkShowEarlier",
+      "emergencyStop.report.partial",
+      "fileActivity.eventCount",
+      "fileViewer.lines",
+      "htmlArtifact.unresolvedAssets",
+      "mentions.compact",
+      "mentions.messagesCount",
+      "mentions.totals",
+      "nesting.*",
+      "pr.failed",
+      "pr.passed",
+      "pr.pending",
+      "preview.unresolvedRefs",
+      "previewMessageCount",
+      "promptLibrary.imported",
+      "proposal.applied",
+      "proposal.appliedPartial",
+      "proposal.moreLines",
+      "rowPreview.morePrs",
+      "run.interruptedDetail",
+      "run.interruptedNoReply",
+      "settingsSearch.count",
+      "sharedFolder.others",
+      "sharedFolder.sidebarMark",
+      "sharedFolder.waitingApproval",
+      "shell.approvals",
+      "shell.runs",
+      "skillsUsedCount",
+      "statusBar.approvalsWaiting",
+      "statusBar.modelsLoaded",
+      "statusBar.runsActive",
+      "steering.held",
+      "tasks.*",
+      "timeline.count",
+      "timeline.hunks",
+      "timeline.resourcesCommands",
+      "translate.characters",
+      "usage.memoryCount",
+      "usage.requests",
+      "usage.speed.replies"
+    ],
+    "extra": [
+      "projects.addProjectDialog.renameSuccess",
+      "projects.deleteProjectConfirm"
+    ]
+  },
+  "vn/context.json": {
+    "plurals": [
+      "promptSnapshot.*"
+    ]
+  },
+  "vn/engine.json": {
+    "plurals": [
+      "extensions.agentsCount",
+      "extensions.commandsCount",
+      "extensions.skillsCount",
+      "kpi.repliesSub",
+      "mcp.toolsCount",
+      "providers.modelsCount"
+    ]
+  },
+  "vn/mcp-servers.json": {
+    "plurals": [
+      "connection.toolsAvailable",
+      "describe.save",
+      "describe.targetCount"
+    ]
+  },
+  "vn/messaging.json": {
+    "plurals": [
+      "heldBanner",
+      "waitingCount",
+      "waitingIn"
+    ]
+  },
+  "vn/mobile.json": {
+    "plurals": [
+      "archive.retention",
+      "attachments.max",
+      "campaigns.files",
+      "campaigns.headline.attention",
+      "campaigns.review.changes",
+      "changes.filesReady",
+      "changes.toolCalls",
+      "chat.loadEarlier",
+      "cowork.showEarlier",
+      "home.approvalsWaiting",
+      "messages.steps",
+      "models.count",
+      "nav.connected",
+      "reply.skills",
+      "settings.connectedThrough",
+      "sheets.connLine",
+      "studio.imageCount",
+      "topbar.approvals",
+      "topbar.questions"
+    ]
+  },
+  "vn/overview.json": {
+    "plurals": [
+      "newActivities.today",
+      "newActivities.week",
+      "newActivities.yesterday"
+    ]
+  },
+  "vn/permissions.json": {
+    "plurals": [
+      "accessRequest.moreWaiting",
+      "folderTrust.kept"
+    ]
+  },
+  "vn/providers.json": {
+    "plurals": [
+      "removeProvider.confirmDescription"
+    ]
+  },
+  "vn/remote.json": {
+    "plurals": [
+      "indicator"
+    ]
+  },
+  "vn/results.json": {
+    "plurals": [
+      "checks.*"
+    ]
+  },
+  "vn/rooms.json": {
+    "plurals": [
+      "apply.*",
+      "changes.applyIncludesEarlier",
+      "changes.partial",
+      "kpi.turnsHint",
+      "list.participants",
+      "list.turns",
+      "stage.draftHint",
+      "transcript.catchUp"
+    ]
+  },
+  "vn/settings.json": {
+    "plurals": [
+      "agentTools.computerExclusionsCount",
+      "bulk.archived",
+      "bulk.deleted",
+      "campaigns.*",
+      "memoryPage.*",
+      "subagents.overridden"
+    ]
+  },
+  "vn/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "vn/studio.json": {
+    "plurals": [
+      "model.localNote",
+      "video.frames",
+      "video.steps"
+    ]
+  },
+  "vn/sweep.json": {
+    "plurals": [
+      "chat.alreadyInList",
+      "hub.modelCount"
+    ]
+  },
+  "vn/system-monitor.json": {
+    "plurals": [
+      "showVirtual"
+    ]
+  },
+  "zh-CN/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess",
+      "projects.deleteProjectConfirm"
+    ]
+  },
+  "zh-CN/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  },
+  "zh-TW/common.json": {
+    "extra": [
+      "projects.addProjectDialog.renameSuccess",
+      "projects.deleteProjectConfirm"
+    ]
+  },
+  "zh-TW/setup.json": {
+    "extra": [
+      "description",
+      "descriptionWeb",
+      "downloading",
+      "downloadingDescription",
+      "localModel",
+      "orDivider",
+      "quickStart",
+      "quickStartDescription",
+      "quickStartFailed",
+      "remoteProvider",
+      "welcome"
+    ]
+  }
+}

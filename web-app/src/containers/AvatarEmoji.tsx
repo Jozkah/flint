@@ -1,5 +1,6 @@
 import React, { memo } from 'react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 /**
  * Checks if an avatar is a custom image (starts with '/images/')
@@ -42,12 +43,13 @@ export const AvatarEmoji: React.FC<AvatarEmojiProps> = memo(({
   imageClassName = 'w-5 h-5 object-contain',
   textClassName = 'text-base',
 }) => {
+  const { t } = useTranslation()
   if (!avatar) return null
   if (isCustomImageAvatar(avatar)) {
     return (
       <img
         src={avatar}
-        alt="Custom avatar"
+        alt={t('common:customAvatar')}
         className={cn(
           imageClassName,
           DIM_IN_DARK.has(avatar) && DARK_LIFT,
