@@ -917,13 +917,19 @@ const FILE_LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub(crate) struct Held {
     _mutex: std::sync::MutexGuard<'static, ()>,
-    file: Option<PathBuf>,
+    /// The lock file and the token written into it.
+    file: Option<(PathBuf, String)>,
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
-        if let Some(path) = &self.file {
-            let _ = std::fs::remove_file(path);
+        if let Some((path, token)) = &self.file {
+            // Remove only a lock that is still ours: another process may have
+            // taken over a stale one at this path, and deleting theirs would
+            // let a third writer in.
+            if std::fs::read_to_string(path).is_ok_and(|text| text.trim() == token) {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
 }
@@ -935,24 +941,30 @@ pub(crate) fn lock(data_folder: &Path) -> Held {
         return Held { _mutex: mutex, file: None };
     }
     let path = dir.join(".records.lock");
+    static LOCK_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let me = epoch();
+    let token = format!("{me}|{}", LOCK_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     let deadline = std::time::Instant::now() + FILE_LOCK_WAIT;
     loop {
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(mut f) => {
-                let _ = f.write_all(me.as_bytes());
-                return Held { _mutex: mutex, file: Some(path) };
+                let _ = f.write_all(token.as_bytes());
+                return Held { _mutex: mutex, file: Some((path, token)) };
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 let owner = std::fs::read_to_string(&path).unwrap_or_default();
-                let owner = owner.trim();
+                // The owner's process epoch is the part before the `|`.
+                let owner = owner.trim().split('|').next().unwrap_or_default();
                 let old = std::fs::metadata(&path)
                     .and_then(|m| m.modified())
                     .ok()
                     .and_then(|t| t.elapsed().ok())
                     .is_some_and(|age| age > FILE_LOCK_STALE);
                 let dead = !owner.is_empty() && (owner == me || !epoch_alive(owner));
-                if old || dead {
+                // Age alone does not prove a crash: a live owner holding a long
+                // read-modify-write keeps its lock. Age steals only when the
+                // owner is unknown (empty/partial file) or not running.
+                if dead || (old && (owner.is_empty() || !epoch_alive(owner))) {
                     let _ = std::fs::remove_file(&path);
                     continue;
                 }
