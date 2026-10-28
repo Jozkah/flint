@@ -99,7 +99,7 @@ pub fn parse_filter(filter: Option<&str>) -> Result<Option<Regex>, String> {
 
 /// Remember a watcher for a job that has just started.
 pub fn register(job_id: &str, filter: Option<Regex>) {
-    watchers().lock().unwrap().insert(
+    watchers().lock().unwrap_or_else(|e| e.into_inner()).insert(
         job_id.to_string(),
         Watcher {
             filter,
@@ -114,7 +114,7 @@ pub fn register(job_id: &str, filter: Option<Regex>) {
 }
 
 pub fn is_watched(job_id: &str) -> bool {
-    watchers().lock().unwrap().contains_key(job_id)
+    watchers().lock().unwrap_or_else(|e| e.into_inner()).contains_key(job_id)
 }
 
 /// Pure core of delivery: take from `backlog` what the cap allows right now.
@@ -147,7 +147,7 @@ fn clip(line: &str) -> String {
 pub fn collect(jobs: &[String]) -> Option<String> {
     use tauri_plugin_agent_tools::tools::handlers::{bash_job_output_since, inspect_bash_job};
     let mut out = Vec::new();
-    let mut map = watchers().lock().unwrap();
+    let mut map = watchers().lock().unwrap_or_else(|e| e.into_inner());
     for job in jobs {
         let Some(w) = map.get_mut(job) else { continue };
         let Some(status) = inspect_bash_job(job, None) else {
