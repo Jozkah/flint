@@ -70,6 +70,13 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     // JevSettingsCard names each mode by its value.
     ...['off', 'shadow', 'on'].map((k) => `jev.mode.${k}`),
   ],
+  chat: [
+    // The composer names a rejected audio or video batch by its kind.
+    'composer.audioTooLarge',
+    'composer.videoTooLarge',
+    'composer.audioInvalid',
+    'composer.videoInvalid',
+  ],
   'model-errors': [
     'engine.unknown',
     'engine.MODEL_LOAD_FAILED',
