@@ -18982,7 +18982,7 @@ mod tests {
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
         apply_repaint, apply_resume, assistant_is_awaiting_user_answer, assistant_runs,
-        autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
+        TerminalGuard, normalize_paste, panic_restore_sequence, autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
         estimate_token_count, finish_compaction, finish_context_report,
         finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
@@ -23106,7 +23106,10 @@ mod tests {
         assert_eq!(app.input, "draft");
         assert_eq!(app.scrollback, 1);
 
+        // Esc clears the draft but keeps it in recall, newest of all.
         press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
         assert_eq!(app.cursor, "second".len(), "caret sits at the end");
@@ -23118,6 +23121,8 @@ mod tests {
 
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "second");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "draft");
         press(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
         assert_eq!(app.input, "", "past the newest is a fresh message");
         assert_eq!(app.scrollback, 1, "recall never scrolls the transcript");

@@ -367,5 +367,33 @@
     "none": "Aquesta carpeta no declara hooks.",
     "error": "No s'ha pogut llegir el fitxer de hooks",
     "loadFailed": "No s'han pogut llegir els hooks"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "Vols permetre que l'agent modifiqui fitxers d'aquesta carpeta?",
+        "file": "Vols permetre que l'agent modifiqui aquest fitxer?"
+      },
+      "read": {
+        "folder": "Vols permetre que l'agent llegeixi aquesta carpeta?",
+        "file": "Vols permetre que l'agent llegeixi aquest fitxer?"
+      }
+    },
+    "asking": "{{task}} demana accés fora del seu espai de treball.",
+    "askingFrom": "{{origin}} a {{task}} demana accés fora del seu espai de treball.",
+    "thisConversation": "aquesta conversa",
+    "folderLabel": "Carpeta (i tot el que conté)",
+    "fileLabel": "Fitxer",
+    "requestedAs": "Sol·licitat com {{requested}}, que es resol a la ruta de dalt.",
+    "reason": "Motiu indicat",
+    "access": "Accés:",
+    "readWrite": "Lectura i escriptura",
+    "readOnly": "Només lectura",
+    "grantNote": "«Permet per a aquesta conversa» acaba quan acaba la conversa, o al cap de 8 hores. «Permet sempre» es manté per a totes les converses fins que el revoquis a Configuració > Permisos > Accés a carpetes.",
+    "moreWaiting_one": "{{count}} sol·licitud més en espera.",
+    "moreWaiting_other": "{{count}} sol·licituds més en espera.",
+    "deny": "Denega",
+    "always": "Permet sempre",
+    "session": "Permet per a aquesta conversa"
   }
 }

@@ -366,5 +366,33 @@
     "none": "이 폴더는 훅을 선언하지 않았습니다.",
     "error": "훅 파일을 읽을 수 없습니다",
     "loadFailed": "훅을 읽을 수 없습니다"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "에이전트가 이 폴더의 파일을 변경하도록 허용할까요?",
+        "file": "에이전트가 이 파일을 변경하도록 허용할까요?"
+      },
+      "read": {
+        "folder": "에이전트가 이 폴더를 읽도록 허용할까요?",
+        "file": "에이전트가 이 파일을 읽도록 허용할까요?"
+      }
+    },
+    "asking": "{{task}}이(가) 작업 공간 밖의 접근을 요청하고 있습니다.",
+    "askingFrom": "{{task}}의 {{origin}}이(가) 작업 공간 밖의 접근을 요청하고 있습니다.",
+    "thisConversation": "이 대화",
+    "folderLabel": "폴더(및 그 안의 모든 것)",
+    "fileLabel": "파일",
+    "requestedAs": "{{requested}}(으)로 요청되었으며, 위 경로로 해석됩니다.",
+    "reason": "제시된 이유",
+    "access": "접근:",
+    "readWrite": "읽기 및 쓰기",
+    "readOnly": "읽기 전용",
+    "grantNote": "\"이 대화에 허용\"은 대화가 끝나거나 8시간 뒤에 끝납니다. \"항상 허용\"은 설정 > 권한 > 폴더 접근에서 취소할 때까지 모든 대화에 유지됩니다.",
+    "moreWaiting_one": "대기 중인 요청이 {{count}}개 더 있습니다.",
+    "moreWaiting_other": "대기 중인 요청이 {{count}}개 더 있습니다.",
+    "deny": "거부",
+    "always": "항상 허용",
+    "session": "이 대화에 허용"
   }
 }

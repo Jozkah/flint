@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AccessRequestDialog } from '../AccessRequestDialog'
 import { useAccessRequests } from '@/lib/accessRequests'
+
+// These tests read the words, so they use the real English strings.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 
 function ask(overrides: Partial<{ mode: 'read' | 'write'; requested: string }> = {}) {
   return useAccessRequests.getState().ask({
@@ -104,5 +107,27 @@ describe('AccessRequestDialog', () => {
     expect(await screen.findByText(/D:\other/)).toBeInTheDocument()
     expect(screen.getByTestId('access-session')).toBeDisabled()
     expect(screen.getByTestId('access-always')).toBeDisabled()
+  })
+
+  it('words the title and the waiting count through translations', async () => {
+    render(<AccessRequestDialog />)
+    act(() => {
+      void ask()
+    })
+    expect(
+      await screen.findByText('Allow the agent to read this folder?')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/more request/)).toBeNull()
+
+    act(() => {
+      void ask()
+    })
+    expect(await screen.findByText('1 more request waiting.')).toBeInTheDocument()
+
+    act(() => {
+      void ask()
+      void ask()
+    })
+    expect(await screen.findByText('3 more requests waiting.')).toBeInTheDocument()
   })
 })
