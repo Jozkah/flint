@@ -71,6 +71,8 @@ const h = vi.hoisted(() => ({
   toast: { error: vi.fn(), success: vi.fn(), message: vi.fn() },
   /** What the composer sends. Tests change it to drive the classifier. */
   text: 'do the thing',
+  /** Replaces compactHistory when set (characterization of runRequest). */
+  compactHistory: null as null | ((...args: any[]) => any),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -269,6 +271,18 @@ vi.mock('@/lib/coworkRunner', async (orig) => {
   }
 })
 
+// Compaction passes through unless a characterization test installs an answer.
+vi.mock('@/lib/compaction', async (orig) => {
+  const actual = await orig<typeof import('@/lib/compaction')>()
+  return {
+    ...actual,
+    compactHistory: (...args: Parameters<typeof actual.compactHistory>) =>
+      h.compactHistory
+        ? h.compactHistory(...args)
+        : actual.compactHistory(...args),
+  }
+})
+
 // Heavy chrome, replaced by the smallest thing that keeps the seam.
 vi.mock('@/containers/ChatInput', () => ({
   default: (props: any) => (
@@ -366,6 +380,7 @@ import { useCoworkView } from '@/hooks/useCoworkView'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { Route, CoworkPage as PanePage } from '@/routes/cowork'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
@@ -469,6 +484,7 @@ beforeEach(() => {
   })
   h.executeAgentTool.mockResolvedValue({ content: 'ok' })
   h.text = 'do the thing'
+  h.compactHistory = null
   useDirectEditGrants.setState({
     capability: { known: false, reason: 'loading' },
     bySession: {},
@@ -1708,5 +1724,209 @@ describe("a session whose saved model no longer resolves", () => {
       id: 'local/qwen',
     })
     expect(h.toast.error).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Characterization of `runRequest`: the ordered calls and store writes of
+ * one run, for each of its main paths. These pin current behaviour so the
+ * orchestrator can be moved out of the route (lib/cowork/run) without any
+ * change in call order or side effects. A diff here is a behaviour change.
+ */
+describe('runRequest, characterized', () => {
+  let trace: string[] = []
+  const restore: Array<() => void> = []
+
+  /** Wrap a store action so each call lands in the trace, then runs as before. */
+  function wrapAction(store: any, name: string, label: (...a: any[]) => string) {
+    const original = store.getState()[name]
+    store.setState({
+      [name]: (...a: any[]) => {
+        trace.push(label(...a))
+        return original(...a)
+      },
+    })
+    restore.push(() => store.setState({ [name]: original }))
+  }
+
+  beforeEach(() => {
+    trace = []
+    wrapAction(useCoworkRun, 'startRun', () => 'startRun')
+    wrapAction(useCoworkRun, 'finishRun', (_s, _r, ending) =>
+      `finishRun:${ending ? ending.stoppedBy + (ending.errorText ? ':' + ending.errorText : '') : 'null'}`
+    )
+    wrapAction(useCoworkSessions, 'setRunBudget', (_s, budget) =>
+      budget ? 'setRunBudget' : 'clearRunBudget'
+    )
+    wrapAction(useCoworkSessions, 'commitTurns', (_s, turns) =>
+      `commitTurns:${turns.map((t: any) => t.role).join(',')}`
+    )
+    wrapAction(useToolApprovalRequests, 'requestApproval', (_id, tool) =>
+      `requestApproval:${tool}`
+    )
+    h.executeAgentTool.mockImplementation(async (name: string) => {
+      trace.push(`execute:${name}`)
+      return { content: 'ok' }
+    })
+  })
+
+  afterEach(() => {
+    for (const r of restore.splice(0)) r()
+    h.runTurn.mockReset()
+  })
+
+  const send = async () => {
+    await userEvent.click(screen.getByTestId('submit'))
+  }
+  const settled = () =>
+    waitFor(() => expect(trace.some((e) => e.startsWith('finishRun'))).toBe(true))
+
+  it('happy path: claims, budgets, runs one turn, then commits and finishes', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    h.runTurn.mockImplementation(async () => {
+      trace.push('runTurn')
+    })
+    await renderRoute()
+    await send()
+    await settled()
+    expect(trace).toEqual([
+      'startRun',
+      'setRunBudget',
+      'runTurn',
+      'clearRunBudget',
+      'commitTurns:user',
+      'finishRun:null',
+    ])
+    expect(useCoworkRun.getState().runs[SESSION]).toBeUndefined()
+  })
+
+  it('tool call: dispatches through the real gate between budget and commit', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    h.runTurn.mockImplementation(async ({ deps }: any) => {
+      trace.push('runTurn')
+      await deps.dispatch(call('read', { path: 'src/index.ts' }))
+    })
+    await renderRoute()
+    await send()
+    await settled()
+    expect(trace).toEqual([
+      'startRun',
+      'setRunBudget',
+      'runTurn',
+      'execute:read',
+      'clearRunBudget',
+      'commitTurns:user',
+      'finishRun:null',
+    ])
+  })
+
+  it('approval: a mutation in Ask mode waits for the user before it runs', async () => {
+    seedSession({ turns: PRIOR_TURNS, mode: 'ask' })
+    h.runTurn.mockImplementation(async ({ deps }: any) => {
+      trace.push('runTurn')
+      const pending = deps.dispatch(call('bash', { command: 'touch out.txt' }))
+      await waitFor(() => expect(trace).toContain('requestApproval:bash'))
+      trace.push('approved')
+      useToolApprovalRequests.getState().allowPendingForThread(SESSION)
+      await pending
+    })
+    await renderRoute()
+    await send()
+    await settled()
+    expect(trace).toEqual([
+      'startRun',
+      'setRunBudget',
+      'runTurn',
+      'requestApproval:bash',
+      'approved',
+      'execute:bash',
+      'clearRunBudget',
+      'commitTurns:user',
+      'finishRun:null',
+    ])
+  })
+
+  it('stop: Stop mid-turn ends the run as aborted and holds the queue', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    h.runTurn.mockImplementation(async ({ signal }: any) => {
+      trace.push('runTurn')
+      await new Promise<void>((_, reject) => {
+        signal.addEventListener('abort', () => {
+          trace.push('aborted')
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+        })
+      })
+    })
+    await renderRoute()
+    await send()
+    await waitFor(() => expect(trace).toContain('runTurn'))
+    act(() => {
+      useMessageQueue.getState().enqueue(SESSION, { id: 'q', text: 'next', createdAt: 1 })
+    })
+    await userEvent.click(screen.getByTestId('stop'))
+    await settled()
+    expect(trace).toEqual([
+      'startRun',
+      'setRunBudget',
+      'runTurn',
+      'aborted',
+      'clearRunBudget',
+      'commitTurns:user',
+      'finishRun:aborted',
+    ])
+    expect(useMessageQueue.getState().getQueue(SESSION).every((m) => m.held)).toBe(true)
+  })
+
+  it('error: a fault in the loop ends the run as an error with its message', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    h.runTurn.mockImplementation(async () => {
+      trace.push('runTurn')
+      throw new Error('boom')
+    })
+    await renderRoute()
+    await send()
+    await settled()
+    expect(trace).toEqual([
+      'startRun',
+      'setRunBudget',
+      'runTurn',
+      'clearRunBudget',
+      'commitTurns:user',
+      'finishRun:error:boom',
+    ])
+  })
+
+  it('compaction: a context error folds history and records a compaction row', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    h.compactHistory = vi.fn(async (msgs: any[]) => {
+      trace.push('compactHistory')
+      return {
+        messages: msgs.slice(-1),
+        record: { at: 1, summarizedCount: 2, summary: 's' },
+      }
+    })
+    let compacted: unknown = undefined
+    h.runTurn.mockImplementation(async (opts: any) => {
+      trace.push('runTurn')
+      compacted = await opts.deps.compact(
+        opts.messages,
+        'context-error',
+        new AbortController().signal,
+        new Error('context length exceeded')
+      )
+    })
+    await renderRoute()
+    await send()
+    await settled()
+    expect(Array.isArray(compacted)).toBe(true)
+    expect(trace).toEqual([
+      'startRun',
+      'setRunBudget',
+      'runTurn',
+      'compactHistory',
+      'clearRunBudget',
+      'commitTurns:user,assistant',
+      'finishRun:null',
+    ])
   })
 })
