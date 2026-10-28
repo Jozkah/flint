@@ -586,14 +586,21 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * "download a backend first" and "start first for availability" is gone.
    */
   private ensureProvisioned(): Promise<void> {
-    this.provisioning ??= (async () => {
-      try {
-        await this.startEngine()
-      } catch (e) {
-        logger.error('Engine failed to start during provisioning:', e)
-        this.reportMissingLibrariesFromError(e)
-      }
-    })()
+    if (!this.provisioning) {
+      const run: Promise<void> = (async () => {
+        try {
+          await this.startEngine()
+        } catch (e) {
+          logger.error('Engine failed to start during provisioning:', e)
+          this.reportMissingLibrariesFromError(e)
+          // Forget the failed run so the next call retries instead of handing
+          // back the cached failure for the rest of the session.
+          await Promise.resolve()
+          if (this.provisioning === run) this.provisioning = undefined
+        }
+      })()
+      this.provisioning = run
+    }
     this.backgroundInit = this.provisioning
     return this.provisioning
   }
@@ -1124,7 +1131,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         `Engine preset reloaded: +${report.added.length} ~${report.changed.length} -${report.removed.length}, ${report.kept.length} kept loaded`
       )
     } catch (e) {
-      logger.warn('Live engine reload failed; falling back to restart:', e)
+      logger.warn('Live engine reload failed; stopping and restarting the engine:', e)
+      // start_engine is idempotent while a worker is up, so without a stop the
+      // "restart" returned the same worker holding the old preset.
+      await pluginStopEngine()
+      this.enginePort = undefined
+      this.engineApiKey = undefined
       await this.startEngine()
     }
   }
