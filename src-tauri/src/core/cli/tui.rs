@@ -16722,22 +16722,26 @@ fn draw(f: &mut Frame, app: &mut App) {
     app.last_scroll = scroll;
     app.row_index = row_index;
 
-    // Keep the cursor row visible when the input outgrows the box.
-    let input_scroll =
-        if app.status == Status::Idle && app.picker.is_none() && app.blocking_dock().is_none() {
-            let visible = chunks[2].height.saturating_sub(1);
-            let total = Paragraph::new(input_content_lines(&app.input, app.cursor))
-                .wrap(Wrap { trim: false })
-                .line_count(chunks[2].width.saturating_sub(2).max(1))
-                .min(u16::MAX as usize) as u16;
-            total.saturating_sub(visible)
-        } else {
-            0
-        };
+    // Keep the caret row visible when the input outgrows the box, wherever the
+    // caret is and whether or not a turn is running (steering types here too),
+    // and put the terminal's own cursor on it so an IME composes at the caret.
+    let mut input_scroll = 0u16;
+    let mut caret_at = None;
+    if composer_live(app) && chunks[2].width > 0 {
+        let visible = chunks[2].height.saturating_sub(1);
+        let (total, col, row) = composer_caret(&app.input, app.cursor, chunks[2].width);
+        input_scroll = row.saturating_sub(visible.saturating_sub(1)).min(total.saturating_sub(visible));
+        if visible > 0 && app.context_view.is_none() {
+            caret_at = Some((chunks[2].x + col, chunks[2].y + row - input_scroll));
+        }
+    }
     if let Some(lines) = panel_lines {
         f.render_widget(Paragraph::new(lines), panel_area);
     }
     f.render_widget(input_box(app).scroll((input_scroll, 0)), chunks[2]);
+    if let Some(at) = caret_at {
+        f.set_cursor_position(at);
+    }
     f.render_widget(dock_line(app, chunks[3].width), chunks[3]);
     // The `/context` overlay renders on top of (never instead of) the finished
     // frame, so the spinner and streamed output keep animating behind it
@@ -18617,6 +18621,43 @@ fn input_box_height(app: &App, width: u16) -> u16 {
         1
     };
     content + 1
+}
+
+/// Whether the message box is showing the editable composer (rather than a
+/// status line, a picker's "selecting" note or a dock that owns the keyboard).
+/// Mirrors the branch order of [`input_box`].
+fn composer_live(app: &App) -> bool {
+    let empty = app.input.is_empty();
+    if empty && (app.compacting.is_some() || app.run_compacting.is_some() || app.retrying.is_some()) {
+        return false;
+    }
+    if app.picker.is_some() || (app.status == Status::Running && empty) {
+        return false;
+    }
+    app.blocking_dock().is_none()
+}
+
+/// `(total_rows, caret_col, caret_row)` of the composer laid out at `width`.
+/// The layout is the one the box is drawn with: the styled lines are rendered
+/// into a scratch buffer by the same wrapping `Paragraph`, and the caret is the
+/// one reverse-video cell they carry. Nothing here re-implements word wrap, so
+/// the answer cannot drift from what is on screen (wide characters included).
+fn composer_caret(input: &str, cursor: usize, width: u16) -> (u16, u16, u16) {
+    use ratatui::widgets::Widget;
+    let width = width.max(1);
+    let para = Paragraph::new(input_content_lines(input, cursor)).wrap(Wrap { trim: false });
+    let total = para.line_count(width).clamp(1, u16::MAX as usize) as u16;
+    let area = ratatui::layout::Rect::new(0, 0, width, total);
+    let mut buf = ratatui::buffer::Buffer::empty(area);
+    para.render(area, &mut buf);
+    for row in 0..total {
+        for col in 0..width {
+            if buf[(col, row)].style().add_modifier.contains(Modifier::REVERSED) {
+                return (total, col, row);
+            }
+        }
+    }
+    (total, 0, total - 1)
 }
 
 /// Visible input as styled lines: `> ` on the first line, 2-space hang on
@@ -33066,6 +33107,66 @@ mod tests {
             .map(|s| s.content.as_ref())
             .collect();
         assert!(!footer.contains("bg shell"), "indicator is gone: {footer}");
+    }
+
+    fn cursor_after_draw(app: &mut App, w: u16, h: u16) -> (Vec<String>, Option<(u16, u16)>) {
+        use ratatui::{backend::TestBackend, Terminal};
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal.draw(|f| super::draw(f, app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let rows = (0..buf.area.height)
+            .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>())
+            .collect();
+        let pos = terminal.get_cursor_position().ok().map(|p| (p.x, p.y));
+        (rows, pos)
+    }
+
+    #[test]
+    fn cursor_position_matches_caret_on_wide_chars() {
+        let mut app = test_app();
+        app.input = "\u{4e16}\u{754c}ab".into();
+        app.cursor = "\u{4e16}\u{754c}".len();
+        let (rows, pos) = cursor_after_draw(&mut app, 40, 12);
+        let input_row = rows.iter().position(|r| r.contains('\u{4e16}')).expect("input row");
+        // "> " is 2 cells, each wide char 2: the caret sits on `a` at column 6.
+        assert_eq!(pos, Some((6, input_row as u16)), "{rows:?}");
+    }
+
+    #[test]
+    fn scroll_follows_caret_after_home() {
+        let mut app = test_app();
+        app.input = (1..=20).map(|n| format!("line{n}")).collect::<Vec<_>>().join("\n");
+        app.cursor = 0;
+        let (rows, pos) = cursor_after_draw(&mut app, 40, 20);
+        assert!(rows.iter().any(|r| r.contains("line1 ") || r.trim_end().ends_with("line1")), "first line visible: {rows:?}");
+        let (_, y) = pos.expect("a cursor");
+        assert!(rows[y as usize].contains("line1"), "cursor on the caret's row: {rows:?}");
+        // And the end of the buffer scrolls into view when the caret goes there.
+        app.cursor = app.input.len();
+        let (rows, pos) = cursor_after_draw(&mut app, 40, 20);
+        assert!(rows.iter().any(|r| r.contains("line20")), "{rows:?}");
+        let (_, y) = pos.expect("a cursor");
+        assert!(rows[y as usize].contains("line20"), "{rows:?}");
+    }
+
+    #[test]
+    fn scroll_follows_caret_when_running() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.input = (1..=20).map(|n| format!("steer{n}")).collect::<Vec<_>>().join("\n");
+        app.cursor = app.input.len();
+        let (rows, _) = cursor_after_draw(&mut app, 40, 20);
+        assert!(rows.iter().any(|r| r.contains("steer20")), "caret line visible while a turn runs: {rows:?}");
+    }
+
+    #[test]
+    fn no_cursor_when_the_composer_is_not_live() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        let (_, pos) = cursor_after_draw(&mut app, 40, 12);
+        // A status row stands in for the composer: no caret to put a cursor on.
+        assert!(!super::composer_live(&app));
+        let _ = pos;
     }
 
     /// The borderless input box used to reserve two blank rows for borders it
