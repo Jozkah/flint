@@ -329,7 +329,12 @@ impl EngineServer {
         let mut unloaded = Vec::new();
         for model in due {
             self.save_model_slots(&model).await;
-            if self.registry.lock().await.unload_if_idle(&model) {
+            let (did, retired) = {
+                let mut reg = self.registry.lock().await;
+                (reg.unload_if_idle(&model), reg.take_retired())
+            };
+            retired.drain().await;
+            if did {
                 unloaded.push(model);
             }
         }
@@ -525,7 +530,9 @@ impl EngineServer {
         if let Some(minutes) = parsed.get("idle_unload_minutes").and_then(|v| v.as_u64()) {
             reg.set_idle_unload_minutes(minutes);
         }
+        let retired = reg.take_retired();
         drop(reg);
+        retired.drain().await;
 
         // Applied here too, for the same reason models_max is: the value comes
         // from a setting the user can change while the worker runs, and the
@@ -635,7 +642,7 @@ impl EngineServer {
             Ok(engine) => {
                 // Resident but idle, so it stays evictable under models_max.
                 drop(engine);
-                self.registry.lock().await.release(model);
+                release_model(&self.registry, model).await;
                 Ok(())
             }
             Err(e) => Err(e),
@@ -665,8 +672,14 @@ impl EngineServer {
         // loading the next -- so without this the thread being left behind
         // loses exactly the cache this feature exists to keep.
         self.save_model_slots(model).await;
-        let mut reg = self.registry.lock().await;
-        if reg.unload(model) {
+        let (unloaded, retired) = {
+            let mut reg = self.registry.lock().await;
+            (reg.unload(model), reg.take_retired())
+        };
+        // Answered only once the memory is really free: the caller loads the
+        // next model straight after this.
+        retired.drain().await;
+        if unloaded {
             json_ok(&serde_json::json!({ "status": "unloaded", "model": model }))
         } else {
             json_error(
@@ -970,7 +983,7 @@ impl InflightGuard {
 
     async fn release(mut self) {
         if let Some(model) = self.model.take() {
-            self.registry.lock().await.release(&model);
+            release_model(&self.registry, &model).await;
         }
     }
 }
@@ -985,7 +998,7 @@ impl Drop for InflightGuard {
         match tokio::runtime::Handle::try_current() {
             Ok(handle) => {
                 handle.spawn(async move {
-                    registry.lock().await.release(&model);
+                    release_model(&registry, &model).await;
                 });
             }
             Err(_) => {
@@ -996,6 +1009,17 @@ impl Drop for InflightGuard {
     }
 }
 
+/// Releases a request's hold on `model`, then tears down whatever that retired
+/// (a model a reload superseded) after the lock is gone.
+async fn release_model(registry: &Arc<Mutex<Registry>>, model: &str) {
+    let retired = {
+        let mut reg = registry.lock().await;
+        reg.release(model);
+        reg.take_retired()
+    };
+    retired.drain().await;
+}
+
 /// Acquires `model`'s engine (busy-counted) without holding the registry lock
 /// across a model load. Concurrent requests for a model that is loading wait
 /// for that one load instead of starting another.
@@ -1004,8 +1028,14 @@ async fn acquire_engine(
     model: &str,
 ) -> Result<Arc<super::Engine>, RegistryError> {
     loop {
-        let step = registry.lock().await.begin_acquire(model)?;
-        match step {
+        let (step, retired) = {
+            let mut reg = registry.lock().await;
+            (reg.begin_acquire(model), reg.take_retired())
+        };
+        // Victims evicted to make room: their memory must be free before this
+        // model starts, so wait for the teardown, outside the lock.
+        retired.drain().await;
+        match step? {
             AcquireStep::Ready(engine) => return Ok(engine),
             AcquireStep::Wait(mut rx) => {
                 let _ = rx.wait_for(|done| *done).await;
@@ -1041,11 +1071,14 @@ async fn acquire_engine(
                     })
                     .await;
                     match joined {
-                        Ok((ticket, result)) => reg
-                            .lock()
-                            .await
-                            .finish_load(ticket, result, 0)
-                            .map(|_| ()),
+                        Ok((ticket, result)) => {
+                            let (out, retired) = {
+                                let mut guard = reg.lock().await;
+                                (guard.finish_load(ticket, result, 0), guard.take_retired())
+                            };
+                            retired.drain().await;
+                            out.map(|_| ())
+                        }
                         Err(e) => Err(RegistryError::Engine(super::EngineError::Start(
                             format!("the load task failed: {e}"),
                         ))),

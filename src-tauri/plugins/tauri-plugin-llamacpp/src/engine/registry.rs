@@ -42,6 +42,62 @@ impl LoadedModel {
     }
 }
 
+/// Engines the registry has stopped hosting, waiting to be torn down.
+///
+/// Dropping an `Engine` runs `jan_llama_engine_stop`, which blocks while the
+/// server loop winds down and the weights are freed. Doing that inside a
+/// registry method would hold the registry's async lock for the whole
+/// teardown and stall every request and `/models` poll behind it, so the
+/// registry parks victims here and the caller drops them once the lock is
+/// released.
+///
+/// Leak-proof by construction: it is `#[must_use]`, `drain` awaits the
+/// teardown on a blocking thread, and merely dropping it (a forgotten value,
+/// an early return, no runtime) still tears the engines down on a background
+/// thread instead of on the caller's.
+#[must_use = "retired engines are torn down by drain(); dropping defers it to a background thread"]
+pub struct Retired(Vec<LoadedModel>);
+
+impl Retired {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Tears the engines down off the async executor and waits for it. Use
+    /// where the memory must be free before going on (an eviction ahead of a
+    /// load).
+    pub async fn drain(mut self) {
+        let models = std::mem::take(&mut self.0);
+        if models.is_empty() {
+            return;
+        }
+        if tokio::task::spawn_blocking(move || drop(models)).await.is_err() {
+            log::warn!("an engine teardown panicked");
+        }
+    }
+}
+
+impl Drop for Retired {
+    fn drop(&mut self) {
+        let models = std::mem::take(&mut self.0);
+        if models.is_empty() {
+            return;
+        }
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn_blocking(move || drop(models));
+            }
+            Err(_) => {
+                std::thread::spawn(move || drop(models));
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum RegistryError {
     /// Every slot is taken and every resident model is busy, so nothing can be
@@ -260,6 +316,8 @@ pub struct Registry {
     /// methods -- has to forget them before it hands one of their slot ids to
     /// another thread. `take_dropped` is drained where occupancy is claimed.
     dropped: Vec<String>,
+    /// Engines removed from `loaded` and not yet torn down; see `Retired`.
+    retired: Vec<LoadedModel>,
     /// Loads whose ticket was dropped unsettled; drained by `drain_abandoned`.
     abandoned: Arc<std::sync::Mutex<Vec<String>>>,
     /// 0 means unlimited, matching llama.cpp's `--models-max`.
@@ -285,6 +343,7 @@ impl Registry {
             failures: HashMap::new(),
             loading: HashMap::new(),
             dropped: Vec::new(),
+            retired: Vec::new(),
             abandoned: Arc::new(std::sync::Mutex::new(Vec::new())),
             models_max,
             idle_timeout: None,
@@ -562,7 +621,7 @@ impl Registry {
             m.last_active_ms = (self.clock)();
         }
         if m.inflight == 0 && self.stale.remove(model_id) {
-            self.loaded.remove(model_id);
+            self.evict(model_id);
             self.dropped.push(model_id.to_string());
             self.events
                 .emit(model_id, Transition::Unloaded { exit_code: 0 });
@@ -621,7 +680,7 @@ impl Registry {
     fn retire(&mut self, model_id: &str) {
         match self.loaded.get(model_id) {
             Some(m) if m.inflight == 0 => {
-                self.loaded.remove(model_id);
+                self.evict(model_id);
                 self.dropped.push(model_id.to_string());
                 self.events
                     .emit(model_id, Transition::Unloaded { exit_code: 0 });
@@ -673,7 +732,7 @@ impl Registry {
     pub fn unload(&mut self, model_id: &str) -> bool {
         match self.loaded.get(model_id) {
             Some(m) if m.inflight == 0 => {
-                self.loaded.remove(model_id);
+                self.evict(model_id);
                 self.stale.remove(model_id);
                 self.dropped.push(model_id.to_string());
                 self.events
@@ -682,6 +741,20 @@ impl Registry {
             }
             _ => false,
         }
+    }
+
+    /// Moves a resident model out of `loaded` into the retire queue. Every
+    /// removal goes through here so no engine is ever torn down under the lock.
+    fn evict(&mut self, model_id: &str) {
+        if let Some(m) = self.loaded.remove(model_id) {
+            self.retired.push(m);
+        }
+    }
+
+    /// The engines removed since the last call. Take it under the lock, then
+    /// release the lock and `drain()` it (or drop it) there.
+    pub fn take_retired(&mut self) -> Retired {
+        Retired(std::mem::take(&mut self.retired))
     }
 
     /// Ids dropped since the last call, for the caller that owns the slot
@@ -700,7 +773,7 @@ impl Registry {
     pub fn shutdown(&mut self) -> Vec<String> {
         let mut ids: Vec<String> = self.loaded.keys().cloned().collect();
         ids.sort();
-        self.loaded.clear();
+        self.retired.extend(self.loaded.drain().map(|(_, m)| m));
         self.stale.clear();
         self.dropped.extend(ids.iter().cloned());
         ids
@@ -754,7 +827,7 @@ impl Registry {
                         models_max: self.models_max,
                     });
                 };
-                self.loaded.remove(&victim);
+                self.evict(&victim);
                 self.dropped.push(victim.clone());
                 self.events
                     .emit(&victim, Transition::Unloaded { exit_code: 0 });
@@ -781,7 +854,7 @@ impl Registry {
                     models_max: self.models_max,
                 });
             };
-            self.loaded.remove(&victim);
+            self.evict(&victim);
             self.dropped.push(victim.clone());
             self.events
                 .emit(&victim, Transition::Unloaded { exit_code: 0 });
@@ -1392,6 +1465,51 @@ mod tests {
             r.failure_of("a").is_none(),
             "a changed spec must not inherit the old failure"
         );
+    }
+
+    #[test]
+    fn make_room_returns_victims_instead_of_dropping() {
+        let mut r = Registry::new(1);
+        resident(&mut r, &["a"]);
+        let probe = Arc::clone(&r.loaded["a"].engine);
+        assert_eq!(Arc::strong_count(&probe), 2);
+        r.make_room().unwrap();
+        // Gone from the registry, but the engine is parked, not dropped.
+        assert!(!r.is_loaded("a"));
+        assert_eq!(Arc::strong_count(&probe), 2, "engine was dropped under the lock");
+        let retired = r.take_retired();
+        assert_eq!(retired.len(), 1);
+        assert!(r.take_retired().is_empty(), "taking is not repeatable");
+        drop(retired);
+    }
+
+    #[tokio::test]
+    async fn drain_tears_the_engines_down_and_dropping_does_too() {
+        let mut r = Registry::new(0);
+        resident(&mut r, &["a", "b"]);
+        let a = Arc::clone(&r.loaded["a"].engine);
+        let b = Arc::clone(&r.loaded["b"].engine);
+        assert!(r.unload("a"));
+        r.take_retired().drain().await;
+        assert_eq!(Arc::strong_count(&a), 1, "drain left the engine alive");
+        assert!(r.unload("b"));
+        // A forgotten value still tears down, on a background thread.
+        drop(r.take_retired());
+        for _ in 0..100 {
+            if Arc::strong_count(&b) == 1 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("a dropped Retired never released its engine");
+    }
+
+    #[test]
+    fn shutdown_and_retire_park_engines() {
+        let mut r = Registry::new(0);
+        resident(&mut r, &["a", "b"]);
+        assert_eq!(r.shutdown(), vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(r.take_retired().len(), 2);
     }
 
     #[test]

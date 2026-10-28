@@ -239,7 +239,11 @@ async fn main() {
     // Releasing the models here is the whole point of exiting in-band: each
     // Engine's Drop runs jan_llama_engine_stop, terminating its server_queue
     // loop and freeing the weights. A force-killed process skips all of that.
-    let released = registry_for_teardown.lock().await.shutdown();
+    let (released, retired) = {
+        let mut reg = registry_for_teardown.lock().await;
+        (reg.shutdown(), reg.take_retired())
+    };
+    retired.drain().await;
     if !released.is_empty() {
         eprintln!("flint-llama-worker: released {}", released.join(", "));
     }
