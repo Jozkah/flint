@@ -1389,6 +1389,7 @@
       "settleFailed": "Tidak dapat menyelesaikan konflik itu",
       "forgotten": "Memori dilupakan",
       "forgetFailed": "Tidak dapat melupakan memori itu",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Tidak dapat mengubah memori itu",
       "updated": "Memori diperbarui",
       "updateFailed": "Tidak dapat memperbarui memori itu",

@@ -1395,6 +1395,7 @@
       "settleFailed": "Impossibile risolvere il conflitto",
       "forgotten": "Ricordo dimenticato",
       "forgetFailed": "Impossibile dimenticare il ricordo",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Impossibile modificare il ricordo",
       "updated": "Ricordo aggiornato",
       "updateFailed": "Impossibile aggiornare il ricordo",

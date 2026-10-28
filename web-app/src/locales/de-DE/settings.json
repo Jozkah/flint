@@ -1392,6 +1392,7 @@
       "settleFailed": "Der Widerspruch ließ sich nicht auflösen",
       "forgotten": "Erinnerung vergessen",
       "forgetFailed": "Die Erinnerung ließ sich nicht vergessen",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Die Erinnerung ließ sich nicht ändern",
       "updated": "Erinnerung aktualisiert",
       "updateFailed": "Die Erinnerung ließ sich nicht aktualisieren",

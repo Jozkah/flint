@@ -1565,6 +1565,7 @@
       "settleFailed": "यह टकराव सुलझाया नहीं जा सका",
       "forgotten": "याद भुला दी गई",
       "forgetFailed": "यह याद भुलाई नहीं जा सकी",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "यह याद बदली नहीं जा सकी",
       "updated": "याद अपडेट की गई",
       "updateFailed": "यह याद अपडेट नहीं हो सकी",

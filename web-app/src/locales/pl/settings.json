@@ -1426,6 +1426,7 @@
       "settleFailed": "Nie udało się rozstrzygnąć tego konfliktu",
       "forgotten": "Wspomnienie zapomniane",
       "forgetFailed": "Nie udało się zapomnieć tego wspomnienia",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Nie udało się zmienić tego wspomnienia",
       "updated": "Wspomnienie zaktualizowane",
       "updateFailed": "Nie udało się zaktualizować tego wspomnienia",

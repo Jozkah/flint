@@ -1397,6 +1397,7 @@
       "settleFailed": "No s'ha pogut resoldre aquest conflicte",
       "forgotten": "Record oblidat",
       "forgetFailed": "No s'ha pogut oblidar aquest record",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "No s'ha pogut canviar aquest record",
       "updated": "Record actualitzat",
       "updateFailed": "No s'ha pogut actualitzar aquest record",

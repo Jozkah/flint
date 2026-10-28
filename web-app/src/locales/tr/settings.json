@@ -1392,6 +1392,7 @@
       "settleFailed": "Çelişki giderilemedi",
       "forgotten": "Anı unutuldu",
       "forgetFailed": "Anı unutulamadı",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "Anı değiştirilemedi",
       "updated": "Anı güncellendi",
       "updateFailed": "Anı güncellenemedi",

@@ -1392,6 +1392,7 @@
       "settleFailed": "矛盾を解決できませんでした",
       "forgotten": "メモリを忘れました",
       "forgetFailed": "メモリを忘れられませんでした",
+      "restoreFailed": "Could not restore that memory",
       "changeFailed": "メモリを変更できませんでした",
       "updated": "メモリを更新しました",
       "updateFailed": "メモリを更新できませんでした",
