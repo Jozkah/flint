@@ -51,7 +51,8 @@
     "retention_many": "Zarchiwizowane elementy są trwale usuwane po {{count}} dniach.",
     "retention_other": "Zarchiwizowane elementy są trwale usuwane po {{count}} dnia.",
     "retentionForever": "Zarchiwizowane elementy zostają, dopóki ich nie usuniesz.",
-    "emptyAction": "Opróżnij archiwum"
+    "emptyAction": "Opróżnij archiwum",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "To nie zadziałało",
@@ -1398,5 +1399,13 @@
       "tickFirst": "Najpierw zaznacz oznaczone pliki, które przejrzałeś.",
       "missing": "Proponowanych zmian już nie ma. Otwórz kampanię na komputerze."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

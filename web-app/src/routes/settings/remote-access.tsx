@@ -5,8 +5,8 @@ import { SettingsPageBody, SettingsPageHeader } from '@/containers/SettingsPageH
 import { RemoteAccessSettings } from '@/containers/RemoteAccessSettings'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.remote_access as any)({
+ 
+export const Route = createFileRoute(route.settings.remote_access)({
   component: desktopOnlyRoute(RemoteAccess, 'remote:title'),
 })
 

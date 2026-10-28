@@ -273,7 +273,8 @@ jobs:
         run: |
           [ -f packs/SHA256SUMS-engine-addons.txt ] || exit 0
           body="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
-          body="$(printf '%s\n' "$body" | sed '/^<!-- engine-addon-sums -->$/,/^<!-- \/engine-addon-sums -->$/d')"
+          # A body saved in the web editor has CRLF line ends, which the anchors miss.
+          body="$(printf '%s\n' "$body" | tr -d '\r' | sed '/^<!-- engine-addon-sums -->$/,/^<!-- \/engine-addon-sums -->$/d')"
           {
             printf '%s\n\n' "$body"
             echo '<!-- engine-addon-sums -->'

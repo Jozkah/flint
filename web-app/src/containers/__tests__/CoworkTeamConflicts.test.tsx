@@ -1,9 +1,28 @@
 /**
  * The overlap question, shown before any team child runs. AH-109.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+import en from '@/locales/en/common.json'
+
+// Resolve keys against the real English strings, so the test reads as a person would.
+vi.mock('@/i18n/react-i18next-compat', () => ({
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, string>) => {
+      const path = key.replace(/^common:/, '').split('.')
+      let node: unknown = en
+      for (const part of path) {
+        node = (node as Record<string, unknown> | undefined)?.[part]
+      }
+      return String(node ?? key).replace(
+        /\{\{(\w+)\}\}/g,
+        (_m, name: string) => opts?.[name] ?? ''
+      )
+    },
+  }),
+}))
 
 import { CoworkTeamConflicts } from '../CoworkTeamConflicts'
 import {

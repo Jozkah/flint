@@ -14,6 +14,7 @@ import { client, openDrawer, openSheet, sendMessage, toast, useApp } from '../st
 import { useRpc } from '../state/rpc'
 import { pendingFor, prunePending, useLive } from '../state/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
+import { activate } from '../ui/a11y'
 import { useEffect, useState } from 'react'
 import { contextPct } from '../ui/format'
 import { t } from '../i18n'
@@ -196,7 +197,7 @@ export default function Cowork({ id }: { id: string }) {
         {changes.data && <ChangeBars c={changes.data} />}
       </div>
       {todos.length > 0 && (
-        <div className="plan" role="button" data-tool-kind="todo" onClick={() => openDrawer('right', 'progress')}>
+        <div className="plan" role="button" data-tool-kind="todo" {...activate(() => openDrawer('right', 'progress'))}>
           <I n="todo" size={14} style={{ color: 'var(--tk)' }} />
           <span>{t('cowork.progress')}</span>
           <span className="pb">

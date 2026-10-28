@@ -129,7 +129,7 @@ impl Token {
     pub fn child(parent: &Token) -> Token {
         let child = Token::new(parent.0.scope.clone());
         {
-            let mut kids = parent.0.children.lock().unwrap();
+            let mut kids = parent.0.children.lock().unwrap_or_else(|e| e.into_inner());
             kids.retain(|w| w.strong_count() > 0);
             kids.push(Arc::downgrade(&child.0));
         }
@@ -185,7 +185,7 @@ impl Token {
                 .0
                 .children
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .iter()
                 .filter_map(Weak::upgrade)
                 .collect();
@@ -205,7 +205,7 @@ impl Token {
         // State is checked under the pids lock: `stop` sets the state first and
         // `reap` then takes this lock, so either we see it stopped here or
         // `reap` sees our push.
-        let mut pids = self.0.pids.lock().unwrap();
+        let mut pids = self.0.pids.lock().unwrap_or_else(|e| e.into_inner());
         if self.is_stopped() {
             drop(pids);
             let _ = crate::tools::proc::kill_tree(pid);
@@ -216,12 +216,12 @@ impl Token {
 
     /// Release a child that exited on its own.
     pub fn release(&self, pid: u32) {
-        self.0.pids.lock().unwrap().retain(|p| *p != pid);
+        self.0.pids.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| *p != pid);
     }
 
     /// Kill every child this token still owns.
     fn reap(&self) {
-        let pids: Vec<u32> = std::mem::take(&mut *self.0.pids.lock().unwrap());
+        let pids: Vec<u32> = std::mem::take(&mut *self.0.pids.lock().unwrap_or_else(|e| e.into_inner()));
         for pid in pids {
             let _ = crate::tools::proc::kill_tree(pid);
         }
@@ -230,7 +230,7 @@ impl Token {
     /// How many children this token still owns. A stopped token with children
     /// left is a cleanup failure, which AH-051 has to fail closed on.
     pub fn live_children(&self) -> usize {
-        self.0.pids.lock().unwrap().len()
+        self.0.pids.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Turn a completed result into the terminal one, rejecting late success.
@@ -277,14 +277,14 @@ impl Registered {
 
 impl Drop for Registered {
     fn drop(&mut self) {
-        registry().lock().unwrap().remove(&self.id);
+        registry().lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
     }
 }
 
 /// Register a token so `stop_scope` can reach it.
 pub fn register(token: Token) -> Registered {
     let id = next_id();
-    registry().lock().unwrap().insert(id, token.clone());
+    registry().lock().unwrap_or_else(|e| e.into_inner()).insert(id, token.clone());
     Registered { id, token }
 }
 
@@ -296,7 +296,7 @@ pub fn register(token: Token) -> Registered {
 pub fn stop_scope(scope: &Scope, reason: StopReason) -> usize {
     let tokens: Vec<Token> = registry()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .values()
         .filter(|t| t.scope().within(scope))
         .cloned()
@@ -309,7 +309,7 @@ pub fn stop_scope(scope: &Scope, reason: StopReason) -> usize {
 pub fn live_children_in(scope: &Scope) -> usize {
     registry()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .values()
         .filter(|t| t.scope().within(scope))
         .map(|t| t.live_children())

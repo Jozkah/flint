@@ -433,4 +433,29 @@ describe('Dialog Components', () => {
     expect(screen.getByText('Title').className).toContain('text-[length:calc(var(--ui-font-base)*0.9375)]')
     expect(screen.getByText('Title').className).not.toContain('0.9375em')
   })
+
+  it('links the description to the dialog only when one is rendered', () => {
+    const first = render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Title</DialogTitle>
+          <DialogDescription>About it</DialogDescription>
+        </DialogContent>
+      </Dialog>
+    )
+    const dialog = screen.getByRole('dialog')
+    const described = dialog.getAttribute('aria-describedby')
+    expect(described).toBeTruthy()
+    expect(document.getElementById(described!)).toHaveTextContent('About it')
+
+    first.unmount()
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Title</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    )
+    expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-describedby')
+  })
 })

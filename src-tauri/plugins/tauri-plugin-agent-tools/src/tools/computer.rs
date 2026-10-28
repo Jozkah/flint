@@ -73,7 +73,11 @@ pub fn save_exclusions(data_folder: &std::path::Path, exclusions: &Exclusions) -
 
 /// Makes `regions` the ones in force (called at startup and after a save).
 pub fn set_active_exclusions(exclusions: Exclusions) {
-    if let Ok(mut guard) = EXCLUDED.write() { *guard = exclusions; }
+    // A poisoned lock is repaired by a fresh set, so desktop control comes back.
+    let mut guard = EXCLUDED.write().unwrap_or_else(|e| e.into_inner());
+    *guard = exclusions;
+    drop(guard);
+    EXCLUDED.clear_poison();
 }
 
 /// Case-insensitive process name without a trailing `.exe`.
@@ -210,7 +214,11 @@ static INPUT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
     let action = match plan(args) { Ok(p) => p, Err(e) => return (format!("ERROR: {e}"), None) };
-    let limits = EXCLUDED.read().map(|g| g.clone()).unwrap_or_default();
+    // Fail closed: if the exclusions cannot be read, no action runs rather
+    // than running with none.
+    let Ok(limits) = EXCLUDED.read().map(|g| g.clone()) else {
+        return ("ERROR: the desktop-control exclusions could not be read, so no action was taken".into(), None);
+    };
     if let Err(e) = check_excluded(&action, &limits.regions) { return (format!("ERROR: {e}"), None); }
     let _guard = INPUT_LOCK.lock().await;
     // Let the approval card disappear before a coordinate-based click. The

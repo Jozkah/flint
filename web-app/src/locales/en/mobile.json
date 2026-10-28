@@ -133,7 +133,8 @@
     "retention_one": "Archived items are deleted for good after {{count}} day.",
     "retention_other": "Archived items are deleted for good after {{count}} days.",
     "retentionForever": "Archived items stay until you delete them.",
-    "emptyAction": "Empty archive"
+    "emptyAction": "Empty archive",
+    "heading": "Archive"
   },
   "common": {
     "didNotWork": "That did not work",
@@ -1360,5 +1361,13 @@
       "refused": "Your computer refused that answer. Open Flint to see why.",
       "failed": "Couldn't reach your computer. Open Flint to answer."
     }
+  },
+  "connect": {
+    "title": "Connect to your computer",
+    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
+    "address": "Computer address",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "trustNew": "Trust this computer's new certificate"
   }
 }

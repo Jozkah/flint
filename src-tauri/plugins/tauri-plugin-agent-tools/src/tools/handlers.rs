@@ -292,7 +292,7 @@ fn bash_jobs() -> &'static Mutex<HashMap<String, BashJob>> {
 /// Another owner's jobs are not listed at all -- not even as a count -- so a
 /// session can learn nothing about work it did not start.
 pub fn list_bash_jobs(owner: Option<&str>) -> Vec<BashJobStatus> {
-    let mut jobs = bash_jobs().lock().unwrap();
+    let mut jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let mut out: Vec<BashJobStatus> = jobs
         .iter_mut()
         .filter(|(_, job)| job.owner.as_deref() == owner)
@@ -310,7 +310,7 @@ pub fn list_bash_jobs(owner: Option<&str>) -> Vec<BashJobStatus> {
 
 /// One job's status, if `owner` may see it.
 pub fn inspect_bash_job(job_id: &str, owner: Option<&str>) -> Option<BashJobStatus> {
-    let mut jobs = bash_jobs().lock().unwrap();
+    let mut jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let job = jobs.get_mut(job_id)?;
     if job.owner.as_deref() != owner {
         return None;
@@ -321,7 +321,7 @@ pub fn inspect_bash_job(job_id: &str, owner: Option<&str>) -> Option<BashJobStat
 /// A job's recent output, redacted, for a status check. Never consumes the
 /// result the collector is waiting for.
 fn peek_tail(job_id: &str, owner: Option<&str>) -> Option<(String, usize)> {
-    let jobs = bash_jobs().lock().unwrap();
+    let jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let job = jobs.get(job_id)?;
     if job.owner.as_deref() != owner {
         return None;
@@ -335,7 +335,7 @@ fn peek_tail(job_id: &str, owner: Option<&str>) -> Option<(String, usize)> {
 /// since dropped), with the new offset. The text is redacted. Read only:
 /// nothing here consumes the result a collector is waiting for.
 pub fn bash_job_output_since(job_id: &str, owner: Option<&str>, offset: u64) -> Option<(String, u64)> {
-    let jobs = bash_jobs().lock().unwrap();
+    let jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let job = jobs.get(job_id)?;
     if job.owner.as_deref() != owner {
         return None;
@@ -354,7 +354,7 @@ pub fn bash_job_output_since(job_id: &str, owner: Option<&str>, offset: u64) -> 
 /// uncollected job when the owner is at its limit; returns false when every
 /// job it holds is still running, so the caller refuses rather than grows.
 fn make_room_for(owner: Option<&str>) -> bool {
-    let mut jobs = bash_jobs().lock().unwrap();
+    let mut jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let mut mine: Vec<(String, u64, bool)> = jobs
         .iter_mut()
         .filter(|(_, job)| job.owner.as_deref() == owner)
@@ -381,7 +381,7 @@ fn make_room_for(owner: Option<&str>) -> bool {
 /// that has already finished is left alone — killing it would signal a pid the
 /// OS may since have reused.
 pub fn kill_bash_job(job_id: &str, owner: Option<&str>) -> BashJobKill {
-    let mut jobs = bash_jobs().lock().unwrap();
+    let mut jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
     let (outcome, error) = match jobs.get_mut(job_id) {
         // Someone else's job reads exactly like no job: saying "not yours"
         // would confirm that it exists.
@@ -1976,7 +1976,7 @@ async fn record_seen(
         return None;
     };
     let hash = tokio::fs::read(&path).await.ok().map(|b| content_hash(&b));
-    let mut all = read_hashes().lock().unwrap();
+    let mut all = read_hashes().lock().unwrap_or_else(|e| e.into_inner());
     let seen = all.entry(key).or_default();
     match hash {
         Some(h) => {
@@ -2008,7 +2008,7 @@ async fn stale_edit_refusal(
     let shown = arg_str(args, "path").unwrap_or_default();
     let seen = read_hashes()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(&key)
         .and_then(|files| files.get(&path).copied());
     match seen {
@@ -2961,7 +2961,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                     // losing one must not fail the job it describes.
                     let _ = crate::job_record::save(data, &record);
                 }
-                bash_jobs().lock().unwrap().insert(
+                bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).insert(
                     job_id.clone(),
                     BashJob {
                         rx: Some(rx),
@@ -3182,7 +3182,7 @@ fn bash_job_list_text(owner: Option<&str>) -> String {
 async fn deadline(root: &Path, timeout_secs: u64) {
     #[cfg(test)]
     {
-        let injected = test_deadlines().lock().unwrap().get(root).cloned();
+        let injected = test_deadlines().lock().unwrap_or_else(|e| e.into_inner()).get(root).cloned();
         if let Some(fire) = injected {
             fire.notified().await;
             return;
@@ -3208,7 +3208,7 @@ pub(crate) fn test_deadline(root: &Path) -> std::sync::Arc<tokio::sync::Notify> 
     let fire = std::sync::Arc::new(tokio::sync::Notify::new());
     test_deadlines()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .insert(root.to_path_buf(), fire.clone());
     fire
 }
@@ -3249,7 +3249,7 @@ async fn await_bash_job(job_id: &str, owner: Option<&str>) -> String {
     }
 
     let taken = {
-        let mut jobs = bash_jobs().lock().unwrap();
+        let mut jobs = bash_jobs().lock().unwrap_or_else(|e| e.into_inner());
         match jobs.get_mut(job_id) {
             None => Collect::Unknown,
             // Another conversation's job: the same answer as no job at all.
@@ -3290,7 +3290,7 @@ async fn await_bash_job(job_id: &str, owner: Option<&str>) -> String {
             return format!("ERROR: unknown or already-collected job_id '{job_id}'")
         }
     };
-    bash_jobs().lock().unwrap().remove(job_id);
+    bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove(job_id);
     result
 }
 
@@ -4778,7 +4778,7 @@ mod bash_job_registry_tests {
         pid: Option<u32>,
     ) -> tokio::sync::oneshot::Sender<String> {
         let (tx, rx) = oneshot::channel::<String>();
-        bash_jobs().lock().unwrap().insert(
+        bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).insert(
             job_id.to_string(),
             BashJob {
                 rx: Some(rx),
@@ -4824,7 +4824,7 @@ mod bash_job_registry_tests {
         // Still killable: the pid was not surrendered.
         let second = kill_bash_job("bash-kill-refused", None);
         assert_eq!(second.outcome, BashJobKillOutcome::Failed);
-        let _ = bash_jobs().lock().unwrap().remove("bash-kill-refused");
+        let _ = bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove("bash-kill-refused");
     }
 
     /// A pid that no longer exists is not a failure: there is nothing to kill,
@@ -4856,7 +4856,7 @@ mod bash_job_registry_tests {
         for _ in 0..100 {
             if bash_jobs()
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .get("bash-collect-live")
                 .is_some_and(|j| j.rx.is_none())
             {
@@ -4912,7 +4912,7 @@ mod bash_job_registry_tests {
         assert!(list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-kill-nopid"));
-        let _ = bash_jobs().lock().unwrap().remove("bash-kill-nopid");
+        let _ = bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove("bash-kill-nopid");
     }
 
     /// The whole point of keeping the entry: a killed command's partial output
@@ -4947,7 +4947,7 @@ mod bash_job_registry_tests {
             kill_bash_job("bash-kill-twice", None).outcome,
             BashJobKillOutcome::NoPid
         );
-        let _ = bash_jobs().lock().unwrap().remove("bash-kill-twice");
+        let _ = bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove("bash-kill-twice");
     }
 
     #[tokio::test]
@@ -5052,7 +5052,7 @@ mod bash_job_registry_tests {
 
     fn park_owned(job_id: &str, command: &str, owner: &str) -> tokio::sync::oneshot::Sender<String> {
         let tx = park(job_id, command);
-        bash_jobs().lock().unwrap().get_mut(job_id).unwrap().owner = Some(owner.to_string());
+        bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).get_mut(job_id).unwrap().owner = Some(owner.to_string());
         tx
     }
 
@@ -5095,12 +5095,12 @@ mod bash_job_registry_tests {
         let tx = park_owned("bash-status", "cargo test", "s-status");
         bash_jobs()
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .get("bash-status")
             .unwrap()
             .tail
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push("running 12 tests\n");
 
         let running = bash_job_status_text("bash-status", Some("s-status"));
@@ -5130,12 +5130,12 @@ mod bash_job_registry_tests {
         );
         bash_jobs()
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .get("bash-redact")
             .unwrap()
             .tail
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .push("using PGPASSWORD=hunter2hunter2\n");
         let listed = list_bash_jobs(Some("s-redact"));
         let job = listed.iter().find(|j| j.job_id == "bash-redact").unwrap();
@@ -5143,7 +5143,7 @@ mod bash_job_registry_tests {
         let status = bash_job_status_text("bash-redact", Some("s-redact"));
         assert!(!status.contains("hunter2"), "{status}");
         assert!(!status.contains("sk-live"), "{status}");
-        let _ = bash_jobs().lock().unwrap().remove("bash-redact");
+        let _ = bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove("bash-redact");
     }
 
     /// Finished work reports how it ended; a stop request is recorded as such.
@@ -5161,7 +5161,7 @@ mod bash_job_registry_tests {
         let _tx2 = park_with_pid("bash-stopped", "sleep 300", Some(u32::MAX - 9));
         assert_eq!(kill_bash_job("bash-stopped", None).outcome, BashJobKillOutcome::Killed);
         assert!(inspect_bash_job("bash-stopped", None).unwrap().stopped_by_request);
-        let _ = bash_jobs().lock().unwrap().remove("bash-stopped");
+        let _ = bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove("bash-stopped");
     }
 
     /// The registry is bounded per conversation: the oldest finished job makes
@@ -5173,7 +5173,7 @@ mod bash_job_registry_tests {
         for n in 0..MAX_JOBS_PER_OWNER {
             let id = format!("bash-bound-{n}");
             senders.push(park_owned(&id, "sleep 300", owner));
-            bash_jobs().lock().unwrap().get_mut(&id).unwrap().started_at_ms = 1_000 + n as u64;
+            bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).get_mut(&id).unwrap().started_at_ms = 1_000 + n as u64;
         }
         assert!(!make_room_for(Some(owner)), "every job is running: no room");
         // Another conversation is unaffected by this one's limit.
@@ -5186,7 +5186,7 @@ mod bash_job_registry_tests {
             "the finished job made room"
         );
         for n in 0..MAX_JOBS_PER_OWNER {
-            let _ = bash_jobs().lock().unwrap().remove(&format!("bash-bound-{n}"));
+            let _ = bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).remove(&format!("bash-bound-{n}"));
         }
     }
 
