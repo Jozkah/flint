@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 
 use super::constants::{CONFIGURATION_FILE_NAME, TAURI_BUNDLE_IDENTIFIER};
 #[cfg(not(feature = "cli"))]
-use super::helpers::copy_dir_recursive;
+use super::helpers::{copy_dir_newer, copy_dir_recursive, validate_new_data_folder};
 use super::models::AppConfiguration;
 #[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
@@ -538,41 +538,51 @@ pub fn get_user_home_path<R: Runtime>(app: AppHandle<R>) -> String {
 
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
-pub fn change_app_data_folder<R: Runtime>(
+pub async fn change_app_data_folder<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     new_data_folder: String,
+    allow_merge: Option<bool>,
 ) -> Result<(), String> {
     // Get current data folder path
     let current_data_folder = get_jan_data_folder_path(app_handle.clone());
     let new_data_folder_path = PathBuf::from(&new_data_folder);
+    let allow_merge = allow_merge.unwrap_or(false);
 
-    // Create the new data folder if it doesn't exist
-    if !new_data_folder_path.exists() {
-        fs::create_dir_all(&new_data_folder_path)
-            .map_err(|e| format!("Failed to create new data folder: {e}"))?;
-    }
+    let (current, target) = (current_data_folder, new_data_folder_path);
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        // Validate before creating or copying anything.
+        validate_new_data_folder(&current, &target, allow_merge)?;
+        let target_had_content = target.exists()
+            && fs::read_dir(&target).map(|mut d| d.next().is_some()).unwrap_or(false);
 
-    // Copy all files from the old folder to the new one
-    if current_data_folder.exists() {
-        log::info!("Copying data from {current_data_folder:?} to {new_data_folder_path:?}");
-
-        // Check if this is a parent directory to avoid infinite recursion
-        if new_data_folder_path.starts_with(&current_data_folder) {
-            return Err(
-                "New data folder cannot be a subdirectory of the current data folder".to_string(),
-            );
+        if !target.exists() {
+            fs::create_dir_all(&target)
+                .map_err(|e| format!("Failed to create new data folder: {e}"))?;
         }
-        copy_dir_recursive(
-            &current_data_folder,
-            &new_data_folder_path,
-            &[".uvx", ".npx", "openclaw"],
-        )
-        .map_err(|e| format!("Failed to copy data to new folder: {e}"))?;
-    } else {
-        log::info!("Current data folder does not exist, nothing to copy");
-    }
 
-    // Update the configuration to point to the new folder
+        if current.exists() {
+            log::info!("Copying data from {current:?} to {target:?}");
+            let skip = [".uvx", ".npx", "openclaw"];
+            let first = if target_had_content {
+                copy_dir_newer(&current, &target, &skip)
+            } else {
+                copy_dir_recursive(&current, &target, &skip)
+            };
+            first.map_err(|e| format!("Failed to copy data to new folder: {e}"))?;
+            // Delta pass: pick up files written while the first copy ran.
+            // Full quiescing of writers is out of scope; the app restarts
+            // after this change.
+            copy_dir_newer(&current, &target, &skip)
+                .map_err(|e| format!("Failed to copy data to new folder: {e}"))?;
+        } else {
+            log::info!("Current data folder does not exist, nothing to copy");
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Data folder copy task failed: {e}"))??;
+
+    // Update the configuration to point to the new folder (last step)
     let mut configuration = get_app_configurations(app_handle.clone());
     configuration.data_folder = new_data_folder;
 
