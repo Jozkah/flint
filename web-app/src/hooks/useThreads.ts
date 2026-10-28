@@ -68,7 +68,8 @@ const cleanupVectorDB = async (threadId: string) => {
       ExtensionTypeEnum.VectorDB
     )
     if (vec?.deleteCollection) {
-      await vec.deleteCollection(`attachments_${threadId}`)
+      // The extension adds the `attachments_` prefix itself.
+      await vec.deleteCollection(threadId)
     }
   } catch (e) {
     console.warn(
