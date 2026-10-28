@@ -97,7 +97,7 @@ required-features = ["cli"]
 # Run it with: cargo run --example cowork-smoke --features cowork-smoke
 [[example]]
 name = "cowork-smoke"
-path = "examples/cowork_smoke.rs"
+path = "examples/cowork_smoke/main.rs"
 required-features = ["cowork-smoke"]
 
 [features]

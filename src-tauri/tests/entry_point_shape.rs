@@ -146,10 +146,20 @@ fn the_builder_is_constructed_in_exactly_one_place() {
 /// The smoke binary must call into the shared path rather than reimplementing it.
 #[test]
 fn the_smoke_harness_uses_the_shared_construction_path() {
-    let smoke = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/cowork_smoke.rs"),
-    )
-    .expect("examples/cowork_smoke.rs must be readable");
+    // The harness is a directory of files pulled into main.rs with include!.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/cowork_smoke");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .expect("examples/cowork_smoke must be readable")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .collect();
+    files.sort();
+    let smoke: String = files
+        .iter()
+        .map(|p| std::fs::read_to_string(p).expect("a harness file must be readable"))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
         smoke.contains("app_lib::build_app()"),
         "the harness must build the real application via app_lib::build_app()"
