@@ -8425,6 +8425,7 @@ fn assistant_runs(prose: &str, segs: &[ReasoningSeg]) -> Vec<(bool, String)> {
 /// True if `text` ends inside an unclosed ` think>` block (an opening tag whose
 /// matching close has not yet streamed). Used to show `[thinking]` while
 /// reasoning streams. Re-uses the same tag matcher as `split_reasoning`.
+#[cfg(test)]
 fn thinking_open(text: &str) -> bool {
     if !think_tags_parsed() {
         return false;
@@ -19066,7 +19067,7 @@ mod tests {
         run_command, running_group_rows, selection_text, spans_width, spawn_branch_poll,
         split_reasoning, starting_call_lines, startup_modes, strip_system_xml_tags,
         subagent_activity, subagent_name_from_run_id, summarize_result, sync_output_for,
-        thinking_open, tilde_path, tokens_per_second, tool_activity, tool_finished,
+        has_answer_text, thinking_open, tilde_path, tokens_per_second, tool_activity, tool_finished,
         transcript_top_padding, unescape_partial_json_string, user_content_parts, wave_sweep_line,
         with_wave_glyph, without_think_tags, App, CompactKind, ContextReport, ContextSegment,
         ContextView, CurrentRun, McpField, McpPrompt, Pending, PendingImage, PickerKind,
