@@ -118,55 +118,7 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
             body,
             subject,
             peek,
-        } => {
-            use tauri_plugin_agent_tools::identity::{RunId, SessionId};
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            let to = RunId::parse(run);
-            match (to, from, body) {
-                (Err(e), _, _) => Err(e),
-                (Ok(to), Some(from), Some(body)) => session
-                    .ok_or_else(|| {
-                        HarnessError::new(
-                            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                            "sending needs --session: a message belongs to one conversation",
-                        )
-                    })
-                    .and_then(SessionId::parse)
-                    .and_then(|session| RunId::parse(from).map(|from| (session, from)))
-                    .and_then(|(session, from)| {
-                        tauri_plugin_agent_tools::mailbox::send(
-                            &data, &session, &from, &to, &subject, &body,
-                        )
-                        .map_err(|e| HarnessError::from(&e))
-                    })
-                    .map(|message| {
-                        println!("delivered to {} as message {}", message.to, message.seq);
-                    }),
-                (Ok(to), _, _) => {
-                    tauri_plugin_agent_tools::mailbox::read(&data, &to, !peek)
-                        .map_err(|e| HarnessError::from(&e))
-                        .map(|messages| {
-                            if messages.is_empty() {
-                                println!("no messages");
-                            }
-                            for message in messages {
-                                println!(
-                                    "{} from {}{} [{}]",
-                                    message.at,
-                                    message.from,
-                                    if message.subject.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!(" -- {}", message.subject)
-                                    },
-                                    if message.delivered_at.is_some() { "read" } else { "unread" }
-                                );
-                                println!("  {}", message.body);
-                            }
-                        })
-                }
-            }
-        }
+        } => mail::mail(run, session, from, body, subject, peek),
         AgentCommands::Vcs { project, json } => inspect::vcs(project, json),
         AgentCommands::Impact {
             changed,
