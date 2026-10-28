@@ -77,6 +77,8 @@
     "privateUntilUsed": "Riêng tư cho đến khi bạn dùng",
     "recentlyUpdated": "Mới cập nhật",
     "pausedDownloads": "Tải xuống đã tạm dừng",
+    "retryingIn": "Thử lại sau {{seconds}} giây",
+    "retryingNow": "Đang thử lại…",
     "resume": "Tiếp tục",
     "retry": "Thử lại",
     "searchPlaceholder": "Tìm mô hình, tác giả hoặc dán URL Hugging Face…",

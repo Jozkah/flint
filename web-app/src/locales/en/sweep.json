@@ -79,6 +79,8 @@
     "privateUntilUsed": "Private until you use it",
     "recentlyUpdated": "Recently updated",
     "pausedDownloads": "Paused downloads",
+    "retryingIn": "Retrying in {{seconds}}s",
+    "retryingNow": "Retrying…",
     "resume": "Resume",
     "retry": "Retry",
     "searchPlaceholder": "Search models, authors, or paste a Hugging Face URL…",

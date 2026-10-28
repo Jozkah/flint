@@ -42,10 +42,21 @@ export type HuggingFaceDownloadTask = {
   /** Smoothed download speed in bytes per second, while downloading. */
   bytesPerSecond?: number
   error?: string
+  /**
+   * While the connection is down: when (epoch ms) the next attempt starts,
+   * and how many attempts in a row have failed.
+   */
+  retryAt?: number
+  retryAttempt?: number
 }
 
 type DownloadStore = {
   tasks: Record<string, HuggingFaceDownloadTask>
+  /**
+   * A start that joined a download already under way for the same files:
+   * its own id mapped to the id of the row doing the work.
+   */
+  aliases: Record<string, string>
   upsert: (task: HuggingFaceDownloadTask) => void
   patch: (id: string, patch: Partial<HuggingFaceDownloadTask>) => void
   remove: (id: string) => void
@@ -53,6 +64,7 @@ type DownloadStore = {
 
 export const useHuggingFaceDownloads = create<DownloadStore>((set) => ({
   tasks: {},
+  aliases: {},
   upsert: (task) => set((state) => ({ tasks: { ...state.tasks, [task.id]: task } })),
   patch: (id, patch) =>
     set((state) => {
@@ -65,7 +77,10 @@ export const useHuggingFaceDownloads = create<DownloadStore>((set) => ({
     set((state) => {
       const tasks = { ...state.tasks }
       delete tasks[id]
-      return { tasks }
+      const aliases = Object.fromEntries(
+        Object.entries(state.aliases).filter(([alias, target]) => alias !== id && target !== id)
+      )
+      return { tasks, aliases }
     })
   },
 }))
@@ -188,8 +203,20 @@ function ensureProgressListener() {
         downloaded,
         Date.now()
       )
+      if (payload.retryInMs != null) {
+        // Waiting to retry: nothing is flowing, so no speed to show.
+        speedSamples.delete(task.id)
+        store.patch(task.id, {
+          retryAt: Date.now() + payload.retryInMs,
+          retryAttempt: payload.attempt ?? undefined,
+          bytesPerSecond: undefined,
+        })
+        return
+      }
       speedSamples.set(task.id, sample)
       store.patch(task.id, {
+        retryAt: undefined,
+        retryAttempt: undefined,
         downloaded,
         total,
         progress: total && total > 0 ? Math.min(1, downloaded / total) : task.progress,
@@ -251,6 +278,8 @@ async function runBundle(id: string): Promise<void> {
         status: 'downloading',
         currentFileIndex: index,
         currentTaskId: nativeTaskId,
+        retryAt: undefined,
+        retryAttempt: undefined,
         downloaded: completedBytes(runner.files, index),
         progress: total ? completedBytes(runner.files, index) / total : 0,
       })
@@ -279,6 +308,8 @@ async function runBundle(id: string): Promise<void> {
     store.patch(id, {
       status: 'verifying',
       currentTaskId: undefined,
+      retryAt: undefined,
+      retryAttempt: undefined,
       downloaded: total ?? completedBytes(runner.files, runner.files.length),
       progress: 1,
     })
@@ -293,10 +324,22 @@ async function runBundle(id: string): Promise<void> {
     if (error instanceof BundleStop || pauseIntent.has(id) || /paused|cancelled/i.test(message)) {
       const status =
         error instanceof BundleStop ? error.kind : cancelIntent.has(id) ? 'cancelled' : 'paused'
-      store.patch(id, { status, currentTaskId: undefined, error: undefined })
+      store.patch(id, {
+        status,
+        currentTaskId: undefined,
+        error: undefined,
+        retryAt: undefined,
+        retryAttempt: undefined,
+      })
       if (status === 'cancelled') forgetBundle(id)
     } else {
-      store.patch(id, { status: 'error', currentTaskId: undefined, error: message })
+      store.patch(id, {
+        status: 'error',
+        currentTaskId: undefined,
+        error: message,
+        retryAt: undefined,
+        retryAttempt: undefined,
+      })
     }
   } finally {
     pauseIntent.delete(id)
@@ -305,8 +348,61 @@ async function runBundle(id: string): Promise<void> {
   }
 }
 
+// A download that still holds its files: a second start for them joins it.
+const LIVE: HuggingFaceTaskStatus[] = ['queued', 'downloading', 'paused']
+
+/**
+ * The live bundle (other than `input` itself) that downloads the same files:
+ * same repository, same revision, and at least one file name in common. Two
+ * rows for one set of files would race on the same partial files.
+ */
+export function findOverlappingBundle(input: {
+  id: string
+  repo: string
+  revision?: string | null
+  files: HuggingFaceFile[]
+}): string | undefined {
+  const names = new Set(input.files.map((file) => file.name))
+  const revision = input.revision ?? null
+  for (const task of Object.values(useHuggingFaceDownloads.getState().tasks)) {
+    if (task.id === input.id || !LIVE.includes(task.status)) continue
+    const runner = runners.get(task.id)
+    if (!runner || runner.repo !== input.repo || (runner.revision ?? null) !== revision) continue
+    if (runner.files.some((file) => names.has(file.name))) return task.id
+  }
+  return undefined
+}
+
+/** The row that does the work for `id`: itself, or the bundle it joined. */
+export function resolveBundleId(
+  state: Pick<DownloadStore, 'tasks' | 'aliases'>,
+  id: string
+): string {
+  if (state.tasks[id]) return id
+  const target = state.aliases[id]
+  return target && state.tasks[target] ? target : id
+}
+
 export function startHuggingFaceBundle(input: BundleRunner): Promise<void> {
   ensurePersistence()
+  const own = useHuggingFaceDownloads.getState().tasks[input.id]
+  if (!own || !LIVE.includes(own.status)) {
+    const existing = findOverlappingBundle(input)
+    if (existing) {
+      useHuggingFaceDownloads.setState((state) => ({
+        aliases: { ...state.aliases, [input.id]: existing },
+      }))
+      // Running already: nothing to do. Paused: this start resumes it.
+      return runBundle(existing)
+    }
+  }
+  if (useHuggingFaceDownloads.getState().aliases[input.id]) {
+    useHuggingFaceDownloads.setState((state) => {
+      const aliases = { ...state.aliases }
+      delete aliases[input.id]
+      return { aliases }
+    })
+  }
   const current = useHuggingFaceDownloads.getState().tasks[input.id]
   if (current?.status === 'complete') {
     useHuggingFaceDownloads.getState().remove(input.id)

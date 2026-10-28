@@ -83,6 +83,8 @@
     "privateUntilUsed": "Приватно, пока вы не пользуетесь",
     "recentlyUpdated": "Недавно обновлённые",
     "pausedDownloads": "Приостановленные загрузки",
+    "retryingIn": "Повтор через {{seconds}} с",
+    "retryingNow": "Повторная попытка…",
     "resume": "Продолжить",
     "retry": "Повторить",
     "searchPlaceholder": "Ищите модели, авторов или вставьте ссылку Hugging Face…",

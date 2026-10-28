@@ -122,6 +122,12 @@ pub struct HuggingFaceDownloadProgress {
     pub task_id: String,
     pub downloaded: u64,
     pub total: Option<u64>,
+    /// Set while the download waits to retry: how long until the next attempt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_in_ms: Option<u64>,
+    /// The failed attempt count behind `retry_in_ms`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -652,12 +658,120 @@ pub async fn huggingface_cancel_download(task_id: String) -> Result<(), String> 
 /// A connection that sends nothing for this long is treated as dropped and
 /// retried, instead of leaving a multi-gigabyte download hanging on bad wifi.
 const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-/// Consecutive attempts that move no data before the download gives up.
-const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+/// Consecutive failed attempts retried on the quick backoff. After these the
+/// download keeps trying at a steady pace until it recovers or is paused.
+const QUICK_RETRIES: u32 = 5;
+/// The wait between retries once the quick ones are used up.
+const STEADY_RETRY: std::time::Duration = std::time::Duration::from_secs(64);
+/// The longest `Retry-After` a server can make a download wait.
+const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// The wait before retry number `failures` (1-based): 1, 2, 4, 8, 16, then 32 s.
 fn retry_backoff(failures: u32) -> std::time::Duration {
     std::time::Duration::from_secs(1u64 << failures.saturating_sub(1).min(5))
+}
+
+/// The wait before retry number `failures`: the quick backoff, then a steady
+/// 64 s. A server's `Retry-After` is honoured when it asks for longer.
+fn retry_delay(failures: u32, retry_after: Option<std::time::Duration>) -> std::time::Duration {
+    let base = if failures <= QUICK_RETRIES {
+        retry_backoff(failures)
+    } else {
+        STEADY_RETRY
+    };
+    match retry_after {
+        Some(wait) => base.max(wait.min(MAX_RETRY_AFTER)),
+        None => base,
+    }
+}
+
+/// Whether an HTTP status is worth retrying: server errors, rate limiting and
+/// request timeouts. Every other refusal fails the download at once.
+fn status_is_transient(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+}
+
+/// A `Retry-After` header given in seconds. The HTTP-date form is ignored and
+/// the normal backoff applies.
+fn retry_after_of(headers: &reqwest::header::HeaderMap) -> Option<std::time::Duration> {
+    let value = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+    value.trim().parse::<u64>().ok().map(std::time::Duration::from_secs)
+}
+
+/// Whether a connection failure is a certificate or TLS trust problem. Those
+/// do not fix themselves (a proxy or clock is wrong), so retrying only hides
+/// the cause.
+fn transport_error_is_fatal(chain: &str) -> bool {
+    let lower = chain.to_ascii_lowercase();
+    [
+        "certificate",
+        "unknownissuer",
+        "unknown issuer",
+        "self signed",
+        "self-signed",
+        "invalid peer",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+/// One pass of the retry loop, as the loop sees it.
+enum Step {
+    Done,
+    Paused,
+    Retry {
+        made_progress: bool,
+        reason: String,
+        retry_after: Option<std::time::Duration>,
+    },
+}
+
+/// Run `attempt` until it finishes, retrying transient failures without a cap:
+/// the quick backoff first, then every 64 s. Bytes received reset the backoff.
+/// A pause or cancel ends the wait at once. `on_wait` hears each wait before
+/// it starts; `sleep` is the wait itself (swapped out by tests).
+async fn retry_until_done<A, AF, S, SF, W>(
+    cancel: &AtomicBool,
+    mut attempt: A,
+    sleep: S,
+    mut on_wait: W,
+) -> Result<(), String>
+where
+    A: FnMut() -> AF,
+    AF: std::future::Future<Output = Result<Step, String>>,
+    S: Fn(std::time::Duration) -> SF,
+    SF: std::future::Future<Output = ()>,
+    W: FnMut(u32, std::time::Duration, &str),
+{
+    let mut failures: u32 = 0;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Download paused".to_string());
+        }
+        match attempt().await? {
+            Step::Done => return Ok(()),
+            Step::Paused => return Err("Download paused".to_string()),
+            Step::Retry {
+                made_progress,
+                reason,
+                retry_after,
+            } => {
+                if made_progress {
+                    failures = 0;
+                }
+                failures = failures.saturating_add(1);
+                let wait = retry_delay(failures, retry_after);
+                on_wait(failures, wait, &reason);
+                tokio::select! {
+                    biased;
+                    _ = cancelled(cancel) => return Err("Download paused".to_string()),
+                    _ = sleep(wait) => {}
+                }
+            }
+        }
+    }
 }
 
 /// What a raw OS error code means for a download, when it is one worth naming.
@@ -838,11 +952,16 @@ enum Attempt {
     Paused,
     /// The connection failed or went quiet. `made_progress` says whether any
     /// bytes arrived before it did, which resets the count of failures.
-    Retry { made_progress: bool, reason: String },
+    Retry {
+        made_progress: bool,
+        reason: String,
+        retry_after: Option<std::time::Duration>,
+    },
 }
 
 /// One request for the rest of the file, appended to the `.part` file. Network
-/// trouble comes back as `Retry`; a refusal or a disk error is fatal.
+/// trouble, 5xx, 408 and 429 come back as `Retry`; any other refusal, a
+/// certificate problem or a disk error is fatal.
 #[allow(clippy::too_many_arguments)]
 async fn download_attempt<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -871,9 +990,14 @@ async fn download_attempt<R: Runtime>(
         sent = tokio::time::timeout(STALL_TIMEOUT, request.send()) => match sent {
             Ok(Ok(response)) => response,
             Ok(Err(e)) => {
+                let chain = error_chain(&e);
+                if transport_error_is_fatal(&chain) {
+                    return Err(format!("Hugging Face download failed: {chain}"));
+                }
                 return Ok(Attempt::Retry {
                     made_progress: false,
-                    reason: format!("Hugging Face download failed: {}", error_chain(&e)),
+                    reason: format!("Hugging Face download failed: {chain}"),
+                    retry_after: None,
                 })
             }
             // A filtered connection or a server that never sends headers.
@@ -884,6 +1008,7 @@ async fn download_attempt<R: Runtime>(
                         "No response from Hugging Face for {} seconds",
                         STALL_TIMEOUT.as_secs()
                     ),
+                    retry_after: None,
                 })
             }
         },
@@ -896,12 +1021,14 @@ async fn download_attempt<R: Runtime>(
         return Ok(Attempt::Retry {
             made_progress: false,
             reason: "The partial download no longer matched the server".to_string(),
+            retry_after: None,
         });
     }
-    if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+    if status_is_transient(status) {
         return Ok(Attempt::Retry {
             made_progress: false,
             reason: format!("Hugging Face answered {status}"),
+            retry_after: retry_after_of(response.headers()),
         });
     }
     if !status.is_success() {
@@ -936,6 +1063,8 @@ async fn download_attempt<R: Runtime>(
                 task_id: task_id.to_string(),
                 downloaded,
                 total,
+                retry_in_ms: None,
+                attempt: None,
             },
         );
     };
@@ -960,6 +1089,7 @@ async fn download_attempt<R: Runtime>(
                         "No data from Hugging Face for {} seconds",
                         STALL_TIMEOUT.as_secs()
                     ),
+                    retry_after: None,
                 });
             }
             None => return Ok(Attempt::Paused),
@@ -972,6 +1102,7 @@ async fn download_attempt<R: Runtime>(
                 return Ok(Attempt::Retry {
                     made_progress: downloaded > start,
                     reason: format!("Hugging Face download interrupted: {}", error_chain(&e)),
+                    retry_after: None,
                 });
             }
         };
@@ -1121,68 +1252,81 @@ pub async fn huggingface_download_model<R: Runtime>(
             disk_preflight(total, already, free)?;
         }
         let client = hf_client(token.as_deref())?;
-        let mut failures: u32 = 0;
-        loop {
+        let attempt = || async {
             let existing = tokio::fs::metadata(&part_path)
                 .await
                 .map(|meta| meta.len())
                 .unwrap_or(0);
             if existing > 0 && expected_size == Some(existing) {
-                break;
+                return Ok(Step::Done);
             }
-            match download_attempt(
-                &app,
-                &client,
-                &url,
-                &task_id,
-                &part_path,
-                expected_size,
-                &cancel,
-            )
-            .await?
-            {
-                Attempt::Paused => return Err("Download paused".to_string()),
-                outcome => {
-                    let (made_progress, reason) = match outcome {
-                        Attempt::Retry {
-                            made_progress,
-                            reason,
-                        } => (made_progress, reason),
-                        // The server ended the stream cleanly but short of the
-                        // size it listed: the connection was cut, so go on.
-                        _ => {
-                            let now = tokio::fs::metadata(&part_path)
-                                .await
-                                .map(|meta| meta.len())
-                                .unwrap_or(0);
-                            if expected_size.is_none_or(|size| now >= size) {
-                                break;
+            Ok(
+                match download_attempt(
+                    &app,
+                    &client,
+                    &url,
+                    &task_id,
+                    &part_path,
+                    expected_size,
+                    &cancel,
+                )
+                .await?
+                {
+                    Attempt::Paused => Step::Paused,
+                    Attempt::Retry {
+                        made_progress,
+                        reason,
+                        retry_after,
+                    } => Step::Retry {
+                        made_progress,
+                        reason,
+                        retry_after,
+                    },
+                    // The server may end the stream cleanly but short of the
+                    // size it listed: the connection was cut, so go on.
+                    Attempt::Finished => {
+                        let now = tokio::fs::metadata(&part_path)
+                            .await
+                            .map(|meta| meta.len())
+                            .unwrap_or(0);
+                        if expected_size.is_none_or(|size| now >= size) {
+                            Step::Done
+                        } else {
+                            Step::Retry {
+                                made_progress: now > existing,
+                                reason: format!(
+                                    "The connection closed after {now} of {} bytes",
+                                    expected_size.unwrap_or(0)
+                                ),
+                                retry_after: None,
                             }
-                            (
-                                now > existing,
-                                format!("The connection closed after {now} of {} bytes", expected_size.unwrap_or(0)),
-                            )
                         }
-                    };
-                    if made_progress {
-                        failures = 0;
                     }
-                    failures += 1;
-                    if failures > MAX_CONSECUTIVE_FAILURES {
-                        return Err(format!(
-                            "{reason}. Gave up after {MAX_CONSECUTIVE_FAILURES} attempts; the download can be resumed."
-                        ));
-                    }
-                    log::warn!(
-                        "Hugging Face download of {repo}/{filename} will retry ({failures}/{MAX_CONSECUTIVE_FAILURES}): {reason}"
-                    );
-                    tokio::select! {
-                        _ = tokio::time::sleep(retry_backoff(failures)) => {}
-                        _ = cancelled(&cancel) => return Err("Download paused".to_string()),
-                    }
-                }
-            }
-        }
+                },
+            )
+        };
+        retry_until_done(&cancel, attempt, tokio::time::sleep, |failures, wait, reason| {
+            log::warn!(
+                "Hugging Face download of {repo}/{filename} will retry in {}s (attempt {failures}): {reason}",
+                wait.as_secs()
+            );
+            // Tell the row it is waiting, so it can count down instead of
+            // looking stuck.
+            let downloaded = std::fs::metadata(&part_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            let _ = app.emit(
+                "huggingface-download-progress",
+                HuggingFaceDownloadProgress {
+                    task_id: task_id.clone(),
+                    downloaded,
+                    total: expected_size,
+                    retry_in_ms: Some(wait.as_millis() as u64),
+                    attempt: Some(failures),
+                },
+            );
+        })
+        .await?;
 
         if let Some(size) = expected_size {
             let actual = tokio::fs::metadata(&part_path)
@@ -1278,6 +1422,159 @@ mod tests {
         );
         assert_eq!(throttle_delay(1_000_000, Duration::from_secs(2), 1_000_000), Duration::ZERO);
         assert_eq!(throttle_delay(1_000_000, Duration::ZERO, 0), Duration::ZERO);
+    }
+
+    #[test]
+    fn retry_delay_goes_steady_after_the_quick_attempts() {
+        let secs: Vec<u64> = (1..=8).map(|n| retry_delay(n, None).as_secs()).collect();
+        assert_eq!(secs, vec![1, 2, 4, 8, 16, 64, 64, 64]);
+        let ra = Some(std::time::Duration::from_secs(120));
+        assert_eq!(retry_delay(1, ra).as_secs(), 120, "Retry-After is honoured");
+        let huge = Some(std::time::Duration::from_secs(86_400));
+        assert_eq!(retry_delay(1, huge), MAX_RETRY_AFTER, "Retry-After is capped");
+        let short = Some(std::time::Duration::from_secs(1));
+        assert_eq!(retry_delay(7, short).as_secs(), 64, "never shorter than the backoff");
+    }
+
+    #[test]
+    fn transient_and_fatal_statuses_are_told_apart() {
+        use reqwest::StatusCode as S;
+        for status in [S::INTERNAL_SERVER_ERROR, S::BAD_GATEWAY, S::SERVICE_UNAVAILABLE, S::GATEWAY_TIMEOUT, S::TOO_MANY_REQUESTS, S::REQUEST_TIMEOUT] {
+            assert!(status_is_transient(status), "{status} should retry");
+        }
+        for status in [S::BAD_REQUEST, S::UNAUTHORIZED, S::FORBIDDEN, S::NOT_FOUND, S::GONE] {
+            assert!(!status_is_transient(status), "{status} should fail at once");
+        }
+    }
+
+    #[test]
+    fn retry_after_reads_seconds_only() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert_eq!(retry_after_of(&headers), None);
+        headers.insert(reqwest::header::RETRY_AFTER, "30".parse().unwrap());
+        assert_eq!(retry_after_of(&headers), Some(std::time::Duration::from_secs(30)));
+        headers.insert(reqwest::header::RETRY_AFTER, "Wed, 21 Oct 2015 07:28:00 GMT".parse().unwrap());
+        assert_eq!(retry_after_of(&headers), None);
+    }
+
+    #[test]
+    fn certificate_failures_are_fatal_and_network_ones_are_not() {
+        assert!(transport_error_is_fatal("error sending request: invalid peer certificate: UnknownIssuer"));
+        assert!(transport_error_is_fatal("self-signed certificate in certificate chain"));
+        assert!(!transport_error_is_fatal("error sending request: connection reset by peer"));
+        assert!(!transport_error_is_fatal("dns error: no such host is known"));
+        assert!(!transport_error_is_fatal("operation timed out"));
+    }
+
+    fn transient() -> Result<Step, String> {
+        Ok(Step::Retry {
+            made_progress: false,
+            reason: "Hugging Face answered 503".to_string(),
+            retry_after: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn retry_loop_keeps_going_past_the_quick_attempts() {
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::Cell::new(0u32);
+        let mut waits = Vec::new();
+        let result = retry_until_done(
+            &cancel,
+            || {
+                calls.set(calls.get() + 1);
+                let n = calls.get();
+                async move { if n > 12 { Ok(Step::Done) } else { transient() } }
+            },
+            |_| async {},
+            |failures, wait, _| waits.push((failures, wait.as_secs())),
+        )
+        .await;
+        assert_eq!(result, Ok(()));
+        assert_eq!(calls.get(), 13);
+        assert_eq!(waits.len(), 12);
+        assert_eq!(waits[5], (6, 64));
+        assert_eq!(waits[11], (12, 64));
+    }
+
+    #[tokio::test]
+    async fn retry_loop_progress_resets_the_backoff() {
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::Cell::new(0u32);
+        let mut waits = Vec::new();
+        let _ = retry_until_done(
+            &cancel,
+            || {
+                calls.set(calls.get() + 1);
+                let n = calls.get();
+                async move {
+                    match n {
+                        8 => Ok(Step::Retry { made_progress: true, reason: String::new(), retry_after: None }),
+                        9 => Ok(Step::Done),
+                        _ => transient(),
+                    }
+                }
+            },
+            |_| async {},
+            |_, wait, _| waits.push(wait.as_secs()),
+        )
+        .await;
+        assert_eq!(waits, vec![1, 2, 4, 8, 16, 64, 64, 1]);
+    }
+
+    #[tokio::test]
+    async fn retry_loop_stops_on_pause_during_the_wait() {
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let calls = std::cell::Cell::new(0u32);
+        let flag = cancel.clone();
+        let result = retry_until_done(
+            &cancel,
+            || {
+                calls.set(calls.get() + 1);
+                async { transient() }
+            },
+            // Quick waits pass at once; a steady 64 s wait never ends on its
+            // own, so only the pause can end it.
+            |wait| {
+                let steady = wait == STEADY_RETRY;
+                async move {
+                    if steady {
+                        std::future::pending::<()>().await
+                    }
+                }
+            },
+            |failures, _, _| {
+                if failures == 6 {
+                    let flag = flag.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        flag.store(true, Ordering::Relaxed);
+                    });
+                }
+            },
+        )
+        .await;
+        assert_eq!(result, Err("Download paused".to_string()));
+        // Past the five quick waits, the pause lands during the first 64 s one.
+        assert_eq!(calls.get(), 6);
+    }
+
+    #[tokio::test]
+    async fn retry_loop_fails_at_once_on_a_fatal_error() {
+        let cancel = AtomicBool::new(false);
+        let calls = std::cell::Cell::new(0u32);
+        let result = retry_until_done(
+            &cancel,
+            || {
+                calls.set(calls.get() + 1);
+                async { Err::<Step, _>("Hugging Face answered 404".to_string()) }
+            },
+            |_| async {},
+            |_, _, _| {},
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(calls.get(), 1);
     }
 
     #[test]

@@ -77,6 +77,8 @@
     "privateUntilUsed": "Privat sampai Anda memakainya",
     "recentlyUpdated": "Baru diperbarui",
     "pausedDownloads": "Unduhan dijeda",
+    "retryingIn": "Mencoba lagi dalam {{seconds}} dtk",
+    "retryingNow": "Mencoba lagi…",
     "resume": "Lanjutkan",
     "retry": "Coba lagi",
     "searchPlaceholder": "Cari model, penulis, atau tempel URL Hugging Face…",

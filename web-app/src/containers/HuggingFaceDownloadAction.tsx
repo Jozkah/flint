@@ -17,6 +17,7 @@ import { route } from '@/constants/routes'
 import {
   cancelHuggingFaceBundle,
   pauseHuggingFaceBundle,
+  resolveBundleId,
   resumeHuggingFaceBundle,
   retryHuggingFaceBundle,
   startHuggingFaceBundle,
@@ -40,6 +41,7 @@ import { cn } from '@/lib/utils'
 import { listedModelId, modelIdKey } from '@/lib/modelIdPath'
 import { formatEta, secondsRemaining } from '@/lib/downloadSpeed'
 import { mlxFinish, startGgufBundle } from '@/lib/huggingfaceStart'
+import { RetryCountdown } from '@/containers/RetryCountdown'
 
 export type HuggingFaceDownloadActionProps = {
   repo: string
@@ -83,7 +85,9 @@ export function HuggingFaceDownloadAction({
   )
   const updateAvailable = installed && hasHuggingFaceUpdate(modelId, revision)
   const bundleId = `hf:${providerName}:${modelId}`
-  const task = useHuggingFaceDownloads((state) => state.tasks[bundleId])
+  // A start that joined another row downloading the same files shows that row.
+  const taskId = useHuggingFaceDownloads((state) => resolveBundleId(state, bundleId))
+  const task = useHuggingFaceDownloads((state) => state.tasks[taskId])
 
   // Let the bar land on "Ready" for a moment before the row turns to Installed.
   const inProgress = Boolean(
@@ -197,7 +201,9 @@ export function HuggingFaceDownloadAction({
         ? 'Installing…'
         : task.status === 'verifying'
           ? 'Verifying…'
-          : null
+          : task.status === 'downloading' && task.retryAt
+            ? <RetryCountdown retryAt={task.retryAt} />
+            : null
     return (
       <div
         className={cn(
@@ -230,7 +236,7 @@ export function HuggingFaceDownloadAction({
           readyLabel={t('common:motionMedia.ready')}
         />
         {task.status === 'downloading' && (
-          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => void pauseHuggingFaceBundle(bundleId)} title={t('common:a11y.pauseDownload')}>
+          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => void pauseHuggingFaceBundle(taskId)} title={t('common:a11y.pauseDownload')}>
             <Pause className="size-3.5" />
           </Button>
         )}
@@ -241,10 +247,10 @@ export function HuggingFaceDownloadAction({
   if (task?.status === 'paused') {
     return (
       <div className={cn('flex items-center gap-1.5', className)}>
-        <Button variant="outline" size="sm" onClick={() => void resumeHuggingFaceBundle(bundleId)}>
+        <Button variant="outline" size="sm" onClick={() => void resumeHuggingFaceBundle(taskId)}>
           <Play className="size-3.5" /> {t('sweep:hub.resume')}
         </Button>
-        <Button variant="ghost" size="icon" className="size-8" onClick={() => void cancelHuggingFaceBundle(bundleId)} title={t('common:a11y.cancelDownload')}>
+        <Button variant="ghost" size="icon" className="size-8" onClick={() => void cancelHuggingFaceBundle(taskId)} title={t('common:a11y.cancelDownload')}>
           <X className="size-3.5" />
         </Button>
       </div>
@@ -257,7 +263,7 @@ export function HuggingFaceDownloadAction({
         <span className="min-w-0 line-clamp-2 text-right text-xs text-destructive">
           {task.error ? t('sweep:hub.downloadFailedWith', { error: task.error }) : t('sweep:hub.downloadFailed')}
         </span>
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => void retryHuggingFaceBundle(bundleId)}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => void retryHuggingFaceBundle(taskId)}>
           <RotateCcw className="size-3.5" /> {t('sweep:hub.retry')}
         </Button>
       </div>
