@@ -31,34 +31,17 @@ export class TauriWindowService extends DefaultWindowService {
     config: WindowConfig
   ): Promise<WebviewWindowInstance> {
     try {
-      // Get current theme from localStorage
-      const storedTheme = localStorage.getItem('jan-theme')
-      let theme: 'light' | 'dark' | undefined = undefined
-
-      if (storedTheme) {
-        try {
-          const themeData = JSON.parse(storedTheme)
-          const activeTheme = themeData?.state?.activeTheme
-          const isDark = themeData?.state?.isDark
-
-          // Set theme based on stored preference
-          if (activeTheme === 'auto') {
-            theme = undefined // Let OS decide
-          } else if (
-            activeTheme === 'dark' ||
-            (activeTheme === 'auto' && isDark)
-          ) {
-            theme = 'dark'
-          } else if (
-            activeTheme === 'light' ||
-            (activeTheme === 'auto' && !isDark)
-          ) {
-            theme = 'light'
-          }
-        } catch (e) {
-          console.warn('Failed to parse theme from localStorage:', e)
-        }
-      }
+      // The theme persists through the backend store, not localStorage, so
+      // read the live store. Imported lazily to keep the window service free
+      // of an import cycle with the hooks. `auto` leaves the OS to decide.
+      const { useTheme } = await import('@/hooks/useTheme')
+      const activeTheme = useTheme.getState().activeTheme
+      const theme: 'light' | 'dark' | undefined =
+        activeTheme === 'dark'
+          ? 'dark'
+          : activeTheme === 'light'
+            ? 'light'
+            : undefined
 
       const webviewWindow = new WebviewWindow(config.label, {
         url: config.url,
