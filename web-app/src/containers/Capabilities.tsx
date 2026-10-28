@@ -14,6 +14,7 @@ import {
   TextCursorInput,
 } from 'lucide-react'
 import { Fragment, memo } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 interface CapabilitiesProps {
   capabilities: string[]
@@ -25,6 +26,7 @@ const Capabilities = memo(function Capabilities({
   capabilities,
   compact = false,
 }: CapabilitiesProps) {
+  const { t } = useTranslation()
   if (!capabilities.length) return null
 
   // Filter out proactive capability as it's now managed in MCP settings
@@ -82,13 +84,9 @@ const Capabilities = memo(function Capabilities({
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>
-                      {capability === 'web_search'
-                        ? 'Web Search'
-                        : capability === 'embeddings'
-                          ? 'Embedding Model (for RAG/vectors, not chat)'
-                          : capability === 'raw_completion'
-                            ? 'Raw completion (continues your text, no chat or tools)'
-                            : capability}
+                      {t(`common:capabilityTips.${capability}`, {
+                        defaultValue: capability,
+                      })}
                     </p>
                   </TooltipContent>
                 </Tooltip>

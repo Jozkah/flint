@@ -579,6 +579,27 @@
   "attachedImage": "Attached image {{n}}",
   "saveChanges": "Save changes",
   "savingEllipsis": "Saving…",
+  "modelLoader": {
+    "loading": "Loading model…",
+    "done": "Loaded in",
+    "failed": "Failed after"
+  },
+  "capabilityTips": {
+    "web_search": "Web Search",
+    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
+    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+  },
+  "customAvatar": "Custom avatar",
+  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "workProfileLabels": {
+    "execute": "Execute",
+    "review": "Review",
+    "plan": "Plan",
+    "refactor": "Refactor",
+    "debug": "Debug",
+    "reverse-engineer": "Reverse-engineer",
+    "explain": "Explain"
+  },
   "deleteMessageDescription": "Are you sure you want to delete this message? This action cannot be undone.",
   "deleteThread": "Delete Thread",
   "renameThread": "Rename Thread",

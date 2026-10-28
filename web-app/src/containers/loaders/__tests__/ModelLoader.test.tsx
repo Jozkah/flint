@@ -8,7 +8,7 @@ describe('ModelLoader', () => {
 
   it('shows a live timer while loading', () => {
     render(<ModelLoader />)
-    expect(screen.getByText('Loading model…')).toBeInTheDocument()
+    expect(screen.getByText('common:modelLoader.loading')).toBeInTheDocument()
     expect(screen.getByTestId('model-loader-elapsed')).toHaveTextContent('0s')
     act(() => {
       vi.advanceTimersByTime(3000)
@@ -22,7 +22,7 @@ describe('ModelLoader', () => {
       vi.advanceTimersByTime(4000)
     })
     rerender(<ModelLoader status="done" />)
-    expect(screen.getByText('Loaded in')).toBeInTheDocument()
+    expect(screen.getByText('common:modelLoader.done')).toBeInTheDocument()
     act(() => {
       vi.advanceTimersByTime(5000)
     })
@@ -35,7 +35,7 @@ describe('ModelLoader', () => {
 
   it('shows the failed state with a pinned duration', () => {
     render(<ModelLoader status="failed" elapsedMs={4200} />)
-    expect(screen.getByText('Failed after')).toBeInTheDocument()
+    expect(screen.getByText('common:modelLoader.failed')).toBeInTheDocument()
     expect(screen.getByTestId('model-loader-elapsed')).toHaveTextContent('4s')
   })
 })
