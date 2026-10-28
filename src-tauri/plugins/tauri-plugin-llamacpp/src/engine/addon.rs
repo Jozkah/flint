@@ -1016,7 +1016,13 @@ pub async fn download_and_install(
     }
     let have = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
     let need = space_needed(archive.size, have, manifest.installed_size());
-    if let Some(free) = free_space(root) {
+    let probe_root = root.to_path_buf();
+    let free = jan_utils::system::run_bounded(std::time::Duration::from_secs(3), move || {
+        free_space(&probe_root)
+    })
+    .await
+    .flatten();
+    if let Some(free) = free {
         if free < need {
             return Err(AddonError::DiskSpace { need_mb: need >> 20, free_mb: free >> 20 });
         }
