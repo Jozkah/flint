@@ -16,7 +16,7 @@ pub mod browser;
 pub mod browser_discovery;
 pub mod activity;
 pub mod audit;
-pub mod compat_env;
+pub use jan_process::compat_env;
 pub mod control_tags;
 pub mod deferred_approvals;
 pub mod format;

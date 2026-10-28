@@ -474,7 +474,9 @@
     "usageUnsaved": "Thay đổi chưa lưu",
     "stopServerToEdit": "Dừng máy chủ để chỉnh sửa",
     "trustedHostsInvalid": "Máy chủ không hợp lệ: {{hosts}}. Dùng máy chủ hoặc máy chủ:cổng, ví dụ example.com hoặc 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Chưa lưu. Nhấn Enter để lưu, Escape để hoàn tác."
+    "trustedHostsUnsaved": "Chưa lưu. Nhấn Enter để lưu, Escape để hoàn tác.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Phân tích",
@@ -588,7 +590,11 @@
       "installing": "Đang cài đặt…",
       "uninstall": "Gỡ cài đặt",
       "uninstalling": "Đang gỡ cài đặt…",
-      "foreignDesc": "Tìm thấy tại {{path}}, do một bản Flint khác cài đặt. Cài ở đây để dùng CLI của bản này."
+      "foreignDesc": "Tìm thấy tại {{path}}, do một bản Flint khác cài đặt. Cài ở đây để dùng CLI của bản này.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Khởi động và khay hệ thống",
     "cliGroup": "Dòng lệnh",

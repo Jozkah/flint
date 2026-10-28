@@ -21,10 +21,7 @@ import { ConversationGrantsSection } from '@/containers/permissions/Conversation
 import { GlobalGrantsSection } from '@/containers/permissions/GlobalGrantsSection'
 import { AuditLogSection } from '@/containers/permissions/AuditLogSection'
 
-// `as any` matches every other settings route: the typed route tree is
-// generated during the build, after this file is typechecked.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.permissions as any)({
+export const Route = createFileRoute(route.settings.permissions)({
   component: PermissionsSettings,
 })
 

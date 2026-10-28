@@ -474,7 +474,9 @@
     "usageUnsaved": "सहेजे नहीं गए बदलाव",
     "stopServerToEdit": "संपादित करने के लिए सर्वर बंद करें",
     "trustedHostsInvalid": "मान्य होस्ट नहीं: {{hosts}}. होस्ट या होस्ट:पोर्ट लिखें, जैसे example.com या 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "सहेजा नहीं गया। सहेजने के लिए Enter, पूर्ववत करने के लिए Escape दबाएँ।"
+    "trustedHostsUnsaved": "सहेजा नहीं गया। सहेजने के लिए Enter, पूर्ववत करने के लिए Escape दबाएँ।",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "विश्लेषण",
@@ -588,7 +590,11 @@
       "installing": "इंस्टॉल हो रहा है…",
       "uninstall": "अनइंस्टॉल करें",
       "uninstalling": "अनइंस्टॉल हो रहा है…",
-      "foreignDesc": "{{path}} पर मिला, Flint की किसी दूसरी कॉपी ने इंस्टॉल किया है। इस कॉपी का CLI इस्तेमाल करने के लिए यहाँ इंस्टॉल करें।"
+      "foreignDesc": "{{path}} पर मिला, Flint की किसी दूसरी कॉपी ने इंस्टॉल किया है। इस कॉपी का CLI इस्तेमाल करने के लिए यहाँ इंस्टॉल करें।",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "स्टार्टअप और ट्रे",
     "cliGroup": "कमांड लाइन",

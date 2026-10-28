@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type ComponentType } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
@@ -38,14 +39,15 @@ export function CampaignRunHost({
   renderPane?: PaneComponent
 }) {
   const { campaigns } = useCampaigns()
-  const sessions = useCoworkSessions((s) => s.sessions)
+  // Ids only: the session array changes identity on every run checkpoint.
+  const sessionIds = useCoworkSessions(useShallow((s) => s.sessions.map((x) => x.id)))
   const counts = useHostedSessions((s) => s.counts)
   const panes = useSplitConversation((s) => s.panes)
 
   const targets = useMemo(() => {
     const ids = sessionsNeedingHost({
       campaigns,
-      sessionIds: new Set(sessions.map((s) => s.id)),
+      sessionIds: new Set(sessionIds),
       hostedElsewhere: new Set(Object.keys(counts)),
     })
     return ids.map((sessionId) => ({
@@ -54,7 +56,7 @@ export function CampaignRunHost({
         panes.find((p) => p.kind === 'cowork' && p.refId === sessionId)?.id ??
         `campaign-host:${sessionId}`,
     }))
-  }, [campaigns, sessions, counts, panes])
+  }, [campaigns, sessionIds, counts, panes])
 
   // Put back a task the record calls running that nothing is running.
   const campaignsRef = useRef(campaigns)

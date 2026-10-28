@@ -64,6 +64,7 @@ function GroupLabel({ children }: { children: ReactNode }) {
 
 const NO_THREADS: ReturnType<typeof useThreads.getState>['threads'] = {}
 const NO_PROVIDERS: ReturnType<typeof useModelProvider.getState>['providers'] = []
+const NO_SESSIONS: ReturnType<typeof useCoworkSessions.getState>['sessions'] = []
 
 export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const navigate = useNavigate()
@@ -221,7 +222,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
   // Rooms and Cowork sessions, found by title like a chat.
   const roomSummaries = useRoomsStore((s) => s.summaries)
-  const coworkSessions = useCoworkSessions((s) => s.sessions)
+  // Only followed while the dialog is open: it is mounted for the window's life.
+  const coworkSessions = useCoworkSessions((s) => (open ? s.sessions : NO_SESSIONS))
   useEffect(() => {
     if (open && useRoomsStore.getState().summaries.length === 0) {
       void useRoomsStore.getState().loadRooms().catch(() => {})

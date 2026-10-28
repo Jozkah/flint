@@ -476,7 +476,9 @@
     "usageUnsaved": "Cambios sin guardar",
     "stopServerToEdit": "Detén el servidor para editar",
     "trustedHostsInvalid": "Host no válido: {{hosts}}. Usa un host o host:puerto, como example.com o 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Sin guardar. Pulsa Intro para guardar, Escape para deshacer."
+    "trustedHostsUnsaved": "Sin guardar. Pulsa Intro para guardar, Escape para deshacer.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analíticas",
@@ -590,7 +592,11 @@
       "installing": "Instalando…",
       "uninstall": "Desinstalar",
       "uninstalling": "Desinstalando…",
-      "foreignDesc": "Encontrada en {{path}}, instalada por otra copia de Flint. Instala aquí para usar la CLI de esta copia."
+      "foreignDesc": "Encontrada en {{path}}, instalada por otra copia de Flint. Instala aquí para usar la CLI de esta copia.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Inicio y bandeja",
     "cliGroup": "Línea de comandos",

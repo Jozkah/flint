@@ -36,18 +36,18 @@ where
 
 #[tauri::command]
 pub async fn get_status(_state: State<'_, VectorDBState>) -> Result<Status, VectorDBError> {
-    println!("[VectorDB] Checking ANN availability...");
+    log::debug!("[VectorDB] Checking ANN availability...");
     let ann = blocking(move || {
         // In-memory probe: no stray `__status__.db` left in the db folder.
         db::register_static_vec();
         let conn = rusqlite::Connection::open_in_memory()?;
         let ok = db::try_load_sqlite_vec_verbose(&conn);
-        println!("[VectorDB] search backend: {}", db::vector_search_backend(&conn));
+        log::debug!("[VectorDB] search backend: {}", db::vector_search_backend(&conn));
         Ok(ok)
     })
     .await?;
 
-    println!("[VectorDB] ANN status: {}", if ann { "AVAILABLE" } else { "NOT AVAILABLE" });
+    log::debug!("[VectorDB] ANN status: {}", if ann { "AVAILABLE" } else { "NOT AVAILABLE" });
     Ok(Status { ann_available: ann })
 }
 
@@ -65,9 +65,9 @@ pub async fn create_collection<R: tauri::Runtime>(
     })
     .await?;
     if has_ann {
-        println!("[VectorDB] ✓ Collection '{}' created with ANN support", name);
+        log::debug!("[VectorDB] ✓ Collection '{}' created with ANN support", name);
     } else {
-        println!("[VectorDB] ⚠ Collection '{}' created WITHOUT ANN support (will use linear search)", name);
+        log::warn!("[VectorDB] ⚠ Collection '{}' created WITHOUT ANN support (will use linear search)", name);
     }
     Ok(())
 }

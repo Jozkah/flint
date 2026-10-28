@@ -264,74 +264,64 @@ pub use tauri_glue::{install, restore_and_show};
 ))]
 pub use portable_glue::{install, restore_and_show};
 
-/// macOS and Linux: the same record, read and applied through Tauri's own
-/// window API. There is no placement record to read here, so the normal frame
-/// is only taken while the window is neither maximised, fullscreen nor
-/// minimised; in those states the last normal frame is kept and the state is
-/// noted on it.
+/// What the Windows and the portable glue share: the monitors a window can be
+/// put on, the maximise/fullscreen step after the frame is placed, and the
+/// debounced writer. Only how a record is read and how the frame is placed
+/// differ per platform.
 #[cfg(all(
-    not(windows),
     not(feature = "cli"),
     not(any(target_os = "android", target_os = "ios"))
 ))]
-mod portable_glue {
+mod glue_common {
     use super::*;
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
-    use tauri::{
-        LogicalSize, PhysicalPosition, Runtime, WebviewWindow, WindowEvent,
-    };
+    use tauri::{Runtime, WebviewWindow, WindowEvent};
 
-    pub fn restore_and_show<R: Runtime>(window: &WebviewWindow<R>, data_folder: &Path) {
-        let label = window.label().to_string();
-        if let Some(saved) = load(&state_path(data_folder)).get(&label).copied() {
-            let monitors: Vec<MonitorArea> = window
-                .available_monitors()
-                .unwrap_or_default()
-                .iter()
-                .map(|m| {
-                    let wa = m.work_area();
-                    MonitorArea {
-                        x: wa.position.x,
-                        y: wa.position.y,
-                        width: wa.size.width,
-                        height: wa.size.height,
-                        scale: m.scale_factor(),
-                    }
-                })
-                .collect();
-            let placement = resolve_placement(&saved, &monitors, (800.0, 740.0));
-            log::info!("window-state: restoring {label}: {placement:?}");
-            let (maximized, fullscreen) = match placement {
-                Placement::Restore {
-                    x,
-                    y,
-                    width,
-                    height,
-                    maximized,
-                    fullscreen,
-                } => {
-                    let _ = window.set_size(LogicalSize::new(width, height));
-                    let _ = window.set_position(PhysicalPosition::new(x, y));
-                    (maximized, fullscreen)
+    /// The work area of every monitor, in the units `resolve_placement` takes.
+    pub(super) fn monitor_areas<R: Runtime>(window: &WebviewWindow<R>) -> Vec<MonitorArea> {
+        window
+            .available_monitors()
+            .unwrap_or_default()
+            .iter()
+            .map(|m| {
+                let wa = m.work_area();
+                MonitorArea {
+                    x: wa.position.x,
+                    y: wa.position.y,
+                    width: wa.size.width,
+                    height: wa.size.height,
+                    scale: m.scale_factor(),
                 }
-                Placement::Default {
-                    maximized,
-                    fullscreen,
-                } => (maximized, fullscreen),
-            };
-            if fullscreen {
-                let _ = window.set_fullscreen(true);
-            } else if maximized {
-                let _ = window.maximize();
-            }
+            })
+            .collect()
+    }
+
+    /// Fullscreen wins over maximised; neither touches a normal frame.
+    pub(super) fn apply_shown<R: Runtime>(
+        window: &WebviewWindow<R>,
+        maximized: bool,
+        fullscreen: bool,
+    ) {
+        if fullscreen {
+            let _ = window.set_fullscreen(true);
+        } else if maximized {
+            let _ = window.maximize();
         }
-        let _ = window.show();
     }
 
     /// Record the window's placement as it changes, through one debounced
-    /// worker thread; closing writes at once.
-    pub fn install<R: Runtime>(window: &WebviewWindow<R>, data_folder: PathBuf) {
+    /// worker thread; closing writes at once. `read_record` gets the record
+    /// last written (or loaded) and returns the one to write, or `None` to
+    /// leave the file alone.
+    pub(super) fn install_recorder<R: Runtime>(
+        window: &WebviewWindow<R>,
+        data_folder: PathBuf,
+        read_record: impl Fn(&WebviewWindow<R>, Option<&SavedWindow>) -> Option<SavedWindow>
+            + Send
+            + Sync
+            + 'static,
+    ) {
         let path = state_path(&data_folder);
         let label = window.label().to_string();
         let last: Arc<Mutex<Option<SavedWindow>>> =
@@ -379,6 +369,57 @@ mod portable_glue {
             _ => {}
         });
     }
+}
+
+/// macOS and Linux: the same record, read and applied through Tauri's own
+/// window API. There is no placement record to read here, so the normal frame
+/// is only taken while the window is neither maximised, fullscreen nor
+/// minimised; in those states the last normal frame is kept and the state is
+/// noted on it.
+#[cfg(all(
+    not(windows),
+    not(feature = "cli"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+mod portable_glue {
+    use super::glue_common::{apply_shown, install_recorder, monitor_areas as monitors_of};
+    use super::*;
+    use tauri::{LogicalSize, PhysicalPosition, Runtime, WebviewWindow};
+
+    pub fn restore_and_show<R: Runtime>(window: &WebviewWindow<R>, data_folder: &Path) {
+        let label = window.label().to_string();
+        if let Some(saved) = load(&state_path(data_folder)).get(&label).copied() {
+            let monitors = monitors_of(window);
+            let placement = resolve_placement(&saved, &monitors, (800.0, 740.0));
+            log::info!("window-state: restoring {label}: {placement:?}");
+            let (maximized, fullscreen) = match placement {
+                Placement::Restore {
+                    x,
+                    y,
+                    width,
+                    height,
+                    maximized,
+                    fullscreen,
+                } => {
+                    let _ = window.set_size(LogicalSize::new(width, height));
+                    let _ = window.set_position(PhysicalPosition::new(x, y));
+                    (maximized, fullscreen)
+                }
+                Placement::Default {
+                    maximized,
+                    fullscreen,
+                } => (maximized, fullscreen),
+            };
+            apply_shown(window, maximized, fullscreen);
+        }
+        let _ = window.show();
+    }
+
+    /// Record the window's placement as it changes, through one debounced
+    /// worker thread; closing writes at once.
+    pub fn install<R: Runtime>(window: &WebviewWindow<R>, data_folder: PathBuf) {
+        install_recorder(window, data_folder, read_record);
+    }
 
     fn read_record<R: Runtime>(
         win: &WebviewWindow<R>,
@@ -415,10 +456,9 @@ mod portable_glue {
 
 #[cfg(all(windows, not(feature = "cli")))]
 mod tauri_glue {
+    use super::glue_common::{apply_shown, install_recorder, monitor_areas as monitors_of};
     use super::*;
-    use std::sync::{mpsc, Arc, Mutex};
-    use std::time::Duration;
-    use tauri::{Manager, Runtime, WebviewWindow, WindowEvent};
+    use tauri::{Manager, Runtime, WebviewWindow};
     use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromRect, MONITORINFO, MONITOR_DEFAULTTONEAREST,
@@ -474,21 +514,7 @@ mod tauri_glue {
             load(&state_path(data_folder)).get(&label).copied(),
             hwnd_of(window),
         ) {
-            let monitors: Vec<MonitorArea> = window
-                .available_monitors()
-                .unwrap_or_default()
-                .iter()
-                .map(|m| {
-                    let wa = m.work_area();
-                    MonitorArea {
-                        x: wa.position.x,
-                        y: wa.position.y,
-                        width: wa.size.width,
-                        height: wa.size.height,
-                        scale: m.scale_factor(),
-                    }
-                })
-                .collect();
+            let monitors = monitors_of(window);
             let placement = resolve_placement(&saved, &monitors, (1024.0, 740.0));
             log::info!("window-state: restoring {label}: {placement:?}");
             let (maximized, fullscreen) = match placement {
@@ -541,11 +567,7 @@ mod tauri_glue {
                     (maximized, fullscreen)
                 }
             };
-            if fullscreen {
-                let _ = window.set_fullscreen(true);
-            } else if maximized {
-                let _ = window.maximize();
-            }
+            apply_shown(window, maximized, fullscreen);
         }
         if let Err(e) = window.show() {
             log::error!("window-state: could not show {label}: {e}");
@@ -562,49 +584,7 @@ mod tauri_glue {
     /// from the operating system's placement, so the timing of events never
     /// decides what the normal frame was.
     pub fn install<R: Runtime>(window: &WebviewWindow<R>, data_folder: PathBuf) {
-        let path = state_path(&data_folder);
-        let label = window.label().to_string();
-        let last: Arc<Mutex<Option<SavedWindow>>> =
-            Arc::new(Mutex::new(load(&path).get(&label).copied()));
-
-        let flush = {
-            let win = window.clone();
-            move || {
-                let Some(record) = read_record(&win) else { return };
-                let mut slot = last.lock().unwrap_or_else(|e| e.into_inner());
-                if *slot == Some(record) {
-                    return;
-                }
-                *slot = Some(record);
-                let mut file = load(&path);
-                file.insert(label.clone(), record);
-                if let Err(e) = store(&path, &file) {
-                    log::warn!("window-state: could not save {label}: {e}");
-                }
-            }
-        };
-        let flush = Arc::new(flush);
-
-        let (tx, rx) = mpsc::channel::<()>();
-        {
-            let flush = flush.clone();
-            let spawned = std::thread::Builder::new()
-                .name("window-state".into())
-                .spawn(move || debounce_loop(&rx, Duration::from_millis(400), || flush()));
-            if let Err(e) = spawned {
-                log::warn!("window-state: could not start saver: {e}");
-            }
-        }
-
-        window.on_window_event(move |event| match event {
-            WindowEvent::Moved(_)
-            | WindowEvent::Resized(_)
-            | WindowEvent::ScaleFactorChanged { .. } => {
-                let _ = tx.send(());
-            }
-            WindowEvent::CloseRequested { .. } => flush(),
-            _ => {}
-        });
+        install_recorder(window, data_folder, |win, _prior| read_record(win));
     }
 
     fn read_record<R: Runtime>(win: &WebviewWindow<R>) -> Option<SavedWindow> {

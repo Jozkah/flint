@@ -24,6 +24,14 @@ pub const PREVIEW_SCHEME: &str = "flintpreview";
 /// (a crashed view, a missed cleanup) cannot grow the store without limit.
 const MAX_ENTRIES: usize = 64;
 
+/// Largest single document accepted. A generated page is a few hundred KB; this
+/// stops a runaway file from being copied into memory (and again per request).
+const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
+
+/// Upper bound on the bytes held across all documents; the oldest are dropped
+/// to make room, as they are for the entry count.
+const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
+
 struct Entry {
     html: String,
     csp: String,
@@ -37,16 +45,32 @@ pub struct PreviewStore {
 }
 
 impl PreviewStore {
-    pub fn insert(&mut self, html: String, allow_network: bool, allow_scripts: bool) -> String {
-        if self.entries.len() >= MAX_ENTRIES {
-            if let Some(oldest) = self
+    pub fn insert(
+        &mut self,
+        html: String,
+        allow_network: bool,
+        allow_scripts: bool,
+    ) -> Result<String, String> {
+        if html.len() > MAX_HTML_BYTES {
+            return Err(format!(
+                "preview document is {} bytes; the limit is {MAX_HTML_BYTES}",
+                html.len()
+            ));
+        }
+        // Drop the oldest until there is room for one more entry and its bytes.
+        while !self.entries.is_empty()
+            && (self.entries.len() >= MAX_ENTRIES
+                || self.total_bytes() + html.len() > MAX_TOTAL_BYTES)
+        {
+            let Some(oldest) = self
                 .entries
                 .iter()
                 .min_by_key(|(_, e)| e.seq)
                 .map(|(k, _)| k.clone())
-            {
-                self.entries.remove(&oldest);
-            }
+            else {
+                break;
+            };
+            self.entries.remove(&oldest);
         }
         // v4 UUID: 122 random bits, so another frame cannot guess a live id.
         let id = uuid::Uuid::new_v4().simple().to_string();
@@ -59,7 +83,11 @@ impl PreviewStore {
                 seq: self.next_seq,
             },
         );
-        id
+        Ok(id)
+    }
+
+    fn total_bytes(&self) -> usize {
+        self.entries.values().map(|e| e.html.len()).sum()
     }
 
     pub fn remove(&mut self, id: &str) {
@@ -150,7 +178,11 @@ pub fn handle(path: &str) -> Response<Vec<u8>> {
 
 /// Store a preview document; returns the id to load it by.
 #[tauri::command]
-pub fn preview_register(html: String, allow_network: bool, allow_scripts: bool) -> String {
+pub fn preview_register(
+    html: String,
+    allow_network: bool,
+    allow_scripts: bool,
+) -> Result<String, String> {
     store().insert(html, allow_network, allow_scripts)
 }
 
@@ -171,7 +203,7 @@ mod tests {
     #[test]
     fn serves_document_with_its_own_csp_and_html_type() {
         let mut store = PreviewStore::default();
-        let id = store.insert("<p>hi</p><script>1</script>".into(), false, true);
+        let id = store.insert("<p>hi</p><script>1</script>".into(), false, true).unwrap();
         let res = store.respond(&format!("/{id}"));
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(get(&res, header::CONTENT_TYPE), "text/html; charset=utf-8");
@@ -187,7 +219,7 @@ mod tests {
     #[test]
     fn static_mode_forbids_scripts() {
         let mut store = PreviewStore::default();
-        let id = store.insert("<svg/>".into(), false, false);
+        let id = store.insert("<svg/>".into(), false, false).unwrap();
         let res = store.respond(&format!("/{id}"));
         let csp = get(&res, header::CONTENT_SECURITY_POLICY);
         assert!(!csp.contains("script-src"));
@@ -205,7 +237,7 @@ mod tests {
     fn unknown_or_released_id_is_404() {
         let mut store = PreviewStore::default();
         assert_eq!(store.respond("/nope").status(), StatusCode::NOT_FOUND);
-        let id = store.insert("x".into(), false, true);
+        let id = store.insert("x".into(), false, true).unwrap();
         store.remove(&id);
         assert_eq!(
             store.respond(&format!("/{id}")).status(),
@@ -216,8 +248,8 @@ mod tests {
     #[test]
     fn ids_are_unique_and_long() {
         let mut store = PreviewStore::default();
-        let a = store.insert("a".into(), false, true);
-        let b = store.insert("b".into(), false, true);
+        let a = store.insert("a".into(), false, true).unwrap();
+        let b = store.insert("b".into(), false, true).unwrap();
         assert_ne!(a, b);
         assert_eq!(a.len(), 32);
     }
@@ -225,11 +257,36 @@ mod tests {
     #[test]
     fn store_is_bounded() {
         let mut store = PreviewStore::default();
-        let first = store.insert("0".into(), false, true);
+        let first = store.insert("0".into(), false, true).unwrap();
         for i in 0..MAX_ENTRIES {
-            store.insert(i.to_string(), false, true);
+            store.insert(i.to_string(), false, true).unwrap();
         }
         assert_eq!(store.entries.len(), MAX_ENTRIES);
+        assert_eq!(
+            store.respond(&format!("/{first}")).status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn oversize_document_is_refused() {
+        let mut store = PreviewStore::default();
+        let big = "x".repeat(MAX_HTML_BYTES + 1);
+        assert!(store.insert(big, false, true).is_err());
+        assert!(store.entries.is_empty());
+        let at_limit = "x".repeat(MAX_HTML_BYTES);
+        assert!(store.insert(at_limit, false, true).is_ok());
+    }
+
+    #[test]
+    fn total_bytes_are_bounded_oldest_first() {
+        let mut store = PreviewStore::default();
+        let chunk = "x".repeat(MAX_HTML_BYTES);
+        let first = store.insert(chunk.clone(), false, true).unwrap();
+        for _ in 0..(MAX_TOTAL_BYTES / MAX_HTML_BYTES) {
+            store.insert(chunk.clone(), false, true).unwrap();
+        }
+        assert!(store.total_bytes() <= MAX_TOTAL_BYTES);
         assert_eq!(
             store.respond(&format!("/{first}")).status(),
             StatusCode::NOT_FOUND
