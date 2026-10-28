@@ -166,8 +166,7 @@ pub(crate) fn hf_endpoint() -> Result<Url, String> {
 
 /// Whether the access token may be sent to `endpoint`: only over https, so a
 /// plain-http mirror never sees it (ENG-024).
-// Only the desktop downloader (huggingface.rs) sends a token.
-#[cfg(any(test, not(feature = "cli")))]
+// `token_for` uses it in every build, including the headless CLI.
 pub(crate) fn token_allowed_for(endpoint: &Url) -> bool {
     endpoint.scheme() == "https"
 }
