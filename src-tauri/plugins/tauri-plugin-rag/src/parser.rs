@@ -155,7 +155,19 @@ pub fn parse_text(file_path: &str) -> Result<String, RagError> {
     read_text_auto(file_path)
 }
 
+/// Parse a document, refusing credential and browser-profile locations.
 pub fn parse_document(file_path: &str, file_type: &str) -> Result<String, RagError> {
+    let path = std::path::Path::new(file_path);
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if jan_utils::path_policy::is_sensitive_path(&resolved) {
+        return Err(RagError::ParseError(format!(
+            "{file_path} is not readable: it is in a protected location"
+        )));
+    }
+    parse_document_impl(file_path, file_type)
+}
+
+fn parse_document_impl(file_path: &str, file_type: &str) -> Result<String, RagError> {
     match file_type.to_lowercase().as_str() {
         "pdf" | "application/pdf" => parse_pdf(file_path),
         "txt" | "text/plain" | "md" | "text/markdown"
@@ -214,12 +226,24 @@ pub fn parse_document(file_path: &str, file_type: &str) -> Result<String, RagErr
                     let mime = k.mime_type();
                     // Guard against infinite recursion if mime matches the unknown extension
                     if mime != other {
-                        return parse_document(file_path, mime);
+                        return parse_document_impl(file_path, mime);
                     }
                     Err(RagError::UnsupportedFileType(other.to_string()))
                 }
                 _ => {
-                    // infer returned None → no binary magic bytes detected, treat as plain text
+                    // infer found no magic bytes: plain text only. Sniff the first
+                    // 8 KiB so unknown binary is rejected instead of decoded as text.
+                    let mut head = vec![0u8; 8192];
+                    let n = fs::File::open(file_path)?.read(&mut head)?;
+                    head.truncate(n);
+                    let valid = match std::str::from_utf8(&head) {
+                        Ok(_) => true,
+                        // A multi-byte character cut by the 8 KiB window is fine.
+                        Err(e) => n == 8192 && e.error_len().is_none(),
+                    };
+                    if head.contains(&0) || !valid {
+                        return Err(RagError::UnsupportedFileType(other.to_string()));
+                    }
                     parse_text(file_path)
                 }
             }
@@ -713,6 +737,31 @@ mod tests {
         let path = dir.file("latin.txt", &bytes);
         let text = read_text_auto(&path).unwrap();
         assert!(text.contains("caf\u{00E9}"), "{text}");
+    }
+
+    #[test]
+    fn parse_document_refuses_ssh_dir() {
+        let dir = TempDir::new("ssh");
+        let ssh = dir.0.join(".ssh");
+        fs::create_dir_all(&ssh).unwrap();
+        let path = ssh.join("notes.txt");
+        fs::write(&path, b"secret").unwrap();
+        let err = parse_document(&path.to_string_lossy(), "txt").unwrap_err();
+        assert!(matches!(err, RagError::ParseError(_)), "{err:?}");
+    }
+
+    #[test]
+    fn binary_unknown_type_is_rejected() {
+        let dir = TempDir::new("bin");
+        let path = dir.file("blob.zzq", &[0x00, 0x01, 0x02, 0xff, 0xfe, 0x00, 0x10]);
+        assert!(parse_document(&path, "zzq").is_err());
+    }
+
+    #[test]
+    fn unknown_text_type_still_parses() {
+        let dir = TempDir::new("txt");
+        let path = dir.file("notes.zzq", b"plain words here\n");
+        assert_eq!(parse_document(&path, "zzq").unwrap(), "plain words here\n");
     }
 
     #[test]

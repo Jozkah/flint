@@ -9,9 +9,6 @@
 use std::path::{Component, Path, PathBuf};
 use tauri::Runtime;
 
-/// Directory names that are never exposed, wherever they appear in the path.
-const SENSITIVE_DIRS: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube", ".azure"];
-
 /// Strip the Windows verbatim prefix `canonicalize` adds so scope globs match.
 fn strip_verbatim(p: PathBuf) -> PathBuf {
     let s = p.to_string_lossy();
@@ -44,8 +41,8 @@ pub fn check_asset_path(path: &Path, home: Option<&Path>, recursive: bool) -> Re
         })
         .collect();
 
-    if let Some(hit) = names.iter().find(|n| SENSITIVE_DIRS.contains(&n.as_str())) {
-        return Err(format!("refusing to expose sensitive folder {hit}"));
+    if jan_utils::path_policy::is_sensitive_path(path) {
+        return Err("refusing to expose a sensitive folder".into());
     }
     if names
         .windows(3)
@@ -130,6 +127,27 @@ mod tests {
             check_asset_path(&p("/d/Flint/provider_secrets.json"), Some(&home), false).is_err()
         );
         assert!(check_asset_path(&p("/home/u/AppData"), Some(&home), true).is_err());
+    }
+
+    #[test]
+    fn surfaces_agree() {
+        let home = p("/home/u");
+        for case in [
+            "/home/u/.ssh/id_rsa",
+            "/home/u/.docker/config.json",
+            "/home/u/.npmrc",
+            "/home/u/.netrc",
+            "/home/u/.config/gh/hosts.yml",
+            "/home/u/.config/gcloud/a",
+            "/d/Flint/provider_secrets.json",
+            "/home/u/.mozilla/firefox/p",
+            "/home/u/models/a.gguf",
+            "/home/u/Documents/Credentials/a.txt",
+        ] {
+            let read = crate::core::filesystem::helpers::is_sensitive_read_path(&p(case));
+            let asset = check_asset_path(&p(case), Some(&home), false).is_err();
+            assert_eq!(read, asset, "surfaces disagree on {case}");
+        }
     }
 
     #[test]
