@@ -125,6 +125,9 @@ struct Inner {
     lease: Option<Lease>,
     paused: bool,
     visits: Vec<String>,
+    /// Why the saved rules could not be loaded. While set, every host is denied
+    /// and the rules file is never written, until the user acknowledges it.
+    damaged: Option<String>,
 }
 
 #[derive(Default)]
@@ -152,7 +155,7 @@ impl Store {
         let snapshot = match (&g.lease, g.paused) {
             (Some(l), false) => Some(Arc::new(NavPolicy {
                 until: l.until,
-                enabled: l.enabled,
+                enabled: l.enabled && g.damaged.is_none(),
                 unattended: l.unattended,
                 network: l.network.clone(),
                 rules: g.rules.clone(),
@@ -184,6 +187,7 @@ impl Store {
         if lock(&self.inner).loaded {
             return;
         }
+        let mut damage: Option<String> = None;
         let parsed = match std::fs::read_to_string(path) {
             Ok(raw) => match serde_json::from_str::<RuleSet>(&raw) {
                 Ok(mut set) => {
@@ -199,13 +203,27 @@ impl Store {
                     Some(set)
                 }
                 Err(e) => {
-                    log::warn!("browser agent: could not read {}: {e}", path.display());
+                    // Keep the unreadable file: the next save would overwrite
+                    // the user's rules with an empty set.
+                    let mut name = path.file_name().unwrap_or_default().to_os_string();
+                    name.push(format!(".bad-{}", now_secs()));
+                    let aside = path.with_file_name(name);
+                    let moved = std::fs::rename(path, &aside).is_ok();
+                    let msg = format!(
+                        "the browser rules file {} could not be parsed ({e}); {}",
+                        path.display(),
+                        if moved { format!("it was moved to {}", aside.display()) } else { "it could not be moved aside".to_string() }
+                    );
+                    log::warn!("browser agent: {msg}");
+                    damage = Some(msg);
                     None
                 }
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => {
-                log::warn!("browser agent: could not read {}: {e}", path.display());
+                let msg = format!("the browser rules file {} could not be read ({e})", path.display());
+                log::warn!("browser agent: {msg}");
+                damage = Some(msg);
                 None
             }
         };
@@ -215,6 +233,7 @@ impl Store {
         }
         g.loaded = true;
         g.path = Some(path.to_path_buf());
+        g.damaged = damage;
         if let Some(set) = parsed {
             g.rules = set;
         }
@@ -228,23 +247,43 @@ impl Store {
         let _io = lock(&self.io);
         // Serialized again under the io lock: two writers that each took a
         // snapshot earlier could otherwise land the older one last.
-        let body = serde_json::to_string_pretty(&lock(&self.inner).rules).map_err(|e| e.to_string())?;
+        let body = {
+            let g = lock(&self.inner);
+            if let Some(msg) = &g.damaged {
+                return Err(format!("browser rules are damaged: {msg}"));
+            }
+            serde_json::to_string_pretty(&g.rules).map_err(|e| e.to_string())?
+        };
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+        crate::core::atomic_io::write_atomic_durable(&path, body.as_bytes())
     }
 
     pub fn rules(&self) -> Vec<DomainRule> {
         lock(&self.inner).rules.rules.clone()
     }
 
+    /// Why the saved rules could not be loaded, if they could not.
+    pub fn damaged(&self) -> Option<String> {
+        lock(&self.inner).damaged.clone()
+    }
+
+    /// The user has seen the damage report: rules work again, starting from the
+    /// (empty) set the store holds. The damaged file stays on disk, renamed.
+    pub fn acknowledge_damage(&self) {
+        let mut g = lock(&self.inner);
+        g.damaged = None;
+        self.publish(&g);
+    }
+
     pub fn rule_set(&self, pattern: &str, verdict: Verdict, private_ok: bool) -> Result<DomainRule, String> {
         let pattern = normalize_pattern(pattern)?;
         let (rule, path, body) = {
             let mut g = lock(&self.inner);
+            if let Some(msg) = &g.damaged {
+                return Err(format!("browser rules are damaged: {msg}"));
+            }
             if g.rules.rules.len() >= MAX_RULES && !g.rules.rules.iter().any(|r| r.pattern == pattern) {
                 return Err(format!("at most {MAX_RULES} rules"));
             }
@@ -267,6 +306,9 @@ impl Store {
     pub fn rule_remove(&self, pattern: &str) -> Result<bool, String> {
         let (removed, path, body) = {
             let mut g = lock(&self.inner);
+            if let Some(msg) = &g.damaged {
+                return Err(format!("browser rules are damaged: {msg}"));
+            }
             let removed = g.rules.remove(pattern);
             if removed {
                 self.publish(&g);
@@ -365,7 +407,7 @@ impl Store {
     pub fn with_inputs<T>(&self, enabled: bool, network: &NetworkPolicy, unattended: bool, f: impl FnOnce(&Inputs) -> T) -> T {
         let g = lock(&self.inner);
         let granted = |host: &str| Self::granted_in(&g, host);
-        let inputs = Inputs { enabled, network, rules: &g.rules, granted: &granted, unattended };
+        let inputs = Inputs { enabled: enabled && g.damaged.is_none(), network, rules: &g.rules, granted: &granted, unattended };
         f(&inputs)
     }
 
@@ -462,6 +504,69 @@ mod tests {
 
     fn u(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    fn damaged_store(name: &str) -> (Store, PathBuf) {
+        let path = tmp(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{ not json").unwrap();
+        let s = Store::default();
+        s.open(&path);
+        (s, path)
+    }
+
+    #[test]
+    fn unparsable_file_is_moved_aside_and_not_overwritten() {
+        let (s, path) = damaged_store("bad-moved");
+        assert!(s.damaged().is_some());
+        assert!(!path.exists());
+        let kept = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with("rules.json.bad-"));
+        assert!(kept);
+    }
+
+    #[test]
+    fn damaged_store_denies_everything() {
+        let (s, _) = damaged_store("bad-deny");
+        assert_eq!(d(&s, "https://example.com/", false), Decision::Deny(DenyReason::FeatureOff));
+        assert_eq!(d(&s, "https://example.com/", true), Decision::Deny(DenyReason::FeatureOff));
+    }
+
+    #[test]
+    fn write_refused_while_damaged() {
+        let (s, path) = damaged_store("bad-write");
+        assert!(s.rule_set("example.com", Verdict::Allow, false).is_err());
+        assert!(s.rule_remove("example.com").is_err());
+        assert!(s.grant("example.com", Scope::Always).is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn acknowledge_clears_and_allows_new_rule() {
+        let (s, path) = damaged_store("bad-ack");
+        s.acknowledge_damage();
+        assert!(s.damaged().is_none());
+        s.rule_set("example.com", Verdict::Allow, false).unwrap();
+        assert!(path.exists());
+        assert_eq!(d(&s, "https://example.com/", false), Decision::Allow);
+    }
+
+    #[test]
+    fn hand_edited_bad_pattern_still_dropped() {
+        let path = tmp("bad-pattern");
+        let s = Store::default();
+        s.open(&path);
+        s.rule_set("a.test", Verdict::Allow, false).unwrap();
+        s.rule_set("b.test", Verdict::Allow, false).unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap().replace("\"a.test\"", "\"\"");
+        std::fs::write(&path, raw).unwrap();
+        let s2 = Store::default();
+        s2.open(&path);
+        assert!(s2.damaged().is_none());
+        let patterns: Vec<String> = s2.rules().into_iter().map(|r| r.pattern).collect();
+        assert_eq!(patterns, vec!["b.test".to_string()]);
     }
 
     #[test]

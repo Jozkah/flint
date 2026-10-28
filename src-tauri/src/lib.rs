@@ -862,6 +862,8 @@ pub fn build_app() -> tauri::App {
         core::browser_agent::pane::browser_agent_rules,
         core::browser_agent::pane::browser_agent_rule_set,
         core::browser_agent::pane::browser_agent_rule_remove,
+        core::browser_agent::pane::browser_agent_rules_damage,
+        core::browser_agent::pane::browser_agent_rules_acknowledge_damage,
         core::browser_agent::pane::browser_agent_clear_grants,
         core::browser_agent::pane::browser_agent_grants,
         core::browser_agent::pane::browser_agent_stop,
