@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,6 +15,9 @@ import { useHuggingFaceDownloads } from '@/hooks/useHuggingFaceDownloads'
 import { formatModelBytes } from '@/lib/huggingface'
 import { installVoiceModel } from '@/lib/voice/installVoiceModel'
 import { VOICE_BUNDLE_ID, VOICE_TOTAL_BYTES } from '@/lib/voice/voiceModel'
+
+/** What dictation holds in memory while loaded (the dialog's promise to the user). */
+const VOICE_MEMORY_BYTES = 3.5 * 1024 ** 3
 
 /**
  * The one-time setup for dictation: the speech model is not part of Flint, so
@@ -30,6 +34,7 @@ export function VoiceSetupDialog({
   /** The model finished installing; dictation can start. */
   onReady?: () => void
 }) {
+  const { t } = useTranslation()
   const task = useHuggingFaceDownloads((s) => s.tasks[VOICE_BUNDLE_ID])
   const [starting, setStarting] = useState(false)
   const running =
@@ -44,7 +49,7 @@ export function VoiceSetupDialog({
       onReady?.()
       onOpenChange(false)
     } catch (error) {
-      toast.error('Could not set up voice input', {
+      toast.error(t('sweep:voice.setupFailed'), {
         description: error instanceof Error ? error.message : String(error),
       })
     } finally {
@@ -56,36 +61,44 @@ export function VoiceSetupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Set up voice input</DialogTitle>
+          <DialogTitle>{t('sweep:voice.setup.title')}</DialogTitle>
           <DialogDescription>
-            Dictation turns your speech into text on this computer, with a speech
-            model that Flint downloads once ({formatModelBytes(VOICE_TOTAL_BYTES)}).
-            Nothing you say leaves your device.
+            {t('sweep:voice.setup.description', {
+              size: formatModelBytes(VOICE_TOTAL_BYTES),
+            })}
           </DialogDescription>
         </DialogHeader>
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>It runs next to your chat model and needs about 3.5 GB of free memory while you dictate.</li>
-          <li>It unloads a few minutes after you stop, to give the memory back.</li>
-          <li>The first phrase after loading takes a few seconds.</li>
+          <li>
+            {t('sweep:voice.setup.memory', {
+              memory: formatModelBytes(VOICE_MEMORY_BYTES),
+            })}
+          </li>
+          <li>{t('sweep:voice.setup.unloads')}</li>
+          <li>{t('sweep:voice.setup.firstPhrase')}</li>
         </ul>
         {running && (
           <div className="space-y-1">
             <Progress value={(task?.progress ?? 0) * 100} className="h-1.5" />
             <p className="text-xs text-muted-foreground">
               {task?.status === 'importing'
-                ? 'Installing…'
+                ? t('sweep:voice.setup.installing')
                 : task?.status === 'verifying'
-                  ? 'Verifying…'
-                  : `Downloading… ${percent}%`}
+                  ? t('sweep:voice.setup.verifying')
+                  : t('sweep:voice.setup.downloadingPercent', { percent })}
             </p>
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {running ? 'Close' : 'Not now'}
+            {running ? t('sweep:voice.setup.close') : t('sweep:voice.setup.notNow')}
           </Button>
           <Button onClick={() => void start()} disabled={running}>
-            {running ? 'Downloading…' : `Download (${formatModelBytes(VOICE_TOTAL_BYTES)})`}
+            {running
+              ? t('sweep:voice.setup.downloading')
+              : t('sweep:voice.setup.download', {
+                  size: formatModelBytes(VOICE_TOTAL_BYTES),
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>

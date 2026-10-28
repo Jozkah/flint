@@ -73,7 +73,7 @@ const provider = {
 } as unknown as ModelProvider
 
 const nameField = () => screen.getByRole('textbox') as HTMLInputElement
-const saveButton = () => screen.getByText('Save Changes').closest('button')!
+const saveButton = () => screen.getByText('common:saveChanges').closest('button')!
 const type = (value: string) =>
   fireEvent.change(nameField(), { target: { value } })
 
