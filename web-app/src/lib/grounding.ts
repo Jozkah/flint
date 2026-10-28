@@ -141,6 +141,8 @@ export function injectCitationMarkers(
     })
   }
 
+  // \u0001 is a deliberate placeholder delimiter that cannot occur in prose.
+  // eslint-disable-next-line no-control-regex
   stash = stash.replace(/ \u0001(\d+)\u0001 /g, (_, i) => placed[Number(i)])
 
   stash = stash.replace(/ §(\d+)§ /g, (_, i) => codeSpans[Number(i)])
