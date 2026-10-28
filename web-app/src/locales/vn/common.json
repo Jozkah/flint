@@ -859,6 +859,14 @@
     "openCodeFolderDescription": "Chọn một thư mục trên máy tính của bạn để Flint làm việc.",
     "deleteProjectConfirm": "Bạn có chắc chắn muốn xóa dự án này không? Hành động này không thể hoàn tác.",
     "setUpEmbeddingModel": "Thiết lập mô hình embedding",
+    "mcpServers": {
+      "title": "Máy chủ MCP",
+      "useAll": "Dùng tất cả máy chủ đã bật (mặc định)",
+      "onlyThese": "Chỉ những máy chủ này",
+      "noneConfigured": "Chưa cấu hình máy chủ MCP nào.",
+      "filterActive": "Dự án này chỉ dùng: {{servers}}",
+      "filterNone": "Dự án này không dùng máy chủ MCP nào"
+    },
     "webPage": {
       "open": "Thêm trang web",
       "title": "Thêm một trang web",

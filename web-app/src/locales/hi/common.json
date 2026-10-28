@@ -849,6 +849,14 @@
     "openCodeFolder": "कोड फ़ोल्डर खोलें",
     "openCodeFolderDescription": "अपने कंप्यूटर पर वह फ़ोल्डर चुनें जिसमें Flint काम करे।",
     "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें",
+    "mcpServers": {
+      "title": "MCP सर्वर",
+      "useAll": "सभी सक्षम सर्वर इस्तेमाल करें (डिफ़ॉल्ट)",
+      "onlyThese": "केवल ये सर्वर",
+      "noneConfigured": "कोई MCP सर्वर कॉन्फ़िगर नहीं है।",
+      "filterActive": "यह प्रोजेक्ट केवल इनका इस्तेमाल करता है: {{servers}}",
+      "filterNone": "यह प्रोजेक्ट किसी MCP सर्वर का इस्तेमाल नहीं करता"
+    },
     "webPage": {
       "open": "वेब पेज जोड़ें",
       "title": "वेब पेज जोड़ें",

@@ -849,6 +849,14 @@
     "openCodeFolder": "コードフォルダーを開く",
     "openCodeFolderDescription": "Flint が作業するフォルダーをコンピューターから選択してください。",
     "setUpEmbeddingModel": "埋め込みモデルを設定",
+    "mcpServers": {
+      "title": "MCPサーバー",
+      "useAll": "有効なすべてのサーバーを使用（既定）",
+      "onlyThese": "これらのサーバーのみ",
+      "noneConfigured": "MCPサーバーが設定されていません。",
+      "filterActive": "このプロジェクトで使用: {{servers}} のみ",
+      "filterNone": "このプロジェクトはMCPサーバーを使用しません"
+    },
     "webPage": {
       "open": "Webページを追加",
       "title": "Webページを追加",

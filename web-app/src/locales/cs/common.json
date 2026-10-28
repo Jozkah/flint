@@ -866,6 +866,14 @@
     "openCodeFolder": "Otevřít složku s kódem",
     "openCodeFolderDescription": "Vyberte složku ve svém počítači, ve které má Flint pracovat.",
     "setUpEmbeddingModel": "Nastavit embedding model",
+    "mcpServers": {
+      "title": "Servery MCP",
+      "useAll": "Použít všechny povolené servery (výchozí)",
+      "onlyThese": "Pouze tyto servery",
+      "noneConfigured": "Nejsou nastaveny žádné servery MCP.",
+      "filterActive": "Tento projekt používá pouze: {{servers}}",
+      "filterNone": "Tento projekt nepoužívá žádné servery MCP"
+    },
     "webPage": {
       "open": "Přidat webovou stránku",
       "title": "Přidat webovou stránku",

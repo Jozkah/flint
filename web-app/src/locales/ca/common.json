@@ -858,6 +858,14 @@
     "openCodeFolder": "Obre la carpeta de codi",
     "openCodeFolderDescription": "Tria una carpeta del teu ordinador perquè Flint hi treballi.",
     "setUpEmbeddingModel": "Configura un model d'incrustació",
+    "mcpServers": {
+      "title": "Servidors MCP",
+      "useAll": "Utilitza tots els servidors activats (per defecte)",
+      "onlyThese": "Només aquests servidors",
+      "noneConfigured": "No hi ha cap servidor MCP configurat.",
+      "filterActive": "Aquest projecte només utilitza: {{servers}}",
+      "filterNone": "Aquest projecte no utilitza cap servidor MCP"
+    },
     "webPage": {
       "open": "Afegeix una pàgina web",
       "title": "Afegeix una pàgina web",

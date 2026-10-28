@@ -867,6 +867,14 @@
     "openCodeFolder": "Otwórz folder z kodem",
     "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować.",
     "setUpEmbeddingModel": "Skonfiguruj model embeddingów",
+    "mcpServers": {
+      "title": "Serwery MCP",
+      "useAll": "Używaj wszystkich włączonych serwerów (domyślnie)",
+      "onlyThese": "Tylko te serwery",
+      "noneConfigured": "Nie skonfigurowano żadnych serwerów MCP.",
+      "filterActive": "Ten projekt używa tylko: {{servers}}",
+      "filterNone": "Ten projekt nie używa serwerów MCP"
+    },
     "webPage": {
       "open": "Dodaj stronę internetową",
       "title": "Dodaj stronę internetową",
