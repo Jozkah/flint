@@ -38,7 +38,9 @@ export type PreloadedSkills = { blocks: string[] } | { error: string }
 
 /** One system-prompt block for a preloaded skill. */
 export function skillBlock(name: string, content: string): string {
-  return `<preloaded-skill name="${name.replace(/"/g, '')}">\n${content.trim()}\n</preloaded-skill>`
+  // The skill text cannot close its own envelope.
+  const body = content.replace(/<\/?preloaded-skill[^>]*>/gi, '').trim()
+  return `<preloaded-skill name="${name.replace(/"/g, '')}">\n${body}\n</preloaded-skill>`
 }
 
 /** Read every named skill; the first one that cannot be read ends it. */

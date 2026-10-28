@@ -103,8 +103,10 @@ export function basenameOf(path: string): string {
  */
 export function unresolvedRefs(html: string): number {
   let count = 0
-  for (const m of html.matchAll(/\b(?:src|href)\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
-    const value = (m[2] ?? m[3] ?? '').trim()
+  for (const m of html.matchAll(
+    /\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi
+  )) {
+    const value = (m[1] ?? m[2] ?? m[3] ?? '').trim()
     if (!value) continue
     if (
       /^[a-z][a-z0-9+.-]*:/i.test(value) || // any scheme: http:, data:, mailto:

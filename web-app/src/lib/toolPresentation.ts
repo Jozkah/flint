@@ -293,6 +293,11 @@ export function grepHighlightRegex(
   opts: { literal: boolean; ignoreCase: boolean }
 ): RegExp | undefined {
   if (!pattern) return undefined
+  // A long pattern or a nested quantifier such as `(a+)+` can backtrack for
+  // a very long time on a long line; those results render unhighlighted.
+  if (!opts.literal && (pattern.length > 200 || /\([^)]*[+*][^)]*\)[+*{]/.test(pattern))) {
+    return undefined
+  }
   try {
     const re = new RegExp(
       opts.literal ? escapeRegExp(pattern) : pattern,
