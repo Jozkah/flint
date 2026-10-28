@@ -1626,6 +1626,13 @@ async fn execute_tool_inner(
     })
 }
 
+/// Whether a batch hook may have the network: the project's policy and the
+/// caller's setting must both allow it.
+fn batch_hook_network(project: Option<&Path>, allow_network: Option<bool>) -> bool {
+    let policy = crate::policy::load(project, allow_network);
+    policy.network.allowed && allow_network.unwrap_or(false)
+}
+
 /// Fire the `post-tool-batch` hooks for a turn whose tool calls the renderer
 /// has run one at a time through [`execute_tool`].
 ///
@@ -1643,6 +1650,9 @@ pub async fn fire_post_tool_batch(
     scope: Option<WorkspaceScope>,
     // `main` (default) or `subagent`: told to the hook as `FLINT_HOOK_AGENT`.
     agent: Option<String>,
+    // The project whose `agent.toml` bounds the hooks' network, as for
+    // `execute_tool`. Without it only the machine policy applies.
+    read_only_project: Option<String>,
 ) -> Result<(), AgentToolsError> {
     if tool_names.is_empty() {
         return Ok(());
@@ -1653,8 +1663,7 @@ pub async fn fire_post_tool_batch(
     let root = scope
         .unwrap_or_default()
         .path(Path::new(&data_folder), &thread_id)?;
-    let policy = crate::policy::load(None, allow_network);
-    let network = policy.network.allowed && allow_network.unwrap_or(false);
+    let network = batch_hook_network(read_only_project.as_deref().map(Path::new), allow_network);
     // Same confinement the thread's `execute_tool` calls get: sandboxed, with
     // the Flint data folder masked.
     let _ = crate::hooks::fire_post_tool_batch_as(
@@ -2728,6 +2737,17 @@ fn read_escape_message(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn post_tool_batch_respects_project_network_off() {
+        let root = std::env::temp_dir().join(format!("flint-batch-net-{}", std::process::id()));
+        let toml = crate::policy::agent_toml_path(&root);
+        std::fs::create_dir_all(toml.parent().unwrap()).unwrap();
+        std::fs::write(&toml, "[tools]\nallow_network = false\n").unwrap();
+        assert!(!batch_hook_network(Some(&root), Some(true)));
+        assert!(!batch_hook_network(None, Some(false)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_read_escape_names_the_path_tried_and_the_allowed_folders() {
