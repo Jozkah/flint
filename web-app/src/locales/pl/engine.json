@@ -194,7 +194,7 @@
     "kpiArtifacts": "Artefakty",
     "kpiArtifactsSub": "{{count}} nowych w tym tygodniu",
     "kpiSessions": "Z Cowork",
-    "kpiSessionsSub": "w {{count}} sesjach",
+    "kpiSessionsSub": "z zapisanymi artefaktami",
     "kpiDisk": "Na dysku",
     "kpiDiskSub": "w piaskownicach sesji",
     "kindCode": "Kod",

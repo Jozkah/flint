@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "failed",
     "chatStarted": "Chat started"
+  },
+  "promptSnapshot": {
+    "summary": "What the model received",
+    "loading": "Loading…",
+    "gone": "That snapshot is no longer on disk.",
+    "unavailable": "No payload was stored. {{reason}}",
+    "reason": {
+      "not-serializable": "The request could not be serialised, so nothing was stored.",
+      "disabled": "Snapshots are switched off for this run.",
+      "too-large": "The request was too large to store whole."
+    },
+    "meta": {
+      "provider": "Provider",
+      "model": "Model",
+      "reasoning": "Reasoning",
+      "session": "Session",
+      "run": "Run",
+      "agent": "Agent",
+      "sent": "Sent",
+      "hash": "Hash",
+      "redacted": "Redacted",
+      "nothing": "nothing",
+      "redactedList_one": "{{count}} field: {{list}}",
+      "redactedList_other": "{{count}} fields: {{list}}"
+    },
+    "view": {
+      "label": "View as",
+      "tree": "Tree",
+      "json": "JSON"
+    },
+    "copy": "Copy redacted payload",
+    "copied": "Copied",
+    "diff": {
+      "run": "Compare with the previous request",
+      "loading": "Comparing…",
+      "first": "This is the session's first stored request; there is nothing earlier to compare it with.",
+      "summary": "Against {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} entered",
+      "left": "{{count}} left",
+      "keptMessages_one": "{{count}} message kept",
+      "keptMessages_other": "{{count}} messages kept",
+      "keptTools_one": "{{count}} tool kept",
+      "keptTools_other": "{{count}} tools kept",
+      "systemChanged": "system prompt changed",
+      "enteredHeading": "Entered",
+      "leftHeading": "Left",
+      "nothingNew": "Nothing new.",
+      "nothingLeft": "Nothing left the window."
+    },
+    "replay": {
+      "label": "Replays of this context",
+      "run": "Replay this context",
+      "hint": "Sends exactly this request again. Tools the model asks for are not run.",
+      "needsSession": "Replay needs the session this turn belongs to.",
+      "redactedBlock_one": "It cannot be replayed: {{count}} field was redacted before it was stored, so the model would not receive what it received then.",
+      "redactedBlock_other": "It cannot be replayed: {{count}} fields were redacted before it was stored, so the model would not receive what it received then.",
+      "state": {
+        "running": "Replaying…",
+        "interrupted": "Interrupted: Flint stopped while it ran",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Stopped",
+        "refused": "Refused"
+      },
+      "matched": "Same context as the turn (hashes match)",
+      "differed": "The request sent differed from the turn's",
+      "finish": "finish: {{reason}}",
+      "stop": "Stop",
+      "asked": "Asked for {{tools}} (not run)"
+    }
   }
 }

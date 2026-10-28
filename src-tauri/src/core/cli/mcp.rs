@@ -1040,7 +1040,7 @@ mod tests {
         let folder = data.path();
         let bad = "{\"mcpServers\":{\"a\":{\"command\":\"x\",\"env\":{\"KEY\":\"secret\"}}},}";
         std::fs::write(config_path(folder), bad).unwrap();
-        let cfg = serde_json::json!({ "command": "echo" });
+        let cfg = serde_json::json!({ "command": "echo", "args": [] });
         let err = upsert_server_in(folder, "b", &cfg).unwrap_err();
         assert!(err.contains("mcp_config.json"), "error names the file: {err}");
         assert!(set_active_in(folder, "a", true).is_err());
@@ -1053,7 +1053,7 @@ mod tests {
         let data = temp_data();
         let folder = data.path();
         std::fs::write(config_path(folder), "[1,2]").unwrap();
-        assert!(upsert_server_in(folder, "b", &serde_json::json!({ "command": "echo" })).is_err());
+        assert!(upsert_server_in(folder, "b", &serde_json::json!({ "command": "echo", "args": [] })).is_err());
         assert_eq!(std::fs::read_to_string(config_path(folder)).unwrap(), "[1,2]");
     }
 
@@ -1061,7 +1061,7 @@ mod tests {
     fn missing_file_still_creates_the_config() {
         let data = temp_data();
         let folder = data.path();
-        upsert_server_in(folder, "b", &serde_json::json!({ "command": "echo" })).unwrap();
+        upsert_server_in(folder, "b", &serde_json::json!({ "command": "echo", "args": [] })).unwrap();
         assert!(config_path(folder).is_file());
     }
 

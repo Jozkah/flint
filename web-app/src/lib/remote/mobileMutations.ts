@@ -6,6 +6,8 @@ import {
   archiveCoworkSession,
   deleteCoworkSession,
 } from '@/lib/coworkSessionLifecycle'
+import { RemoteRpcError } from './bridge'
+import { SPEAKING_MODES } from '@/lib/rooms/types'
 import { composerFor } from './composer'
 import { useAppState } from '@/hooks/useAppState'
 import type {
@@ -25,12 +27,58 @@ const pick = (src: Record<string, unknown>, keys: string[]) => {
   return out
 }
 
+const bad = (msg: string): never => {
+  throw new RemoteRpcError('bad_params', msg)
+}
+const isModelRef = (v: unknown) => {
+  const m = rec(v)
+  return typeof m.provider === 'string' && typeof m.id === 'string'
+}
+
+/** Reject wrong-typed room fields before they reach the controller and engine. */
+function validateRoomFields(raw: Record<string, unknown>): void {
+  if (raw.mode !== undefined && !(SPEAKING_MODES as readonly unknown[]).includes(raw.mode)) {
+    bad('Unknown room mode')
+  }
+  if (raw.title !== undefined && typeof raw.title !== 'string') {
+    bad('Room title must be a string')
+  }
+  if (raw.objective !== undefined && typeof raw.objective !== 'string') {
+    bad('Room objective must be a string')
+  }
+  if (raw.moderator !== undefined) {
+    const m = raw.moderator
+    if (!m || typeof m !== 'object' || Array.isArray(m)) bad('Room moderator must be an object')
+    const mod = m as Record<string, unknown>
+    if (mod.enabled !== undefined && typeof mod.enabled !== 'boolean') bad('Moderator enabled must be a boolean')
+    if (mod.name !== undefined && typeof mod.name !== 'string') bad('Moderator name must be a string')
+    if (mod.model !== undefined && mod.model !== null && !isModelRef(mod.model)) {
+      bad('Moderator model must have a provider and id')
+    }
+  }
+  if (raw.limits !== undefined) {
+    const l = raw.limits
+    if (!l || typeof l !== 'object' || Array.isArray(l)) bad('Room limits must be an object')
+    for (const v of Object.values(l as Record<string, unknown>)) {
+      if (typeof v !== 'number' || !Number.isFinite(v)) bad('Room limits must be finite numbers')
+    }
+  }
+  if (raw.participants !== undefined) {
+    if (!Array.isArray(raw.participants)) bad('Room participants must be a list')
+    for (const x of raw.participants as unknown[]) {
+      const part = rec(x)
+      if (part.model !== undefined && !isModelRef(part.model)) bad('Participant model must have a provider and id')
+    }
+  }
+}
+
 /**
  * A phone may only change a room's plain settings. Folder and per-participant
  * toolAccess widen what the room can touch on the desktop, so they are dropped
  * here and stay desktop-only (Cowork's `cowork.send` guards folders the same way).
  */
 function safeRoomPatch(raw: Record<string, unknown>): RoomSettingsPatch {
+  validateRoomFields(raw)
   const patch = pick(raw, ['title', 'objective', 'mode', 'moderator', 'limits']) as RoomSettingsPatch
   if (Array.isArray(raw.participants)) {
     patch.participants = raw.participants.map(
@@ -42,6 +90,7 @@ function safeRoomPatch(raw: Record<string, unknown>): RoomSettingsPatch {
 
 /** Room creation from a phone: no folder, and every participant has no tools. */
 function safeRoomInput(raw: Record<string, unknown>): CreateRoomInput {
+  validateRoomFields(raw)
   const input = pick(raw, ['title', 'objective', 'mode', 'moderator', 'limits']) as CreateRoomInput
   if (Array.isArray(raw.participants)) {
     input.participants = raw.participants.map((x) => ({
@@ -68,6 +117,7 @@ export async function handleMobileMutation(
 
   if (op === 'room.create') {
     const input = rec(p.input)
+    validateRoomFields(input)
     const title = str(input.title)
     if (!title) throw new Error('Room title is required')
     const room = await roomController.createRoom({

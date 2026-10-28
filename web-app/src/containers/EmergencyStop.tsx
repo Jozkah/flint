@@ -69,26 +69,26 @@ function availableScopes(props: EmergencyStopProps): StopScope[] {
   return scopes
 }
 
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
 /** One sentence naming exactly what a scope covers. */
-function describeScope(scope: StopScope, props: EmergencyStopProps): string {
+function describeScope(
+  t: Translate,
+  scope: StopScope,
+  props: EmergencyStopProps
+): string {
   switch (scope) {
     case 'call':
-      return `This tool call only (${props.callId}). Everything else in the run keeps going.`
+      return t('common:emergencyStop.scope.call.desc', { id: props.callId })
     case 'run':
-      return `This run (${props.runId}), including its tool calls, shell commands, MCP calls and subagents. Other runs are untouched.`
+      return t('common:emergencyStop.scope.run.desc', { id: props.runId })
     case 'session':
-      return `Every run in this session (${props.sessionId}). Other sessions are untouched.`
+      return t('common:emergencyStop.scope.session.desc', {
+        id: props.sessionId,
+      })
     case 'application':
-      return 'All work everywhere in Flint, in every session. Nothing running is spared.'
+      return t('common:emergencyStop.scope.application.desc')
   }
-}
-
-/** A short name for a scope, used as the option title and in the button. */
-const SCOPE_NAME: Record<StopScope, string> = {
-  call: 'This tool call',
-  run: 'This run',
-  session: 'This session',
-  application: 'Everything in Flint',
 }
 
 /** The arguments an empty field turns into: empty means "all at this level". */
@@ -167,7 +167,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
           data-testid="emergency-stop-trigger"
           onClick={() => setOpen(true)}
         >
-          Stop
+          {t('common:emergencyStop.trigger')}
         </Button>
       </span>
 
@@ -180,10 +180,9 @@ export function EmergencyStop(props: EmergencyStopProps) {
           data-testid="emergency-stop-dialog"
         >
           <DialogHeader>
-            <DialogTitle id={titleId}>Stop running work</DialogTitle>
+            <DialogTitle id={titleId}>{t('common:emergencyStop.title')}</DialogTitle>
             <DialogDescription>
-              Choose how far this reaches. This cannot be undone: stopped work is
-              not resumed, including after a restart.
+              {t('common:emergencyStop.description')}
             </DialogDescription>
           </DialogHeader>
 
@@ -191,7 +190,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
             className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border"
             disabled={stopping}
           >
-            <legend className="sr-only">What to stop</legend>
+            <legend className="sr-only">{t('common:emergencyStop.legend')}</legend>
             {scopes.map((option) => (
               <label
                 key={option}
@@ -212,10 +211,10 @@ export function EmergencyStop(props: EmergencyStopProps) {
                 />
                 <span className="min-w-0">
                   <span className="font-medium text-foreground">
-                    {SCOPE_NAME[option]}
+                    {t(`common:emergencyStop.scope.${option}.name`)}
                   </span>
                   <span className="block break-words text-xs text-fg-2">
-                    {describeScope(option, props)}
+                    {describeScope(t, option, props)}
                   </span>
                 </span>
               </label>
@@ -231,15 +230,21 @@ export function EmergencyStop(props: EmergencyStopProps) {
             data-testid="emergency-stop-status"
             className="min-h-5 text-sm"
           >
-            {stopping && 'Stopping. Killing owned processes…'}
+            {stopping && t('common:emergencyStop.stopping')}
             {!stopping && report && (
               <span
                 data-testid="emergency-stop-report"
                 className={report.complete ? undefined : 'text-destructive'}
               >
                 {report.complete
-                  ? `Stopped. ${report.stopped} stopped, ${report.already_stopped} already stopped, nothing left running.`
-                  : `Stopped ${report.stopped}, but ${report.live_children} process(es) are still running. Cleanup did not finish.`}
+                  ? t('common:emergencyStop.report.clean', {
+                      stopped: report.stopped,
+                      already: report.already_stopped,
+                    })
+                  : t('common:emergencyStop.report.partial', {
+                      stopped: report.stopped,
+                      count: report.live_children,
+                    })}
               </span>
             )}
             {!stopping && error && (
@@ -249,7 +254,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
               >
                 <OctagonAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0 break-words">
-                  Could not stop: {error}
+                  {t('common:emergencyStop.error', { error })}
                 </span>
               </span>
             )}
@@ -263,7 +268,9 @@ export function EmergencyStop(props: EmergencyStopProps) {
               onClick={close}
               disabled={stopping}
             >
-              {report ? 'Close' : 'Cancel'}
+              {report
+                ? t('common:emergencyStop.close')
+                : t('common:emergencyStop.cancel')}
             </Button>
             <Button
               type="button"
@@ -274,7 +281,9 @@ export function EmergencyStop(props: EmergencyStopProps) {
               aria-describedby={statusId}
               data-testid="emergency-stop-confirm"
             >
-              {stopping ? 'Stopping…' : `Stop ${chosen}`}
+              {stopping
+                ? t('common:emergencyStop.confirmBusy')
+                : t(`common:emergencyStop.scope.${chosen}.confirm`)}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -39,7 +39,6 @@ use std::time::Duration;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use rand::RngCore;
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -254,7 +253,7 @@ pub(crate) async fn begin(base_url: &str) -> Result<PendingAuth, BeginError> {
     if status == 404 || status == 405 {
         return Err(BeginError::Unsupported);
     }
-    let payload: SessionPayload = response.json().await.unwrap_or_default();
+    let payload = SessionPayload::from_value(&read_json(response).await.1);
     let (Some(session_id), Some(user_code)) = (payload.session_id, payload.user_code) else {
         return Err(BeginError::Failed(describe_create_failure(
             status,
@@ -334,6 +333,7 @@ impl PendingAuth {
         // The last reachability blip, and whether it landed on the final poll:
         // then it, not the clock, is why the sign-in is being abandoned.
         let mut last_transient: Option<(String, bool)> = None;
+        let mut protocol_strikes = 0u32;
         loop {
             // The local deadline is only a bound on waiting: one last poll runs
             // on the way out so the server's own `expired`/`approved` gets the
@@ -357,8 +357,16 @@ impl PendingAuth {
                 Ok(Poll::Approved(minted)) => return Ok(*minted),
                 Ok(Poll::Pending(next)) => {
                     interval = next;
+                    protocol_strikes = 0;
                     // A live tick clears any earlier blip from the timeout message.
                     last_transient.take();
+                }
+                Ok(Poll::Unknown { next, detail }) => {
+                    interval = next;
+                    protocol_strikes += 1;
+                    if protocol_strikes >= MAX_PROTOCOL_STRIKES {
+                        return Err(format!("protocol error: the sign-in server keeps answering with a status this client does not know ({detail})."));
+                    }
                 }
                 Ok(Poll::Denied) => {
                     return Err("the sign-in was denied in the browser.".to_string())
@@ -372,7 +380,19 @@ impl PendingAuth {
                 // A reachability blip is one bad tick, not the session settling:
                 // the user may have just approved and the key is live server
                 // side. Keep polling and let the deadline bound the wait.
-                Err(e) if e.retryable => last_transient = Some((e.message, last_round)),
+                Err(e) if e.retryable => {
+                    if e.protocol {
+                        protocol_strikes += 1;
+                        if protocol_strikes >= MAX_PROTOCOL_STRIKES {
+                            return Err(format!(
+                                "protocol error: {} ({})",
+                                e.message,
+                                e.detail.as_deref().unwrap_or_default()
+                            ));
+                        }
+                    }
+                    last_transient = Some((e.message, last_round));
+                }
                 Err(e) => return Err(e.message),
             }
             if last_round {
@@ -398,6 +418,8 @@ impl PendingAuth {
 /// How a single poll settled.
 enum Poll {
     Pending(Duration),
+    /// A well-formed answer whose `status` is missing or not one we know.
+    Unknown { next: Duration, detail: String },
     Denied,
     Expired,
     Approved(Box<Minted>),
@@ -409,6 +431,12 @@ enum Poll {
 struct PollError {
     message: String,
     retryable: bool,
+    /// The answer parsed but is not what the protocol says; counted, because a
+    /// server that keeps answering this way will never settle the sign-in.
+    protocol: bool,
+    /// A redacted excerpt of the reply, shown only if the sign-in is abandoned
+    /// because of it.
+    detail: Option<String>,
 }
 
 impl PollError {
@@ -416,6 +444,8 @@ impl PollError {
         Self {
             message,
             retryable: true,
+            protocol: false,
+            detail: None,
         }
     }
 
@@ -423,7 +453,74 @@ impl PollError {
         Self {
             message,
             retryable: false,
+            protocol: false,
+            detail: None,
         }
+    }
+
+    fn protocol(message: String, body: &serde_json::Value) -> Self {
+        Self {
+            message,
+            retryable: true,
+            protocol: true,
+            detail: Some(redacted_body(body)),
+        }
+    }
+}
+
+/// Consecutive protocol-violating answers after which the sign-in is abandoned.
+const MAX_PROTOCOL_STRIKES: u32 = 3;
+
+/// Status and parsed body of a reply. A body that is not JSON is `Null`.
+async fn read_json(response: reqwest::Response) -> (u16, serde_json::Value) {
+    let status = response.status().as_u16();
+    let body = response
+        .text()
+        .await
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(serde_json::Value::Null);
+    (status, body)
+}
+
+/// The first 200 characters of a reply for an error message, with the key
+/// object dropped and anything secret-shaped scrubbed.
+fn redacted_body(body: &serde_json::Value) -> String {
+    let mut shown = body.clone();
+    if let Some(map) = shown.as_object_mut() {
+        map.remove("api_key");
+    }
+    let text = super::secrets::scrub_text(&shown.to_string());
+    text.chars().take(200).collect()
+}
+
+/// A string field, or a numeric id written as a number.
+fn lenient_str(v: &serde_json::Value, key: &str) -> Option<String> {
+    match v.get(key)? {
+        serde_json::Value::String(s) => Some(s.clone()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+/// A whole number of seconds written as an integer, a float or a numeric string.
+fn lenient_u64(v: &serde_json::Value, key: &str) -> Option<u64> {
+    let seconds = match v.get(key)? {
+        serde_json::Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(f64::ceil).filter(|f| *f >= 0.0).map(|f| f as u64))?,
+        serde_json::Value::String(s) => s.trim().parse::<f64>().ok().filter(|f| *f >= 0.0).map(|f| f.ceil() as u64)?,
+        _ => return None,
+    };
+    Some(seconds)
+}
+
+/// A key's expiry as unix seconds: RFC 3339, or an epoch in seconds or
+/// milliseconds, as a number or a numeric string.
+fn lenient_expires_at(v: &serde_json::Value, key: &str) -> Option<u64> {
+    let epoch = |n: u64| if n > 100_000_000_000 { n / 1000 } else { n };
+    match v.get(key)? {
+        serde_json::Value::String(s) => parse_expires_at(s).or_else(|| s.trim().parse::<u64>().ok().map(epoch)),
+        serde_json::Value::Number(n) => n.as_u64().or_else(|| n.as_f64().filter(|f| *f >= 0.0).map(|f| f as u64)).map(epoch),
+        _ => None,
     }
 }
 
@@ -444,8 +541,15 @@ async fn poll_once(api_root: &str, session_id: &str, verifier: &str) -> Result<P
         .await
         .map_err(|e| PollError::transient(format!("could not reach {api_root}: {e}")))?;
 
-    let status = response.status().as_u16();
-    let payload: PollPayload = response.json().await.unwrap_or_default();
+    let (status, body) = read_json(response).await;
+    let payload = PollPayload::from_value(&body);
+    if (200..300).contains(&status) && !body.is_object() {
+        // A success that is not a JSON object is a server (or a proxy page)
+        // that does not speak this protocol; waiting will not change that.
+        return Err(PollError::terminal(format!(
+            "protocol error: the sign-in server answered HTTP {status} with something that is not JSON."
+        )));
+    }
     if !(200..300).contains(&status) {
         let message = describe_poll_failure(status, payload.error.as_deref());
         return Err(if poll_status_is_terminal(status) {
@@ -463,23 +567,30 @@ async fn poll_once(api_root: &str, session_id: &str, verifier: &str) -> Result<P
                 .ok_or_else(|| {
                     // Approved without a key is a malformed body, not a verdict:
                     // the next poll of the same approved session should carry it.
-                    PollError::transient(
+                    // Three in a row is the server's answer, not a blip.
+                    PollError::protocol(
                         "the sign-in was approved but Tokamak returned no API key.".to_string(),
+                        &body,
                     )
                 })?;
             Poll::Approved(Box::new(Minted {
                 api_key: key.key,
                 key_id: key.id.filter(|id| !id.is_empty()),
-                key_expires_at: key.expires_at.as_deref().and_then(parse_expires_at),
+                key_expires_at: key.expires_at,
                 account: payload.user.and_then(|u| u.email.or(u.name)),
             }))
         }
         Some("denied") => Poll::Denied,
         Some("expired") => Poll::Expired,
+        Some("pending") => Poll::Pending(Duration::from_secs(clamp_interval(payload.interval))),
         // An unrecognised status is not a terminal outcome: a newer server may
         // add intermediate states, and treating them as expired would abort a
-        // live sign-in. Keep polling; the deadline still bounds the wait.
-        _ => Poll::Pending(Duration::from_secs(clamp_interval(payload.interval))),
+        // live sign-in. Keep polling; the deadline still bounds the wait, and
+        // the caller gives up on a server that answers nothing it knows.
+        _ => Poll::Unknown {
+            next: Duration::from_secs(clamp_interval(payload.interval)),
+            detail: redacted_body(&body),
+        },
     })
 }
 
@@ -503,50 +614,69 @@ fn parse_expires_at(raw: &str) -> Option<u64> {
     u64::try_from(parsed.timestamp()).ok()
 }
 
-/// Payload of `POST /auth/cli/sessions`.
-#[derive(Deserialize, Default)]
+/// Payload of `POST /auth/cli/sessions`. Read field by field rather than
+/// deserialized whole, so one field of an unexpected type (a numeric id, a
+/// float interval) costs that field and not the whole reply.
+#[derive(Default)]
 struct SessionPayload {
-    #[serde(default)]
     session_id: Option<String>,
-    #[serde(default)]
     user_code: Option<String>,
-    #[serde(default)]
     expires_in: Option<u64>,
-    #[serde(default)]
     interval: Option<u64>,
-    #[serde(default)]
     error: Option<String>,
+}
+
+impl SessionPayload {
+    fn from_value(v: &serde_json::Value) -> Self {
+        Self {
+            session_id: lenient_str(v, "session_id").filter(|s| !s.is_empty()),
+            user_code: lenient_str(v, "user_code").filter(|s| !s.is_empty()),
+            expires_in: lenient_u64(v, "expires_in"),
+            interval: lenient_u64(v, "interval"),
+            error: lenient_str(v, "error"),
+        }
+    }
 }
 
 /// Payload of `POST /auth/cli/sessions/token`.
-#[derive(Deserialize, Default)]
+#[derive(Default)]
 struct PollPayload {
-    #[serde(default)]
     status: Option<String>,
-    #[serde(default)]
     interval: Option<u64>,
-    #[serde(default)]
     api_key: Option<ApiKeyPayload>,
-    #[serde(default)]
     user: Option<UserPayload>,
-    #[serde(default)]
     error: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct ApiKeyPayload {
-    key: String,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    expires_at: Option<String>,
+impl PollPayload {
+    fn from_value(v: &serde_json::Value) -> Self {
+        let key = v.get("api_key").filter(|k| k.is_object());
+        Self {
+            status: lenient_str(v, "status"),
+            interval: lenient_u64(v, "interval"),
+            api_key: key.map(|k| ApiKeyPayload {
+                key: lenient_str(k, "key").unwrap_or_default(),
+                id: lenient_str(k, "id"),
+                expires_at: lenient_expires_at(k, "expires_at"),
+            }),
+            user: v.get("user").filter(|u| u.is_object()).map(|u| UserPayload {
+                email: lenient_str(u, "email"),
+                name: lenient_str(u, "name"),
+            }),
+            error: lenient_str(v, "error"),
+        }
+    }
 }
 
-#[derive(Deserialize)]
+struct ApiKeyPayload {
+    key: String,
+    id: Option<String>,
+    /// Unix seconds, whichever way the server wrote it.
+    expires_at: Option<u64>,
+}
+
 struct UserPayload {
-    #[serde(default)]
     email: Option<String>,
-    #[serde(default)]
     name: Option<String>,
 }
 
@@ -937,6 +1067,106 @@ mod tests {
                 assert!(poll.contains("code_verifier"), "{poll}");
                 assert!(!poll.contains("sk_live"), "no key on the wire: {poll}");
             }
+        });
+    }
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn numeric_id_and_epoch_expires_at_parse() {
+        rt().block_on(async {
+            let (host, _) = mock_server(vec![
+                (200, r#"{"session_id":12345,"user_code":"A-1","expires_in":"300","interval":1.5}"#),
+                (
+                    200,
+                    r#"{"status":"approved","api_key":{"id":77,"key":"sk_live_x","expires_at":1700000000},"user":{"name":"n"}}"#,
+                ),
+            ])
+            .await;
+            let pending = begin(&format!("{host}/v1")).await.expect("begin");
+            assert_eq!(pending.session().session_id, "12345");
+            assert_eq!(pending.session().expires_in, 300);
+            assert_eq!(pending.session().interval, 2, "a float interval rounds up");
+            let minted = pending.claim().await.expect("claim");
+            assert_eq!(minted.key_id.as_deref(), Some("77"));
+            assert_eq!(minted.key_expires_at, Some(1700000000));
+        });
+    }
+
+    #[test]
+    fn epoch_milliseconds_are_read_as_seconds() {
+        let v = serde_json::json!({ "expires_at": 1700000000000u64 });
+        assert_eq!(lenient_expires_at(&v, "expires_at"), Some(1700000000));
+        let v = serde_json::json!({ "expires_at": "2023-11-14T22:13:20Z" });
+        assert_eq!(lenient_expires_at(&v, "expires_at"), Some(1700000000));
+    }
+
+    #[test]
+    fn null_key_reports_protocol_error() {
+        rt().block_on(async {
+            let (host, requests) = mock_server(vec![
+                (200, r#"{"session_id":"s","user_code":"A-1","expires_in":300,"interval":1}"#),
+                (200, r#"{"status":"approved","api_key":null}"#),
+                (200, r#"{"status":"approved","api_key":null}"#),
+                (200, r#"{"status":"approved","api_key":null}"#),
+            ])
+            .await;
+            let pending = begin(&format!("{host}/v1")).await.expect("begin");
+            let err = pending.claim().await.expect_err("three keyless approvals end the sign-in");
+            assert!(err.starts_with("protocol error"), "{err}");
+            assert_eq!(requests.lock().unwrap().len(), 4);
+        });
+    }
+
+    #[test]
+    fn approved_with_float_interval_completes() {
+        rt().block_on(async {
+            let (host, _) = mock_server(vec![
+                (200, r#"{"session_id":"s","user_code":"A-1","expires_in":300,"interval":1}"#),
+                (200, r#"{"status":"pending","interval":1.2}"#),
+                (200, r#"{"status":"approved","api_key":{"key":"sk_live_x"}}"#),
+            ])
+            .await;
+            let pending = begin(&format!("{host}/v1")).await.expect("begin");
+            assert_eq!(pending.claim().await.expect("claim").api_key, "sk_live_x");
+        });
+    }
+
+    #[test]
+    fn a_non_json_success_fails_at_once_naming_the_status() {
+        rt().block_on(async {
+            let (host, requests) = mock_server(vec![
+                (200, r#"{"session_id":"s","user_code":"A-1","expires_in":300,"interval":1}"#),
+                (200, "<html>captive portal</html>"),
+            ])
+            .await;
+            let pending = begin(&format!("{host}/v1")).await.expect("begin");
+            let err = pending.claim().await.expect_err("not our protocol");
+            assert!(err.contains("protocol error") && err.contains("200"), "{err}");
+            assert_eq!(requests.lock().unwrap().len(), 2);
+        });
+    }
+
+    #[test]
+    fn an_unknown_status_three_times_ends_the_sign_in_without_the_key() {
+        rt().block_on(async {
+            let (host, _) = mock_server(vec![
+                (200, r#"{"session_id":"s","user_code":"A-1","expires_in":300,"interval":1}"#),
+                (200, r#"{"state":"waiting","api_key":{"key":"sk_live_secret"}}"#),
+                (200, r#"{"state":"waiting"}"#),
+                (200, r#"{"state":"waiting"}"#),
+            ])
+            .await;
+            let pending = begin(&format!("{host}/v1")).await.expect("begin");
+            let err = pending.claim().await.expect_err("unknown status");
+            assert!(err.starts_with("protocol error"), "{err}");
+            assert!(!err.contains("sk_live_secret"), "{err}");
         });
     }
 
