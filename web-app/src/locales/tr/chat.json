@@ -44,6 +44,9 @@
     "description": "Eklenen dosyalar aranıp alıntılanabilecek şekilde dizinleniyor. Büyük belgelerde bu işlem biraz zaman alabilir."
   },
   "actions": {
+    "readAloud": "Sesli oku",
+    "stopReading": "Okumayı durdur",
+    "codeOmitted": "kod atlandı",
     "copy": "Kopyala",
     "regenerate": "Yanıtı yeniden üret",
     "continue": "Üretmeye devam et",
