@@ -35,6 +35,9 @@ export function useMcpToolProgress() {
         if (cancelled) fn()
         else unlisten = fn
       })
+      .catch((error) => {
+        console.warn('[mcp-tool-progress] listen failed:', error)
+      })
 
     return () => {
       cancelled = true
