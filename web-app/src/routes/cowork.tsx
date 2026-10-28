@@ -154,7 +154,6 @@ import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useAssistant } from '@/hooks/useAssistant'
 import {
   ContextOverflowError,
-  coworkWindow,
   isContextOverflow,
   planTurn,
   sessionTokenLimitFor,
@@ -199,7 +198,6 @@ import {
   baselineFromStatus,
   buildOriginLedger,
   destinationOfOrigin,
-  evidenceLimit,
   promptFolderAccess,
   summarizeRun,
   unavailableBaseline,
@@ -276,6 +274,8 @@ import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
+import { configuredContextTokens } from '@/lib/coworkContextWindow'
+import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import {
   applySandboxFile,
@@ -431,18 +431,14 @@ import {
   bindingKey,
   classifyInstruction,
   isMissingFileError,
-  parseSkillRequests,
   parseSkillRequestTriggers,
   resolveSkills,
   unresolvedSkills,
   type ContextAccounting,
   type InstructionFile,
   type InstructionProbe,
-  type ReadinessManifest,
-} from '@/lib/coworkReadiness'
-import { measureContextPack } from '@/lib/coworkContext'
-import { coworkPreRunContext } from '@/lib/coworkPreRun'
-import { notifyToolBatch, peekAgentToolSchemas } from '@/lib/agentTools'
+  } from '@/lib/coworkReadiness'
+import { notifyToolBatch, } from '@/lib/agentTools'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
@@ -617,28 +613,6 @@ function CoworkRoute() {
 }
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
-/**
- * The window a request has to fit inside, when it is known.
- *
- * Resolved by `useModelCapabilities` (AH-195) rather than read from one
- * settings field: an OpenAI-compatible server reports its window under any of
- * several names, and reading only Flint's own `ctx_len` left every such endpoint
- * permanently "not known". When a local runtime has answered this is its
- * effective `n_ctx`, which `--fit` may have set well below the model's
- * training size -- the smaller number is the real limit.
- */
-const configuredContextTokens = (
-  caps: { contextTokens: number | null; source?: string } | null | undefined,
-  acceptedPrompt?: number | null
-): number | null =>
-  coworkWindow({
-    // Use this only when the provider has not reported its own window.
-    userSet:
-      useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
-    capabilities: caps,
-    acceptedPrompt,
-  })
-
 /** The largest prompt the provider has already accepted in these turns. */
 const largestAcceptedPrompt = (
   turns: readonly { usage?: { prompt_tokens?: number } }[] | undefined
@@ -1152,56 +1126,17 @@ export function CoworkPage() {
    * at first run. Retrieved memory and the toolchain probe are left out for
    * the same reason; the run's own measurement replaces this once it exists.
    */
-  const preRunContext = useMemo<ContextAccounting | null>(() => {
-    if (runContext) return null
-    const planMode = isReadOnly(mode)
-    const subagentNames = subagentDefs.map((d) => d.name)
-    return coworkPreRunContext({
-      prompt: {
-        workspacePath,
-        readOnlyFolder: folder,
-        extraFolders,
-        worktreeBranch:
-          effective.destination === 'managed'
-            ? (worktree?.branch ?? null)
-            : null,
-        gitBranch,
-        projectInstructions,
-        compatInstructions: compatInstructionBlocks(compat),
-        projectTooling:
-          folder && tooling?.folder === folder
-            ? (tooling.loaded?.prompt ?? null)
-            : null,
-        planMode,
-        bashAvailable: sandboxEnforces(),
-        subagentNames,
-        webSearch: webSearchEnabled,
-        platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
-        shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
-        mcpServers: [],
-      },
-      tools: {
-        planMode,
-        webSearch: webSearchEnabled,
-        allowSubagents: true,
-        subagentNames,
-        // What a run started with no message yet would carry: the core set.
-        offerGroups: groupsToOffer({ text: '', history: session?.messages ?? [] }),
-      },
-      backendSchemas: peekAgentToolSchemas(folder ?? undefined, 'session'),
-      messages: hasTurns ? null : [],
-      configuredContextTokens: configuredContextTokens(modelCapabilities),
-    })
-  }, [
+  const { readiness } = useCoworkReadiness({
+    sessionId: session?.id,
+    messages: session?.messages,
     runContext,
     mode,
-    session?.messages,
     subagentDefs,
     workspacePath,
     folder,
     extraFolders,
-    effective.destination,
-    worktree?.branch,
+    destination: effective.destination,
+    worktree,
     gitBranch,
     projectInstructions,
     compat,
@@ -1209,98 +1144,15 @@ export function CoworkPage() {
     webSearchEnabled,
     hasTurns,
     modelCapabilities,
-  ])
-  const readiness = useMemo<ReadinessManifest>(() => {
-    const registry = mergeSkillRegistry(compat, {
-      available: availableSkills.map((skill) => ({ name: skill.name })),
-      enabled: new Set(
-        effectiveEnabled(
-          enabledSkills,
-          availableSkills.map((skill) => skill.name)
-        )
-      ),
-    })
-    const requested = parseSkillRequests(
-      composerPrompt,
-      registry.available.map((skill) => skill.name)
-    )
-    return {
-      binding: { sessionId: session?.id ?? null, folder },
-      folder,
-      branch: gitBranch,
-      mode,
-      // From the effective access, not the stored preference: a session that
-      // remembers "edit this folder" but holds no live grant writes to its
-      // sandbox, and the card has to say so.
-      writeDestination: effective.destination,
-      // Only when that is where writes actually go. A session holding a
-      // worktree record but running in Review must not be shown a destination
-      // it is not using.
-      worktree:
-        effective.destination === 'managed' && worktree
-          ? {
-              path: worktree.path,
-              branch: worktree.branch,
-              baseSha: worktree.baseSha,
-              uncommittedAtCreation: worktree.uncommittedAtCreation,
-            }
-          : null,
-      instructions: instructionFiles,
-      // The same merged registry the run resolves against, so the card cannot
-      // call a skill available that the run will report missing.
-      skills: resolveSkills(requested, registry),
-      // Null until a run has built its tool set: before that nothing knows
-      // the number, and stating one would be inventing it.
-      tools: { builtins: advertisedToolCount, mcpServers: connectedMcpServers },
-      model: {
-        id: selectedModel?.id ?? null,
-        supportsTools: selectedModel
-          ? Boolean(selectedModel.capabilities?.includes('tools'))
-          : null,
-      },
-      // From the run's own snapshot when there is one, so the card and the
-      // summary cannot disagree about whether anything is attributable.
-      evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
-      // Only the read for this folder: a late answer for another is ignored.
-      tooling: folder
-        ? tooling?.folder === folder && tooling.loaded
-          ? tooling.loaded.readiness
-          : { state: 'loading' }
-        : undefined,
-      // From the run's own payload once there is one. Before that the
-      // categories that depend on it stay unknown rather than zero: a run that
-      // has not been built has not sent nothing, it has sent nothing *yet*.
-      context:
-        runContext ??
-        preRunContext ??
-        measureContextPack({
-          systemPrompt: null,
-          toolSchemas: null,
-          messages: null,
-          configuredContextTokens: configuredContextTokens(modelCapabilities),
-        }),
-    }
-  }, [
-    session?.id,
-    folder,
-    gitBranch,
-    mode,
     instructionFiles,
-    effective.destination,
-    worktree,
-    compat,
-    runOrigins?.context.baseline,
-    tooling,
+    baseline: runOrigins?.context.baseline,
     advertisedToolCount,
     connectedMcpServers,
-    runContext,
-    preRunContext,
     availableSkills,
     enabledSkills,
     composerPrompt,
     selectedModel,
-    modelCapabilities,
-  ])
+  })
 
   // Read inside the instruction effect without making the session a dependency:
   // the effect keys on the folder, and the ref is only used to notice that the
