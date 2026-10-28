@@ -69,6 +69,11 @@ pub fn confine(data_folder: &Path, raw: &str) -> Result<PathBuf, String> {
     if target.starts_with(&private) && !target.starts_with(private.join("uploads")) {
         return Err("path is reserved for the server".into());
     }
+    // `mcp_config.json` holds server env values and headers in the clear. The
+    // browser gets the masked copy from the MCP routes, never the file.
+    if target == base.join("mcp_config.json") {
+        return Err("path is reserved for the server".into());
+    }
     Ok(target)
 }
 
@@ -275,11 +280,25 @@ mod tests {
         call(d, "mkdir", &args(json!([p("models/m")]))).unwrap();
         assert!(call(d, "mv", &args(json!([p("models/m"), p("extensions")]))).is_err());
         assert!(call(d, "mv", &args(json!([p("mcp_config.json"), p("models/x.json")]))).is_err());
-        // Reading stays allowed.
-        assert_eq!(call(d, "read_file_sync", &args(json!([p("mcp_config.json")]))).unwrap(), json!("{}"));
+        // Reading the raw file is refused too: it holds secrets in the clear.
+        assert!(call(d, "read_file_sync", &args(json!([p("mcp_config.json")]))).is_err());
         call(d, "mkdir", &args(json!(["file://assistants"]))).unwrap();
         call(d, "write_file_sync", &args(json!([p("assistants/a.json"), "{}"]))).unwrap();
         call(d, "mkdir", &args(json!([p("llamacpp/models/x")]))).unwrap();
+    }
+
+    #[test]
+    fn read_file_sync_rejects_mcp_config() {
+        let data = tempfile::tempdir().unwrap();
+        let d = data.path();
+        std::fs::write(d.join("mcp_config.json"), "{}").unwrap();
+        for raw in [
+            json!(d.join("mcp_config.json").to_string_lossy()),
+            json!("file://mcp_config.json"),
+            json!("mcp_config.json"),
+        ] {
+            assert!(call(d, "read_file_sync", &args(json!([raw]))).is_err());
+        }
     }
 
     #[test]
