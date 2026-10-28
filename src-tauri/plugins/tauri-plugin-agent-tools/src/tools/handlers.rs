@@ -3207,6 +3207,27 @@ pub(crate) fn test_deadline(root: &Path) -> std::sync::Arc<tokio::sync::Notify> 
     fire
 }
 
+/// Held while a collector awaits a job's receiver. If the collecting call is
+/// cancelled (its future dropped) the receiver goes back into the job and
+/// `collecting` is cleared, so the job can be collected again instead of
+/// being left unreachable.
+struct CollectGuard {
+    job_id: String,
+    rx: Option<oneshot::Receiver<String>>,
+}
+
+impl Drop for CollectGuard {
+    fn drop(&mut self) {
+        let Some(rx) = self.rx.take() else { return };
+        if let Ok(mut jobs) = bash_jobs().lock() {
+            if let Some(job) = jobs.get_mut(&self.job_id) {
+                job.rx = Some(rx);
+                job.collecting = false;
+            }
+        }
+    }
+}
+
 /// Wait for a previously backgrounded command to finish and return its
 /// (already-formatted) output, or an error if `job_id` is unknown, was
 /// already collected, or belongs to another conversation.
@@ -3243,9 +3264,21 @@ async fn await_bash_job(job_id: &str, owner: Option<&str>) -> String {
     let result = match taken {
         // A status check already received the output; hand over what it parked.
         Collect::Parked(done) => done,
-        Collect::Awaiting(rx) => rx.await.unwrap_or_else(|_| {
-            "ERROR: background command ended without producing output".to_string()
-        }),
+        Collect::Awaiting(rx) => {
+            let mut guard = CollectGuard {
+                job_id: job_id.to_string(),
+                rx: Some(rx),
+            };
+            let got = match guard.rx.as_mut() {
+                Some(rx) => rx.await.ok(),
+                None => None,
+            };
+            // Finished (either way): nothing to hand back on drop.
+            guard.rx = None;
+            got.unwrap_or_else(|| {
+                "ERROR: background command ended without producing output".to_string()
+            })
+        }
         Collect::Drained => "ERROR: background command ended without producing output".to_string(),
         Collect::Unknown => {
             return format!("ERROR: unknown or already-collected job_id '{job_id}'")
@@ -3969,6 +4002,50 @@ pub async fn render_html_png(
     height: u64,
     scale: f64,
 ) -> Result<Vec<u8>, String> {
+    render_html_png_noted(target, width, height, scale)
+        .await
+        .map(|(png, _)| png)
+}
+
+/// Why Chrome was rerun without its own sandbox, for the tool result.
+const NO_SANDBOX_RETRY_NOTE: &str =
+    "note: Chrome could not start with its sandbox here, so this render was retried without it (the page is still confined: no script, no network).";
+
+/// [`render_html_png`], retrying once with `--no-sandbox` when a sandboxed
+/// Chrome fails to start for a sandbox reason, and saying so in the note.
+pub async fn render_html_png_noted(
+    target: &Path,
+    width: u64,
+    height: u64,
+    scale: f64,
+) -> Result<(Vec<u8>, Option<&'static str>), String> {
+    let already = screenshot_needs_no_sandbox(
+        crate::browser::confine::running_as_root(),
+        std::env::var_os("FLINT_BROWSER_NO_SANDBOX").is_some(),
+    );
+    match render_html_png_opts(target, width, height, scale, false).await {
+        Ok(png) => Ok((png, None)),
+        Err(e) if !already && screenshot_failed_on_sandbox(&e) => {
+            render_html_png_opts(target, width, height, scale, true)
+                .await
+                .map(|png| (png, Some(NO_SANDBOX_RETRY_NOTE)))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Whether a failed render's error says Chrome could not start its sandbox.
+fn screenshot_failed_on_sandbox(error: &str) -> bool {
+    error.starts_with("screenshot not produced") && error.to_ascii_lowercase().contains("sandbox")
+}
+
+async fn render_html_png_opts(
+    target: &Path,
+    width: u64,
+    height: u64,
+    scale: f64,
+    force_no_sandbox: bool,
+) -> Result<Vec<u8>, String> {
     let ext = target
         .extension()
         .and_then(|e| e.to_str())
@@ -4041,10 +4118,11 @@ pub async fn render_html_png(
     let bypass_quoted = shell_quote("--proxy-bypass-list=<-loopback>");
     // Chrome keeps its own sandbox unless it cannot start with one (running as
     // root, typically a container) or the user opted out.
-    let no_sandbox = screenshot_needs_no_sandbox(
-        crate::browser::confine::running_as_root(),
-        std::env::var_os("FLINT_BROWSER_NO_SANDBOX").is_some(),
-    );
+    let no_sandbox = force_no_sandbox
+        || screenshot_needs_no_sandbox(
+            crate::browser::confine::running_as_root(),
+            std::env::var_os("FLINT_BROWSER_NO_SANDBOX").is_some(),
+        );
     let no_sandbox_flag = if no_sandbox { " --no-sandbox" } else { "" };
     let cmd = format!(
         "{chrome_quoted} --headless=new --disable-gpu --hide-scrollbars{no_sandbox_flag} \
@@ -4110,7 +4188,7 @@ pub async fn render_html_png(
     // exists. stderr is drained on a background task so a chatty Chrome never
     // fills the pipe and deadlocks.
     let stderr_pipe = child.stderr.take();
-    let drain = tokio::spawn(async move {
+    let mut drain = tokio::spawn(async move {
         use tokio::io::AsyncReadExt as _;
         let mut buf = Vec::new();
         if let Some(mut pipe) = stderr_pipe {
@@ -4118,16 +4196,37 @@ pub async fn render_html_png(
         }
         String::from_utf8_lossy(&buf).into_owned()
     });
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(30), child.wait()).await;
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(30), child.wait()).await;
+    if waited.is_err() {
+        // Chrome starts helper processes; `kill` below reaches only the parent.
+        if let Some(pid) = child.id() {
+            let _ = proc::kill_tree(pid);
+        }
+    }
     let _ = child.kill().await;
-    let stderr = drain.await.unwrap_or_default();
+    // A helper that kept the pipe open must not hold the call past the render.
+    let stderr = match tokio::time::timeout(std::time::Duration::from_secs(2), &mut drain).await {
+        Ok(joined) => joined.unwrap_or_default(),
+        Err(_) => {
+            drain.abort();
+            String::new()
+        }
+    };
     let _ = tokio::fs::remove_dir_all(&profile).await;
     let _ = tokio::fs::remove_file(&page).await;
 
     let png = match tokio::fs::read(&shot).await {
         Ok(b) => b,
         Err(e) => {
-            let detail = stderr.lines().take(3).collect::<Vec<_>>().join(" | ");
+            let mut lines: Vec<&str> = stderr.lines().take(3).collect();
+            if let Some(l) = stderr
+                .lines()
+                .skip(3)
+                .find(|l| l.to_ascii_lowercase().contains("sandbox"))
+            {
+                lines.push(l);
+            }
+            let detail = lines.join(" | ");
             return Err(format!("screenshot not produced: {e} (chrome: {detail})"));
         }
     };
@@ -4169,7 +4268,7 @@ async fn screenshot(
             None,
         );
     }
-    let png = match render_html_png(&target, width, height, 1.0).await {
+    let (png, note) = match render_html_png_noted(&target, width, height, 1.0).await {
         Ok(b) => b,
         Err(e) => return (format!("ERROR: {e}"), None),
     };
@@ -4180,7 +4279,10 @@ async fn screenshot(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string());
     (
-        format!("Screenshot of {path} ({width}x{height})"),
+        match note {
+            Some(n) => format!("Screenshot of {path} ({width}x{height})\n{n}"),
+            None => format!("Screenshot of {path} ({width}x{height})"),
+        },
         Some(vec![ImageContentPart {
             data_url: format!("data:image/png;base64,{b64}"),
             name,
@@ -4859,6 +4961,28 @@ mod bash_job_registry_tests {
 
         assert_eq!(await_bash_job("bash-outlives", None).await, "built");
         assert!(!list_bash_jobs(None).iter().any(|j| j.job_id == "bash-outlives"));
+    }
+
+    #[test]
+    fn screenshot_sandbox_failure_is_recognised() {
+        assert!(screenshot_failed_on_sandbox(
+            "screenshot not produced: x (chrome: No usable sandbox! | more)"
+        ));
+        assert!(!screenshot_failed_on_sandbox("screenshot not produced: x (chrome: gpu error)"));
+        assert!(!screenshot_failed_on_sandbox("failed to launch Chrome: sandbox"));
+    }
+
+    #[tokio::test]
+    async fn await_bash_job_cancel_keeps_job_collectable() {
+        let tx = park("bash-cancel-collect", "sleep 9");
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(30),
+            await_bash_job("bash-cancel-collect", None),
+        )
+        .await;
+        assert!(cancelled.is_err(), "collection should still be waiting");
+        tx.send("done".to_string()).unwrap();
+        assert_eq!(await_bash_job("bash-cancel-collect", None).await, "done");
     }
 
     #[tokio::test]
