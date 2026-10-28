@@ -3703,7 +3703,7 @@ impl App {
         // IME bursts can desync crossterm so an SGR mouse report arrives as
         // characters. Drop a completed (or prefix-truncated) report at the
         // caret rather than leaving `65;50;42M` in the composer.
-        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
+        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor, true);
         self.reset_slash_hint();
         // Refresh path hints on any character edit
         self.refresh_path_hints();
@@ -3717,7 +3717,7 @@ impl App {
         }
         self.input.insert_str(self.cursor, text);
         self.cursor += text.len();
-        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
+        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor, false);
         self.reset_slash_hint();
         self.refresh_path_hints();
     }
@@ -8456,13 +8456,13 @@ fn strip_sgr_mouse_reports(text: &str) -> String {
 }
 
 /// Byte length of one SGR mouse report occupying the end of `text`, if any.
-fn trailing_sgr_mouse_report_len(text: &str) -> Option<usize> {
+fn trailing_sgr_mouse_report_len(text: &str, allow_bare: bool) -> Option<usize> {
     let marked = sgr_mouse_report_re()
         .find_iter(text)
         .last()
         .filter(|m| m.end() == text.len())
         .map(|m| m.len());
-    if marked.is_some() {
+    if marked.is_some() || !allow_bare {
         return marked;
     }
     let caps = bare_sgr_mouse_report_re().captures(text)?;
@@ -8470,8 +8470,8 @@ fn trailing_sgr_mouse_report_len(text: &str) -> Option<usize> {
     is_mouse_button_code(code).then(|| caps[0].len())
 }
 
-fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize) {
-    while let Some(n) = trailing_sgr_mouse_report_len(&buf[..*cursor]) {
+fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize, allow_bare: bool) {
+    while let Some(n) = trailing_sgr_mouse_report_len(&buf[..*cursor], allow_bare) {
         let start = *cursor - n;
         buf.drain(start..*cursor);
         *cursor = start;
