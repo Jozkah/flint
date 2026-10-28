@@ -1347,7 +1347,14 @@ pub async fn authorize_mcp_server<R: Runtime>(
     }
     // Best-effort: the url has already been emitted, so a session with no
     // browser can still finish by opening it by hand.
-    if let Err(e) = app
+    // The url comes from the MCP server's metadata: only a web url may reach
+    // the OS opener, never file: or a custom protocol handler.
+    let scheme_ok = url::Url::parse(&pending.authorization_url)
+        .map(|u| matches!(u.scheme(), "http" | "https"))
+        .unwrap_or(false);
+    if !scheme_ok {
+        log::warn!("Refusing to open a non-http(s) authorization url for '{name}'");
+    } else if let Err(e) = app
         .opener()
         .open_url(&pending.authorization_url, None::<&str>)
     {
