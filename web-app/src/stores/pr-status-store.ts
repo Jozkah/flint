@@ -213,13 +213,17 @@ export const usePrStatusStore = create<PrStatusState>()(
   addClaims: (add) => set((s) => ({ claims: { ...add, ...s.claims } })),
   markBackfilled: () => set({ backfilled: true }),
   refresh: async (folder, force = false, claimant) => {
-    if (claimant) claimants.set(folder, claimant)
     const cur = get().byFolder[folder]
+    // A lookup already running keeps the claimant it started with; this
+    // caller's is dropped rather than leaked onto that lookup's answer.
     if (cur?.loading) {
       if (force) again.add(folder)
       return
     }
     if (!force && cur && Date.now() - cur.at < FRESH_MS) return
+    // Only a call that actually starts a lookup may name who it is for.
+    if (claimant) claimants.set(folder, claimant)
+    else claimants.delete(folder)
     set((s) => ({
       byFolder: { ...s.byFolder, [folder]: { lookup: cur?.lookup ?? null, at: cur?.at ?? 0, loading: true } },
     }))
@@ -232,7 +236,7 @@ export const usePrStatusStore = create<PrStatusState>()(
     }
     const repeat = again.delete(folder)
     const by = repeat ? undefined : claimants.get(folder)
-    if (!repeat) claimants.delete(folder)
+    claimants.delete(folder)
     set((s) => {
       const byFolder = { ...s.byFolder, [folder]: { lookup, at: Date.now(), loading: false } }
       if (!by || lookup.kind !== 'found') return { byFolder }
