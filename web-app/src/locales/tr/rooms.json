@@ -652,5 +652,6 @@
     "ranTools": "Bu turun başında zaten araç çalıştırdınız ({{ran}}); {{reason}} Dosyaları veya durumu değiştiren hiçbir şeyi tekrarlamayın; yalnızca hâlâ ihtiyacınız olanı yeniden okuyun.",
     "ranToolsDropped": "çıktıları bağlam penceresine sığması için atıldı.",
     "ranToolsRetry": "ardından sağlayıcı hata verdi ve istek yeniden deneniyor."
-  }
+  },
+  "deleteFailed": "Failed to delete room"
 }
