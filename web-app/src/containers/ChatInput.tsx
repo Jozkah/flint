@@ -821,8 +821,8 @@ const ChatInput = memo(function ChatInput({
           setReferenceActive(0)
           setReferenceStatus(
             ranked.length === 0
-              ? 'No references match'
-              : `${ranked.length} reference${ranked.length === 1 ? '' : 's'}`
+              ? t('chat:composer.referencesNone')
+              : t('chat:composer.references', { count: ranked.length })
           )
           rerankMenuRef.current = () => rank(files)
         }
@@ -853,6 +853,7 @@ const ChatInput = memo(function ChatInput({
       }
     },
     [
+      t,
       workingDir,
       referenceDataFolder,
       setPrompt,
@@ -926,13 +927,18 @@ const ChatInput = memo(function ChatInput({
         .add(workingDir, name, aliasDraft.token, lines)
       if (!out.ok) {
         setAliasError(out.message)
-        setReferenceStatus(`Alias not saved: ${out.message}`)
+        setReferenceStatus(
+          t('chat:composer.aliasNotSaved', { message: out.message })
+        )
         return
       }
       setAliasDraft(null)
       setAliasError(null)
       setReferenceStatus(
-        `Saved @alias:${out.alias.name} for ${out.alias.target}`
+        t('chat:composer.aliasSaved', {
+          name: out.alias.name,
+          target: out.alias.target,
+        })
       )
       setFilePickerEntries((entries) =>
         rankReferences(filePickerQuery, {
@@ -1363,8 +1369,8 @@ const ChatInput = memo(function ChatInput({
       }
       setMessage(
         unavailableModel
-          ? `${unavailableModel} is no longer available. Pick another model in the model menu.`
-          : 'Please select a model to start chatting.'
+          ? t('chat:composer.modelUnavailable', { model: unavailableModel })
+          : t('chat:composer.selectModel')
       )
       return
     }
@@ -1400,7 +1406,10 @@ const ChatInput = memo(function ChatInput({
         if (!mightSee) {
           missing.splice(missing.indexOf('vision'), 1)
           toast.info(
-            `${selectedModel.name ?? selectedModel.id} cannot see images, so ${describer.modelId} will describe them first.`
+            t('chat:composer.describeFirst', {
+              model: selectedModel.name ?? selectedModel.id,
+              describer: describer.modelId,
+            })
           )
         }
       }
@@ -1645,7 +1654,7 @@ const ChatInput = memo(function ChatInput({
           (getProviderByName(threadProvider)?.models ?? []).map((m) => m.id)
         )
         if (!threadModelId) {
-          setMessage('Please select a model to start chatting.')
+          setMessage(t('chat:composer.selectModel'))
           return
         }
 
@@ -1976,11 +1985,11 @@ const ChatInput = memo(function ChatInput({
         multiple: true,
         filters: [
           {
-            name: 'Documents & Code',
+            name: t('chat:composer.filterDocuments'),
             extensions: [...DOCUMENT_ATTACHMENT_EXTENSIONS],
           },
           {
-            name: 'All Files',
+            name: t('chat:composer.filterAll'),
             extensions: ['*'],
           },
         ],
@@ -1992,7 +2001,7 @@ const ChatInput = memo(function ChatInput({
     } catch (e) {
       console.error('Failed to attach documents:', e)
       const desc = e instanceof Error ? e.message : JSON.stringify(e)
-      toast.error('Failed to attach documents', { description: desc })
+      toast.error(t('chat:composer.attachFailed'), { description: desc })
     }
   }
 
@@ -2016,7 +2025,7 @@ const ChatInput = memo(function ChatInput({
         }
       } catch (error) {
         console.error('Failed to delete attachment from backend:', error)
-        toast.error('Failed to remove attachment', {
+        toast.error(t('chat:composer.removeFailed'), {
           description: error instanceof Error ? error.message : String(error),
         })
         return
@@ -2282,7 +2291,7 @@ const ChatInput = memo(function ChatInput({
               setAttachmentsForThread(attachmentsKey, (prev) =>
                 prev.filter((a) => !matchImg(a))
               )
-              toast.error(`Failed to ingest ${img.name}`, {
+              toast.error(t('chat:composer.ingestFailed', { name: img.name }), {
                 description:
                   error instanceof Error ? error.message : String(error),
               })
@@ -2301,8 +2310,11 @@ const ChatInput = memo(function ChatInput({
 
     // Display validation errors
     if (duplicates.length > 0) {
-      toast.warning('Some images already attached', {
-        description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
+      toast.warning(t('chat:composer.dupImages'), {
+        description: t('sweep:chat.alreadyInList', {
+          count: duplicates.length,
+          names: duplicates.join(', '),
+        }),
       })
     }
 
@@ -2416,17 +2428,20 @@ const ChatInput = memo(function ChatInput({
       }
 
       if (duplicates.length > 0) {
-        toast.warning('Some audio files already attached', {
-          description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
+        toast.warning(t('chat:composer.dupAudio'), {
+          description: t('sweep:chat.alreadyInList', {
+            count: duplicates.length,
+            names: duplicates.join(', '),
+          }),
         })
       }
-      const errors = mediaBatchErrors('audio', batch)
+      const errors = mediaBatchErrors('audio', batch, t)
       if (errors.length > 0) {
         setMessage(errors.join(' | '))
         if (audioInputRef.current) audioInputRef.current.value = ''
       }
     },
-    [attachmentsKey, setAttachmentsForThread]
+    [attachmentsKey, setAttachmentsForThread, t]
   )
 
   const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2443,7 +2458,12 @@ const ChatInput = memo(function ChatInput({
       try {
         const selected = await serviceHub.dialog().open({
           multiple: true,
-          filters: [{ name: 'Audio', extensions: ['wav', 'mp3'] }],
+          filters: [
+            {
+              name: t('chat:composer.filterAudio'),
+              extensions: ['wav', 'mp3'],
+            },
+          ],
         })
         if (selected) {
           const paths = Array.isArray(selected) ? selected : [selected]
@@ -2461,7 +2481,7 @@ const ChatInput = memo(function ChatInput({
               files.push(new File([blob], fileName, { type: mimeType }))
             } catch (error) {
               console.error('Failed to read audio file:', error)
-              toast.error('Failed to read audio file', {
+              toast.error(t('chat:composer.readAudioFailed'), {
                 description:
                   error instanceof Error ? error.message : String(error),
               })
@@ -2476,7 +2496,7 @@ const ChatInput = memo(function ChatInput({
     } else {
       audioInputRef.current?.click()
     }
-  }, [serviceHub, processAudioFiles])
+  }, [serviceHub, processAudioFiles, t])
 
   const processVideoFiles = useCallback(
     async (files: File[]) => {
@@ -2495,17 +2515,20 @@ const ChatInput = memo(function ChatInput({
       }
 
       if (duplicates.length > 0) {
-        toast.warning('Some video files already attached', {
-          description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
+        toast.warning(t('chat:composer.dupVideo'), {
+          description: t('sweep:chat.alreadyInList', {
+            count: duplicates.length,
+            names: duplicates.join(', '),
+          }),
         })
       }
-      const errors = mediaBatchErrors('video', batch)
+      const errors = mediaBatchErrors('video', batch, t)
       if (errors.length > 0) {
         setMessage(errors.join(' | '))
         if (videoInputRef.current) videoInputRef.current.value = ''
       }
     },
-    [attachmentsKey, setAttachmentsForThread]
+    [attachmentsKey, setAttachmentsForThread, t]
   )
 
   const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2522,7 +2545,9 @@ const ChatInput = memo(function ChatInput({
       try {
         const selected = await serviceHub.dialog().open({
           multiple: true,
-          filters: [{ name: 'Video', extensions: VIDEO_EXTS }],
+          filters: [
+            { name: t('chat:composer.filterVideo'), extensions: VIDEO_EXTS },
+          ],
         })
         if (selected) {
           const paths = Array.isArray(selected) ? selected : [selected]
@@ -2541,7 +2566,7 @@ const ChatInput = memo(function ChatInput({
               )
             } catch (error) {
               console.error('Failed to read video file:', error)
-              toast.error('Failed to read video file', {
+              toast.error(t('chat:composer.readVideoFailed'), {
                 description:
                   error instanceof Error ? error.message : String(error),
               })
@@ -2556,7 +2581,7 @@ const ChatInput = memo(function ChatInput({
     } else {
       videoInputRef.current?.click()
     }
-  }, [serviceHub, processVideoFiles])
+  }, [serviceHub, processVideoFiles, t])
 
   // Open the image picker dialog (extracted for reuse)
   const openImagePicker = useCallback(async () => {
@@ -2566,7 +2591,7 @@ const ChatInput = memo(function ChatInput({
           multiple: true,
           filters: [
             {
-              name: 'Images',
+              name: t('chat:composer.filterImages'),
               extensions: ['jpg', 'jpeg', 'png'],
             },
           ],
@@ -2602,7 +2627,7 @@ const ChatInput = memo(function ChatInput({
               files.push(file)
             } catch (error) {
               console.error('Failed to read file:', error)
-              toast.error('Failed to read file', {
+              toast.error(t('chat:composer.readFileFailed'), {
                 description:
                   error instanceof Error ? error.message : String(error),
               })
@@ -2622,7 +2647,7 @@ const ChatInput = memo(function ChatInput({
       // Fallback to input click for web
       fileInputRef.current?.click()
     }
-  }, [serviceHub, processImageFiles])
+  }, [serviceHub, processImageFiles, t])
 
   // The drop zone is always live. Gating it on the model's media capabilities
   // meant a text-only model refused every drop, a plain `.txt` included, and
@@ -3584,7 +3609,7 @@ const ChatInput = memo(function ChatInput({
                         }}
                       >
                         <Music className="size-4 text-muted-foreground" />
-                        <span>Add Audio</span>
+                        <span>{t('chat:composer.addAudio')}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
@@ -3593,7 +3618,7 @@ const ChatInput = memo(function ChatInput({
                         }}
                       >
                         <Video className="size-4 text-muted-foreground" />
-                        <span>Add Video</span>
+                        <span>{t('chat:composer.addVideo')}</span>
                       </DropdownMenuItem>
                     {/* RAG document attachments - desktop-only via dialog; shown when feature enabled */}
                     <DropdownMenuItem
@@ -3617,8 +3642,8 @@ const ChatInput = memo(function ChatInput({
                       )}
                       <span>
                         {ingestingDocs
-                          ? 'Indexing documents…'
-                          : 'Add documents or files'}
+                          ? t('chat:composer.indexingDocs')
+                          : t('chat:composer.addDocs')}
                       </span>
                     </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -3812,16 +3837,16 @@ const ChatInput = memo(function ChatInput({
                       )
                     const label =
                       reasoningValue === 'on'
-                        ? 'On'
+                        ? t('chat:composer.reasoningOn')
                         : reasoningValue === 'off'
-                          ? 'Off'
-                          : 'Auto'
+                          ? t('chat:composer.reasoningOff')
+                          : t('chat:composer.reasoningAuto')
                     const tooltipText =
                       reasoningValue === 'on'
-                        ? 'Reasoning forced on for every request.'
+                        ? t('chat:composer.reasoningOnTip')
                         : reasoningValue === 'off'
-                          ? 'Reasoning disabled for every request.'
-                          : "Reasoning uses the model's default."
+                          ? t('chat:composer.reasoningOffTip')
+                          : t('chat:composer.reasoningAutoTip')
 
                     // Stored as a symbolic level, not an absolute token count:
                     // the live context size (post auto-fit) is only known once
@@ -3861,7 +3886,7 @@ const ChatInput = memo(function ChatInput({
                                 variant="ghost"
                                 size="icon-xs"
                                 className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
-                                aria-label={`Reasoning: ${label}`}
+                                aria-label={t('chat:composer.reasoningLabel', { state: label })}
                               >
                                 <Brain
                                   className={cn(
@@ -3888,7 +3913,7 @@ const ChatInput = memo(function ChatInput({
                               <DropdownMenuItem
                                 onClick={() => setReasoning('auto')}
                               >
-                                Auto
+                                {t('chat:composer.reasoningAuto')}
                                 {reasoningValue === 'auto' && (
                                   <span className="ml-auto text-xs text-muted-foreground">
                                     ✓
@@ -3898,7 +3923,7 @@ const ChatInput = memo(function ChatInput({
                                     <DropdownMenuItem
                                       onClick={() => setReasoning('on')}
                                     >
-                                On
+                                {t('chat:composer.reasoningOn')}
                                 {reasoningValue === 'on' && (
                                   <span className="ml-auto text-xs text-muted-foreground">
                                     ✓
@@ -3908,7 +3933,7 @@ const ChatInput = memo(function ChatInput({
                               <DropdownMenuItem
                                 onClick={() => setReasoning('off')}
                               >
-                                Off
+                                {t('chat:composer.reasoningOff')}
                                 {reasoningValue === 'off' && (
                                   <span className="ml-auto text-xs text-muted-foreground">
                                     ✓
@@ -3923,7 +3948,7 @@ const ChatInput = memo(function ChatInput({
                               <DropdownMenuSub>
                                 <DropdownMenuSubTrigger>
                                         <span className="flex-1">
-                                          Thinking Budget
+                                          {t('chat:composer.thinkingBudget')}
                                         </span>
                                   <span className="text-xs text-muted-foreground">
                                     {currentBudgetLabel}
@@ -4063,7 +4088,11 @@ const ChatInput = memo(function ChatInput({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{isStreaming ? 'Stop generating' : t('chat:stopToolCall')}</p>
+                    <p>
+                      {isStreaming
+                        ? t('chat:composer.stopGenerating')
+                        : t('chat:stopToolCall')}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               ) : (

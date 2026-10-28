@@ -376,6 +376,42 @@ async fn sha256_file(path: &PathBuf, cancel: &AtomicBool) -> Result<String, Stri
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// The sidecar that remembers which version of the file a `.part` came from.
+fn part_meta_path(part_path: &std::path::Path) -> PathBuf {
+    let mut name = part_path.as_os_str().to_owned();
+    name.push(".meta");
+    PathBuf::from(name)
+}
+
+/// A strong validator for the file in a response. Hugging Face sends the
+/// content hash as `ETag` (or `X-Linked-ETag` on the redirect); a weak tag
+/// cannot be used with `If-Range`.
+fn etag_of(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    ["etag", "x-linked-etag"]
+        .into_iter()
+        .filter_map(|name| headers.get(name))
+        .filter_map(|value| value.to_str().ok())
+        .map(str::trim)
+        .find(|value| !value.is_empty() && !value.starts_with("W/"))
+        .map(str::to_string)
+}
+
+async fn read_part_etag(part_path: &std::path::Path) -> Option<String> {
+    let text = tokio::fs::read_to_string(part_meta_path(part_path)).await.ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+async fn write_part_etag(part_path: &std::path::Path, etag: &str) {
+    let _ = tokio::fs::write(part_meta_path(part_path), etag).await;
+}
+
+/// Removes a partial download and its sidecar.
+async fn discard_part(part_path: &std::path::Path) {
+    let _ = tokio::fs::remove_file(part_path).await;
+    let _ = tokio::fs::remove_file(part_meta_path(part_path)).await;
+}
+
 async fn finalize_verified_download(part_path: &PathBuf, final_path: &PathBuf) -> Result<(), String> {
     if tokio::fs::metadata(final_path).await.is_err() {
         return tokio::fs::rename(part_path, final_path)
@@ -821,6 +857,12 @@ async fn download_attempt<R: Runtime>(
     let mut request = client.get(url.clone());
     if existing > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
+        // Resume only if the file is still the one the partial came from. If it
+        // changed, the server answers 200 with the whole new file and the
+        // partial is rewritten instead of being glued onto different bytes.
+        if let Some(etag) = read_part_etag(part_path).await {
+            request = request.header(reqwest::header::IF_RANGE, etag);
+        }
     }
     let response = tokio::select! {
         sent = tokio::time::timeout(STALL_TIMEOUT, request.send()) => match sent {
@@ -863,6 +905,9 @@ async fn download_attempt<R: Runtime>(
         return Err(response_error(response).await);
     }
 
+    if let Some(etag) = etag_of(response.headers()) {
+        write_part_etag(part_path, &etag).await;
+    }
     let resumed = existing > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
     let start = if resumed { existing } else { 0 };
     let total = response
@@ -1129,8 +1174,11 @@ pub async fn huggingface_download_model<R: Runtime>(
                 .map_err(|e| format!("Could not verify model size: {e}"))?
                 .len();
             if actual != size {
+                // A part that is the wrong size will be the wrong size again on
+                // resume; keeping it would loop the user on the same error.
+                discard_part(&part_path).await;
                 return Err(format!(
-                    "Downloaded file size mismatch: expected {size} bytes, got {actual}"
+                    "Downloaded file size mismatch: expected {size} bytes, got {actual}. The partial download was discarded; start it again."
                 ));
             }
         }
@@ -1141,13 +1189,18 @@ pub async fn huggingface_download_model<R: Runtime>(
         {
             let actual = sha256_file(&part_path, &cancel).await?;
             if !actual.eq_ignore_ascii_case(expected) {
-                return Err("Downloaded file failed SHA-256 verification".to_string());
+                discard_part(&part_path).await;
+                return Err(
+                    "Downloaded file failed SHA-256 verification. The partial download was discarded; start it again."
+                        .to_string(),
+                );
             }
         }
         if cancel.load(Ordering::Relaxed) {
             return Err("Download paused".to_string());
         }
         finalize_verified_download(&part_path, &final_path).await?;
+        let _ = tokio::fs::remove_file(part_meta_path(&part_path)).await;
         Ok(relative_download_path(&repo, &filename)
             .to_string_lossy()
             .replace('\\', "/"))
@@ -1274,6 +1327,30 @@ mod tests {
         // The margin counts: exactly the file size free is not enough.
         assert!(disk_preflight(Some(gb), 0, gb).is_err());
         assert!(disk_preflight(Some(gb), 0, gb + DISK_MARGIN_BYTES).is_ok());
+    }
+
+    #[test]
+    fn etag_is_taken_from_etag_then_linked_etag_and_never_weak() {
+        use reqwest::header::{HeaderMap, HeaderValue};
+        let mut h = HeaderMap::new();
+        h.insert("etag", HeaderValue::from_static("W/\"abc\""));
+        h.insert("x-linked-etag", HeaderValue::from_static("\"def\""));
+        assert_eq!(etag_of(&h).as_deref(), Some("\"def\""), "a weak etag is skipped");
+        h.insert("etag", HeaderValue::from_static("\"strong\""));
+        assert_eq!(etag_of(&h).as_deref(), Some("\"strong\""));
+        assert_eq!(etag_of(&HeaderMap::new()), None);
+    }
+
+    #[tokio::test]
+    async fn etag_sidecar_roundtrips_and_discard_removes_both_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        tokio::fs::write(&part, b"bytes").await.unwrap();
+        assert_eq!(read_part_etag(&part).await, None, "no sidecar means no If-Range");
+        write_part_etag(&part, "\"abc\"").await;
+        assert_eq!(read_part_etag(&part).await.as_deref(), Some("\"abc\""));
+        discard_part(&part).await;
+        assert!(!part.exists() && !part_meta_path(&part).exists());
     }
 
     #[test]
