@@ -7,46 +7,45 @@ const h = vi.hoisted(() => ({
   composerFor: vi.fn(),
   waitForComposer: vi.fn(),
   stopFn: vi.fn(),
+  store: (state: unknown) => ({ getState: () => state }),
 }))
 
-const store = (state: unknown) => ({ getState: () => state })
-
 vi.mock('@/hooks/useThreads', () => ({
-  useThreads: store({
+  useThreads: h.store({
     createThread: h.createThread,
     deleteThread: h.deleteThread,
     currentThreadId: null,
     threads: {},
   }),
 }))
-vi.mock('@/hooks/useCoworkSessions', () => ({ useCoworkSessions: store({}) }))
-vi.mock('@/hooks/useCoworkRun', () => ({ useCoworkRun: store({ runs: {} }) }))
+vi.mock('@/hooks/useCoworkSessions', () => ({ useCoworkSessions: h.store({}) }))
+vi.mock('@/hooks/useCoworkRun', () => ({ useCoworkRun: h.store({ runs: {} }) }))
 vi.mock('@/hooks/useAppState', () => ({
   useAppState: { getState: () => ({ busyThreads: h.busy }) },
 }))
 vi.mock('@/hooks/useModelProvider', () => ({
-  useModelProvider: store({
+  useModelProvider: h.store({
     selectedProvider: 'p',
     selectedModel: { id: 'm' },
     providers: [],
     getProviderByName: () => ({ models: [{ id: 'm' }] }),
   }),
 }))
-vi.mock('@/hooks/useWebSearchConfig', () => ({ useWebSearchConfig: store({}) }))
-vi.mock('@/hooks/useDirectEditGrants', () => ({ useDirectEditGrants: store({}) }))
+vi.mock('@/hooks/useWebSearchConfig', () => ({ useWebSearchConfig: h.store({}) }))
+vi.mock('@/hooks/useDirectEditGrants', () => ({ useDirectEditGrants: h.store({}) }))
 vi.mock('@/hooks/useToolApprovalRequests', () => ({
   allApprovalRequests: () => [],
   canTemporarilyAllowGit: () => false,
-  useToolApprovalRequests: store({}),
+  useToolApprovalRequests: h.store({}),
 }))
-vi.mock('@/stores/message-queue-store', () => ({ useMessageQueue: store({ queues: {} }) }))
+vi.mock('@/stores/message-queue-store', () => ({ useMessageQueue: h.store({ queues: {} }) }))
 vi.mock('@/lib/chatSteering', () => ({ holdQueueThenStop: vi.fn() }))
 vi.mock('@/lib/coworkRunner', () => ({ abortAll: vi.fn(), abortRun: vi.fn(), answerAsk: vi.fn() }))
 vi.mock('../appAsks', () => ({ appAsks: {} }))
 vi.mock('../appPrompts', () => ({ appPrompts: {}, respondAppPrompt: vi.fn() }))
 vi.mock('@/lib/rooms/controller', () => ({ roomController: { stop: vi.fn() } }))
 vi.mock('@/lib/rooms/persistence', () => ({ getRoomPersistence: () => ({}) }))
-vi.mock('@/lib/rooms/store', () => ({ useRoomsStore: store({ runningRoomIds: [] }) }))
+vi.mock('@/lib/rooms/store', () => ({ useRoomsStore: h.store({ runningRoomIds: [] }) }))
 vi.mock('@/lib/permissionRequest', () => ({ describePermissionRequest: vi.fn() }))
 vi.mock('@/lib/models', () => ({ resolveThreadModelId: (_p: unknown, id: unknown) => id }))
 vi.mock('../api', () => ({ remoteApi: {} }))
@@ -57,13 +56,13 @@ vi.mock('../composer', () => ({
 }))
 vi.mock('@/lib/resolveReplyModel', () => ({ resolveReplyModel: () => undefined }))
 vi.mock('@/hooks/useModelEvidence', () => ({
-  useModelEvidence: store({ preferredModel: undefined }),
+  useModelEvidence: h.store({ preferredModel: undefined }),
 }))
 vi.mock('@/utils/getModelToStart', () => ({ getLastUsedModel: () => undefined }))
 vi.mock('@/hooks/useChatAttachments', () => ({
-  useChatAttachments: store({ setAttachments: vi.fn() }),
+  useChatAttachments: h.store({ setAttachments: vi.fn() }),
 }))
-vi.mock('@/hooks/useAttachments', () => ({ useAttachments: store({ parseMode: 'auto' }) }))
+vi.mock('@/hooks/useAttachments', () => ({ useAttachments: h.store({ parseMode: 'auto' }) }))
 vi.mock('@/i18n/react-i18next-compat', () => ({ i18n: { t: (k: string) => k } }))
 vi.mock('../attachments', () => ({ planAttachments: vi.fn() }))
 
