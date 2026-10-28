@@ -28,105 +28,9 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
             ephemeral,
             json_schema,
             json_schema_attempts,
-        } => {
-            let json_schema = match json_schema.as_deref().map(resolve_json_schema).transpose() {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(2);
-                }
-            };
-            let append_system_prompt = match resolve_append_prompt(
-                append_system_prompt,
-                append_system_prompt_file.as_deref(),
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(2);
-                }
-            };
-            if let Some(level) = effort.as_deref() {
-                if !matches!(level, "low" | "medium" | "high") {
-                    eprintln!("Error: --effort '{level}' is not one of: low, medium, high");
-                    std::process::exit(2);
-                }
-            }
-            // AH-183: before the run, so a destination that cannot be written
-            // fails the command instead of silently streaming nowhere.
-            if let Some(destination) = events.as_deref() {
-                if let Err(e) = app_lib::core::cli::stream_events_to(destination) {
-                    eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
-                    std::process::exit(e.exit_code());
-                }
-            }
-            let mode_switches =
-                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("Error: {e}");
-                        std::process::exit(2);
-                    }
-                };
-            cli_agent_run(
-                &project,
-                &task,
-                model,
-                providers.into_overrides(),
-                SessionFlags {
-                    auto_approve: mode_switches.0,
-                    bypass: app_lib::core::cli::PermissionMode::requests_bypass(mode.as_deref()),
-                    plan: mode_switches.1,
-                    sandbox: sandbox.into_flag(),
-                    worktree: worktree.into_flag(),
-                    profile,
-                    density: match output_density
-                        .as_deref()
-                        .map(app_lib::core::cli::Density::parse)
-                    {
-                        Some(Ok(density)) => Some(density),
-                        Some(Err(e)) => {
-                            let refusal = HarnessError::new(
-                                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                                e,
-                            );
-                            eprintln!(
-                                "Error [{}]: {}",
-                                refusal.kind().tag(),
-                                refusal.message()
-                            );
-                            std::process::exit(refusal.exit_code());
-                        }
-                        None => None,
-                    },
-                    interrupted: resume.interrupted,
-                    max_turns: budget.max_turns,
-                    max_session_tokens: budget.max_session_tokens,
-                    max_budget_usd: budget.max_budget_usd,
-                    append_system_prompt,
-                    allow_tools,
-                    deny_tools,
-                    effort,
-                    ephemeral,
-                    json_schema,
-                    json_schema_attempts,
-                    ..Default::default()
-                },
-                resume.into_request(),
-                output_format,
-                input_format,
-                host_tools.as_deref(),
-                host_gate,
-            )
-            .await
-        }
-        AgentCommands::RunSubagent { spec } => {
-            app_lib::core::cli::run_durable_subagent(std::path::Path::new(&spec)).await
-        }
-        AgentCommands::Serve => {
-            app_lib::core::cli::json_api::serve_stdio().await;
-            Ok(())
-        }
+        } => run_cmd::run(project, task, model, safe, mode, providers, sandbox, budget, worktree, resume, output_format, input_format, host_tools, host_gate, events, profile, output_density, append_system_prompt, append_system_prompt_file, allow_tools, deny_tools, effort, ephemeral, json_schema, json_schema_attempts).await,
+        AgentCommands::RunSubagent { spec } => run_cmd::run_subagent(spec).await,
+        AgentCommands::Serve => run_cmd::serve().await,
         AgentCommands::Step {
             project,
             task,
@@ -136,31 +40,7 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
             providers,
             sandbox,
             profile,
-        } => {
-            let mode_switches =
-                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("Error: {e}");
-                        std::process::exit(2);
-                    }
-                };
-            cli_agent_step(
-                &project,
-                &task,
-                model,
-                providers.into_overrides(),
-                SessionFlags {
-                    auto_approve: mode_switches.0,
-                    bypass: app_lib::core::cli::PermissionMode::requests_bypass(mode.as_deref()),
-                    plan: mode_switches.1,
-                    sandbox: sandbox.into_flag(),
-                    profile,
-                    ..Default::default()
-                },
-            )
-            .await
-        }
+        } => run_cmd::step(project, task, model, safe, mode, providers, sandbox, profile).await,
         AgentCommands::Tree { session, json } => {
             let data = app_lib::core::app::commands::resolve_jan_data_folder();
             tauri_plugin_agent_tools::run_tree::of_session(&data, &session).map(|tree| {
@@ -893,27 +773,10 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
                 Err(e) => Err(HarnessError::legacy(e)),
             }
         }
-        AgentCommands::Status { project, providers } => {
-            match cli_agent_status(&project, &providers.into_overrides()) {
-                Ok(status) => {
-                    println!("{}", serde_json::to_string_pretty(&status).unwrap());
-                    Ok(())
-                }
-                Err(e) => Err(HarnessError::legacy(e)),
-            }
-        }
-        // No project and no provider: the schema comes from the types alone, so
-        // it is the same document on any machine and in any directory.
-        AgentCommands::Schema { out } => {
-            app_lib::core::cli::protocol_schema::run(out.as_deref()).map_err(HarnessError::legacy)
-        }
-        AgentCommands::Rpc => app_lib::core::cli::rpc::serve().await.map_err(HarnessError::legacy),
-        // Like `schema`: no project root and no provider are involved, so the
-        // artifact is the same one on any machine. `--out` is what CI and
-        // `make protocol-rpc-schema` use.
-        AgentCommands::RpcSchema { out } => {
-            app_lib::core::cli::rpc_schema::run(out.as_deref()).map_err(HarnessError::legacy)
-        }
+        AgentCommands::Status { project, providers } => run_cmd::status(project, providers),
+        AgentCommands::Schema { out } => run_cmd::schema(out),
+        AgentCommands::Rpc => run_cmd::rpc().await,
+        AgentCommands::RpcSchema { out } => run_cmd::rpc_schema(out),
     };
     if let Err(e) = result {
         // AH-009: what ended the run decides how it is reported and what the

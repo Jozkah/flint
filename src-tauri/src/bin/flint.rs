@@ -23,6 +23,8 @@ macro_rules! println {
 
 #[path = "flint/agent_cmd.rs"]
 mod agent_cmd;
+#[path = "flint/run_cmd.rs"]
+mod run_cmd;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use console::Style;
 
