@@ -16,16 +16,14 @@ pub const MASK: &str = "\u{2022}\u{2022}\u{2022}\u{2022}";
 /// The per-server maps whose values can be credentials.
 const SECRET_BEARING_FIELDS: [&str; 2] = ["env", "headers"];
 
-/// The fields that decide where a server's secrets are sent. A stored secret
-/// is only put back into a payload server whose endpoint is unchanged: a
-/// webview that points a server somewhere else must not take its secrets along.
-const ENDPOINT_FIELDS: [&str; 4] = ["type", "url", "command", "args"];
-
-/// Does `sent` still point at the same endpoint as the stored `real` copy?
-fn same_endpoint(sent: &Map<String, Value>, real: &Value) -> bool {
-    ENDPOINT_FIELDS
-        .iter()
-        .all(|f| sent.get(*f) == real.get(*f))
+/// A stored secret is only put back into a payload server whose identity is
+/// unchanged: transport, executable, argv, endpoint, working directory, and the
+/// env and header names. A webview that points a server somewhere else, or adds
+/// an env name to a stored command, must not take its secrets along. The
+/// identity material is secret-free (see `mcp_identity`).
+fn same_identity(sent: &Map<String, Value>, real: &Value) -> bool {
+    use tauri_plugin_agent_tools::mcp_identity::identity_material;
+    identity_material(&Value::Object(sent.clone())) == identity_material(real)
 }
 
 /// Substrings that mark a key as holding a secret. `key` also covers
@@ -153,7 +151,7 @@ fn restore_masks(config: &mut Value, real_servers: &Map<String, Value>, full_lis
             .as_ref()
             .filter(|(new, _)| new == name)
             .map(|(_, old)| *old))
-            .filter(|real| same_endpoint(server, real));
+            .filter(|real| same_identity(server, real));
         for field in SECRET_BEARING_FIELDS {
             let Some(Value::Object(map)) = server.get_mut(field) else {
                 continue;
@@ -423,9 +421,48 @@ mod tests {
         env.insert("GH_TOKEN".into(), v);
         restore_masked_secrets(&mut sent, &disk_servers);
         let dropped = strip_unrestored_masks(&mut sent);
-        assert_eq!(dropped, vec!["github/env/GH_TOKEN".to_string()]);
+        // The env names changed, so the server's identity changed and none of
+        // its stored secrets come back; each masked entry is dropped.
+        assert!(dropped.contains(&"github/env/GH_TOKEN".to_string()), "{dropped:?}");
         assert!(!sent.to_string().contains(MASK));
-        assert_eq!(sent["mcpServers"]["github"]["env"]["API_KEY"], "k-real");
+        assert!(!sent["mcpServers"]["github"].to_string().contains("k-real"));
+    }
+
+    #[test]
+    fn restore_refuses_when_cwd_changed() {
+        let mut disk = config();
+        disk["mcpServers"]["github"]["cwd"] = json!("/work/a");
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk);
+        sent["mcpServers"]["github"]["cwd"] = json!("/work/evil");
+        restore_masked_secrets(&mut sent, &disk_servers);
+        assert!(!sent["mcpServers"]["github"].to_string().contains("ghp_real"));
+        assert!(!strip_unrestored_masks(&mut sent).is_empty());
+    }
+
+    #[test]
+    fn restore_refuses_when_env_name_added() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk);
+        sent["mcpServers"]["github"]["env"]["NODE_OPTIONS_EXTRA"] = json!("x");
+        restore_masked_secrets(&mut sent, &disk_servers);
+        assert!(!sent["mcpServers"]["github"].to_string().contains("ghp_real"));
+        assert!(!strip_unrestored_masks(&mut sent).is_empty());
+    }
+
+    #[test]
+    fn restore_allows_secret_when_identity_unchanged() {
+        let mut disk = config();
+        disk["mcpServers"]["github"]["cwd"] = json!("/work/a");
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk);
+        // Presentation fields and a retyped value do not change identity.
+        sent["mcpServers"]["github"]["active"] = json!(false);
+        sent["mcpServers"]["github"]["env"]["LOG_LEVEL"] = json!("trace");
+        restore_masked_secrets(&mut sent, &disk_servers);
+        assert_eq!(sent["mcpServers"]["github"]["env"]["GITHUB_TOKEN"], "ghp_real");
+        assert!(strip_unrestored_masks(&mut sent).is_empty());
     }
 
     #[test]
