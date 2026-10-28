@@ -41,7 +41,16 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   const res = await engine.embed(texts)
   const out: number[][] = new Array(texts.length)
   for (const item of res?.data ?? []) {
+    if (!Number.isInteger(item.index) || item.index < 0 || item.index >= texts.length) {
+      throw new Error(`embedding response has an out-of-range index ${item.index}`)
+    }
     out[item.index] = item.embedding
+  }
+  // An empty response is tolerated; a partial one would mismatch vectors.
+  if (res?.data?.length) {
+    for (let i = 0; i < texts.length; i++) {
+      if (!out[i]) throw new Error(`embedding response is missing input ${i}`)
+    }
   }
   return out
 }
