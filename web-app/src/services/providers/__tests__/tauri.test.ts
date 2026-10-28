@@ -581,6 +581,25 @@ describe('TauriProvidersService', () => {
     })
   })
 
+  describe('fetchModelEntry', () => {
+    it('tries the next address when the first one fails to connect', async () => {
+      const ok = {
+        status: 200,
+        ok: true,
+        json: async () => ({ data: [{ id: 'm1', context_length: 8 }] }),
+      }
+      vi.mocked(fetchTauri)
+        .mockRejectedValueOnce(new Error('connection refused'))
+        .mockResolvedValueOnce(ok as unknown as Response)
+      const entry = await svc.fetchModelEntry(
+        { provider: 'x', base_url: 'http://host:8000', models: [] } as never,
+        'm1'
+      )
+      expect(entry).toMatchObject({ id: 'm1' })
+      expect(fetchTauri).toHaveBeenCalledTimes(2)
+    })
+  })
+
   describe('updateSettings', () => {
     it('delegates to engine updateSettings', async () => {
       const mockUpdate = vi.fn()
