@@ -232,9 +232,16 @@ pub async fn start_engine<R: tauri::Runtime>(
     custom_server_path: Option<String>,
 ) -> Result<EngineInfo, String> {
     let mut guard = state.engine.lock().await;
-    if let Some(existing) = guard.as_ref() {
-        // Idempotent: a second start must not orphan the first worker.
-        return Ok(EngineInfo::from(existing));
+    if let Some(existing) = guard.as_mut() {
+        // A worker that already died is not "running": drop it and spawn a
+        // fresh one, or every start would keep handing back a closed port.
+        if let Some(status) = existing.exited() {
+            log::warn!("flint-llama-worker exited unexpectedly: {status}; starting a new one");
+            *guard = None;
+        } else {
+            // Idempotent: a second start must not orphan the first worker.
+            return Ok(EngineInfo::from(&*existing));
+        }
     }
 
     let mut envs = super::env_policy::sanitize_envs(envs);
