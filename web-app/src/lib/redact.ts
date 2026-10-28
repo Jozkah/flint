@@ -77,6 +77,16 @@ function looksLikeAToken(word: string): boolean {
   return classes.length >= 3
 }
 
+/**
+ * Whether the word after `Bearer` / `Basic` is a credential: 16 or more
+ * characters, or 8 or more with a digit or a token separator in it. A plain
+ * word of letters ("authentication") is prose.
+ */
+function schemeCredential(word: string): boolean {
+  if (word.length >= 16) return true
+  return word.length >= 8 && /[0-9\-._~+/=]/.test(word)
+}
+
 function redactWord(word: string): string {
   const eq = word.indexOf('=')
   if (eq > 0 && !word.includes('://')) {
@@ -125,12 +135,14 @@ export function redactSecrets(text: string): string {
       /\b((?:Proxy-)?Authorization:\s*)(Bearer|Basic|Token)\s+([^\s"']+)/gi,
       (_m, head: string, scheme: string) => `${head}${scheme} ${REDACTED}`
     )
-    // `Bearer <token>` / `Basic <token>` anywhere else: only a word long
-    // enough to be a credential, so "Basic setup" and "bearer of this note"
-    // read as prose. The Rust redactor holds the same 16-character floor.
-    .replace(/\b(Bearer|Basic)\s+([^\s"']{16,})/gi, (_m, scheme: string) => {
-      return `${scheme} ${REDACTED}`
-    })
+    // `Bearer <token>` / `Basic <token>` anywhere else: only a word shaped like
+    // a credential, so "Basic setup" and "bearer of this note" read as prose.
+    // The Rust redactor makes the same call (`redacted_word`).
+    .replace(
+      /\b(Bearer|Basic)\s+([^\s"']{8,})/gi,
+      (m, scheme: string, word: string) =>
+        schemeCredential(word) ? `${scheme} ${REDACTED}` : m
+    )
     // JWTs
     .replace(/\beyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*/g, REDACTED)
     // JSON-style `"accessToken": "value"`

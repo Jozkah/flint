@@ -496,6 +496,8 @@ mod tests {
         }
         let out = redact("Authorization: Bearer abc123def456");
         assert!(!out.contains("abc123def456"), "{out}");
+        let out = redact("could not start Bearer abc123def456");
+        assert!(!out.contains("abc123def456"), "{out}");
         let out = redact("sent Bearer abcdefghijklmnop1234 upstream");
         assert!(!out.contains("abcdefghijklmnop1234"), "{out}");
     }

@@ -914,13 +914,23 @@ fn redacted_word(word: &str, after_scheme: bool) -> Option<String> {
     let head = &word[..word.len() - body.len()];
     let trimmed = body.trim_end_matches(TRAIL_PUNCT);
     let tail = &word[head.len() + trimmed.len()..];
+    // After `Bearer` / `Basic` the scheme word is the evidence, so a shorter
+    // word counts when it is shaped like a credential: 8 or more characters
+    // with a digit or a token separator in them. A plain word ("setup",
+    // "authentication") is prose. The renderer's `schemeCredential` agrees.
+    if after_scheme
+        && (trimmed.len() >= 16
+            || (trimmed.len() >= 8
+                && trimmed
+                    .chars()
+                    .any(|c| c.is_ascii_digit() || "-._~+/=".contains(c))))
+    {
+        return Some(format!("{head}{REDACTED}{tail}"));
+    }
     // Sixteen characters is the shortest of the issued formats below. Shorter
     // than that and a match would be a coincidence, not a credential.
     if trimmed.len() < 16 {
         return None;
-    }
-    if after_scheme {
-        return Some(format!("{head}{REDACTED}{tail}"));
     }
     // A JWT: three base64url segments, and the header always starts `eyJ`.
     if trimmed.starts_with("eyJ") && trimmed.matches('.').count() == 2 {
