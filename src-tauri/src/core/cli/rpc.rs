@@ -415,6 +415,57 @@ fn finish_turn(
     Ok(())
 }
 
+/// A `session/start` that finished building off the dispatch loop. The session
+/// is not addressable until the loop receives this, so no `turn/start` can name
+/// one that is still starting.
+struct Started {
+    id: Value,
+    has_id: bool,
+    outcome: Result<(Session, Value), String>,
+}
+
+/// Build the session for one `session/start`: configuration, then the MCP
+/// servers (bounded by `MCP_START_TIMEOUT`). Runs in its own task, so a slow
+/// server delays only this client request, not `session/list`, `turn/interrupt`
+/// or an active turn's events.
+async fn start_session(
+    cwd: String,
+    model: Option<String>,
+    host_tools: crate::core::agent::host_tools::HostToolSet,
+    host_owns_gate: bool,
+    ephemeral: bool,
+    builtins: bool,
+) -> Result<(Session, Value), String> {
+    let mut agent = prepare_agent_session(&cwd, model, ProviderOverrides::default(), SessionFlags { require_model: true, ..Default::default() }, None)?;
+    await_mcp(&mut agent).await;
+    agent.args.host_tools = host_tools;
+    agent.args.host_owns_gate = host_owns_gate;
+    let sid = uuid::Uuid::new_v4().to_string();
+    // The run reports the session by the id this client holds, not by the
+    // private one the agent was built with: provenance and the correlation id
+    // are the client's handle on the session, and an id nothing else can name is
+    // not a handle.
+    agent.args.session_id = Some(sid.clone());
+    let session = Session { agent, history: Vec::new(), id: sid.clone(), turns: 0, ephemeral, builtins };
+    let mut result = tools_view(&session).await;
+    result["sessionId"] = json!(sid);
+    result["model"] = json!(session.agent.model);
+    Ok((session, result))
+}
+
+/// Register a finished start and make its reply.
+fn finish_start(sessions: &mut HashMap<String, Session>, done: Started) -> Option<Value> {
+    let Started { id, has_id, outcome } = done;
+    let reply = match outcome {
+        Ok((session, result)) => {
+            sessions.insert(session.id.clone(), session);
+            response(&id, result)
+        }
+        Err(message) => error(&id, -32602, &message),
+    };
+    has_id.then_some(reply)
+}
+
 /// One runtime owns many addressable sessions. All writes share one bounded output queue.
 pub async fn serve() -> Result<(), String> {
     let mut input = input_lines();
@@ -425,8 +476,14 @@ pub async fn serve() -> Result<(), String> {
     let mut negotiated = false;
     let mut sessions = HashMap::<String, Session>::new();
     let mut active: Option<ActiveTurn> = None;
+    let (started_tx, mut started_rx) = mpsc::unbounded_channel::<Started>();
     loop {
         tokio::select! {
+            Some(done) = started_rx.recv() => {
+                if let Some(reply) = finish_start(&mut sessions, done) {
+                    send_reply(&out, reply).await?;
+                }
+            }
             message = input.recv() => {
                 let Some((line, too_long)) = message else { break; };
                 if too_long {
@@ -488,26 +545,18 @@ pub async fn serve() -> Result<(), String> {
                             // host got wrong is refused before anything is spent.
                             Ok(start) => match declare_tools(start.tools) {
                                 Err(message) => invalid_tools(&id, &message),
-                                Ok(host_tools) => match prepare_agent_session(&start.cwd, start.model, ProviderOverrides::default(), SessionFlags { require_model: true, ..Default::default() }, None) {
-                                    Ok(mut agent) => {
-                                        await_mcp(&mut agent).await;
-                                        agent.args.host_tools = host_tools;
-                                        agent.args.host_owns_gate = start.permissions == PermissionOwner::Host;
-                                        let sid = uuid::Uuid::new_v4().to_string();
-                                        // The run reports the session by the id this client holds, not
-                                        // by the private one the agent was built with: provenance and the
-                                        // correlation id are the client's handle on the session, and an id
-                                        // nothing else can name is not a handle.
-                                        agent.args.session_id = Some(sid.clone());
-                                        let session = Session { agent, history: Vec::new(), id: sid.clone(), turns: 0, ephemeral: start.ephemeral, builtins: start.builtins };
-                                        let mut result = tools_view(&session).await;
-                                        result["sessionId"] = json!(sid);
-                                        result["model"] = json!(session.agent.model);
-                                        sessions.insert(sid.clone(), session);
-                                        response(&id, result)
-                                    }
-                                    Err(message) => error(&id, -32602, &message),
-                                },
+                                Ok(host_tools) => {
+                                    // Built in its own task; the reply comes back through
+                                    // `started_rx`, so the loop keeps serving meanwhile.
+                                    let tx = started_tx.clone();
+                                    let reply_id = id.clone();
+                                    let owns_gate = start.permissions == PermissionOwner::Host;
+                                    tokio::spawn(async move {
+                                        let outcome = start_session(start.cwd, start.model, host_tools, owns_gate, start.ephemeral, start.builtins).await;
+                                        let _ = tx.send(Started { id: reply_id, has_id, outcome });
+                                    });
+                                    continue;
+                                }
                             },
                         }
                     }
@@ -796,6 +845,17 @@ mod tests {
     use super::*;
     use crate::core::cli::stream_input::{MAX_IMAGES, MAX_IMAGE_BYTES};
     use crate::core::cli::turn_host::{forward_events, host_names, pump_turn};
+
+    #[tokio::test]
+    async fn a_failed_start_replies_with_the_error_and_registers_nothing() {
+        let mut sessions = HashMap::new();
+        let reply = finish_start(&mut sessions, Started { id: json!(7), has_id: true, outcome: Err("boom".into()) }).unwrap();
+        assert_eq!(reply["id"], json!(7));
+        assert_eq!(reply["error"]["code"], json!(-32602));
+        assert_eq!(reply["error"]["message"], json!("boom"));
+        assert!(sessions.is_empty());
+        assert!(finish_start(&mut sessions, Started { id: Value::Null, has_id: false, outcome: Err("x".into()) }).is_none());
+    }
 
     #[tokio::test]
     async fn slow_task_times_out_and_finished_task_returns() {
