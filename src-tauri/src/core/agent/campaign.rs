@@ -600,6 +600,12 @@ pub fn validate_plan(tasks: &[PlanTask]) -> Result<(), Vec<String>> {
         if t.brief.chars().count() > MAX_TEXT {
             issues.push(format!("task {} has a brief over {MAX_TEXT} characters", t.id));
         }
+        if t.kind != KIND_CHECK && t.paths.is_empty() {
+            issues.push(format!(
+                "task {} changes files but declares no paths; list the paths it works in, or set \"kind\":\"check\" if it only reads or runs things",
+                t.id
+            ));
+        }
         for p in &t.paths {
             if normalize_path(p).is_none() {
                 issues.push(format!("task {} declares path {p:?}, which is not a relative path inside the project", t.id));
@@ -675,6 +681,18 @@ fn find_cycle(tasks: &[PlanTask]) -> Option<Vec<String>> {
     None
 }
 
+/// The normalized paths a change task works in. A task persisted before empty
+/// paths were refused declares none; it is treated as touching the whole
+/// project so it still serializes against every other change task.
+fn effective_paths(t: &PlanTask) -> Vec<String> {
+    let declared: Vec<String> = t.paths.iter().filter_map(|p| normalize_path(p)).collect();
+    if declared.is_empty() {
+        vec![String::new()]
+    } else {
+        declared
+    }
+}
+
 /// Tasks that neither depends (transitively) on the other can run at the same
 /// time; declared paths of such a pair must not overlap.
 fn parallel_overlaps(tasks: &[PlanTask]) -> Vec<String> {
@@ -701,8 +719,8 @@ fn parallel_overlaps(tasks: &[PlanTask]) -> Vec<String> {
             if a_anc.contains(&b.id) || ancestors(&b.id).contains(&a.id) {
                 continue;
             }
-            'pair: for pa in a.paths.iter().filter_map(|p| normalize_path(p)) {
-                for pb in b.paths.iter().filter_map(|p| normalize_path(p)) {
+            'pair: for pa in effective_paths(a) {
+                for pb in effective_paths(b) {
                     if covers(&pa, &pb) || covers(&pb, &pa) {
                         out.push(format!(
                             "tasks {} and {} can run in parallel but both declare {}; make one depend on the other",
@@ -2096,7 +2114,7 @@ pub(crate) mod tests {
             title: format!("task {id}"),
             brief: format!("do {id}"),
             acceptance: vec![],
-            paths: paths.iter().map(|s| s.to_string()).collect(),
+            paths: if paths.is_empty() { vec![format!("p-{id}")] } else { paths.iter().map(|s| s.to_string()).collect() },
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
             kind: String::new(),
         }
@@ -2259,6 +2277,26 @@ pub(crate) mod tests {
     fn a_sound_plan_validates() {
         let t = vec![plan("a", &[], &["src/a"]), plan("b", &["a"], &["src/a/x.rs"]), plan("c", &[], &["docs"])];
         assert!(validate_plan(&t).is_ok());
+    }
+
+    #[test]
+    fn change_task_without_paths_fails_validation() {
+        let mut bare = plan("a", &[], &["x"]);
+        bare.paths.clear();
+        assert!(err_of(&[bare.clone()]).contains("declares no paths"));
+        bare.kind = KIND_CHECK.into();
+        assert!(validate_plan(&[bare]).is_ok());
+    }
+
+    #[test]
+    fn empty_paths_task_overlaps_every_change_task() {
+        let mut bare = plan("a", &[], &["x"]);
+        bare.paths.clear();
+        let other = plan("b", &[], &["src/b"]);
+        assert_eq!(parallel_overlaps(&[bare.clone(), other.clone()]).len(), 1);
+        let mut chained = other;
+        chained.depends_on = vec!["a".into()];
+        assert!(parallel_overlaps(&[bare, chained]).is_empty());
     }
 
     #[test]
@@ -2665,7 +2703,7 @@ pub(crate) mod tests {
             "modeCeiling": "ask",
             "model": "p/m",
             "limits": { "maxParallel": 3, "tokenBudget": null },
-            "tasks": [{ "id": "a", "title": "A", "brief": "do a" }]
+            "tasks": [{ "id": "a", "title": "A", "brief": "do a", "paths": ["src"] }]
         });
         let i: CreateInput = serde_json::from_value(payload).unwrap();
         let l = i.limits.clone().unwrap();

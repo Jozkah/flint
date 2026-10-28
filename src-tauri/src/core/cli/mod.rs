@@ -396,6 +396,12 @@ pub fn cli_save_thread(
     let now_ms = now.as_millis() as i64;
     let now_secs = now.as_secs_f64();
 
+    // A re-save keeps the id and timestamps of every record that did not change,
+    // so deep links and delete-by-id stay stable; the first record that differs
+    // starts the new tail.
+    let previous = read_messages_from_file(base, &id).unwrap_or_default();
+    let mut reuse = true;
+    let mut position = 0usize;
     let messages: Vec<serde_json::Value> = history
         .iter()
         .filter_map(|m| {
@@ -426,6 +432,19 @@ pub fn cli_save_thread(
             if let Some(calls) = record.get_mut("tool_calls") {
                 secrets::scrub_json(calls);
             }
+            if reuse {
+                match previous.get(position) {
+                    Some(old) if same_message(old, &record) => {
+                        for key in ["id", "created_at", "completed_at"] {
+                            if let Some(v) = old.get(key) {
+                                record[key] = v.clone();
+                            }
+                        }
+                    }
+                    _ => reuse = false,
+                }
+            }
+            position += 1;
             Some(record)
         })
         .collect();
@@ -463,6 +482,12 @@ pub fn cli_save_thread(
     });
     update_thread_metadata(base, &id, &thread)?;
     Ok(id)
+}
+
+/// Whether a saved record and a freshly built one carry the same message: role,
+/// text and the tool fields, ignoring id and timestamps.
+fn same_message(old: &serde_json::Value, new: &serde_json::Value) -> bool {
+    ["role", "content", "tool_calls", "tool_call_id"].iter().all(|k| old.get(k) == new.get(k))
 }
 
 /// Persist a TUI `/model` choice to the project's `agent.toml` `[agent].model`,
@@ -5100,6 +5125,47 @@ mod tests {
         assert_eq!(calls[0]["id"], "call_1");
         let args = calls[0]["function"]["arguments"].as_str().unwrap();
         serde_json::from_str::<serde_json::Value>(args).expect("arguments stay JSON");
+    }
+
+    #[test]
+    fn resave_keeps_ids_and_timestamps_of_unchanged_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let mut history = vec![
+            serde_json::json!({ "role": "user", "content": "first" }),
+            serde_json::json!({ "role": "assistant", "content": "reply" }),
+        ];
+        let id = cli_save_thread(base, None, "m", &history, None).unwrap();
+        let before = read_messages_from_file(base, &id).unwrap();
+        history.push(serde_json::json!({ "role": "user", "content": "second" }));
+        cli_save_thread(base, Some(&id), "m", &history, None).unwrap();
+        let after = read_messages_from_file(base, &id).unwrap();
+        assert_eq!(after.len(), 3);
+        for i in 0..2 {
+            for key in ["id", "created_at", "completed_at"] {
+                assert_eq!(before[i][key], after[i][key], "record {i} {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn resave_after_edit_mints_new_tail_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let history = vec![
+            serde_json::json!({ "role": "user", "content": "first" }),
+            serde_json::json!({ "role": "assistant", "content": "reply" }),
+            serde_json::json!({ "role": "user", "content": "second" }),
+        ];
+        let id = cli_save_thread(base, None, "m", &history, None).unwrap();
+        let before = read_messages_from_file(base, &id).unwrap();
+        let mut edited = history.clone();
+        edited[1] = serde_json::json!({ "role": "assistant", "content": "changed" });
+        cli_save_thread(base, Some(&id), "m", &edited, None).unwrap();
+        let after = read_messages_from_file(base, &id).unwrap();
+        assert_eq!(before[0]["id"], after[0]["id"]);
+        assert_ne!(before[1]["id"], after[1]["id"]);
+        assert_ne!(before[2]["id"], after[2]["id"]);
     }
 
     #[test]
