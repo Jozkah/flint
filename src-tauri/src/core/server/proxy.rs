@@ -593,7 +593,21 @@ pub(crate) fn convert_messages(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let result_content = extract_tool_result_content(block.get("content"));
+                            let mut result_content = extract_tool_result_content(block.get("content"));
+                            // A failed call must read as one: chat/completions
+                            // has no `is_error` flag on a tool message.
+                            if block.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
+                                result_content = format!("Error: {result_content}");
+                            }
+                            // A tool message carries only text here, so images
+                            // from the result follow as user content.
+                            if let Some(parts) = block.get("content").and_then(|c| c.as_array()) {
+                                for part in parts {
+                                    if part.get("type").and_then(|t| t.as_str()) != Some("text") {
+                                        convert_media_block(part, &mut text_parts);
+                                    }
+                                }
+                            }
                             tool_results.push((tool_use_id, result_content));
                         }
                         "text" => {

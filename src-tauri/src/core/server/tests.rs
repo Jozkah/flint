@@ -715,6 +715,28 @@ mod server_tests {
     }
 
     #[test]
+    fn tool_result_errors_are_marked_and_images_reach_the_chat_request() {
+        let messages = json!([{
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "t1",
+                "is_error": true,
+                "content": [
+                    {"type": "text", "text": "boom"},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}
+                ]
+            }]
+        }]);
+        let out = proxy::convert_messages(&messages, None).unwrap();
+        let out = out.as_array().unwrap();
+        assert_eq!(out[0]["role"], "tool");
+        assert_eq!(out[0]["content"], "Error: boom");
+        assert_eq!(out[1]["role"], "user");
+        assert!(out[1]["content"].to_string().contains("data:image/png;base64,AAAA"));
+    }
+
+    #[test]
     fn extract_tool_result_content_none_yields_empty() {
         assert_eq!(proxy::extract_tool_result_content(None), "");
     }

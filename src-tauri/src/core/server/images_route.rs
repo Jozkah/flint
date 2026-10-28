@@ -218,6 +218,26 @@ fn video_jobs() -> &'static StdMutex<HashMap<String, VideoJob>> {
     JOBS.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 
+/// The job map, usable even after a panic poisoned it: the data is plain
+/// status records, and one bad request must not take every later one down.
+fn lock_jobs() -> std::sync::MutexGuard<'static, HashMap<String, VideoJob>> {
+    video_jobs().lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Jobs this old that have finished are dropped when a new one is added, so
+/// the map does not grow for the life of the process.
+const VIDEO_JOB_TTL_SECS: u64 = 3600;
+
+fn insert_job(id: String, job: VideoJob) {
+    let now = now_secs();
+    let mut jobs = lock_jobs();
+    jobs.retain(|_, j| {
+        let done = matches!(j.status, VideoStatus::Completed(_) | VideoStatus::Failed(_));
+        !(done && now.saturating_sub(j.created) > VIDEO_JOB_TTL_SECS)
+    });
+    jobs.insert(id, job);
+}
+
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -352,7 +372,7 @@ pub async fn create_video(body: &Value) -> Result<Value, ApiError> {
         created: now_secs(),
     };
     let reply = video_json(&id, &job);
-    video_jobs().lock().unwrap().insert(id.clone(), job);
+    insert_job(id.clone(), job);
 
     let (width, height) = parsed.size.unzip();
     let params = runtime::VideoParams {
@@ -368,11 +388,11 @@ pub async fn create_video(body: &Value) -> Result<Value, ApiError> {
     };
     let job_id = id.clone();
     tokio::spawn(async move {
-        if let Some(j) = video_jobs().lock().unwrap().get_mut(&job_id) {
+        if let Some(j) = lock_jobs().get_mut(&job_id) {
             j.status = VideoStatus::InProgress;
         }
         let outcome = runtime::generate_video(app, params).await;
-        if let Some(j) = video_jobs().lock().unwrap().get_mut(&job_id) {
+        if let Some(j) = lock_jobs().get_mut(&job_id) {
             j.status = match outcome {
                 Ok(done) => match done.paths.first() {
                     Some(path) => VideoStatus::Completed(path.clone()),
@@ -387,14 +407,14 @@ pub async fn create_video(body: &Value) -> Result<Value, ApiError> {
 
 /// `GET /v1/videos/{id}`.
 pub fn get_video(id: &str) -> Result<Value, ApiError> {
-    let jobs = video_jobs().lock().unwrap();
+    let jobs = lock_jobs();
     jobs.get(id).map(|job| video_json(id, job)).ok_or_else(not_found)
 }
 
 /// `GET /v1/videos/{id}/content`: the WebM bytes of a finished clip.
 pub async fn video_content(id: &str) -> Result<Vec<u8>, ApiError> {
     let path = {
-        let jobs = video_jobs().lock().unwrap();
+        let jobs = lock_jobs();
         match jobs.get(id).map(|j| j.status.clone()) {
             None => return Err(not_found()),
             Some(VideoStatus::Completed(path)) => path,
@@ -522,6 +542,18 @@ mod tests {
         assert_eq!(body["error"]["message"], "boom");
         assert_eq!(body["seconds"], "2");
         assert_eq!(get_video("video_missing").unwrap_err().status, 404);
+    }
+
+    #[test]
+    fn old_finished_video_jobs_are_pruned_on_insert() {
+        let job = |status, created| VideoJob { status, model: "m".into(), seconds: 1, created };
+        lock_jobs().insert("video_old_done".into(), job(VideoStatus::Failed("x".into()), 1));
+        lock_jobs().insert("video_old_running".into(), job(VideoStatus::InProgress, 1));
+        insert_job("video_new".into(), job(VideoStatus::Queued, now_secs()));
+        let jobs = lock_jobs();
+        assert!(!jobs.contains_key("video_old_done"));
+        assert!(jobs.contains_key("video_old_running"));
+        assert!(jobs.contains_key("video_new"));
     }
 
     #[test]

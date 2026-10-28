@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn test_run_mcp_commands() {
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
 
     // Register AppState so state::<AppState>() calls succeed
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
@@ -47,7 +47,7 @@ async fn test_run_mcp_commands() {
 
 #[test]
 fn test_add_server_config_new_file() {
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let app_path = get_jan_data_folder_path(app.handle().clone());
     let config_path = app_path.join("mcp_config_test_new.json");
 
@@ -98,7 +98,7 @@ fn test_add_server_config_new_file() {
 
 #[test]
 fn test_add_server_config_existing_servers() {
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let app_path = get_jan_data_folder_path(app.handle().clone());
     let config_path = app_path.join("mcp_config_test_existing.json");
 
@@ -165,7 +165,7 @@ fn test_add_server_config_existing_servers() {
 
 #[test]
 fn test_add_server_config_missing_config_file() {
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let app_path = get_jan_data_folder_path(app.handle().clone());
 
     // Ensure the directory exists
@@ -245,7 +245,7 @@ fn test_bin_path_construction_windows() {
 async fn test_get_server_summaries_no_connected_servers() {
     use super::commands::get_server_summaries;
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -264,7 +264,7 @@ async fn test_get_server_summaries_with_capabilities_in_active_config() {
     use super::commands::get_server_summaries;
     use crate::core::state::AppState;
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -308,7 +308,7 @@ async fn test_get_server_summaries_with_capabilities_in_active_config() {
 async fn test_get_server_summaries_missing_metadata_defaults() {
     use super::commands::get_server_summaries;
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -345,7 +345,7 @@ async fn test_get_tools_falls_back_to_last_known_when_server_enabled_but_disconn
     use super::commands::get_tools;
     use super::models::ToolWithServer;
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -390,7 +390,7 @@ async fn test_get_tools_omits_disabled_server_even_with_stale_last_known_entry()
     use super::commands::get_tools;
     use super::models::ToolWithServer;
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -477,7 +477,7 @@ fn test_shutdown_context_is_copy() {
 async fn test_background_cleanup_with_empty_state() {
     use super::helpers::background_cleanup_mcp_servers;
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -498,7 +498,7 @@ async fn test_background_cleanup_with_empty_state() {
 async fn test_stop_mcp_servers_with_context_empty_servers() {
     use super::helpers::{stop_mcp_servers_with_context, ShutdownContext};
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -516,7 +516,7 @@ async fn test_stop_mcp_servers_with_context_empty_servers() {
 async fn test_stop_mcp_servers_prevents_concurrent_shutdown() {
     use super::helpers::{stop_mcp_servers_with_context, ShutdownContext};
 
-    let app = mock_app();
+    let (app, _isolated) = lock_test_app();
     let servers_state: SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     app.manage(AppState {
         mcp_servers: servers_state.clone(),
@@ -866,7 +866,7 @@ fn test_is_process_alive_for_almost_certainly_dead_pid() {
 /// and `cleanup_own_locks` removes every lock this process owns there: run
 /// alongside it, `keeps_live_lock` lost the lock it had just created. The
 /// directory is removed when the guard drops.
-fn lock_test_app() -> (tauri::App<tauri::test::MockRuntime>, LockDirGuard) {
+pub(super) fn lock_test_app() -> (tauri::App<tauri::test::MockRuntime>, LockDirGuard) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let mut context = tauri::test::mock_context(tauri::test::noop_assets());
@@ -882,7 +882,7 @@ fn lock_test_app() -> (tauri::App<tauri::test::MockRuntime>, LockDirGuard) {
     (app, LockDirGuard(dir))
 }
 
-struct LockDirGuard(PathBuf);
+pub(super) struct LockDirGuard(PathBuf);
 
 impl Drop for LockDirGuard {
     fn drop(&mut self) {
