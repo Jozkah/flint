@@ -47,7 +47,8 @@
     "memoriesSent": "Memori terkirim",
     "withheld": "Ditahan karena bertentangan: {{ids}}",
     "perSec": "{{n}} token/dtk",
-    "count": "{{n}} token"
+    "count": "{{n}} token",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Ubah host server"

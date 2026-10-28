@@ -7,7 +7,7 @@
  * own routes, the settings registry and the conversation list, and are ranked
  * locally (`rankCommands`); nothing is looked up over the network.
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { useNavigate } from '@tanstack/react-router'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
@@ -63,6 +63,9 @@ export const useCommandPalette = create<PaletteState>()((set) => ({
 }))
 
 const NO_THREADS: ReturnType<typeof useThreads.getState>['threads'] = {}
+
+const MAX_RESULTS_QUERY = 50
+const MAX_RESULTS_EMPTY = 200
 
 export function CommandPalette() {
   const { t } = useTranslation()
@@ -147,7 +150,7 @@ export function CommandPalette() {
       {
         id: 'nav-studio',
         section: 'navigation',
-        title: 'Open Studio',
+        title: t('common:commandPalette.openStudio'),
         keywords: ['image', 'video', 'generate', 'picture', 'draw'],
         run: go(route.studio),
       },
@@ -278,10 +281,31 @@ export function CommandPalette() {
     return out
   }, [t, navigate, threads, open, hiddenNavItems])
 
+  // Ranking every conversation per keystroke is cheap, rendering them all is
+  // not: show the best 50 for a query, 200 for the empty one.
   const results = useMemo(
-    () => rankCommands(commands, query),
+    () =>
+      rankCommands(commands, query).slice(
+        0,
+        query.trim() ? MAX_RESULTS_QUERY : MAX_RESULTS_EMPTY
+      ),
     [commands, query]
   )
+  const groups = useMemo(() => {
+    const out: Array<{
+      section: PaletteSection
+      items: Array<{ command: (typeof results)[number]; index: number }>
+    }> = []
+    results.forEach((command, index) => {
+      const last = out[out.length - 1]
+      if (last && last.section === command.section) {
+        last.items.push({ command, index })
+      } else {
+        out.push({ section: command.section, items: [{ command, index }] })
+      }
+    })
+    return out
+  }, [results])
 
   useEffect(() => {
     setActive(0)
@@ -359,7 +383,7 @@ export function CommandPalette() {
             className="h-[50px] min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none md:text-sm"
             data-testid="command-palette-input"
             role="combobox"
-            aria-expanded
+            aria-expanded={results.length > 0}
             aria-controls="command-palette-list"
             aria-activedescendant={
               results[active] ? `palette-${results[active].id}` : undefined
@@ -371,61 +395,68 @@ export function CommandPalette() {
             </Button>
           </DialogClose>
         </div>
+        {results.length === 0 ? (
+          <div
+            role="status"
+            className="px-3 py-6 text-center text-sm text-muted-foreground"
+          >
+            {t('common:commandPalette.empty')}
+          </div>
+        ) : null}
         <ul
           id="command-palette-list"
           role="listbox"
           aria-label={t('common:commandPalette.title')}
           className="min-h-0 flex-1 overflow-y-auto p-1.5 sm:max-h-[50vh] sm:flex-none"
         >
-          {results.length === 0 ? (
-            <li
-              role="presentation"
-              className="px-3 py-6 text-center text-sm text-muted-foreground"
-            >
-              {t('common:commandPalette.empty')}
-            </li>
-          ) : null}
-          {results.map((command, index) => {
-            // Ranking decides the order; a label marks where a run of one
-            // section starts, so keyboard order and visual order stay one.
-            const startsGroup =
-              index === 0 || results[index - 1].section !== command.section
-            const selected = index === active
+          {groups.map((group, groupIndex) => {
+            // Ranking decides the order; each run of one section is a labelled
+            // group, so keyboard order and visual order stay one.
+            const headingId = `palette-group-${groupIndex}`
             return (
-              <Fragment key={command.id}>
-                {startsGroup && (
-                  <li
-                    role="presentation"
-                    className="px-2.5 pt-2 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase"
-                  >
-                    {t(`common:commandPalette.group.${command.section}`)}
-                  </li>
-                )}
-                <li
-                  id={`palette-${command.id}`}
-                  role="option"
-                  aria-selected={selected}
-                  data-testid="command-palette-item"
-                  data-command={command.id}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => runAt(index)}
-                  className={cn(
-                    'relative flex h-[34px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo active:scale-[.96] pointer-coarse:h-11',
-                    selected && 'bg-accent text-foreground'
-                  )}
+              <li key={`${group.section}-${groupIndex}`} role="presentation">
+                <div
+                  id={headingId}
+                  role="presentation"
+                  className="px-2.5 pt-2 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase"
                 >
-                  <Icon name={SECTION_ICON[command.section]} size={16} />
-                  <span className="min-w-0 flex-1 truncate">
-                    {command.title}
-                  </span>
-                  {command.hint && (
-                    <span className="shrink-0 text-xs text-subtle-foreground">
-                      {command.hint}
-                    </span>
-                  )}
-                  <span className="sr-only">{sectionLabel(command.section)}</span>
-                </li>
-              </Fragment>
+                  {t(`common:commandPalette.group.${group.section}`)}
+                </div>
+                <ul role="group" aria-labelledby={headingId}>
+                  {group.items.map(({ command, index }) => {
+                    const selected = index === active
+                    return (
+                      <li
+                        key={command.id}
+                        id={`palette-${command.id}`}
+                        role="option"
+                        aria-selected={selected}
+                        data-testid="command-palette-item"
+                        data-command={command.id}
+                        onMouseEnter={() => setActive(index)}
+                        onClick={() => runAt(index)}
+                        className={cn(
+                          'relative flex h-[34px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo active:scale-[.96] pointer-coarse:h-11',
+                          selected && 'bg-accent text-foreground'
+                        )}
+                      >
+                        <Icon name={SECTION_ICON[command.section]} size={16} />
+                        <span className="min-w-0 flex-1 truncate">
+                          {command.title}
+                        </span>
+                        {command.hint && (
+                          <span className="shrink-0 text-xs text-subtle-foreground">
+                            {command.hint}
+                          </span>
+                        )}
+                        <span className="sr-only">
+                          {sectionLabel(command.section)}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </li>
             )
           })}
         </ul>

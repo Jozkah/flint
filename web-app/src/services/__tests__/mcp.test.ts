@@ -251,7 +251,7 @@ describe('TauriMCPService', () => {
 
       const result = await mcpService.getTools()
 
-      expect(result).toBeUndefined()
+      expect(result).toEqual([])
 
       window.core = originalCore
     })
@@ -292,7 +292,7 @@ describe('TauriMCPService', () => {
 
       const result = await mcpService.getConnectedServers()
 
-      expect(result).toBeUndefined()
+      expect(result).toEqual([])
 
       window.core = originalCore
     })

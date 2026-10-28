@@ -10,23 +10,7 @@ import {
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { OctagonAlert } from 'lucide-react'
-import { Card, CardItem } from '@/containers/Card'
-import { Switch } from '@/components/ui/switch'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Brain,
-  Download,
-  FolderOpen,
-  Search,
-  SearchX,
-  Trash2,
-  Upload,
-} from 'lucide-react'
-import { ButtonGroup } from '@/components/ui/button-group'
-import { EmptyState } from '@/components/ui/empty-state'
+import { Card, } from '@/containers/Card'
 import { toast } from 'sonner'
 import { showUndoToast } from '@/lib/toastUndo'
 import {
@@ -60,17 +44,15 @@ import {
   type MemoryStorageSummary,
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { Select } from '@/components/ui/select'
 import {
   SettingsTabStrip,
   useSettingsTab,
   type SettingsTab,
 } from '@/containers/SettingsTabs'
 import { AgentNotesSettings } from '@/containers/AgentNotesSettings'
-import { MemoryScopeTabs } from '@/containers/memory/MemoryScopeTabs'
-import { MemoryRecordRow } from '@/containers/memory/MemoryRecordRow'
-import { MemoryPager } from '@/containers/memory/MemoryPager'
-import { MemoryImportReport } from '@/containers/memory/MemoryImportReport'
+import { PAGE_SIZE } from '@/containers/memory/memoryScopes'
+import { MemorySettingsCard } from '@/containers/memory/MemorySettingsCard'
+import { MemoryRememberedCard } from '@/containers/memory/MemoryRememberedCard'
 import { MemoryConflictsCard } from '@/containers/memory/MemoryConflictsCard'
 import {
   MemoryClearDialog,
@@ -83,21 +65,9 @@ export const Route = createFileRoute(route.settings.memory)({
 
 const ALL_RECALLED: MemoryRecall = { session: true, project: true, user: true }
 
-/** The recall switch a tab's scope is governed by. */
-const recallKey = (scope: MemoryScope): keyof MemoryRecall =>
-  scope === 'chat' ? 'session' : scope === 'project' ? 'project' : 'user'
-
-/** How many rows one request fetches. The backend clamps this too. */
-const PAGE_SIZE = 50
-
 /** The page's tabs: its switches, the remembered facts, and agent notes. */
 type MemoryTab = 'settings' | 'remembered' | 'notes'
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function MemorySettings() {
   const { t } = useTranslation()
@@ -613,99 +583,20 @@ function MemorySettings() {
         left={
           <>
             {tab === 'settings' && (
-            <Card title={t('common:memory')}>
-              <CardItem
-                anchor="settings-memory-use-saved"
-                title={t('settings:memoryPage.useSaved')}
-                description={t('settings:memoryPage.useSavedDesc')}
-                actions={
-                  <Switch
-                    checked={memoryOn}
-                    disabled={memoryOnPending || location == null}
-                    aria-busy={memoryOnPending}
-                    aria-label={t('settings:memoryPage.useSaved')}
-                    onCheckedChange={(checked) => void onToggleMemory(checked)}
-                  />
-                }
-              />
-              <CardItem
-                anchor={MEMORY_AUTOSAVE_ANCHOR}
-                title={t('settings:memory.automaticallySave')}
-                description={t('settings:memory.automaticallySaveDesc')}
-                actions={
-                  <Switch
-                    checked={autoSave}
-                    // Disabled while a write is in flight and until the data
-                    // folder is known, so a click cannot start a request that
-                    // has nowhere to go. `aria-busy` says which of the two it
-                    // is without moving anything on screen.
-                    disabled={autoSavePending || location == null}
-                    aria-busy={autoSavePending}
-                    onCheckedChange={(checked) => void onToggleAutoSave(checked)}
-                  />
-                }
-              />
-              <CardItem
-                title={t('settings:memoryPage.useFacts')}
-                description={t('settings:memoryPage.useFactsDesc')}
-              />
-              <div data-testid="memory-recall" className="flex flex-col">
-                {(
-                  [
-                    ['session', 'chat'],
-                    ['project', 'project'],
-                    ['user', 'user'],
-                  ] as Array<[keyof MemoryRecall, MemoryScope]>
-                ).map(([key, recallScope]) => (
-                  <label
-                    key={key}
-                    className="flex min-h-11 items-center justify-between gap-3 border-b border-dashed border-border px-0.5 py-[11px] text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground pointer-fine:min-h-0"
-                  >
-                    <span>{t(`settings:memoryPage.scope.${recallScope}.recall`)}</span>
-                    <Switch
-                      checked={recall[key]}
-                      disabled={location == null}
-                      aria-label={t(`settings:memoryPage.scope.${recallScope}.recallAria`)}
-                      data-testid={`memory-recall-${key}`}
-                      data-checked={recall[key] ? 'true' : 'false'}
-                      onCheckedChange={(checked) => void onToggleRecall(key, checked)}
-                    />
-                  </label>
-                ))}
-              </div>
-              {(settingsIssue || (summary?.issues?.length ?? 0) > 0) && (
-                <div
-                  role="alert"
-                  data-testid="memory-storage-error"
-                  className="my-3 flex items-start gap-2 rounded-md bg-destructive-tint p-3 text-xs text-destructive"
-                >
-                  <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-                  <div className="min-w-0 space-y-1 break-words">
-                    {[settingsIssue, ...(summary?.issues ?? [])]
-                      .filter(Boolean)
-                      .map((issue) => (
-                        <p key={issue as string}>{issue}</p>
-                      ))}
-                  </div>
-                </div>
-              )}
-              {summary && (
-                <CardItem
-                  anchor={MEMORY_STORAGE_ANCHOR}
-                  title={t('settings:memory.stored')}
-                  description={t('settings:memoryPage.stored.summary', {
-                    user: summary.userCount,
-                    project: selectedProject
-                      ? t('settings:memoryPage.stored.projectIn', {
-                          count: summary.projectCount,
-                          name: selectedProject.name,
-                        })
-                      : t('settings:memoryPage.stored.chooseProject'),
-                    size: formatBytes(summary.bytes),
-                  })}
-                />
-              )}
-            </Card>
+            <MemorySettingsCard
+  memoryOn={memoryOn}
+  memoryOnPending={memoryOnPending}
+  location={location}
+  onToggleMemory={onToggleMemory}
+  autoSave={autoSave}
+  autoSavePending={autoSavePending}
+  onToggleAutoSave={onToggleAutoSave}
+  recall={recall}
+  onToggleRecall={onToggleRecall}
+  settingsIssue={settingsIssue}
+  summary={summary}
+  selectedProject={selectedProject}
+/>
             )}
 
             {/* The facts live in the desktop app's memory store, which a
@@ -717,254 +608,42 @@ function MemorySettings() {
                 </p>
               </Card>
             ) : (
-              <Card title={t('settings:memory.remembered')}>
-                <CardItem
-                  anchor={MEMORY_LIST_ANCHOR}
-                  title={t('settings:memoryPage.listTitle')}
-                  description={t('settings:memory.rememberedDesc')}
-                />
-                <div className="flex flex-col gap-3 pb-3">
-                  {/* Scopes as tabs: an accent underline marks the one shown. */}
-                  <MemoryScopeTabs
-                    scope={scope}
-                    tabCount={tabCount}
-                    onSelect={(tabScope) => {
-                      setScope(tabScope)
-                      setOffset(0)
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">{t(`${scopeKey}.blurb`)}</p>
-                  {!recall[recallKey(scope)] && (
-                    <p className="text-xs text-warning" data-testid="memory-recall-off-note">
-                      {t('settings:memoryPage.recallOff')}
-                    </p>
-                  )}
-
-                  <form
-                    className="flex flex-col gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      void onAdd()
-                    }}
-                  >
-                    <Textarea
-                      value={newMemory}
-                      aria-label={t(`${scopeKey}.newAria`)}
-                      data-testid="memory-new-content"
-                      placeholder={t('settings:memoryPage.newPlaceholder')}
-                      onChange={(e) => setNewMemory(e.target.value)}
-                    />
-                    {/* One primary action, and the file actions as a quiet
-                        pair beside it. Forgetting a whole scope is not a
-                        toolbar action: it lives in the footer under the list. */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Button
-                        type="submit"
-                        className="pointer-coarse:h-11"
-                        disabled={busy || !newMemory.trim() || location == null}
-                        data-testid="memory-new-save"
-                      >
-                        {t('settings:memoryPage.remember')}
-                      </Button>
-                      <ButtonGroup aria-label={t('settings:memoryPage.fileActionsAria')}>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="pointer-coarse:h-11"
-                          disabled={busy || total === 0 || location == null}
-                          data-testid="memory-export"
-                          onClick={() => void onExport()}
-                        >
-                          <Download aria-hidden />
-                          {t('settings:memoryPage.export')}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="pointer-coarse:h-11"
-                          disabled={busy || location == null}
-                          data-testid="memory-import"
-                          onClick={() => void onImport()}
-                        >
-                          <Upload aria-hidden />
-                          {t('settings:memoryPage.import')}
-                        </Button>
-                      </ButtonGroup>
-                    </div>
-                  </form>
-
-                  {importReport && (
-                    <MemoryImportReport key={importCount} report={importReport} />
-                  )}
-
-                  {scope === 'chat' && (
-                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                      {t('settings:memoryPage.conversation')}
-                      <Select
-                        className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
-                        aria-label={t('settings:memoryPage.conversationAria')}
-                        data-testid="memory-session-picker"
-                        value={sessionId ?? ''}
-                        onChange={(e) => {
-                          setSessionId(e.target.value || undefined)
-                          setOffset(0)
-                        }}
-                      >
-                        {conversations.sessions.length === 0 && (
-                          <option value="">{t('settings:memoryPage.noConversations')}</option>
-                        )}
-                        {conversations.sessions.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.kind === 'cowork'
-                              ? t('settings:memoryPage.kindCowork', { title: s.title })
-                              : t('settings:memoryPage.kindChat', { title: s.title })}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                  )}
-                  {scope === 'project' && (
-                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                      {t('settings:memoryPage.projectFolder')}
-                      <Select
-                        className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
-                        aria-label={t('settings:memoryPage.projectFolderAria')}
-                        data-testid="memory-project-picker"
-                        value={projectRoot ?? ''}
-                        onChange={(e) => {
-                          // `''` rather than undefined: "no folder" was chosen,
-                          // so the first folder is not picked again for them.
-                          setProjectRoot(e.target.value)
-                          // A folder is the identity; a Flint project would be
-                          // ignored beside it, so it is not left looking chosen.
-                          if (e.target.value) setProjectId('')
-                          setOffset(0)
-                        }}
-                      >
-                        {conversations.projects.length === 0 && (
-                          <option value="">{t('settings:memoryPage.noProjectFolders')}</option>
-                        )}
-                        {conversations.projects.map((p) => (
-                          <option key={p} value={p}>
-                            {p}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                  )}
-
-                  {scope === 'project' && (
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-                      <label htmlFor="memory-project" className="text-xs text-muted-foreground sm:text-sm">
-                        {t('settings:memoryPage.scope.project.tab')}
-                      </label>
-                      <Select
-                        id="memory-project"
-                        value={projectId}
-                        onChange={(e) => {
-                          setProjectId(e.target.value)
-                          // A Flint project has no folder: a folder left selected
-                          // would win in the backend and show its records instead.
-                          if (e.target.value) setProjectRoot('')
-                          setOffset(0)
-                        }}
-                        className="h-9 min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
-                      >
-                        <option value="">{t('settings:memoryPage.chooseProject')}</option>
-                        {projects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="relative">
-                    <Search
-                      size={14}
-                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Input
-                      value={query}
-                      aria-label={t('settings:memoryPage.searchAria')}
-                      placeholder={t('settings:memoryPage.searchPlaceholder')}
-                      className="pl-8"
-                      onChange={(e) => {
-                        setQuery(e.target.value)
-                        setOffset(0)
-                      }}
-                    />
-                  </div>
-
-                  {unavailable ? (
-                    <EmptyState
-                      className="rounded-lg border border-dashed border-border-strong py-6"
-                      icon={<FolderOpen aria-hidden />}
-                      title={unavailable}
-                    />
-                  ) : page.length === 0 ? (
-                    <EmptyState
-                      className="rounded-lg border border-dashed border-border-strong py-6"
-                      icon={query ? <SearchX aria-hidden /> : <Brain aria-hidden />}
-                      title={
-                        query
-                          ? t('settings:memoryPage.noMatch')
-                          : t('settings:memoryPage.empty')
-                      }
-                      description={
-                        query
-                          ? t('settings:memoryPage.noMatchHint')
-                          : t('settings:memoryPage.emptyHint')
-                      }
-                    />
-                  ) : (
-                    <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
-                      {page.map((memory) => (
-                        <MemoryRecordRow
-                          key={memory.id}
-                          memory={memory}
-                          busy={busy}
-                          onTogglePin={onTogglePin}
-                          onEdit={(m) => {
-                            setEditing(m)
-                            setDraft(m.content)
-                          }}
-                          onForget={onForget}
-                        />
-                      ))}
-                    </ul>
-                  )}
-
-                  {total > PAGE_SIZE && (
-                    <MemoryPager offset={offset} total={total} pageSize={PAGE_SIZE} onOffsetChange={setOffset} />
-                  )}
-
-                  {/* The destructive action, kept quiet and apart from the
-                      list it empties; the dialog still asks before anything
-                      is removed. */}
-                  <div className="-mb-3 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-border pt-2.5 pb-0.5">
-                    <p className="min-w-0 text-xs text-muted-foreground">
-                      {t('settings:memoryPage.footerCount', {
-                        count: tabCount(scope) ?? total,
-                      })}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive-text hover:bg-destructive/10 hover:text-destructive-text pointer-coarse:h-11"
-                      disabled={busy || total === 0 || location == null}
-                      data-testid="memory-clear-scope"
-                      onClick={() => setClearing(scope)}
-                    >
-                      <Trash2 aria-hidden />
-                      {t(`${scopeKey}.forgetAll`)}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+              <MemoryRememberedCard
+  scope={scope}
+  tabCount={tabCount}
+  setScope={setScope}
+  setOffset={setOffset}
+  scopeKey={scopeKey}
+  recall={recall}
+  onAdd={onAdd}
+  newMemory={newMemory}
+  setNewMemory={setNewMemory}
+  busy={busy}
+  location={location}
+  total={total}
+  onExport={onExport}
+  onImport={onImport}
+  importReport={importReport}
+  importCount={importCount}
+  sessionId={sessionId}
+  setSessionId={setSessionId}
+  conversations={conversations}
+  projectRoot={projectRoot}
+  setProjectRoot={setProjectRoot}
+  setProjectId={setProjectId}
+  projectId={projectId}
+  projects={projects}
+  query={query}
+  setQuery={setQuery}
+  unavailable={unavailable}
+  page={page}
+  onTogglePin={onTogglePin}
+  setEditing={setEditing}
+  setDraft={setDraft}
+  onForget={onForget}
+  offset={offset}
+  setClearing={setClearing}
+/>
             )}
 
             {/* The files the memory_write tool saves: a store of their own,

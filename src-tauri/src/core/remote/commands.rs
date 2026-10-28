@@ -375,8 +375,28 @@ async fn detect() -> (Option<std::net::Ipv4Addr>, Option<std::net::Ipv4Addr>) {
         .unwrap_or((None, None))
 }
 
+type Detected2 = (Option<std::net::Ipv4Addr>, Option<std::net::Ipv4Addr>);
+
+/// How long a detection result is reused by the status poll. The settings page
+/// polls status; each fresh detection can spawn a `tailscale` process.
+const DETECT_TTL: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// [`detect`], reused for [`DETECT_TTL`] by whoever polls.
+async fn detect_cached() -> Detected2 {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Detected2)>> =
+        std::sync::Mutex::new(None);
+    if let Some((at, found)) = *CACHE.lock().unwrap_or_else(|p| p.into_inner()) {
+        if at.elapsed() < DETECT_TTL {
+            return found;
+        }
+    }
+    let found = detect().await;
+    *CACHE.lock().unwrap_or_else(|p| p.into_inner()) = Some((std::time::Instant::now(), found));
+    found
+}
+
 async fn status_of(state: &RemoteState) -> RemoteStatus {
-    let (ts, lan) = detect().await;
+    let (ts, lan) = detect_cached().await;
     let rt = state.rt.lock().await;
     RemoteStatus {
         config: state.hub.config(),

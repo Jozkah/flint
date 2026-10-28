@@ -172,10 +172,10 @@ describe('useGeneralSetting', () => {
   })
 
   describe('setHuggingfaceToken', () => {
-    it('should set huggingface token', () => {
+    it('should set huggingface token', async () => {
       const { result } = renderHook(() => useGeneralSetting())
 
-      act(() => {
+      await act(async () => {
         result.current.setHuggingfaceToken('test-token-123')
       })
 
@@ -186,10 +186,22 @@ describe('useGeneralSetting', () => {
       })
     })
 
-    // #138: the token shared the provider's 'huggingface' keyring entry.
-    it('never writes the huggingface provider entry', () => {
+    it('puts the field back and keeps order when the keyring refuses', async () => {
       const { result } = renderHook(() => useGeneralSetting())
-      act(() => {
+      await act(async () => {
+        result.current.setHuggingfaceToken('good')
+      })
+      mockInvoke.mockRejectedValueOnce(new Error('keyring down'))
+      await act(async () => {
+        result.current.setHuggingfaceToken('bad')
+      })
+      expect(result.current.huggingfaceToken).toBe('good')
+    })
+
+    // #138: the token shared the provider's 'huggingface' keyring entry.
+    it('never writes the huggingface provider entry', async () => {
+      const { result } = renderHook(() => useGeneralSetting())
+      await act(async () => {
         result.current.setHuggingfaceToken('')
       })
       const keys = mockInvoke.mock.calls.map(

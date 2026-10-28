@@ -3363,11 +3363,11 @@ async fn collect_and_format(
         // Something the command started is still holding its output open.
         // It is stopped, so it does not outlive the call that started it
         // (`background: true` is how a command asks to keep running).
-        #[cfg(unix)]
+        // On Windows the still-held `child` handle pins the pid, so it cannot
+        // name a stranger; the root is gone and its descendants are swept.
         if let Some(pid) = pid {
             let _ = proc::kill_tree(pid);
         }
-        let _ = pid;
         cap.push(
             b"\n[note: the command exited, but a process it started kept its output open, so \
               waiting for more output was cut short. Use {\"background\": true} for a command \

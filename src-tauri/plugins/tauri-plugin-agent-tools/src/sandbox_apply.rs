@@ -93,6 +93,7 @@ pub fn apply_sandbox_file_to(
         return Err(format!("the sandbox file is larger than {MAX_APPLY_BYTES} bytes"));
     }
     let bytes = std::fs::read(&source).map_err(|e| e.to_string())?;
+    let destination = confined(project, &destination)?;
     crate::atomic_file::write_atomic(&destination, &bytes)?;
     Ok(if existed {
         SandboxApplyOutcome::Replaced
@@ -173,8 +174,32 @@ pub fn apply_sandbox_hunk_to(
     if current != expected {
         return Ok(SandboxHunkOutcome::Changed);
     }
+    let destination = confined(project, &destination)?;
     crate::atomic_file::write_atomic(&destination, content.as_bytes())?;
     Ok(SandboxHunkOutcome::Applied)
+}
+
+/// The path to write, judged again at the moment of the write: the parent
+/// folder as it resolves now (after any folders were created), plus the file
+/// name, and the file itself when it is a link. A link swapped into the
+/// destination's folders after [`resolve`] cannot carry the write outside.
+fn confined(project: &Path, destination: &Path) -> Result<PathBuf, String> {
+    let outside = || "the destination points outside the attached folder".to_string();
+    let root = std::fs::canonicalize(project).map_err(|e| e.to_string())?;
+    let name = destination.file_name().ok_or_else(outside)?;
+    let parent = destination.parent().ok_or_else(outside)?;
+    let parent = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+    if !parent.starts_with(&root) {
+        return Err(outside());
+    }
+    let path = parent.join(name);
+    if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+        let target = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+        if !target.starts_with(&root) {
+            return Err(outside());
+        }
+    }
+    Ok(path)
 }
 
 /// The confined source and destination, and whether a file is already at the
@@ -331,6 +356,16 @@ mod tests {
             std::fs::read_to_string(project.join("docs/notes.md")).unwrap(),
             "from the run"
         );
+    }
+
+    #[test]
+    fn confined_refuses_a_parent_that_resolves_outside() {
+        let (root, _sandbox, project) = dirs();
+        let outside = root.0.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        // A folder that resolves outside the project, as a swapped-in link would.
+        assert!(confined(&project, &outside.join("x.txt")).is_err());
+        assert!(confined(&project, &project.join("x.txt")).is_ok());
     }
 
     #[test]

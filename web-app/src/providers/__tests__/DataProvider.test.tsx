@@ -47,11 +47,14 @@ const h = vi.hoisted(() => {
 
 // Zustand-style hook with getState support
 vi.mock('@/hooks/useModelProvider', () => {
-  const useModelProvider = vi.fn(() => ({
-    setProviders: h.setProviders,
-    getProviderByName: h.getProviderByName,
-  })) as unknown as {
-    (): unknown
+  const useModelProvider = vi.fn((sel?: (s: unknown) => unknown) => {
+    const state = {
+      setProviders: h.setProviders,
+      getProviderByName: h.getProviderByName,
+    }
+    return sel ? sel(state) : state
+  }) as unknown as {
+    (sel?: (s: unknown) => unknown): unknown
     getState: () => { providers: unknown[]; updateProvider: () => void }
   }
   useModelProvider.getState = () => ({
@@ -65,12 +68,18 @@ vi.mock('@/hooks/useAppUpdater', () => ({
 }))
 
 vi.mock('@/hooks/useMCPServers', () => ({
-  useMCPServers: () => ({ setServers: h.setServers, setSettings: h.setSettings }),
+  useMCPServers: (sel?: (s: unknown) => unknown) => {
+    const state = { setServers: h.setServers, setSettings: h.setSettings }
+    return sel ? sel(state) : state
+  },
   DEFAULT_MCP_SETTINGS: { foo: 'bar' },
 }))
 
 vi.mock('@/hooks/useAssistant', () => ({
-  useAssistant: () => ({ setAssistants: h.setAssistants }),
+  useAssistant: (sel?: (s: unknown) => unknown) => {
+    const state = { setAssistants: h.setAssistants }
+    return sel ? sel(state) : state
+  },
 }))
 
 vi.mock('@/lib/extension', () => ({

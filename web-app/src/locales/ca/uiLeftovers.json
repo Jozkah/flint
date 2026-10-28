@@ -47,7 +47,8 @@
     "memoriesSent": "Records enviats",
     "withheld": "Retinguts per contradictoris: {{ids}}",
     "perSec": "{{n}} tokens/s",
-    "count": "{{n}} tokens"
+    "count": "{{n}} tokens",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "Edita l’amfitrió del servidor"

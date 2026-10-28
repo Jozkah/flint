@@ -13,6 +13,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
+    i18n: { language: 'en-US' },
     t: (k: string, o?: { defaultValue?: string; wait?: string }) =>
       (o?.defaultValue ?? k).replace('{{wait}}', o?.wait ?? ''),
   }),

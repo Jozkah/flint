@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { Trash2, Plus, TriangleAlert } from 'lucide-react'
 
@@ -55,9 +55,13 @@ export function ParametersSection({
   providerId,
   modelId,
 }: ParametersSectionProps) {
+  const { t } = useTranslation()
   const reported = useModelReportedDefaults(providerId, modelId)
-  const modelRejects = (key: string) =>
-    !!(providerId && modelId && isModelLevelRejected(key, providerId, modelId))
+  const modelRejects = useCallback(
+    (key: string) =>
+      !!(providerId && modelId && isModelLevelRejected(key, providerId, modelId)),
+    [providerId, modelId]
+  )
   const supportIndex = useMemo(() => {
     const idx: Record<
       string,
@@ -120,7 +124,7 @@ export function ParametersSection({
     <div className="space-y-3">
       {!hasAny && (
         <div className="text-xs text-muted-foreground py-2">
-          No overrides — using model defaults.
+          {t('common:paramSearch.noOverrides')}
         </div>
       )}
 
@@ -150,9 +154,10 @@ export function ParametersSection({
 
       {unknownKeys.length > 0 && (
         <div className="text-xs text-muted-foreground">
-          {unknownKeys.length} unrecognized parameter
-          {unknownKeys.length === 1 ? '' : 's'} hidden:{' '}
-          {unknownKeys.join(', ')}
+          {t('common:paramSearch.unrecognized', {
+            count: unknownKeys.length,
+            keys: unknownKeys.join(', '),
+          })}
         </div>
       )}
 
@@ -189,6 +194,7 @@ function StandaloneRow({
   onChange,
   onRemove,
 }: StandaloneRowProps) {
+  const { t } = useTranslation()
   const def = paramsSettings[paramKey]
   if (!def) return null
   const disabledReason = evaluateDisabled(def, params)
@@ -219,18 +225,22 @@ function StandaloneRow({
         <div className="flex items-center gap-1 min-w-0 flex-1 text-sm">
           <span className="truncate">{def.title}</span>
           {unsupported && (
-            <TriangleAlert
-              size={12}
-              className="text-destructive shrink-0"
-              aria-label="Not supported — will be stripped on send"
-            />
+            <span
+              role="img"
+              aria-label={t('common:paramSearch.notSupportedStripped')}
+              className="shrink-0 inline-flex"
+            >
+              <TriangleAlert size={12} className="text-destructive" />
+            </span>
           )}
           {!unsupported && maybeOnly && (
-            <TriangleAlert
-              size={12}
-              className="text-amber-500 shrink-0"
-              aria-label="May be ignored by this provider"
-            />
+            <span
+              role="img"
+              aria-label={t('common:paramSearch.mayBeIgnored')}
+              className="shrink-0 inline-flex"
+            >
+              <TriangleAlert size={12} className="text-amber-500" />
+            </span>
           )}
         </div>
         <Button
@@ -238,7 +248,7 @@ function StandaloneRow({
           size="icon-sm"
           onClick={() => onRemove(paramKey)}
           className="shrink-0 h-7 w-7"
-          aria-label={`Remove ${def.title}`}
+          aria-label={t('common:paramSearch.removeParam', { name: def.title })}
         >
           <Trash2 size={14} className="text-destructive" />
         </Button>
@@ -262,7 +272,9 @@ function StandaloneRow({
               : 'text-xs text-muted-foreground'
           }
         >
-          {unsupported ? 'Not supported — will be skipped.' : def.effectHint}
+          {unsupported
+            ? t('common:paramSearch.notSupportedSkipped')
+            : def.effectHint}
         </div>
       )}
     </div>
@@ -282,6 +294,7 @@ function GroupBlock({
   onChange,
   onRemoveGroup,
 }: GroupBlockProps) {
+  const { t } = useTranslation()
   return (
     <div className="rounded-md border border-border/60 p-3 space-y-3">
       <div className="flex items-center justify-between">
@@ -293,7 +306,7 @@ function GroupBlock({
           variant="ghost"
           size="icon-sm"
           onClick={onRemoveGroup}
-          aria-label={`Remove ${group.title}`}
+          aria-label={t('common:paramSearch.removeParam', { name: group.title })}
         >
           <Trash2 size={16} className="text-destructive" />
         </Button>
@@ -551,7 +564,11 @@ function AddParameterMenu({
                       {maybeBy && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className={showsReported ? 'ml-1' : 'ml-auto'} aria-label={warning}>
+                            <span
+                              role="img"
+                              className={showsReported ? 'ml-1' : 'ml-auto'}
+                              aria-label={warning}
+                            >
                               <TriangleAlert size={11} className="text-amber-500" />
                             </span>
                           </TooltipTrigger>

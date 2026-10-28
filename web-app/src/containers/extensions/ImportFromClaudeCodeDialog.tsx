@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, OctagonAlert } from 'lucide-react'
 import {
@@ -71,22 +71,35 @@ export default function ImportFromClaudeCodeDialog({
 
   const grouped = useMemo(() => groupByOrigin(items), [items])
 
+  // A scan that finishes after a newer one (or after the dialog is gone) is
+  // dropped rather than overwriting the list.
+  const scanId = useRef(0)
+  useEffect(
+    () => () => {
+      scanId.current++
+    },
+    []
+  )
+
   const scan = async () => {
+    const id = ++scanId.current
     setScanning(true)
     setScanError(null)
     setResult(null)
     try {
       const res = await ccScan(root.trim() || undefined)
+      if (id !== scanId.current) return
       setItems(res.items)
       const next: Record<string, boolean> = {}
       for (const item of res.items) next[itemKey(item)] = !item.alreadyExists
       setSelected(next)
     } catch (e) {
+      if (id !== scanId.current) return
       setScanError(t('common:extensionsManager.import.scanFailed', { error: String(e) }))
       setItems([])
       setSelected({})
     } finally {
-      setScanning(false)
+      if (id === scanId.current) setScanning(false)
     }
   }
 

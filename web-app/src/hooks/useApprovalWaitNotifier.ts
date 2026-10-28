@@ -1,6 +1,7 @@
 import { createElement, useEffect, useRef } from 'react'
 import { syncTaskbarAttention } from '@/lib/taskbarAttention'
 import { toast } from 'sonner'
+import { i18n } from '@/i18n/react-i18next-compat'
 import {
   approvalDestination,
   openApprovalDestination,
@@ -162,8 +163,10 @@ export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
         if (approvalCardOnScreen(entry.requestId)) continue
         reminded.add(entry.requestId)
         const seconds = Math.round((now - (entry.requestedAt ?? now)) / 1000)
-        const title = `Waiting for your approval: ${entry.toolName}`
-        const body = `The run has been paused for ${seconds} s until you allow or deny it.`
+        const title = i18n.t('permissions:approvalText.waitTitle', {
+          tool: entry.toolName,
+        })
+        const body = i18n.t('permissions:approvalText.waitBody', { seconds })
         const open = () => {
           if (navigateRef.current) openWaitingApproval(entry, navigateRef.current)
         }
