@@ -2,6 +2,7 @@
  * Transcript reconstruction and restart recovery
  * (docs/DISCUSSION_ROOMS.md, "Failures and interruption").
  */
+import { rt } from './text'
 import { getRoomPersistence, type RoomPersistence } from './persistence'
 import {
   ROOM_SCHEMA_VERSION,
@@ -149,7 +150,7 @@ export async function recoverRoomsOnLoad(
             author: { kind: 'system' },
             to: { kind: 'room' },
             kind: 'system',
-            text: 'Flint restarted while this room was running. The room is paused.',
+            text: rt('restarted'),
             round: room.round,
             createdAt: at,
             status: 'complete',
