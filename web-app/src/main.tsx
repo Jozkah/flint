@@ -12,6 +12,7 @@ import { bootMark } from '@/lib/bootMarks'
 import { noteBootError, startBootWatchdog } from '@/lib/bootWatchdog'
 import { routerDefaults } from '@/components/RoutePending'
 import { installWindowIdleMarker } from '@/lib/windowIdle'
+import { noteLocation, setSettingsNavigator } from '@/lib/settingsReturn'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
@@ -136,6 +137,8 @@ const boot = async () => {
   bootMark('boot:i18n')
 
   const router = createRouter({ routeTree, ...routerDefaults })
+  router.subscribe('onResolved', (e) => noteLocation(e.toLocation.href))
+  setSettingsNavigator((to) => void router.navigate({ to }))
   // The app opens on the Overview once the first-run setup is done; until
   // then the new-chat page carries the setup guide. Only the main window's
   // start: a deep link or a logs window keeps its own path.

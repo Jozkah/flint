@@ -29,6 +29,7 @@ import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { isContextOverflow, replyReserveFor } from '@/lib/coworkBudget'
 import {
   DEFAULT_COMPACTION_POLICY,
+  compactThresholdFor,
   effectiveReserve,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
@@ -139,14 +140,17 @@ export function compactionTriggerTokens(
 export function shouldCompact(
   projected: number,
   window: number | null | undefined,
-  threshold: number = DEFAULT_COMPACT_THRESHOLD,
+  /** Omitted: the policy's chosen percentage, else the built-in share. */
+  threshold: number | undefined = undefined,
   headroom = 0,
   /** The user's policy: the trigger keeps the reserve they set, not the default. */
-  policy: Pick<CompactionPolicy, 'reserveTokens' | 'origins'> = DEFAULT_COMPACTION_POLICY
+  policy: Pick<CompactionPolicy, 'reserveTokens' | 'origins'> &
+    Partial<Pick<CompactionPolicy, 'compactAtPercent'>> = DEFAULT_COMPACTION_POLICY
 ): boolean {
   if (window == null || !(window > 0)) return false
+  const share = threshold ?? compactThresholdFor(policy, DEFAULT_COMPACT_THRESHOLD)
   const trigger = Math.min(
-    thresholdTokens(window, threshold),
+    thresholdTokens(window, share),
     window - Math.max(replyReserveFor(window), effectiveReserve(window, policy))
   )
   return projected + Math.max(0, headroom || 0) >= trigger
@@ -312,7 +316,8 @@ export function compactionNeedsTurnSplit(
   messages: UIMessage[],
   keepRecent: number | undefined,
   window: number | null | undefined,
-  policy?: Pick<CompactionPolicy, 'reserveTokens' | 'origins'>
+  policy?: Pick<CompactionPolicy, 'reserveTokens' | 'origins'> &
+    Partial<Pick<CompactionPolicy, 'compactAtPercent'>>
 ): boolean {
   const plan = planCompaction(messages, { keepRecent })
   if (!plan) return false

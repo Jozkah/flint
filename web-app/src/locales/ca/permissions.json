@@ -247,6 +247,7 @@
     "failed": "No s'ha pogut confiar en la carpeta",
     "kept_one": "S'han mantingut els hooks activats en {{count}} carpeta que ja fas servir. Revisa-la a Configuració > Permisos > Carpetes de confiança.",
     "kept_other": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança.",
+    "kept_many": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança.",
     "summaryHooks": "Confies en aquesta carpeta? Els seus hooks executen ordres",
     "summarySubagents": "Confies en aquesta carpeta? Les seves definicions d'agents es poden executar",
     "summaryBoth": "Confies en aquesta carpeta? Els seus hooks i agents es poden executar",
@@ -392,6 +393,7 @@
     "grantNote": "«Permet per a aquesta conversa» acaba quan acaba la conversa, o al cap de 8 hores. «Permet sempre» es manté per a totes les converses fins que el revoquis a Configuració > Permisos > Accés a carpetes.",
     "moreWaiting_one": "{{count}} sol·licitud més en espera.",
     "moreWaiting_other": "{{count}} sol·licituds més en espera.",
+    "moreWaiting_many": "{{count}} sol·licituds més en espera.",
     "deny": "Denega",
     "always": "Permet sempre",
     "session": "Permet per a aquesta conversa"

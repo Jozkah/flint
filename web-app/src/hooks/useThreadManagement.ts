@@ -20,6 +20,8 @@ type ThreadManagementState = {
     assistantId?: string,
     model?: ProjectModel
   ) => Promise<void>
+  /** `undefined` = every enabled server (the default). */
+  setFolderMcpServers: (id: string, servers: string[] | undefined) => Promise<void>
   deleteFolder: (id: string) => Promise<void>
   /**
    * Delete a project and its threads. They move to the archive (the project
@@ -59,6 +61,20 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
     await useConversationGroups.getState().renameGroup('home', id, name)
     const projectsService = getServiceHub().projects()
     await projectsService.updateProject(id, name, assistantId, model)
+    set({ folders: await projectsService.getProjects() })
+  },
+
+  setFolderMcpServers: async (id, servers) => {
+    const projectsService = getServiceHub().projects()
+    const projects = await projectsService.getProjects()
+    await projectsService.setProjects(
+      projects.map((p) => {
+        if (p.id !== id) return p
+        const rest = { ...p }
+        delete rest.mcpServers
+        return servers ? { ...rest, mcpServers: [...servers] } : rest
+      })
+    )
     set({ folders: await projectsService.getProjects() })
   },
 

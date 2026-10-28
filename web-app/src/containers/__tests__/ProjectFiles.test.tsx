@@ -583,4 +583,68 @@ describe('ProjectFiles', () => {
     await clickUpload()
     await waitFor(() => expect(ingestMock).toHaveBeenCalled())
   })
+
+  describe('files changed on disk', () => {
+    const indexed = {
+      id: 'f1',
+      name: 'notes.md',
+      path: '/docs/notes.md',
+      type: 'md',
+      size: 100,
+      chunk_count: 2,
+      mtime: 1_700_000_000,
+    }
+
+    it('badges a changed file and re-indexes it by delete then ingest', async () => {
+      listAttachmentsForProjectMock.mockResolvedValue([indexed])
+      fileStatMock.mockResolvedValue({ isDirectory: false, size: 140, modified: 1_700_000_900 })
+      deleteFileForProjectMock.mockResolvedValue(undefined)
+      ingestFileAttachmentForProjectMock.mockResolvedValue({ id: 'f2' })
+      render(<ProjectFiles projectId="p1" />)
+      expect(await screen.findByTestId('project-file-changed')).toBeInTheDocument()
+      fireEvent.click(screen.getByLabelText('common:projects.reindexFile notes.md'))
+      await waitFor(() =>
+        expect(ingestFileAttachmentForProjectMock).toHaveBeenCalledWith(
+          'p1',
+          expect.objectContaining({ path: '/docs/notes.md', size: 140 })
+        )
+      )
+      expect(deleteFileForProjectMock).toHaveBeenCalledWith('p1', 'f1')
+      expect(deleteFileForProjectMock.mock.invocationCallOrder[0]).toBeLessThan(
+        ingestFileAttachmentForProjectMock.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('re-indexes every changed file from the banner', async () => {
+      listAttachmentsForProjectMock.mockResolvedValue([
+        indexed,
+        { ...indexed, id: 'f3', name: 'b.md', path: '/docs/b.md' },
+      ])
+      fileStatMock.mockResolvedValue({ isDirectory: false, size: 1, modified: 1 })
+      deleteFileForProjectMock.mockResolvedValue(undefined)
+      ingestFileAttachmentForProjectMock.mockResolvedValue({ id: 'x' })
+      render(<ProjectFiles projectId="p1" />)
+      fireEvent.click(await screen.findByText('common:projects.reindexAllChanged'))
+      await waitFor(() => expect(ingestFileAttachmentForProjectMock).toHaveBeenCalledTimes(2))
+      expect(deleteFileForProjectMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('badges a missing file', async () => {
+      listAttachmentsForProjectMock.mockResolvedValue([indexed])
+      fileStatMock.mockRejectedValue(new Error('No such file'))
+      render(<ProjectFiles projectId="p1" />)
+      expect(await screen.findByTestId('project-file-missing')).toBeInTheDocument()
+    })
+
+    it('shows no badge for a file indexed before mtimes were stored', async () => {
+      listAttachmentsForProjectMock.mockResolvedValue([{ ...indexed, mtime: null }])
+      fileStatMock.mockResolvedValue({ isDirectory: false, size: 1, modified: 1 })
+      render(<ProjectFiles projectId="p1" />)
+      await screen.findAllByText('notes.md')
+      await waitFor(() => expect(listAttachmentsForProjectMock).toHaveBeenCalled())
+      expect(screen.queryByTestId('project-file-changed')).toBeNull()
+      expect(screen.queryByTestId('project-file-missing')).toBeNull()
+      expect(fileStatMock).not.toHaveBeenCalled()
+    })
+  })
 })

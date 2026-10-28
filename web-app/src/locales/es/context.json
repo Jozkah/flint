@@ -193,7 +193,8 @@
       "redacted": "Ocultado",
       "nothing": "nada",
       "redactedList_one": "{{count}} campo: {{list}}",
-      "redactedList_other": "{{count}} campos: {{list}}"
+      "redactedList_other": "{{count}} campos: {{list}}",
+      "redactedList_many": "{{count}} campos: {{list}}"
     },
     "view": {
       "label": "Ver como",
@@ -212,8 +213,10 @@
       "left": "{{count}} salieron",
       "keptMessages_one": "{{count}} mensaje conservado",
       "keptMessages_other": "{{count}} mensajes conservados",
+      "keptMessages_many": "{{count}} mensajes conservados",
       "keptTools_one": "{{count}} herramienta conservada",
       "keptTools_other": "{{count}} herramientas conservadas",
+      "keptTools_many": "{{count}} herramientas conservadas",
       "systemChanged": "prompt del sistema modificado",
       "enteredHeading": "Entraron",
       "leftHeading": "Salieron",
@@ -227,6 +230,7 @@
       "needsSession": "Repetir necesita la sesión a la que pertenece este turno.",
       "redactedBlock_one": "No se puede repetir: {{count}} campo se ocultó antes de guardarla, así que el modelo no recibiría lo que recibió entonces.",
       "redactedBlock_other": "No se puede repetir: {{count}} campos se ocultaron antes de guardarla, así que el modelo no recibiría lo que recibió entonces.",
+      "redactedBlock_many": "No se puede repetir: {{count}} campos se ocultaron antes de guardarla, así que el modelo no recibiría lo que recibió entonces.",
       "state": {
         "running": "Repitiendo…",
         "interrupted": "Interrumpido: Flint se detuvo durante la ejecución",

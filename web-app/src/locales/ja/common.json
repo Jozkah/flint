@@ -783,6 +783,14 @@
     "filesDescription": "このプロジェクトで参照するPDF、ドキュメント、その他のテキストを追加します。",
     "uploadingFiles": "ファイルを処理しています…",
     "processButton": "追加",
+    "fileChangedOnDisk": "ディスク上で変更済み",
+    "fileMissing": "見つかりません",
+    "reindexFile": "再インデックス",
+    "reindexAllChanged": "変更されたファイルをすべて再インデックス",
+    "filesChangedOnDisk": "インデックス後にディスク上で変更されたファイル: {{count}}",
+    "reindexed": "再インデックスしたファイル: {{count}}",
+    "reindexFailed": "ファイルを再インデックスできませんでした",
+    "staleFilesNotice": "ディスク上で変更または削除されたコレクションのファイル: {{count}}。コレクションのファイル一覧から再インデックスしてください。",
     "deleteFileDialog": {
       "title": "ファイルを削除",
       "description": "「{{fileName}}」とそのインデックス済みの内容がこのコレクションから削除されます。この操作は元に戻せません。"
@@ -850,6 +858,14 @@
     "openCodeFolder": "コードフォルダーを開く",
     "openCodeFolderDescription": "Flint が作業するフォルダーをコンピューターから選択してください。",
     "setUpEmbeddingModel": "埋め込みモデルを設定",
+    "mcpServers": {
+      "title": "MCPサーバー",
+      "useAll": "有効なすべてのサーバーを使用（既定）",
+      "onlyThese": "これらのサーバーのみ",
+      "noneConfigured": "MCPサーバーが設定されていません。",
+      "filterActive": "このプロジェクトで使用: {{servers}} のみ",
+      "filterNone": "このプロジェクトはMCPサーバーを使用しません"
+    },
     "webPage": {
       "open": "Webページを追加",
       "title": "Webページを追加",
@@ -3171,6 +3187,8 @@
     "applying": "適用中…",
     "applySelected": "選択を適用"
   },
+  "chatRules": "ルール",
+  "chatRuleForThisChat": "このチャットでこのルールを使う",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

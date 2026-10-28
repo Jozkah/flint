@@ -2,6 +2,8 @@
   "chat": {
     "actionFailed": "Không thể hoàn tất thao tác này. Vui lòng thử lại.",
     "alreadyInList_other": "{{names}} đã có trong danh sách",
+    "alreadyInList_one": "{{names}} đã có trong danh sách",
+    "alreadyInList_many": "{{names}} đã có trong danh sách",
     "attachmentsDisabled": "Tệp đính kèm đã bị tắt trong Cài đặt",
     "docsInPrompt": "Tài liệu được thêm vào lời nhắc",
     "docsInPromptDescription": "Mô hình này không thể tìm kiếm tệp, vì vậy mỗi tài liệu được gửi dưới dạng văn bản cùng tin nhắn của bạn.",
@@ -62,6 +64,8 @@
     "loadingVariants": "Đang tải biến thể…",
     "mayExceed": "Có thể vượt quá bộ nhớ",
     "modelCount_other": "{{count}} mô hình",
+    "modelCount_one": "{{count}} mô hình",
+    "modelCount_many": "{{count}} mô hình",
     "mostDownloaded": "Tải nhiều nhất",
     "mostLiked": "Được thích nhiều nhất",
     "newChat": "Cuộc trò chuyện mới",

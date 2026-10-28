@@ -91,6 +91,7 @@ pub async fn save_attachment_file<R: Runtime>(
     .map_err(|e| format!("save_attachment_file error: {e}"))?
 }
 
+#[cfg(test)]
 pub(crate) fn save_attachment_file_blocking<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     file_name: String,
