@@ -175,7 +175,10 @@ export function SettingsBackupCard() {
                   : ''}{' '}
                 {t('settings:backup.pendingOverwrite')}
               </p>
-              {preview && preview.baseUrlChanges.length > 0 && (
+              {preview &&
+                (preview.baseUrlChanges.length > 0 ||
+                  (preview.tlsChanges?.length ?? 0) > 0 ||
+                  (preview.headerChanges?.length ?? 0) > 0) && (
                 <div
                   className="text-sm text-destructive"
                   data-testid="settings-backup-base-url-changes"
@@ -190,6 +193,24 @@ export function SettingsBackupCard() {
                           to: c.to || '-',
                         })}
                         {c.keyDropped ? ` ${t('settings:backup.keyDropped')}` : ''}
+                      </li>
+                    ))}
+                    {(preview.tlsChanges ?? []).map((c) => (
+                      <li key={`tls-${c.provider}`}>
+                        {t(
+                          c.insecureTls
+                            ? 'settings:backup.tlsChangeOff'
+                            : 'settings:backup.tlsChangeOn',
+                          { provider: c.provider }
+                        )}
+                      </li>
+                    ))}
+                    {(preview.headerChanges ?? []).map((c) => (
+                      <li key={`hdr-${c.provider}`}>
+                        {t('settings:backup.headerChange', {
+                          provider: c.provider,
+                          names: c.names.join(', ') || '-',
+                        })}
                       </li>
                     ))}
                   </ul>
