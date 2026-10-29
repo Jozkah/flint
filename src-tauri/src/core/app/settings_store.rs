@@ -349,7 +349,7 @@ pub struct SettingsRecovery {
     pub backup: Option<String>,
 }
 
-fn backup_unreadable(path: &PathBuf) {
+pub(crate) fn backup_unreadable(path: &PathBuf) {
     if path.is_file() {
         let aside = path.with_extension(format!("json.corrupt-{}", std::process::id()));
         let backup = match fs::copy(path, &aside) {
