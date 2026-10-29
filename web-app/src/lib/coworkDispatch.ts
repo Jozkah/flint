@@ -9,6 +9,7 @@ import {
 } from '@/lib/coworkSubagentQuestions'
 import { executeAgentTool } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { fingerprintFor } from '@/lib/mcpFingerprint'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import {
   allApprovalRequests,
@@ -483,12 +484,14 @@ async function callMcpTool(
 
   try {
     const mcp = getServiceHub().mcp()
-    const fingerprint = useToolApprovalRequests
-      .getState()
-      .takeApprovedFingerprint?.(call.toolCallId)
-    const approvalTicket = await mcp
-      .allowOnceForServer(server, toolName, fingerprint)
-      .catch(() => undefined)
+    const fingerprint = await fingerprintFor(
+      mcp,
+      server,
+      useToolApprovalRequests.getState().takeApprovedFingerprint?.(call.toolCallId)
+    )
+    const approvalTicket = fingerprint
+      ? await mcp.allowOnceForServer(server, toolName, fingerprint).catch(() => undefined)
+      : undefined
     // Stop reaches the server at once, not at its timeout (M-011).
     const result = await callMcpToolCancellable(
       mcp,

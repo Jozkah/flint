@@ -116,7 +116,7 @@ export class BrowserMCPService extends DefaultMCPService {
     return browserApi<Record<string, string>>(`${base}/fingerprints`)
   }
 
-  async trustServer(serverName: string, fingerprint?: string): Promise<void> {
+  async trustServer(serverName: string, fingerprint: string): Promise<void> {
     await browserApi<void>(
       `${base}/trust/${encodeURIComponent(serverName)}`,
       jsonRequest('POST', { fingerprint })
@@ -137,7 +137,7 @@ export class BrowserMCPService extends DefaultMCPService {
   async allowOnceForServer(
     serverName: string,
     toolName: string,
-    fingerprint?: string
+    fingerprint: string
   ): Promise<string> {
     const result = await browserApi<{ ticket: string }>(
       `${base}/allow-once`,

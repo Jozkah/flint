@@ -83,7 +83,9 @@ describe('grant reuse', () => {
         expect(useToolApprovalRequests.getState().pending.tc1).toBeDefined()
       )
       useToolApprovalRequests.getState().resolveApproval('tc1', 'allow-always')
-      expect(trustServer).toHaveBeenCalledWith('github', 'sha256:gh')
+      await vi.waitFor(() =>
+        expect(trustServer).toHaveBeenCalledWith('github', 'sha256:gh')
+      )
       await expect(first).resolves.toBe(true)
       await expect(request('tc2', 'list_repos', 'thread-9', 'github')).resolves.toBe(
         true

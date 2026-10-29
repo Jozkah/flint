@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useToolApproval } from './useToolApproval'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { fingerprintFor } from '@/lib/mcpFingerprint'
 import { toast } from 'sonner'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
@@ -852,9 +853,13 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           if (serverFingerprint) {
             approval.approveServer(serverName, serverFingerprint)
           }
-          void getServiceHub()
-            .mcp()
-            .trustServer(serverName, serverFingerprint)
+          const mcp = getServiceHub().mcp()
+          void fingerprintFor(mcp, serverName, serverFingerprint)
+            .then((fingerprint) => {
+              if (!fingerprint)
+                throw new Error(`MCP server '${serverName}' has no known definition to trust`)
+              return mcp.trustServer(serverName, fingerprint)
+            })
             .catch((error) => {
               useToolApproval.getState().revokeServer(serverName)
               toast.error(i18n.t('permissions:toast.trustFailed'), {
