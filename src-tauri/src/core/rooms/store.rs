@@ -501,6 +501,14 @@ pub struct ModeratorDirective {
     pub reason: String,
 }
 
+/// A system note as data: an interface-text key and the values it takes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoomNote {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub values: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomMessage {
@@ -532,6 +540,11 @@ pub struct RoomMessage {
     /// reply. Absent on messages from participants without tools.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<RoomToolCall>>,
+    /// For system notes: what the note says, as a `rooms:notes.*` key and its
+    /// values, so it is drawn in the interface language. `text` keeps the
+    /// rendered fallback for readers that predate notes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<RoomNote>,
     /// For system notes: the discussion was compacted here. Drawn as a
     /// divider that expands to the summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]

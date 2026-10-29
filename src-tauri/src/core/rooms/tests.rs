@@ -110,6 +110,24 @@ fn new_store() -> (tempfile::TempDir, RoomStore) {
 }
 
 #[test]
+fn a_system_note_keeps_its_key_and_values_through_the_journal() {
+    let (_dir, store) = new_store();
+    store.save(room("r1"), 5000).unwrap();
+    let mut with_note = message_json("r1", "m1", "Bob is available again.");
+    with_note["message"]["kind"] = json!("system");
+    with_note["message"]["author"] = json!({ "kind": "system" });
+    with_note["message"]["note"] = json!({ "key": "availableAgain", "values": { "name": "Bob" } });
+    store.append("r1", parse_record(with_note).unwrap()).unwrap();
+    store.append("r1", message("r1", "m2", "an old note")).unwrap();
+    let loaded = store.get("r1").unwrap();
+    let raw = serde_json::to_value(&loaded.journal).unwrap();
+    assert_eq!(raw[0]["message"]["note"], json!({ "key": "availableAgain", "values": { "name": "Bob" } }));
+    assert_eq!(raw[0]["message"]["text"], json!("Bob is available again."));
+    // A message written before notes existed has none, and none is written.
+    assert!(raw[1]["message"].get("note").is_none());
+}
+
+#[test]
 fn save_get_round_trip() {
     let (_dir, store) = new_store();
     let saved = store.save(room("r1"), 5000).unwrap();
