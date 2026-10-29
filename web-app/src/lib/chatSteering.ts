@@ -1,6 +1,7 @@
 import { lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai'
 import {
   useMessageQueue,
+  type QueuedAttachments,
   type QueuedMessage,
 } from '@/stores/message-queue-store'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
@@ -152,14 +153,18 @@ export function holdQueueThenStop(queueIds: string[], stop: () => void): void {
  */
 export function nextChatTurn(
   threadId: string
-): { text: string; steered: boolean } | null {
+): { text: string; steered: boolean; attachments?: QueuedAttachments } | null {
   const queue = useMessageQueue.getState()
   const steering = queue.takeSteering(threadId)
   if (steering.length > 0) {
     return { text: steering.map((m) => m.text).join('\n\n'), steered: true }
   }
   const next = queue.dequeueReady(threadId)
-  return next ? { text: next.text, steered: false } : null
+  if (!next) return null
+  // A phone's message queued with attachments goes with them.
+  return next.attachments
+    ? { text: next.text, steered: false, attachments: next.attachments }
+    : { text: next.text, steered: false }
 }
 
 /**
