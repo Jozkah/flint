@@ -19,12 +19,10 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  applyInnerToTurns,
   attachAskToTurns,
   settleAskInTurns,
   useCoworkRun,
   type RunEnding,
-  type StreamEvent,
 } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -38,6 +36,7 @@ import { beginRun, endRun, getRunHandle } from '@/lib/coworkRunner'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import { RustSubagentFeed } from '@/lib/rustSubagentFeed'
 import { useRemoteWorktrees } from '@/lib/remoteWorktree'
+import { mapRemoteEvent } from '@/lib/remoteEventMapper'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import { describeSpendPause } from '@/lib/spendPause'
 import { i18n } from '@/i18n/react-i18next-compat'
@@ -560,84 +559,49 @@ class RemoteRun {
   // ---- events ------------------------------------------------------------
 
   private handle(env: LiveEnvelope): void {
-    const payload = (env.payload ?? {}) as Record<string, unknown>
-    switch (env.kind) {
-      case 'stream':
-        this.stream_(payload as unknown as StreamEvent & Record<string, unknown>)
+    const effect = mapRemoteEvent(env, { turns: this.turns, reattached: this.reattached })
+    switch (effect.kind) {
+      case 'turns':
+        this.turns = effect.turns
+        this.dirty = true
         return
-      case 'turn.started':
-        if (this.reattached && this.turns.length === 0 && typeof payload.input === 'string') {
-          this.turns = [{ role: 'user', content: payload.input }]
-          this.dirty = true
-        }
+      case 'usage':
+        this.usage = effect.usage
+        useCoworkRun.getState().setUsage(this.sid, effect.usage)
         return
-      case 'approval.resolved':
-        this.resolvedElsewhere(String(payload.requestId ?? ''))
-        return
-      case 'ask.answered':
-        this.askResolved(String(payload.requestId ?? ''), 'answered')
-        return
-      case 'turn.completed':
-        void this.finish(payload)
-        useRemoteWorktrees.getState().bump(this.sid)
-        return
-      case 'proposal.created':
-        useRemoteWorktrees.getState().proposalCreated(this.sid, payload)
-        return
-      case 'proposal.error':
-        useRemoteWorktrees.getState().proposalFailed(this.sid, String(payload.message ?? ''))
-        return
-      case 'worktree.changed':
-      case 'worktree.discarded':
-        useRemoteWorktrees.getState().bump(this.sid)
-        return
-      default:
-        return
-    }
-  }
-
-  private stream_(ev: StreamEvent & Record<string, unknown>): void {
-    // The server also sends events the local loop never had (permission and
-    // question bookkeeping), so the tag is read as a plain string.
-    const raw = ev as Record<string, unknown>
-    switch (raw.type as string) {
-      case 'done': {
-        const usage = raw.usage as Usage | null | undefined
-        if (usage) {
-          this.usage = usage
-          useCoworkRun.getState().setUsage(this.sid, usage)
-        }
-        return
-      }
       case 'error':
-        this.errorText = String(raw.message ?? '')
+        this.errorText = effect.text
         return
-      case 'turn_usage':
+      case 'permission':
+        this.raisePermission(effect.raw)
         return
-      case 'permission_request':
-        this.raisePermission(raw)
+      case 'ask':
+        this.raiseAsk(effect.requestId, effect.request)
         return
-      case 'ask_request':
-        this.raiseAsk(String(raw.request_id), raw.request as { questions: unknown[] })
+      case 'ask-resolved':
+        this.askResolved(effect.requestId, effect.state)
         return
-      case 'ask_resolved':
-        this.askResolved(String(raw.request_id ?? ''), 'cancelled')
-        return
-      case 'subagent_queued':
-      case 'subagent_start':
-      case 'subagent_title':
-      case 'subagent_end':
-      case 'subagent_finished':
       case 'subagent':
-        this.feed.apply(ev)
+        this.feed.apply(effect.event)
         return
-      default: {
-        const next = applyInnerToTurns(this.turns, ev)
-        if (next !== this.turns) {
-          this.turns = next
-          this.dirty = true
-        }
-      }
+      case 'approval-resolved':
+        this.resolvedElsewhere(effect.requestId)
+        return
+      case 'finish':
+        void this.finish(effect.payload)
+        useRemoteWorktrees.getState().bump(this.sid)
+        return
+      case 'proposal-created':
+        useRemoteWorktrees.getState().proposalCreated(this.sid, effect.payload)
+        return
+      case 'proposal-error':
+        useRemoteWorktrees.getState().proposalFailed(this.sid, effect.message)
+        return
+      case 'worktree-changed':
+        useRemoteWorktrees.getState().bump(this.sid)
+        return
+      case 'none':
+        return
     }
   }
 
