@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 import { toast } from 'sonner'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { ModelFactory } from '@/lib/model-factory'
 import { runUtilityAgent } from '@/lib/utilityAgents'
 import { useImageDescription } from '@/hooks/useImageDescription'

@@ -304,18 +304,14 @@ async fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentS
         &project.to_string_lossy(),
         Some(model.unwrap_or_else(|| source.agent.model.clone())),
         ProviderOverrides::default(),
-        SessionFlags { require_model: true, ..Default::default() },
+        // The source's MCP servers are already connected: reuse them instead
+        // of spawning a second copy of every stdio server.
+        SessionFlags { require_model: true, skip_mcp: true, ..Default::default() },
         None,
     )?;
     agent.args.session_id = Some(source.id.clone());
     agent.args.host_tools = source.agent.args.host_tools.clone();
     agent.args.host_owns_gate = source.agent.args.host_owns_gate;
-    // The source's MCP servers are already connected: reuse them instead of
-    // spawning a second copy of every stdio server.
-    if let Some(task) = agent.mcp_task.take() {
-        task.abort();
-    }
-    disconnect_all(&agent.mcp_servers).await;
     agent.mcp_servers = source.agent.mcp_servers.clone();
     agent.args.mcp_servers = source.agent.args.mcp_servers.clone();
     Ok(agent)

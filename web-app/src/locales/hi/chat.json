@@ -242,6 +242,7 @@
     "filterImages": "छवियाँ",
     "attachFailed": "दस्तावेज़ संलग्न नहीं हो सके",
     "removeFailed": "अटैचमेंट हटाया नहीं जा सका",
+    "attachmentRemoved": "{{name}} हटाया गया",
     "ingestFailed": "{{name}} प्रोसेस नहीं हो सका",
     "readAudioFailed": "ऑडियो फ़ाइल पढ़ी नहीं जा सकी",
     "readVideoFailed": "वीडियो फ़ाइल पढ़ी नहीं जा सकी",

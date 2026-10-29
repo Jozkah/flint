@@ -1,0 +1,109 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`remote registry keys > action handlers 1`] = `
+[
+  "approvals.prompt",
+  "approvals.respond",
+  "asks.respond",
+  "chat.edit",
+  "chat.regenerate",
+  "chat.send",
+  "cowork.send",
+  "room.control",
+  "room.send",
+  "run.stop",
+  "settings.set",
+]
+`;
+
+exports[`remote registry keys > app actions 1`] = `
+[
+  "answerAsk",
+  "chatAct",
+  "chatBusy",
+  "chatExists",
+  "coworkAccess",
+  "coworkBusy",
+  "coworkExists",
+  "createChat",
+  "createCowork",
+  "enqueue",
+  "findApproval",
+  "findAsk",
+  "findPrompt",
+  "knownFolders",
+  "open",
+  "permissions",
+  "prepareAttachments",
+  "recoverInterrupted",
+  "resolveApproval",
+  "respondPrompt",
+  "room",
+  "roomExists",
+  "sendViaComposer",
+  "setChatModel",
+  "setChatReasoning",
+  "setCoworkMode",
+  "setCoworkModel",
+  "setCoworkReviewOnly",
+  "setNotificationPrefs",
+  "setWebSearch",
+  "stageDocs",
+  "stop",
+  "stopAll",
+  "stopConversation",
+]
+`;
+
+exports[`remote registry keys > app extras 1`] = `
+[
+  "assistants",
+  "chatDetails",
+  "clearRoom",
+  "compactChat",
+  "coworkFile",
+  "coworkFiles",
+  "coworkPreview",
+  "downloads",
+  "forkChat",
+  "hfDownload",
+  "hfSearch",
+  "regenerateTitle",
+  "selectVersion",
+  "setChatAssistant",
+  "setChatEffort",
+]
+`;
+
+exports[`remote registry keys > app sources 1`] = `
+[
+  "appearance",
+  "approvalDetails",
+  "approvals",
+  "asks",
+  "chatMessages",
+  "chatMessagesPage",
+  "chats",
+  "coworkActivity",
+  "coworkChanges",
+  "coworkDetail",
+  "coworkMessages",
+  "coworkSessions",
+  "favoriteModels",
+  "library",
+  "loadedModels",
+  "mcpServers",
+  "notificationPrefs",
+  "permissions",
+  "prompts",
+  "providers",
+  "queue",
+  "roomDetail",
+  "roomMessages",
+  "rooms",
+  "running",
+  "settings",
+  "streamSnapshot",
+  "systemInfo",
+]
+`;

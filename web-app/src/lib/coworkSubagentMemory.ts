@@ -8,7 +8,7 @@
  * output, possibly shaped by whatever it read on the web, and they are loaded
  * into every later run.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { jsonSchema, type Tool } from 'ai'
 import type { ToolOutcome } from '@/lib/coworkRunner'
 

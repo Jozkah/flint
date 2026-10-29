@@ -1977,8 +1977,9 @@ pub(super) fn clamp_line(line: Line<'static>, width: u16) -> Line<'static> {
 /// to the bottom (terminal-chat feel) instead of top-anchoring with a gap
 /// below. Zero once the wrapped content fills or overflows `inner_h`, so the
 /// scrollback path is left untouched.
-pub(super) fn transcript_top_padding(total: u16, inner_h: u16) -> u16 {
-    inner_h.saturating_sub(total)
+pub(super) fn transcript_top_padding(total: usize, inner_h: u16) -> u16 {
+    // Below `inner_h`, so the difference fits the viewport's own type.
+    usize::from(inner_h).saturating_sub(total) as u16
 }
 
 /// One contiguous run of body lines. A committed transcript row is held by
@@ -2059,12 +2060,10 @@ fn refresh_live_pickers(app: &mut App) {
 fn draw_picker_screen(f: &mut Frame, app: &mut App, chunks: [Rect; 4], prompt_owns: bool) -> bool {
     if let Some(picker) = app.picker.as_ref().filter(|_| !prompt_owns) {
         app.row_index.clear();
-        let toml_path = app.agent_dir.join("agent.toml");
         draw_picker(
             f,
             chunks[1],
             picker,
-            &toml_path,
             app.mcp_detail.as_ref(),
             app.mcp_auth.as_ref(),
             &app.subagents,
@@ -2091,10 +2090,10 @@ fn build_transcript_segments(
     app: &mut App,
     width: u16,
     frame: &'static str,
-) -> (Vec<Segment>, u16, Option<u16>) {
+) -> (Vec<Segment>, usize, Option<usize>) {
     let mut segs: Vec<Segment> = Vec::with_capacity(app.transcript.len() + 8);
-    let mut content_h: u16 = 0;
-    let mut reveal_at: Option<u16> = None;
+    let mut content_h: usize = 0;
+    let mut reveal_at: Option<usize> = None;
     // Traces fold their run of reasoning/tool rows to one header unless the user
     // expanded it. A finished run (an answer follows) folds whole to a static
     // `Thought/Worked` header. The active run's settled steps fold to a live
@@ -2128,7 +2127,7 @@ fn build_transcript_segments(
             if app.reveal == Some(i) {
                 reveal_at = Some(content_h);
             }
-            content_h = content_h.saturating_add(seg.height);
+            content_h += usize::from(seg.height);
             segs.push(seg);
             continue;
         }
@@ -2163,7 +2162,7 @@ fn build_transcript_segments(
                 lines: None,
             },
         };
-        content_h = content_h.saturating_add(seg.height);
+        content_h += usize::from(seg.height);
         segs.push(seg);
         if app.expanded.contains(&i) {
             // Detail rows map back to the same owning idx (not `None`), so a
@@ -2193,7 +2192,7 @@ fn build_transcript_segments(
                 });
             if let Some(detail) = detail {
                 let seg = Segment::eager(Some(i), detail, width);
-                content_h = content_h.saturating_add(seg.height);
+                content_h += usize::from(seg.height);
                 segs.push(seg);
             }
         }
@@ -2284,20 +2283,20 @@ fn build_tail(app: &mut App, width: u16, frame: &'static str) -> Vec<Line<'stati
 fn materialize_visible(
     app: &App,
     segs: Vec<Segment>,
-    scroll: u16,
+    scroll: usize,
     inner_h: u16,
     width: u16,
-) -> (Vec<Line<'static>>, Vec<Option<usize>>, Option<u16>) {
-    let end = scroll.saturating_add(inner_h);
+) -> (Vec<Line<'static>>, Vec<Option<usize>>, Option<usize>) {
+    let end = scroll + usize::from(inner_h);
     let mut visible: Vec<Line<'static>> = Vec::new();
     // Parallel to the *screen* rows of the body, in wrapped coordinates: which
     // transcript index (if any) owns each one, so a mouse click can be mapped
     // back to a region to toggle.
     let mut row_index: Vec<Option<usize>> = Vec::with_capacity(inner_h as usize);
-    let mut first_start: Option<u16> = None;
-    let mut at: u16 = 0;
+    let mut first_start: Option<usize> = None;
+    let mut at: usize = 0;
     for seg in segs {
-        let seg_end = at.saturating_add(seg.height);
+        let seg_end = at + usize::from(seg.height);
         if seg_end > scroll && at < end {
             first_start.get_or_insert(at);
             visible.extend(match seg.lines {
@@ -2310,7 +2309,7 @@ fn materialize_visible(
                     .unwrap_or_default(),
             });
             let visible_rows = seg_end.min(end).saturating_sub(at.max(scroll));
-            row_index.extend(std::iter::repeat_n(seg.idx, visible_rows as usize));
+            row_index.extend(std::iter::repeat_n(seg.idx, visible_rows));
         }
         at = seg_end;
         if at >= end {
@@ -2379,9 +2378,7 @@ fn draw_prompt_overlays(f: &mut Frame, app: &mut App, chunks: [Rect; 4]) {
     } else if let Some(confirm) = &app.browser_confirm {
         draw_browser_confirm_overlay(f, confirm, chunks[2], chunks[1]);
     } else if let Some(prompt) = &app.settings_prompt {
-        let toml_path = app.agent_dir.join("agent.toml");
-        let height = (settings_prompt_lines(prompt, &toml_path, chunks[2].width.saturating_sub(2))
-            .len() as u16
+        let height = (settings_prompt_lines(prompt, chunks[2].width.saturating_sub(2)).len() as u16
             + 2)
         .min(chunks[1].height);
         let y = chunks[2].y.saturating_sub(height).max(chunks[1].y);
@@ -2391,7 +2388,7 @@ fn draw_prompt_overlays(f: &mut Frame, app: &mut App, chunks: [Rect; 4]) {
             width: chunks[2].width,
             height,
         };
-        draw_settings_prompt(f, rect, prompt, &toml_path);
+        draw_settings_prompt(f, rect, prompt);
     } else if let Some(prompt) = &app.mcp_prompt {
         let height = (mcp_prompt_lines(prompt, chunks[2].width.saturating_sub(2)).len() as u16 + 2)
             .min(chunks[1].height);
@@ -2574,7 +2571,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     let tail = build_tail(app, width, frame);
     if !tail.is_empty() {
         let seg = Segment::eager(None, tail, width);
-        content_h = content_h.saturating_add(seg.height);
+        content_h += usize::from(seg.height);
         segs.push(seg);
     }
 
@@ -2591,10 +2588,10 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
                 lines: Some(vec![Line::raw(""); pad as usize]),
             },
         );
-        reveal_at = reveal_at.map(|n| n.saturating_add(pad));
+        reveal_at = reveal_at.map(|n| n + usize::from(pad));
     }
-    let total = content_h.saturating_add(pad);
-    let max_back = total.saturating_sub(inner_h);
+    let total = content_h + usize::from(pad);
+    let max_back = total.saturating_sub(usize::from(inner_h));
     if let Some(target) = reveal_at {
         // Position the region near the top of the viewport; clamps to pinned
         // bottom when it is already close enough to the end.
@@ -2611,7 +2608,8 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
 
     // What the body still has to skip inside the first partially-scrolled
     // segment; everything before it was never materialized.
-    let offset = scroll.saturating_sub(first_start.unwrap_or(scroll));
+    // Inside one segment, whose height is itself a `u16`, so it always fits.
+    let offset = scroll.saturating_sub(first_start.unwrap_or(scroll)).min(usize::from(u16::MAX)) as u16;
     let body = Paragraph::new(visible)
         .wrap(Wrap { trim: false })
         .block(Block::default().borders(Borders::TOP));
@@ -2619,9 +2617,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     // The anchor is a screen cell, so content moving under it has to move it
     // too, or an auto-scrolled drag would keep re-selecting the same rows.
     if let Some(sel) = app.selection.as_mut().filter(|s| s.dragging) {
-        let delta = scroll as i32 - app.last_scroll as i32;
+        let delta = scroll as i64 - app.last_scroll as i64;
         if delta != 0 {
-            sel.anchor.1 = (sel.anchor.1 as i32 - delta).clamp(0, u16::MAX as i32) as u16;
+            sel.anchor.1 = (i64::from(sel.anchor.1) - delta).clamp(0, i64::from(u16::MAX)) as u16;
             sel.moved = true;
         }
     }
@@ -2969,7 +2967,6 @@ pub(super) fn draw_settings_prompt(
     f: &mut Frame,
     area: ratatui::layout::Rect,
     prompt: &SettingsPrompt,
-    toml_path: &std::path::Path,
 ) {
     use ratatui::widgets::Clear;
 
@@ -2985,7 +2982,7 @@ pub(super) fn draw_settings_prompt(
     let inner = block.inner(area);
     f.render_widget(block, area);
     f.render_widget(
-        Paragraph::new(settings_prompt_lines(prompt, toml_path, inner.width)),
+        Paragraph::new(settings_prompt_lines(prompt, inner.width)),
         inner,
     );
 }
@@ -2993,11 +2990,7 @@ pub(super) fn draw_settings_prompt(
 /// The `/settings` box's contents at `width`, sized by the call site the same
 /// way as `login_prompt_lines`. The description, the current value and the
 /// enum `valid:` list are all long enough to leave a narrow box.
-pub(super) fn settings_prompt_lines(
-    prompt: &SettingsPrompt,
-    toml_path: &std::path::Path,
-    width: u16,
-) -> Vec<Line<'static>> {
+pub(super) fn settings_prompt_lines(prompt: &SettingsPrompt, width: u16) -> Vec<Line<'static>> {
     let dim = Style::new().dark_gray();
     let def = prompt.def();
     let max = width.max(1) as usize;
@@ -3012,7 +3005,7 @@ pub(super) fn settings_prompt_lines(
         Span::styled(def.desc, dim),
         Span::styled("   current: ", dim),
         Span::styled(
-            current_setting_value(def, toml_path).unwrap_or_else(|| "unset".to_string()),
+            prompt.current.clone().unwrap_or_else(|| "unset".to_string()),
             Style::new().cyan(),
         ),
     ]);
@@ -3567,7 +3560,6 @@ pub(super) fn draw_picker(
     f: &mut Frame,
     area: ratatui::layout::Rect,
     picker: &Picker,
-    toml_path: &std::path::Path,
     mcp_detail: Option<&McpDetail>,
     mcp_auth: Option<&McpAuthFlow>,
     subagents: &[SubagentPanel],
@@ -3613,13 +3605,17 @@ pub(super) fn draw_picker(
             ..area
         };
         f.render_stateful_widget(list, list_area, &mut state);
-        if let Some(def) = picker
-            .items
-            .get(picker.selected)
-            .and_then(|it| AGENT_SETTINGS.iter().find(|d| d.key == it.value))
-        {
-            let current =
-                current_setting_value(def, toml_path).unwrap_or_else(|| "unset".to_string());
+        if let Some((item, def)) = picker.items.get(picker.selected).and_then(|it| {
+            AGENT_SETTINGS
+                .iter()
+                .find(|d| d.key == it.value)
+                .map(|def| (it, def))
+        }) {
+            // The value read when the menu was built (the row's own `= value`
+            // hint), not a settings-file read on every frame (F2x1-008).
+            let current = setting_hint_value(item.hint.as_deref())
+                .unwrap_or("unset")
+                .to_string();
             let meta = match def.kind {
                 AgentSettingKind::Int { default, min } => {
                     let d = default

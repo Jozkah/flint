@@ -134,7 +134,9 @@ impl Event {
 
     /// Whether a failing hook at this point can stop anything.
     ///
-    /// Only `pre-tool` can: by the time the after-the-fact events run, the
+    /// `pre-tool` and `run-end` can: `pre-tool` refuses the call, and a failing
+    /// `run-end` block hook hands its reason back as a block on the finished
+    /// answer. By the time the other after-the-fact events run, the
     /// thing they would refuse has already happened, and a "block" there would
     /// be a refusal of something that cannot be taken back. `pre-compact` runs
     /// before its compaction but is observe-only by design: a compaction is
@@ -149,7 +151,7 @@ impl Event {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum OnFailure {
-    /// Refuse the work the hook ran before. `pre-tool` only.
+    /// Refuse the work the hook ran before. `pre-tool` and `run-end` only.
     Block,
     /// Let the work proceed, and say the hook failed.
     Warn,

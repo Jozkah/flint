@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /**
  * Amazon Bedrock. The AWS secret never reaches the webview: it is saved to the

@@ -8,7 +8,7 @@
  * instead, where the user picks "Save as PDF" or a printer, so there is no
  * path to report for it.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { errorText } from '@/lib/errorText'
 import { redactSecrets } from '@/lib/redact'
 import {

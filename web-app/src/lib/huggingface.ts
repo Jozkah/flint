@@ -1,5 +1,5 @@
 import i18n from '@/i18n'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { mergeById, searchVariants } from '@/lib/huggingfaceSearch'
 
 export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all' | 'image' | 'video'

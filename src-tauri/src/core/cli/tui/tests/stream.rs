@@ -2,6 +2,34 @@
 
 use super::*;
 
+/// P2C-018: snapshots that queue behind a slow write collapse to the newest
+/// per thread, and every flush in the batch is still answered.
+#[test]
+fn queued_thread_snapshots_collapse_to_the_newest_per_thread() {
+    use crate::core::cli::tui::stream::{coalesce_saves, ThreadSave, ThreadSaveJob};
+    let save = |id: &str, n: usize| {
+        ThreadSaveJob::Save(ThreadSave {
+            base: std::path::PathBuf::from("agent"),
+            id: id.to_string(),
+            model: "m".to_string(),
+            history: vec![serde_json::json!(n); n],
+            metadata: None,
+        })
+    };
+    let (flush_tx, _flush_rx) = std::sync::mpsc::channel();
+    let (saves, flushes) = coalesce_saves(vec![
+        save("t1", 1),
+        save("t2", 1),
+        ThreadSaveJob::Flush(flush_tx),
+        save("t1", 3),
+    ]);
+    assert_eq!(flushes.len(), 1);
+    assert_eq!(saves.len(), 2);
+    assert_eq!(saves[0].id, "t2");
+    assert_eq!(saves[1].id, "t1");
+    assert_eq!(saves[1].history.len(), 3, "the newest snapshot of t1");
+}
+
 #[test]
 fn steering_failed_handoff_keeps_input_for_next_turn() {
     let mut app = test_app();

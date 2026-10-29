@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CLIENT_ROUTES > names every tool the client answers itself 1`] = `
+[
+  "answer_subagent",
+  "ask",
+  "await_task",
+  "cancel_task",
+  "enable_tools",
+  "enter_worktree",
+  "exit_worktree",
+  "spawn_session",
+  "task",
+  "task_status",
+  "team",
+  "todo",
+  "workflow",
+]
+`;

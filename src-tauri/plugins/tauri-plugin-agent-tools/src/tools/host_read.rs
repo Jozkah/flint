@@ -398,8 +398,8 @@ pub(crate) async fn capture(mut cmd: tokio::process::Command, timeout: Duration)
         Ok(Ok(out)) => Ok(Captured {
             code: out.status.code(),
             success: out.status.success(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            stdout: decode_output(&out.stdout),
+            stderr: decode_output(&out.stderr),
         }),
     }
 }
@@ -425,9 +425,27 @@ pub(crate) fn bounded(text: &str) -> String {
     format!("{}\n[output cut at {} KB; narrow it with name, port or max_results]", &text[..end], OUTPUT_CAP / 1024)
 }
 
-/// `wsl --list` prints UTF-16; drop the NULs and the byte-order mark.
+/// Process output as text: UTF-16LE when it says so (a byte-order mark) or
+/// looks like it (most odd bytes zero, as `wsl.exe` prints unless `WSL_UTF8=1`),
+/// UTF-8 otherwise. Decoded in code units, so a non-ASCII distribution name or
+/// message survives instead of losing its high bytes.
+pub(crate) fn decode_output(bytes: &[u8]) -> String {
+    let bom = bytes.starts_with(&[0xFF, 0xFE]);
+    let odd_zeros = bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
+    let utf16 = bom || (bytes.len() >= 2 && bytes.len() % 2 == 0 && odd_zeros * 2 >= bytes.len() / 2);
+    if !utf16 {
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+    let units: Vec<u16> = bytes[if bom { 2 } else { 0 }..]
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// `wsl --list` output: decoded, without NULs or a byte-order mark.
 fn decode_wsl(bytes: &[u8]) -> String {
-    let text: String = String::from_utf8_lossy(bytes).chars().filter(|c| !matches!(*c, '\0' | '\u{feff}' | '\u{fffd}')).collect();
+    let text: String = decode_output(bytes).chars().filter(|c| !matches!(*c, '\0' | '\u{feff}')).collect();
     text.trim().to_string()
 }
 
@@ -595,5 +613,13 @@ mod tests {
     fn wsl_listing_is_decoded_from_utf16() {
         let utf16: Vec<u8> = "\u{feff}  NAME  STATE\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert_eq!(decode_wsl(&utf16), "NAME  STATE");
+    }
+
+    #[test]
+    fn non_ascii_utf16_output_round_trips() {
+        let utf16: Vec<u8> = "* Ubuntu-Größe  Running\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        assert_eq!(decode_wsl(&utf16), "* Ubuntu-Größe  Running");
+        // UTF-8 output (WSL_UTF8=1, or the command's own) is left as UTF-8.
+        assert_eq!(decode_output("Größe ok".as_bytes()), "Größe ok");
     }
 }

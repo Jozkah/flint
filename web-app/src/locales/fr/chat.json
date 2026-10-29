@@ -252,6 +252,7 @@
     "filterImages": "Images",
     "attachFailed": "Impossible de joindre les documents",
     "removeFailed": "Impossible de retirer la pièce jointe",
+    "attachmentRemoved": "{{name}} retiré",
     "ingestFailed": "Impossible de traiter {{name}}",
     "readAudioFailed": "Impossible de lire le fichier audio",
     "readVideoFailed": "Impossible de lire le fichier vidéo",

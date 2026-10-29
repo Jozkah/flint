@@ -469,6 +469,7 @@ describe('Hugging Face discovery is explicit-only', () => {
     const bootstrapFiles = [
       resolve(SRC, 'main.tsx'),
       resolve(SRC, 'providers/DataProvider.tsx'),
+      resolve(SRC, 'providers/dataProviderHooks.ts'),
       resolve(REPO, 'src-tauri/src/core/setup.rs'),
     ].filter(existsSync)
     for (const path of bootstrapFiles) {

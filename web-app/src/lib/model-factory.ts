@@ -72,12 +72,8 @@ import {
   bedrockRegion,
   createBedrockSigningFetch,
 } from '@/lib/bedrock'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { findSessionByModel } from '@janhq/tauri-plugin-llamacpp-api'
-import {
-  originOf,
-  useProviderReachability,
-} from '@/hooks/useProviderReachability'
 import { SessionInfo } from '@janhq/core'
 import { providerFetch } from '@/lib/providerFetch'
 import { isServerTransport } from '@/lib/serverTransportFlag'
@@ -86,22 +82,9 @@ import { textToolCallMiddleware } from '@/lib/textToolCallMiddleware'
 // These three call sites predate the canonical transport and named the raw
 // Tauri fetch; they are the same transport now, under the name they used.
 const httpFetch = providerFetch
-import { hasAudioSentinel, splitAudioSentinels } from './audio-sentinel'
-import { hasVideoSentinel, splitVideoSentinels } from './video-sentinel'
-import {
-  hasToolImageSentinel,
-  splitToolImageSentinels,
-} from './tool-image-sentinel'
-import {
-  filterDefaultSseEvents,
-  sanitizeOpenAiToolCallSseEvents,
-} from './sseEventTypeFilter'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
-import {
-  LLAMACPP_ONLY_PARAM_KEYS,
-  paramsSettings,
-} from '@/lib/predefinedParams'
+import { paramsSettings } from '@/lib/predefinedParams'
 import {
   resolveProviderCaps,
   isModelLevelRejected,
@@ -116,13 +99,26 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
 import { emptyTextMiddleware } from '@/lib/emptyTextMiddleware'
 import { applyCustomHeaders } from '@/lib/customHeaders'
+import { createCustomFetch } from '@/lib/model/customFetch'
+import { createApiKeyRotatingFetch } from '@/lib/model/keyRotation'
 import {
-  cleanUpstreamErrorMessage,
-  describeTransportFailure,
-  isSamplingParamRejection,
-  requestUrlOf,
-  withTransportDetail,
-} from '@/lib/model/transportErrors'
+  DISPATCH_PARAM_KEY,
+  dispatchOnly,
+  filterParameters,
+  stripAssistantReasoningInBody,
+} from '@/lib/model/requestBody'
+export { createCustomFetch } from '@/lib/model/customFetch'
+export { createApiKeyRotatingFetch } from '@/lib/model/keyRotation'
+export {
+  DISPATCH_HEADERS,
+  DISPATCH_PARAM_KEY,
+  type DispatchIdentity,
+  decodeAudioSentinelsInBody,
+  decodeToolImageSentinelsInBody,
+  decodeVideoSentinelsInBody,
+  reconcileConstraintParams,
+  stripAssistantReasoningInBody,
+} from '@/lib/model/requestBody'
 export {
   cleanUpstreamErrorMessage,
   describeTransportError,
@@ -270,137 +266,6 @@ export const __llamacppExtractorForTests = createProviderMetadataExtractor()
 export const __createLlamacppExtractorForTests = createProviderMetadataExtractor
 
 /**
- * Keys from inference parameters that are client-side only and must not
- * be forwarded in the HTTP body to remote APIs.
- */
-/**
- * Which conversation a model's requests belong to.
- *
- * Carried as a model parameter because the model instance is built per session:
- * a module-level "current dispatch" would race between two sessions streaming
- * at once, and the AI SDK gives no other place to thread it through. Stripped
- * from the request body (it is not a sampling parameter) and sent as headers
- * the provider transport consumes and removes before the request goes out.
- */
-export const DISPATCH_PARAM_KEY = '__janDispatch'
-
-export type DispatchIdentity = {
-  session: string
-  run?: string
-  thread?: string
-  agent?: string
-  provider?: string
-}
-
-/** Header names the provider transport reads the identity from. */
-export const DISPATCH_HEADERS = {
-  session: 'x-jan-session',
-  run: 'x-jan-run',
-  thread: 'x-jan-thread',
-  agent: 'x-jan-agent',
-  provider: 'x-jan-provider',
-} as const
-
-const CLIENT_SIDE_PARAM_KEYS: ReadonlySet<string> = new Set([
-  'ctx_len',
-  'max_context_tokens',
-  'auto_compact',
-  // Consumed client-side: OpenRouter request shaping and provider options.
-  'openrouter_web_search',
-  'openrouter_image_output',
-  'openrouter_provider',
-  'verbosity',
-  DISPATCH_PARAM_KEY,
-])
-
-/**
- * Reconcile `grammar` / `json_schema` with what llama-server actually accepts.
- * The UI can express every combination the server refuses:
- *
- * - `grammar` is rejected whenever the request carries usable tools, and the
- *   check is `body.contains("grammar")` (server-common.cpp), so an untouched
- *   Grammar row -- default `''` -- 400s a tool-enabled thread on its own.
- * - `json_schema` and `grammar` together are refused outright; the explicit
- *   GBNF wins here, since typing one is the more deliberate act.
- * - a schema must be an *object*. The textarea holds a string, which the
- *   server dumps and re-parses into a JSON string that every consumer skips
- *   over `is_object()`, so the setting silently did nothing.
- *
- * Mutates `body`; llamacpp-only, since the other providers never see these keys.
- */
-export function reconcileConstraintParams(body: Record<string, unknown>): void {
-  if ('grammar' in body) {
-    const grammar = body.grammar
-    if (typeof grammar !== 'string' || grammar.trim() === '') {
-      delete body.grammar
-    }
-  }
-
-  if ('json_schema' in body) {
-    const raw = body.json_schema
-    if (typeof raw === 'string') {
-      const trimmed = raw.trim()
-      if (trimmed === '') {
-        delete body.json_schema
-      } else {
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(trimmed)
-        } catch (e) {
-          console.warn('Ignoring JSON Schema that is not valid JSON:', e)
-          delete body.json_schema
-        }
-        if ('json_schema' in body) {
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            body.json_schema = parsed
-          } else {
-            console.warn('Ignoring JSON Schema that is not a JSON object')
-            delete body.json_schema
-          }
-        }
-      }
-    } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      delete body.json_schema
-    }
-  }
-
-  const tools = body.tools
-  const toolsUsable =
-    Array.isArray(tools) && tools.length > 0 && body.tool_choice !== 'none'
-  if (toolsUsable && 'grammar' in body) {
-    console.warn('Ignoring the GBNF grammar: llama.cpp refuses one alongside tools')
-    delete body.grammar
-  }
-
-  if ('grammar' in body && 'json_schema' in body) {
-    console.warn('Ignoring the JSON Schema: a GBNF grammar is set and llama.cpp accepts only one')
-    delete body.json_schema
-  }
-}
-
-/** Just the dispatch identity of `parameters`, none of its sampling values. */
-function dispatchOnly(
-  parameters: Record<string, unknown>
-): Record<string, unknown> {
-  return DISPATCH_PARAM_KEY in parameters
-    ? { [DISPATCH_PARAM_KEY]: parameters[DISPATCH_PARAM_KEY] }
-    : {}
-}
-
-function filterParameters(
-  parameters: Record<string, unknown>,
-  keepLlamacppOnly: boolean
-): Record<string, unknown> {
-  if (keepLlamacppOnly) return parameters
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(parameters)) {
-    if (LLAMACPP_ONLY_PARAM_KEYS.has(k)) continue
-    out[k] = v
-  }
-  return out
-}
-
-/**
  * Strip sampler params the active provider doesn't accept. Built-in providers
  * with strict capability tables (e.g. real OpenAI rejecting `top_k`) drop the
  * unsupported keys here so the wire request never carries them. Custom/permissive
@@ -445,27 +310,6 @@ function stripUnsupportedSamplers(
 }
 
 /**
- * Create a custom fetch function that injects additional parameters into the
- * request body, normalising key names for OpenAI-compatible APIs:
- * - `max_output_tokens` is remapped to `max_tokens`
- * - client-side-only keys (e.g. `ctx_len`) are stripped
- *
- * Also rewrites OpenAI-shape error bodies on non-OK responses so the inner
- * `error.message` is cleaned of stack-trace noise before the AI SDK surfaces
- * it to the UI.
- */
-/** A seed worth sending: a whole number of zero or more (string or number). */
-function isFixedSeed(value: unknown): boolean {
-  const n =
-    typeof value === 'string' && value.trim() !== ''
-      ? Number(value)
-      : typeof value === 'number'
-        ? value
-        : NaN
-  return Number.isInteger(n) && n >= 0
-}
-
-/**
  * Maps the OpenAI-shaped sampling params onto the AI SDK call settings, which
  * the Bedrock client turns into the Converse `inferenceConfig` before the body
  * is built and signed. `seed` (and top_k etc.) have no Converse equivalent and
@@ -504,311 +348,6 @@ export function bedrockSamplingMiddleware(
         params.stopSequences ?? (stop.length > 0 ? stop : undefined),
     }),
   } as LanguageModelMiddleware
-}
-
-export function createCustomFetch(
-  baseFetch: typeof globalThis.fetch,
-  parameters: Record<string, unknown>,
-  keepLlamacppOnly = false,
-  onLlamacppServerError?: () => void,
-  filterNamedSseEvents = false
-): typeof globalThis.fetch {
-  // Params entered via a text input arrive as strings (see InputControl).
-  // Providers reject a string where a number is required, so coerce back to a
-  // number when the param's predefined default is numeric.
-  const coerceNumericParam = (key: string, value: unknown): unknown => {
-    if (typeof value !== 'string') return value
-    const def = paramsSettings[key]
-    if (!def || typeof def.value !== 'number' || value.trim() === '') return value
-    const n = Number(value)
-    return Number.isNaN(n) ? value : n
-  }
-
-  // Internal param keys that don't match the llama-server wire field name.
-  const WIRE_KEY_REMAP: Record<string, string> = {
-    max_output_tokens: 'max_tokens',
-    dynatemp_exp: 'dynatemp_exponent',
-  }
-
-  // Server expects an array of sampler names; the UI stores a comma/
-  // semicolon-separated string for easy editing.
-  const coerceSamplers = (value: unknown): unknown => {
-    if (typeof value !== 'string') return value
-    const names = value
-      .split(/[,;]/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    return names.length > 0 ? names : undefined
-  }
-
-  // The UI stores stop sequences one per line; the wire wants a string array.
-  const coerceStop = (value: unknown): unknown => {
-    if (typeof value !== 'string') return value
-    const items = value.split(/\r?\n/).filter((s) => s.length > 0)
-    return items.length > 0 ? items : undefined
-  }
-
-  const buildBody = (
-    rawBody: Record<string, unknown>,
-    includeOurParams: boolean
-  ): Record<string, unknown> => {
-    if (!includeOurParams) {
-      decodeAudioSentinelsInBody(rawBody)
-      decodeVideoSentinelsInBody(rawBody)
-      decodeToolImageSentinelsInBody(rawBody)
-      return rawBody
-    }
-    const normalised: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(parameters)) {
-      if (CLIENT_SIDE_PARAM_KEYS.has(key)) continue
-      if (!keepLlamacppOnly && LLAMACPP_ONLY_PARAM_KEYS.has(key)) continue
-      const targetKey = WIRE_KEY_REMAP[key] ?? key
-      // -1 (or empty) is "random": leave the field out rather than send a
-      // negative seed that strict servers reject.
-      if (key === 'seed' && !isFixedSeed(value)) continue
-      const coerced =
-        key === 'samplers'
-          ? coerceSamplers(value)
-          : key === 'stop'
-            ? coerceStop(value)
-            : coerceNumericParam(key, value)
-      if (coerced === undefined) continue
-      normalised[targetKey] = coerced
-    }
-    const merged = { ...rawBody, ...normalised }
-    // OpenAI-compatible providers require every declared function tool to
-    // carry a non-empty string name. Keep malformed discovery data from
-    // reaching strict servers (for example: Expected 'function.name' to be a
-    // string) even when a caller supplied tools directly in the request body.
-    if (Array.isArray(merged.tools)) {
-      merged.tools = merged.tools.filter((tool) => {
-        const name = (tool as { function?: { name?: unknown } })?.function?.name
-        return typeof name === 'string' && name.trim().length > 0
-      })
-    }
-    if (keepLlamacppOnly) {
-      // Assert the server default explicitly so a preset/CLI override can't
-      // silently disable prompt-prefix KV reuse across turns.
-      merged.cache_prompt = true
-      reconcileConstraintParams(merged)
-    }
-    if (keepLlamacppOnly && merged.stream === true) {
-      merged.return_progress = true
-      // Requests per-chunk timings so the token counter can update live
-      // during generation instead of only once the stream finishes.
-      merged.timings_per_token = true
-    }
-    // llama-server convention: max_tokens = -1 means "unlimited". Users who
-    // set max_output_tokens = 0 in assistant params mean "no cap", not
-    // "produce zero tokens" — coerce here, gated to llamacpp only because
-    // OpenAI/Anthropic reject negative values.
-    if (merged.max_tokens === 0) {
-      if (keepLlamacppOnly) {
-        merged.max_tokens = -1
-      } else {
-        // Every other provider takes a zero literally, and a reply capped at
-        // zero tokens is an empty answer, not an unlimited one. A cap nobody
-        // meaningfully set is left out of the request entirely, which is what
-        // "no cap" means on the wire.
-        delete merged.max_tokens
-      }
-    }
-    decodeAudioSentinelsInBody(merged)
-    decodeVideoSentinelsInBody(merged)
-    decodeToolImageSentinelsInBody(merged)
-    return merged
-  }
-
-  const dispatch = parameters[DISPATCH_PARAM_KEY] as DispatchIdentity | undefined
-
-  const prepareResponse = (res: Response): Response => {
-    // OpenAI-compatible servers may interleave custom named SSE events (e.g.
-    // tool-progress) with chat.completion.chunk data; the AI SDK validates
-    // every data line against the chunk schema, so strip non-default events.
-    // Opt-in only: Anthropic and the OpenAI Responses API use named SSE
-    // events as their protocol, so filtering there blanks the whole stream.
-    const contentType = res.headers.get('content-type') || ''
-    if (
-      filterNamedSseEvents &&
-      res.body &&
-      contentType.includes('text/event-stream')
-    ) {
-      return new Response(
-        sanitizeOpenAiToolCallSseEvents(filterDefaultSseEvents(res.body)),
-        {
-          status: res.status,
-          statusText: res.statusText,
-          headers: res.headers,
-        }
-      )
-    }
-    return res
-  }
-
-  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (dispatch?.session) {
-      // The transport records what it is about to send; without knowing whose
-      // conversation this is, the record could not be found again.
-      const headers = new Headers(init?.headers ?? {})
-      headers.set(DISPATCH_HEADERS.session, dispatch.session)
-      if (dispatch.run) headers.set(DISPATCH_HEADERS.run, dispatch.run)
-      if (dispatch.thread) headers.set(DISPATCH_HEADERS.thread, dispatch.thread)
-      if (dispatch.agent) headers.set(DISPATCH_HEADERS.agent, dispatch.agent)
-      if (dispatch.provider)
-        headers.set(DISPATCH_HEADERS.provider, dispatch.provider)
-      init = { ...init, headers }
-    }
-    let rawBody: Record<string, unknown> | null = null
-    if (init?.method === 'POST' || !init?.method) {
-      try {
-        rawBody = init?.body ? JSON.parse(init.body as string) : {}
-      } catch (e) {
-        throw new Error(
-          `Failed to parse request body as JSON: ${e instanceof Error ? e.message : String(e)}`
-        )
-      }
-      init = { ...init, body: JSON.stringify(buildBody(rawBody!, true)) }
-    }
-
-    const origin = originOf(requestUrlOf(input))
-    let res: Response
-    try {
-      res = await baseFetch(input, init)
-    } catch (err) {
-      const failure = describeTransportFailure(err)
-      if (!failure) throw err
-      // The URL belongs with the summary; the raw cause stays on its own line.
-      const friendly = withTransportDetail(
-        `${failure.friendly} (${requestUrlOf(input)})`,
-        failure.detail
-      )
-      // A real request just failed at the transport layer. That, and only
-      // that, is what marks a provider offline — nothing probes for it.
-      if (origin) {
-        useProviderReachability
-          .getState()
-          .markUnreachable(origin, friendly)
-      }
-      throw new Error(friendly)
-    }
-    // Answered at all: whatever was wrong with the endpoint is over. A 4xx is
-    // still an answer, so it clears the offline mark too.
-    if (origin) useProviderReachability.getState().markReachable(origin)
-    if (res.ok) return prepareResponse(res)
-
-    const isLlamacpp500 = keepLlamacppOnly && res.status === 500
-
-    let parsed: { error?: { message?: unknown; [k: string]: unknown } } | null =
-      null
-    const contentType = res.headers.get('content-type') || ''
-    if (contentType.includes('json')) {
-      try {
-        parsed = JSON.parse(await res.clone().text())
-      } catch {
-        parsed = null
-      }
-    }
-
-    const innerMessage =
-      typeof parsed?.error?.message === 'string'
-        ? (parsed.error.message as string)
-        : null
-
-    if (isLlamacpp500 && !innerMessage) {
-      // 500 with no JSON body = router couldn't reach the child (crash). Recover.
-      onLlamacppServerError?.()
-      const synthMessage =
-        'The model crashed and is being reloaded. Please retry.'
-      const nextBody = JSON.stringify({
-        error: {
-          message: synthMessage,
-          code: 500,
-          type: 'llamacpp_server_error',
-        },
-      })
-      return new Response(nextBody, {
-        status: res.status,
-        statusText: res.statusText,
-        headers: { 'content-type': 'application/json' },
-      })
-    }
-
-    if (!innerMessage) return res
-
-    // Sampling-rejection auto-retry: when the upstream complains about an
-    // injected parameter (top_k on OpenAI, temp+top_p on Anthropic, etc.),
-    // retry once with all our injected params stripped, surface a toast so
-    // the user knows their popover knob was ignored this turn, and return
-    // the bare-body response. Only attempts when we have a captured body
-    // and the request looked like a chat completion / messages POST.
-    if (
-      rawBody &&
-      res.status >= 400 &&
-      res.status < 500 &&
-      isSamplingParamRejection(innerMessage) &&
-      Object.keys(parameters).length > 0
-    ) {
-      const bareInit = {
-        ...init,
-        body: JSON.stringify(buildBody(rawBody, false)),
-      }
-      const retry = await baseFetch(input, bareInit)
-      if (retry.ok) {
-        notifySamplingStripped(innerMessage)
-        return prepareResponse(retry)
-      }
-      // Retry also failed — fall through to surface the cleaned original error.
-    }
-
-    const cleaned = cleanUpstreamErrorMessage(innerMessage)
-    if (cleaned === innerMessage) return res
-    const nextBody = JSON.stringify({
-      ...parsed,
-      error: { ...parsed!.error, message: cleaned },
-    })
-    return new Response(nextBody, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: res.headers,
-    })
-  }
-}
-
-let lastSamplingNoticeAt = 0
-function notifySamplingStripped(reason: string): void {
-  const now = Date.now()
-  if (now - lastSamplingNoticeAt < 3000) return
-  lastSamplingNoticeAt = now
-  void import('sonner')
-    .then(({ toast }) => {
-      toast.warning('Sampling parameters dropped', {
-        description: `${cleanUpstreamErrorMessage(reason)} — request retried without your sampling overrides. Adjust in the Sampling popover.`,
-      })
-    })
-    .catch(() => {
-      console.warn('[sampling-retry]', reason)
-    })
-}
-
-/**
- * Drop `reasoning_content` / `reasoning` from assistant turns in the outgoing
- * request body. The Vercel AI SDK's openai-compatible model attaches
- * `reasoning_content` whenever a prior assistant message had a reasoning part
- * (see @ai-sdk/openai-compatible dist/index.js:260). Groq's strict validator
- * rejects this with `property 'reasoning_content' is unsupported`.
- */
-export function stripAssistantReasoningInBody(
-  body: Record<string, unknown>
-): void {
-  const messages = body.messages
-  if (!Array.isArray(messages)) return
-  for (const msg of messages) {
-    if (!msg || typeof msg !== 'object') continue
-    const m = msg as { role?: string; reasoning_content?: unknown; reasoning?: unknown }
-    if (m.role !== 'assistant') continue
-    if ('reasoning_content' in m) delete m.reasoning_content
-    if ('reasoning' in m) delete m.reasoning
-  }
 }
 
 function isOpenRouterProvider(
@@ -925,189 +464,6 @@ function withAssistantReasoningStripped(
       }
     }
     return inner(input, init)
-  }
-}
-
-// Rewrites any sentinel-bearing text content (planted by
-// CustomChatTransport.encodeAudioAttachments) back into OpenAI `input_audio`
-// content parts. Mutates `body.messages` in place.
-export function decodeAudioSentinelsInBody(body: Record<string, unknown>): void {
-  const messages = body.messages
-  if (!Array.isArray(messages)) return
-  for (const msg of messages) {
-    if (!msg || typeof msg !== 'object') continue
-    const m = msg as { role?: string; content?: unknown }
-    if (m.role !== 'user') continue
-    if (typeof m.content === 'string') {
-      if (!hasAudioSentinel(m.content)) continue
-      const split = splitAudioSentinels(m.content)
-      if (split) m.content = split
-      continue
-    }
-    if (!Array.isArray(m.content)) continue
-    const next: unknown[] = []
-    let touched = false
-    for (const part of m.content) {
-      if (
-        part &&
-        typeof part === 'object' &&
-        (part as { type?: string }).type === 'text' &&
-        typeof (part as { text?: string }).text === 'string' &&
-        hasAudioSentinel((part as { text: string }).text)
-      ) {
-        const split = splitAudioSentinels((part as { text: string }).text)
-        if (split) {
-          next.push(...split)
-          touched = true
-          continue
-        }
-      }
-      next.push(part)
-    }
-    if (touched) m.content = next
-  }
-}
-
-// Rewrites any sentinel-bearing text content (planted by
-// CustomChatTransport.encodeVideoAttachments) back into llama-server
-// `input_video` content parts. Mutates `body.messages` in place. Runs after
-// decodeAudioSentinelsInBody, so it also handles content already promoted to
-// an array by the audio pass; the two sentinel markers are disjoint.
-export function decodeVideoSentinelsInBody(body: Record<string, unknown>): void {
-  const messages = body.messages
-  if (!Array.isArray(messages)) return
-  for (const msg of messages) {
-    if (!msg || typeof msg !== 'object') continue
-    const m = msg as { role?: string; content?: unknown }
-    if (m.role !== 'user') continue
-    if (typeof m.content === 'string') {
-      if (!hasVideoSentinel(m.content)) continue
-      const split = splitVideoSentinels(m.content)
-      if (split) m.content = split
-      continue
-    }
-    if (!Array.isArray(m.content)) continue
-    const next: unknown[] = []
-    let touched = false
-    for (const part of m.content) {
-      if (
-        part &&
-        typeof part === 'object' &&
-        (part as { type?: string }).type === 'text' &&
-        typeof (part as { text?: string }).text === 'string' &&
-        hasVideoSentinel((part as { text: string }).text)
-      ) {
-        const split = splitVideoSentinels((part as { text: string }).text)
-        if (split) {
-          next.push(...split)
-          touched = true
-          continue
-        }
-      }
-      next.push(part)
-    }
-    if (touched) m.content = next
-  }
-}
-
-// Rewrites a sentinel-bearing `role: tool` message (a tool that returned an
-// image) into a text part plus OpenAI `image_url` parts. Mutates
-// `body.messages` in place.
-export function decodeToolImageSentinelsInBody(
-  body: Record<string, unknown>
-): void {
-  const messages = body.messages
-  if (!Array.isArray(messages)) return
-  for (const msg of messages) {
-    if (!msg || typeof msg !== 'object') continue
-    const m = msg as { role?: string; content?: unknown }
-    if (m.role !== 'tool' || typeof m.content !== 'string') continue
-    if (!hasToolImageSentinel(m.content)) continue
-    const split = splitToolImageSentinels(m.content)
-    if (split) m.content = split
-  }
-}
-
-type ApiKeyHeaderMode =
-  | 'authorization-bearer'
-  | 'authorization-bearer+api-key'
-  | 'x-api-key'
-  | 'x-goog-api-key'
-
-/**
- * Retries with the next key when the upstream returns 401, 402, or 429.
- * A key that was refused is skipped for a while and the last one that worked
- * is tried first, so a dead key at the head of the list costs one request
- * instead of one per call. A 403 is a permission answer about the model or
- * region, not about the key, and is returned as it is.
- */
-export function createApiKeyRotatingFetch(
-  baseFetch: typeof globalThis.fetch,
-  apiKeys: string[],
-  parameters: Record<string, unknown>,
-  headerMode: ApiKeyHeaderMode,
-  filterNamedSseEvents = false
-): typeof globalThis.fetch {
-  const inner = createCustomFetch(
-    baseFetch,
-    parameters,
-    false,
-    undefined,
-    filterNamedSseEvents
-  )
-  if (apiKeys.length <= 1) {
-    return inner
-  }
-  let preferred = 0
-  const badUntil: number[] = apiKeys.map(() => 0)
-  return async (
-    input: RequestInfo | URL,
-    init?: RequestInit
-  ): Promise<Response> => {
-    const total = apiKeys.length
-    const now = Date.now()
-    const order: number[] = []
-    for (let k = 0; k < total; k++) {
-      const idx = (preferred + k) % total
-      if (badUntil[idx]! <= now) order.push(idx)
-    }
-    // Every key is on the bench: try them all in order anyway.
-    if (order.length === 0) {
-      for (let k = 0; k < total; k++) order.push((preferred + k) % total)
-    }
-    for (let pos = 0; pos < order.length; pos++) {
-      const i = order[pos]!
-      const key = apiKeys[i]!
-      const nextHeaders = new Headers(init?.headers as HeadersInit | undefined)
-      if (headerMode === 'authorization-bearer') {
-        nextHeaders.set('Authorization', `Bearer ${key}`)
-      } else if (headerMode === 'authorization-bearer+api-key') {
-        nextHeaders.set('Authorization', `Bearer ${key}`)
-        nextHeaders.set('api-key', key)
-      } else if (headerMode === 'x-goog-api-key') {
-        nextHeaders.set('x-goog-api-key', key)
-      } else {
-        nextHeaders.set('x-api-key', key)
-      }
-      const res = await inner(input, { ...init, headers: nextHeaders })
-      if ([401, 402, 429].includes(res.status)) {
-        let benchMs = 10 * 60_000
-        if (res.status === 429) {
-          const seconds = Number(res.headers?.get('retry-after'))
-          benchMs =
-            Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 60_000
-        }
-        badUntil[i] = Date.now() + benchMs
-        if (pos < order.length - 1) {
-          res.body?.cancel().catch(() => {})
-          continue
-        }
-        return res
-      }
-      preferred = i
-      return res
-    }
-    throw new Error('API key rotation exhausted')
   }
 }
 

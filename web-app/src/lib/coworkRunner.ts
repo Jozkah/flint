@@ -1018,7 +1018,7 @@ export type RunOutcome = {
 export const maskedFailure = (output: unknown): boolean =>
   typeof output === 'string' && output.includes('[shell: reported exit 0, but')
 
-export async function runTurn(opts: {
+type RunTurnOptions = {
   messages: UIMessage[]
   deps: RunDeps
   signal: AbortSignal
@@ -1043,435 +1043,618 @@ export async function runTurn(opts: {
   operationTimeoutMs?: number
   /** The clock, so the caps are testable without waiting for them. */
   now?: () => number
-}): Promise<RunOutcome> {
-  const { deps, signal } = opts
-  const maxSteps = opts.maxSteps ?? MAX_AGENT_STEPS
-  const now = opts.now ?? Date.now
-  const messages = [...opts.messages]
+}
+
+/** What one run carries from step to step. */
+type RunState = {
+  messages: UIMessage[]
   /** Every tool call this run made, for the loop guard. AH-029/AH-030. */
-  const observed: ObservedCall[] = []
-  let step = 0
+  observed: ObservedCall[]
+  step: number
   // Not a running sum of each step's `total_tokens`: every step replays the whole
   // conversation, so summing totals charges the same context once per step.
-  let spend = newSpend(opts.sessionTokens ?? 0)
-  let usage: Usage | null = null
+  spend: ReturnType<typeof newSpend>
+  usage: Usage | null
   // Prompt growth of the last few steps, to tell compaction how much the next
   // one will probably add. `lastPromptSeen` is shrunk by each compaction.
-  const recentGrowth: number[] = []
-  let lastPromptSeen: number | undefined
+  recentGrowth: number[]
+  lastPromptSeen: number | undefined
   // One automatic recovery per run: a reply cut off by the output limit or a
   // dropped stream, or an empty reply, is continued once without the user
   // having to type "continue". Once, so it can never loop.
-  let autoContinued = false
+  autoContinued: boolean
   // Likewise for a step that stalled past its retries: resumed once.
-  let timeoutResumed = false
+  timeoutResumed: boolean
   // Calls the last step skipped because steering was pending; told to the model
   // when that steering turned out to have nothing to deliver.
-  let skippedForSteering: string[] = []
-  const nudge = (text: string): UIMessage => ({
+  skippedForSteering: string[]
+}
+
+/** What the loop does after a stage: go round again, or end with an outcome. */
+type StepTransition = { kind: 'continue' } | { kind: 'finish'; outcome: RunOutcome }
+
+const CONTINUE: StepTransition = { kind: 'continue' }
+
+function outcomeOf(
+  st: RunState,
+  stoppedBy: RunOutcome['stoppedBy'],
+  errorText?: string
+): RunOutcome {
+  return {
+    messages: st.messages,
+    steps: st.step,
+    usage: st.usage,
+    sessionTokens: st.spend.spent,
+    stoppedBy,
+    ...(errorText !== undefined ? { errorText } : {}),
+  }
+}
+
+const finish = (
+  st: RunState,
+  stoppedBy: RunOutcome['stoppedBy'],
+  errorText?: string
+): StepTransition => ({ kind: 'finish', outcome: outcomeOf(st, stoppedBy, errorText) })
+
+function nudgeFor(deps: RunDeps, text: string): UIMessage {
+  return {
     id: deps.nextMessageId(),
     role: 'user',
     parts: [{ type: 'text', text }],
-  })
+  }
+}
 
-  for (;;) {
-    if (signal.aborted) {
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'aborted',
-      }
-    }
-    const overBudget = budgetExceeded(
-      { step, sessionTokens: spend.spent },
-      maxSteps,
-      opts.sessionTokenLimit
-    )
-    if (overBudget) {
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: overBudget,
-      }
-    }
+/** Stop, step/token caps and the deadline, checked before a step starts. */
+function checkLimits(
+  st: RunState,
+  opts: RunTurnOptions,
+  maxSteps: number,
+  now: () => number
+): RunOutcome | null {
+  if (opts.signal.aborted) return outcomeOf(st, 'aborted')
+  const overBudget = budgetExceeded(
+    { step: st.step, sessionTokens: st.spend.spent },
+    maxSteps,
+    opts.sessionTokenLimit
+  )
+  if (overBudget) return outcomeOf(st, overBudget)
+  // Checked before the step starts, not after it finishes: a run whose time
+  // is up should not spend another model call discovering that.
+  if (opts.deadline && isExpired(opts.deadline, now())) {
+    return outcomeOf(st, 'deadline')
+  }
+  return null
+}
 
-    // Checked before the step starts, not after it finishes: a run whose time
-    // is up should not spend another model call discovering that.
-    if (opts.deadline && isExpired(opts.deadline, now())) {
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'deadline',
-      }
-    }
+/** Swap the history for its compacted form and credit what it saved. */
+function applyCompaction(st: RunState, compacted: UIMessage[]): void {
+  const saving = compactionSaving(st.messages, compacted)
+  if (st.lastPromptSeen != null) {
+    st.lastPromptSeen = Math.max(0, st.lastPromptSeen - saving)
+  }
+  st.spend = creditCompaction(st.spend, saving)
+  st.messages.splice(0, st.messages.length, ...compacted)
+}
 
-    // The safe boundary (janhq/jan#8864): every tool result of the last step is
-    // in and no model call is under way, so input typed meanwhile reaches the
-    // model now rather than after the run ends. Plain user messages, in the
-    // order typed -- never folded into the model's own turn.
-    const steered = (await deps.takeSteering?.()) ?? []
-    if (steered.length > 0) messages.push(...steered)
-    else if (skippedForSteering.length > 0) {
-      // The steering that cut the last batch short delivered nothing (mail a
-      // tool had already consumed): say what was not run so it is re-issued.
-      messages.push(
-        nudge(
-          `Not run; re-issue if still needed: ${skippedForSteering.join(', ')}. ` +
-            'They were skipped for input that had already been handled.'
-        )
-      )
-    }
-    skippedForSteering = []
-
-    // Compacted here, at the same boundary: the next request would cross the
-    // window's threshold, so the run keeps going on a summary instead of
-    // stopping at the window.
-    if (deps.compact) {
-      const headroom =
-        recentGrowth.length > 0
-          ? Math.ceil(Math.max(...recentGrowth) * 1.25)
-          : undefined
-      const compacted = await compactOrNull(
+/**
+ * The safe boundary (janhq/jan#8864): every tool result of the last step is
+ * in and no model call is under way, so input typed meanwhile reaches the
+ * model now rather than after the run ends. Plain user messages, in the
+ * order typed -- never folded into the model's own turn.
+ */
+async function deliverSteering(st: RunState, deps: RunDeps): Promise<void> {
+  const steered = (await deps.takeSteering?.()) ?? []
+  if (steered.length > 0) st.messages.push(...steered)
+  else if (st.skippedForSteering.length > 0) {
+    // The steering that cut the last batch short delivered nothing (mail a
+    // tool had already consumed): say what was not run so it is re-issued.
+    st.messages.push(
+      nudgeFor(
         deps,
-        messages,
-        'threshold',
-        signal,
-        undefined,
-        headroom
+        `Not run; re-issue if still needed: ${st.skippedForSteering.join(', ')}. ` +
+          'They were skipped for input that had already been handled.'
       )
-      if (compacted) {
-        const saving = compactionSaving(messages, compacted)
-        if (lastPromptSeen != null) {
-          lastPromptSeen = Math.max(0, lastPromptSeen - saving)
-        }
-        spend = creditCompaction(spend, saving)
-        messages.splice(0, messages.length, ...compacted)
-      }
-    }
+    )
+  }
+  st.skippedForSteering = []
+}
 
-    // A snapshot, not the live array: the loop pushes to `messages` after the
-    // stream is handed over, and the transport rewrites what it is given
-    // (trimming, compaction) without expecting it to move underneath.
-    let result: StepResult
-    let attempt = 1
-    let timedOut = false
-    let lengthRetried = false
-    try {
-      /**
-       * One step, retried only where retrying can help. AH-021/AH-024/AH-025.
-       *
-       * The timeout is chained to the run's own signal, so a stream that goes
-       * quiet and a user who pressed Stop end the same way. A retry is a new
-       * dispatch and gets its own invocation and snapshot, because it is a
-       * different request that happens to carry the same messages.
-       */
-      while (true) {
-        const operation = operationSignal(
-          signal,
-          opts.operationTimeoutMs ?? configuredOperationTimeoutMs()
+/**
+ * Compacted here, at the same boundary: the next request would cross the
+ * window's threshold, so the run keeps going on a summary instead of
+ * stopping at the window.
+ */
+async function compactAtBoundary(
+  st: RunState,
+  deps: RunDeps,
+  signal: AbortSignal
+): Promise<void> {
+  if (!deps.compact) return
+  const headroom =
+    st.recentGrowth.length > 0
+      ? Math.ceil(Math.max(...st.recentGrowth) * 1.25)
+      : undefined
+  const compacted = await compactOrNull(
+    deps,
+    st.messages,
+    'threshold',
+    signal,
+    undefined,
+    headroom
+  )
+  if (compacted) applyCompaction(st, compacted)
+}
+
+/**
+ * One step, retried only where retrying can help. AH-021/AH-024/AH-025.
+ *
+ * The timeout is chained to the run's own signal, so a stream that goes
+ * quiet and a user who pressed Stop end the same way. A retry is a new
+ * dispatch and gets its own invocation and snapshot, because it is a
+ * different request that happens to carry the same messages.
+ */
+async function sendStepWithRetries(
+  st: RunState,
+  opts: RunTurnOptions,
+  now: () => number
+): Promise<{ ok: true; result: StepResult } | { ok: false; error: unknown; timedOut: boolean }> {
+  const { deps, signal } = opts
+  let attempt = 1
+  let timedOut = false
+  let lengthRetried = false
+  try {
+    while (true) {
+      const operation = operationSignal(
+        signal,
+        opts.operationTimeoutMs ?? configuredOperationTimeoutMs()
+      )
+      try {
+        // A snapshot, not the live array: the loop pushes to `messages` after the
+        // stream is handed over, and the transport rewrites what it is given
+        // (trimming, compaction) without expecting it to move underneath.
+        // Not left to the transport to notice Stop: see `untilStopped`.
+        const stream = await untilStopped(
+          deps.sendStep(withToolInputs([...st.messages]), operation.signal),
+          operation.signal,
+          (late) => void late.cancel().catch(() => {})
         )
-        try {
-          // Not left to the transport to notice Stop: see `untilStopped`.
-          const stream = await untilStopped(
-
-            deps.sendStep(withToolInputs([...messages]), operation.signal),
-
-            operation.signal,
-
-            (late) => void late.cancel().catch(() => {})
-
+        // The request was accepted: that is progress too.
+        operation.touch()
+        const result = await consumeStep(
+          stream,
+          deps.sink,
+          operation.signal,
+          operation.touch
+        )
+        return { ok: true, result }
+      } catch (failure) {
+        timedOut = operation.timedOut()
+        // The provider refused the request for its length: compact once and
+        // send again, rather than ending a run the window could still hold.
+        if (
+          deps.compact &&
+          !lengthRetried &&
+          !timedOut &&
+          !signal.aborted &&
+          isContextLengthError(failure)
+        ) {
+          lengthRetried = true
+          const compacted = await compactOrNull(
+            deps,
+            st.messages,
+            'context-error',
+            signal,
+            failure
           )
-          // The request was accepted: that is progress too.
-          operation.touch()
-          result = await consumeStep(
-            stream,
-            deps.sink,
-            operation.signal,
-            operation.touch
-          )
-          break
-        } catch (failure) {
-          timedOut = operation.timedOut()
-          // The provider refused the request for its length: compact once and
-          // send again, rather than ending a run the window could still hold.
-          if (
-            deps.compact &&
-            !lengthRetried &&
-            !timedOut &&
-            !signal.aborted &&
-            isContextLengthError(failure)
-          ) {
-            lengthRetried = true
-            const compacted = await compactOrNull(
-              deps,
-              messages,
-              'context-error',
-              signal,
-              failure
-            )
-            if (compacted) {
-              const saving = compactionSaving(messages, compacted)
-              if (lastPromptSeen != null) {
-                lastPromptSeen = Math.max(0, lastPromptSeen - saving)
-              }
-              spend = creditCompaction(spend, saving)
-              messages.splice(0, messages.length, ...compacted)
-              continue
-            }
+          if (compacted) {
+            applyCompaction(st, compacted)
+            continue
           }
-          const decision = decideRetry({
-            facts: {
-              status: statusOf(failure),
-              retryAfter: retryAfterOf(failure),
-              message: failure instanceof Error ? failure.message : String(failure),
-              // A timeout is transient by definition; a user's stop is not.
-              aborted: signal.aborted,
-            },
-            attempt,
-            now: now(),
-          })
-          if (!decision.retry) throw failure
-          // A wait that was cut short is a stop, not a completed backoff.
-          if (!(await waitFor(decision.delayMs, signal))) throw failure
-          attempt = decision.attempt
-        } finally {
-          operation.dispose()
         }
-      }
-    } catch (e) {
-      if (timedOut && !signal.aborted) {
-        // The step already got its retries. Resume the run once rather than
-        // ending it: the history is intact, so the model can pick up where it
-        // stopped, as it would after an interrupted run. Once, so a model that
-        // is really down still ends the run instead of looping.
-        if (!timeoutResumed) {
-          timeoutResumed = true
-          messages.push(
-            nudge(
-              'Note from Flint (not typed by the user): the previous model request stalled and was restarted. Continue the task.'
-            )
-          )
-          continue
-        }
-        return {
-          messages,
-          steps: step,
-          usage,
-          sessionTokens: spend.spent,
-          stoppedBy: 'timeout',
-          errorText: e instanceof Error ? e.message : String(e),
-        }
-      }
-      // A transport failure is an outcome, not an exception: throwing here left
-      // the caller with no steps, no usage and nothing to render but the raw
-      // message, and a user-initiated stop arrived down this same path.
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: isAbortLike(e, signal) ? 'aborted' : 'error',
-        errorText: isAbortLike(e, signal)
-          ? undefined
-          : e instanceof Error
-            ? e.message
-            : String(e),
+        const decision = decideRetry({
+          facts: {
+            status: statusOf(failure),
+            retryAfter: retryAfterOf(failure),
+            message: failure instanceof Error ? failure.message : String(failure),
+            // A timeout is transient by definition; a user's stop is not.
+            aborted: signal.aborted,
+          },
+          attempt,
+          now: now(),
+        })
+        if (!decision.retry) throw failure
+        // A wait that was cut short is a stop, not a completed backoff.
+        if (!(await waitFor(decision.delayMs, signal))) throw failure
+        attempt = decision.attempt
+      } finally {
+        operation.dispose()
       }
     }
-    step += 1
-    deps.onResponse?.()
-    if (result.usage) {
-      usage = result.usage
-      spend = recordSpend(spend, result.usage)
-      const prompt = result.usage.prompt_tokens
-      if (prompt != null) {
-        if (lastPromptSeen != null) {
-          recentGrowth.push(Math.max(0, prompt - lastPromptSeen))
-          if (recentGrowth.length > 5) recentGrowth.shift()
-        }
-        lastPromptSeen = prompt
-      }
-    }
+  } catch (error) {
+    return { ok: false, error, timedOut }
+  }
+}
 
-    if (result.errorText) {
-      // Only when the step produced something: an assistant message with no
-      // parts is a turn the model never took, and it would be replayed as one.
-      if (result.text || result.toolCalls.length > 0) {
-        messages.push(
-          assistantMessageFor(deps.nextMessageId(), result, new Map())
+/** A step that could not be sent: resume once after a stall, else end the run. */
+function stepFailed(
+  st: RunState,
+  deps: RunDeps,
+  signal: AbortSignal,
+  e: unknown,
+  timedOut: boolean
+): StepTransition {
+  if (timedOut && !signal.aborted) {
+    // The step already got its retries. Resume the run once rather than
+    // ending it: the history is intact, so the model can pick up where it
+    // stopped, as it would after an interrupted run. Once, so a model that
+    // is really down still ends the run instead of looping.
+    if (!st.timeoutResumed) {
+      st.timeoutResumed = true
+      st.messages.push(
+        nudgeFor(
+          deps,
+          'Note from Flint (not typed by the user): the previous model request stalled and was restarted. Continue the task.'
         )
+      )
+      return CONTINUE
+    }
+    return finish(st, 'timeout', e instanceof Error ? e.message : String(e))
+  }
+  // A transport failure is an outcome, not an exception: throwing here left
+  // the caller with no steps, no usage and nothing to render but the raw
+  // message, and a user-initiated stop arrived down this same path.
+  if (isAbortLike(e, signal)) {
+    return { kind: 'finish', outcome: { ...outcomeOf(st, 'aborted'), errorText: undefined } }
+  }
+  return finish(st, 'error', e instanceof Error ? e.message : String(e))
+}
+
+/** Count the step's usage, and note how much the prompt grew. */
+function recordStepUsage(st: RunState, result: StepResult): void {
+  if (result.usage) {
+    st.usage = result.usage
+    st.spend = recordSpend(st.spend, result.usage)
+    const prompt = result.usage.prompt_tokens
+    if (prompt != null) {
+      if (st.lastPromptSeen != null) {
+        st.recentGrowth.push(Math.max(0, prompt - st.lastPromptSeen))
+        if (st.recentGrowth.length > 5) st.recentGrowth.shift()
       }
-      // A text reply cut off mid-stream: keep what arrived and ask for the
-      // rest, once, rather than ending the run on half an answer.
-      if (
-        !autoContinued &&
-        !signal.aborted &&
-        !result.aborted &&
-        result.text.trim() &&
-        result.toolCalls.length === 0
-      ) {
-        autoContinued = true
-        deps.onStep({ step, result, turns: turnsFor(result, new Map()), outcomes: new Map() })
-        messages.push(
-          nudge(
-            'Your previous reply was interrupted before it finished. Continue exactly where it stopped, without repeating what you already wrote.'
-          )
-        )
-        continue
-      }
-      deps.onStep({
-        step,
-        result,
-        turns: turnsFor(result, new Map()),
-        outcomes: new Map(),
+      st.lastPromptSeen = prompt
+    }
+  }
+}
+
+/** A step whose stream reported an error: continue a cut-off reply once, else stop. */
+function streamErrored(
+  st: RunState,
+  deps: RunDeps,
+  signal: AbortSignal,
+  result: StepResult & { errorText: string }
+): StepTransition {
+  // Only when the step produced something: an assistant message with no
+  // parts is a turn the model never took, and it would be replayed as one.
+  if (result.text || result.toolCalls.length > 0) {
+    st.messages.push(
+      assistantMessageFor(deps.nextMessageId(), result, new Map())
+    )
+  }
+  // A text reply cut off mid-stream: keep what arrived and ask for the
+  // rest, once, rather than ending the run on half an answer.
+  if (
+    !st.autoContinued &&
+    !signal.aborted &&
+    !result.aborted &&
+    result.text.trim() &&
+    result.toolCalls.length === 0
+  ) {
+    st.autoContinued = true
+    deps.onStep({ step: st.step, result, turns: turnsFor(result, new Map()), outcomes: new Map() })
+    st.messages.push(
+      nudgeFor(
+        deps,
+        'Your previous reply was interrupted before it finished. Continue exactly where it stopped, without repeating what you already wrote.'
+      )
+    )
+    return CONTINUE
+  }
+  deps.onStep({
+    step: st.step,
+    result,
+    turns: turnsFor(result, new Map()),
+    outcomes: new Map(),
+  })
+  return finish(st, 'error', result.errorText)
+}
+
+/**
+ * Run the step's tool calls. Tools run one at a time: they share a
+ * workspace, and the progress attribution in the UI assumes a single call in
+ * flight.
+ */
+async function runToolCalls(
+  st: RunState,
+  deps: RunDeps,
+  signal: AbortSignal,
+  result: StepResult
+): Promise<{ outcomes: Map<string, ToolOutcome>; steeringPending: boolean }> {
+  const outcomes = new Map<string, ToolOutcome>()
+  let steeringPending = false
+  /**
+   * Yield to steering between calls. The rest of the batch is skipped, and
+   * recorded as skipped so the timeline shows every call the model asked for.
+   */
+  const yieldToSteering = async (index: number) => {
+    if (
+      !deps.hasSteering ||
+      [...outcomes.values()].some((one) => one.endsTurn) ||
+      !(await deps.hasSteering())
+    ) {
+      return false
+    }
+    steeringPending = true
+    const who = deps.activity?.()
+    for (const skipped of result.toolCalls.slice(index + 1)) {
+      outcomes.set(skipped.toolCallId, {
+        output:
+          'Not run because the user steered this turn before this call started. ' +
+          'Re-issue it if it is still needed.',
+        isError: true,
       })
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'error',
-        errorText: result.errorText,
+      st.skippedForSteering.push(skipped.toolName)
+      const identity = {
+        call: skipped.toolCallId,
+        tool: skipped.toolName,
+        session: who?.session ?? '',
+        run: who?.run ?? '',
+        invocation: who?.invocation ?? '',
+        agent: who?.agent ?? '',
+        project: who?.project ?? '',
+        source: who?.source ?? '',
+        parent: who?.parent ?? '',
       }
+      void recordToolActivity({ ...identity, phase: 'requested' })
+      void recordToolActivity({
+        ...identity,
+        phase: 'cancelled',
+        detail: 'skipped: the user steered this turn before it started',
+      })
     }
-
-    // Tools run one at a time: they share a workspace, and the progress
-    // attribution in the UI assumes a single call in flight.
-    const outcomes = new Map<string, ToolOutcome>()
-    let steeringPending = false
-    /**
-     * Yield to steering between calls. The rest of the batch is skipped, and
-     * recorded as skipped so the timeline shows every call the model asked for.
-     */
-    const yieldToSteering = async (index: number) => {
-      if (
-        !deps.hasSteering ||
-        [...outcomes.values()].some((one) => one.endsTurn) ||
-        !(await deps.hasSteering())
-      ) {
-        return false
-      }
-      steeringPending = true
+    return true
+  }
+  for (const [index, call] of result.toolCalls.entries()) {
+    if (signal.aborted) {
+      outcomes.set(call.toolCallId, {
+        output: '(interrupted)',
+        isError: true,
+      })
+      continue
+    }
+    if (call.invalid !== undefined) {
       const who = deps.activity?.()
-      for (const skipped of result.toolCalls.slice(index + 1)) {
-        outcomes.set(skipped.toolCallId, {
-          output:
-            'Not run because the user steered this turn before this call started. ' +
-            'Re-issue it if it is still needed.',
-          isError: true,
-        })
-        skippedForSteering.push(skipped.toolName)
-        const identity = {
-          call: skipped.toolCallId,
-          tool: skipped.toolName,
-          session: who?.session ?? '',
-          run: who?.run ?? '',
-          invocation: who?.invocation ?? '',
-          agent: who?.agent ?? '',
-          project: who?.project ?? '',
-          source: who?.source ?? '',
-          parent: who?.parent ?? '',
-        }
-        void recordToolActivity({ ...identity, phase: 'requested' })
-        void recordToolActivity({
-          ...identity,
-          phase: 'cancelled',
-          detail: 'skipped: the user steered this turn before it started',
-        })
+      const refusal: HarnessRefusal = {
+        kind: refusalKindOf(call.invalid),
+        tool: call.toolName,
+        ...(who?.agent ? { agent: who.agent } : {}),
       }
-      return true
-    }
-    for (const [index, call] of result.toolCalls.entries()) {
-      if (signal.aborted) {
-        outcomes.set(call.toolCallId, {
-          output: '(interrupted)',
-          isError: true,
-        })
-        continue
+      const outcome: ToolOutcome = {
+        output:
+          refusal.kind === 'tool-not-offered' &&
+          WEB_TOOL_NAMES.has(call.toolName)
+          ? // Named, so the model stops asking for it: it knows
+            // `web_fetch` from training and kept retrying it.
+            `\`${call.toolName}\` is not available: web access is turned ` +
+            'off in Settings. Work from the local files, or tell the user ' +
+            'that web search has to be turned on for this.'
+          : `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
+            'Use one of the tools you were given, with the arguments its ' +
+            'schema describes. It did not run and produced no result: retry ' +
+            'it, or tell the user it failed. Never report an outcome for it.',
+        isError: true,
+        refusal,
       }
-      if (call.invalid !== undefined) {
-        const who = deps.activity?.()
-        const refusal: HarnessRefusal = {
-          kind: refusalKindOf(call.invalid),
-          tool: call.toolName,
-          ...(who?.agent ? { agent: who.agent } : {}),
-        }
-        const outcome: ToolOutcome = {
-          output:
-            refusal.kind === 'tool-not-offered' &&
-            WEB_TOOL_NAMES.has(call.toolName)
-            ? // Named, so the model stops asking for it: it knows
-              // `web_fetch` from training and kept retrying it.
-              `\`${call.toolName}\` is not available: web access is turned ` +
-              'off in Settings. Work from the local files, or tell the user ' +
-              'that web search has to be turned on for this.'
-            : `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
-              'Use one of the tools you were given, with the arguments its ' +
-              'schema describes. It did not run and produced no result: retry ' +
-              'it, or tell the user it failed. Never report an outcome for it.',
-          isError: true,
-          refusal,
-        }
-        outcomes.set(call.toolCallId, outcome)
-        // On the durable timeline as a refusal, the same as any other call the
-        // run did not carry out, so the record says it was asked for -- in
-        // this run's session, under this agent, with the refusal's kind.
-        const identity = {
-          call: call.toolCallId,
-          tool: call.toolName,
-          session: who?.session ?? '',
-          run: who?.run ?? '',
-          invocation: who?.invocation ?? '',
-          agent: who?.agent ?? '',
-          project: who?.project ?? '',
-          source: who?.source ?? '',
-          parent: who?.parent ?? '',
-        }
-        void recordToolActivity({ ...identity, phase: 'requested' })
-        void recordToolActivity({
-          ...identity,
-          phase: 'refused',
-          detail: `not a valid call: ${call.invalid}`.slice(0, 500),
-          refusal: refusal.kind,
-        })
-        observed.push({
-          tool: call.toolName,
-          input: call.input,
-          failed: true,
-          error: outcome.output,
-          path: pathOf(call.input),
-          after: undefined,
-        })
-        if (await yieldToSteering(index)) break
-        continue
-      }
-      const outcome = await deps.dispatch(call, signal)
       outcomes.set(call.toolCallId, outcome)
-      observed.push({
+      // On the durable timeline as a refusal, the same as any other call the
+      // run did not carry out, so the record says it was asked for -- in
+      // this run's session, under this agent, with the refusal's kind.
+      const identity = {
+        call: call.toolCallId,
+        tool: call.toolName,
+        session: who?.session ?? '',
+        run: who?.run ?? '',
+        invocation: who?.invocation ?? '',
+        agent: who?.agent ?? '',
+        project: who?.project ?? '',
+        source: who?.source ?? '',
+        parent: who?.parent ?? '',
+      }
+      void recordToolActivity({ ...identity, phase: 'requested' })
+      void recordToolActivity({
+        ...identity,
+        phase: 'refused',
+        detail: `not a valid call: ${call.invalid}`.slice(0, 500),
+        refusal: refusal.kind,
+      })
+      st.observed.push({
         tool: call.toolName,
         input: call.input,
-        // Settled either way: a success leaves `isError` unset, and the guard
-        // reads `undefined` as "not known", which would let failures on
-        // either side of a success count as a streak.
-        failed: outcome.isError === true || maskedFailure(outcome.output),
-        error:
-          outcome.isError || maskedFailure(outcome.output)
-            ? outcome.output
-            : undefined,
+        failed: true,
+        error: outcome.output,
         path: pathOf(call.input),
-        after: outcome.diff,
-        result:
-          typeof outcome.output === 'string' ? outcome.output : undefined,
+        after: undefined,
       })
       if (await yieldToSteering(index)) break
+      continue
+    }
+    const outcome = await deps.dispatch(call, signal)
+    outcomes.set(call.toolCallId, outcome)
+    st.observed.push({
+      tool: call.toolName,
+      input: call.input,
+      // Settled either way: a success leaves `isError` unset, and the guard
+      // reads `undefined` as "not known", which would let failures on
+      // either side of a success count as a streak.
+      failed: outcome.isError === true || maskedFailure(outcome.output),
+      error:
+        outcome.isError || maskedFailure(outcome.output)
+          ? outcome.output
+          : undefined,
+      path: pathOf(call.input),
+      after: outcome.diff,
+      result:
+        typeof outcome.output === 'string' ? outcome.output : undefined,
+    })
+    if (await yieldToSteering(index)) break
+  }
+  return { outcomes, steeringPending }
+}
+
+/**
+ * Stop a run that has stopped getting anywhere. AH-029/AH-030.
+ *
+ * Counted from what happened rather than asked of the model: a model in a
+ * loop is the one most likely to insist it is about to finish, so the
+ * guard is not something it can waive.
+ */
+async function guardLoop(
+  st: RunState,
+  deps: RunDeps,
+  signal: AbortSignal,
+  result: StepResult,
+  outcomes: Map<string, ToolOutcome>,
+  steeringPending: boolean
+): Promise<RunOutcome | null> {
+  const loop = detectLoop(st.observed)
+  if (!loop.tripped || steeringPending) return null
+  // The guard's note rides on the last call's result, where the model
+  // reads it on its closing turn, rather than as a message the user did
+  // not write.
+  const last = result.toolCalls[result.toolCalls.length - 1]
+  const lastOutcome = last ? outcomes.get(last.toolCallId) : undefined
+  if (last && lastOutcome) {
+    outcomes.set(last.toolCallId, {
+      ...lastOutcome,
+      output: `${lastOutcome.output}\n\n${loopFinalTurnNote(loop)}`,
+    })
+  }
+  if (result.text || result.toolCalls.length > 0) {
+    st.messages.push(
+      assistantMessageFor(deps.nextMessageId(), result, outcomes)
+    )
+  }
+  deps.onStep({ step: st.step, result, turns: turnsFor(result, outcomes), outcomes })
+  st.step = await closingTurn(st.messages, deps, signal, st.step, (u) => {
+    st.usage = u
+    st.spend = recordSpend(st.spend, u)
+  })
+  return outcomeOf(st, 'loop', loopStopNotice(loop))
+}
+
+/** Harness hints go after the tool results, labelled, never inside one. */
+function appendHarnessNotes(
+  st: RunState,
+  deps: RunDeps,
+  result: StepResult,
+  outcomes: Map<string, ToolOutcome>
+): void {
+  const notes = [...outcomes.values()].flatMap((one) => (one.note ? [one.note] : []))
+  if (result.toolCalls.length > 0 && notes.length > 0) {
+    st.messages.push(nudgeFor(deps, harnessNote(notes)))
+  }
+}
+
+/** Record the step, then decide: another step, or the end of the run. */
+async function afterStep(
+  st: RunState,
+  deps: RunDeps,
+  signal: AbortSignal,
+  result: StepResult,
+  outcomes: Map<string, ToolOutcome>
+): Promise<StepTransition> {
+  if (result.text || result.toolCalls.length > 0) {
+    st.messages.push(assistantMessageFor(deps.nextMessageId(), result, outcomes))
+  }
+  deps.onStep({ step: st.step, result, turns: turnsFor(result, outcomes), outcomes })
+
+  if (result.aborted || signal.aborted) return finish(st, 'aborted')
+  // A call whose answer hands the work to a new run: finished, not stopped.
+  if ([...outcomes.values()].some((one) => one.endsTurn)) return finish(st, 'done')
+  appendHarnessNotes(st, deps, result, outcomes)
+  // Tool calls mean the model asked for more work.
+  if (result.toolCalls.length > 0) return CONTINUE
+  // No tool calls means the model answered rather than asked for more work.
+  // Input that arrived while that answer was written continues this run:
+  // the answer is already in the history, the input follows it, and the
+  // model replies to both. The caps are checked again at the top.
+  const late = (await deps.takeSteering?.()) ?? []
+  if (late.length > 0) {
+    st.messages.push(...late)
+    return CONTINUE
+  }
+  if (!st.autoContinued && result.finishReason === 'length' && result.text.trim()) {
+    st.autoContinued = true
+    st.messages.push(
+      nudgeFor(
+        deps,
+        'Your previous reply was cut off by the output limit. Continue exactly where it stopped, without repeating what you already wrote.'
+      )
+    )
+    return CONTINUE
+  }
+  if (!st.autoContinued && !result.text.trim()) {
+    st.autoContinued = true
+    st.messages.push(
+      nudgeFor(
+        deps,
+        'Your last reply had no text and no tool call. Answer the request, or call a tool to continue the work.'
+      )
+    )
+    return CONTINUE
+  }
+  return finish(st, 'done')
+}
+
+export async function runTurn(opts: RunTurnOptions): Promise<RunOutcome> {
+  const { deps, signal } = opts
+  const maxSteps = opts.maxSteps ?? MAX_AGENT_STEPS
+  const now = opts.now ?? Date.now
+  const st: RunState = {
+    messages: [...opts.messages],
+    observed: [],
+    step: 0,
+    spend: newSpend(opts.sessionTokens ?? 0),
+    usage: null,
+    recentGrowth: [],
+    lastPromptSeen: undefined,
+    autoContinued: false,
+    timeoutResumed: false,
+    skippedForSteering: [],
+  }
+
+  for (;;) {
+    const stopped = checkLimits(st, opts, maxSteps, now)
+    if (stopped) return stopped
+    await deliverSteering(st, deps)
+    await compactAtBoundary(st, deps, signal)
+
+    const sent = await sendStepWithRetries(st, opts, now)
+    if (!sent.ok) {
+      const t = stepFailed(st, deps, signal, sent.error, sent.timedOut)
+      if (t.kind === 'finish') return t.outcome
+      continue
+    }
+    const result = sent.result
+    st.step += 1
+    deps.onResponse?.()
+    recordStepUsage(st, result)
+
+    if (result.errorText) {
+      const t = streamErrored(st, deps, signal, result as StepResult & { errorText: string })
+      if (t.kind === 'finish') return t.outcome
+      continue
     }
 
+    const { outcomes, steeringPending } = await runToolCalls(st, deps, signal, result)
     if (result.toolCalls.length > 0 && !signal.aborted) {
       try {
         deps.onBatchFinished?.(result.toolCalls.map((c) => c.toolName))
@@ -1480,111 +1663,11 @@ export async function runTurn(opts: {
       }
     }
 
-    /**
-     * Stop a run that has stopped getting anywhere. AH-029/AH-030.
-     *
-     * Counted from what happened rather than asked of the model: a model in a
-     * loop is the one most likely to insist it is about to finish, so the
-     * guard is not something it can waive.
-     */
-    const loop = detectLoop(observed)
-    if (loop.tripped && !steeringPending) {
-      // The guard's note rides on the last call's result, where the model
-      // reads it on its closing turn, rather than as a message the user did
-      // not write.
-      const last = result.toolCalls[result.toolCalls.length - 1]
-      const lastOutcome = last ? outcomes.get(last.toolCallId) : undefined
-      if (last && lastOutcome) {
-        outcomes.set(last.toolCallId, {
-          ...lastOutcome,
-          output: `${lastOutcome.output}\n\n${loopFinalTurnNote(loop)}`,
-        })
-      }
-      if (result.text || result.toolCalls.length > 0) {
-        messages.push(
-          assistantMessageFor(deps.nextMessageId(), result, outcomes)
-        )
-      }
-      deps.onStep({ step, result, turns: turnsFor(result, outcomes), outcomes })
-      step = await closingTurn(messages, deps, signal, step, (u) => {
-        usage = u
-        spend = recordSpend(spend, u)
-      })
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'loop',
-        errorText: loopStopNotice(loop),
-      }
-    }
+    const looped = await guardLoop(st, deps, signal, result, outcomes, steeringPending)
+    if (looped) return looped
 
-    if (result.text || result.toolCalls.length > 0) {
-      messages.push(assistantMessageFor(deps.nextMessageId(), result, outcomes))
-    }
-    deps.onStep({ step, result, turns: turnsFor(result, outcomes), outcomes })
-
-    if (result.aborted || signal.aborted) {
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'aborted',
-      }
-    }
-    // A call whose answer hands the work to a new run: finished, not stopped.
-    if ([...outcomes.values()].some((one) => one.endsTurn)) {
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'done',
-      }
-    }
-    // Harness hints go after the tool results, labelled, never inside one.
-    const notes = [...outcomes.values()].flatMap((one) => (one.note ? [one.note] : []))
-    if (result.toolCalls.length > 0 && notes.length > 0) {
-      messages.push(nudge(harnessNote(notes)))
-    }
-    // No tool calls means the model answered rather than asked for more work.
-    if (result.toolCalls.length === 0) {
-      // Input that arrived while that answer was written continues this run:
-      // the answer is already in the history, the input follows it, and the
-      // model replies to both. The caps are checked again at the top.
-      const late = (await deps.takeSteering?.()) ?? []
-      if (late.length > 0) {
-        messages.push(...late)
-        continue
-      }
-      if (!autoContinued && result.finishReason === 'length' && result.text.trim()) {
-        autoContinued = true
-        messages.push(
-          nudge(
-            'Your previous reply was cut off by the output limit. Continue exactly where it stopped, without repeating what you already wrote.'
-          )
-        )
-        continue
-      }
-      if (!autoContinued && !result.text.trim()) {
-        autoContinued = true
-        messages.push(
-          nudge(
-            'Your last reply had no text and no tool call. Answer the request, or call a tool to continue the work.'
-          )
-        )
-        continue
-      }
-      return {
-        messages,
-        steps: step,
-        usage,
-        sessionTokens: spend.spent,
-        stoppedBy: 'done',
-      }
-    }
+    const t = await afterStep(st, deps, signal, result, outcomes)
+    if (t.kind === 'finish') return t.outcome
   }
 }
 
@@ -1629,4 +1712,4 @@ async function closingTurn(
   }
 }
 
-export const __testing = { handles }
+export const __testing = { handles, checkLimits, stepFailed, afterStep }

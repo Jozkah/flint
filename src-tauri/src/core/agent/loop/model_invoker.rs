@@ -50,8 +50,12 @@ pub(super) fn distinct_chain(primary: &str, candidates: &[String]) -> Vec<String
 /// The decision itself lives in the harness error taxonomy (AH-009), so the
 /// chain, the retry policy and what the user is told all read one
 /// classification instead of each matching the text their own way.
+///
+/// A run the user stopped never fails over, whatever the error says: not
+/// every dispatch error is classified with the run's token, and provider
+/// cancel words alone read as a transport fault (O03-017).
 pub(crate) fn is_failover_worthy(error: &HarnessError) -> bool {
-    tauri_plugin_agent_tools::harness_error::may_try_another(error)
+    !run_stopped() && tauri_plugin_agent_tools::harness_error::may_try_another(error)
 }
 
 pub(super) struct HttpModelInvoker {
