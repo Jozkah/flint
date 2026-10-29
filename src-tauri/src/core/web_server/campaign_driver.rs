@@ -52,6 +52,9 @@ const TICK: Duration = Duration::from_secs(3);
 const MODEL_DEADLINE: Duration = Duration::from_secs(300);
 /// A task whose session keeps vanishing is failed after this many restarts.
 const MAX_RESTARTS: u32 = 3;
+/// Conflict resolvers started (or failed to start) for one task before a
+/// person has to step in.
+const MAX_RESOLVER_TRIES: u32 = 3;
 /// Characters of a handoff's final message.
 const HANDOFF_REPLY_CHARS: usize = 8_000;
 const SEED_MAX_DECISIONS_CHARS: usize = 8_000;
@@ -508,6 +511,13 @@ impl<H: Host> Driver<H> {
     pub async fn tick(self: &Arc<Self>) {
         let data = self.host.data();
         let campaigns = campaign::list(&data);
+        // Bookkeeping for campaigns that ended or were deleted goes with them.
+        let live: HashSet<&str> = campaigns
+            .iter()
+            .filter(|c| !c.status.is_terminal())
+            .map(|c| c.id.as_str())
+            .collect();
+        self.forget_campaigns_except(&live);
         for c in campaigns {
             if c.driver != DRIVER_SERVER {
                 continue;
@@ -645,6 +655,47 @@ impl<H: Host> Driver<H> {
                 Action::Start { task_id } => self.spawn_start(&c, &task_id, &folder),
             }
         }
+    }
+
+    /// Drop every per-campaign key (restarts, resolver tries, pings,
+    /// warnings, merge backoff, run timers) whose campaign is not in `live`.
+    fn forget_campaigns_except(&self, live: &HashSet<&str>) {
+        // Keys are `cid`, `cid/...`, or `resolve:`/`resolvefail:` + `cid/...`.
+        fn cid_of(key: &str) -> &str {
+            let key = key
+                .strip_prefix("resolve:")
+                .or_else(|| key.strip_prefix("resolvefail:"))
+                .unwrap_or(key);
+            key.split('/').next().unwrap_or(key)
+        }
+        let keep = |k: &String| live.contains(cid_of(k));
+        let mut inner = self.inner.lock().unwrap();
+        inner.runs.retain(|k, _| keep(k));
+        inner.restarts.retain(|k, _| keep(k));
+        inner.pinged.retain(|k| keep(k));
+        inner.warned.retain(|k| keep(k));
+        inner.merge_backoff.retain(|k, _| keep(k));
+    }
+
+    /// Count a resolver that could not be started. The third failure in a row
+    /// stops the retries and says so in the campaign's events; true then.
+    fn resolver_failed(&self, cid: &str, tid: &str, why: &str) -> bool {
+        self.event(cid, "resolver-error", Some(tid), why);
+        let n = {
+            let mut inner = self.inner.lock().unwrap();
+            let n = inner.restarts.entry(format!("resolvefail:{cid}/{tid}")).or_insert(0);
+            *n += 1;
+            *n
+        };
+        if n == MAX_RESOLVER_TRIES {
+            self.event(
+                cid,
+                "resolver-gave-up",
+                Some(tid),
+                "the conflict resolver could not be started three times; retry the task with a hint, or skip it",
+            );
+        }
+        n >= MAX_RESOLVER_TRIES
     }
 
     fn ping_once(&self, c: &Campaign, kind: &str, payload: Value) {
@@ -1100,27 +1151,31 @@ impl<H: Host> Driver<H> {
         }
         let cfg = self.host.config();
         let session_id = uuid::Uuid::new_v4().to_string();
-        let tries = {
-            let mut inner = self.inner.lock().unwrap();
-            let n = inner.restarts.entry(format!("resolve:{cid}/{tid}")).or_insert(0);
-            *n += 1;
-            *n
+        // Only resolvers that really started count against the tries; a
+        // prepare or start that failed is counted apart and gives up (with
+        // an event) after three.
+        let (tries, failures) = {
+            let inner = self.inner.lock().unwrap();
+            (
+                inner.restarts.get(&format!("resolve:{cid}/{tid}")).copied().unwrap_or(0),
+                inner.restarts.get(&format!("resolvefail:{cid}/{tid}")).copied().unwrap_or(0),
+            )
         };
-        if tries > 3 {
+        if tries >= MAX_RESOLVER_TRIES || failures >= MAX_RESOLVER_TRIES {
             // A person steers, retries or skips it from here.
             return;
         }
         let plan = match self.host.resolve_prepare(cid, tid, &session_id).await {
             Ok(p) => p,
             Err(message) => {
-                self.event(cid, "resolver-error", Some(tid), &message);
+                self.resolver_failed(cid, tid, &message);
                 return;
             }
         };
         let back = |why: String| {
             let patch = TaskPatch { detail: Some(clip(&why, 500)), ..Default::default() };
             let _ = self.move_task(cid, tid, TaskStatus::Conflict, patch);
-            self.event(cid, "resolver-error", Some(tid), &why);
+            self.resolver_failed(cid, tid, &why);
         };
         let opened = self
             .host
@@ -1149,10 +1204,15 @@ impl<H: Host> Driver<H> {
             back(format!("resolver run: {}", e.message));
             return;
         }
-        self.inner.lock().unwrap().runs.insert(
-            run_key(cid, tid),
-            RunInfo { started: Instant::now(), waiting_since: None, limit: None },
-        );
+        {
+            let mut inner = self.inner.lock().unwrap();
+            *inner.restarts.entry(format!("resolve:{cid}/{tid}")).or_insert(0) += 1;
+            inner.restarts.remove(&format!("resolvefail:{cid}/{tid}"));
+            inner.runs.insert(
+                run_key(cid, tid),
+                RunInfo { started: Instant::now(), waiting_since: None, limit: None },
+            );
+        }
         let patch = TaskPatch {
             session_id: Some(session_id),
             branch: Some(plan.branch),
@@ -1233,6 +1293,7 @@ impl<H: Host> Driver<H> {
                     let mut inner = self.inner.lock().unwrap();
                     inner.restarts.remove(&run_key(cid, tid));
                     inner.restarts.remove(&format!("resolve:{cid}/{tid}"));
+                    inner.restarts.remove(&format!("resolvefail:{cid}/{tid}"));
                 }
                 self.client_event(cid, Some(tid), "retry", who);
                 self.wake.notify_one();
@@ -1335,7 +1396,11 @@ impl<H: Host> Driver<H> {
                         "a resolver already tried this conflict; retry the task with a hint, or skip it".to_string()
                     );
                 }
-                self.inner.lock().unwrap().restarts.remove(&format!("resolve:{cid}/{tid}"));
+                {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.restarts.remove(&format!("resolve:{cid}/{tid}"));
+                    inner.restarts.remove(&format!("resolvefail:{cid}/{tid}"));
+                }
                 self.client_event(cid, Some(tid), "resolve", who);
                 self.wake.notify_one();
                 Ok(json!({ "started": true, "taskId": tid }))
@@ -2815,6 +2880,52 @@ mod tests {
         assert_eq!(task_mode(&c, true), PermissionMode::Ask);
         c.mode_ceiling = "review".into();
         assert_eq!(task_mode(&c, true), PermissionMode::Review);
+    }
+
+    #[tokio::test]
+    async fn bookkeeping_of_a_gone_campaign_is_dropped_on_the_next_pass() {
+        let f = fx();
+        make(&f, "c1", vec![task("a", &[], "src/a")], 1);
+        approve(&f, "c1");
+        let host = Fake::new(&f.data, &f.root, 1);
+        host.script("a", Script::Hang);
+        let driver = Driver::new(host.clone());
+        {
+            let mut inner = driver.inner.lock().unwrap();
+            for cid in ["c1", "gone"] {
+                inner.restarts.insert(format!("{cid}/a"), 1);
+                inner.restarts.insert(format!("resolve:{cid}/a"), 1);
+                inner.restarts.insert(format!("resolvefail:{cid}/a"), 1);
+                inner.pinged.insert(format!("{cid}/plan"));
+                inner.warned.insert(format!("{cid}/budget80"));
+                inner.merge_backoff.insert(cid.to_string(), Instant::now());
+            }
+        }
+        pass(&driver).await;
+        let inner = driver.inner.lock().unwrap();
+        assert!(inner.restarts.keys().all(|k| !k.contains("gone")), "{:?}", inner.restarts);
+        assert!(inner.restarts.contains_key("resolve:c1/a"));
+        assert!(!inner.pinged.contains("gone/plan") && inner.pinged.contains("c1/plan"));
+        assert!(!inner.warned.contains("gone/budget80"));
+        assert!(!inner.merge_backoff.contains_key("gone") && inner.merge_backoff.contains_key("c1"));
+    }
+
+    #[tokio::test]
+    async fn a_resolver_that_cannot_start_does_not_burn_tries_and_gives_up_once() {
+        let f = fx();
+        make(&f, "c1", vec![task("a", &[], "src/a")], 1);
+        let host = Fake::new(&f.data, &f.root, 1);
+        let driver = Driver::new(host.clone());
+        for _ in 0..4 {
+            driver.resolver_failed("c1", "a", "prepare failed");
+        }
+        let inner = driver.inner.lock().unwrap();
+        assert!(!inner.restarts.contains_key("resolve:c1/a"), "failures are not tries");
+        assert_eq!(inner.restarts.get("resolvefail:c1/a"), Some(&4));
+        drop(inner);
+        let events = campaign::events(&f.data, "c1").unwrap_or_default();
+        let gave_up = serde_json::to_string(&events).unwrap().matches("resolver-gave-up").count();
+        assert_eq!(gave_up, 1);
     }
 
     #[test]

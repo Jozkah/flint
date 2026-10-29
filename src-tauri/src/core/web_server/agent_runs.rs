@@ -86,8 +86,18 @@ fn thread_folder(thread: &Value) -> Option<String> {
 
 /// Session id -> (campaign id, campaign title, source root, running).
 fn campaign_links(data_folder: &Path) -> HashMap<String, (String, String, String, bool)> {
+    links_of(campaign::list(data_folder))
+}
+
+/// [`campaign_links`] for one session: only records that mention it are
+/// parsed, so opening a session does not reconcile every campaign.
+fn campaign_links_for(data_folder: &Path, session: &str) -> HashMap<String, (String, String, String, bool)> {
+    links_of(campaign::list_mentioning(data_folder, session))
+}
+
+fn links_of(campaigns: Vec<campaign::Campaign>) -> HashMap<String, (String, String, String, bool)> {
     let mut links = HashMap::new();
-    for c in campaign::list(data_folder) {
+    for c in campaigns {
         let running = c.status == campaign::CampaignStatus::Running;
         links.insert(
             c.coordinator_session.clone(),
@@ -157,7 +167,7 @@ fn read_thread(data_folder: &Path, id: &str) -> Result<Value, Fail> {
 
 pub(crate) fn open(data_folder: &Path, roots: &[PathBuf], id: &str) -> Result<(Found, Value), Fail> {
     let thread = read_thread(data_folder, id)?;
-    let links = campaign_links(data_folder);
+    let links = campaign_links_for(data_folder, id);
     let (row, folder) = summarize(id, &thread, &links);
     match folder {
         Some(f) if inside(roots, &f) => Ok((Found { row }, thread)),
