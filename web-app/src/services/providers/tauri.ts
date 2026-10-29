@@ -281,47 +281,7 @@ export class TauriProvidersService extends DefaultProvidersService {
         `Failed to fetch models from ${provider.provider}: ${lastStatus} ${lastStatusText}`
       )
     } catch (error) {
-      console.error('Error fetching models from provider:', error)
-
-      // Already explained: the endpoint, the status and who answered. Wrapping
-      // it would bury the only sentence that says what happened.
-      if (isEndpointError(error)) throw error
-
-      // Preserve structured error messages thrown above
-      const structuredErrorPrefixes = [
-        'Authentication failed',
-        'Access forbidden',
-        'Models endpoint not found',
-        'Failed to fetch models from',
-      ]
-
-      if (
-        error instanceof Error &&
-        structuredErrorPrefixes.some((prefix) =>
-          (error as Error).message.startsWith(prefix)
-        )
-      ) {
-        throw new Error(error.message)
-      }
-
-      /**
-       * Nothing answered.
-       *
-       * The transport already says what it tried and what it resolved to,
-       * which is the whole diagnosis for a short hostname pointing at the
-       * wrong machine. Both branches below used to bury that sentence: one
-       * threw it away for a generic "Cannot connect", the other wrapped it in
-       * "Unexpected error while fetching models from X", which reads as a
-       * fault in Flint rather than an endpoint that is not listening.
-       */
-      throw new EndpointError(
-        describeEndpointFailure({
-          provider: provider.provider,
-          url: `${provider.base_url}/models`,
-          method: 'GET',
-          cause: error,
-        })
-      )
+      throw shapeListError(provider, error)
     }
   }
 
@@ -356,4 +316,53 @@ export class TauriProvidersService extends DefaultProvidersService {
       throw error
     }
   }
+}
+
+/**
+ * The error a failed model listing rethrows: an endpoint error as is, a
+ * structured message unwrapped, anything else described as the endpoint
+ * not answering.
+ */
+function shapeListError(provider: ModelProvider, error: unknown): Error {
+  console.error('Error fetching models from provider:', error)
+
+  // Already explained: the endpoint, the status and who answered. Wrapping
+  // it would bury the only sentence that says what happened.
+  if (isEndpointError(error)) return error
+
+  // Preserve structured error messages thrown above
+  const structuredErrorPrefixes = [
+    'Authentication failed',
+    'Access forbidden',
+    'Models endpoint not found',
+    'Failed to fetch models from',
+  ]
+
+  if (
+    error instanceof Error &&
+    structuredErrorPrefixes.some((prefix) =>
+      (error as Error).message.startsWith(prefix)
+    )
+  ) {
+    return new Error(error.message)
+  }
+
+  /**
+   * Nothing answered.
+   *
+   * The transport already says what it tried and what it resolved to,
+   * which is the whole diagnosis for a short hostname pointing at the
+   * wrong machine. Both branches below used to bury that sentence: one
+   * threw it away for a generic "Cannot connect", the other wrapped it in
+   * "Unexpected error while fetching models from X", which reads as a
+   * fault in Flint rather than an endpoint that is not listening.
+   */
+  return new EndpointError(
+    describeEndpointFailure({
+      provider: provider.provider,
+      url: `${provider.base_url}/models`,
+      method: 'GET',
+      cause: error,
+    })
+  )
 }

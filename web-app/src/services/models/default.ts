@@ -12,7 +12,6 @@ import {
   SettingComponentProps,
   modelInfo,
   ThreadMessage,
-  ContentType,
   UnloadResult,
 } from '@janhq/core'
 import { Model as CoreModel } from '@janhq/core'
@@ -24,10 +23,7 @@ import type {
   EngineVersionInfo,
   SkippedLinkedModel,
 } from './types'
-import {
-  extractToolContextFromContent,
-  extractToolContextFromMetadata,
-} from './tokenCountToolContext'
+import { toTokenCountMessages } from './tokenCountMessages'
 import { releaseImageModelForChat } from '@/lib/studio/arbiter'
 import { useAppState } from '@/hooks/useAppState'
 import { askCpuFallback, isCpuFallbackOffered } from '@/lib/gpuCrashCpuFallback'
@@ -614,96 +610,7 @@ export class DefaultModelsService implements ModelsService {
       }
 
       if (engine && typeof engine.getTokensCount === 'function') {
-        // Transform Flint's ThreadMessage format to OpenAI chat completion format
-        const transformedMessages = messages
-          .map((message) => {
-            // Handle different content types
-            let content:
-              | string
-              | Array<{
-                  type: string
-                  text?: string
-                  image_url?: {
-                    detail?: string
-                    url?: string
-                  }
-                }> = ''
-
-            if (message.content && message.content.length > 0) {
-              // Check if there are any image_url content types
-              const hasImages = message.content.some(
-                (content) => content.type === ContentType.Image
-              )
-
-              if (hasImages) {
-                // For multimodal messages, preserve the array structure
-                content = message.content.map((contentItem) => {
-                  if (contentItem.type === ContentType.Text) {
-                    return {
-                      type: 'text',
-                      text: contentItem.text?.value || '',
-                    }
-                  } else if (contentItem.type === ContentType.Image) {
-                    return {
-                      type: 'image_url',
-                      image_url: {
-                        detail: contentItem.image_url?.detail,
-                        url: contentItem.image_url?.url || '',
-                      },
-                    }
-                  }
-                  // Fallback for unknown content types
-                  return {
-                    type: contentItem.type,
-                    text: contentItem.text?.value,
-                    image_url: contentItem.image_url,
-                  }
-                })
-              } else {
-                // For text-only messages, keep the string format
-                const textContents = message.content
-                  .filter(
-                    (content) =>
-                      content.type === ContentType.Text && content.text?.value
-                  )
-                  .map((content) => content.text?.value || '')
-
-                content = textContents.join(' ')
-              }
-            }
-
-            const toolContextFromContent = extractToolContextFromContent(message)
-            const toolContextFromMetadata =
-              toolContextFromContent.length > 0
-                ? ''
-                : extractToolContextFromMetadata(message)
-            const toolContext = [toolContextFromContent, toolContextFromMetadata]
-              .filter((entry) => entry.length > 0)
-              .join('\n\n')
-            if (toolContext.length > 0) {
-              if (typeof content === 'string') {
-                content = content ? `${content}\n\n${toolContext}` : toolContext
-              } else if (Array.isArray(content)) {
-                content = [
-                  ...content,
-                  {
-                    type: 'text',
-                    text: toolContext,
-                  },
-                ]
-              }
-            }
-
-            return {
-              role: message.role,
-              content,
-            }
-          })
-          .filter((msg) =>
-            typeof msg.content === 'string'
-              ? msg.content.trim() !== ''
-              : Array.isArray(msg.content) && msg.content.length > 0
-          ) // Filter out empty messages
+        const transformedMessages = toTokenCountMessages(messages)
 
         // Chat templates reject a prompt made only of assistant turns
         if (!transformedMessages.some((m) => m.role !== 'assistant')) return 0

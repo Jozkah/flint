@@ -6,8 +6,10 @@ import {
   MAX_TOOL_OUTPUT_CHARS_FOR_COUNT,
   extractToolContextFromMetadata,
   extractToolContextFromContent,
+  toTokenCountMessages,
 } from '../tokenCountToolContext'
 import type { ThreadMessage } from '@janhq/core'
+import { toTokenCountMessages } from '../tokenCountMessages'
 
 describe('stringifyToolOutputForTokenCount', () => {
   it('returns empty string for null and undefined', () => {
@@ -91,5 +93,31 @@ describe('extractToolContextFromContent', () => {
     expect(out).toContain('Tool exa call')
     expect(out).toContain('Input:')
     expect(out).toContain('Output:')
+  })
+})
+
+describe('toTokenCountMessages', () => {
+  it('keeps text as a string, images as parts, and drops empty messages', () => {
+    const out = toTokenCountMessages([
+      { role: 'user', content: [{ type: ContentType.Text, text: { value: 'hi', annotations: [] } }] },
+      {
+        role: 'user',
+        content: [
+          { type: ContentType.Text, text: { value: 'look', annotations: [] } },
+          { type: ContentType.Image, image_url: { url: 'data:x', detail: 'auto' } },
+        ],
+      },
+      { role: 'assistant', content: [] },
+    ] as unknown as ThreadMessage[])
+    expect(out).toEqual([
+      { role: 'user', content: 'hi' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'look' },
+          { type: 'image_url', image_url: { detail: 'auto', url: 'data:x' } },
+        ],
+      },
+    ])
   })
 })
