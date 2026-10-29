@@ -1,15 +1,8 @@
-import { useSecondClock } from '@/lib/sharedClock'
-import { isPlatformTauri } from '@/lib/platform/utils'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
-import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
-import {
-  useBrowserToolMirror,
-  useBrowserToolMirrorListening,
-} from '@/hooks/useBrowserToolMirror'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -31,7 +24,6 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,59 +40,25 @@ import {
 import { Frame, FrameBody } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
-import { useCoworkLayout, type CoworkPhoneView } from '@/hooks/cowork/useCoworkLayout'
+import { type CoworkPhoneView } from '@/hooks/cowork/useCoworkLayout'
 import {
   CoworkInspectorFrame,
   CoworkInspectorProvider,
   CoworkSidePanel,
   type InspectorLayout,
 } from '@/containers/CoworkSidePanel'
-import {
-  useCoworkSessions,
-  ensureCurrentSession,
-  startPaneSession,
-  } from '@/hooks/useCoworkSessions'
+import { useCoworkSessions, ensureCurrentSession } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
-import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { resolveCoworkModel } from '@/lib/coworkModelChoice'
 import { confirmBypass } from '@/lib/bypassConfirm'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
-import {
-  finishedJobPatch,
-} from '@/lib/coworkTasks'
-import {
-  findTaskByJob,
-  backgroundTasksOf,
-  sessionTotals,
-  sessionWorkflows,
-  type ActivityTask,
-  type WorkflowView,
-} from '@/lib/coworkActivity'
-import {
-  cancelMessage,
-  cancelTask as cancelTaskRequest,
-  cancelWorkflow as cancelWorkflowRequest,
-  patchForOutcome,
-} from '@/lib/coworkCancel'
-import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
+import type { CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
-import { useMessageQueue } from '@/stores/message-queue-store'
-import { drainIdleSession } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
-import { appendLiveMessages, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
-import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
-import {
-  formatChangeSummary,
-  janAuthoredChanges,
-} from '@/lib/coworkChangeSummary'
-import {
-  loadToolActivity,
-  recordLifecycle,
-  type ToolActivityItem,
-} from '@/lib/toolActivity'
+import { formatChangeSummary } from '@/lib/coworkChangeSummary'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
@@ -110,18 +68,9 @@ import {
   type RunSettingsException,
 } from '@/containers/CoworkRunSettings'
 import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
-import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
-import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
-import {
-  authorityMayChange,
-  useCoworkActiveWork,
-  type WorkKind,
-} from '@/hooks/useCoworkActiveWork'
-import {
-  DirectEditConfirmDialog,
-  type DirectEditFacts,
-} from '@/containers/dialogs/DirectEditConfirmDialog'
+import { useCoworkActiveWork, type WorkKind } from '@/hooks/useCoworkActiveWork'
+import { DirectEditConfirmDialog } from '@/containers/dialogs/DirectEditConfirmDialog'
 import { modeOf } from '@/lib/coworkMode'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
@@ -129,16 +78,10 @@ import {
   CoworkPinnedProgress,
   CoworkProgressButton,
 } from '@/containers/CoworkPinnedProgress'
-import {
-  useCoworkDisplay,
-  useShowPromptSnapshot,
-} from '@/hooks/useCoworkDisplay'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
-import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
-import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
-import { speedStats } from '@/lib/tokenSpeed'
+import { type PromptSnapshotRef } from '@/lib/providerFetch'
 import { type SubmittedFile } from '@/lib/coworkAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import {
@@ -155,17 +98,6 @@ import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
 import { CoworkComposerArea } from '@/containers/CoworkComposerArea'
 import { CoworkDetailsBody } from '@/containers/CoworkDetailsBody'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
-import {
-  applySandboxFile,
-  isFlintInternalPath,
-  planSandboxApply,
-  } from '@/lib/coworkSandboxApply'
-import { probeSandboxFile } from '@/lib/coworkApplyAll'
-import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
-import {
-  NO_USER_EDITS,
-  useCoworkUserEdits,
-} from '@/hooks/useCoworkUserEdits'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkBackgroundTasksPanel } from '@/containers/CoworkBackgroundTasksPanel'
 import { ReviewChangesContext } from '@/containers/TaskCheckoutLink'
@@ -182,25 +114,10 @@ import {
   type RailMode,
 } from '@/containers/CoworkRailToolbar'
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
-import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
-import { compactHistory, DEFAULT_KEEP_RECENT } from '@/lib/compaction'
-import { manualSummarizer } from '@/lib/compactionSummarizer'
-import { CompactionSummaryError, estimateHistoryTokens } from '@/lib/compaction'
-import { fixedPromptTokens } from '@/lib/contextBreakdown'
-import { useContextBreakdown } from '@/hooks/useContextBreakdown'
-import {
-  getCompactionPolicy,
-  DEFAULT_COMPACTION_POLICY,
-  type CompactionPolicy,
-} from '@/lib/compactionPolicy'
 import { janAuthoredPaths } from '@/lib/coworkOrigins'
-import {
-  deriveRunOutcome,
-  } from '@/lib/coworkRunOutcome'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
-import { holdQueueThenStop } from '@/lib/chatSteering'
 import { useShallow } from 'zustand/react/shallow'
 import {
   recoveryHidden,
@@ -222,29 +139,15 @@ import {
   type InstructionFile,
 } from '@/lib/coworkReadiness'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
-import {
-  runCoworkRequest,
-  largestAcceptedPrompt,
-  type RunRequestArgs,
-} from '@/lib/cowork/run/runRequest'
+import { runCoworkRequest, type RunRequestArgs } from '@/lib/cowork/run/runRequest'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
-import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
-import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
-import { recordEvents } from '@/lib/eventLog'
-import { sandboxEnforces } from '@/lib/agentTools'
 import { coworkWebSearchScope, useWebSearchOn } from '@/hooks/useWebSearchChoice'
-import {
-  abortRun,
-  abortAll,
-  hasSubagent,
-  answerAsk,
-  type RunOutcome,
-} from '@/lib/coworkRunner'
+import { type RunOutcome } from '@/lib/coworkRunner'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import {
   allowedRemoteModes,
@@ -274,6 +177,11 @@ import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { useCoworkFolderActions } from '@/hooks/cowork/useCoworkFolderActions'
 import { useCoworkFolderScans } from '@/hooks/cowork/useCoworkFolderScans'
 import { useCoworkPathActions } from '@/hooks/cowork/useCoworkPathActions'
+import { useCoworkViewState } from '@/hooks/cowork/useCoworkViewState'
+import { useCoworkRunActions } from '@/hooks/cowork/useCoworkRunActions'
+import { useCoworkActivityPanel } from '@/hooks/cowork/useCoworkActivityPanel'
+import { useCoworkEditAuthority } from '@/hooks/cowork/useCoworkEditAuthority'
+import { useCoworkTranscript } from '@/hooks/cowork/useCoworkTranscript'
 
 
 export const Route = createFileRoute(route.cowork)({
@@ -984,263 +892,30 @@ export function CoworkPage() {
     setPendingFolder,
     setPendingAccess,
   })
-
-  // `liveTurns` holds only the rows this run has produced — `commitTurns`
-  // appends them — so the committed transcript has to be shown alongside it or
-  // the conversation disappears the moment a follow-up run starts.
-  /**
-   * The canonical record of this session's tool calls. AH-050/AH-172.
-   *
-   * Reloaded when the session changes and when a run ends: during a run the
-   * live turns already carry the same states, and re-reading the log on every
-   * event would be a file read per tool call for no gain.
-   */
-  const [toolActivity, setToolActivity] = useState<ToolActivityItem[]>([])
-  useEffect(() => {
-    if (!session?.id) {
-      setToolActivity([])
-      return
-    }
-    let current = true
-    loadToolActivity(session.id).then((items) => {
-      if (current) setToolActivity(items)
-    })
-    return () => {
-      current = false
-    }
-  }, [session?.id, running])
-
-  const displayedTurns = useMemo(
-    () =>
-      reconcileToolActivity(
-        running
-          ? [...(session?.turns ?? []), ...liveTurns]
-          : (session?.turns ?? []),
-        toolActivity
-      ),
-    [running, liveTurns, session?.turns, toolActivity]
-  )
-
-  /**
-   * The last run's outcome, derived once from the evidence every other
-   * surface reads: the ledger, the tool record and the run's stop reason.
-   * Subscribed to the checkpoint chain so a new point, or a restore, is
-   * reflected without waiting for an unrelated render.
-   */
-  const checkpointChain = useCoworkCheckpoints((s) =>
-    session?.id ? s.bySession[session.id] : undefined
-  )
-  const runOutcome = useMemo(
-    () =>
-      deriveRunOutcome({
-        running,
-        stoppedBy,
-        errorText: runError,
-        turns: displayedTurns,
-        summary: runOrigins?.summary ?? null,
-        destination: runOrigins?.context.destination ?? null,
-        tree:
-          runOrigins?.context.tree ?? runOrigins?.context.binding.folder ?? null,
-        sessionId: session?.id ?? null,
-        runId: session?.id ?? null,
-        finishedAt: runOrigins?.at ?? null,
-        checkpoints: checkpointChain ?? [],
-        openTodos: (session?.todos?.phases ?? [])
-          .flatMap((phase) => phase.tasks)
-          .filter((task) => task.status === 'pending' || task.status === 'in_progress')
-          .length,
-        handlers: {
-          // Opening a file resolves against the attached folder or the
-          // sandbox; a managed worktree's files are reviewed in Changes.
-          openResult:
-            runOrigins?.context.destination === 'repository' ||
-            runOrigins?.context.destination === 'sandbox',
-          reviewChanges: true,
-          continue: true,
-          retry: true,
-        },
-      }),
-    [
-      running,
-      stoppedBy,
-      runError,
-      displayedTurns,
-      runOrigins,
-      session?.id,
-      session?.todos,
-      checkpointChain,
-    ]
-  )
-  // A presentation filter: the turns themselves are untouched, so turning the
-  // option off puts the activity straight back without a reload.
-  const hideCompletedToolsSetting = useCoworkDisplay((s) => s.hideCompletedTools)
-  // A temporary look at what is hidden. Not persisted, and reset whenever the
-  // setting itself changes, so it never silently overrides the preference.
-  const [revealHiddenTools, setRevealHiddenTools] = useState(false)
-  useEffect(() => setRevealHiddenTools(false), [hideCompletedToolsSetting])
-  const hideCompletedTools = hideCompletedToolsSetting && !revealHiddenTools
-  // Converted in two halves so a streamed write re-renders only the tail.
-  //
-  // The committed transcript's rows do not change while a run streams, so
-  // converting them apart from the live rows keeps their message identities
-  // stable across every delta and `MessageItem`'s memo skips them. Tool-activity
-  // reconciliation appends calls it has but the transcript does not at the end
-  // of whatever it is given, so the activity list is partitioned by which half
-  // owns each call before reconciling — otherwise a live call would append to
-  // the committed half and jump the transcript order. AH: only-live-tail.
-  const idPrefix = session?.id ?? 'cowork'
-  const committedTurns = useMemo(() => {
-    const base = session?.turns ?? []
-    const committedCalls = new Set(
-      base.filter((t) => t.role === 'tool' && t.callId).map((t) => t.callId)
-    )
-    const committedActivity = toolActivity.filter((item) =>
-      committedCalls.has(item.call)
-    )
-    return reconcileToolActivity(base, committedActivity)
-  }, [session?.turns, toolActivity])
-  const committedMessages = useMemo(
-    () =>
-      coworkTurnsToUIMessages(committedTurns, idPrefix, {
-        hideCompletedTools,
-        omitHiddenTurns: true,
-      }),
-    [committedTurns, idPrefix, hideCompletedTools]
-  )
-  const liveRunId = useCoworkRun((s) =>
-    session?.id ? s.runs[session.id]?.runId : undefined
-  )
-  const liveMessages = useMemo(() => {
-    if (!running) return []
-    const committedCalls = new Set(
-      (session?.turns ?? [])
-        .filter((t) => t.role === 'tool' && t.callId)
-        .map((t) => t.callId)
-    )
-    // Only this run's record belongs to the live half: an item from an
-    // earlier run whose call the transcript never kept would otherwise be
-    // appended to the new turn as if this run had made it.
-    const liveActivity = toolActivity.filter(
-      (item) =>
-        !committedCalls.has(item.call) &&
-        (!liveRunId || !item.run || item.run === liveRunId)
-    )
-    const reconciledLive = reconcileToolActivity(liveTurns, liveActivity)
-    return coworkTurnsToUIMessages(
-      reconciledLive,
-      idPrefix,
-      { hideCompletedTools, omitHiddenTurns: true },
-      committedTurns.length
-    )
-  }, [
+  const {
+    fileDiffs,
+    displayedTurns,
+    windowStart,
+    setEarlierShown,
+    earlierPages,
+    messageWeights,
+    uiMessages,
+    snapshotByAnchor,
+    setRevealHiddenTools,
+    snapshotByMessageId,
+    runOutcome,
+    tokenSource,
+    checkpointChain,
+  } = useCoworkTranscript({
+    session,
     running,
     liveTurns,
-    session?.turns,
-    toolActivity,
-    liveRunId,
-    idPrefix,
-    hideCompletedTools,
-    committedTurns.length,
-  ])
-  const uiMessages = useMemo(
-    () => appendLiveMessages(committedMessages, liveMessages),
-    [committedMessages, liveMessages]
-  )
-
-  // A long session is drawn from its newest messages, the rest on request.
-  // Drawing every message and tool card at once is what made opening a long
-  // session slow; what is above the window is still in the session.
-  const [earlierShown, setEarlierShown] = useState<{ sid: string | null; pages: number }>({
-    sid: null,
-    pages: 0,
+    stoppedBy,
+    runError,
+    runOrigins,
+    liveUsage,
+    workspacePath,
   })
-  const earlierPages = earlierShown.sid === (session?.id ?? null) ? earlierShown.pages : 0
-  const messageWeights = useMemo(
-    () => uiMessages.map((m) => messageWeight(m.parts as { type: string }[])),
-    [uiMessages]
-  )
-  const windowStart = transcriptWindowStart(messageWeights, earlierPages)
-
-  // The plan each run left, by the prompt it follows.
-  const snapshotByAnchor = useMemo(
-    () =>
-      new Map(
-        (session?.todoSnapshots ?? []).map((s) => [s.anchorId, s.list] as const)
-      ),
-    [session?.todoSnapshots]
-  )
-
-  // Every dispatch this session made, in order. The Nth belongs to the Nth
-  // assistant message, which is how a snapshot stays with its own invocation
-  // rather than being shown as a "latest" beside an older reply.
-  const sessionSnapshots = useCoworkRun((s) =>
-    session?.id ? s.promptSnapshots[session.id] : undefined
-  )
-  const snapshotByMessageId = useMemo(() => {
-    const byId = new Map<string, { id: string; hash: string; redactions: number }>()
-    if (!sessionSnapshots?.length) return byId
-    const assistantIds = uiMessages
-      .filter((m) => m.role === 'assistant')
-      .map((m) => m.id)
-    assistantIds.forEach((id, i) => {
-      const ref = sessionSnapshots[i]
-      if (ref) byId.set(id, ref)
-    })
-    return byId
-  }, [sessionSnapshots, uiMessages])
-
-  const usage = liveUsage ?? session?.lastUsage ?? null
-  // Cowork mirrors model loads onto useCoworkRun under the session id, so the
-  // token counter (thread-keyed on useAppState) never sees them on its own.
-  // Reported here so the launched context window is refetched once the load
-  // finishes for this session. d901192.
-  const sessionLoadingModel = useCoworkRun((s) =>
-    session?.id ? Boolean(s.loadingModels[session.id]) : false
-  )
-  const tokenSource = useMemo(
-    () => ({
-      threadId: session?.id,
-      // Cache counts included: the counter's popover shows them for Cowork
-      // exactly as it does for Chat.
-      usage: fromCoworkUsage(usage),
-      contextError: stoppedBy === 'error' ? runError : undefined,
-      // This session's requests only, from its own turns: how many reused the
-      // cache, kept apart from how many tokens were cached.
-      session: summarizeUsage(
-        (session?.turns ?? []).map((turn) => fromCoworkUsage(turn.usage))
-      ),
-      loadingModel: sessionLoadingModel,
-      // How fast this session's replies came, for the counter's hover card.
-      speed: speedStats(
-        (session?.turns ?? []).map((turn) => ({
-          tokenSpeed: turn.tokenSpeed?.tokenSpeed,
-          durationMs: turn.tokenSpeed?.durationMs,
-          source: turn.tokenSpeed?.source,
-          tokenCount: turn.tokenSpeed?.tokenCount ?? turn.usage?.completion_tokens,
-        }))
-      ),
-    }),
-    [session?.id, session?.turns, usage, sessionLoadingModel, stoppedBy, runError]
-  )
-
-  // Live runs write into the run store; a committed session carries its own.
-  const liveSubagents = useCoworkRun((s) =>
-    session?.id ? s.subagents[session.id] : undefined
-  )
-  // Saves the user made by hand in the Code panel, listed with the agent's.
-  const userEdits = useCoworkUserEdits((s) =>
-    session?.id ? (s.bySession[session.id]?.edits ?? NO_USER_EDITS) : NO_USER_EDITS
-  )
-  const fileDiffs = useMemo(
-    () =>
-      // Writes into Flint's own data folder are bookkeeping, not output.
-      collectCodeFileDiffs(
-        displayedTurns,
-        liveSubagents ?? session?.subagents ?? [],
-        userEdits
-      ).filter((f) => !isFlintInternalPath(workspacePath, f.path)),
-    [displayedTurns, liveSubagents, session?.subagents, userEdits, workspacePath]
-  )
 
   // Read-only working-tree status for the attached repo, loaded lazily and kept
   // strictly separate from the sandbox diffs above. The chip's counts combine
@@ -1248,312 +923,35 @@ export function CoworkPage() {
   // Re-read when a run starts or settles: a run's edits, commits and undo
   // change the tree, and a list loaded before them contradicts its own diffs.
   const git = useCoworkGitStatus(treeRoot, running)
-  // "Show 'What the model received'": the per-turn row and its token count.
-  // Forced on by the Verbose transcript view.
-  const showPromptSnapshot = useShowPromptSnapshot()
-
-  // Review only output into the attached folder: per file, and "Apply all".
-  const applySessionId = session?.id
-  const refreshGit = git.refresh
-  const sandboxApply = useMemo<SandboxApplyActions | undefined>(() => {
-    // Applying writes this machine's files through desktop-only commands; the
-    // browser client of `flint serve` reviews without them.
-    if (!isPlatformTauri() || !folder || !applySessionId) return undefined
-    const planFor = (path: string) =>
-      planSandboxApply(workspacePath, applyFolders, path)
-    return {
-      planFor,
-      probe: (_path, plan) =>
-        probeSandboxFile({
-          session: applySessionId,
-          path: plan.source,
-          project: plan.folder,
-          destination: plan.destination,
-        }),
-      apply: async (path, overwrite) => {
-        const plan = planFor(path)
-        if (!plan) throw new Error(`${path} is not in the session sandbox`)
-        const outcome = await applySandboxFile({
-          session: applySessionId,
-          path: plan.source,
-          project: plan.folder,
-          destination: plan.destination,
-          overwrite,
-        })
-        if (outcome !== 'exists') refreshGit()
-        return outcome
-      },
-    }
-  }, [folder, applySessionId, workspacePath, applyFolders, refreshGit])
-
-  /**
-   * Ask the backend to authorize this folder, then switch the session.
-   *
-   * In that order, and only in that order: switching first would show
-   * "editable" for however long the round trip takes, which is exactly the
-   * claim-without-authority this model exists to prevent. A refusal leaves the
-   * session where it was.
-   */
-  const authorizeDirectEdit = useCallback(async (): Promise<boolean> => {
-    const sid = session?.id ?? null
-    if (sid && (useCoworkRun.getState().runs[sid] || !authorityMayChange(sid))) {
-      setPendingAccess((pending) => ({ ...pending, [sid]: 'edit-folder' }))
-      setConfirmDirectEdit(false)
-      return true
-    }
-    const done = useCoworkActiveWork.getState().acquire({
-      sessionId: sid ?? 'none',
-      kind: 'authorizing',
-      authority: {
-        folder,
-        access: effective.access,
-        destination: effective.destination,
-      },
-    })
-    try {
-      const dataFolder = await serviceHub.app().getJanDataFolder()
-      const result = await runAuthorizeDirectEdit({
-        binding: { sessionId: sid, folder },
-        dataFolder: dataFolder ?? null,
-        authorize: (sessionId, target, data) =>
-          useDirectEditGrants
-            .getState()
-            .authorize(sessionId, target, data, writableExtraFolders),
-        revokeSession: (sessionId) =>
-          useDirectEditGrants.getState().revokeSession(sessionId),
-        // Read after the await, so it sees where the user actually is.
-        currentBinding: () => bindingRef.current,
-        setAccess: (sessionId) => {
-          // Choosing Edit this folder edits the main folder: its read-only
-          // mark goes back to being derived from the access.
-          useCoworkSessions.getState().setMainFolderReadOnly(sessionId, undefined)
-          useCoworkSessions.getState().setAccess(sessionId, 'edit-folder')
-        },
-      })
-      if (result === 'granted') setConfirmDirectEdit(false)
-      return result === 'granted'
-    } finally {
-      done()
-    }
-  }, [
-    session?.id,
+  const {
+    authorizeManagedWorktree,
+    authorizeDirectEdit,
+    returnToReviewOnly,
+    changeCounts,
+    showPromptSnapshot,
+    sandboxApply,
+    directEditFacts,
+  } = useCoworkEditAuthority({
+    session,
+    git,
     folder,
-    writableExtraFolders,
+    workspacePath,
+    applyFolders,
+    setPendingAccess,
+    setConfirmDirectEdit,
+    effective,
     serviceHub,
-    effective.access,
-    effective.destination,
-  ])
-
-  // Attaching a folder is the user's choice to work in it. Obtain the same
-  // scoped grant as the manual access selector; until it arrives, effective
-  // access remains Review only. Never override a later mode selection.
-  const autoEditAttempted = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    const current = session?.id && folder ? `${session.id}\u0000${folder}` : null
-    for (const key of autoEditAttempted.current) {
-      if (key !== current) autoEditAttempted.current.delete(key)
-    }
-  }, [session?.id, folder])
-  useEffect(() => {
-    const sid = session?.id
-    if (!sid || !folder || access !== 'edit-folder' || liveGrant) return
-    if (
-      !capabilityState.known ||
-      !capabilityState.directEdit ||
-      useCoworkActiveWork.getState().blockingKind(sid)
-    ) return
-    const key = `${sid}\u0000${folder}`
-    if (autoEditAttempted.current.has(key)) return
-    autoEditAttempted.current.add(key)
-    const done = useCoworkActiveWork.getState().acquire({
-      sessionId: sid,
-      kind: 'authorizing',
-      authority: { folder, access: effective.access, destination: effective.destination },
-    })
-    void (async () => {
-      try {
-        const dataFolder = await serviceHub.app().getJanDataFolder()
-        if (!dataFolder) return
-        const result = await useDirectEditGrants
-          .getState()
-          .authorize(
-            sid,
-            folder,
-            dataFolder,
-            writableExtraFolders,
-            !mainFolderReadOnly
-          )
-        if (!result.ok) {
-          // One toast per folder: reopening sessions that share an unreadable
-          // folder updated the same message instead of stacking copies, and it
-          // clears itself.
-          if (result.reason !== 'superseded')
-            toast.error(result.reason, {
-              id: `folder-access:${folder}`,
-              duration: 8000,
-            })
-          return
-        }
-        const current = useCoworkSessions
-          .getState()
-          .sessions.find((entry) => entry.id === sid)
-        if (current?.folder !== folder || accessOf(current) !== 'edit-folder') {
-          await useDirectEditGrants.getState().revokeSession(sid)
-        }
-      } catch (error) {
-        toast.error(String(error), {
-          id: `folder-access:${folder}`,
-          duration: 8000,
-        })
-      } finally {
-        done()
-      }
-    })()
-  }, [
-    session?.id,
-    folder,
+    writableExtraFolders,
+    bindingRef,
     access,
     liveGrant,
-    capabilityState.known,
-    capabilityState.known && capabilityState.directEdit,
-    effective.access,
-    effective.destination,
-    serviceHub,
-    writableExtraFolders,
+    capabilityState,
     mainFolderReadOnly,
-  ])
-
-  /**
-   * Create or find this session's worktree, authorize it, then switch.
-   *
-   * The same order as direct editing and for the same reason: switching first
-   * would show "isolated worktree" while the backend still refused every write
-   * outside the sandbox. A failure at either step leaves the session where it
-   * was, saying what is true.
-   *
-   * The grant names the *worktree*, never the source checkout — which is what
-   * makes this mode structurally unable to write the tree it exists to protect,
-   * rather than merely instructed not to.
-   */
-  const authorizeManagedWorktree = useCallback(async (): Promise<boolean> => {
-    const sid = session?.id ?? null
-    if (!sid || !folder) return false
-    const done = useCoworkActiveWork.getState().acquire({
-      sessionId: sid,
-      kind: 'authorizing',
-      authority: {
-        folder,
-        access: effective.access,
-        destination: effective.destination,
-      },
-    })
-    try {
-      const dataFolder = await serviceHub.app().getJanDataFolder()
-      if (!dataFolder) return false
-      const title = useCoworkSessions
-        .getState()
-        .sessions.find((x) => x.id === sid)?.title
-      const created = await useCoworkWorktrees
-        .getState()
-        .ensure(sid, folder, dataFolder, {
-          title: title && title !== DEFAULT_SESSION_TITLE ? title : undefined,
-        })
-      if (!created.ok) {
-        toast.error(created.reason)
-        return false
-      }
-      // The user may have moved on during the round trip; authorizing for a
-      // binding nobody is looking at would leave authority nobody asked for.
-      const now = bindingRef.current
-      if (now.sessionId !== sid || now.folder !== folder) return false
-
-      // Only the primary folder is worktreed. The session's extra folders are
-      // attached directly, beside the worktree, under the same grant -- where
-      // the platform can confine a run to them at all (not on Windows, where
-      // only Flint-owned worktrees can be written).
-      const granted = await useDirectEditGrants
-        .getState()
-        .authorize(sid, created.record.path, dataFolder, writableExtraFolders)
-      if (!granted.ok) {
-        if (granted.reason !== 'superseded') toast.error(granted.reason)
-        return false
-      }
-      useCoworkSessions.getState().setAccess(sid, 'managed-worktree')
-      return true
-    } finally {
-      done()
-    }
-  }, [
-    session?.id,
-    folder,
-    writableExtraFolders,
-    serviceHub,
-    effective.access,
-    effective.destination,
-  ])
-
-  /**
-   * Withdraw first, then downgrade.
-   *
-   * If revocation fails the session is left saying what is true — the backend
-   * may still hold authority — rather than showing read-only over a grant that
-   * is still live.
-   */
-  const returnToReviewOnly = useCallback(async () => {
-    const sid = session?.id
-    if (!sid) return
-    const done = useCoworkActiveWork.getState().acquire({
-      sessionId: sid,
-      kind: 'revoking',
-      authority: {
-        folder,
-        access: effective.access,
-        destination: effective.destination,
-      },
-    })
-    try {
-      const revoked = await useDirectEditGrants.getState().revokeSession(sid)
-      useCoworkSessions.getState().setAccess(sid, 'review-only')
-      if (!revoked) {
-        toast.error(t('common:coworkAccess.confirm.revokeFailed'))
-      }
-    } finally {
-      done()
-    }
-  }, [session?.id, folder, t, effective.access, effective.destination])
-
-  /** What the confirmation states, gathered before the question is asked. */
-  const directEditFacts: DirectEditFacts = {
-    folder: folder ?? '',
-    name: folder?.split(/[\\/]/).pop() ?? '',
-    branch: gitBranch,
-    git: git.error
-      ? 'unknown'
-      : git.status
-        ? git.status.files.length > 0
-          ? 'dirty'
-          : 'clean'
-        : 'not-a-repo',
-    runMode: mode,
-    shellAvailable: sandboxEnforces(),
-    backend: capabilityState.known
-      ? capabilityState.directEdit
-        ? t('common:coworkAccess.confirm.shellYes')
-        : t('common:coworkAccess.unsupportedPlatform')
-      : t('common:coworkAccess.capabilityLoading'),
-  }
-  /**
-   * What this session changed, and only that.
-   *
-   * The counts used to include the attached repository's whole dirty working
-   * tree, so a branch someone left half-finished was reported as Flint having
-   * written forty files. That is a false claim about authorship, not a
-   * generous count.
-   */
-  const changeCounts = useMemo(
-    () => janAuthoredChanges(fileDiffs, git.status),
-    [fileDiffs, git.status]
-  )
+    t,
+    gitBranch,
+    mode,
+    fileDiffs,
+  })
 
   // Background shell jobs, polled here rather than inside the Activity panel:
   // the chip derives its counts from the same list, and polling only while the
@@ -1625,176 +1023,31 @@ export function CoworkPage() {
     else void returnToReviewOnly()
   }, [session?.id, running, blockingKind, pendingFolder, pendingAccess,
     authorizeManagedWorktree, authorizeDirectEdit, returnToReviewOnly])
-
-  // The one activity record. The panel, the chip and every inline workflow
-  // card select from this, so none of them can disagree about the same work.
-  const activityWorkflows = useCoworkActivity((s) => s.workflows)
-  const activityTasks = useCoworkActivity((s) => s.tasks)
-  const activity = useMemo(
-    () => ({ workflows: activityWorkflows, tasks: activityTasks }),
-    [activityWorkflows, activityTasks]
-  )
-  const workflowViews = useMemo(
-    () => sessionWorkflows(activity, session?.id),
-    [activity, session?.id]
-  )
-  const taskCounts = useMemo(
-    () => sessionTotals(activity, session?.id),
-    [activity, session?.id]
-  )
-  // The Background tasks tab reads the same record; it exists only while it
-  // has rows.
-  const backgroundTasks = useMemo(
-    () =>
-      session?.id
-        ? backgroundTasksOf(activity, session.id)
-        : { running: [], finished: [] },
-    [activity, session?.id]
-  )
-  // Clearing the last row removes the tab, so its panel does not stay open on
-  // nothing.
-  const backgroundCount =
-    backgroundTasks.running.length + backgroundTasks.finished.length
-  useEffect(() => {
-    if (rail?.kind === 'background' && backgroundCount === 0) setRail(null)
-  }, [rail?.kind, backgroundCount, setRail])
-
-  // The backend is the authority on whether a backgrounded shell is still
-  // running: the agent may not collect a job for many turns, and until it does
-  // nothing else would ever settle that row.
-  // It also says how the command ended -- exit code, signal, or a stop request
-  // -- so an uncollected failure reads as a failure, not a success.
-  useEffect(() => {
-    if (!liveJobsSession) return
-    const state = useCoworkActivity.getState()
-    for (const job of liveJobs) {
-      if (!job.finished) continue
-      const task = findTaskByJob(state, job.jobId, liveJobsSession)
-      if (task && task.status === 'running') {
-        const patch = finishedJobPatch(job)
-        state.patchTask(task.id, { ...patch, endedAt: patch.endedAt ?? Date.now() })
-      }
-    }
-  }, [liveJobs, liveJobsSession])
-
-  // Advances the cards' elapsed labels. Only while work is live: an idle
-  // conversation must not re-render every second.
-  const activityActive = taskCounts.running + taskCounts.queued > 0
-  const activityNow = useSecondClock(activityActive)
-
-  // A task the inline card asked the panel to reveal.
-  const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
-  const [focusWorkflowId, setFocusWorkflowId] = useState<string | null>(null)
-  // `setRail` is bound to the session in view; with empty deps these kept the
-  // one from the first render and opened the rail for no session at all.
-  const showTaskInPanel = useCallback(
-    (task: ActivityTask) => {
-      setRail({ kind: 'tasks' })
-      setFocusWorkflowId(task.workflowId)
-      setFocusTaskId(task.id)
-    },
-    [setRail]
-  )
-  // A child in a checkout of its own: its row leads to the Changes panel, where
-  // the review list shows that child's work.
-  const [reviewFocusTaskId, setReviewFocusTaskId] = useState<string | null>(null)
-  const reviewChildChanges = useCallback(
-    (task: ActivityTask) => {
-      setReviewFocusTaskId(task.checkout?.taskId ?? null)
-      setRail({ kind: 'diff' })
-    },
-    [setRail]
-  )
-  const showWorkflowInPanel = useCallback(
-    (workflowId: string) => {
-      setRail({ kind: 'tasks' })
-      setFocusTaskId(null)
-      setFocusWorkflowId(workflowId)
-    },
-    [setRail]
-  )
-
-  // Whether the run still holds a controller for an agent task. Consulted
-  // rather than assumed, so a Stop control is only offered where pressing it
-  // would reach something.
-  const sessionId = session?.id
-  const agentReachable = useCallback(
-    (task: ActivityTask) =>
-      sessionId != null && hasSubagent(sessionId, task.id),
-    [sessionId]
-  )
-
-  const applyCancel = useCallback(
-    (
-      task: ActivityTask,
-      result: Awaited<ReturnType<typeof cancelTaskRequest>>
-    ) => {
-      const patch = patchForOutcome(result, Date.now())
-      if (patch) useCoworkActivity.getState().patchTask(task.id, patch)
-      // Into the execution record too, in sequence with the calls around it:
-      // a stop is something the run did, and a stop that failed is one the
-      // audit has to show as having failed.
-      if (result.outcome === 'cancelled' || result.outcome === 'failed') {
-        void recordLifecycle(
-          {
-            session: task.sessionId,
-            run: task.workflowId,
-            source: 'cowork',
-            parent: task.callId,
-          },
-          {
-            id: `stop:${task.callId}:${Date.now()}`,
-            lifecycle: task.kind === 'shell' ? 'background-job' : 'subagent',
-            phase: result.outcome === 'cancelled' ? 'cancelled' : 'failed',
-            summary:
-              task.kind === 'shell'
-                ? `Stopped ${task.jobId ?? 'a command'}`
-                : `Stopped ${task.title}`,
-            detail: result.error ?? '',
-            jobId: task.jobId,
-            taskId: task.kind === 'agent' ? task.callId : undefined,
-          }
-        )
-      }
-      return patch != null
-    },
-    []
-  )
-
-  const cancelTask = useCallback(
-    async (task: ActivityTask) => {
-      if (!session?.id) return
-      const result = await cancelTaskRequest(session.id, task)
-      // Nothing was stopped. Say which of the reasons it was rather than
-      // leaving the row looking as though the click did nothing.
-      if (!applyCancel(task, result)) toast.info(cancelMessage(result, t))
-    },
-    [session?.id, applyCancel, t]
-  )
-
-  const cancelWorkflowTasks = useCallback(
-    async (view: WorkflowView) => {
-      if (!session?.id) return
-      const outcome = await cancelWorkflowRequest(session.id, view, {
-        agentReachable,
-      })
-      const byId = new Map(view.tasks.map((task) => [task.id, task]))
-      for (const result of outcome.results) {
-        const task = byId.get(result.taskId)
-        if (task) applyCancel(task, result)
-      }
-      // Honest about a partial result: some children stopped, some did not.
-      if (outcome.failed > 0) {
-        toast.info(
-          t('common:tasks.stopWorkflowPartial', {
-            cancelled: outcome.cancelled,
-            failed: outcome.failed,
-          })
-        )
-      }
-    },
-    [session?.id, agentReachable, applyCancel, t]
-  )
+  const {
+    taskCounts,
+    backgroundTasks,
+    activity,
+    activityNow,
+    showTaskInPanel,
+    showWorkflowInPanel,
+    reviewFocusTaskId,
+    reviewChildChanges,
+    workflowViews,
+    focusWorkflowId,
+    focusTaskId,
+    setFocusTaskId,
+    setFocusWorkflowId,
+    agentReachable,
+    cancelTask,
+    cancelWorkflowTasks,
+  } = useCoworkActivityPanel({
+    session,
+    rail,
+    setRail,
+    liveJobsSession,
+    liveJobs,
+    t,
+  })
 
   const awaitingModel = useMemo(
     () => awaitsModel(running, displayedTurns),
@@ -1949,446 +1202,56 @@ export function CoworkPage() {
     submit: (text, onRefused) =>
       widgetSubmitRef.current(text, undefined, onRefused),
   })
-  // Cowork's own `/` built-ins; `/help` is added by the composer.
-  /**
-   * Compact this session now: fold its older messages into a summary written
-   * by the session's model, keep the recent turns, and persist the result so
-   * every later request sends the compacted history. Works whether or not
-   * Auto Compact is on; that switch only decides whether it happens by itself.
-   */
-  const [compacting, setCompacting] = useState(false)
-  const compactNow = async (opts: { thenContinue?: boolean } = {}) => {
-    const sid = session?.id
-    if (!sid || running || compacting || !selectedModel) return
-    const cur = useCoworkSessions
-      .getState()
-      .sessions.find((one) => one.id === sid)
-    if (!cur) return
-    let policy: CompactionPolicy = DEFAULT_COMPACTION_POLICY
-    try {
-      policy = await getCompactionPolicy(cur.folder ?? null)
-    } catch {
-      // Defaults: a manual compaction was asked for either way.
-    }
-    setCompacting(true)
-    const snapshot = cur.messages
-    try {
-      const summarizer = manualSummarizer({
-        provider: selectedProvider,
-        modelId: selectedModel.id,
-        session: sid,
-        maxOutputTokens: policy.summaryMaxTokens,
-        window: configuredContextTokens(
-          modelCapabilities,
-          largestAcceptedPrompt(cur.turns)
-        ),
-      })
-      let result: Awaited<ReturnType<typeof compactHistory>>
-      try {
-        result = await compactHistory(cur.messages ?? [], {
-          summarize: summarizer.summarize,
-          keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
-          reason: 'manual',
-          // Never swap the conversation for a first-line digest unasked.
-          fallback: false,
-          summarizedBy: summarizer.usedBy,
-        })
-      } catch (error) {
-        if (!(error instanceof CompactionSummaryError)) throw error
-        toast.error(t('common:budget.compactFailedReason', { reason: error.reason }))
-        return
-      }
-      if (!result) {
-        toast.info(t('common:budget.compactFailed'))
-        return
-      }
-      // A message sent while the summary was being written changed the
-      // history: committing the summary would silently drop that exchange.
-      const latest = useCoworkSessions
-        .getState()
-        .sessions.find((one) => one.id === sid)
-      if (latest?.messages !== snapshot) {
-        toast.info(t('common:budget.compactSuperseded'))
-        return
-      }
-      // The counter reads the last reply's usage, which described the long
-      // history. Until the next reply it shows what the compacted request
-      // will carry: the summary and kept turns plus the fixed prompt.
-      const estimated =
-        estimateHistoryTokens(result.messages) +
-        fixedPromptTokens(useContextBreakdown.getState().byId[sid])
-      useCoworkSessions
-        .getState()
-        .commitTurns(
-          sid,
-          [{ role: 'assistant', content: '', compaction: result.record }],
-          result.messages,
-          [],
-          {
-            prompt_tokens: estimated,
-            completion_tokens: 0,
-            total_tokens: estimated,
-          } as Usage
-        )
-      const committed = useCoworkSessions
-        .getState()
-        .sessions.find((one) => one.id === sid)?.messages
-      toast.success(
-        t('common:budget.compactDone', { model: result.record.model ?? '' }),
-        {
-          action: {
-            label: t('common:budget.compactUndo'),
-            onClick: () => {
-              const now = useCoworkSessions
-                .getState()
-                .sessions.find((one) => one.id === sid)
-              // Only while nothing was sent since: otherwise it would drop it.
-              if (now?.messages !== committed) {
-                toast.info(t('common:budget.compactUndoStale'))
-                return
-              }
-              useCoworkSessions.setState((st) => ({
-                sessions: st.sessions.map((one) =>
-                  one.id === sid ? { ...one, messages: snapshot } : one
-                ),
-              }))
-            },
-          },
-        }
-      )
-      void recordLifecycle(
-        { session: sid, run: '', source: 'cowork' },
-        {
-          id: `compaction:manual:${result.record.at}`,
-          lifecycle: 'compaction',
-          phase: 'succeeded',
-          summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
-        }
-      )
-      // From the stop card: the run stopped for room, so it resumes on it.
-      if (opts.thenContinue) void runRequestRef.current('Continue.', undefined, true)
-    } finally {
-      setCompacting(false)
-    }
-  }
-  const compactNowRef = useRef(compactNow)
-  compactNowRef.current = compactNow
-
-  const savedWorkflowBuiltins = useSavedWorkflowBuiltins(
-    useCallback((text: string) => void handleSubmit(text), [handleSubmit])
-  )
-  const slashBuiltins = useMemo(
-    () => [
-      {
-        name: 'compact',
-        description: t('slash:builtin.compact'),
-        run: () => void compactNowRef.current(),
-      },
-      {
-        name: 'new',
-        description: t('slash:builtin.newSession'),
-        run: () => {
-          // Same rule as the sidebar's entry point: one press, at most one
-          // session. The composer's text is the `/new` being consumed, so it
-          // is no draft.
-          const paneId = sidePaneIdRef.current
-          const paneSid = paneSessionIdRef.current
-          if (paneId && paneSid) {
-            // Typed in a pane beside the main one: the new session opens in
-            // that pane, and the main pane keeps what it shows.
-            const id = startPaneSession(paneSid, { running })
-            useSplitConversation
-              .getState()
-              .setPaneTarget(paneId, { kind: 'cowork', refId: id })
-            return
-          }
-          const store = useCoworkSessions.getState()
-          const id = store.startSession({ running })
-          store.selectSession(id)
-        },
-      },
-      ...savedWorkflowBuiltins,
-    ],
-    [t, running, savedWorkflowBuiltins]
-  )
-
-  /**
-   * Take the last turn again. Rewinding to the question and resuming is the
-   * whole operation — an agent turn is a chain of tool calls, so regenerating
-   * means discarding that chain, not re-sending the question after it.
-   */
-  const handleRegenerate = useCallback(() => {
-    if (running || !session?.id) return
-    useCoworkSessions.getState().rewindToLastUser(session.id)
-    void runRequestRef.current(null)
-  }, [running, session?.id])
-
-  // Stop reaches the viewed session's run and nothing else: its model stream,
-  // its tool loop, its subagents and its open questions (janhq/jan#8905). It
-  // used to abort whichever run had started last, in any session.
-  // What is queued is held, not cleared, for the user to send or discard.
-  const handleStop = useCallback(() => {
-    const sid = session?.id
-    if (sid) holdQueueThenStop([sid], () => abortRun(sid))
-  }, [session?.id])
-
-  // "Stop all activity": abort every session's renderer-side run loop. The
-  // backend emergency-stop ({}) that runs alongside only reaps subprocess
-  // Tokens and cannot reach these JS AbortControllers, so without this the
-  // model streams and tool loops keep going after the user asked to stop.
-  const handleStopAll = useCallback(() => {
-    holdQueueThenStop(Object.keys(useMessageQueue.getState().queues), abortAll)
-  }, [])
-
-  // The run's real id (a per-run UUID), not the session id, is what the backend
-  // Tokens are scoped under. Passing the session id here made the scoped
-  // stop-current match no Token (janhq/jan#8905 scope check requires an exact
-  // run match), so only the local abort did anything.
-  const currentRunId = useCoworkRun((s) =>
-    session?.id ? s.runs[session.id]?.runId : undefined
-  )
-
-  // Answered through the session that asked; another session's questions are
-  // not reachable from here.
-  const respondAsk = useCallback(
-    (requestId: string, answers: AskAnswer[] | null) => {
-      if (session?.id) answerAsk(session.id, requestId, answers)
-    },
-    [session?.id]
-  )
-
-  /**
-   * Queued messages belong to the session they were typed in. When the session
-   * in view is idle and has one waiting it goes -- after its own run finishes,
-   * or when the user returns to a session whose run finished while they were
-   * elsewhere. Never dispatched into another session.
-   */
-  /**
-   * Pending input survives a restart (janhq/jan#8864). Every change to a Cowork
-   * session's queue is mirrored into the persisted session, and what the
-   * session recorded comes back held -- for the user to send or discard, never
-   * sent on its own. Restoring skips what is already queued, so this is
-   * harmless while the app is running.
-   */
-  useEffect(
-    () =>
-      useMessageQueue.subscribe((state, prev) => {
-        const store = useCoworkSessions.getState()
-        for (const s of store.sessions) {
-          const now = state.queues[s.id] ?? []
-          if (now !== (prev.queues[s.id] ?? [])) store.setPendingInput(s.id, now)
-        }
-      }),
-    []
-  )
-  const sessionsWithPending = useCoworkSessions((s) =>
-    s.sessions
-      .filter((x) => (x.pendingInput?.length ?? 0) > 0)
-      .map((x) => x.id)
-      .join(',')
-  )
-  useEffect(() => {
-    for (const s of useCoworkSessions.getState().sessions) {
-      if (s.pendingInput?.length) {
-        useMessageQueue.getState().restoreHeld(s.id, s.pendingInput)
-      }
-    }
-  }, [sessionsWithPending])
-
-  // Mail released for an idle session in view (Automatic wake-ups) becomes
-  // ready without `running` or the session changing, so the count is watched.
-  const readyCount = useMessageQueue((s) =>
-    !running && session?.id
-      ? s.getQueue(session.id).filter((m) => !m.held).length
-      : 0
-  )
-  const idleDrainRef = useRef(false)
-  useEffect(() => {
-    if (running || !session?.id || idleDrainRef.current) return
-    // Held input waits for the user; only what is ready goes. Mail is claimed
-    // first, so a reply a tool already consumed is not sent again.
-    idleDrainRef.current = true
-    // The message is sent only into the session it was drained from; see
-    // drainIdleSession.
-    void drainIdleSession(session.id, (text, from) => {
-      void runRequestRef.current(text, from)
-    })
-      .then(() => {
-        idleDrainRef.current = false
-      })
-      .catch(() => {
-        idleDrainRef.current = false
-      })
-  }, [running, session?.id, readyCount])
-
-  /**
-   * Where the transcript was scrolled to, kept across a trip to Settings.
-   *
-   * The scroll node is the one `StickToBottom` owns inside the `role="log"`
-   * container; it is found rather than held by ref because that element is the
-   * library's, not this route's. It is looked for inside this page's own
-   * transcript only: in split view each pane has one.
-   */
-  const scrollNode = useCallback((): HTMLElement | null => {
-    const log = transcriptRef.current?.querySelector('[role="log"]')
-    if (!log) return null
-    return (
-      (log.querySelector(':scope > *') as HTMLElement | null) ??
-      (log as HTMLElement)
-    )
-  }, [])
-
-  useEffect(() => {
-    const sid = session?.id
-    if (!sid) return
-    const remembered = useCoworkView.getState().scrollBySession[sid]
-    if (remembered != null) {
-      // After paint: the transcript has to exist before it can be scrolled.
-      requestAnimationFrame(() => {
-        const node = scrollNode()
-        if (node) node.scrollTop = remembered
-      })
-    }
-  }, [session?.id, scrollNode])
-  // Remembered in a layout cleanup: it runs while the transcript is still
-  // attached, on a session switch and when the page unmounts (leaving for
-  // Settings, closing a pane). A passive cleanup ran after the ref was
-  // detached, so an unmount remembered nothing.
-  useLayoutEffect(() => {
-    const sid = session?.id
-    if (!sid) return
-    return () => {
-      const node = scrollNode()
-      if (node) {
-        useCoworkView.getState().rememberScroll(sid, node.scrollTop)
-      }
-    }
-  }, [session?.id, scrollNode])
-
-  // Snapshots are taken in the transport, which has nowhere to return them to
-  // -- the AI SDK owns the call. It hands them here instead, and they land on
-  // the turn whose reply that request produced.
-  useEffect(() => {
-    return addSnapshotSink((sessionId, ref) => {
-      // Kept for the step that follows: the accounting for a dispatch is only
-      // known once its reply lands, and by then the sink has moved on.
-      lastSnapshotRef.current[sessionId] = ref
-      // AH-032: the record links this request to the exact payload it sent,
-      // the same way the agent loop does, so a finished run can be replayed
-      // from the record rather than from a reconstruction of it. Recorded
-      // under the run that is dispatching, never the session in view.
-      const running = useCoworkRun.getState().runs[sessionId]?.runId
-      if (running) {
-        void recordEvents([
-          {
-            id: `dispatch:${ref.invocation || ref.id}`,
-            session: sessionId,
-            run: running,
-            invocation: ref.invocation ?? '',
-            kind: 'message.completed',
-            payload: {
-              phase: 'dispatched',
-              snapshotId: ref.id,
-              hash: ref.hash,
-              redactions: ref.redactions,
-            },
-          },
-        ])
-      }
-      // Beside the turns, not on them: the run rebuilds its live turn array as
-      // steps complete, so a reference written onto a turn at dispatch time is
-      // gone before it can render.
-      useCoworkRun.getState().recordPromptSnapshot(sessionId, ref)
-    })
-  }, [])
-
-  // A run outlives this component, so unmounting must not stop it.
-  useEffect(() => () => useCoworkRun.getState().clearPendingPreview(), [])
-
-  // The artifacts library selects a session, parks the path here and navigates.
-  // Consumed once, so returning to Cowork later does not reopen it.
-  const pendingPreview = useCoworkRun((s) => s.pendingPreview)
-  useEffect(() => {
-    if (!pendingPreview || !session?.id) return
-    if (pendingPreview.sessionId !== session.id) return
-    setLastPreviewPath(pendingPreview.path)
-    setLastPreviewRoot(workspacePath ?? undefined)
-    setRail({ kind: 'preview', path: pendingPreview.path, root: workspacePath ?? undefined })
-    useCoworkRun.getState().clearPendingPreview()
-  }, [pendingPreview, session?.id, setRail, workspacePath, setLastPreviewPath, setLastPreviewRoot])
-
-  // The file-activity view parks a request the same way, for a path it wants
-  // shown but cannot open itself. Consumed once.
-  // An entry point outside Cowork asked for a folder. The picker lives here
-  // because this is where a session can be bound to what it returns.
-  const attachFolderRequested = useCoworkRun((s) => s.attachFolderRequested)
-  useEffect(() => {
-    if (!attachFolderRequested) return
-    // Cleared before the picker opens, not after: the dialog is awaited, and a
-    // request left standing would reopen it on the next render.
-    useCoworkRun.getState().clearAttachFolderRequest()
-    void attachFolder()
-  }, [attachFolderRequested, attachFolder])
-
-  const pendingCodeOpen = useCoworkRun((s) => s.pendingCodeOpen)
-  useEffect(() => {
-    if (!pendingCodeOpen || !session?.id) return
-    if (pendingCodeOpen.sessionId !== session.id) return
-    if (pendingCodeOpen.as === 'diff') {
-      setRail({ kind: 'diff' })
-    } else {
-      setRail({ kind: 'code' })
-      openToolPath(pendingCodeOpen.path)
-    }
-    useCoworkRun.getState().clearPendingCodeOpen()
-  }, [pendingCodeOpen, session?.id, openToolPath, setRail])
-
-  // Nothing to show once the session changes: every panel describes the session
-  // it was opened from.
-  //
-  // Only a real switch closes the rail. Opening the Code or Activity rail with
-  // no session yet *creates* one (ensureCurrentSession), which moved
-  // `session?.id` from null to a fresh id in the same commit — and this effect
-  // then closed the rail the click had just opened, so the first click did
-  // nothing and only a second one worked.
-  const lastSessionId = useRef(session?.id)
-  useEffect(() => {
-    const previous = lastSessionId.current
-    lastSessionId.current = session?.id
-    if (previous != null && previous !== session?.id) setRail(null)
-  }, [session?.id, setRail])
-
   const {
-    paneChrome,
-    compactViews,
-    narrow,
-    phone,
-    compactRun,
-    phoneStrip,
-    view,
-    showView,
+    setCompacting,
+    handleStop,
+    handleRegenerate,
+    respondAsk,
+    compactNow,
+    compacting,
+    slashBuiltins,
+    currentRunId,
+    handleStopAll,
+    compactNowRef,
+  } = useCoworkRunActions({
+    session,
+    running,
+    selectedModel,
+    selectedProvider,
+    modelCapabilities,
+    t,
+    runRequestRef,
+    handleSubmit,
+    sidePaneIdRef,
+    paneSessionIdRef,
+  })
+  const {
     revealOutput,
-    openRail,
+    phone,
+    narrow,
+    view,
     closeRail,
-  } = useCoworkLayout({ scrollNode, setRail })
-  // The agent's browser (the `browser` tool) gets its own tab in the output
-  // panel: it opens when the agent opens a page and goes when its browser closes.
-  useBrowserToolMirrorListening()
-  const agentBrowserOpen = useBrowserToolMirror((s) =>
-    session?.id ? Boolean(s.byId[session.id]) : false
-  )
-  const sawAgentBrowser = useRef(false)
-  useEffect(() => {
-    if (agentBrowserOpen && !sawAgentBrowser.current) {
-      sawAgentBrowser.current = true
-      setRail({ kind: 'browser' })
-    } else if (!agentBrowserOpen && sawAgentBrowser.current) {
-      sawAgentBrowser.current = false
-      if (rail?.kind === 'browser') setRail(null)
-    }
-    // Only the browser appearing or going away moves the panel.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentBrowserOpen])
+    agentBrowserOpen,
+    compactRun,
+    paneChrome,
+    showView,
+    compactViews,
+    openRail,
+    phoneStrip,
+  } = useCoworkViewState({
+    running,
+    session,
+    runRequestRef,
+    transcriptRef,
+    lastSnapshotRef,
+    setLastPreviewPath,
+    setLastPreviewRoot,
+    workspacePath,
+    setRail,
+    attachFolder,
+    openToolPath,
+    rail,
+  })
   const selectRailInView = useCallback(
     (next: RailMode) => {
       selectRail(next)
