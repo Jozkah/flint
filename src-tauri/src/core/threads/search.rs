@@ -206,7 +206,7 @@ fn search_messages_until(
     // The most recently used chats first, so the cap keeps what is likely wanted.
     threads.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
-    let mut hits = Vec::new();
+    let mut hits: Vec<MessageHit> = Vec::new();
     'threads: for (id, title, updated) in threads {
         if superseded() {
             break;
@@ -243,18 +243,33 @@ fn search_messages_until(
             let Some(at) = find_chars(&folded, &needle) else {
                 continue;
             };
-            hits.push(MessageHit {
+            let message_id = message
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let hit = MessageHit {
                 thread_id: id.clone(),
                 thread_title: title.clone(),
-                message_id: message
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
+                message_id,
                 role: role.to_string(),
                 snippet: snippet(&chars, at, needle.len()),
                 updated,
-            });
+            };
+            // An updated message is a later line with the same id: its hit
+            // replaces the earlier revision's instead of adding a second.
+            if !hit.message_id.is_empty() {
+                if let Some(old) = hits
+                    .iter_mut()
+                    .rev()
+                    .take(in_thread)
+                    .find(|h| h.message_id == hit.message_id)
+                {
+                    *old = hit;
+                    continue;
+                }
+            }
+            hits.push(hit);
             if hits.len() >= limit {
                 break 'threads;
             }

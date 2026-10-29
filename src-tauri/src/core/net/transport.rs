@@ -351,12 +351,27 @@ pub struct ProviderRequest {
     pub raw_chunks: bool,
 }
 
-/// How often a stalled read looks at the cancellation flag.
-const CANCEL_POLL: Duration = Duration::from_millis(100);
+/// A stream's cancellation: the flag, and a wake-up for a read that is
+/// waiting on a chunk (so a stalled read ends at once, with no timer polling
+/// the flag per chunk).
+#[derive(Default)]
+struct Cancel {
+    flag: AtomicBool,
+    wake: tokio::sync::Notify,
+}
+
+impl Cancel {
+    fn cancel(&self) {
+        self.flag.store(true, Ordering::SeqCst);
+        // `notify_one` keeps a permit when nobody is waiting yet, so a
+        // cancel that lands between two reads still wakes the next one.
+        self.wake.notify_one();
+    }
+}
 
 /// Streams currently in flight, by the id the caller gave them.
-fn live_streams() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
-    static LIVE: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+fn live_streams() -> &'static Mutex<HashMap<String, Arc<Cancel>>> {
+    static LIVE: OnceLock<Mutex<HashMap<String, Arc<Cancel>>>> = OnceLock::new();
     LIVE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -364,8 +379,8 @@ fn live_streams() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
 /// finished on its own, which is not an error.
 pub fn cancel_stream(stream_id: &str) {
     if let Ok(live) = live_streams().lock() {
-        if let Some(flag) = live.get(stream_id) {
-            flag.store(true, Ordering::SeqCst);
+        if let Some(cancel) = live.get(stream_id) {
+            cancel.cancel();
         }
     }
 }
@@ -373,12 +388,12 @@ pub fn cancel_stream(stream_id: &str) {
 /// Registers a stream for the duration of the request and removes it after.
 struct StreamGuard {
     id: Option<String>,
-    cancelled: Arc<AtomicBool>,
+    cancelled: Arc<Cancel>,
 }
 
 impl StreamGuard {
     fn new(id: Option<String>) -> Self {
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled = Arc::new(Cancel::default());
         if let Some(id) = &id {
             if let Ok(mut live) = live_streams().lock() {
                 live.insert(id.clone(), cancelled.clone());
@@ -388,7 +403,14 @@ impl StreamGuard {
     }
 
     fn cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
+        self.cancelled.flag.load(Ordering::SeqCst)
+    }
+
+    /// Resolves once the stream is cancelled.
+    async fn wait_cancelled(&self) {
+        while !self.cancelled() {
+            self.cancelled.wake.notified().await;
+        }
     }
 }
 
@@ -868,20 +890,22 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         // that has stopped sending but not closed leaves this awaiting a chunk
         // that never comes, which is the case cancellation exists for. So the
         // read is raced against the flag rather than gated on it.
-        let next = loop {
-            if guard.cancelled() {
-                // Dropping the response ends the request rather than holding
-                // the connection open for a body nobody will read.
+        let next = tokio::select! {
+            biased;
+            _ = guard.wait_cancelled() => None,
+            item = stream.next() => Some(item),
+        };
+        let next = match next {
+            // Cancelled: dropping the response ends the request rather than
+            // holding the connection open for a body nobody will read.
+            None => {
                 sink.send(StreamChunk::End);
                 return Ok(());
             }
-            match tokio::time::timeout(CANCEL_POLL, stream.next()).await {
-                Ok(Some(item)) => break item,
-                Ok(None) => {
-                    sink.send(StreamChunk::End);
-                    return Ok(());
-                }
-                Err(_) => continue,
+            Some(Some(item)) => item,
+            Some(None) => {
+                sink.send(StreamChunk::End);
+                return Ok(());
             }
         };
         match next {

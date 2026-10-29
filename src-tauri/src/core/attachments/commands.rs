@@ -91,6 +91,75 @@ pub async fn save_attachment_file<R: Runtime>(
     .map_err(|e| format!("save_attachment_file error: {e}"))?
 }
 
+/// Header carrying the percent-encoded file name of a raw-body save.
+pub const NAME_HEADER: &str = "x-flint-file-name";
+/// Header carrying the thread id of a raw-body save (optional).
+pub const THREAD_HEADER: &str = "x-flint-thread-id";
+
+/// [`save_attachment_file`] with the file's bytes as the raw IPC body instead
+/// of a base64 string, so a 200MB drop is not inflated by a third and copied
+/// through JSON. The name (percent-encoded) and thread id ride in headers.
+#[tauri::command]
+pub async fn save_attachment_bytes<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("save_attachment_bytes error: expected the file as a raw body".to_string());
+    };
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+    };
+    let file_name = header(NAME_HEADER)
+        .map(|raw| percent_decode(&raw))
+        .ok_or_else(|| "save_attachment_bytes error: missing file name".to_string())?;
+    let thread_id = header(THREAD_HEADER).filter(|t| !t.is_empty());
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return Err("save_attachment_file error: file too large (max 200MB)".to_string());
+    }
+    let bytes = bytes.clone();
+    let base = get_jan_data_folder_path(app_handle).join(ATTACHMENTS_DIR);
+    tauri::async_runtime::spawn_blocking(move || {
+        store_attachment(&base, &file_name, &bytes, thread_id.as_deref())
+    })
+    .await
+    .map_err(|e| format!("save_attachment_file error: {e}"))?
+}
+
+/// `%XX` escapes decoded (what `encodeURIComponent` produces); an invalid
+/// escape is kept as typed, and bytes that are not UTF-8 become U+FFFD.
+fn percent_decode(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if let Some(b) = raw.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod percent_decode_tests {
+    #[test]
+    fn decodes_what_encode_uri_component_makes_and_keeps_bad_escapes() {
+        assert_eq!(super::percent_decode("rapport%20%C3%A9t%C3%A9.pdf"), "rapport été.pdf");
+        assert_eq!(super::percent_decode("100%.txt"), "100%.txt");
+        assert_eq!(super::percent_decode("a%zz%4"), "a%zz%4");
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn save_attachment_file_blocking<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -118,24 +187,56 @@ pub(crate) fn save_attachment_in<R: Runtime>(
         return Err("save_attachment_file error: file too large (max 200MB)".to_string());
     }
 
-    let mut base = get_jan_data_folder_path(app_handle).join(ATTACHMENTS_DIR);
-    if let Some(thread_id) = thread_id.as_deref() {
+    let base = get_jan_data_folder_path(app_handle).join(ATTACHMENTS_DIR);
+    store_attachment(&base, &name, &bytes, thread_id.as_deref())
+}
+
+/// Write `bytes` as `file_name` under `attachments` dir `base` and return the
+/// saved path. The folder is named by the content's hash, so dropping the
+/// same file again reuses the copy already saved instead of storing it
+/// twice. The bytes go to `<name>.part` first and are renamed into place, so
+/// a crash mid-write never leaves a truncated file under the real name.
+pub(crate) fn store_attachment(
+    base: &std::path::Path,
+    file_name: &str,
+    bytes: &[u8],
+    thread_id: Option<&str>,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let name = attachment_file_name(file_name)?;
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return Err("save_attachment_file error: file too large (max 200MB)".to_string());
+    }
+    let mut base = base.to_path_buf();
+    if let Some(thread_id) = thread_id {
         crate::core::threads::utils::validate_thread_id(thread_id)
             .map_err(|e| format!("save_attachment_file error: {e}"))?;
         base = base.join(thread_id);
     }
-    let folder = base.join(uuid::Uuid::new_v4().to_string());
-    fs::create_dir_all(&folder).map_err(|e| format!("save_attachment_file error: {e}"))?;
-
-    let path = folder.join(name);
+    let digest = hex::encode(Sha256::digest(bytes));
+    let folder = base.join(&digest[..32]);
+    let path = folder.join(&name);
     // The name was reduced to a bare file name above; confirm it did not end up
     // anywhere but directly inside the attachment folder.
     if path.parent() != Some(folder.as_path()) {
-        let _ = fs::remove_dir_all(&folder);
         return Err("save_attachment_file error: invalid file name".to_string());
     }
-    if let Err(e) = fs::write(&path, bytes) {
-        let _ = fs::remove_dir_all(&folder);
+    // Same bytes under the same name: already saved.
+    if fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() == bytes.len() as u64) {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    fs::create_dir_all(&folder).map_err(|e| format!("save_attachment_file error: {e}"))?;
+    let part = folder.join(format!("{name}.{}.part", uuid::Uuid::new_v4().simple()));
+    let written = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut file = fs::File::create(&part)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&part, &path)
+    })();
+    if let Err(e) = written {
+        let _ = fs::remove_file(&part);
         return Err(format!("save_attachment_file error: {e}"));
     }
     Ok(path.to_string_lossy().into_owned())

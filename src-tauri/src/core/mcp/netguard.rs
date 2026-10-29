@@ -264,14 +264,61 @@ pub(crate) async fn check_lookup(host: &str) -> Result<Vec<SocketAddr>, String> 
     Ok(addrs)
 }
 
-/// [`check_lookup`] for the host of `url` when it is a name (a literal IP is
-/// checked by [`check_url`] and the redirect guard).
-pub(crate) async fn preflight_url(url: &str) -> Result<(), String> {
-    let Ok(parsed) = Url::parse(url) else { return Ok(()) };
-    if let Some(Host::Domain(host)) = parsed.host() {
-        check_lookup(host).await?;
+/// What the preflight lookup of an MCP URL found: the addresses its name
+/// resolved to (empty for a literal IP) and whether the host is wholly
+/// private/loopback.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Pin {
+    host: String,
+    addrs: Vec<SocketAddr>,
+    internal: bool,
+}
+
+impl Pin {
+    /// A private/loopback/LAN host: reached directly, never through the
+    /// configured proxy (the proxy would re-resolve the name itself, past
+    /// every check here, and a LAN server is not on its network anyway).
+    #[cfg(test)]
+    pub(crate) fn is_internal(&self) -> bool {
+        self.internal
     }
-    Ok(())
+}
+
+/// [`check_lookup`] for the host of `url` when it is a name (a literal IP is
+/// checked by [`check_url`] and the redirect guard). The checked answer is
+/// returned so the client can be pinned to it: a second lookup at connect
+/// time can then not hand back a different (private) address.
+pub(crate) async fn preflight_url(url: &str) -> Result<Pin, String> {
+    let Ok(parsed) = Url::parse(url) else { return Ok(Pin::default()) };
+    Ok(match parsed.host() {
+        Some(Host::Domain(host)) => {
+            let addrs = check_lookup(host).await?;
+            let internal = !addrs.is_empty() && addrs.iter().all(|a| internal(a.ip()));
+            Pin { host: host.to_string(), addrs, internal }
+        }
+        Some(Host::Ipv4(ip)) => Pin { internal: internal(IpAddr::V4(ip)), ..Pin::default() },
+        Some(Host::Ipv6(ip)) => Pin { internal: internal(IpAddr::V6(ip)), ..Pin::default() },
+        None => Pin::default(),
+    })
+}
+
+/// A reqwest 0.13 client builder for an MCP server: redirect and DNS guard,
+/// the name pinned to the addresses [`preflight_url`] checked, Flint's CA
+/// bundle, and the configured proxy unless the host is private (see
+/// [`Pin::is_internal`]). A public host behind a proxy is resolved by the
+/// proxy; the preflight check is what guards that path.
+pub(crate) fn mcp_client13(builder: reqwest13::ClientBuilder, pin: &Pin) -> reqwest13::ClientBuilder {
+    let mut builder = guard13(builder);
+    if !pin.host.is_empty() && !pin.addrs.is_empty() {
+        builder = builder.resolve_to_addrs(&pin.host, &pin.addrs);
+    }
+    let bundle = crate::core::net::tls::configured();
+    let builder = crate::core::net::tls::with_bundle13(builder, bundle.as_ref());
+    if pin.internal {
+        builder.no_proxy()
+    } else {
+        crate::core::net::proxy::apply13(builder)
+    }
 }
 
 /// A resolver that fails a lookup whose answer [`check_lookup`] refuses.
@@ -430,6 +477,18 @@ mod tests {
         // A LAN server that was always private is left alone.
         assert!(rebinding_error("h", &[ip("192.168.1.5")], Some(false), || false).is_none());
         assert!(rebinding_error("h", &[ip("1.1.1.1")], Some(true), || false).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_private_host_is_pinned_and_marked_for_a_direct_connect() {
+        let pin = preflight_url("http://localhost:3000/mcp").await.unwrap();
+        assert!(pin.is_internal());
+        assert_eq!(pin.host, "localhost");
+        assert!(!pin.addrs.is_empty());
+        assert!(preflight_url("http://192.168.1.5:8080/mcp").await.unwrap().is_internal());
+        assert!(!preflight_url("https://1.1.1.1/mcp").await.unwrap().is_internal());
+        // The builder accepts the pin (and skips the proxy) without error.
+        assert!(mcp_client13(reqwest13::Client::builder(), &pin).build().is_ok());
     }
 
     #[test]
