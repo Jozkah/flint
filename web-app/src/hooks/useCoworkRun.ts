@@ -11,6 +11,8 @@ import type {
 import type { ModelLoadProgress } from '@/hooks/useAppState'
 import type { RunOutcome } from '@/lib/coworkRunner'
 import type { RunEndedEvent } from '@/lib/runEnded'
+import { loadRunEndings, saveRunEndings } from '@/lib/runEndingsStorage'
+import type { StoreApi } from 'zustand'
 
 /** How a session's run ended, as the route shows it. */
 export type RunEnding = Pick<RunOutcome, 'stoppedBy' | 'errorText'>
@@ -481,31 +483,184 @@ type CoworkRunState = {
   clearCodeRun: (sid: string) => void
 }
 
-/**
- * How each session's last run ended, kept across a reload: a failed run's
- * notice is the only sign it failed, and it used to vanish with the page.
- */
-const OUTCOMES_KEY = 'cowork-run-outcomes'
+type SetRun = StoreApi<CoworkRunState>['setState']
 
-export function loadRunEndings(): Record<string, RunEnding> {
-  try {
-    const raw = localStorage.getItem(OUTCOMES_KEY)
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, RunEnding>)
-      : {}
-  } catch {
-    return {}
-  }
-}
+/** The subagent rows of a session's run (Q2-054: the store in slices). */
+const subagentActions = (
+  set: SetRun
+): Pick<
+  CoworkRunState,
+  'resetSubagents'
+  | 'startSubagent'
+  | 'queueSubagent'
+  | 'endSubagent'
+  | 'routeIntoSubagent'
+  | 'attachSubagentOutput'
+> => ({
+  resetSubagents: (sid) =>
+    set((s) => ({ subagents: { ...s.subagents, [sid]: [] } })),
 
-function saveRunEndings(outcomes: Record<string, RunEnding>) {
-  try {
-    localStorage.setItem(OUTCOMES_KEY, JSON.stringify(outcomes))
-  } catch {
-    // Best effort: the notice still shows until the page reloads.
-  }
-}
+  startSubagent: (sid, runId, name) =>
+    set((s) => {
+      const runs = s.subagents[sid] ?? []
+      // Promote a queued child the moment its slot frees; otherwise create it.
+      const idx = runs.findIndex((r) => r.runId === runId)
+      if (idx !== -1) {
+        const existing = runs[idx]
+        if (existing.status === 'queued') {
+          return {
+            subagents: {
+              ...s.subagents,
+              [sid]: [
+                ...runs.slice(0, idx),
+                { ...existing, status: 'running' as const, waiting: undefined, startedAt: Date.now() },
+                ...runs.slice(idx + 1),
+              ],
+            },
+          }
+        }
+        return {}
+      }
+      return {
+        subagents: {
+          ...s.subagents,
+          [sid]: [
+            ...runs,
+            { runId, name, status: 'running', startedAt: Date.now(), turns: [] },
+          ],
+        },
+      }
+    }),
+
+  queueSubagent: (sid, runId, name, waiting) =>
+    set((s) => {
+      const runs = s.subagents[sid] ?? []
+      if (runs.some((r) => r.runId === runId)) return {}
+      return {
+        subagents: {
+          ...s.subagents,
+          [sid]: [
+            ...runs,
+            { runId, name, status: 'queued', waiting, startedAt: Date.now(), turns: [] },
+          ],
+        },
+      }
+    }),
+
+
+  endSubagent: (sid, runId, usage) =>
+    set((s) => ({
+      subagents: {
+        ...s.subagents,
+        [sid]: (s.subagents[sid] ?? []).map((r) =>
+          r.runId === runId && r.status !== 'done'
+            ? {
+                ...r,
+                status: 'done' as const,
+                endedAt: Date.now(),
+                usage: usage ?? undefined,
+              }
+            : r
+        ),
+      },
+    })),
+
+  routeIntoSubagent: (sid, runId, inner) =>
+    set((s) => ({
+      subagents: {
+        ...s.subagents,
+        [sid]: (s.subagents[sid] ?? []).map((r) =>
+          r.runId === runId ? { ...r, turns: applyInnerToTurns(r.turns, inner) } : r
+        ),
+      },
+    })),
+
+  attachSubagentOutput: (sid, runId, content) =>
+    set((s) => ({
+      subagents: {
+        ...s.subagents,
+        [sid]: (s.subagents[sid] ?? []).map((r) =>
+          r.runId === runId && r.finalOutput == null ? { ...r, finalOutput: content } : r
+        ),
+      },
+    })),
+})
+
+/** Questions the agent asked the user, and the prompt snapshots beside them. */
+const askActions = (
+  set: SetRun
+): Pick<
+  CoworkRunState,
+  'addPendingAsk'
+  | 'removePendingAsk'
+  | 'attachAsk'
+  | 'recordPromptSnapshot'
+  | 'attachPromptSnapshot'
+  | 'settleAsk'
+> => ({
+  addPendingAsk: (sid, requestId, request) =>
+    set((s) => ({
+      pendingAsks: {
+        ...s.pendingAsks,
+        [sid]: [...(s.pendingAsks[sid] ?? []), { requestId, request }],
+      },
+    })),
+
+  removePendingAsk: (sid, requestId) =>
+    set((s) => ({
+      pendingAsks: {
+        ...s.pendingAsks,
+        [sid]: (s.pendingAsks[sid] ?? []).filter((a) => a.requestId !== requestId),
+      },
+    })),
+
+  attachAsk: (sid, record) =>
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: attachAskToTurns(st.liveTurns[sid] ?? [], record),
+      },
+    })),
+
+  recordPromptSnapshot: (sid, ref) =>
+    set((st) => {
+      const seen = st.promptSnapshots[sid] ?? []
+      if (seen.some((s) => s.id === ref.id)) return {}
+      return {
+        promptSnapshots: { ...st.promptSnapshots, [sid]: [...seen, ref] },
+      }
+    }),
+
+  attachPromptSnapshot: (sid, ref) =>
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: attachPromptSnapshotToTurns(st.liveTurns[sid] ?? [], ref),
+      },
+    })),
+
+  settleAsk: (sid, requestId, state, answers) =>
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: settleAskInTurns(
+          st.liveTurns[sid] ?? [],
+          requestId,
+          state,
+          // Pasted pictures go to the model, not into the saved transcript.
+          answers?.map((a) => ({
+            id: a.id,
+            selected: a.selected,
+            ...(a.custom_input !== undefined
+              ? { custom_input: a.custom_input }
+              : {}),
+          }))
+        ),
+      },
+    })),
+})
+
+export { loadRunEndings }
 
 export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   liveTurns: {},
@@ -616,93 +771,7 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
       }
     }),
 
-  resetSubagents: (sid) =>
-    set((s) => ({ subagents: { ...s.subagents, [sid]: [] } })),
-
-  startSubagent: (sid, runId, name) =>
-    set((s) => {
-      const runs = s.subagents[sid] ?? []
-      // Promote a queued child the moment its slot frees; otherwise create it.
-      const idx = runs.findIndex((r) => r.runId === runId)
-      if (idx !== -1) {
-        const existing = runs[idx]
-        if (existing.status === 'queued') {
-          return {
-            subagents: {
-              ...s.subagents,
-              [sid]: [
-                ...runs.slice(0, idx),
-                { ...existing, status: 'running' as const, waiting: undefined, startedAt: Date.now() },
-                ...runs.slice(idx + 1),
-              ],
-            },
-          }
-        }
-        return {}
-      }
-      return {
-        subagents: {
-          ...s.subagents,
-          [sid]: [
-            ...runs,
-            { runId, name, status: 'running', startedAt: Date.now(), turns: [] },
-          ],
-        },
-      }
-    }),
-
-  queueSubagent: (sid, runId, name, waiting) =>
-    set((s) => {
-      const runs = s.subagents[sid] ?? []
-      if (runs.some((r) => r.runId === runId)) return {}
-      return {
-        subagents: {
-          ...s.subagents,
-          [sid]: [
-            ...runs,
-            { runId, name, status: 'queued', waiting, startedAt: Date.now(), turns: [] },
-          ],
-        },
-      }
-    }),
-
-
-  endSubagent: (sid, runId, usage) =>
-    set((s) => ({
-      subagents: {
-        ...s.subagents,
-        [sid]: (s.subagents[sid] ?? []).map((r) =>
-          r.runId === runId && r.status !== 'done'
-            ? {
-                ...r,
-                status: 'done' as const,
-                endedAt: Date.now(),
-                usage: usage ?? undefined,
-              }
-            : r
-        ),
-      },
-    })),
-
-  routeIntoSubagent: (sid, runId, inner) =>
-    set((s) => ({
-      subagents: {
-        ...s.subagents,
-        [sid]: (s.subagents[sid] ?? []).map((r) =>
-          r.runId === runId ? { ...r, turns: applyInnerToTurns(r.turns, inner) } : r
-        ),
-      },
-    })),
-
-  attachSubagentOutput: (sid, runId, content) =>
-    set((s) => ({
-      subagents: {
-        ...s.subagents,
-        [sid]: (s.subagents[sid] ?? []).map((r) =>
-          r.runId === runId && r.finalOutput == null ? { ...r, finalOutput: content } : r
-        ),
-      },
-    })),
+  ...subagentActions(set),
 
   setUsage: (sid, usage) =>
     set((s) => (usage ? { usage: { ...s.usage, [sid]: usage } } : {})),
@@ -745,66 +814,7 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
       return { modelLoadProgress: next }
     }),
 
-  addPendingAsk: (sid, requestId, request) =>
-    set((s) => ({
-      pendingAsks: {
-        ...s.pendingAsks,
-        [sid]: [...(s.pendingAsks[sid] ?? []), { requestId, request }],
-      },
-    })),
-
-  removePendingAsk: (sid, requestId) =>
-    set((s) => ({
-      pendingAsks: {
-        ...s.pendingAsks,
-        [sid]: (s.pendingAsks[sid] ?? []).filter((a) => a.requestId !== requestId),
-      },
-    })),
-
-  attachAsk: (sid, record) =>
-    set((st) => ({
-      liveTurns: {
-        ...st.liveTurns,
-        [sid]: attachAskToTurns(st.liveTurns[sid] ?? [], record),
-      },
-    })),
-
-  recordPromptSnapshot: (sid, ref) =>
-    set((st) => {
-      const seen = st.promptSnapshots[sid] ?? []
-      if (seen.some((s) => s.id === ref.id)) return {}
-      return {
-        promptSnapshots: { ...st.promptSnapshots, [sid]: [...seen, ref] },
-      }
-    }),
-
-  attachPromptSnapshot: (sid, ref) =>
-    set((st) => ({
-      liveTurns: {
-        ...st.liveTurns,
-        [sid]: attachPromptSnapshotToTurns(st.liveTurns[sid] ?? [], ref),
-      },
-    })),
-
-  settleAsk: (sid, requestId, state, answers) =>
-    set((st) => ({
-      liveTurns: {
-        ...st.liveTurns,
-        [sid]: settleAskInTurns(
-          st.liveTurns[sid] ?? [],
-          requestId,
-          state,
-          // Pasted pictures go to the model, not into the saved transcript.
-          answers?.map((a) => ({
-            id: a.id,
-            selected: a.selected,
-            ...(a.custom_input !== undefined
-              ? { custom_input: a.custom_input }
-              : {}),
-          }))
-        ),
-      },
-    })),
+  ...askActions(set),
 
   finalizeRun: (sid) => {
     // Run-level failure surfaces via `useMessageErrors` (Generation-failed
