@@ -402,13 +402,22 @@ pub fn log_path(data_folder: &Path) -> PathBuf {
 /// Where one call's diff is stored. Both parts are reduced to a safe file
 /// name, so a session or call id can never name a path outside the folder.
 pub fn diff_path(data_folder: &Path, session: &str, call: &str) -> PathBuf {
+    // An id that had to be changed to fit (`a.b` and `a_b` both clean to
+    // `a_b`; long ids share their first 96 characters) also carries a short
+    // hash of the original, so two calls never share one diff file (O02-025).
     let safe = |s: &str| -> String {
         let cleaned: String = s
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
             .take(96)
             .collect();
-        if cleaned.is_empty() { "_".to_string() } else { cleaned }
+        if cleaned == s && !cleaned.is_empty() {
+            return cleaned;
+        }
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(s.as_bytes());
+        let tag: String = hash.iter().take(4).map(|b| format!("{b:02x}")).collect();
+        format!("{cleaned}~{tag}")
     };
     data_folder
         .join("audit")
@@ -1647,6 +1656,15 @@ mod tests {
         let p = diff_path(&dir, "..\\..\\evil", "../../../x");
         assert!(p.starts_with(dir.join("audit").join("diffs")));
         assert!(!p.to_string_lossy().contains(".."));
+    }
+
+    #[test]
+    fn ids_that_clean_to_the_same_name_get_different_diff_files() {
+        let dir = scratch();
+        assert_ne!(diff_path(&dir, "s", "a.b"), diff_path(&dir, "s", "a_b"));
+        let long = "c".repeat(120);
+        assert_ne!(diff_path(&dir, "s", &long), diff_path(&dir, "s", &format!("{long}d")));
+        assert!(diff_path(&dir, "s1", "call_0").ends_with("call_0.diff"));
     }
 
     #[test]

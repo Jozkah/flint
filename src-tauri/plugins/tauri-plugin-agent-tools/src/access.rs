@@ -599,6 +599,17 @@ fn is_system_location(path: &Path) -> bool {
             roots.push(PathBuf::from(v));
         }
     }
+    // The environment can be changed by whoever starts the app; the system's
+    // own answer is checked as well (O02-025).
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::{
+            FOLDERID_ProgramData, FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, FOLDERID_Windows,
+        };
+        for id in [&FOLDERID_Windows, &FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX86, &FOLDERID_ProgramData] {
+            roots.extend(crate::org_policy::known_folder(id));
+        }
+    }
     #[cfg(unix)]
     for p in [
         "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/var", "/opt", "/System",

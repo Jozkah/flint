@@ -1091,7 +1091,7 @@ mod win {
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
     use windows_sys::Win32::System::Threading::{
         CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
@@ -2120,6 +2120,10 @@ mod win {
         out
     }
 
+    /// Most processes alive at once in one sandboxed command's tree, the helper
+    /// included.
+    const SANDBOX_MAX_PROCESSES: u32 = 256;
+
     /// Put this process in a kill-on-close job, so the shell -- created inside the
     /// job by inheritance -- dies whenever the helper does. `kill_on_drop` and
     /// `kill_tree` reach the helper, not the extra process layer it adds, so
@@ -2135,7 +2139,11 @@ mod win {
         }
         // SAFETY: JOBOBJECT_EXTENDED_LIMIT_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // A fork bomb in the sandbox stops at a process count instead of taking
+        // the machine down (P2B-016). Generous for builds, which run tens.
+        limits.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+        limits.BasicLimitInformation.ActiveProcessLimit = SANDBOX_MAX_PROCESSES;
         // SAFETY: `job` is a live job handle; pointer and size describe `limits`, a local that outlives the call.
         let sized = unsafe {
             SetInformationJobObject(

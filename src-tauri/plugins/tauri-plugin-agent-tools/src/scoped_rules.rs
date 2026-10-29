@@ -603,10 +603,23 @@ pub fn covers(
     args: &Value,
     project_root: &Path,
 ) -> bool {
+    covers_keyed(rule, tool, kind, args, project_root, &project_key(project_root))
+}
+
+/// [`covers`] with the project's key already worked out, so a lookup over
+/// many rules resolves the project folder once, not once per rule (F05-006).
+fn covers_keyed(
+    rule: &ScopedRule,
+    tool: &BuiltinTool,
+    kind: PromptKind,
+    args: &Value,
+    project_root: &Path,
+    key: &str,
+) -> bool {
     if kind.is_every_time()
         || rule.tool != tool.name
         || rule.kind != kind_name(kind)
-        || rule.project != project_key(project_root)
+        || rule.project != key
     {
         return false;
     }
@@ -748,11 +761,14 @@ pub fn find_cover(
     if kind.is_every_time() {
         return None;
     }
-    let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    read_rules(data_folder)
-        .ok()?
+    let rules = {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        read_rules(data_folder).ok()?
+    };
+    let key = project_key(project_root);
+    rules
         .into_iter()
-        .find(|r| covers(r, tool, kind, args, project_root))
+        .find(|r| covers_keyed(r, tool, kind, args, project_root, &key))
 }
 
 /// `decision` with a covering rule applied: `Prompt(kind)` becomes `Allow`

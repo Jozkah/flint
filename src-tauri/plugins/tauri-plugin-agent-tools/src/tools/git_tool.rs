@@ -1174,6 +1174,52 @@ fn check_gh_shape(group: &str, action: &str, args: &[String]) -> Result<(), Stri
     Ok(())
 }
 
+/// Files gh reads and uploads (`--body-file`, `-F`, `--notes-file`, release
+/// assets) are read outside the sandbox, so each must be a relative path that
+/// stays inside the folder, like git's message files (O06-017).
+fn check_gh_files(group: &str, action: &str, args: &[String]) -> Result<(), String> {
+    let rest = args.get(2..).unwrap_or(&[]);
+    let mut files: Vec<String> = Vec::new();
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        if a == "--" {
+            break;
+        }
+        match a.as_str() {
+            "-F" | "--body-file" | "--notes-file" => files.extend(it.next().cloned()),
+            _ => {
+                if let Some(v) = a
+                    .strip_prefix("--body-file=")
+                    .or_else(|| a.strip_prefix("--notes-file="))
+                    .or_else(|| a.strip_prefix("-F").filter(|v| !v.is_empty()))
+                {
+                    files.push(v.to_string());
+                }
+            }
+        }
+    }
+    if group == "release" && matches!(action, "create" | "upload") {
+        // `gh release create|upload <tag> <files>...`; an asset may carry a
+        // `#display label`.
+        let values = [
+            "-F", "--notes-file", "-n", "--notes", "-t", "--title", "--target", "-R", "--repo",
+            "--discussion-category", "--notes-start-tag",
+        ];
+        files.extend(
+            positionals(rest, &values)
+                .into_iter()
+                .skip(1)
+                .map(|a| a.split('#').next().unwrap_or(a).to_string()),
+        );
+    }
+    for v in files {
+        if escapes_by_spelling(&v) {
+            return Err(format!("the file `{v}` must be a relative path inside the folder"));
+        }
+    }
+    Ok(())
+}
+
 fn gh_plan(args: Vec<String>) -> Result<GitPlan, String> {
     let args = move_leading_repo(args)?;
     let Some(group) = args.first().cloned() else {
@@ -1192,6 +1238,7 @@ fn gh_plan(args: Vec<String>) -> Result<GitPlan, String> {
     }
     let action = args.get(1).map(String::as_str).unwrap_or("");
     check_gh_shape(&group, action, &args)?;
+    check_gh_files(&group, action, &args)?;
     let mut plan = plan_of(Program::Gh, args.clone(), GitClass::Read);
     plan.reaches_remote = true;
     let destructive = |why: &str| Some(why.to_string());
@@ -1631,7 +1678,47 @@ fn created_path(plan: &GitPlan, cwd: &Path) -> Option<PathBuf> {
     canon_new(&target)
 }
 
+/// Every positional of a creating call besides the URL. An option git takes
+/// with a separate value that `created_dir` does not know (`init --ref-format
+/// files /outside`) shifts which positional is the destination, so each one
+/// that could name a folder elsewhere is checked too (F5x2-019).
+fn creating_positionals(plan: &GitPlan) -> Vec<String> {
+    let args = &plan.args;
+    let (rest, skip) = match (plan.program, args.first().map(String::as_str)) {
+        (Program::Git, Some("clone")) => (&args[1..], 1),
+        (Program::Git, Some("init")) => (&args[1..], 0),
+        (Program::Git, Some("worktree")) if args.get(1).map(String::as_str) == Some("add") => (&args[2..], 0),
+        (Program::Gh, Some("repo")) if args.get(1).map(String::as_str) == Some("clone") => (&args[2..], 1),
+        _ => return Vec::new(),
+    };
+    positionals(rest, &[]).into_iter().skip(skip).map(str::to_string).collect()
+}
+
 pub fn check_created_dir(plan: &GitPlan, cwd: &Path, roots: &Roots) -> Result<(), String> {
+    check_destination(plan, cwd, roots)?;
+    let dest = created_dir(plan);
+    for other in creating_positionals(plan) {
+        if dest.as_deref() == Some(other.as_str()) {
+            continue;
+        }
+        // A plain relative name stays under the checked working folder; only a
+        // spelling that can leave it is resolved.
+        if !escapes_by_spelling(&other) {
+            continue;
+        }
+        let target = if Path::new(&other).is_absolute() { PathBuf::from(&other) } else { cwd.join(&other) };
+        let ok = canon_new(&target)
+            .is_some_and(|r| !in_jan_dir(&r) && (inside(&r, &roots.write()) || beside_granted(&r, roots)));
+        if !ok {
+            return Err(format!(
+                "`{other}` names a folder outside the folders this run may write to; pick a destination inside them"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn check_destination(plan: &GitPlan, cwd: &Path, roots: &Roots) -> Result<(), String> {
     let Some(dir) = created_dir(plan) else {
         return Ok(());
     };
@@ -2855,7 +2942,27 @@ mod tests {
         let cwd = resolve_cwd(None, &clone_abs, &roots).unwrap();
         assert_eq!(cwd, ws, "a clone defaults to a writable root");
         assert!(check_created_dir(&clone_abs, &cwd, &roots).is_ok());
+
+        // An unknown option value shifts the positionals: the real destination
+        // is still checked (F5x2-019).
+        let out = outside.join("x");
+        let init_shift = p("git", &["init", "--ref-format", "files", out.to_str().unwrap()]).unwrap();
+        assert!(check_created_dir(&init_shift, &ws, &roots).is_err());
+        let init_in = p("git", &["init", "--ref-format", "files", "sub"]).unwrap();
+        assert!(check_created_dir(&init_in, &ws, &roots).is_ok());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// gh reads body, notes and asset files outside the sandbox (O06-017).
+    #[test]
+    fn gh_file_arguments_stay_inside_the_folder() {
+        assert!(p("gh", &["pr", "create", "--title", "t", "--body-file", "/etc/x"]).is_err());
+        assert!(p("gh", &["issue", "create", "-t", "t", "-F", "../secret"]).is_err());
+        assert!(p("gh", &["pr", "comment", "1", "--body-file=C:/Users/u/.ssh/id_rsa"]).is_err());
+        assert!(p("gh", &["release", "upload", "v1", "/home/u/.netrc#notes"]).is_err());
+        assert!(p("gh", &["release", "create", "v1", "--notes-file", "../n.md"]).is_err());
+        assert!(p("gh", &["pr", "create", "--title", "t", "--body-file", "body.md"]).is_ok());
+        assert!(p("gh", &["release", "upload", "v1", "dist/app.zip#App"]).is_ok());
     }
 
     /// Session 8411d403: a push the user approved was then refused because
