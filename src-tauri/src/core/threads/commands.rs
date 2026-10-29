@@ -43,42 +43,113 @@ fn list_threads_in(data_folder: &std::path::Path) -> Result<Vec<serde_json::Valu
         return Ok(threads);
     }
 
+    let mut cache = thread_file_cache().lock().unwrap_or_else(|p| p.into_inner());
+    let mut seen = std::collections::HashSet::new();
     for entry in fs::read_dir(&data_dir).map_err(|e| e.to_string())? {
         let Ok(entry) = entry else {
             continue;
         };
-        let path = entry.path();
-        if path.is_dir() {
-            let thread_metadata_path = path.join(THREADS_FILE);
-            if thread_metadata_path.exists() {
-                // One thread that cannot be read (deleted between the check
-                // and the read, locked, permission denied) must not hide
-                // every other thread: skip it like an unparsable one.
-                let data = match fs::read_to_string(&thread_metadata_path) {
-                    Ok(data) => data,
-                    Err(e) => {
-                        log::warn!(
-                            "Skipping unreadable thread file {}: {e}",
-                            thread_metadata_path.display()
-                        );
-                        continue;
-                    }
-                };
-                match parse_thread_file(&data) {
-                    Ok(thread) => threads.push(thread),
-                    Err(e) => {
-                        log::warn!(
-                            "Skipping thread file {}: {e}",
-                            thread_metadata_path.display()
-                        );
-                        continue; // skip invalid thread files
-                    }
-                }
+        // `file_type` comes with the directory listing on Windows and most
+        // Unix filesystems, so no extra stat per entry.
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let thread_metadata_path = entry.path().join(THREADS_FILE);
+        // One thread that cannot be read (deleted between the listing and
+        // the read, locked, permission denied) must not hide every other
+        // thread: skip it like an unparsable one.
+        let Ok(meta) = fs::metadata(&thread_metadata_path) else {
+            continue;
+        };
+        let stamp = (meta.modified().ok(), meta.len());
+        seen.insert(thread_metadata_path.clone());
+        // Unchanged since the last list (same mtime and length): reuse the
+        // parsed value instead of reading and parsing the file again.
+        if let Some((cached_stamp, value)) = cache.get(&thread_metadata_path) {
+            if *cached_stamp == stamp && stamp.0.is_some() {
+                threads.push(value.clone());
+                continue;
+            }
+        }
+        let data = match fs::read_to_string(&thread_metadata_path) {
+            Ok(data) => data,
+            Err(e) => {
+                log::warn!(
+                    "Skipping unreadable thread file {}: {e}",
+                    thread_metadata_path.display()
+                );
+                continue;
+            }
+        };
+        match parse_thread_file(&data) {
+            Ok(thread) => {
+                cache.insert(thread_metadata_path, (stamp, thread.clone()));
+                threads.push(thread);
+            }
+            Err(e) => {
+                log::warn!(
+                    "Skipping thread file {}: {e}",
+                    thread_metadata_path.display()
+                );
+                cache.remove(&thread_metadata_path);
             }
         }
     }
+    // Threads deleted since the last list leave the cache with them.
+    cache.retain(|path, _| seen.contains(path));
 
     Ok(threads)
+}
+
+type ThreadStamp = (Option<std::time::SystemTime>, u64);
+
+/// Parsed `thread.json` files by path, with the (mtime, length) they were
+/// parsed at.
+fn thread_file_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (ThreadStamp, serde_json::Value)>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (ThreadStamp, serde_json::Value)>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+#[cfg(test)]
+mod list_threads_cache_tests {
+    use super::*;
+
+    #[test]
+    fn an_unchanged_thread_file_is_served_from_the_cache_and_a_changed_one_is_reread() {
+        let root = std::env::temp_dir().join(format!("jan_list_cache_{}", uuid::Uuid::new_v4()));
+        let dir = get_data_dir(&root).join("t1");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(THREADS_FILE);
+        fs::write(&file, r#"{"id":"t1","title":"one"}"#).unwrap();
+        // A stray file beside the thread folders is not a thread.
+        fs::write(get_data_dir(&root).join("stray.txt"), "x").unwrap();
+        let first = list_threads_in(&root).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0]["title"], "one");
+        assert!(thread_file_cache().lock().unwrap().contains_key(&file));
+
+        // Same length and mtime: the cached value is what comes back, which
+        // the poisoned cache entry proves.
+        {
+            let mut cache = thread_file_cache().lock().unwrap();
+            let entry = cache.get_mut(&file).unwrap();
+            entry.1["title"] = serde_json::json!("cached");
+        }
+        assert_eq!(list_threads_in(&root).unwrap()[0]["title"], "cached");
+
+        // A real change (new length) is read again.
+        fs::write(&file, r#"{"id":"t1","title":"renamed"}"#).unwrap();
+        assert_eq!(list_threads_in(&root).unwrap()[0]["title"], "renamed");
+
+        // A deleted thread drops out of the list and the cache.
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(list_threads_in(&root).unwrap().is_empty());
+        assert!(!thread_file_cache().lock().unwrap().contains_key(&file));
+        let _ = fs::remove_dir_all(&root);
+    }
 }
 
 /// Parses a thread.json, tolerating a UTF-8 BOM and rejecting anything that is

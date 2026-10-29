@@ -478,8 +478,10 @@ async fn connect_in(
         match (params.transport_type.as_deref(), params.url.as_deref()) {
             (Some(transport @ ("http" | "sse")), Some(url)) => {
                 crate::core::mcp::netguard::enforce_url(url).map_err(ConnectError::Failed)?;
-                crate::core::mcp::netguard::preflight_url(url).await.map_err(ConnectError::Failed)?;
-                let base = http_client(&params.headers)?;
+                let pin = crate::core::mcp::netguard::preflight_url(url)
+                    .await
+                    .map_err(ConnectError::Failed)?;
+                let base = http_client(&params.headers, &pin)?;
                 // A credential problem we can already name (expired with no refresh
                 // token, or issued for a different url) is `NeedsAuth` outright --
                 // there is no point attempting a connect we know is unauthorized.
@@ -627,7 +629,10 @@ fn client_info() -> ClientInfo {
 /// (http auth). Non-string header names/values are skipped. Uses `reqwest13`
 /// because rmcp's streamable-http transport is implemented for reqwest 0.13;
 /// apply13 keeps Flint's custom-CA TLS trust (AH-190) on it.
-fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest13::Client, String> {
+fn http_client(
+    headers: &serde_json::Map<String, Value>,
+    pin: &crate::core::mcp::netguard::Pin,
+) -> Result<reqwest13::Client, String> {
     let mut map = reqwest13::header::HeaderMap::new();
     for (key, value) in headers.iter() {
         if let Some(v) = value.as_str() {
@@ -645,11 +650,12 @@ fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest13::Cl
             }
         }
     }
-    crate::core::net::tls::apply13(
-        crate::core::mcp::netguard::guard13(reqwest13::Client::builder())
+    crate::core::mcp::netguard::mcp_client13(
+        reqwest13::Client::builder()
             .default_headers(map)
             .connect_timeout(std::time::Duration::from_secs(15))
             .read_timeout(std::time::Duration::from_secs(300)),
+        pin,
     )
         .build()
         .map_err(|e| e.to_string())
