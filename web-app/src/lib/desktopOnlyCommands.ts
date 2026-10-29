@@ -123,6 +123,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'get_tools_for_servers',
       'list_open_apps',
       'plugin:agent-tools|advertised_tool_schemas',
+      'plugin:agent-tools|approval_mint',
       'plugin:agent-tools|bash_job_kill',
       'plugin:agent-tools|bash_jobs_list',
       'plugin:agent-tools|direct_edit_authorize',
