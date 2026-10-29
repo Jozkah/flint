@@ -662,7 +662,9 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
                     let _ = manifest::write(&flint_config, &m);
                     result.status = Status::Failed;
                     result.error = Some(format!(
-                        "removing the JAN data failed ({e}) and restoring it failed ({re}).                          The JAN folder may be incomplete. A full copy of it is kept in {}                          and Flint's migrated copy was kept.",
+                        "removing the JAN data failed ({e}) and restoring it failed ({re}). \
+                         Your data is safe in the new location: Flint's migrated copy was kept. \
+                         The old JAN location may be partial; a full copy of it is kept in {}.",
                         backup_root.display()
                     ));
                 }
@@ -1481,6 +1483,7 @@ mod tests {
         assert!(backup.exists(), "backup must be kept");
         let err = r.error.unwrap();
         assert!(err.contains(&backup.display().to_string()), "err={err}");
+        assert!(err.contains("safe in the new location") && err.contains("may be partial"), "err={err}");
         let f = flint_paths(&roots);
         assert!(f.data_folder.join("threads/thread_1/thread.json").is_file());
     }
