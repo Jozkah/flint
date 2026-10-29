@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { ChevronDown, ExternalLink, GitMerge, RefreshCw, Wrench, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -68,12 +69,11 @@ async function fixCheck(
   check: CheckRun,
   t: (key: string, opts?: Record<string, unknown>) => string
 ) {
-  const { invoke } = await import('@tauri-apps/api/core')
   const outcome = await requestCheckRepair(
     { folder, sessionId, pr, relation: 'mine', check },
     {
       fetchLog: (a) =>
-        invoke<CheckLog>('agent_pr_check_log', {
+        invokeCommand<CheckLog>('agent_pr_check_log', {
           project: a.project,
           prUrl: a.prUrl,
           headSha: a.headSha,

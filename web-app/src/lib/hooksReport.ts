@@ -1,9 +1,9 @@
+import { invokeCommand } from '@/lib/backend'
 /**
  * Read-only view of a project's hooks (`agent_hooks_report`). Nothing is run;
  * the backend reports what `hooks.toml` declares and whether the folder is
  * trusted, which decides whether any of it would run.
  */
-import { invoke } from '@/lib/previewInvoke'
 
 export type HookInfo = {
   event: string
@@ -30,7 +30,7 @@ export async function hooksReport(
   call: (cmd: string, args: { folder: string }) => Promise<unknown> = (
     cmd,
     args
-  ) => invoke(cmd, args)
+  ) => invokeCommand(cmd, args)
 ): Promise<HooksReport | null> {
   const report = (await call('agent_hooks_report', { folder })) as HooksReport
   return report && Array.isArray(report.hooks) ? report : null

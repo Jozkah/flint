@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
@@ -17,17 +17,17 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 
 const io: BackupIo = {
-  get: (key) => invoke<string | null>('settings_get', { key }),
-  set: (key, value) => invoke('settings_set', { key, value }),
+  get: (key) => invokeCommand<string | null>('settings_get', { key }),
+  set: (key, value) => invokeCommand('settings_set', { key, value }),
   // Keys leave the credential store only for a backup the user chose to put
   // secrets in; the command refuses without the explicit confirm.
   getProviderKeys: (provider) =>
-    invoke<string[]>('export_provider_keys_for_backup', {
+    invokeCommand<string[]>('export_provider_keys_for_backup', {
       provider,
       confirm: true,
     }),
   setProviderKeys: (provider, keys) =>
-    invoke('settings_backup_store_provider_keys', { provider, keys }),
+    invokeCommand('settings_backup_store_provider_keys', { provider, keys }),
 }
 
 /**
@@ -58,7 +58,7 @@ export function SettingsBackupCard() {
     setBusy(true)
     try {
       const backup = await buildBackup(io, { includeSecrets })
-      const report = await invoke<{ path: string } | null>(
+      const report = await invokeCommand<{ path: string } | null>(
         'settings_backup_save',
         {
           suggestedName: defaultBackupName(),
@@ -80,7 +80,7 @@ export function SettingsBackupCard() {
   const handleChooseFile = async () => {
     setBusy(true)
     try {
-      const text = await invoke<string | null>('settings_backup_load')
+      const text = await invokeCommand<string | null>('settings_backup_load')
       if (text == null) return
       const backup = parseBackup(text)
       setPreview(await previewBackupSecurity(io, backup))

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useWebPreview } from '@/hooks/useWebPreview'
 
@@ -33,8 +33,8 @@ export const useBrowserAgentPane = create<PaneState>()((set) => ({
     })),
 }))
 
-export const stopBrowserAgent = () => invoke('browser_agent_stop')
-export const resumeBrowserAgent = () => invoke('browser_agent_resume')
+export const stopBrowserAgent = () => invokeCommand('browser_agent_stop')
+export const resumeBrowserAgent = () => invokeCommand('browser_agent_resume')
 
 const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
 

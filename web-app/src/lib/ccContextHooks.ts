@@ -15,7 +15,7 @@
  * while its prompt hooks ran comes back `interrupted` and is refused.
  */
 import type { UIMessage } from 'ai'
-import { invoke } from '@/lib/previewInvoke'
+import { invokeCommand } from '@/lib/backend'
 
 export type CcContextHooks = {
   enabled: boolean
@@ -71,7 +71,7 @@ export async function runCcContextHooks(args: {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const answer = await Promise.race([
-      invoke<Partial<CcContextHooks> | null>('run_cc_context_hooks', {
+      invokeCommand<Partial<CcContextHooks> | null>('run_cc_context_hooks', {
         sessionId: args.sessionId ?? null,
         projectDir: args.projectDir ?? null,
         prompt: args.prompt ?? null,

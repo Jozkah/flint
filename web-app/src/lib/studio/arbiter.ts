@@ -1,4 +1,5 @@
 import { isPlatformTauri } from '@/lib/platform/utils'
+import { invokeCommand } from '@/lib/backend'
 
 /**
  * The image model and a chat model do not both fit on most graphics cards, so
@@ -8,8 +9,7 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 export async function releaseImageModelForChat(): Promise<void> {
   if (!isPlatformTauri()) return
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('diffusion_unload')
+    await invokeCommand('diffusion_unload')
   } catch {
     // The image engine being unavailable must never stop a chat model from loading.
   }

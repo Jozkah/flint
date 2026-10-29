@@ -2,8 +2,8 @@
  * Tauri App Service - Desktop implementation
  */
 
-import { invoke } from '@tauri-apps/api/core'
 import { AppConfiguration } from '@janhq/core'
+import { invokeCommand } from '@/lib/backend'
 import type {
   FactoryResetOptions,
   HfEndpointSetting,
@@ -52,9 +52,9 @@ export class TauriAppService extends DefaultAppService {
     pruneLocalStorageByFlags({ keepAppData, keepModelsAndConfigs })
 
     if (!keepAppData && !keepModelsAndConfigs && !clearWebData) {
-      await invoke('factory_reset')
+      await invokeCommand('factory_reset')
     } else {
-      await invoke('factory_reset', {
+      await invokeCommand('factory_reset', {
         keepAppData,
         keepModelsAndConfigs,
         clearWebData,
@@ -63,13 +63,13 @@ export class TauriAppService extends DefaultAppService {
   }
 
   async readLogs(): Promise<LogEntry[]> {
-    const logData: string = (await invoke('read_logs')) ?? ''
+    const logData: string = (await invokeCommand('read_logs')) ?? ''
     return logData.split('\n').map(this.parseLogLine)
   }
 
   async readLogsSince(offset?: number): Promise<LogChunk> {
     const chunk: { text: string; offset: number; reset: boolean } =
-      await invoke('read_logs_since', { offset: offset ?? null })
+      await invokeCommand('read_logs_since', { offset: offset ?? null })
     return {
       entries: chunk.text
         .split('\n')
@@ -135,37 +135,37 @@ export class TauriAppService extends DefaultAppService {
   }
 
   async getServerStatus(): Promise<boolean> {
-    return await invoke<boolean>('get_server_status')
+    return await invokeCommand<boolean>('get_server_status')
   }
 
   async setServerRunInBackground(enabled: boolean): Promise<void> {
-    await invoke('set_server_run_in_background', { enabled })
+    await invokeCommand('set_server_run_in_background', { enabled })
   }
 
   async setCloseToTray(enabled: boolean): Promise<void> {
-    await invoke('set_close_to_tray', { enabled })
+    await invokeCommand('set_close_to_tray', { enabled })
   }
 
   async setDownloadSpeedLimit(bytesPerSec: number): Promise<void> {
-    await invoke('set_download_speed_limit', { bytesPerSec })
+    await invokeCommand('set_download_speed_limit', { bytesPerSec })
   }
 
   async getHfEndpointSetting(): Promise<HfEndpointSetting> {
-    return await invoke<HfEndpointSetting>('get_hf_endpoint_setting')
+    return await invokeCommand<HfEndpointSetting>('get_hf_endpoint_setting')
   }
 
   async setHfEndpointSetting(
     endpoint: string,
     sendTokenToMirror: boolean
   ): Promise<void> {
-    await invoke('set_hf_endpoint_setting', { endpoint, sendTokenToMirror })
+    await invokeCommand('set_hf_endpoint_setting', { endpoint, sendTokenToMirror })
   }
 
   async exportRedactedLogs(): Promise<string | null> {
-    return await invoke<string | null>('export_redacted_logs')
+    return await invokeCommand<string | null>('export_redacted_logs')
   }
 
   async readYaml<T = unknown>(path: string): Promise<T> {
-    return await invoke<T>('read_yaml', { path })
+    return await invokeCommand<T>('read_yaml', { path })
   }
 }
