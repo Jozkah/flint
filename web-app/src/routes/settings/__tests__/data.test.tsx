@@ -425,6 +425,50 @@ describe('Data Settings Route', () => {
     )
   })
 
+  it('copies the data folder path and flips the button to Copied', async () => {
+    const Component = DataRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    await screen.findByText('/test/data/folder')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'settings:general.copyPath' }))
+    })
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('/test/data/folder')
+    expect(screen.getByRole('button', { name: 'settings:general.copied' })).toBeInTheDocument()
+  })
+
+  it('a ChatGPT export with no conversations says so and imports nothing', async () => {
+    const { toast } = await import('sonner')
+    const Component = DataRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    const file = new File(['[]'], 'conversations.json', { type: 'application/json' })
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('import-chatgpt-file'), {
+        target: { files: [file] },
+      })
+    })
+    // This file replaces `window`, which breaks waitFor; flush instead.
+    for (let i = 0; i < 5 && !vi.mocked(toast.info).mock.calls.length; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10))
+      })
+    }
+    expect(toast.info).toHaveBeenCalledWith('settings:general.importChatGptNone')
+  })
+
+  it('opens the migration assistant from the Storage tab', async () => {
+    const Component = DataRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    const { useMigrationAssistant } = await import('@/stores/migration-assistant-store')
+    fireEvent.click(screen.getByTestId('open-migration-assistant'))
+    expect(useMigrationAssistant.getState().open).toBe(true)
+  })
+
   it('shows no data folder warning when the saved folder is in use', async () => {
     const Component = DataRoute.component as React.ComponentType
     await act(async () => {
