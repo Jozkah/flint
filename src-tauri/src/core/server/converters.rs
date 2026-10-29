@@ -376,6 +376,10 @@ pub struct StreamState {
     /// sends one: an absent count is unknown, not zero.
     pub cache_read_input_tokens: Option<i64>,
     pub cache_creation_input_tokens: Option<i64>,
+    /// Responses stream: answer text and refusal text seen, so a
+    /// refusal-only turn ends with `content_filter`.
+    pub saw_text: bool,
+    pub saw_refusal: bool,
 }
 
 /// Fronts OpenAI's `/v1/responses` API, exposing it as chat/completions so the
@@ -600,6 +604,7 @@ impl UpstreamConverter for OpenAIResponsesConverter {
 
     fn convert_response(&self, upstream: &Value) -> Value {
         let mut content = String::new();
+        let mut refusal = String::new();
         let mut reasoning = String::new();
         let mut tool_calls: Vec<Value> = Vec::new();
 
@@ -609,7 +614,11 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                     Some("message") => {
                         if let Some(parts) = item.get("content").and_then(|c| c.as_array()) {
                             for part in parts {
-                                if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
+                                if part.get("type").and_then(|t| t.as_str()) == Some("refusal") {
+                                    if let Some(t) = part.get("refusal").and_then(|t| t.as_str()) {
+                                        refusal.push_str(t);
+                                    }
+                                } else if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
                                     content.push_str(t);
                                 }
                             }
@@ -639,12 +648,21 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             }
         }
 
+        // A refusal-only answer: its text is the content (so the client
+        // shows something) and the turn reports `content_filter`.
+        let refused = content.is_empty() && tool_calls.is_empty() && !refusal.is_empty();
+        if refused {
+            content = refusal.clone();
+        }
         let mut message = json!({"role": "assistant"});
         message["content"] = if content.is_empty() && !tool_calls.is_empty() {
             Value::Null
         } else {
             json!(content)
         };
+        if !refusal.is_empty() {
+            message["refusal"] = json!(refusal);
+        }
         if !reasoning.is_empty() {
             message["reasoning_content"] = json!(reasoning);
         }
@@ -652,7 +670,7 @@ impl UpstreamConverter for OpenAIResponsesConverter {
         if saw_tool {
             message["tool_calls"] = json!(tool_calls);
         }
-        let finish_reason = responses_finish(upstream, saw_tool);
+        let finish_reason = if refused { "content_filter" } else { responses_finish(upstream, saw_tool) };
 
         json!({
             "id": upstream.get("id").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
@@ -699,8 +717,18 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             }
             "response.output_text.delta" => {
                 if let Some(text) = data.get("delta").and_then(|d| d.as_str()) {
+                    state.saw_text = true;
                     push_role_chunk(state, &mut out);
                     out.push(chunk_str(state, json!({"content": text}), None));
+                }
+            }
+            "response.refusal.delta" => {
+                // Shown as content (chat clients render nothing else) and
+                // mirrored in `refusal`, which chat/completions defines.
+                if let Some(text) = data.get("delta").and_then(|d| d.as_str()) {
+                    state.saw_refusal = true;
+                    push_role_chunk(state, &mut out);
+                    out.push(chunk_str(state, json!({"content": text, "refusal": text}), None));
                 }
             }
             "response.reasoning_summary_text.delta" => {
@@ -763,6 +791,7 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             }
             "response.completed" | "response.incomplete" => {
                 let finish = match data.get("response") {
+                    _ if state.saw_refusal && !state.saw_text && !state.saw_tool_call => "content_filter",
                     Some(resp) => responses_finish(resp, state.saw_tool_call),
                     None if state.saw_tool_call => "tool_calls",
                     None => "stop",
@@ -915,6 +944,271 @@ fn escape_model_segment(model: &str) -> String {
     out
 }
 
+/// A chat image as a Gemini inline part; a remote URL has no inline form.
+fn gemini_inline_image(image: ImageSource<'_>) -> Option<Value> {
+    match image {
+        ImageSource::Base64 { mime, data } => {
+            Some(json!({"inlineData": {"mimeType": mime, "data": data}}))
+        }
+        ImageSource::Url(_) => None,
+    }
+}
+
+/// The chat messages as Gemini `contents`, and the system/developer text as
+/// `systemInstruction` parts.
+fn gemini_contents(body: &Value) -> (Vec<Value>, Vec<Value>) {
+    // tool_call_id -> function name, so tool results become functionResponse
+    // parts (Gemini keys them by name, not call id). Rebuilt in message
+    // order and overwritten at each assistant turn: ids from older replies
+    // (`call_0` from a pre-fix history) must resolve to the nearest
+    // preceding call, not the last one in the whole history.
+    let mut call_names: HashMap<String, String> = HashMap::new();
+    // True while the last pushed content is a run of tool results, so the
+    // next tool result joins it (Gemini wants all responses to one model
+    // turn's calls in a single user content).
+    let mut last_is_tool_results = false;
+    let mut contents: Vec<Value> = Vec::new();
+    let mut system_parts: Vec<Value> = Vec::new();
+    let Some(messages) = body.get("messages").and_then(|m| m.as_array()) else {
+        return (contents, system_parts);
+    };
+    for msg in messages {
+        let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
+        let content = msg.get("content").cloned().unwrap_or(Value::Null);
+        let was_tool_results = std::mem::take(&mut last_is_tool_results);
+        match role {
+            "system" | "developer" => {
+                last_is_tool_results = was_tool_results;
+                system_parts.push(json!({"text": message_text(&content)}));
+            }
+            "assistant" => {
+                if let Some(turn) = gemini_assistant_content(msg, &content, &mut call_names) {
+                    contents.push(turn);
+                }
+            }
+            "tool" => {
+                let parts = gemini_tool_parts(body, msg, &content, &call_names);
+                if !(was_tool_results && join_tool_results(&mut contents, &parts)) {
+                    contents.push(json!({"role": "user", "parts": parts}));
+                }
+                last_is_tool_results = true;
+            }
+            _ => contents.push(gemini_user_content(&content)),
+        }
+    }
+    (contents, system_parts)
+}
+
+/// An assistant turn as a `model` content (text, then one `functionCall` per
+/// tool call), recording each call's name by id; `None` when it has neither.
+fn gemini_assistant_content(
+    msg: &Value,
+    content: &Value,
+    call_names: &mut HashMap<String, String>,
+) -> Option<Value> {
+    let mut parts: Vec<Value> = Vec::new();
+    let text = message_text(content);
+    if !text.is_empty() {
+        parts.push(json!({"text": text}));
+    }
+    for call in msg.get("tool_calls").and_then(|c| c.as_array()).into_iter().flatten() {
+        let func = call.get("function");
+        if let (Some(id), Some(n)) = (
+            call.get("id").and_then(|v| v.as_str()),
+            func.and_then(|f| f.get("name")).and_then(|n| n.as_str()),
+        ) {
+            call_names.insert(id.to_string(), n.to_string());
+        }
+        let name = func
+            .and_then(|f| f.get("name"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let args_str = func
+            .and_then(|f| f.get("arguments"))
+            .and_then(|a| a.as_str())
+            .unwrap_or("{}");
+        let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+        parts.push(json!({"functionCall": {"name": name, "args": args}}));
+    }
+    (!parts.is_empty()).then(|| json!({"role": "model", "parts": parts}))
+}
+
+/// A tool result as parts: its `functionResponse` first, then (for models
+/// before Gemini 3) its images as sibling parts.
+fn gemini_tool_parts(
+    body: &Value,
+    msg: &Value,
+    content: &Value,
+    call_names: &HashMap<String, String>,
+) -> Vec<Value> {
+    let call_id = msg
+        .get("tool_call_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let name = call_names
+        .get(call_id)
+        .cloned()
+        .unwrap_or_else(|| call_id.to_string());
+    let text = message_text(content);
+    // Gemini requires the functionResponse `response` to be an object.
+    let response: Value = serde_json::from_str(&text)
+        .ok()
+        .filter(|v: &Value| v.is_object())
+        .unwrap_or_else(|| json!({"result": text}));
+    let mut function_response = json!({"name": name, "response": response});
+    let mut parts: Vec<Value> = Vec::new();
+    // `functionResponse.parts` takes inline bytes only, and only Gemini 3+
+    // reads it. Earlier models get the image as a sibling part of the same
+    // turn instead, which is the form they accept.
+    let images: Vec<Value> = message_images(content)
+        .into_iter()
+        .filter_map(gemini_inline_image)
+        .collect();
+    let nested = gemini_reads_function_response_parts(body);
+    if nested && !images.is_empty() {
+        function_response["parts"] = Value::Array(images.clone());
+    }
+    parts.push(json!({"functionResponse": function_response}));
+    if !nested {
+        parts.extend(images);
+    }
+    parts
+}
+
+/// Add a tool result's `parts` to the run of results in the last content.
+/// `false` when there is no such content to join.
+fn join_tool_results(contents: &mut [Value], parts: &[Value]) -> bool {
+    let Some(existing) = contents
+        .last_mut()
+        .and_then(|last| last.get_mut("parts"))
+        .and_then(|p| p.as_array_mut())
+    else {
+        return false;
+    };
+    // Keep every functionResponse ahead of the sibling image parts of
+    // earlier results.
+    let at = existing
+        .iter()
+        .rposition(|p| p.get("functionResponse").is_some())
+        .map_or(existing.len(), |i| i + 1);
+    let mut tail = parts.iter().cloned();
+    if let Some(fr) = tail.next() {
+        existing.insert(at, fr);
+    }
+    existing.extend(tail);
+    true
+}
+
+/// A user turn: its text (an empty text part when there is nothing else, as
+/// Gemini needs one part) and its images.
+fn gemini_user_content(content: &Value) -> Value {
+    let mut parts: Vec<Value> = Vec::new();
+    let text = message_text(content);
+    let images = message_images(content);
+    if !text.is_empty() || images.is_empty() {
+        parts.push(json!({"text": text}));
+    }
+    parts.extend(images.into_iter().map(|image| match image {
+        ImageSource::Base64 { mime, data } => {
+            json!({"inlineData": {"mimeType": mime, "data": data}})
+        }
+        // A URL carries no MIME type; Gemini requires one, and JPEG is the
+        // common default for photos.
+        ImageSource::Url(url) => json!({"fileData": {
+            "mimeType": "image/jpeg", "fileUri": url,
+        }}),
+    }));
+    json!({"role": "user", "parts": parts})
+}
+
+/// Sampling, output format and thinking settings as `generationConfig`
+/// (empty when nothing is set).
+fn gemini_generation_config(body: &Value) -> Value {
+    let mut gen_config = json!({});
+    if let Some(v) = body.get("temperature") {
+        gen_config["temperature"] = v.clone();
+    }
+    if let Some(v) = body.get("top_p") {
+        gen_config["topP"] = v.clone();
+    }
+    if let Some(v) = body
+        .get("max_tokens")
+        .or_else(|| body.get("max_completion_tokens"))
+    {
+        gen_config["maxOutputTokens"] = v.clone();
+    }
+    if let Some(stops) = stop_sequences(body) {
+        gen_config["stopSequences"] = json!(stops);
+    }
+    for (src, dst) in [
+        ("seed", "seed"),
+        ("presence_penalty", "presencePenalty"),
+        ("frequency_penalty", "frequencyPenalty"),
+        ("top_k", "topK"),
+    ] {
+        if let Some(v) = body.get(src).filter(|v| v.is_number()) {
+            gen_config[dst] = v.clone();
+        }
+    }
+    if let Some(format) = body.get("response_format") {
+        match format.get("type").and_then(|t| t.as_str()) {
+            Some("json_object") => {
+                gen_config["responseMimeType"] = json!("application/json");
+            }
+            Some("json_schema") => {
+                gen_config["responseMimeType"] = json!("application/json");
+                if let Some(schema) = format.get("json_schema").and_then(|j| j.get("schema")) {
+                    gen_config["responseSchema"] = gemini_schema(schema);
+                }
+            }
+            _ => {}
+        }
+    }
+    log_unmapped("gemini", body, GEMINI_MAPPED);
+    // "none" leaves the model default (no forced thinking); the low
+    // tiers get a small fixed budget instead of unbounded dynamic thinking.
+    match body.get("reasoning_effort").and_then(|e| e.as_str()) {
+        None | Some("none") => {}
+        Some("minimal" | "low") => {
+            gen_config["thinkingConfig"] =
+                json!({"thinkingBudget": 1024, "includeThoughts": true});
+        }
+        Some(_) => {
+            gen_config["thinkingConfig"] =
+                json!({"thinkingBudget": -1, "includeThoughts": true});
+        }
+    }
+    gen_config
+}
+
+/// The function tools as `tools`, and `tool_choice` as `toolConfig`.
+fn gemini_tools(body: &Value, out: &mut Value) {
+    if let Some(tools) = body.get("tools").and_then(|t| t.as_array()) {
+        let decls: Vec<Value> = tools
+            .iter()
+            .filter_map(|t| {
+                let func = t.get("function")?;
+                Some(json!({
+                    "name": func.get("name").cloned().unwrap_or(Value::Null),
+                    "description": func.get("description").cloned().unwrap_or(Value::Null),
+                    "parameters": func.get("parameters").cloned().unwrap_or(json!({})),
+                }))
+            })
+            .collect();
+        if !decls.is_empty() {
+            out["tools"] = json!([{"functionDeclarations": decls}]);
+        }
+    }
+    if let Some(mode) = body.get("tool_choice").and_then(|c| c.as_str()) {
+        let g_mode = match mode {
+            "none" => "NONE",
+            "required" => "ANY",
+            _ => "AUTO",
+        };
+        out["toolConfig"] = json!({"functionCallingConfig": {"mode": g_mode}});
+    }
+}
+
 impl UpstreamConverter for GoogleGenerateContentConverter {
     fn cache_capability(&self) -> CacheCapability {
         CacheCapability::for_api_type(Some("google"))
@@ -939,234 +1233,16 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
     }
 
     fn convert_request(&self, body: &Value) -> Value {
-        // tool_call_id -> function name, so tool results become functionResponse
-        // parts (Gemini keys them by name, not call id). Rebuilt in message
-        // order and overwritten at each assistant turn: ids from older replies
-        // (`call_0` from a pre-fix history) must resolve to the nearest
-        // preceding call, not the last one in the whole history.
-        let mut call_names: HashMap<String, String> = HashMap::new();
-        // True while the last pushed content is a run of tool results, so the
-        // next tool result joins it (Gemini wants all responses to one model
-        // turn's calls in a single user content).
-        let mut last_is_tool_results = false;
-        let mut contents: Vec<Value> = Vec::new();
-        let mut system_parts: Vec<Value> = Vec::new();
-        if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
-            for msg in messages {
-                let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
-                let content = msg.get("content").cloned().unwrap_or(Value::Null);
-                let was_tool_results = std::mem::take(&mut last_is_tool_results);
-                match role {
-                    "system" | "developer" => {
-                        last_is_tool_results = was_tool_results;
-                        system_parts.push(json!({"text": message_text(&content)}));
-                    }
-                    "assistant" => {
-                        let mut parts: Vec<Value> = Vec::new();
-                        let text = message_text(&content);
-                        if !text.is_empty() {
-                            parts.push(json!({"text": text}));
-                        }
-                        if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
-                            for call in calls {
-                                let func = call.get("function");
-                                if let (Some(id), Some(n)) = (
-                                    call.get("id").and_then(|v| v.as_str()),
-                                    func.and_then(|f| f.get("name")).and_then(|n| n.as_str()),
-                                ) {
-                                    call_names.insert(id.to_string(), n.to_string());
-                                }
-                                let name = func
-                                    .and_then(|f| f.get("name"))
-                                    .cloned()
-                                    .unwrap_or(Value::Null);
-                                let args_str = func
-                                    .and_then(|f| f.get("arguments"))
-                                    .and_then(|a| a.as_str())
-                                    .unwrap_or("{}");
-                                let args: Value =
-                                    serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
-                                parts.push(json!({"functionCall": {"name": name, "args": args}}));
-                            }
-                        }
-                        if !parts.is_empty() {
-                            contents.push(json!({"role": "model", "parts": parts}));
-                        }
-                    }
-                    "tool" => {
-                        let call_id = msg
-                            .get("tool_call_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        let name = call_names
-                            .get(call_id)
-                            .cloned()
-                            .unwrap_or_else(|| call_id.to_string());
-                        let text = message_text(&content);
-                        // Gemini requires the functionResponse `response` to be an object.
-                        let response: Value = serde_json::from_str(&text)
-                            .ok()
-                            .filter(|v: &Value| v.is_object())
-                            .unwrap_or_else(|| json!({"result": text}));
-                        let mut function_response = json!({"name": name, "response": response});
-                        let mut parts: Vec<Value> = Vec::new();
-                        // `functionResponse.parts` takes inline bytes only, and
-                        // only Gemini 3+ reads it. Earlier models get the image
-                        // as a sibling part of the same turn instead, which is
-                        // the form they accept.
-                        let images: Vec<Value> = message_images(&content)
-                            .into_iter()
-                            .filter_map(|image| match image {
-                                ImageSource::Base64 { mime, data } => {
-                                    Some(json!({"inlineData": {"mimeType": mime, "data": data}}))
-                                }
-                                ImageSource::Url(_) => None,
-                            })
-                            .collect();
-                        let nested = gemini_reads_function_response_parts(body);
-                        if nested && !images.is_empty() {
-                            function_response["parts"] = Value::Array(images.clone());
-                        }
-                        parts.push(json!({"functionResponse": function_response}));
-                        if !nested {
-                            parts.extend(images);
-                        }
-                        let joined = was_tool_results
-                            && contents.last_mut().is_some_and(|last| {
-                                let Some(existing) =
-                                    last.get_mut("parts").and_then(|p| p.as_array_mut())
-                                else {
-                                    return false;
-                                };
-                                // Keep every functionResponse ahead of the
-                                // sibling image parts of earlier results.
-                                let at = existing
-                                    .iter()
-                                    .rposition(|p| p.get("functionResponse").is_some())
-                                    .map_or(existing.len(), |i| i + 1);
-                                let mut tail = parts.clone().into_iter();
-                                if let Some(fr) = tail.next() {
-                                    existing.insert(at, fr);
-                                }
-                                existing.extend(tail);
-                                true
-                            });
-                        if !joined {
-                            contents.push(json!({"role": "user", "parts": parts}));
-                        }
-                        last_is_tool_results = true;
-                    }
-                    _ => {
-                        let mut parts: Vec<Value> = Vec::new();
-                        let text = message_text(&content);
-                        let images = message_images(&content);
-                        if !text.is_empty() || images.is_empty() {
-                            parts.push(json!({"text": text}));
-                        }
-                        parts.extend(images.into_iter().map(|image| match image {
-                            ImageSource::Base64 { mime, data } => {
-                                json!({"inlineData": {"mimeType": mime, "data": data}})
-                            }
-                            // A URL carries no MIME type; Gemini requires one,
-                            // and JPEG is the common default for photos.
-                            ImageSource::Url(url) => json!({"fileData": {
-                                "mimeType": "image/jpeg", "fileUri": url,
-                            }}),
-                        }));
-                        contents.push(json!({"role": "user", "parts": parts}));
-                    }
-                }
-            }
-        }
-
+        let (contents, system_parts) = gemini_contents(body);
         let mut out = json!({"contents": contents});
         if !system_parts.is_empty() {
             out["systemInstruction"] = json!({"parts": system_parts});
         }
-
-        let mut gen_config = json!({});
-        if let Some(v) = body.get("temperature") {
-            gen_config["temperature"] = v.clone();
-        }
-        if let Some(v) = body.get("top_p") {
-            gen_config["topP"] = v.clone();
-        }
-        if let Some(v) = body
-            .get("max_tokens")
-            .or_else(|| body.get("max_completion_tokens"))
-        {
-            gen_config["maxOutputTokens"] = v.clone();
-        }
-        if let Some(stops) = stop_sequences(body) {
-            gen_config["stopSequences"] = json!(stops);
-        }
-        for (src, dst) in [
-            ("seed", "seed"),
-            ("presence_penalty", "presencePenalty"),
-            ("frequency_penalty", "frequencyPenalty"),
-            ("top_k", "topK"),
-        ] {
-            if let Some(v) = body.get(src).filter(|v| v.is_number()) {
-                gen_config[dst] = v.clone();
-            }
-        }
-        if let Some(format) = body.get("response_format") {
-            match format.get("type").and_then(|t| t.as_str()) {
-                Some("json_object") => {
-                    gen_config["responseMimeType"] = json!("application/json");
-                }
-                Some("json_schema") => {
-                    gen_config["responseMimeType"] = json!("application/json");
-                    if let Some(schema) = format.get("json_schema").and_then(|j| j.get("schema")) {
-                        gen_config["responseSchema"] = gemini_schema(schema);
-                    }
-                }
-                _ => {}
-            }
-        }
-        log_unmapped("gemini", body, GEMINI_MAPPED);
-        // "none" leaves the model default (no forced thinking); the low
-        // tiers get a small fixed budget instead of unbounded dynamic thinking.
-        match body.get("reasoning_effort").and_then(|e| e.as_str()) {
-            None | Some("none") => {}
-            Some("minimal" | "low") => {
-                gen_config["thinkingConfig"] =
-                    json!({"thinkingBudget": 1024, "includeThoughts": true});
-            }
-            Some(_) => {
-                gen_config["thinkingConfig"] =
-                    json!({"thinkingBudget": -1, "includeThoughts": true});
-            }
-        }
+        let gen_config = gemini_generation_config(body);
         if gen_config.as_object().is_some_and(|o| !o.is_empty()) {
             out["generationConfig"] = gen_config;
         }
-
-        if let Some(tools) = body.get("tools").and_then(|t| t.as_array()) {
-            let decls: Vec<Value> = tools
-                .iter()
-                .filter_map(|t| {
-                    let func = t.get("function")?;
-                    Some(json!({
-                        "name": func.get("name").cloned().unwrap_or(Value::Null),
-                        "description": func.get("description").cloned().unwrap_or(Value::Null),
-                        "parameters": func.get("parameters").cloned().unwrap_or(json!({})),
-                    }))
-                })
-                .collect();
-            if !decls.is_empty() {
-                out["tools"] = json!([{"functionDeclarations": decls}]);
-            }
-        }
-        if let Some(mode) = body.get("tool_choice").and_then(|c| c.as_str()) {
-            let g_mode = match mode {
-                "none" => "NONE",
-                "required" => "ANY",
-                _ => "AUTO",
-            };
-            out["toolConfig"] = json!({"functionCallingConfig": {"mode": g_mode}});
-        }
-
+        gemini_tools(body, &mut out);
         out
     }
 
@@ -2389,6 +2465,29 @@ mod openai_responses_tests {
         assert_eq!(second.len(), 1);
         let content2: Value = serde_json::from_str(&second[0]).unwrap();
         assert_eq!(content2["choices"][0]["delta"]["content"], json!("llo"));
+    }
+
+    #[test]
+    fn a_refusal_is_content_with_a_content_filter_finish() {
+        let c = OpenAIResponsesConverter::new();
+        let r = c.convert_response(&json!({
+            "output": [{"type": "message", "content": [{"type": "refusal", "refusal": "I can't help with that."}]}]
+        }));
+        assert_eq!(r["choices"][0]["message"]["content"], json!("I can't help with that."));
+        assert_eq!(r["choices"][0]["message"]["refusal"], json!("I can't help with that."));
+        assert_eq!(r["choices"][0]["finish_reason"], json!("content_filter"));
+
+        let mut state = StreamState::default();
+        let mut out = Vec::new();
+        for (kind, data) in [
+            ("response.refusal.delta", json!({"delta": "No."})),
+            ("response.completed", json!({"response": {"status": "completed"}})),
+        ] {
+            out.extend(c.convert_stream_event(&SseEvent { event: kind.into(), data: data.to_string() }, &mut state));
+        }
+        let joined = out.join("\n");
+        assert!(joined.contains(r#""content":"No.""#), "{joined}");
+        assert!(joined.contains(r#""finish_reason":"content_filter""#), "{joined}");
     }
 
     #[test]
@@ -3707,5 +3806,85 @@ mod anthropic_messages_tests {
             unmapped_params(&body, ANTHROPIC_MAPPED),
             vec!["n", "seed", "response_format"]
         );
+    }
+}
+
+
+#[cfg(test)]
+mod golden_tests {
+    use super::*;
+
+    fn gemini_bodies() -> Vec<(&'static str, Value)> {
+        let history = json!([
+            {"role": "system", "content": "be brief"},
+            {"role": "developer", "content": [{"type": "text", "text": "dev rule"}]},
+            {"role": "user", "content": [
+                {"type": "text", "text": "look"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                {"type": "image_url", "image_url": {"url": "https://x.test/a.jpg"}}
+            ]},
+            {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,BBBB"}}]},
+            {"role": "assistant", "content": "calling", "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "read", "arguments": "{\"p\":1}"}},
+                {"id": "c2", "type": "function", "function": {"name": "shot", "arguments": "not json"}}
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "content": "{\"ok\":true}"},
+            {"role": "tool", "tool_call_id": "c2", "content": [
+                {"type": "text", "text": "plain"},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,CCCC"}}
+            ]},
+            {"role": "system", "content": "late system"},
+            {"role": "tool", "tool_call_id": "unknown", "content": "orphan"},
+            {"role": "assistant", "content": null, "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "again"}}
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "content": "[1,2]"},
+            {"role": "assistant", "content": ""},
+            {"role": "user", "content": "thanks"}
+        ]);
+        vec![
+            ("gemini_request_full_v2", json!({
+                "model": "gemini-2.5-pro",
+                "messages": history,
+                "temperature": 0.3, "top_p": 0.9, "max_tokens": 100,
+                "stop": ["X", "Y"], "seed": 7, "presence_penalty": 0.1,
+                "frequency_penalty": 0.2, "top_k": 40, "logit_bias": {"1": 2},
+                "response_format": {"type": "json_schema", "json_schema": {"schema": {
+                    "type": "object", "additionalProperties": false,
+                    "properties": {"a": {"type": "string"}}
+                }}},
+                "reasoning_effort": "high",
+                "tools": [
+                    {"type": "function", "function": {"name": "read", "description": "r", "parameters": {"type": "object"}}},
+                    {"type": "function", "function": {"name": "bare"}},
+                    {"type": "other"}
+                ],
+                "tool_choice": "required"
+            })),
+            ("gemini_request_full_v3", json!({
+                "model": "models/gemini-3-pro",
+                "messages": history,
+                "max_completion_tokens": 5,
+                "response_format": {"type": "json_object"},
+                "reasoning_effort": "low",
+                "tool_choice": "none"
+            })),
+            ("gemini_request_minimal", json!({
+                "model": "gemini-2.0-flash",
+                "messages": [{"role": "user", "content": "hi"}],
+                "reasoning_effort": "none",
+                "tools": [],
+                "tool_choice": "auto"
+            })),
+            ("gemini_request_empty", json!({"model": "gemini-x"})),
+        ]
+    }
+
+    #[test]
+    fn golden_gemini_convert_request() {
+        let c = GoogleGenerateContentConverter::new();
+        for (name, body) in gemini_bodies() {
+            crate::core::server::golden::check(name, &c.convert_request(&body));
+        }
     }
 }

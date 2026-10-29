@@ -1,0 +1,5 @@
+[
+  "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n",
+  "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}\n\n",
+  "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+]
