@@ -34,38 +34,6 @@ import {
   memo,
 } from 'react'
 import type { ReactNode } from 'react'
-import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
-import { Button } from '@/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-} from '@/components/ui/dropdown-menu'
-import {
-  ArrowUp,
-  Brain,
-  CodeXml,
-  Globe,
-  ImageIcon,
-  Loader2,
-  Music,
-  Paperclip,
-  PlusIcon,
-  Square,
-  Video,
-  Wrench,
-  X,
-} from 'lucide-react'
 import { generateId } from 'ai'
 import {
   holdQueueThenStop,
@@ -85,7 +53,6 @@ import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
 import { DropRim } from '@/components/ui/drop-rim'
 import { ComposerAttachmentChips } from '@/containers/ComposerAttachmentChips'
-import { displayNameOf } from '@/lib/displayName'
 import { dragFileCount } from '@/lib/attachmentChip'
 import {
   useConversationModel,
@@ -109,14 +76,6 @@ import {
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { withReasoningDefault } from '@/lib/reasoningDefault'
 import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
-import {
-  THINKING_BUDGET_LEVELS,
-  thinkingBudgetLabel,
-  DEFAULT_THINKING_BUDGET_LEVEL,
-  tokensForThinkingBudgetLevel,
-  isThinkingBudgetLevelKey,
-  type ThinkingBudgetLevelKey,
-} from '@/lib/thinkingBudget'
 import { useReconcileVideoCapability } from '@/hooks/useReconcileVideoCapability'
 
 import { useAppState } from '@/hooks/useAppState'
@@ -136,17 +95,14 @@ import { resolveThreadModelId } from '@/lib/models'
 import { useAssistant } from '@/hooks/useAssistant'
 import { AssistantSwitcher } from '@/containers/AssistantSwitcher'
 import { ComposerOptionsMenu } from '@/containers/ComposerOptionsMenu'
-import DropdownToolsAvailable from '@/containers/DropdownToolsAvailable'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { TokenCounter } from '@/components/TokenCounter'
 import type { TokenUsageSource } from '@/hooks/useTokensCount'
 import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useShallow } from 'zustand/react/shallow'
-import { McpExtensionToolLoader } from './McpExtensionToolLoader'
 import {
   ExtensionTypeEnum,
-  MCPExtension,
   fs,
   VectorDBExtension,
 } from '@janhq/core'
@@ -192,6 +148,18 @@ import { useAgentMode } from '@/hooks/useAgentMode'
 import { useComposerFocus } from '@/hooks/useComposerFocus'
 import { useLatestCallback } from '@/hooks/useLatestCallback'
 import { useMediaAttachments } from '@/hooks/useMediaAttachments'
+import { ComposerAttachMenu } from '@/containers/ComposerAttachMenu'
+import { ComposerToolControls } from '@/containers/ComposerToolControls'
+import {
+  ComposerReasoningMenu,
+  REASONING_MENU_PROVIDERS,
+} from '@/containers/ComposerReasoningMenu'
+import { ComposerSendButton } from '@/containers/ComposerSendButton'
+import {
+  ComposerErrorLine,
+  PathOfferBanner,
+  WebSearchOffPrompt,
+} from '@/containers/ComposerBanners'
 import { useImageAttachments } from '@/hooks/useImageAttachments'
 import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import { useChatShell } from '@/hooks/useChatShell'
@@ -486,7 +454,6 @@ const ChatInput = memo(function ChatInput({
   }, [])
   const serviceHub = useServiceHub()
   const abortControllers = useAppState((state) => state.abortControllers)
-  const tools = useAppState((state) => state.tools)
   const cancelToolCall = useAppState((state) => state.cancelToolCall)
   // The main draft, or this composer's own when it has a scope (the second
   // pane of a split conversation), so typing in one never edits the other.
@@ -1095,10 +1062,6 @@ const ChatInput = memo(function ChatInput({
   const [message, setMessage] = useState('')
   // A send held back because it needs the web and web search is off.
   const [webOffPrompt, setWebOffPrompt] = useState<string | null>(null)
-  const [dropdownToolsAvailable, setDropdownToolsAvailable] = useState(false)
-  const [tooltipShown, setTooltipShown] = useState<
-    'tools' | 'assistants' | false
-  >(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [dragCount, setDragCount] = useState(0)
   const activeModels = useAppState(useShallow((state) => state.activeModels))
@@ -1237,15 +1200,6 @@ const ChatInput = memo(function ChatInput({
       lastTransferredThreadId.current = currentThreadId
     }
   }, [scopeKey, draftScope, currentThreadId, transferAttachments])
-
-  // Check if there are active MCP servers
-  const hasActiveMCPServers =
-    tools.filter((tool) => tool.server !== 'Jan Browser MCP').length > 0
-
-  // Get MCP extension and its custom component
-  const extensionManager = ExtensionManager.getInstance()
-  const mcpExtension = extensionManager.get<MCPExtension>(ExtensionTypeEnum.MCP)
-  const MCPToolComponent = mcpExtension?.getToolComponent?.()
 
   // A send waiting for the replacement model to show; see handleSendMessage.
   const pendingSendRef = useRef<{
@@ -1718,12 +1672,6 @@ const ChatInput = memo(function ChatInput({
     void sendLatest(pending.typed, pending.options)
   }, [selectedModel?.id, sendLatest])
 
-
-  useEffect(() => {
-    if (tooltipShown && dropdownToolsAvailable) {
-      setTooltipShown(false)
-    }
-  }, [dropdownToolsAvailable, tooltipShown])
 
 
   const stopStreaming = useCallback(
@@ -2596,36 +2544,12 @@ const ChatInput = memo(function ChatInput({
           >
             <DropRim active={isDragOver} count={dragCount} />
             {pathOffer && (
-              <div
-                role="status"
-                className="mx-2 mt-2 flex min-w-0 items-center gap-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs text-secondary-foreground"
-              >
-                <span className="min-w-0 flex-1 truncate" title={pathOffer.path}>
-                  {t(
-                    pathOffer.kind === 'folder'
-                      ? 'common:pastedPath.folder'
-                      : 'common:pastedPath.file',
-                    {
-                      name: displayNameOf(pathOffer.path),
-                    }
-                  )}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void acceptPathOffer()}
-                  className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-foreground hover:bg-accent"
-                >
-                  {t('common:pastedPath.attach')}
-                </button>
-                <button
-                  type="button"
-                  aria-label={t('common:pastedPath.dismiss')}
-                  onClick={declinePathOffer}
-                  className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <X aria-hidden className="size-3" />
-                </button>
-              </div>
+              <PathOfferBanner
+                path={pathOffer.path}
+                kind={pathOffer.kind}
+                onAccept={() => void acceptPathOffer()}
+                onDecline={declinePathOffer}
+              />
             )}
             <ComposerAttachmentChips
               attachments={attachments}
@@ -2940,82 +2864,32 @@ const ChatInput = memo(function ChatInput({
               <div className="flex items-center gap-0.5">
                 {/* Dropdown for attachments — hidden in agent mode */}
                 {!effectiveAgentMode && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={t('common:attachments')}
-                      disabled={isStreaming}
-                      data-testid="composer-attach"
-                      className={COMPOSER_ICON_BUTTON}
-                    >
-                      <PlusIcon className={COMPOSER_ICON} aria-hidden />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    {/* Not gated on vision: text and code are attachable to
-                        any model, and hiding the only entry point behind an
-                        image capability left text-only models with no way to
-                        attach anything at all. */}
-                    <DropdownMenuItem onClick={() => void openImagePicker()}>
-                      <ImageIcon className="size-4 text-muted-foreground" />
-                        <span>{t('common:attachFiles.addFilesOrImages')}</span>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        multiple
-                        accept={attachmentAccept}
-                        onChange={handleFileChange}
-                      />
-                    </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          if (audioSupported) void openAudioPicker()
-                          else requestCapabilities(['audio'], openAudioPicker)
-                        }}
-                      >
-                        <Music className="size-4 text-muted-foreground" />
-                        <span>{t('chat:composer.addAudio')}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          if (videoSupported) void openVideoPicker()
-                          else requestCapabilities(['video'], openVideoPicker)
-                        }}
-                      >
-                        <Video className="size-4 text-muted-foreground" />
-                        <span>{t('chat:composer.addVideo')}</span>
-                      </DropdownMenuItem>
-                    {/* RAG document attachments - desktop-only via dialog; shown when feature enabled */}
-                    <DropdownMenuItem
-                        onClick={() => {
-                          // A model without tools still takes documents: they
-                          // go into the prompt as text (janhq/jan#9388).
-                          if (!toolsEnabled) {
-                            toast.info(t('sweep:chat.docsInPrompt'), {
-                              description: t(
-                                'sweep:chat.docsInPromptDescription'
-                              ),
-                            })
-                          }
-                          void handleAttachDocsIngest()
-                        }}
-                    >
-                      {ingestingDocs ? (
-                        <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
-                      ) : (
-                        <Paperclip className="size-4 text-muted-foreground" />
-                      )}
-                      <span>
-                        {ingestingDocs
-                          ? t('chat:composer.indexingDocs')
-                          : t('chat:composer.addDocs')}
-                      </span>
-                    </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <ComposerAttachMenu
+                    disabled={isStreaming}
+                    fileInputRef={fileInputRef}
+                    accept={attachmentAccept}
+                    onFileChange={handleFileChange}
+                    onPickImages={() => void openImagePicker()}
+                    onPickAudio={() => {
+                      if (audioSupported) void openAudioPicker()
+                      else requestCapabilities(['audio'], openAudioPicker)
+                    }}
+                    onPickVideo={() => {
+                      if (videoSupported) void openVideoPicker()
+                      else requestCapabilities(['video'], openVideoPicker)
+                    }}
+                    onPickDocuments={() => {
+                      // A model without tools still takes documents: they
+                      // go into the prompt as text (janhq/jan#9388).
+                      if (!toolsEnabled) {
+                        toast.info(t('sweep:chat.docsInPrompt'), {
+                          description: t('sweep:chat.docsInPromptDescription'),
+                        })
+                      }
+                      void handleAttachDocsIngest()
+                    }}
+                    ingestingDocs={ingestingDocs}
+                  />
                 )}
                 {/* {model?.provider === 'llamacpp' && loadingModel ? (
                   <ModelLoader />
@@ -3069,97 +2943,18 @@ const ChatInput = memo(function ChatInput({
                     updateCurrentThreadAssistant,
                   }}
                 />
-                      {showToolControls &&
-                        selectedModel?.capabilities?.includes('embeddings') && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={t('embeddings')}
-                          className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
-                        >
-                        <CodeXml className="size-4 text-muted-foreground" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{t('embeddings')}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-
-                      {showToolControls &&
-                        selectedModel &&
-                        !toolsEnabled && (
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={t('common:modelCapability.enableTools')}
-                            data-testid="composer-enable-tools"
-                            className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
-                            onClick={() =>
-                              requestCapabilities(['tools'], () => {})
-                            }
-                          >
-                            <Wrench className="size-4 text-muted-foreground" />
-                          </Button>
-                        )}
-
-                      {showToolControls &&
-                        toolsEnabled &&
-                  hasActiveMCPServers &&
-                  (MCPToolComponent ? (
-                    // Use custom MCP component
-                    <McpExtensionToolLoader
-                      tools={tools}
-                      hasActiveMCPServers={hasActiveMCPServers}
-                      selectedModelHasTools={
-                              toolsEnabled
-                      }
-                      MCPToolComponent={MCPToolComponent}
-                    />
-                  ) : (
-                    // Use default tools dropdown
-                    <Tooltip
-                      open={tooltipShown === 'tools'}
-                      onOpenChange={(newValue) =>
-                        // No tooltip over the open menu. (Not `disabled` on
-                        // the trigger: that lands on the button itself.)
-                        newValue && !dropdownToolsAvailable
-                          ? setTooltipShown('tools')
-                          : setTooltipShown(false)
-                      }
-                    >
-                      {/* One button: the dropdown trigger and the tooltip
-                          trigger both merge onto it, so there is no
-                          interactive element nested inside another. */}
-                      <DropdownToolsAvailable
-                        onOpenChange={(isOpen) => {
-                          setDropdownToolsAvailable(isOpen)
-                          if (isOpen) {
-                            setTooltipShown(false)
+                      {showToolControls && (
+                        <ComposerToolControls
+                          hasEmbeddings={Boolean(
+                            selectedModel?.capabilities?.includes('embeddings')
+                          )}
+                          hasModel={Boolean(selectedModel)}
+                          toolsEnabled={toolsEnabled}
+                          onEnableTools={() =>
+                            requestCapabilities(['tools'], () => {})
                           }
-                        }}
-                      >
-                        {() => (
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              aria-label={t('tools')}
-                              data-testid="composer-tools-trigger"
-                              className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
-                            >
-                              <Wrench className="size-4 text-muted-foreground" />
-                            </Button>
-                          </TooltipTrigger>
-                        )}
-                      </DropdownToolsAvailable>
-                      <TooltipContent>
-                        <p>{t('tools')}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
+                        />
+                      )}
 
                 {/* Cowork has no chat agent mode of its own; the flag read
                     above belongs to whichever chat thread was last open. */}
@@ -3170,208 +2965,26 @@ const ChatInput = memo(function ChatInput({
                   effortLevels.length === 0 &&
                   // A local model with no effort bar does not reason (C052).
                   !localModelWithoutReasoning &&
-                  (selectedProvider === 'llamacpp' ||
-                    selectedProvider === 'google' ||
-                    selectedProvider === 'gemini' ||
-                    selectedProvider === 'anthropic' ||
-                    selectedProvider === 'openai') &&
-                  (() => {
-                    // The token-budget submenu only applies to local llama.cpp
-                    // (budget resolved against live n_ctx). Cloud providers size
-                    // their own budget dynamically, so on/off/auto is enough.
-                          const showThinkingBudget =
-                            selectedProvider === 'llamacpp'
-                    // Auto/On/Off writes the `reasoning` setting, which only the
-                    // first-party providers wire into a request.
-                    const showReasoningModes =
-                      selectedProvider === 'llamacpp' ||
-                      selectedProvider === 'google' ||
-                      selectedProvider === 'gemini' ||
-                      selectedProvider === 'anthropic' ||
-                      selectedProvider === 'openai'
-                    const ownReasoning =
-                            (selectedModel?.settings?.reasoning
-                              ?.controller_props?.value as
-                              | 'auto'
-                              | 'on'
-                              | 'off'
-                              | undefined) ?? 'auto'
-                    // "Reasoning for new chats" fills in where neither the
-                    // chat nor the model has chosen.
-                    const reasoningValue =
-                      ownReasoning === 'auto' &&
-                      !isOverridden(chatOverrides, 'reasoning') &&
-                      (reasoningDefault === 'on' || reasoningDefault === 'off')
-                        ? reasoningDefault
-                        : ownReasoning
-                    const setReasoning = (value: 'auto' | 'on' | 'off') =>
-                      updateModelSetting(
-                        'reasoning',
-                        'Reasoning',
-                        'dropdown',
-                        value
-                      )
-                    const label =
-                      reasoningValue === 'on'
-                        ? t('chat:composer.reasoningOn')
-                        : reasoningValue === 'off'
-                          ? t('chat:composer.reasoningOff')
-                          : t('chat:composer.reasoningAuto')
-                    const tooltipText =
-                      reasoningValue === 'on'
-                        ? t('chat:composer.reasoningOnTip')
-                        : reasoningValue === 'off'
-                          ? t('chat:composer.reasoningOffTip')
-                          : t('chat:composer.reasoningAutoTip')
-
-                    // Stored as a symbolic level, not an absolute token count:
-                    // the live context size (post auto-fit) is only known once
-                    // the model is actually loaded, so resolving to tokens
-                    // happens at send time (custom-chat-transport.ts) against
-                    // whatever the context size turns out to be then.
-                    const rawBudgetLevel =
-                      selectedModel?.settings?.thinking_budget_tokens
-                        ?.controller_props?.value
-                    const currentBudgetLevel = isThinkingBudgetLevelKey(
-                      rawBudgetLevel
-                    )
-                      ? rawBudgetLevel
-                      : DEFAULT_THINKING_BUDGET_LEVEL
-                          const setThinkingBudget = (
-                            level: ThinkingBudgetLevelKey
-                          ) =>
-                      updateModelSetting(
-                        'thinking_budget_tokens',
-                        'Thinking Budget',
-                        'dropdown',
-                        level
-                      )
-                          const currentBudgetLabel =
-                            thinkingBudgetLabel(currentBudgetLevel)
-                    // Best-effort preview only; the request-time value may
-                    // differ once the model is loaded and fit settles n_ctx.
-                    const approxContextSize =
-                      liveMaxTokens || configuredCtxLen || 8192
-
-                    return (
-                      <DropdownMenu>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
-                                aria-label={t('chat:composer.reasoningLabel', { state: label })}
-                              >
-                                <Brain
-                                  className={cn(
-                                    'size-4 text-muted-foreground',
-                                          reasoningValue === 'on' &&
-                                            'text-foreground',
-                                          reasoningValue === 'off' &&
-                                            'opacity-50'
-                                  )}
-                                />
-                              </Button>
-                            </DropdownMenuTrigger>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{tooltipText}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                              <DropdownMenuContent
-                                align="start"
-                                className="w-64"
-                              >
-                          {showReasoningModes && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => setReasoning('auto')}
-                              >
-                                {t('chat:composer.reasoningAuto')}
-                                {reasoningValue === 'auto' && (
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    ✓
-                                  </span>
-                                )}
-                              </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => setReasoning('on')}
-                                    >
-                                {t('chat:composer.reasoningOn')}
-                                {reasoningValue === 'on' && (
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    ✓
-                                  </span>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setReasoning('off')}
-                              >
-                                {t('chat:composer.reasoningOff')}
-                                {reasoningValue === 'off' && (
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    ✓
-                                  </span>
-                                )}
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                          {showThinkingBudget && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger>
-                                        <span className="flex-1">
-                                          {t('chat:composer.thinkingBudget')}
-                                        </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {currentBudgetLabel}
-                                  </span>
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent
-                                  collisionPadding={{ top: 12, right: 12, bottom: 16, left: 12 }}
-                                >
-                                  {THINKING_BUDGET_LEVELS.map((level) => {
-                                    const approxTokens =
-                                      tokensForThinkingBudgetLevel(
-                                        level.key,
-                                        approxContextSize
-                                      )
-                                    return (
-                                      <DropdownMenuItem
-                                        key={level.key}
-                                        onClick={() =>
-                                          setThinkingBudget(level.key)
-                                        }
-                                        className="gap-2"
-                                      >
-                                        <span className="flex-1">
-                                          {thinkingBudgetLabel(level.key)}
-                                        </span>
-                                        <span className="w-14 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-                                          {approxTokens === -1
-                                            ? ''
-                                            : `~${approxTokens}`}
-                                        </span>
-                                        <span className="w-3 shrink-0 text-xs text-muted-foreground">
-                                                {currentBudgetLevel ===
-                                                level.key
-                                            ? '✓'
-                                            : ''}
-                                        </span>
-                                      </DropdownMenuItem>
-                                    )
-                                  })}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )
-                  })()}
+                  selectedProvider &&
+                  (REASONING_MENU_PROVIDERS as readonly string[]).includes(
+                    selectedProvider
+                  ) && (
+                    <ComposerReasoningMenu
+                      selectedProvider={selectedProvider}
+                      modelSettings={selectedModel?.settings}
+                      chatOverridesReasoning={isOverridden(
+                        chatOverrides,
+                        'reasoning'
+                      )}
+                      reasoningDefault={reasoningDefault}
+                      approxContextSize={
+                        liveMaxTokens || configuredCtxLen || 8192
+                      }
+                      onSetting={(key, title, value) =>
+                        updateModelSetting(key, title, 'dropdown', value)
+                      }
+                    />
+                  )}
                     </>
                   )
                   if (!groupOptions) return options
@@ -3437,62 +3050,26 @@ const ChatInput = memo(function ChatInput({
                   so there is never a second stop button beside this one. */}
               {isStreaming && stopControl ? (
                 stopControl
-              ) : isStreaming || toolInFlight ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {/* A quiet red outline: stopping keeps the partial
-                        reply, so it is not a filled destructive action. */}
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      className="hit-y size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
-                      data-test-id="stop-button"
-                      aria-label={t('common:a11y.stopGenerating')}
-                      onClick={() => {
-                        // Stop always stops the run. What is queued is held,
-                        // not cleared: each chip then offers Send and
-                        // Discard. Held first, so the stopping run cannot
-                        // take a steering message on its way out. The old
-                        // `if (!currentThreadId) return` guard made this
-                        // button inert for any surface without a thread id.
-                        holdQueueThenStop([queueId], () =>
-                          stopStreaming(currentThreadId ?? '')
-                        )
-                      }}
-                    >
-                      <Square className="size-3 fill-current" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      {isStreaming
-                        ? t('chat:composer.stopGenerating')
-                        : t('chat:stopToolCall')}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
               ) : (
-                <Button
-                  variant="default"
-                  size="icon-sm"
-                  disabled={
-                    (!prompt.trim() && !hasSendableMedia) || ingestingAny || sending
+                <ComposerSendButton
+                  isStreaming={isStreaming}
+                  toolInFlight={toolInFlight}
+                  onStop={() => {
+                    // Stop always stops the run. What is queued is held,
+                    // not cleared: each chip then offers Send and
+                    // Discard. Held first, so the stopping run cannot
+                    // take a steering message on its way out.
+                    holdQueueThenStop([queueId], () =>
+                      stopStreaming(currentThreadId ?? '')
+                    )
+                  }}
+                  canSend={
+                    !((!prompt.trim() && !hasSendableMedia) || ingestingAny || sending)
                   }
-                  aria-busy={sending || undefined}
-                  data-test-id="send-message-button"
-                  data-press="static"
-                  aria-label={t('chat:sendMessage')}
-                  onClick={() => handleSendMessage(prompt)}
-                  className={cn(
-                    'hit-y size-7 pointer-coarse:size-11',
-                    // Wakes up with a small pop once there is something to send.
-                    (prompt.trim() || hasSendableMedia) &&
-                      !ingestingAny &&
-                      'shadow-[0_4px_14px_-4px_rgba(0,0,0,.35)] motion-safe:animate-send-ready'
-                  )}
-                >
-                  <ArrowUp className="size-4" />
-                </Button>
+                  ready={Boolean((prompt.trim() || hasSendableMedia) && !ingestingAny)}
+                  sending={sending}
+                  onSend={() => handleSendMessage(prompt)}
+                />
               )}
             </div>
           </div>
@@ -3537,64 +3114,30 @@ const ChatInput = memo(function ChatInput({
       )}
 
       {webOffPrompt !== null && (
-        <div
-          role="status"
-          data-testid="web-search-off-prompt"
-          className="mt-1.5 mx-1 flex flex-wrap items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-3 py-1.5 text-xs"
-        >
-          <Globe className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 text-muted-foreground">
-            {t('common:webSearchOff.text')}
-          </span>
-          <Button
-            size="sm"
-            variant="default"
-            className="h-6 px-2 text-xs"
-            onClick={() => {
-              const held = webOffPrompt
-              setWebSearchEnabled(true)
-              void handleSendMessage(held, { allowNoWeb: true })
-            }}
-          >
-            {t('common:webSearchOff.enable')}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2 text-xs"
-            onClick={() => {
-              const held = webOffPrompt
-              void handleSendMessage(held, { allowNoWeb: true })
-            }}
-          >
-            {t('common:webSearchOff.sendAnyway')}
-          </Button>
-        </div>
+        <WebSearchOffPrompt
+          onEnable={() => {
+            const held = webOffPrompt
+            setWebSearchEnabled(true)
+            void handleSendMessage(held, { allowNoWeb: true })
+          }}
+          onSendAnyway={() => {
+            const held = webOffPrompt
+            void handleSendMessage(held, { allowNoWeb: true })
+          }}
+        />
       )}
 
       {message && (
-        <div
-          role="alert"
-          className="mt-1.5 mx-1 rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint px-3 py-1.5 text-xs text-destructive"
-        >
-          <div className="flex items-center gap-2 justify-between">
-            <span className="min-w-0 wrap-break-word">{message}</span>
-            <button
-              type="button"
-              aria-label={t('common:dismiss')}
-              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
-              onClick={() => {
-                setMessage('')
-                // Reset file input to allow re-uploading the same file
-                if (fileInputRef.current) {
-                  fileInputRef.current.value = ''
-                }
-              }}
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-        </div>
+        <ComposerErrorLine
+          message={message}
+          onDismiss={() => {
+            setMessage('')
+            // Reset file input to allow re-uploading the same file
+            if (fileInputRef.current) {
+              fileInputRef.current.value = ''
+            }
+          }}
+        />
       )}
 
       {tokenCounterVisible && !tokenCounterCompact && (
