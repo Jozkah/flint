@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planGitCall } from '@/lib/gitTool'
+import { GIT_SUBCOMMANDS, planGitCall } from '@/lib/gitTool'
 
 // Characterization corpus for the git subcommand table: every subcommand the
 // planner knows, with the option spellings that change its class, branch,
@@ -159,5 +159,22 @@ describe('gitPlan golden', () => {
   it('plans every corpus argv exactly as before', () => {
     const out = CORPUS.map((argv) => ({ argv, result: planGitCall('git', argv) }))
     expect(out).toMatchSnapshot()
+  })
+})
+
+describe('GIT_SUBCOMMANDS table', () => {
+  it('every entry is a known subcommand of the planner', () => {
+    for (const sub of Object.keys(GIT_SUBCOMMANDS)) {
+      const r = planGitCall('git', [sub])
+      if (!r.ok) expect(r.error).not.toMatch(/is not supported by this tool/)
+    }
+  })
+
+  it('object prototype keys are not subcommands', () => {
+    for (const sub of ['constructor', 'toString', '__proto__', 'hasOwnProperty'])
+      expect(planGitCall('git', [sub])).toEqual({
+        ok: false,
+        error: `\`git ${sub}\` is not supported by this tool`,
+      })
   })
 })
