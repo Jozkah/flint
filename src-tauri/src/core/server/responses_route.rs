@@ -267,11 +267,27 @@ fn call_item(id: &str, call_id: &str, name: &str, args: &str, status: &str) -> V
     json!({ "id": id, "type": "function_call", "status": status, "call_id": call_id, "name": name, "arguments": args })
 }
 
+/// Why a chat `finish_reason` leaves the response `incomplete`, if it does.
+fn incomplete_reason(finish_reason: Option<&str>) -> Option<&'static str> {
+    match finish_reason {
+        Some("length") => Some("max_output_tokens"),
+        Some("content_filter") => Some("content_filter"),
+        _ => None,
+    }
+}
+
+fn reasoning_item(id: &str, text: &str) -> Value {
+    json!({ "id": id, "type": "reasoning", "summary": [{ "type": "summary_text", "text": text }] })
+}
+
 /// A whole chat/completions answer as a Responses object.
 pub fn chat_to_response(req: &Value, chat: &Value) -> Value {
     let choice = &chat["choices"][0];
     let msg = &choice["message"];
     let mut output = Vec::new();
+    if let Some(r) = msg["reasoning_content"].as_str().filter(|r| !r.is_empty()) {
+        output.push(reasoning_item(&short_id("rs"), r));
+    }
     let text = match &msg["content"] {
         Value::String(s) => s.clone(),
         Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join(""),
@@ -289,7 +305,7 @@ pub fn chat_to_response(req: &Value, chat: &Value) -> Value {
             "completed",
         ));
     }
-    let incomplete = (choice["finish_reason"] == "length").then_some("max_output_tokens");
+    let incomplete = incomplete_reason(choice["finish_reason"].as_str());
     let model = chat["model"].as_str().or_else(|| req["model"].as_str()).unwrap_or("");
     let created = chat["created"].as_u64().unwrap_or_else(now_secs);
     response_object(
@@ -335,6 +351,7 @@ pub struct StreamMapper {
     seq: u64,
     started: bool,
     next_output: usize,
+    reasoning: Option<OpenText>,
     text: Option<OpenText>,
     calls: Vec<OpenCall>,
     done_items: Vec<(usize, Value)>,
@@ -353,6 +370,7 @@ impl StreamMapper {
             seq: 0,
             started: false,
             next_output: 0,
+            reasoning: None,
             text: None,
             calls: Vec::new(),
             done_items: Vec::new(),
@@ -374,6 +392,51 @@ impl StreamMapper {
         let snap = self.snapshot("in_progress", vec![], None, None);
         out.push(sse("response.created", json!({ "response": snap.clone() }), &mut self.seq));
         out.push(sse("response.in_progress", json!({ "response": snap }), &mut self.seq));
+    }
+
+    fn close_reasoning(&mut self, out: &mut Vec<String>) {
+        let Some(r) = self.reasoning.take() else { return };
+        let part = json!({ "type": "summary_text", "text": r.text });
+        out.push(sse(
+            "response.reasoning_summary_text.done",
+            json!({ "item_id": r.item_id, "output_index": r.output_index, "summary_index": 0, "text": r.text }),
+            &mut self.seq,
+        ));
+        out.push(sse(
+            "response.reasoning_summary_part.done",
+            json!({ "item_id": r.item_id, "output_index": r.output_index, "summary_index": 0, "part": part }),
+            &mut self.seq,
+        ));
+        let item = reasoning_item(&r.item_id, &r.text);
+        out.push(sse("response.output_item.done", json!({ "output_index": r.output_index, "item": item.clone() }), &mut self.seq));
+        self.done_items.push((r.output_index, item));
+    }
+
+    fn push_reasoning(&mut self, text: &str, out: &mut Vec<String>) {
+        if self.reasoning.is_none() {
+            let item_id = short_id("rs");
+            let output_index = self.next_output;
+            self.next_output += 1;
+            out.push(sse(
+                "response.output_item.added",
+                json!({ "output_index": output_index, "item": { "id": item_id, "type": "reasoning", "summary": [] } }),
+                &mut self.seq,
+            ));
+            out.push(sse(
+                "response.reasoning_summary_part.added",
+                json!({ "item_id": item_id, "output_index": output_index, "summary_index": 0, "part": { "type": "summary_text", "text": "" } }),
+                &mut self.seq,
+            ));
+            self.reasoning = Some(OpenText { item_id, output_index, text: String::new() });
+        }
+        if let Some(r) = self.reasoning.as_mut() {
+            r.text.push_str(text);
+            out.push(sse(
+                "response.reasoning_summary_text.delta",
+                json!({ "item_id": r.item_id, "output_index": r.output_index, "summary_index": 0, "delta": text }),
+                &mut self.seq,
+            ));
+        }
     }
 
     fn close_text(&mut self, out: &mut Vec<String>) {
@@ -433,7 +496,12 @@ impl StreamMapper {
             self.finish_reason = Some(r.to_string());
         }
         let delta = &choice["delta"];
+        if let Some(r) = delta["reasoning_content"].as_str().filter(|t| !t.is_empty()) {
+            self.push_reasoning(r, &mut out);
+        }
         if let Some(text) = delta["content"].as_str().filter(|t| !t.is_empty()) {
+            // Reasoning ends where the answer begins.
+            self.close_reasoning(&mut out);
             if self.text.is_none() {
                 let item_id = short_id("msg");
                 let output_index = self.next_output;
@@ -461,6 +529,7 @@ impl StreamMapper {
         }
         for tc in delta["tool_calls"].as_array().cloned().unwrap_or_default() {
             // Text ends where the calls begin.
+            self.close_reasoning(&mut out);
             self.close_text(&mut out);
             let index = tc["index"].as_u64().unwrap_or(0);
             if !self.calls.iter().any(|c| c.chat_index == index) {
@@ -516,12 +585,13 @@ impl StreamMapper {
         }
         self.finished = true;
         self.start(&mut out);
+        self.close_reasoning(&mut out);
         self.close_text(&mut out);
         self.close_calls(&mut out);
         let mut items = std::mem::take(&mut self.done_items);
         items.sort_by_key(|(i, _)| *i);
         let output: Vec<Value> = items.into_iter().map(|(_, v)| v).collect();
-        let incomplete = (self.finish_reason.as_deref() == Some("length")).then_some("max_output_tokens");
+        let incomplete = incomplete_reason(self.finish_reason.as_deref());
         let snap = self.snapshot(if incomplete.is_some() { "incomplete" } else { "completed" }, output, self.usage.clone(), incomplete);
         let event = if incomplete.is_some() { "response.incomplete" } else { "response.completed" };
         out.push(sse(event, json!({ "response": snap }), &mut self.seq));
@@ -768,6 +838,48 @@ mod tests {
         assert_eq!(r["instructions"], "i");
         let cut = chat_to_response(&req, &json!({ "choices": [{ "message": { "content": "x" }, "finish_reason": "length" }] }));
         assert_eq!((cut["status"].as_str(), cut["incomplete_details"]["reason"].as_str()), (Some("incomplete"), Some("max_output_tokens")));
+    }
+
+    #[test]
+    fn reasoning_becomes_a_reasoning_item_and_a_filter_is_incomplete() {
+        let req = json!({ "model": "m", "input": "x" });
+        let r = chat_to_response(
+            &req,
+            &json!({ "choices": [{ "message": { "content": "A", "reasoning_content": "think" }, "finish_reason": "content_filter" }] }),
+        );
+        assert_eq!(r["output"][0]["type"], "reasoning");
+        assert_eq!(r["output"][0]["summary"][0]["text"], "think");
+        assert_eq!(r["output"][1]["content"][0]["text"], "A");
+        assert_eq!((r["status"].as_str(), r["incomplete_details"]["reason"].as_str()), (Some("incomplete"), Some("content_filter")));
+
+        let mut m = StreamMapper::new(&req);
+        let mut all = Vec::new();
+        for d in [
+            r#"{"choices":[{"delta":{"reasoning_content":"th"}}]}"#,
+            r#"{"choices":[{"delta":{"reasoning_content":"ink"}}]}"#,
+            r#"{"choices":[{"delta":{"content":"A"},"finish_reason":"content_filter"}]}"#,
+            "[DONE]",
+        ] {
+            all.extend(m.feed(d));
+        }
+        let ev = events(&all);
+        let names: Vec<&str> = ev.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "response.created", "response.in_progress", "response.output_item.added",
+                "response.reasoning_summary_part.added", "response.reasoning_summary_text.delta",
+                "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
+                "response.reasoning_summary_part.done", "response.output_item.done",
+                "response.output_item.added", "response.content_part.added", "response.output_text.delta",
+                "response.output_text.done", "response.content_part.done", "response.output_item.done",
+                "response.incomplete",
+            ]
+        );
+        let done = &ev.last().unwrap().1["response"];
+        assert_eq!(done["output"][0]["summary"][0]["text"], "think");
+        assert_eq!(done["output"][1]["content"][0]["text"], "A");
+        assert_eq!(done["incomplete_details"]["reason"], "content_filter");
     }
 
     #[test]
