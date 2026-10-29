@@ -4,15 +4,12 @@ import { refusedDraftToRestore, unescapeComposerMarkdown } from '@/lib/composerT
 import { pendingComposerTokens } from '@/lib/context-manager'
 import { isSendableAttachment } from '@/lib/attachmentChip'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
-import { toAssetUrl } from '@/lib/assetPath'
 import {
   dropFilePaths,
   pasteFilePaths,
   pastedPath,
   transferText,
-  withoutPastedPath,
 } from '@/lib/fileDrop'
-import { readDroppedPaths } from '@/lib/droppedPaths'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
@@ -82,10 +79,7 @@ import { useAppState } from '@/hooks/useAppState'
 import type { ChatStatus } from 'ai'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import {
-  DOCUMENT_ATTACHMENT_EXTENSIONS,
-  isDocumentAttachmentName,
-} from '@/constants/attachments'
+import { isDocumentAttachmentName } from '@/constants/attachments'
 import {
   TEMPORARY_CHAT_ID,
   TEMPORARY_CHAT_QUERY_ID,
@@ -101,20 +95,10 @@ import { TokenCounter } from '@/components/TokenCounter'
 import type { TokenUsageSource } from '@/hooks/useTokensCount'
 import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useShallow } from 'zustand/react/shallow'
-import {
-  ExtensionTypeEnum,
-  fs,
-  VectorDBExtension,
-} from '@janhq/core'
-import { ExtensionManager } from '@/lib/extension'
 import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
-import {
-  requestChatCompaction,
-  requestChatSideQuestion,
-} from '@/lib/chatCompaction'
+import { requestChatCompaction } from '@/lib/chatCompaction'
 import { isPlatformTauri } from '@/lib/platform/utils'
-import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 import {
   NEW_THREAD_ATTACHMENT_KEY,
   useChatAttachments,
@@ -136,14 +120,7 @@ import {
   pastedMediaFiles,
   splitDroppedFiles,
 } from '@/lib/composerIntake'
-import {
-  withoutAttachment,
-  withoutSent,
-} from '@/lib/attachmentIntake'
-import {
-  Attachment,
-  createDocumentAttachment,
-} from '@/types/attachment'
+import { withoutSent } from '@/lib/attachmentIntake'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useComposerFocus } from '@/hooks/useComposerFocus'
 import { useLatestCallback } from '@/hooks/useLatestCallback'
@@ -161,48 +138,27 @@ import {
   WebSearchOffPrompt,
 } from '@/containers/ComposerBanners'
 import { useImageAttachments } from '@/hooks/useImageAttachments'
+import { useDocumentAttachments } from '@/hooks/useDocumentAttachments'
+import { usePathOffer } from '@/hooks/usePathOffer'
+import { useComposerSlashCommands } from '@/hooks/useComposerSlashCommands'
+import { useReferencePicker } from '@/hooks/useReferencePicker'
 import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import { useChatShell } from '@/hooks/useChatShell'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getSandboxStatus } from '@/lib/agentTools'
-import {
-  formatPathReferenceText,
-  parsePromptForReferences,
-  stripPromptReferences,
-  typedReference,
-} from '@/lib/path-references'
-import {
-  resolveReference,
-  searchReferences,
-  unresolvedReferenceNote,
-} from '@/lib/safeReferences'
-import {
-  optionId,
-  rankReferences,
-  type NamedSource,
-  type ReferenceEntry,
-} from '@/lib/referenceMenu'
-import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
-import { TRIGGER_TAIL, mentionTrigger } from '@/lib/chatMentions'
-import { listConversations, listConversationsAsync } from '@/lib/chatMentionSources'
+import { optionId, type NamedSource } from '@/lib/referenceMenu'
+import { mentionTrigger } from '@/lib/chatMentions'
+import { listConversations } from '@/lib/chatMentionSources'
 import { resolvePromptMentions, withMentionBlocks } from '@/lib/chatMentionSend'
 import { MentionChips } from '@/containers/MentionChips'
 import { useMentionPreview } from '@/hooks/useMentionPreview'
 import { knownContextWindow } from '@/lib/knownContextWindow'
 import { modelSummarizer } from '@/lib/compactionSummarizer'
-import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { PromptFillDialog } from '@/containers/PromptFillDialog'
-import {
-  fillPrompt,
-  parseVars,
-  promptSlug,
-  usePromptLibrary,
-  type LibraryPrompt,
-} from '@/lib/promptLibrary'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
-import { useSlashCommands, type SlashSurface } from '@/hooks/useSlashCommands'
+import type { SlashSurface } from '@/hooks/useSlashCommands'
 import type { SlashBuiltin } from '@/lib/slashCommands'
 
 type ChatInputProps = {
@@ -578,432 +534,58 @@ const ChatInput = memo(function ChatInput({
     [ensureWebSearchScope, resolvedWebSearchScope]
   )
 
-  const [filePickerOpen, setFilePickerOpen] = useState(false)
   // The image viewer over the composer's attachments: which image is open.
   const [viewerAt, setViewerAt] = useState<number | null>(null)
-  const [filePickerQuery, setFilePickerQuery] = useState('')
-  const [filePickerEntries, setFilePickerEntries] = useState<ReferenceEntry[]>(
-    []
-  )
-  // The `@` menu's active row, moved from the composer with the arrow keys.
-  const [referenceActive, setReferenceActive] = useState(0)
-  // A file or folder being named as an alias (AH-205), and why a name failed.
-  const [aliasDraft, setAliasDraft] = useState<ReferenceEntry | null>(null)
-  const [aliasError, setAliasError] = useState<string | null>(null)
-  // Announced: how many references match, or what happened to an alias.
-  const [referenceStatus, setReferenceStatus] = useState('')
-  // Which character opened the menu: `#` lists conversations only.
-  const [menuTrigger, setMenuTrigger] = useState<'@' | '#'>('@')
-  // Re-ranks the open menu once the conversation counts have loaded.
-  const rerankMenuRef = useRef<(() => void) | null>(null)
-  // Whether the menu is open now, for work that finishes after it closed.
-  const filePickerOpenRef = useRef(false)
-  filePickerOpenRef.current = filePickerOpen
-  const referenceListId = useId()
   const slashListId = useId()
-  const defaultSlashBuiltins = useMemo<SlashBuiltin[]>(
-    () =>
-      slashSurface === 'home'
-        ? [
-            {
-              name: 'new',
-              description: t('slash:builtin.new'),
-              run: () => void router.navigate({ to: route.home }),
-            },
-            // Only in an open conversation, which registers how to compact
-            // itself (`lib/chatCompaction.ts`).
-            ...(currentThreadId
-              ? [
-                  {
-                    name: 'compact',
-                    description: t('slash:builtin.compact'),
-                    argumentHint: '[focus]',
-                    run: (args: string) => {
-                      if (
-                        !requestChatCompaction(
-                          currentThreadId,
-                          args.trim() || undefined
-                        )
-                      ) {
-                        toast.info(t('common:budget.compactFailed'))
-                      }
-                    },
-                  },
-                  {
-                    name: 'btw',
-                    description: t('slash:builtin.btw'),
-                    argumentHint: '<question>',
-                    run: (args: string) => {
-                      const question = args.trim()
-                      if (
-                        !question ||
-                        !requestChatSideQuestion(currentThreadId, question)
-                      ) {
-                        toast.info(t('common:budget.btwFailed'))
-                      }
-                    },
-                  },
-                ]
-              : []),
-          ]
-        : [],
-    [slashSurface, t, router, currentThreadId]
-  )
-  // Prompt library (AH-prompts): one state for the fill-in dialog, whichever
-  // menu started the insert.
-  const libraryPrompts = usePromptLibrary((s) => s.prompts)
-  const [promptFill, setPromptFill] = useState<{
-    prompt: LibraryPrompt
-    apply: (text: string) => void
-    /** Undoes what started the insert (the typed `@query`). */
-    cancel?: () => void
-  } | null>(null)
-  /** Insert now when the prompt has no variables, else ask for them first. */
-  const beginPromptInsert = useCallback(
-    (
-      prompt: LibraryPrompt,
-      apply: (text: string) => void,
-      cancel?: () => void
-    ) => {
-      if (parseVars(prompt.body).length === 0) {
-        apply(fillPrompt(prompt.body, {}))
-        return
-      }
-      setPromptFill({ prompt, apply, cancel })
-    },
-    []
-  )
-  const promptBuiltins = useMemo<SlashBuiltin[]>(() => {
-    const used = new Set<string>()
-    return libraryPrompts.map((p) => {
-      let slug = promptSlug(p.name)
-      for (let n = 2; used.has(slug); n++) slug = `${promptSlug(p.name)}-${n}`
-      used.add(slug)
-      return {
-        name: `prompt:${slug}`,
-        description: p.name,
-        promptId: p.id,
-        // Typed in full and sent: the draft is cleared by the send, so the
-        // insert lands after it.
-        run: () => {
-          setTimeout(() => beginPromptInsert(p, (text) => setPrompt(text)), 0)
-        },
-      }
-    })
-  }, [libraryPrompts, beginPromptInsert, setPrompt])
-  const slashCommands = useSlashCommands({
-    surface: slashSurface,
-    project: slashProject,
-    builtins: [...(slashBuiltins ?? defaultSlashBuiltins), ...promptBuiltins],
-    helpDescription: t('slash:builtin.help'),
+  const {
+    slashCommands,
+    libraryPrompts,
+    promptFill,
+    setPromptFill,
+    beginPromptInsert,
+  } = useComposerSlashCommands({
+    slashSurface,
+    slashProject,
+    slashBuiltins,
+    currentThreadId,
+    setPrompt,
   })
-  const referenceSkills = referenceSources?.skills
-  const referenceAgents = referenceSources?.agents
-  const [workingDir, setWorkingDir] = useState<string | undefined>(undefined)
-  // Textarea cursor position snapshot at the time @ was typed
-  const filePickerCursorPos = useRef<number | null>(null)
-
-  // The folder references may name, and the data folder the confined reader
-  // needs. No folder means no references at all -- not the home directory.
-  const [referenceDataFolder, setReferenceDataFolder] = useState<
-    string | undefined
-  >(undefined)
-  // Whatever the mode: a surface that attached a folder (Cowork) names it
-  // here, and one that did not gets no references at all.
-  useEffect(() => {
-    setWorkingDir(referenceRoot ?? undefined)
-    if (!referenceRoot) return
-    let alive = true
-    void getServiceHub()
-      .app()
-      .getJanDataFolder()
-      .then((folder) => {
-        if (alive) setReferenceDataFolder(folder ?? undefined)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [referenceRoot])
-
-  // Detect `@` in the prompt text and open the file picker
-  const handlePromptChange = useCallback(
-    (value: string) => {
-      setPrompt(value)
-
-      const cursorIdx = filePickerCursorPos.current ?? value.length
-
-      // Look backwards from current cursor to find the last word starting with
-      // @ (the @ must not be glued to a preceding word char, so `user@host`
-      // never opens the picker), or a `#` that begins a word and is followed
-      // by a letter, which lists conversations only. Files need a folder
-      // (AH-204); conversations, skills and prompts do not.
-      const beforeCursor = value.slice(0, cursorIdx)
-      const atMatch = mentionTrigger(beforeCursor)
-
-      if (atMatch) {
-        const query = atMatch.query
-        setFilePickerQuery(query)
-        setMenuTrigger(atMatch.char)
-
-        // One ranked list. The file index is searched through the backend's
-        // confined listing; if it cannot be read the rest are still offered,
-        // and typing is never waited on.
-        const rank = (files: Awaited<ReturnType<typeof searchReferences>>) => {
-          const ranked = rankReferences(query, {
-            files,
-            skills: referenceSkills ?? [],
-            agents: referenceAgents ?? [],
-            aliases: useReferenceAliases.getState().list(workingDir),
-            prompts: libraryPrompts.map((p) => ({
-              id: p.id,
-              name: p.name,
-              detail: p.folder ?? p.body.slice(0, 80),
-            })),
-            conversations: listConversations(),
-            currentConversationId: scopeKey ?? currentThreadId,
-          }, 50, atMatch.char)
-          setFilePickerEntries(ranked)
-          setReferenceActive(0)
-          setReferenceStatus(
-            ranked.length === 0
-              ? t('chat:composer.referencesNone')
-              : t('chat:composer.references', { count: ranked.length })
-          )
-          rerankMenuRef.current = () => rank(files)
-        }
-        // Counts and previews of the chats load once per menu opening, then
-        // the open menu is ranked again with them.
-        if (!filePickerOpen) {
-          void listConversationsAsync().then(() => {
-            // The menu may have closed while this loaded; ranking it again
-            // would announce a status for a menu nobody sees.
-            if (filePickerOpenRef.current) rerankMenuRef.current?.()
-          })
-        }
-        const fileQuery =
-          atMatch.char === '#' ||
-          /^(skill|agent|alias|prompt|chat|session|room):/.test(query)
-            ? null
-            : query
-        if (workingDir && referenceDataFolder && fileQuery !== null) {
-          searchReferences(referenceDataFolder, workingDir, fileQuery)
-            .then(rank)
-            .catch(() => rank([]))
-        } else {
-          rank([])
-        }
-        setFilePickerOpen(true)
-      } else {
-        setFilePickerOpen(false)
-      }
-    },
-    [
-      t,
-      workingDir,
-      referenceDataFolder,
-      setPrompt,
-      referenceSkills,
-      referenceAgents,
-      libraryPrompts,
-      scopeKey,
-      currentThreadId,
-      filePickerOpen,
-    ]
-  )
-
-  // Insert the selected reference into the prompt
-  const handleFilePickerSelect = useCallback(
-    (entry: ReferenceEntry) => {
-      if (filePickerCursorPos.current == null) return
-
-      const beforeCursor = prompt.slice(0, filePickerCursorPos.current)
-      const afterCursor = prompt.slice(filePickerCursorPos.current)
-
-      // Replace the `@query` with the entry's token
-      const textBefore = beforeCursor.replace(TRIGGER_TAIL, '$1')
-      // The identifier, not the label: a folder-relative path, or a typed
-      // reference. It means the same thing however it is displayed, and a
-      // path cannot name anything outside the folder.
-      // A library prompt is pasted as text, not left as a reference.
-      if (entry.kind === 'prompt') {
-        const found = libraryPrompts.find(
-          (p) => `prompt:${p.id}` === entry.token
-        )
-        setFilePickerOpen(false)
-        filePickerCursorPos.current = null
-        if (found) {
-          beginPromptInsert(
-            found,
-            (text) => setPrompt(textBefore + text + afterCursor),
-            // Cancelling leaves no dangling `@query` behind.
-            () => setPrompt(textBefore + afterCursor)
-          )
-        }
-        setTimeout(() => focusComposer(), 0)
-        return
-      }
-      const refText = formatPathReferenceText(entry.token) + ' '
-      const newPrompt = textBefore + refText + afterCursor
-
-      setPrompt(newPrompt)
-      setFilePickerOpen(false)
-      filePickerCursorPos.current = null
-
-      // Focus back on textarea
-      setTimeout(() => focusComposer(), 0)
-    },
-    [prompt, setPrompt, libraryPrompts, beginPromptInsert, focusComposer]
-  )
-
-  const handleFilePickerClose = useCallback(() => {
-    setFilePickerOpen(false)
-    setAliasDraft(null)
-    setAliasError(null)
-    filePickerCursorPos.current = null
-  }, [])
-
-  // Name the file or folder being drafted as an alias (AH-205). Focus goes
-  // back to the composer either way, where it was when the draft began.
-  const handleAliasSave = useCallback(
-    (name: string, lines = '') => {
-      if (!aliasDraft) return
-      const out = useReferenceAliases
-        .getState()
-        .add(workingDir, name, aliasDraft.token, lines)
-      if (!out.ok) {
-        setAliasError(out.message)
-        setReferenceStatus(
-          t('chat:composer.aliasNotSaved', { message: out.message })
-        )
-        return
-      }
-      setAliasDraft(null)
-      setAliasError(null)
-      setReferenceStatus(
-        t('chat:composer.aliasSaved', {
-          name: out.alias.name,
-          target: out.alias.target,
-        })
-      )
-      setFilePickerEntries((entries) =>
-        rankReferences(filePickerQuery, {
-          files: entries
-            .filter((e) => e.kind === 'file' || e.kind === 'directory')
-            .map((e) => ({
-              path: e.token,
-              name: e.name,
-              kind: e.kind as 'file' | 'directory',
-              extension: e.extension,
-            })),
-          skills: referenceSkills ?? [],
-          agents: referenceAgents ?? [],
-          aliases: useReferenceAliases.getState().list(workingDir),
-        })
-      )
-      setTimeout(() => focusComposer(), 0)
-    },
-    [
-      aliasDraft,
-      workingDir,
-      filePickerQuery,
-      referenceSkills,
-      referenceAgents,
-      focusComposer,
-      t,
-    ]
-  )
-
-  const handleAliasCancel = useCallback(() => {
-    setAliasDraft(null)
-    setAliasError(null)
-    setTimeout(() => focusComposer(), 0)
-  }, [focusComposer])
-
-  // Resolve @path references in the prompt text, returning the resolved content
-  const resolvePromptReferences = useCallback(
-    async (
-      text: string
-    ): Promise<{
-      text: string
-      resolvedContents: string
-    }> => {
-      const refs = parsePromptForReferences(text)
-      // No folder, no references: an `@name` in an ordinary chat is left as
-      // typed. It used to be read as a path -- relative to nothing, or
-      // absolute -- so `@C:\Users\me\.ssh\id_rsa` put that file in the prompt.
-      if (refs.length === 0 || !workingDir)
-        return { text, resolvedContents: '' }
-
-      const parts: string[] = []
-      const unresolved = new Set<string>()
-      for (const ref of refs) {
-        const typed = typedReference(ref)
-        // A skill reference is acted on by the skill machinery, which reads
-        // it from the text; it stays there and needs nothing inlined.
-        if (typed?.kind === 'skill') continue
-        // A conversation mention is resolved separately, with or without a
-        // folder (chatMentionSend.ts).
-        if (
-          typed?.kind === 'chat' ||
-          typed?.kind === 'session' ||
-          typed?.kind === 'room'
-        )
-          continue
-        if (typed?.kind === 'agent') {
-          const agent = referenceAgents?.find((one) => one.name === typed.name)
-          parts.push(
-            agent
-              ? `[Agent @agent:${agent.name}${agent.description ? `: ${agent.description}` : ''}. To hand work to it, call the task tool with agent "${agent.name}".]`
-              : `[Reference @${ref} was not included: there is no saved agent named ${typed.name}]`
-          )
-          continue
-        }
-        if (typed?.kind === 'alias') {
-          const alias = await resolveAlias(
-            referenceDataFolder ?? '',
-            workingDir,
-            typed.name
-          )
-          parts.push(
-            alias.ok
-              ? alias.content
-              : `[Reference @${ref} was not included: ${alias.message}]`
-          )
-          continue
-        }
-        const resolved = await resolveReference(
-          referenceDataFolder ?? '',
-          workingDir,
-          ref
-        )
-        if (resolved.ok) {
-          parts.push(resolved.content)
-        } else {
-          unresolved.add(ref)
-          // Said in the message, not dropped: the model should know a
-          // reference was refused, and why, rather than miss it silently.
-          // A name that matched no file stays silent (pasted code, emails).
-          const note = unresolvedReferenceNote(ref, resolved)
-          if (note) parts.push(note)
-        }
-      }
-
-      const resolvedContents = parts.join('\n\n')
-
-      // Remove @ references from the prompt text (they'll be replaced by the
-      // resolved contents above so the model sees the content directly)
-      const cleanText = stripPromptReferences(text, unresolved)
-
-      return { text: cleanText, resolvedContents }
-    },
-    [workingDir, referenceDataFolder, referenceAgents]
-  )
+  const {
+    filePickerOpen,
+    filePickerQuery,
+    filePickerEntries,
+    referenceActive,
+    setReferenceActive,
+    aliasDraft,
+    setAliasDraft,
+    aliasError,
+    setAliasError,
+    referenceStatus,
+    setReferenceStatus,
+    menuTrigger,
+    referenceListId,
+    workingDir,
+    filePickerCursorPos,
+    handlePromptChange,
+    handleFilePickerSelect,
+    handleFilePickerClose,
+    handleAliasSave,
+    handleAliasCancel,
+    resolvePromptReferences,
+  } = useReferencePicker({
+    referenceRoot,
+    referenceSources,
+    prompt,
+    setPrompt,
+    scopeKey,
+    currentThreadId,
+    libraryPrompts,
+    beginPromptInsert,
+    focusComposer,
+  })
 
   // Get current thread messages for token counting
   const threadMessages = useActiveMessages(currentThreadId)
-
-  const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
   // This conversation's model: a split pane's own thread model, otherwise the
   // global picker.
@@ -1119,7 +701,6 @@ const ChatInput = memo(function ChatInput({
   }, [loading, projectAssistantId])
 
   const attachmentsEnabled = useAttachments((s) => s.enabled)
-  const parsePreference = useAttachments((s) => s.parseMode)
   const maxFileSizeMB = useAttachments((s) => s.maxFileSizeMB)
 
   // Derived: any document currently processing (ingestion in progress)
@@ -1703,293 +1284,13 @@ const ChatInput = memo(function ChatInput({
   const openVideoPicker = media.video.openPicker
   const videoSupported = !!selectedModel?.capabilities?.includes('video')
 
-  const processNewDocumentAttachments = useCallback(
-    async (docs: Attachment[]) => {
-      if (!docs.length) return
-
-      // Only collect the user's inline-vs-embeddings preference via the
-      // dialog.  Actual ingestion is always deferred to send time
-      // (processAttachmentsForSend inside processAndSendMessage).
-      const docsNeedingPrompt = docs.filter((doc) => {
-        if (doc.processed || doc.injectionMode) return false
-        const preference = doc.parseMode ?? parsePreference
-        return preference === 'prompt' || preference === 'auto'
-      })
-
-      if (docsNeedingPrompt.length > 0) {
-        const choices = new Map<string, 'inline' | 'embeddings'>()
-        for (let i = 0; i < docsNeedingPrompt.length; i++) {
-          const doc = docsNeedingPrompt[i]
-          const choice = await useAttachmentIngestionPrompt
-            .getState()
-            .showPrompt(
-              doc,
-              ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES,
-              i,
-              docsNeedingPrompt.length
-            )
-
-          if (!choice) {
-            // User cancelled — remove all pending docs
-            setAttachmentsForThread(attachmentsKey, (prev) =>
-              prev.filter(
-                (att) =>
-                  !docsNeedingPrompt.some(
-                    (d) => d.path && att.path && d.path === att.path
-                  )
-              )
-            )
-            return
-          }
-
-          if (doc.path) {
-            choices.set(doc.path, choice)
-          }
-        }
-
-        // Persist each document's chosen mode so processAttachmentsForSend
-        // can pick it up at send time.
-        if (choices.size > 0) {
-          setAttachmentsForThread(attachmentsKey, (prev) =>
-            prev.map((att) => {
-              const mode = att.path ? choices.get(att.path) : undefined
-              return mode ? { ...att, parseMode: mode } : att
-            })
-          )
-        }
-      }
-    },
-    [
-      ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES,
-      attachmentsKey,
-      parsePreference,
-      setAttachmentsForThread,
-    ]
-  )
-
-  /** Attach files on disk as documents; shared by the picker and drag-and-drop. */
-  const attachDocumentPaths = async (paths: string[]) => {
-    // Prepare attachments with file sizes
-    const preparedAttachments: Attachment[] = []
-    for (const p of paths) {
-      const name = p.split(/[\\/]/).pop() || p
-      const fileType = name.split('.').pop()?.toLowerCase()
-      let size: number | undefined = undefined
-      try {
-        const stat = await fs.fileStat(p)
-        size = stat?.size ? Number(stat.size) : undefined
-      } catch (e) {
-        console.warn('Failed to read file size for', p, e)
-      }
-      preparedAttachments.push(
-        createDocumentAttachment({
-          name,
-          path: p,
-          fileType,
-          size,
-          parseMode: parsePreference,
-        })
-      )
-    }
-
-    const maxFileSizeBytes =
-      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
-        ? maxFileSizeMB * 1024 * 1024
-        : undefined
-
-    if (maxFileSizeBytes !== undefined) {
-      const hasOversized = preparedAttachments.some(
-        (att) => typeof att.size === 'number' && att.size > maxFileSizeBytes
-      )
-      if (hasOversized) {
-        toast.error(t('sweep:chat.fileTooLarge'), {
-          description: t('sweep:chat.fileTooLargeDesc', { size: maxFileSizeMB }),
-        })
-        return
-      }
-    }
-
-    let duplicates: string[] = []
-    let newDocAttachments: Attachment[] = []
-
-    setAttachmentsForThread(attachmentsKey, (currentAttachments) => {
-      const existingPaths = new Set(
-        currentAttachments
-          .filter((a) => a.type === 'document' && a.path)
-          .map((a) => a.path)
-      )
-
-      duplicates = []
-      newDocAttachments = []
-
-      for (const att of preparedAttachments) {
-        if (existingPaths.has(att.path)) {
-          duplicates.push(att.name)
-          continue
-        }
-        newDocAttachments.push(att)
-      }
-
-      return newDocAttachments.length > 0
-        ? [...currentAttachments, ...newDocAttachments]
-        : currentAttachments
-    })
-
-    if (duplicates.length > 0) {
-      toast.warning(t('sweep:chat.filesAlreadyAttached'), {
-        description: t('sweep:chat.alreadyInList', { names: duplicates.join(', '), count: duplicates.length }),
-      })
-    }
-
-    if (newDocAttachments.length > 0) {
-      await processNewDocumentAttachments(newDocAttachments)
-    }
-  }
-
-  /** Save dropped documents to disk, then attach them like picked files. */
-  const attachDroppedDocuments = async (files: File[]) => {
-    if (!attachmentsEnabled) {
-      toast.info(t('sweep:chat.attachmentsDisabled'))
-      return
-    }
-    const limitBytes =
-      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
-        ? maxFileSizeMB * 1024 * 1024
-        : undefined
-    const withinLimit = files.filter(
-      (f) => limitBytes === undefined || f.size <= limitBytes
-    )
-    if (withinLimit.length < files.length) {
-      toast.error(t('sweep:chat.fileTooLarge'), {
-        description: t('sweep:chat.fileTooLargeDesc', { size: maxFileSizeMB }),
-      })
-    }
-    if (withinLimit.length === 0) return
-    try {
-      const paths = await Promise.all(
-        withinLimit.map((f) =>
-          serviceHub.uploads().saveDroppedFile(f, currentThreadId)
-        )
-      )
-      await attachDocumentPaths(paths)
-    } catch (e) {
-      console.error('Failed to attach dropped documents:', e)
-      toast.error(t('common:dropAttachFailed'), {
-        description: e instanceof Error ? e.message : JSON.stringify(e),
-      })
-    }
-  }
-
-  const handleAttachDocsIngest = async () => {
-    try {
-      if (!attachmentsEnabled) {
-        toast.info(t('sweep:chat.attachmentsDisabled'))
-        return
-      }
-      const selection = await serviceHub.dialog().open({
-        multiple: true,
-        filters: [
-          {
-            name: t('chat:composer.filterDocuments'),
-            extensions: [...DOCUMENT_ATTACHMENT_EXTENSIONS],
-          },
-          {
-            name: t('chat:composer.filterAll'),
-            extensions: ['*'],
-          },
-        ],
-      })
-      if (!selection) return
-      const paths = Array.isArray(selection) ? selection : [selection]
-      if (!paths.length) return
-      await attachDocumentPaths(paths)
-    } catch (e) {
-      console.error('Failed to attach documents:', e)
-      const desc = e instanceof Error ? e.message : JSON.stringify(e)
-      toast.error(t('chat:composer.attachFailed'), { description: desc })
-    }
-  }
-
-  /**
-   * Deletes an ingested document from the vector store. False (after a toast)
-   * when the backend refused, so the chip has to stay.
-   */
-  const deleteAttachmentFromBackend = async (
-    attachment: Attachment,
-    threadId: string | undefined
-  ): Promise<boolean> => {
-    if (!attachment.id || !threadId || attachment.type !== 'document') {
-      return true
-    }
-    try {
-      const vectorDBExtension = ExtensionManager.getInstance().get(
-        ExtensionTypeEnum.VectorDB
-      ) as VectorDBExtension | undefined
-      if (vectorDBExtension?.deleteFile) {
-        await vectorDBExtension.deleteFile(threadId, attachment.id)
-      }
-      return true
-    } catch (error) {
-      console.error('Failed to delete attachment from backend:', error)
-      toast.error(t('chat:composer.removeFailed'), {
-        description: error instanceof Error ? error.message : String(error),
-      })
-      return false
-    }
-  }
-
-  const handleRemoveAttachment = async (indexToRemove: number) => {
-    const attachmentToRemove = attachments[indexToRemove]
-    if (!attachmentToRemove) return
-    // If attachment was ingested (has an ID), delete it from the backend
-    if (
-      attachmentToRemove.id &&
-      !(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId))
-    )
-      return
-    setAttachmentsForThread(attachmentsKey, (prev) =>
-      withoutAttachment(prev, attachmentToRemove)
-    )
-  }
-
-  /**
-   * Backspace in an empty box: the chip goes at once and a toast offers to
-   * put it back. An ingested document is only deleted from the backend once
-   * the toast closes without an undo; if that delete fails the chip returns.
-   */
-  const removeAttachmentWithUndo = (index: number) => {
-    const target = attachments[index]
-    if (!target) return
-    const key = attachmentsKey
-    const threadId = currentThreadId
-    const restore = () =>
-      setAttachmentsForThread(key, (prev) =>
-        prev.includes(target)
-          ? prev
-          : [...prev.slice(0, index), target, ...prev.slice(index)]
-      )
-    setAttachmentsForThread(key, (prev) => withoutAttachment(prev, target))
-    let settled = false
-    const finalize = () => {
-      if (settled) return
-      settled = true
-      void deleteAttachmentFromBackend(target, threadId).then((ok) => {
-        if (!ok) restore()
-      })
-    }
-    toast.info(t('chat:composer.attachmentRemoved', { name: target.name }), {
-      action: {
-        label: t('common:undo'),
-        onClick: () => {
-          if (settled) return
-          settled = true
-          restore()
-        },
-      },
-      onAutoClose: finalize,
-      onDismiss: finalize,
-    })
-  }
+  const {
+    attachDocumentPaths,
+    attachDroppedDocuments,
+    handleAttachDocsIngest,
+    handleRemoveAttachment,
+    removeAttachmentWithUndo,
+  } = useDocumentAttachments({ attachmentsKey, currentThreadId, attachments })
 
   /** Update the same model metadata as the edit dialog. */
   const enableCapabilitiesOnSelectedModel = useCallback(
@@ -2127,27 +1428,25 @@ const ChatInput = memo(function ChatInput({
     else attachMedia()
   }
 
-  // Dragged or copied files can arrive as `file://` URIs with no File objects
-  // (Linux file managers), which would land in the editor as raw text. Read
-  // them from disk and attach them like any other file.
-  const attachFileUris = async (paths: string[]) => {
-    const { files, folders, failed } = await readDroppedPaths(paths)
-    for (const { error } of failed) {
-      toast.error(t('common:pastedPath.failed'), { description: error })
-    }
-    // A folder is offered as the project, never read in. Only one offer fits
-    // above the editor; any folder it cannot cover is named, not dropped.
-    const offered = pastedFolder ? folders.slice(0, 1) : []
-    if (offered.length > 0) setPathOffer({ path: offered[0], kind: 'folder' })
-    for (const folder of folders.slice(offered.length)) {
-      toast.error(t('common:pastedPath.failed'), { description: folder })
-    }
-    const documents = files.filter((f) => isDocumentAttachmentName(f.name))
-    const others = files.filter((f) => !documents.includes(f))
-    if (documents.length > 0) void attachDroppedDocuments(documents)
-    if (others.length > 0) attachFiles(others)
-    focusComposer()
-  }
+  const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
+  const {
+    pathOffer,
+    setPathOffer,
+    attachFileUris,
+    declinePathOffer,
+    offerPastedPath,
+    acceptPathOffer,
+  } = usePathOffer({
+    attachmentsKey,
+    isStreaming,
+    pastedFolder,
+    richComposerRef,
+    latestPromptRef,
+    setPrompt,
+    attachFiles,
+    attachDroppedDocuments,
+    focusComposer,
+  })
 
   // Runs in the capture phase, before the editor's own drop handler, which
   // inserts text/uri-list or text/plain as text and runs before any bubbling
@@ -2179,93 +1478,6 @@ const ChatInput = memo(function ChatInput({
         paths: named.paths,
         raw: transferText(dt),
       })
-  }
-
-  // A pasted path is still pasted as text; this only notices it and offers,
-  // above the editor, to attach what it points at.
-  const [pathOffer, setPathOffer] = useState<{
-    path: string
-    kind: 'file' | 'folder'
-    /** Every file a pasted URI list named, when there was more than a path. */
-    paths?: string[]
-    /** The text that was held back, put in the composer if the offer is declined. */
-    raw?: string
-    /** The path was pasted into the composer as text; accepting removes it. */
-    inComposer?: boolean
-  } | null>(null)
-  const pathOfferRef = useRef(pathOffer)
-  pathOfferRef.current = pathOffer
-  // The offer, like the draft, belongs to the chat it was pasted in.
-  useEffect(() => {
-    setPathOffer(null)
-  }, [attachmentsKey])
-
-  /** Decline the offer; the text it held back goes into the composer instead. */
-  const declinePathOffer = () => {
-    const offer = pathOfferRef.current
-    setPathOffer(null)
-    if (offer?.raw) {
-      if (typeof richComposerRef.current?.insertText === 'function')
-        richComposerRef.current.insertText(offer.raw)
-      else setPrompt(latestPromptRef.current + offer.raw)
-    }
-  }
-
-  const offerPastedPath = async (candidate: string) => {
-    if (!isPlatformTauri()) return
-    // A UNC path would make the OS connect to that host on stat.
-    if (/^[\\/]{2}/.test(candidate)) return
-    try {
-      const { fs } = await import('@janhq/core')
-      const stat = await fs.fileStat(candidate)
-      if (!stat) return
-      if (stat.isDirectory) {
-        if (!pastedFolder) return
-        const same = (a: string) =>
-          a.replace(/[\\/]+$/, '').toLowerCase() ===
-          candidate.replace(/[\\/]+$/, '').toLowerCase()
-        if (pastedFolder.attached.some(same)) return
-        setPathOffer({ path: candidate, kind: 'folder', inComposer: true })
-      } else {
-        setPathOffer({ path: candidate, kind: 'file', inComposer: true })
-      }
-    } catch {
-      // Not a path that exists: it was only text.
-    }
-  }
-
-  const acceptPathOffer = async () => {
-    const offer = pathOffer
-    setPathOffer(null)
-    if (!offer) return
-    // The path was pasted as text too; once it is attached it is not part of
-    // the message (C021).
-    if (offer.inComposer) {
-      const draft = latestPromptRef.current
-      const cleaned = withoutPastedPath(draft, offer.path)
-      if (cleaned !== draft) setPrompt(cleaned)
-    }
-    if (offer.kind === 'folder') {
-      pastedFolder?.onAttach(offer.path)
-      return
-    }
-    if (offer.paths) {
-      await attachFileUris(offer.paths)
-      return
-    }
-    try {
-      const response = await fetch(await toAssetUrl(offer.path))
-      if (!response.ok) throw new Error(response.statusText)
-      const blob = await response.blob()
-      const name = offer.path.split(/[\\/]/).filter(Boolean).pop() || 'file'
-      const file = new File([blob], name, { type: blob.type })
-      attachFiles([file])
-    } catch (error) {
-      toast.error(t('common:pastedPath.failed'), {
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-    focusComposer()
   }
 
   const largePaste = useLargePaste({
@@ -2373,19 +1585,11 @@ const ChatInput = memo(function ChatInput({
     .filter((a) => a.type === 'image' && a.dataUrl)
     .map((a) => ({ url: a.dataUrl as string, name: a.name }))
 
-  const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
   // A tool call in flight (the reply has finished streaming but the tool is
   // still running) can be cancelled from here.
   const toolInFlight = useAppState((state) =>
     currentThreadId ? Boolean(state.cancelToolCalls?.[currentThreadId]) : false
   )
-  const declineLatest = useLatestCallback(declinePathOffer)
-  // The offer belongs to the draft it was pasted into; sending ends it.
-  useEffect(() => {
-    // Not dropped silently: what was pasted still lands in the composer.
-    if (isStreaming && pathOfferRef.current) declineLatest()
-  }, [isStreaming, declineLatest])
-
   /**
    * Write one or more settings into the model's own configuration, in one
    * update. Built from the provider's current copy of the model, not the
