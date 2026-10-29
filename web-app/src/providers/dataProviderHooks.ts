@@ -4,6 +4,7 @@
  * sleep inhibit and the Local API Server auto-start.
  */
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { invokeCommand } from '@/lib/backend'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 
 import {
@@ -28,12 +29,10 @@ import {
 import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
-import { invoke } from '@tauri-apps/api/core'
 import { startKeepAwakeSync } from '@/lib/keepAwake'
 import { isChatWindow } from '@/lib/soloFlag'
 import { restoreInterruptedDownloads } from '@/lib/restoreInterruptedDownloads'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { hostInvoke } from '@/lib/hostInvoke'
 import { grandfatherFolderTrust } from '@/lib/grandfatherFolderTrust'
 import {
   keyringKeysToApply,
@@ -92,7 +91,7 @@ async function registerRemoteProvider(provider: ModelProvider) {
   }
 
   try {
-    await hostInvoke('register_provider_config', { request })
+    await invokeCommand('register_provider_config', { request })
     console.debug(`Registered remote provider: ${provider.provider}`)
   } catch (error) {
     console.error(`Failed to register provider ${provider.provider}:`, error)
@@ -110,7 +109,7 @@ async function seedProviderKeysFromKeyring(
     providers.map(async (provider) => {
       if (provider.provider === 'llamacpp') return provider
       try {
-        const keys = await hostInvoke<string[]>('get_provider_keys', {
+        const keys = await invokeCommand<string[]>('get_provider_keys', {
           provider: provider.provider,
         })
         if (!keys || keys.length === 0) return provider
@@ -187,7 +186,7 @@ const syncRemoteProviders = () => {
   // Unregister providers that were previously registered but are now inactive/removed
   for (const name of registeredProviderNames) {
     if (!currentActive.has(name)) {
-      hostInvoke('unregister_provider_config', { provider: name }).catch(() => {})
+      invokeCommand('unregister_provider_config', { provider: name }).catch(() => {})
     }
   }
 
@@ -210,7 +209,7 @@ function syncTlsTrust(providers: ModelProvider[]) {
     const allow = provider.allow_invalid_certs === true && !!provider.base_url
     if (allow) now.add(provider.provider)
     if (allow || trustedProviderNames.has(provider.provider)) {
-      hostInvoke('set_provider_tls_trust', {
+      invokeCommand('set_provider_tls_trust', {
         provider: provider.provider,
         baseUrl: provider.base_url ?? null,
         allowInvalidCerts: allow,
@@ -221,7 +220,7 @@ function syncTlsTrust(providers: ModelProvider[]) {
   const listed = new Set(providers.map((p) => p.provider))
   trustedProviderNames.forEach((name) => {
     if (!listed.has(name)) {
-      hostInvoke('set_provider_tls_trust', {
+      invokeCommand('set_provider_tls_trust', {
         provider: name,
         baseUrl: null,
         allowInvalidCerts: false,
@@ -259,7 +258,7 @@ const syncModelParamDefaults = () => {
     }
   }
 
-  hostInvoke('set_model_param_defaults', { defaults }).catch((e) =>
+  invokeCommand('set_model_param_defaults', { defaults }).catch((e) =>
     console.error('Failed to sync model param defaults:', e)
   )
 }
@@ -341,7 +340,7 @@ export function useBootHydration(
     // settings storage) into the store + download extension for this session.
     if (!solo) {
       loadHuggingfaceToken(
-        (command, args) => invoke(command, args),
+        (command, args) => invokeCommand(command, args),
         useModelProvider
           .getState()
           .providers.find((p) => p.provider === 'huggingface')?.api_key

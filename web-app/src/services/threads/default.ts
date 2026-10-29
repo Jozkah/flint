@@ -3,6 +3,7 @@
  */
 
 import { ExtensionManager } from '@/lib/extension'
+import { invokeCommand } from '@/lib/backend'
 import { ConversationalExtension, ExtensionTypeEnum } from '@janhq/core'
 import { requireConversational } from '@/services/conversationalExtension'
 import type { ThreadsService } from './types'
@@ -176,8 +177,7 @@ export class DefaultThreadsService implements ThreadsService {
     // "Delete permanently" skips the archive. The extension path below goes
     // through `delete_thread`, which archives when the archive is on.
     if (permanent) {
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('delete_thread_permanently', { threadId })
+      await invokeCommand('delete_thread_permanently', { threadId })
       return
     }
 

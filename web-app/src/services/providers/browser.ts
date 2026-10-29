@@ -7,8 +7,8 @@
  * the server (keyring or encrypted file), not by the browser.
  */
 
-import { hostInvoke } from '@/lib/hostInvoke'
 import { providerFetch } from '@/lib/providerFetch'
+import { invokeCommand } from '@/lib/backend'
 import { TauriProvidersService } from './tauri'
 
 export class BrowserProvidersService extends TauriProvidersService {
@@ -18,7 +18,7 @@ export class BrowserProvidersService extends TauriProvidersService {
 
   async deleteProviderKeys(providerName: string): Promise<void> {
     try {
-      await hostInvoke('delete_provider_keys', { provider: providerName })
+      await invokeCommand('delete_provider_keys', { provider: providerName })
     } catch (error) {
       console.error(`Failed to delete stored keys for ${providerName}:`, error)
     }

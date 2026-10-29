@@ -2,26 +2,26 @@
  * Tauri Hardware Service - Desktop implementation
  */
 
-import { invoke } from '@tauri-apps/api/core'
 import type {
   HardwareData,
   SystemUsage,
   SystemSnapshot,
   DeviceList,
 } from './types'
+import { invokeCommand } from '@/lib/backend'
 import { DefaultHardwareService } from './default'
 
 export class TauriHardwareService extends DefaultHardwareService {
   async getHardwareInfo(): Promise<HardwareData | null> {
-    return invoke('plugin:hardware|get_system_info') as Promise<HardwareData>
+    return invokeCommand('plugin:hardware|get_system_info') as Promise<HardwareData>
   }
 
   async getSystemUsage(): Promise<SystemUsage | null> {
-    return invoke('plugin:hardware|get_system_usage') as Promise<SystemUsage>
+    return invokeCommand('plugin:hardware|get_system_usage') as Promise<SystemUsage>
   }
 
   async getSystemSnapshot(): Promise<SystemSnapshot | null> {
-    return invoke('plugin:hardware|get_system_snapshot') as Promise<SystemSnapshot>
+    return invokeCommand('plugin:hardware|get_system_snapshot') as Promise<SystemSnapshot>
   }
 
   async getLlamacppDevices(): Promise<DeviceList[]> {
@@ -41,6 +41,6 @@ export class TauriHardwareService extends DefaultHardwareService {
   }
 
   async refreshHardwareInfo(): Promise<void> {
-    await invoke('plugin:hardware|refresh_system_info')
+    await invokeCommand('plugin:hardware|refresh_system_info')
   }
 }

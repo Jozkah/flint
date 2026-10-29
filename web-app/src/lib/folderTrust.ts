@@ -1,10 +1,10 @@
+import { invokeCommand } from '@/lib/backend'
 /**
  * Whether a project folder may run the hooks and agent definitions it carries.
  *
  * The rules live in the backend (`folder_trust`); this is only the call. A
  * folder the person trusts stays trusted: there is no expiry to renew.
  */
-import { invoke } from '@/lib/previewInvoke'
 
 export type FolderTrust = {
   folder: string
@@ -22,7 +22,7 @@ export type FolderTrustCall = (
 /** The folder's status. `null` when it cannot be read: nothing is then asked. */
 export async function folderTrustStatus(
   folder: string,
-  call: FolderTrustCall = (cmd, args) => invoke(cmd, args)
+  call: FolderTrustCall = (cmd, args) => invokeCommand(cmd, args)
 ): Promise<FolderTrust | null> {
   try {
     const status = (await call('folder_trust_status', { folder })) as FolderTrust
@@ -39,7 +39,7 @@ export async function folderTrustStatus(
 /** Trust the folder for good. Throws with the backend's reason when it cannot. */
 export async function trustFolder(
   folder: string,
-  call: FolderTrustCall = (cmd, args) => invoke(cmd, args)
+  call: FolderTrustCall = (cmd, args) => invokeCommand(cmd, args)
 ): Promise<FolderTrust> {
   return (await call('folder_trust_grant', { folder })) as FolderTrust
 }
@@ -47,14 +47,14 @@ export async function trustFolder(
 /** Stop trusting the folder. */
 export async function revokeFolderTrust(
   folder: string,
-  call: FolderTrustCall = (cmd, args) => invoke(cmd, args)
+  call: FolderTrustCall = (cmd, args) => invokeCommand(cmd, args)
 ): Promise<FolderTrust> {
   return (await call('folder_trust_revoke', { folder })) as FolderTrust
 }
 
 /** Every folder trusted so far. Throws with the backend's reason when it cannot be read. */
 export async function listTrustedFolders(
-  call: (cmd: string) => Promise<unknown> = (cmd) => invoke(cmd)
+  call: (cmd: string) => Promise<unknown> = (cmd) => invokeCommand(cmd)
 ): Promise<string[]> {
   const list = await call('folder_trust_list')
   return Array.isArray(list) ? list.map(String) : []

@@ -1,3 +1,4 @@
+import { invokeCommand } from '@/lib/backend'
 // Tauri commands for remote access (src-tauri/src/core/remote/commands.rs).
 
 export type RemoteInterface = 'tailscale' | 'lan' | 'localhost'
@@ -65,11 +66,6 @@ export type RemotePairingRequest = {
   confirmNumber: string
 }
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<T>(cmd, args)
-}
-
 /** A phone's finished upload, as `remote_upload_take` returns it. */
 export type RemoteUploadedFile = {
   id: string
@@ -81,25 +77,25 @@ export type RemoteUploadedFile = {
 }
 
 export const remoteApi = {
-  getStatus: () => invoke<RemoteStatus>('remote_get_status'),
+  getStatus: () => invokeCommand<RemoteStatus>('remote_get_status'),
   setConfig: (config: RemoteConfig) =>
-    invoke<RemoteStatus>('remote_set_config', { config }),
-  startPairing: () => invoke<RemotePairing>('remote_start_pairing'),
-  cancelPairing: () => invoke<void>('remote_cancel_pairing'),
+    invokeCommand<RemoteStatus>('remote_set_config', { config }),
+  startPairing: () => invokeCommand<RemotePairing>('remote_start_pairing'),
+  cancelPairing: () => invokeCommand<void>('remote_cancel_pairing'),
   confirmPairing: (requestId: string, approve: boolean) =>
-    invoke<RemoteDevice | null>('remote_confirm_pairing', { requestId, approve }),
-  listDevices: () => invoke<RemoteDevice[]>('remote_list_devices'),
-  revokeDevice: (id: string) => invoke<boolean>('remote_revoke_device', { id }),
+    invokeCommand<RemoteDevice | null>('remote_confirm_pairing', { requestId, approve }),
+  listDevices: () => invokeCommand<RemoteDevice[]>('remote_list_devices'),
+  revokeDevice: (id: string) => invokeCommand<boolean>('remote_revoke_device', { id }),
   rpcRespond: (
     id: string,
     reply: { result?: unknown; error?: { code: string; message: string } }
-  ) => invoke<boolean>('remote_rpc_respond', { id, ...reply }),
+  ) => invokeCommand<boolean>('remote_rpc_respond', { id, ...reply }),
   emitEvent: (event: unknown, topic?: string) =>
-    invoke<void>('remote_emit_event', { event, topic: topic ?? null }),
+    invokeCommand<void>('remote_emit_event', { event, topic: topic ?? null }),
   takeUploads: (deviceId: string, ids: string[]) =>
-    invoke<RemoteUploadedFile[]>('remote_upload_take', { deviceId, ids }),
+    invokeCommand<RemoteUploadedFile[]>('remote_upload_take', { deviceId, ids }),
   setPreview: (sessionId: string | null, url: string | null) =>
-    invoke<void>('remote_set_preview', { sessionId, url }),
+    invokeCommand<void>('remote_set_preview', { sessionId, url }),
 }
 
 export type RemoteApi = typeof remoteApi
