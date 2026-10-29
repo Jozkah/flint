@@ -1987,6 +1987,9 @@ impl Mailbox {
             };
             state.insert(e.id.clone(), DeliveryEntry { status, at });
         }
+        // Held mail restarted from its own send time may already be past
+        // due: forget the stored sweep time so the next sweep runs.
+        self.clear_sweep_due();
         // Persist the rebuilt state so the recovery sticks and the corrupt
         // bytes are not read again. Best-effort: on failure the in-memory state
         // still makes this call behave correctly.

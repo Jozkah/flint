@@ -1095,33 +1095,7 @@ pub fn plan(
     approval: &Approval,
 ) -> Result<(ProposalRecord, Vec<PlannedFile>), ProposalError> {
     let record = load(data_folder, &approval.proposal_id)?;
-    if record.state != ProposalState::Pending {
-        return Err(ProposalError::NotPending(record.state));
-    }
-    if approval.patch_hash != record.patch_hash {
-        return Err(ProposalError::PatchChanged);
-    }
-    if approval.base_state_hash != record.base_state_hash {
-        return Err(ProposalError::BaseChanged);
-    }
-    // Identity, field by field: a match on session alone would let one agent's
-    // change be approved as another's.
-    for (what, a, b) in [
-        ("session", &approval.scope.session, &record.scope.session),
-        ("project", &approval.scope.project, &record.scope.project),
-        ("agent", &approval.scope.agent, &record.scope.agent),
-        ("worktree", &approval.scope.worktree, &record.scope.worktree),
-        ("run", &approval.scope.run, &record.scope.run),
-    ] {
-        if a != b {
-            return Err(ProposalError::ScopeMismatch(what));
-        }
-    }
-    // The stored record must still hash to what it says. A record edited on
-    // disk after it was shown is not the record that was approved.
-    if patch_hash_of(&record.files) != record.patch_hash {
-        return Err(ProposalError::PatchChanged);
-    }
+    check_approval(&record, approval)?;
 
     let by_path: BTreeMap<&str, &ProposedFile> =
         record.files.iter().map(|f| (f.path.as_str(), f)).collect();
@@ -1137,38 +1111,8 @@ pub fn plan(
         if !seen_paths.insert(sel.path.as_str()) {
             return Err(ProposalError::DuplicateSelection(sel.path.clone()));
         }
-        if file.sensitive {
-            return Err(ProposalError::Sensitive(file.path.clone()));
-        }
-        // Looked at now, immediately before anything is written, rather than
-        // when the proposal was made: a directory replaced by a junction
-        // after the review was shown is exactly the substitution this stops.
-        if passes_through_link(dest_root, &file.path) {
-            return Err(ProposalError::LinkedDestination(file.path.clone()));
-        }
-        if resolves_into_reserved(dest_root, &file.path) {
-            return Err(ProposalError::InvalidPath(file.path.clone()));
-        }
-        let chosen: Vec<&ProposedHunk> = match &sel.hunks {
-            HunkChoice::All => file.hunks.iter().collect(),
-            HunkChoice::Only(ids) => {
-                if file.binary || file.oversized {
-                    return Err(ProposalError::WholeFileOnly(file.path.clone()));
-                }
-                let mut seen = BTreeSet::new();
-                let mut out = Vec::new();
-                for id in ids {
-                    if !seen.insert(id.as_str()) {
-                        return Err(ProposalError::DuplicateSelection(id.clone()));
-                    }
-                    let Some(h) = file.hunks.iter().find(|h| &h.id == id) else {
-                        return Err(ProposalError::UnknownHunk(id.clone()));
-                    };
-                    out.push(h);
-                }
-                out
-            }
-        };
+        check_destination(dest_root, file)?;
+        let chosen = chosen_hunks(file, &sel.hunks)?;
         // Nothing chosen means nothing to do -- except a whole-file change
         // approved whole: an empty file added or deleted has no hunks at all,
         // and skipping it here left it unapplied under an Applied report
@@ -1201,71 +1145,13 @@ pub fn plan(
 
         // Whole-file changes: the destination must still be the base.
         let whole = file.binary || file.oversized || file.change != Change::Modified;
-        if whole {
-            if current != base {
-                conflicts.push(Conflict {
-                    path: file.path.clone(),
-                    hunk: String::new(),
-                    reason: match (&base, &current) {
-                        (None, Some(_)) => "the file was created at the destination".into(),
-                        (Some(_), None) => "the file was deleted at the destination".into(),
-                        _ => "the file was changed at the destination".into(),
-                    },
-                });
-                continue;
-            }
-            planned.push(PlannedFile {
-                path: file.path.clone(),
-                content: proposed,
-                current,
-            });
-            continue;
-        }
-
-        let base_text = String::from_utf8_lossy(base.as_deref().unwrap_or_default()).to_string();
-        let proposed_text =
-            String::from_utf8_lossy(proposed.as_deref().unwrap_or_default()).to_string();
-        let Some(current_bytes) = current.clone() else {
-            conflicts.push(Conflict {
-                path: file.path.clone(),
-                hunk: String::new(),
-                reason: "the file was deleted at the destination".into(),
-            });
-            continue;
+        let result = if whole {
+            plan_whole_file(file, base, proposed, current).map_err(|c| vec![c])
+        } else {
+            plan_text_file(file, &chosen, base, proposed, current)
         };
-        let Ok(current_text) = String::from_utf8(current_bytes) else {
-            conflicts.push(Conflict {
-                path: file.path.clone(),
-                hunk: String::new(),
-                reason: "the file at the destination is no longer text".into(),
-            });
-            continue;
-        };
-        let proposed_lines = split_keep(&proposed_text);
-        let selected: Vec<Edit> = chosen
-            .iter()
-            .map(|h| {
-                let from = h.new_start.saturating_sub(1).min(proposed_lines.len());
-                let to = (from + h.new_len).min(proposed_lines.len());
-                // `old_start` is the 1-based start of the base range, empty or
-                // not: `patch.rs` does not use unified diff's "the line it
-                // follows" convention for pure insertions.
-                let start = h.old_start.saturating_sub(1);
-                Edit {
-                    start,
-                    end: start + h.old_len,
-                    lines: proposed_lines[from..to].to_vec(),
-                    hunk: Some(h.id.clone()),
-                }
-            })
-            .collect();
-        let user = edits_between(&base_text, &current_text);
-        match merge_text(&base_text, &user, &selected, &file.path) {
-            Ok(merged) => planned.push(PlannedFile {
-                path: file.path.clone(),
-                content: Some(merged.into_bytes()),
-                current: Some(current_text.into_bytes()),
-            }),
+        match result {
+            Ok(p) => planned.push(p),
             Err(mut c) => conflicts.append(&mut c),
         }
     }
@@ -1277,6 +1163,161 @@ pub fn plan(
         return Err(ProposalError::Conflicts(conflicts));
     }
     Ok((record, planned))
+}
+
+/// The approval names this very record: still pending, the same patch and
+/// base, the same identity field by field, and a record that still hashes to
+/// what it says.
+fn check_approval(record: &ProposalRecord, approval: &Approval) -> Result<(), ProposalError> {
+    if record.state != ProposalState::Pending {
+        return Err(ProposalError::NotPending(record.state));
+    }
+    if approval.patch_hash != record.patch_hash {
+        return Err(ProposalError::PatchChanged);
+    }
+    if approval.base_state_hash != record.base_state_hash {
+        return Err(ProposalError::BaseChanged);
+    }
+    // Identity, field by field: a match on session alone would let one agent's
+    // change be approved as another's.
+    for (what, a, b) in [
+        ("session", &approval.scope.session, &record.scope.session),
+        ("project", &approval.scope.project, &record.scope.project),
+        ("agent", &approval.scope.agent, &record.scope.agent),
+        ("worktree", &approval.scope.worktree, &record.scope.worktree),
+        ("run", &approval.scope.run, &record.scope.run),
+    ] {
+        if a != b {
+            return Err(ProposalError::ScopeMismatch(what));
+        }
+    }
+    // The stored record must still hash to what it says. A record edited on
+    // disk after it was shown is not the record that was approved.
+    if patch_hash_of(&record.files) != record.patch_hash {
+        return Err(ProposalError::PatchChanged);
+    }
+    Ok(())
+}
+
+/// A file may be written at its destination: not sensitive, not through a
+/// link, not into a reserved folder.
+fn check_destination(dest_root: &Path, file: &ProposedFile) -> Result<(), ProposalError> {
+    if file.sensitive {
+        return Err(ProposalError::Sensitive(file.path.clone()));
+    }
+    // Looked at now, immediately before anything is written, rather than
+    // when the proposal was made: a directory replaced by a junction
+    // after the review was shown is exactly the substitution this stops.
+    if passes_through_link(dest_root, &file.path) {
+        return Err(ProposalError::LinkedDestination(file.path.clone()));
+    }
+    if resolves_into_reserved(dest_root, &file.path) {
+        return Err(ProposalError::InvalidPath(file.path.clone()));
+    }
+    Ok(())
+}
+
+/// The hunks an approval chose from `file`, each named once and known.
+fn chosen_hunks<'a>(
+    file: &'a ProposedFile,
+    choice: &HunkChoice,
+) -> Result<Vec<&'a ProposedHunk>, ProposalError> {
+    match choice {
+        HunkChoice::All => Ok(file.hunks.iter().collect()),
+        HunkChoice::Only(ids) => {
+            if file.binary || file.oversized {
+                return Err(ProposalError::WholeFileOnly(file.path.clone()));
+            }
+            let mut seen = BTreeSet::new();
+            let mut out = Vec::new();
+            for id in ids {
+                if !seen.insert(id.as_str()) {
+                    return Err(ProposalError::DuplicateSelection(id.clone()));
+                }
+                let Some(h) = file.hunks.iter().find(|h| &h.id == id) else {
+                    return Err(ProposalError::UnknownHunk(id.clone()));
+                };
+                out.push(h);
+            }
+            Ok(out)
+        }
+    }
+}
+
+/// A whole-file change: planned only while the destination is still the base.
+fn plan_whole_file(
+    file: &ProposedFile,
+    base: Option<Vec<u8>>,
+    proposed: Option<Vec<u8>>,
+    current: Option<Vec<u8>>,
+) -> Result<PlannedFile, Conflict> {
+    if current != base {
+        return Err(Conflict {
+            path: file.path.clone(),
+            hunk: String::new(),
+            reason: match (&base, &current) {
+                (None, Some(_)) => "the file was created at the destination".into(),
+                (Some(_), None) => "the file was deleted at the destination".into(),
+                _ => "the file was changed at the destination".into(),
+            },
+        });
+    }
+    Ok(PlannedFile {
+        path: file.path.clone(),
+        content: proposed,
+        current,
+    })
+}
+
+/// A text change: the chosen hunks merged with what changed at the
+/// destination since the base, or the conflicts that stop it.
+fn plan_text_file(
+    file: &ProposedFile,
+    chosen: &[&ProposedHunk],
+    base: Option<Vec<u8>>,
+    proposed: Option<Vec<u8>>,
+    current: Option<Vec<u8>>,
+) -> Result<PlannedFile, Vec<Conflict>> {
+    let conflict = |reason: &str| {
+        vec![Conflict {
+            path: file.path.clone(),
+            hunk: String::new(),
+            reason: reason.into(),
+        }]
+    };
+    let base_text = String::from_utf8_lossy(base.as_deref().unwrap_or_default()).to_string();
+    let proposed_text = String::from_utf8_lossy(proposed.as_deref().unwrap_or_default()).to_string();
+    let Some(current_bytes) = current else {
+        return Err(conflict("the file was deleted at the destination"));
+    };
+    let Ok(current_text) = String::from_utf8(current_bytes) else {
+        return Err(conflict("the file at the destination is no longer text"));
+    };
+    let proposed_lines = split_keep(&proposed_text);
+    let selected: Vec<Edit> = chosen
+        .iter()
+        .map(|h| {
+            let from = h.new_start.saturating_sub(1).min(proposed_lines.len());
+            let to = (from + h.new_len).min(proposed_lines.len());
+            // `old_start` is the 1-based start of the base range, empty or
+            // not: `patch.rs` does not use unified diff's "the line it
+            // follows" convention for pure insertions.
+            let start = h.old_start.saturating_sub(1);
+            Edit {
+                start,
+                end: start + h.old_len,
+                lines: proposed_lines[from..to].to_vec(),
+                hunk: Some(h.id.clone()),
+            }
+        })
+        .collect();
+    let user = edits_between(&base_text, &current_text);
+    let merged = merge_text(&base_text, &user, &selected, &file.path)?;
+    Ok(PlannedFile {
+        path: file.path.clone(),
+        content: Some(merged.into_bytes()),
+        current: Some(current_text.into_bytes()),
+    })
 }
 
 // ---------------------------------------------------------------------------
