@@ -6,6 +6,14 @@ import { join } from 'node:path'
 
 const BIN = 'src-tauri/resources/bin'
 
+// The script checks Windows PE sidecars for the host architecture.
+if (process.platform !== 'win32') {
+  console.log('verify-sidecars: Windows only (PE sidecars); use check-sidecars.mjs elsewhere')
+  process.exit(0)
+}
+const ARCH = process.arch === 'arm64' ? 'arm64' : 'x86_64'
+const TRIPLE = `${ARCH === 'arm64' ? 'aarch64' : 'x86_64'}-pc-windows-msvc`
+
 /** IMAGE_FILE_MACHINE values we care about. */
 const MACHINE = { 0x8664: 'x86_64', 0x014c: 'x86', 0xaa64: 'arm64' }
 
@@ -51,7 +59,7 @@ for (const name of files.sort()) {
   if (bytes === 0) bad(`${name} is zero bytes`)
   if (/\.(exe|dll)$/i.test(name)) {
     if (!header) bad(`${name} is not a PE image -- placeholder or truncated`)
-    else if (header.machine !== 'x86_64') bad(`${name} is ${header.machine}, not x86_64`)
+    else if (header.machine !== ARCH) bad(`${name} is ${header.machine}, not ${ARCH}`)
     // A stub is zero bytes or a few hundred; a real artifact is at least tens
     // of kilobytes. The floor is deliberately low because it has to clear
     // `ggml.dll`, which is a genuine 86KB dispatch shim in front of the
@@ -64,8 +72,8 @@ for (const name of files.sort()) {
 
 // A harmless version probe on the two that support one.
 for (const [name, args] of [
-  ['bun-x86_64-pc-windows-msvc.exe', ['--version']],
-  ['uv-x86_64-pc-windows-msvc.exe', ['--version']],
+  [`bun-${TRIPLE}.exe`, ['--version']],
+  [`uv-${TRIPLE}.exe`, ['--version']],
 ]) {
   const path = join(BIN, name)
   if (!existsSync(path)) {

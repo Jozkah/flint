@@ -15,9 +15,9 @@ permissions:
 jobs:
   # rust-check.yml compiles this plugin with default features, which leave the
   # engine OFF -- so nothing there links llama.cpp, and a broken shim or build.rs
-  # would first surface in a nightly desktop build. A PR gets the one cheapest
-  # variant that still links the shim; the full per-vendor matrix is for a tag or
-  # a manual run, where the wall clock of a CUDA plus HIP build is affordable.
+  # would first surface in a nightly desktop build. This workflow runs only by
+  # hand (workflow_dispatch), so PRs get no engine build; every run uses the
+  # full per-vendor matrix.
   variants:
     name: Select variants
     runs-on: ubuntu-24.04
@@ -28,9 +28,6 @@ jobs:
       - id: select
         shell: bash
         run: |
-          pr='[
-            {"name":"linux-x64-vulkan","variant":"vulkan","runs-on":"ubuntu-22-04"}
-          ]'
           full='[
             {"name":"linux-x64-cuda13","variant":"cuda13-vulkan","runs-on":"ubuntu-22-04-cuda-13-0"},
             {"name":"linux-x64-cuda12","variant":"cuda12-vulkan","runs-on":"ubuntu-22-04-cuda-12-4"},
@@ -47,11 +44,7 @@ jobs:
           #   windows-arm64-vulkan windows-11-arm has no engine toolchain image
           #   windows-x64-rocm     no Windows HIP SDK image; ROCm on Windows is
           #                        an installer run, not an apt line
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "include=$(echo "$pr" | jq -c .)" >> "$GITHUB_OUTPUT"
-          else
-            echo "include=$(echo "$full" | jq -c .)" >> "$GITHUB_OUTPUT"
-          fi
+          echo "include=$(echo "$full" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   worker:
     name: jan-llama-worker (${{ matrix.name }})
@@ -61,7 +54,8 @@ jobs:
     # and `engine/**` from the PR tip, then runs `sudo apt-get install`. A
     # build script is arbitrary code execution by construction, so a fork PR
     # touching this workflow's paths filter would get root on a box that later
-    # hosts tag-time release builds. Same guard as
+    # hosts tag-time release builds. Kept as a guard in case a pull_request
+    # trigger is ever added. Same guard as
     # the removed Jan nightly workflow; `workflow_dispatch` and tag pushes are
     # unaffected because they are not `pull_request` events.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
