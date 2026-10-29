@@ -271,6 +271,416 @@ function remoteArgError(remote: string | undefined): string | undefined {
   return `only https://, ssh:// and git@host: URLs can be cloned, not \`${remote}\``
 }
 
+/** What a subcommand handler sees; it fills in `plan` as it goes. */
+type GitSubContext = {
+  sub: string
+  rest: string[]
+  first: string | undefined
+  plan: GitPlan
+}
+
+/** Returns an error message to refuse the call, or nothing to accept it. */
+type GitSubHandler = (c: GitSubContext) => string | null | undefined | void
+
+const DIFF_FAMILY = ['diff', 'diff-tree', 'diff-index', 'diff-files', 'range-diff']
+
+const readOnly: GitSubHandler = ({ sub, rest, plan }) => {
+  plan.class = 'read'
+  if (DIFF_FAMILY.includes(sub)) return diffPathError(rest)
+}
+
+const messageFileChecked: GitSubHandler = ({ sub, rest }) =>
+  messageFileError(sub, rest)
+
+const plainLocal: GitSubHandler = () => undefined
+
+/** Inspection: subcommands that only read the repository. */
+const INSPECT: Record<string, GitSubHandler> = Object.fromEntries(
+  [
+    'status',
+    'log',
+    'diff',
+    'show',
+    'rev-parse',
+    'ls-files',
+    'ls-tree',
+    'blame',
+    'shortlog',
+    'describe',
+    'cat-file',
+    'grep',
+    'rev-list',
+    'merge-base',
+    'name-rev',
+    'show-ref',
+    'for-each-ref',
+    'whatchanged',
+    'count-objects',
+    'check-ignore',
+    'version',
+    'diff-tree',
+    'diff-index',
+    'diff-files',
+    'range-diff',
+  ].map((s) => [s, readOnly])
+)
+
+/** Refs: branches, tags, stash and reflog. */
+const REFS: Record<string, GitSubHandler> = {
+  branch: ({ rest, plan }) => {
+    const deleting = hasOpt(rest, ['-d', '--delete', '-D'])
+    const forced =
+      has(rest, ['-D', '-M', '-C']) ||
+      (deleting && hasOpt(rest, ['-f', '--force']))
+    const changes =
+      deleting ||
+      hasOpt(rest, [
+        '-m',
+        '-M',
+        '--move',
+        '-c',
+        '-C',
+        '--copy',
+        '-u',
+        '--set-upstream-to',
+        '--unset-upstream',
+        '--edit-description',
+        '-f',
+        '--force',
+        '-t',
+        '--track',
+      ])
+    const listing = hasOpt(rest, [
+      '-l',
+      '--list',
+      '-a',
+      '--all',
+      '-r',
+      '--remotes',
+      '--show-current',
+      '--contains',
+      '--no-contains',
+      '--merged',
+      '--no-merged',
+      '--points-at',
+    ])
+    const values = [
+      '--contains',
+      '--no-contains',
+      '--merged',
+      '--no-merged',
+      '--points-at',
+      '--format',
+      '--sort',
+      '--color',
+      '--column',
+    ]
+    if (changes) plan.class = 'local'
+    else if (listing || positionals(rest, values).length === 0)
+      plan.class = 'read'
+    if (forced)
+      plan.destructive =
+        'deletes or overwrites a branch even if its commits are not merged'
+    plan.branch = positionals(rest, values)[0]
+  },
+  tag: ({ sub, rest, plan }) => {
+    const badMsg = messageFileError(sub, rest)
+    if (badMsg) return badMsg
+    const listing = hasOpt(rest, [
+      '-l',
+      '--list',
+      '--contains',
+      '--points-at',
+      '--merged',
+      '--no-merged',
+      '-n',
+      '-v',
+      '--verify',
+    ])
+    const values = [
+      '--contains',
+      '--points-at',
+      '--merged',
+      '--no-merged',
+      '-m',
+      '--message',
+      '-F',
+      '--file',
+      '--sort',
+      '--format',
+    ]
+    if (
+      !hasOpt(rest, [
+        '-d',
+        '--delete',
+        '-a',
+        '-s',
+        '-f',
+        '--force',
+        '-m',
+        '--message',
+      ]) &&
+      (listing || positionals(rest, values).length === 0)
+    ) {
+      plan.class = 'read'
+    }
+    if (hasOpt(rest, ['-f', '--force']))
+      plan.destructive = 'moves an existing tag'
+  },
+  stash: ({ first, plan }) => {
+    if (first === 'list' || first === 'show') plan.class = 'read'
+    else if (first === 'drop' || first === 'clear')
+      plan.destructive = 'discards stashed changes'
+  },
+  reflog: ({ first, plan }) => {
+    if (first === 'expire' || first === 'delete' || first === 'drop') {
+      plan.destructive =
+        'deletes reflog entries, the record that recovers lost commits'
+    } else plan.class = 'read'
+  },
+}
+
+/** Repository setup: config and worktrees. */
+const SETUP: Record<string, GitSubHandler> = {
+  config: ({ rest, first, plan }) => {
+    if (
+      hasOpt(rest, [
+        '--global',
+        '--system',
+        '--file',
+        '-f',
+        '--blob',
+        '--worktree',
+        '--includes',
+      ])
+    ) {
+      return '`git config --global/--system/--file` is not allowed'
+    }
+    const reading =
+      hasOpt(rest, [
+        '--get',
+        '--get-all',
+        '--get-regexp',
+        '--get-urlmatch',
+        '--list',
+        '-l',
+        '--get-color',
+        '--get-colorbool',
+      ]) ||
+      first === 'get' ||
+      first === 'list' ||
+      (rest.length === 1 && !rest[0].startsWith('-'))
+    if (!reading)
+      return 'changing Git configuration is not allowed through this tool'
+    plan.class = 'read'
+  },
+  worktree: ({ rest, first, plan }) => {
+    if (first === 'list') plan.class = 'read'
+    else if (first === 'remove' && hasOpt(rest, ['-f', '--force'])) {
+      plan.destructive = 'removes a worktree with uncommitted changes'
+    } else if (
+      ![
+        'add',
+        'remove',
+        'move',
+        'prune',
+        'lock',
+        'unlock',
+        'repair',
+      ].includes(first ?? '')
+    ) {
+      return '`git worktree` supports list, add, remove, move, prune, lock, unlock, repair'
+    }
+  },
+}
+
+/** Working tree: commands that change files or the index. */
+const WORKTREE: Record<string, GitSubHandler> = {
+  'merge-tree': ({ rest, plan }) => {
+    if (rest.length !== 3 || rest[0] !== '--write-tree' ||
+        rest[1].startsWith('-') || rest[2].startsWith('-'))
+      return '`git merge-tree` requires ["--write-tree", "<base>", "<head>"]'
+    plan.class = 'local'
+  },
+  reset: ({ rest, plan }) => {
+    if (hasOpt(rest, ['--hard', '--merge', '--keep'])) {
+      plan.destructive = 'discards uncommitted changes in the working tree'
+    }
+  },
+  clean: ({ rest, plan }) => {
+    if (hasOpt(rest, ['-n', '--dry-run']) || hasShort(rest, 'n'))
+      plan.class = 'read'
+    else plan.destructive = 'permanently deletes untracked files'
+  },
+  checkout: ({ rest, plan }) => {
+    if (hasOpt(rest, ['-f', '--force']) || has(rest, ['--', '.'])) {
+      plan.destructive = 'overwrites uncommitted changes in the working tree'
+    }
+    plan.branch = positionals(rest, ['-b', '-B', '--orphan'])[0]
+    if (has(rest, ['-B'])) plan.destructive = 'resets an existing branch'
+  },
+  switch: ({ rest, plan }) => {
+    if (hasOpt(rest, ['-f', '--force', '--discard-changes']))
+      plan.destructive = 'discards uncommitted changes'
+    if (has(rest, ['-C', '--force-create']))
+      plan.destructive = 'resets an existing branch'
+    plan.branch = positionals(rest, [
+      '-c',
+      '--create',
+      '-C',
+      '--force-create',
+      '--orphan',
+    ])[0]
+  },
+  restore: ({ rest, plan }) => {
+    const stagedOnly =
+      hasOpt(rest, ['-S', '--staged']) && !hasOpt(rest, ['-W', '--worktree'])
+    if (!stagedOnly)
+      plan.destructive = 'discards uncommitted changes in the working tree'
+  },
+  rm: ({ rest, plan }) => {
+    if (hasOpt(rest, ['-f', '--force']))
+      plan.destructive = 'removes files with uncommitted changes'
+  },
+  commit: messageFileChecked,
+  notes: messageFileChecked,
+  merge: messageFileChecked,
+  am: messageFileChecked,
+  apply: messageFileChecked,
+  add: plainLocal,
+  mv: plainLocal,
+  rebase: plainLocal,
+  'cherry-pick': plainLocal,
+  revert: plainLocal,
+  init: plainLocal,
+  'sparse-checkout': plainLocal,
+  'update-index': plainLocal,
+}
+
+/** Network: remotes and commands that talk to them. */
+const NETWORK: Record<string, GitSubHandler> = {
+  'ls-remote': ({ rest, plan }) => {
+    plan.class = 'read'
+    plan.reachesRemote = true
+    plan.remote = positionals(rest, [
+      '--upload-pack',
+      '--exec',
+      '-o',
+      '--server-option',
+      '--sort',
+    ])[0]
+    return remoteArgError(plan.remote)
+  },
+  remote: ({ rest, first, plan }) => {
+    if (
+      first === undefined ||
+      ['-v', '--verbose', 'show', 'get-url'].includes(first)
+    ) {
+      plan.class = 'read'
+      if (first === 'show') {
+        plan.reachesRemote = true
+        plan.remote = positionals(rest.slice(1))[0]
+        return remoteArgError(plan.remote)
+      }
+    } else if (
+      [
+        'add',
+        'rename',
+        'remove',
+        'rm',
+        'set-url',
+        'set-head',
+        'set-branches',
+        'prune',
+        'update',
+      ].includes(first)
+    ) {
+      const url = positionals(rest.slice(1), ['-t', '-m'])[1]
+      if (
+        url &&
+        (first === 'add' || first === 'set-url') &&
+        !cloneUrlOk(url)
+      ) {
+        return `only https://, ssh:// and git@host: URLs are allowed, not \`${url}\``
+      }
+    } else return `\`git remote ${first}\` is not supported`
+  },
+  clone: ({ rest, plan }) => {
+    plan.reachesRemote = true
+    const url = positionals(rest, CLONE_VALUES)[0]
+    if (!url) return 'git clone needs a repository URL'
+    if (!cloneUrlOk(url))
+      return `only https://, ssh:// and git@host: URLs can be cloned, not \`${url}\``
+    plan.remote = url
+  },
+  fetch: (c) => fetchOrPull(c),
+  pull: (c) => fetchOrPull(c),
+  push: ({ rest, plan }) => {
+    plan.class = 'remote'
+    plan.reachesRemote = true
+    const pos = positionals(rest, [
+      '-o',
+      '--push-option',
+      '--repo',
+      '--receive-pack',
+      '--exec',
+    ])
+    // `--repo=<url>` names the destination as a positional would.
+    let repoOpt: string | undefined
+    for (let i = 0; i < rest.length && repoOpt === undefined; i++) {
+      if (rest[i] === '--repo') repoOpt = rest[i + 1]
+      else if (rest[i].startsWith('--repo='))
+        repoOpt = rest[i].slice('--repo='.length)
+    }
+    plan.remote = repoOpt ?? pos[0]
+    const bad = remoteArgError(plan.remote)
+    if (bad) return bad
+    const refs = pos.slice(1)
+    if (refs.length) plan.branch = refs.join(' ')
+    const force =
+      hasOpt(rest, [
+        '-f',
+        '--force',
+        '--force-with-lease',
+        '--force-if-includes',
+        '--mirror',
+      ]) || refs.some((r) => r.startsWith('+'))
+    const deletes =
+      hasOpt(rest, ['-d', '--delete', '--prune']) ||
+      refs.some((r) => r.startsWith(':'))
+    if (force)
+      plan.destructive =
+        'force push: rewrites history on the remote that others may have'
+    else if (deletes)
+      plan.destructive = 'deletes branches or tags on the remote'
+  },
+}
+
+function fetchOrPull({ rest, plan }: GitSubContext): string | undefined {
+  plan.reachesRemote = true
+  const pos = positionals(rest, [
+    '--depth',
+    '-j',
+    '--jobs',
+    '-s',
+    '--strategy',
+    '-X',
+    '--strategy-option',
+  ])
+  plan.remote = pos[0]
+  plan.branch = pos[1]
+  return remoteArgError(plan.remote)
+}
+
+/** Every git subcommand the tool accepts, grouped by area. */
+export const GIT_SUBCOMMANDS: Readonly<Record<string, GitSubHandler>> = {
+  ...INSPECT,
+  ...REFS,
+  ...SETUP,
+  ...WORKTREE,
+  ...NETWORK,
+}
+
 function gitPlan(input: string[]): GitPlanResult {
   const args = [...input]
   while (args[0] === '--no-pager') args.shift()
@@ -291,405 +701,11 @@ function gitPlan(input: string[]): GitPlanResult {
     class: 'local',
     reachesRemote: false,
   }
-  const first = rest[0]
-  const fail = (error: string): GitPlanResult => ({ ok: false, error })
-  switch (sub) {
-    case 'status':
-    case 'log':
-    case 'diff':
-    case 'show':
-    case 'rev-parse':
-    case 'ls-files':
-    case 'ls-tree':
-    case 'blame':
-    case 'shortlog':
-    case 'describe':
-    case 'cat-file':
-    case 'grep':
-    case 'rev-list':
-    case 'merge-base':
-    case 'name-rev':
-    case 'show-ref':
-    case 'for-each-ref':
-    case 'whatchanged':
-    case 'count-objects':
-    case 'check-ignore':
-    case 'version':
-    case 'diff-tree':
-    case 'diff-index':
-    case 'diff-files':
-    case 'range-diff':
-      plan.class = 'read'
-      if (
-        ['diff', 'diff-tree', 'diff-index', 'diff-files', 'range-diff'].includes(
-          sub
-        )
-      ) {
-        const bad = diffPathError(rest)
-        if (bad) return fail(bad)
-      }
-      break
-    case 'merge-tree':
-      if (rest.length !== 3 || rest[0] !== '--write-tree' ||
-          rest[1].startsWith('-') || rest[2].startsWith('-'))
-        return fail('`git merge-tree` requires ["--write-tree", "<base>", "<head>"]')
-      plan.class = 'local'
-      break
-    case 'ls-remote':
-      plan.class = 'read'
-      plan.reachesRemote = true
-      plan.remote = positionals(rest, [
-        '--upload-pack',
-        '--exec',
-        '-o',
-        '--server-option',
-        '--sort',
-      ])[0]
-      {
-        const bad = remoteArgError(plan.remote)
-        if (bad) return fail(bad)
-      }
-      break
-    case 'branch': {
-      const deleting = hasOpt(rest, ['-d', '--delete', '-D'])
-      const forced =
-        has(rest, ['-D', '-M', '-C']) ||
-        (deleting && hasOpt(rest, ['-f', '--force']))
-      const changes =
-        deleting ||
-        hasOpt(rest, [
-          '-m',
-          '-M',
-          '--move',
-          '-c',
-          '-C',
-          '--copy',
-          '-u',
-          '--set-upstream-to',
-          '--unset-upstream',
-          '--edit-description',
-          '-f',
-          '--force',
-          '-t',
-          '--track',
-        ])
-      const listing = hasOpt(rest, [
-        '-l',
-        '--list',
-        '-a',
-        '--all',
-        '-r',
-        '--remotes',
-        '--show-current',
-        '--contains',
-        '--no-contains',
-        '--merged',
-        '--no-merged',
-        '--points-at',
-      ])
-      const values = [
-        '--contains',
-        '--no-contains',
-        '--merged',
-        '--no-merged',
-        '--points-at',
-        '--format',
-        '--sort',
-        '--color',
-        '--column',
-      ]
-      if (changes) plan.class = 'local'
-      else if (listing || positionals(rest, values).length === 0)
-        plan.class = 'read'
-      if (forced)
-        plan.destructive =
-          'deletes or overwrites a branch even if its commits are not merged'
-      plan.branch = positionals(rest, values)[0]
-      break
-    }
-    case 'tag': {
-      const badMsg = messageFileError(sub, rest)
-      if (badMsg) return fail(badMsg)
-      const listing = hasOpt(rest, [
-        '-l',
-        '--list',
-        '--contains',
-        '--points-at',
-        '--merged',
-        '--no-merged',
-        '-n',
-        '-v',
-        '--verify',
-      ])
-      const values = [
-        '--contains',
-        '--points-at',
-        '--merged',
-        '--no-merged',
-        '-m',
-        '--message',
-        '-F',
-        '--file',
-        '--sort',
-        '--format',
-      ]
-      if (
-        !hasOpt(rest, [
-          '-d',
-          '--delete',
-          '-a',
-          '-s',
-          '-f',
-          '--force',
-          '-m',
-          '--message',
-        ]) &&
-        (listing || positionals(rest, values).length === 0)
-      ) {
-        plan.class = 'read'
-      }
-      if (hasOpt(rest, ['-f', '--force']))
-        plan.destructive = 'moves an existing tag'
-      break
-    }
-    case 'remote':
-      if (
-        first === undefined ||
-        ['-v', '--verbose', 'show', 'get-url'].includes(first)
-      ) {
-        plan.class = 'read'
-        if (first === 'show') {
-          plan.reachesRemote = true
-          plan.remote = positionals(rest.slice(1))[0]
-          const bad = remoteArgError(plan.remote)
-          if (bad) return fail(bad)
-        }
-      } else if (
-        [
-          'add',
-          'rename',
-          'remove',
-          'rm',
-          'set-url',
-          'set-head',
-          'set-branches',
-          'prune',
-          'update',
-        ].includes(first)
-      ) {
-        const url = positionals(rest.slice(1), ['-t', '-m'])[1]
-        if (
-          url &&
-          (first === 'add' || first === 'set-url') &&
-          !cloneUrlOk(url)
-        ) {
-          return fail(
-            `only https://, ssh:// and git@host: URLs are allowed, not \`${url}\``
-          )
-        }
-      } else return fail(`\`git remote ${first}\` is not supported`)
-      break
-    case 'stash':
-      if (first === 'list' || first === 'show') plan.class = 'read'
-      else if (first === 'drop' || first === 'clear')
-        plan.destructive = 'discards stashed changes'
-      break
-    case 'config': {
-      if (
-        hasOpt(rest, [
-          '--global',
-          '--system',
-          '--file',
-          '-f',
-          '--blob',
-          '--worktree',
-          '--includes',
-        ])
-      ) {
-        return fail('`git config --global/--system/--file` is not allowed')
-      }
-      const reading =
-        hasOpt(rest, [
-          '--get',
-          '--get-all',
-          '--get-regexp',
-          '--get-urlmatch',
-          '--list',
-          '-l',
-          '--get-color',
-          '--get-colorbool',
-        ]) ||
-        first === 'get' ||
-        first === 'list' ||
-        (rest.length === 1 && !rest[0].startsWith('-'))
-      if (!reading)
-        return fail(
-          'changing Git configuration is not allowed through this tool'
-        )
-      plan.class = 'read'
-      break
-    }
-    case 'worktree':
-      if (first === 'list') plan.class = 'read'
-      else if (first === 'remove' && hasOpt(rest, ['-f', '--force'])) {
-        plan.destructive = 'removes a worktree with uncommitted changes'
-      } else if (
-        ![
-          'add',
-          'remove',
-          'move',
-          'prune',
-          'lock',
-          'unlock',
-          'repair',
-        ].includes(first ?? '')
-      ) {
-        return fail(
-          '`git worktree` supports list, add, remove, move, prune, lock, unlock, repair'
-        )
-      }
-      break
-    case 'reflog':
-      if (first === 'expire' || first === 'delete' || first === 'drop') {
-        plan.destructive =
-          'deletes reflog entries, the record that recovers lost commits'
-      } else plan.class = 'read'
-      break
-    case 'reset':
-      if (hasOpt(rest, ['--hard', '--merge', '--keep'])) {
-        plan.destructive = 'discards uncommitted changes in the working tree'
-      }
-      break
-    case 'clean':
-      if (hasOpt(rest, ['-n', '--dry-run']) || hasShort(rest, 'n'))
-        plan.class = 'read'
-      else plan.destructive = 'permanently deletes untracked files'
-      break
-    case 'checkout':
-      if (hasOpt(rest, ['-f', '--force']) || has(rest, ['--', '.'])) {
-        plan.destructive = 'overwrites uncommitted changes in the working tree'
-      }
-      plan.branch = positionals(rest, ['-b', '-B', '--orphan'])[0]
-      if (has(rest, ['-B'])) plan.destructive = 'resets an existing branch'
-      break
-    case 'switch':
-      if (hasOpt(rest, ['-f', '--force', '--discard-changes']))
-        plan.destructive = 'discards uncommitted changes'
-      if (has(rest, ['-C', '--force-create']))
-        plan.destructive = 'resets an existing branch'
-      plan.branch = positionals(rest, [
-        '-c',
-        '--create',
-        '-C',
-        '--force-create',
-        '--orphan',
-      ])[0]
-      break
-    case 'restore': {
-      const stagedOnly =
-        hasOpt(rest, ['-S', '--staged']) && !hasOpt(rest, ['-W', '--worktree'])
-      if (!stagedOnly)
-        plan.destructive = 'discards uncommitted changes in the working tree'
-      break
-    }
-    case 'rm':
-      if (hasOpt(rest, ['-f', '--force']))
-        plan.destructive = 'removes files with uncommitted changes'
-      break
-    case 'commit':
-    case 'notes':
-    case 'merge':
-    case 'am':
-    case 'apply': {
-      const bad = messageFileError(sub, rest)
-      if (bad) return fail(bad)
-      break
-    }
-    case 'add':
-    case 'mv':
-    case 'rebase':
-    case 'cherry-pick':
-    case 'revert':
-    case 'init':
-    case 'sparse-checkout':
-    case 'update-index':
-      break
-    case 'clone': {
-      plan.reachesRemote = true
-      const url = positionals(rest, CLONE_VALUES)[0]
-      if (!url) return fail('git clone needs a repository URL')
-      if (!cloneUrlOk(url))
-        return fail(
-          `only https://, ssh:// and git@host: URLs can be cloned, not \`${url}\``
-        )
-      plan.remote = url
-      break
-    }
-    case 'fetch':
-    case 'pull': {
-      plan.reachesRemote = true
-      const pos = positionals(rest, [
-        '--depth',
-        '-j',
-        '--jobs',
-        '-s',
-        '--strategy',
-        '-X',
-        '--strategy-option',
-      ])
-      plan.remote = pos[0]
-      plan.branch = pos[1]
-      {
-        const bad = remoteArgError(plan.remote)
-        if (bad) return fail(bad)
-      }
-      break
-    }
-    case 'push': {
-      plan.class = 'remote'
-      plan.reachesRemote = true
-      const pos = positionals(rest, [
-        '-o',
-        '--push-option',
-        '--repo',
-        '--receive-pack',
-        '--exec',
-      ])
-      // `--repo=<url>` names the destination as a positional would.
-      let repoOpt: string | undefined
-      for (let i = 0; i < rest.length && repoOpt === undefined; i++) {
-        if (rest[i] === '--repo') repoOpt = rest[i + 1]
-        else if (rest[i].startsWith('--repo='))
-          repoOpt = rest[i].slice('--repo='.length)
-      }
-      plan.remote = repoOpt ?? pos[0]
-      {
-        const bad = remoteArgError(plan.remote)
-        if (bad) return fail(bad)
-      }
-      const refs = pos.slice(1)
-      if (refs.length) plan.branch = refs.join(' ')
-      const force =
-        hasOpt(rest, [
-          '-f',
-          '--force',
-          '--force-with-lease',
-          '--force-if-includes',
-          '--mirror',
-        ]) || refs.some((r) => r.startsWith('+'))
-      const deletes =
-        hasOpt(rest, ['-d', '--delete', '--prune']) ||
-        refs.some((r) => r.startsWith(':'))
-      if (force)
-        plan.destructive =
-          'force push: rewrites history on the remote that others may have'
-      else if (deletes)
-        plan.destructive = 'deletes branches or tags on the remote'
-      break
-    }
-    default:
-      return fail(`\`git ${sub}\` is not supported by this tool`)
-  }
+  const handler = Object.prototype.hasOwnProperty.call(GIT_SUBCOMMANDS, sub) ? GIT_SUBCOMMANDS[sub] : undefined
+  if (!handler)
+    return { ok: false, error: `\`git ${sub}\` is not supported by this tool` }
+  const error = handler({ sub, rest, first: rest[0], plan })
+  if (error) return { ok: false, error }
   return { ok: true, plan }
 }
 

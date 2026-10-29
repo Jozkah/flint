@@ -3,6 +3,8 @@
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod converters;
+#[cfg(test)]
+pub(crate) mod golden;
 #[cfg(not(feature = "cli"))]
 pub mod images_route;
 #[cfg(not(feature = "cli"))]

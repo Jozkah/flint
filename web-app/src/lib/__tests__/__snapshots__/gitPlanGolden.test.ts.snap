@@ -1,0 +1,3398 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`gitPlan golden > plans every corpus argv exactly as before 1`] = `
+[
+  {
+    "argv": [],
+    "result": {
+      "error": "no git subcommand given",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "--no-pager",
+    ],
+    "result": {
+      "error": "no git subcommand given",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "--no-pager",
+      "status",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "status",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "-C",
+      "x",
+      "status",
+    ],
+    "result": {
+      "error": "global options before the subcommand (\`-C\`) are not allowed",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "frobnicate",
+    ],
+    "result": {
+      "error": "\`git frobnicate\` is not supported by this tool",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "status",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "status",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "log",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "log",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "show",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "show",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rev-parse",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rev-parse",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-files",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-files",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-tree",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-tree",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "blame",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "blame",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "shortlog",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "shortlog",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "describe",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "describe",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "cat-file",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "cat-file",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "grep",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "grep",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rev-list",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rev-list",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "merge-base",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "merge-base",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "name-rev",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "name-rev",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "show-ref",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "show-ref",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "for-each-ref",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "for-each-ref",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "whatchanged",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "whatchanged",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "count-objects",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "count-objects",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "check-ignore",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "check-ignore",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "version",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "version",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-tree",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff-tree",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-index",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff-index",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-files",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff-files",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "range-diff",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "range-diff",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "status",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "status",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "log",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "log",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "show",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "show",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rev-parse",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rev-parse",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-files",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-files",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-tree",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-tree",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "blame",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "blame",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "shortlog",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "shortlog",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "describe",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "describe",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "cat-file",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "cat-file",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "grep",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "grep",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rev-list",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rev-list",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "merge-base",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "merge-base",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "name-rev",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "name-rev",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "show-ref",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "show-ref",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "for-each-ref",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "for-each-ref",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "whatchanged",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "whatchanged",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "count-objects",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "count-objects",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "check-ignore",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "check-ignore",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "version",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "version",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-tree",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff-tree",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-index",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff-index",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-files",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff-files",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "range-diff",
+      "HEAD",
+      "src/a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "range-diff",
+          "HEAD",
+          "src/a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff",
+      "/etc/passwd",
+    ],
+    "result": {
+      "error": "\`/etc/passwd\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "diff",
+      "C:\\Windows\\win.ini",
+    ],
+    "result": {
+      "error": "\`C:\\Windows\\win.ini\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "diff",
+      "../outside",
+    ],
+    "result": {
+      "error": "\`../outside\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "diff",
+      "nul",
+    ],
+    "result": {
+      "error": "\`nul\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "diff",
+      "-U",
+      "/x",
+      "a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "diff",
+          "-U",
+          "/x",
+          "a.ts",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "diff-tree",
+      "..\\up",
+    ],
+    "result": {
+      "error": "\`..\\up\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "range-diff",
+      "con.txt",
+    ],
+    "result": {
+      "error": "\`con.txt\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "merge-tree",
+      "--write-tree",
+      "a",
+      "b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "merge-tree",
+          "--write-tree",
+          "a",
+          "b",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "merge-tree",
+      "--write-tree",
+      "-a",
+      "b",
+    ],
+    "result": {
+      "error": "\`git merge-tree\` requires ["--write-tree", "<base>", "<head>"]",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "merge-tree",
+      "a",
+      "b",
+    ],
+    "result": {
+      "error": "\`git merge-tree\` requires ["--write-tree", "<base>", "<head>"]",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "ls-remote",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-remote",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": undefined,
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-remote",
+      "origin",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-remote",
+          "origin",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-remote",
+      "https://github.com/a/b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "ls-remote",
+          "https://github.com/a/b",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "https://github.com/a/b",
+      },
+    },
+  },
+  {
+    "argv": [
+      "ls-remote",
+      "file:///etc",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`file:///etc\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "ls-remote",
+      "--sort",
+      "v",
+      "/abs/path",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`/abs/path\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "branch",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+        ],
+        "branch": undefined,
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "feat",
+        ],
+        "branch": "feat",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "-a",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "-a",
+        ],
+        "branch": undefined,
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "-d",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "-d",
+          "feat",
+        ],
+        "branch": "feat",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "-D",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "-D",
+          "feat",
+        ],
+        "branch": "feat",
+        "class": "local",
+        "destructive": "deletes or overwrites a branch even if its commits are not merged",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "-d",
+      "-f",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "-d",
+          "-f",
+          "feat",
+        ],
+        "branch": "feat",
+        "class": "local",
+        "destructive": "deletes or overwrites a branch even if its commits are not merged",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "-M",
+      "new",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "-M",
+          "new",
+        ],
+        "branch": "new",
+        "class": "local",
+        "destructive": "deletes or overwrites a branch even if its commits are not merged",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "--contains",
+      "abc",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "--contains",
+          "abc",
+        ],
+        "branch": undefined,
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "--format",
+      "%(refname)",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "--format",
+          "%(refname)",
+        ],
+        "branch": undefined,
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "branch",
+      "-u",
+      "origin/main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "branch",
+          "-u",
+          "origin/main",
+        ],
+        "branch": "origin/main",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "v1",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+          "v1",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "-l",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+          "-l",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "-a",
+      "v1",
+      "-m",
+      "msg",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+          "-a",
+          "v1",
+          "-m",
+          "msg",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "-f",
+      "v1",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+          "-f",
+          "v1",
+        ],
+        "class": "local",
+        "destructive": "moves an existing tag",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "-d",
+      "v1",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+          "-d",
+          "v1",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "-F",
+      "/etc/passwd",
+      "v1",
+    ],
+    "result": {
+      "error": "the message file \`/etc/passwd\` must be a relative path inside the folder",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "tag",
+      "--sort",
+      "v",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "tag",
+          "--sort",
+          "v",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "-v",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+          "-v",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "get-url",
+      "origin",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+          "get-url",
+          "origin",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "show",
+      "origin",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+          "show",
+          "origin",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "show",
+      "file:///x",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`file:///x\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "add",
+      "up",
+      "https://github.com/a/b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+          "add",
+          "up",
+          "https://github.com/a/b",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "add",
+      "up",
+      "file:///x",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs are allowed, not \`file:///x\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "set-url",
+      "origin",
+      "/abs",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs are allowed, not \`/abs\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "remove",
+      "up",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+          "remove",
+          "up",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "prune",
+      "origin",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "remote",
+          "prune",
+          "origin",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "remote",
+      "bogus",
+    ],
+    "result": {
+      "error": "\`git remote bogus\` is not supported",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "stash",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "stash",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "stash",
+      "list",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "stash",
+          "list",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "stash",
+      "show",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "stash",
+          "show",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "stash",
+      "drop",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "stash",
+          "drop",
+        ],
+        "class": "local",
+        "destructive": "discards stashed changes",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "stash",
+      "clear",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "stash",
+          "clear",
+        ],
+        "class": "local",
+        "destructive": "discards stashed changes",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "stash",
+      "pop",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "stash",
+          "pop",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "user.name",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "config",
+          "user.name",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "--get",
+      "user.name",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "config",
+          "--get",
+          "user.name",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "get",
+      "user.name",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "config",
+          "get",
+          "user.name",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "list",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "config",
+          "list",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "-l",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "config",
+          "-l",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "user.name",
+      "x",
+    ],
+    "result": {
+      "error": "changing Git configuration is not allowed through this tool",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "--global",
+      "user.name",
+    ],
+    "result": {
+      "error": "\`git config --global/--system/--file\` is not allowed",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "config",
+      "--file",
+      "f",
+      "--list",
+    ],
+    "result": {
+      "error": "\`git config --global/--system/--file\` is not allowed",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "worktree",
+      "list",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "worktree",
+          "list",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "worktree",
+      "add",
+      "../w",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "worktree",
+          "add",
+          "../w",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "worktree",
+      "remove",
+      "w",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "worktree",
+          "remove",
+          "w",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "worktree",
+      "remove",
+      "--force",
+      "w",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "worktree",
+          "remove",
+          "--force",
+          "w",
+        ],
+        "class": "local",
+        "destructive": "removes a worktree with uncommitted changes",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "worktree",
+      "bogus",
+    ],
+    "result": {
+      "error": "\`git worktree\` supports list, add, remove, move, prune, lock, unlock, repair",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "worktree",
+    ],
+    "result": {
+      "error": "\`git worktree\` supports list, add, remove, move, prune, lock, unlock, repair",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "reflog",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reflog",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reflog",
+      "expire",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reflog",
+          "expire",
+        ],
+        "class": "local",
+        "destructive": "deletes reflog entries, the record that recovers lost commits",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reflog",
+      "delete",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reflog",
+          "delete",
+        ],
+        "class": "local",
+        "destructive": "deletes reflog entries, the record that recovers lost commits",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reflog",
+      "drop",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reflog",
+          "drop",
+        ],
+        "class": "local",
+        "destructive": "deletes reflog entries, the record that recovers lost commits",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reset",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reset",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reset",
+      "--hard",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reset",
+          "--hard",
+        ],
+        "class": "local",
+        "destructive": "discards uncommitted changes in the working tree",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reset",
+      "--keep",
+      "HEAD~1",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reset",
+          "--keep",
+          "HEAD~1",
+        ],
+        "class": "local",
+        "destructive": "discards uncommitted changes in the working tree",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "reset",
+      "--soft",
+      "HEAD~1",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "reset",
+          "--soft",
+          "HEAD~1",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "clean",
+      "-n",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "clean",
+          "-n",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "clean",
+      "-nd",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "clean",
+          "-nd",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "clean",
+      "-fd",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "clean",
+          "-fd",
+        ],
+        "class": "local",
+        "destructive": "permanently deletes untracked files",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "clean",
+      "--dry-run",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "clean",
+          "--dry-run",
+        ],
+        "class": "read",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "checkout",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "checkout",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "checkout",
+      "-b",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "checkout",
+          "-b",
+          "feat",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "checkout",
+      "-B",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "checkout",
+          "-B",
+          "feat",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "destructive": "resets an existing branch",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "checkout",
+      "-f",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "checkout",
+          "-f",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "destructive": "overwrites uncommitted changes in the working tree",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "checkout",
+      "--",
+      ".",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "checkout",
+          "--",
+          ".",
+        ],
+        "branch": ".",
+        "class": "local",
+        "destructive": "overwrites uncommitted changes in the working tree",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "switch",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "switch",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "switch",
+      "-c",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "switch",
+          "-c",
+          "feat",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "switch",
+      "-C",
+      "feat",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "switch",
+          "-C",
+          "feat",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "destructive": "resets an existing branch",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "switch",
+      "--discard-changes",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "switch",
+          "--discard-changes",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "destructive": "discards uncommitted changes",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "restore",
+      "a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "restore",
+          "a.ts",
+        ],
+        "class": "local",
+        "destructive": "discards uncommitted changes in the working tree",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "restore",
+      "--staged",
+      "a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "restore",
+          "--staged",
+          "a.ts",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "restore",
+      "--staged",
+      "--worktree",
+      "a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "restore",
+          "--staged",
+          "--worktree",
+          "a.ts",
+        ],
+        "class": "local",
+        "destructive": "discards uncommitted changes in the working tree",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rm",
+      "a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rm",
+          "a.ts",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rm",
+      "-f",
+      "a.ts",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rm",
+          "-f",
+          "a.ts",
+        ],
+        "class": "local",
+        "destructive": "removes files with uncommitted changes",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "add",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "add",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "mv",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "mv",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "rebase",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "rebase",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "cherry-pick",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "cherry-pick",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "revert",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "revert",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "init",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "init",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "sparse-checkout",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "sparse-checkout",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "update-index",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "update-index",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "commit",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "commit",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "notes",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "notes",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "merge",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "merge",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "am",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "am",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "apply",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "apply",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "commit",
+      "-m",
+      "msg",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "commit",
+          "-m",
+          "msg",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "commit",
+      "-F",
+      "msg.txt",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "commit",
+          "-F",
+          "msg.txt",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "commit",
+      "-F",
+      "/etc/passwd",
+    ],
+    "result": {
+      "error": "the message file \`/etc/passwd\` must be a relative path inside the folder",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "commit",
+      "-t",
+      "..\\x",
+    ],
+    "result": {
+      "error": "the message file \`..\\x\` must be a relative path inside the folder",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "commit",
+      "--file=C:/x",
+    ],
+    "result": {
+      "error": "the message file \`C:/x\` must be a relative path inside the folder",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "merge",
+      "-s",
+      "ours",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "merge",
+          "-s",
+          "ours",
+          "main",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "merge",
+      "--strategy=octopus",
+      "a",
+      "b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "merge",
+          "--strategy=octopus",
+          "a",
+          "b",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "am",
+      "/abs/patch",
+    ],
+    "result": {
+      "error": "the message file \`/abs/patch\` must be a relative path inside the folder",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "apply",
+      "p.diff",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "apply",
+          "p.diff",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": false,
+      },
+    },
+  },
+  {
+    "argv": [
+      "apply",
+      "../p.diff",
+    ],
+    "result": {
+      "error": "the message file \`../p.diff\` must be a relative path inside the folder",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "clone",
+    ],
+    "result": {
+      "error": "git clone needs a repository URL",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "clone",
+      "https://github.com/a/b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "clone",
+          "https://github.com/a/b",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "https://github.com/a/b",
+      },
+    },
+  },
+  {
+    "argv": [
+      "clone",
+      "--depth",
+      "1",
+      "git@github.com:a/b.git",
+      "dir",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "clone",
+          "--depth",
+          "1",
+          "git@github.com:a/b.git",
+          "dir",
+        ],
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "git@github.com:a/b.git",
+      },
+    },
+  },
+  {
+    "argv": [
+      "clone",
+      "file:///etc",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`file:///etc\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "clone",
+      "/abs/repo",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`/abs/repo\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "fetch",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "fetch",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": undefined,
+      },
+    },
+  },
+  {
+    "argv": [
+      "fetch",
+      "origin",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "fetch",
+          "origin",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "fetch",
+      "origin",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "fetch",
+          "origin",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "fetch",
+      "--depth",
+      "1",
+      "origin",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "fetch",
+          "--depth",
+          "1",
+          "origin",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "fetch",
+      "/abs/repo",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`/abs/repo\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "pull",
+      "origin",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "pull",
+          "origin",
+          "main",
+        ],
+        "branch": "main",
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "pull",
+      "-s",
+      "recursive",
+      "origin",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "pull",
+          "-s",
+          "recursive",
+          "origin",
+        ],
+        "branch": undefined,
+        "class": "local",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "pull",
+      "ext::sh",
+    ],
+    "result": {
+      "error": "the transport in \`ext::sh\` is not allowed",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "push",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+        ],
+        "class": "remote",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": undefined,
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "origin",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "origin",
+          "main",
+        ],
+        "branch": "main",
+        "class": "remote",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "-f",
+      "origin",
+      "main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "-f",
+          "origin",
+          "main",
+        ],
+        "branch": "main",
+        "class": "remote",
+        "destructive": "force push: rewrites history on the remote that others may have",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "origin",
+      "+main",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "origin",
+          "+main",
+        ],
+        "branch": "+main",
+        "class": "remote",
+        "destructive": "force push: rewrites history on the remote that others may have",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "--force-with-lease",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "--force-with-lease",
+        ],
+        "class": "remote",
+        "destructive": "force push: rewrites history on the remote that others may have",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": undefined,
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "origin",
+      ":old",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "origin",
+          ":old",
+        ],
+        "branch": ":old",
+        "class": "remote",
+        "destructive": "deletes branches or tags on the remote",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "--delete",
+      "origin",
+      "old",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "--delete",
+          "origin",
+          "old",
+        ],
+        "branch": "old",
+        "class": "remote",
+        "destructive": "deletes branches or tags on the remote",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "--repo=https://github.com/a/b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "--repo=https://github.com/a/b",
+        ],
+        "class": "remote",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "https://github.com/a/b",
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "--repo",
+      "/abs",
+      "main",
+    ],
+    "result": {
+      "error": "only https://, ssh:// and git@host: URLs can be cloned, not \`/abs\`",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "--mirror",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "--mirror",
+        ],
+        "class": "remote",
+        "destructive": "force push: rewrites history on the remote that others may have",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": undefined,
+      },
+    },
+  },
+  {
+    "argv": [
+      "push",
+      "origin",
+      "a",
+      "b",
+    ],
+    "result": {
+      "ok": true,
+      "plan": {
+        "args": [
+          "push",
+          "origin",
+          "a",
+          "b",
+        ],
+        "branch": "a b",
+        "class": "remote",
+        "program": "git",
+        "reachesRemote": true,
+        "remote": "origin",
+      },
+    },
+  },
+  {
+    "argv": [
+      "-c",
+      "core.pager=x",
+      "log",
+    ],
+    "result": {
+      "error": "global options before the subcommand (\`-c\`) are not allowed",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "log",
+      "--output=/tmp/x",
+    ],
+    "result": {
+      "error": "the option \`--output=/tmp/x\` is not allowed",
+      "ok": false,
+    },
+  },
+  {
+    "argv": [
+      "log",
+      "--ext-diff",
+    ],
+    "result": {
+      "error": "the option \`--ext-diff\` is not allowed",
+      "ok": false,
+    },
+  },
+]
+`;

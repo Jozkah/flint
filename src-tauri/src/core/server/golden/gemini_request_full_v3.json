@@ -1,0 +1,152 @@
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "look"
+        },
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "AAAA"
+          }
+        },
+        {
+          "fileData": {
+            "mimeType": "image/jpeg",
+            "fileUri": "https://x.test/a.jpg"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "BBBB"
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "calling"
+        },
+        {
+          "functionCall": {
+            "name": "read",
+            "args": {
+              "p": 1
+            }
+          }
+        },
+        {
+          "functionCall": {
+            "name": "shot",
+            "args": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "read",
+            "response": {
+              "ok": true
+            }
+          }
+        },
+        {
+          "functionResponse": {
+            "name": "shot",
+            "response": {
+              "result": "plain"
+            },
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/jpeg",
+                  "data": "CCCC"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "functionResponse": {
+            "name": "unknown",
+            "response": {
+              "result": "orphan"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "functionCall": {
+            "name": "again",
+            "args": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "again",
+            "response": {
+              "result": "[1,2]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "thanks"
+        }
+      ]
+    }
+  ],
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "be brief"
+      },
+      {
+        "text": "dev rule"
+      },
+      {
+        "text": "late system"
+      }
+    ]
+  },
+  "generationConfig": {
+    "maxOutputTokens": 5,
+    "responseMimeType": "application/json",
+    "thinkingConfig": {
+      "thinkingBudget": 1024,
+      "includeThoughts": true
+    }
+  },
+  "toolConfig": {
+    "functionCallingConfig": {
+      "mode": "NONE"
+    }
+  }
+}

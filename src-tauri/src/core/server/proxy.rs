@@ -479,184 +479,159 @@ pub(crate) fn convert_messages(
 ) -> Option<serde_json::Value> {
     let messages_array = anth_messages.as_array()?;
     let mut openai_messages: Vec<serde_json::Value> = Vec::new();
-
-    // Anthropic system prompt is a top-level field, convert to system message
-    if let Some(system) = system_prompt {
-        if let Some(text) = system.as_str() {
-            openai_messages.push(serde_json::json!({
-                "role": "system",
-                "content": text
-            }));
-        } else if let Some(blocks) = system.as_array() {
-            let text: String = blocks
-                .iter()
-                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n");
-            if !text.is_empty() {
-                openai_messages.push(serde_json::json!({
-                    "role": "system",
-                    "content": text
-                }));
-            }
-        }
-    }
-
+    // Anthropic's system prompt is a top-level field: a leading system message.
+    openai_messages.extend(system_prompt.and_then(top_level_system_message));
     for msg in messages_array {
         let role = msg.get("role")?.as_str()?;
         let content = msg.get("content")?;
-
         if content.is_string() {
-            let openai_role = match role {
-                "user" => "user",
-                "assistant" => "assistant",
-                "system" => "system",
-                "developer" => "developer",
-                _ => continue,
-            };
-            openai_messages.push(serde_json::json!({
-                "role": openai_role,
-                "content": content
-            }));
-            continue;
-        }
-
-        let content_array = content.as_array()?;
-
-        match role {
-            "assistant" => {
-                // Split content into text/image parts and tool_calls
-                let mut text_parts: Vec<serde_json::Value> = Vec::new();
-                let mut tool_calls: Vec<serde_json::Value> = Vec::new();
-
-                for block in content_array {
-                    let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    match block_type {
-                        "text" => {
-                            if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                text_parts.push(serde_json::json!({
-                                    "type": "text",
-                                    "text": text
-                                }));
-                            }
-                        }
-                        "tool_use" => {
-                            if let (Some(id), Some(name), Some(input)) = (
-                                block.get("id").and_then(|v| v.as_str()),
-                                block.get("name").and_then(|v| v.as_str()),
-                                block.get("input"),
-                            ) {
-                                tool_calls.push(serde_json::json!({
-                                    "id": id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": name,
-                                        "arguments": input.to_string()
-                                    }
-                                }));
-                            }
-                        }
-                        _ => {
-                            convert_media_block(block, &mut text_parts);
-                        }
-                    }
-                }
-
-                let mut msg_obj = serde_json::json!({ "role": "assistant" });
-
-                if tool_calls.is_empty() {
-                    // No tool calls: set content normally
-                    msg_obj["content"] = text_parts_to_content(&text_parts);
-                } else {
-                    // Has tool calls: content can be null or text string
-                    msg_obj["content"] = if text_parts.is_empty() {
-                        serde_json::Value::Null
-                    } else {
-                        text_parts_to_content(&text_parts)
-                    };
-                    msg_obj["tool_calls"] = serde_json::Value::Array(tool_calls);
-                }
-
-                openai_messages.push(msg_obj);
-            }
-            "user" => {
-                // Separate tool_result blocks from regular content
-                let mut text_parts: Vec<serde_json::Value> = Vec::new();
-                let mut tool_results: Vec<(String, String)> = Vec::new();
-
-                for block in content_array {
-                    let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    match block_type {
-                        "tool_result" => {
-                            let tool_use_id = block
-                                .get("tool_use_id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let mut result_content = extract_tool_result_content(block.get("content"));
-                            // A failed call must read as one: chat/completions
-                            // has no `is_error` flag on a tool message.
-                            if block.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
-                                result_content = format!("Error: {result_content}");
-                            }
-                            // A tool message carries only text here, so images
-                            // from the result follow as user content.
-                            if let Some(parts) = block.get("content").and_then(|c| c.as_array()) {
-                                for part in parts {
-                                    if part.get("type").and_then(|t| t.as_str()) != Some("text") {
-                                        convert_media_block(part, &mut text_parts);
-                                    }
-                                }
-                            }
-                            tool_results.push((tool_use_id, result_content));
-                        }
-                        "text" => {
-                            if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                text_parts.push(serde_json::json!({
-                                    "type": "text",
-                                    "text": text
-                                }));
-                            }
-                        }
-                        _ => {
-                            convert_media_block(block, &mut text_parts);
-                        }
-                    }
-                }
-
-                // Tool results become role:"tool" messages (must come before user text)
-                for (tool_call_id, result) in tool_results {
-                    openai_messages.push(serde_json::json!({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": result
-                    }));
-                }
-
-                // Remaining user content
-                if !text_parts.is_empty() {
-                    openai_messages.push(serde_json::json!({
-                        "role": "user",
-                        "content": text_parts_to_content(&text_parts)
-                    }));
-                }
-            }
-            "system" | "developer" => {
-                let text: String = content_array
-                    .iter()
-                    .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            if let Some(openai_role) = plain_role(role) {
                 openai_messages.push(serde_json::json!({
-                    "role": role,
-                    "content": text
+                    "role": openai_role,
+                    "content": content
                 }));
             }
-            _ => continue,
+            continue;
+        }
+        let blocks = content.as_array()?;
+        match role {
+            "assistant" => openai_messages.push(assistant_blocks_message(blocks)),
+            "user" => push_user_blocks(blocks, &mut openai_messages),
+            "system" | "developer" => openai_messages.push(serde_json::json!({
+                "role": role,
+                "content": joined_block_text(blocks)
+            })),
+            _ => {}
         }
     }
-
     Some(serde_json::Value::Array(merge_system_messages(openai_messages)))
+}
+
+/// The roles a string-content message keeps; any other is dropped.
+fn plain_role(role: &str) -> Option<&'static str> {
+    match role {
+        "user" => Some("user"),
+        "assistant" => Some("assistant"),
+        "system" => Some("system"),
+        "developer" => Some("developer"),
+        _ => None,
+    }
+}
+
+/// The `text` of every block that has one, joined by newlines.
+fn joined_block_text(blocks: &[serde_json::Value]) -> String {
+    blocks
+        .iter()
+        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The top-level `system` field (a string, or text blocks) as a system
+/// message; `None` for empty block text or another shape.
+fn top_level_system_message(system: &serde_json::Value) -> Option<serde_json::Value> {
+    let text = match (system.as_str(), system.as_array()) {
+        (Some(text), _) => text.to_string(),
+        (None, Some(blocks)) => Some(joined_block_text(blocks)).filter(|t| !t.is_empty())?,
+        (None, None) => return None,
+    };
+    Some(serde_json::json!({ "role": "system", "content": text }))
+}
+
+fn text_part(block: &serde_json::Value) -> Option<serde_json::Value> {
+    let text = block.get("text").and_then(|v| v.as_str())?;
+    Some(serde_json::json!({ "type": "text", "text": text }))
+}
+
+/// An assistant turn's blocks as one chat message: text and media as
+/// content, `tool_use` blocks as `tool_calls`.
+fn assistant_blocks_message(blocks: &[serde_json::Value]) -> serde_json::Value {
+    let mut text_parts: Vec<serde_json::Value> = Vec::new();
+    let mut tool_calls: Vec<serde_json::Value> = Vec::new();
+    for block in blocks {
+        match block.get("type").and_then(|v| v.as_str()).unwrap_or("") {
+            "text" => text_parts.extend(text_part(block)),
+            "tool_use" => {
+                if let (Some(id), Some(name), Some(input)) = (
+                    block.get("id").and_then(|v| v.as_str()),
+                    block.get("name").and_then(|v| v.as_str()),
+                    block.get("input"),
+                ) {
+                    tool_calls.push(serde_json::json!({
+                        "id": id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": input.to_string()
+                        }
+                    }));
+                }
+            }
+            _ => convert_media_block(block, &mut text_parts),
+        }
+    }
+    let mut msg_obj = serde_json::json!({ "role": "assistant" });
+    if tool_calls.is_empty() {
+        msg_obj["content"] = text_parts_to_content(&text_parts);
+    } else {
+        // With tool calls the content may be null.
+        msg_obj["content"] = if text_parts.is_empty() {
+            serde_json::Value::Null
+        } else {
+            text_parts_to_content(&text_parts)
+        };
+        msg_obj["tool_calls"] = serde_json::Value::Array(tool_calls);
+    }
+    msg_obj
+}
+
+/// A user turn's blocks: each `tool_result` as a `tool` message (they must
+/// come first), then the remaining text and media as one user message.
+fn push_user_blocks(blocks: &[serde_json::Value], out: &mut Vec<serde_json::Value>) {
+    let mut text_parts: Vec<serde_json::Value> = Vec::new();
+    let mut tool_results: Vec<(String, String)> = Vec::new();
+    for block in blocks {
+        match block.get("type").and_then(|v| v.as_str()).unwrap_or("") {
+            "tool_result" => tool_results.push(tool_result_text(block, &mut text_parts)),
+            "text" => text_parts.extend(text_part(block)),
+            _ => convert_media_block(block, &mut text_parts),
+        }
+    }
+    for (tool_call_id, result) in tool_results {
+        out.push(serde_json::json!({
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": result
+        }));
+    }
+    if !text_parts.is_empty() {
+        out.push(serde_json::json!({
+            "role": "user",
+            "content": text_parts_to_content(&text_parts)
+        }));
+    }
+}
+
+/// A `tool_result` block's call id and text. Its images go to `media`: a
+/// tool message carries only text here, so they follow as user content.
+fn tool_result_text(block: &serde_json::Value, media: &mut Vec<serde_json::Value>) -> (String, String) {
+    let tool_use_id = block
+        .get("tool_use_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let mut result_content = extract_tool_result_content(block.get("content"));
+    // A failed call must read as one: chat/completions has no `is_error`
+    // flag on a tool message.
+    if block.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
+        result_content = format!("Error: {result_content}");
+    }
+    for part in block.get("content").and_then(|c| c.as_array()).into_iter().flatten() {
+        if part.get("type").and_then(|t| t.as_str()) != Some("text") {
+            convert_media_block(part, media);
+        }
+    }
+    (tool_use_id, result_content)
 }
 
 /// Collapse every system/developer message into one leading system message.
@@ -3665,22 +3640,12 @@ async fn transform_and_forward_stream<S>(
 ) where
     S: futures_util::Stream<Item = Result<Bytes, reqwest::Error>> + Unpin,
 {
-    let mut is_first = true;
-    let mut accumulated_content = String::new();
-
-    // Track active Anthropic content blocks
-    let mut text_block_index: Option<usize> = None;
-    let mut tool_blocks: HashMap<usize, usize> = HashMap::new(); // OAI tool index -> Anthropic block index
-    let mut next_block_index: usize = 0;
+    let mut encoder = AnthropicStreamEncoder::default();
     // Bytes decode across chunk boundaries, and a line split between two
     // chunks waits for its end, so neither a multi-byte character nor a
     // `data:` line is cut in half (#195).
     let mut utf8 = Utf8ChunkDecoder::default();
     let mut pending_lines = String::new();
-    // The finish chunk only closes the blocks; the closing events wait for
-    // `[DONE]` / EOF so a trailing usage chunk can still be read.
-    let mut stop_reason: Option<&'static str> = None;
-    let mut usage: Option<serde_json::Value> = None;
     let mut transport_error = false;
 
     'outer: loop {
@@ -3709,204 +3674,13 @@ async fn transform_and_forward_stream<S>(
             }
         };
         for line in chunk_str.lines() {
-            if !line.starts_with("data:") {
-                continue;
-            }
-            let data = line.trim_start_matches("data:").trim();
-
-            if data == "[DONE]" {
+            let Some(events) = encoder.push_line(line) else {
                 break 'outer;
-            }
-
-            let json_chunk = match serde_json::from_str::<serde_json::Value>(data) {
-                Ok(v) => v,
-                Err(_) => continue,
             };
-
-            // The backend's real usage, on a trailing chunk (empty `choices`)
-            // or on the finish chunk itself.
-            if let Some(u) = json_chunk.get("usage").filter(|u| u.is_object()) {
-                usage = Some(u.clone());
-            }
-
-            let choice = json_chunk
-                .get("choices")
-                .and_then(|c| c.as_array())
-                .and_then(|c| c.first());
-            let delta = match choice.and_then(|c| c.get("delta")) {
-                Some(d) => d,
-                None => continue,
-            };
-            let finish_reason = choice.and_then(|c| c.get("finish_reason"));
-            let has_finish = finish_reason.is_some() && !finish_reason.unwrap().is_null();
-
-            // First chunk: send message_start
-            if is_first {
-                let role = delta
-                    .get("role")
-                    .and_then(|r| r.as_str())
-                    .unwrap_or("assistant");
-                let message_id = json_chunk
-                    .get("id")
-                    .unwrap_or(&serde_json::json!(""))
-                    .clone();
-                let model = json_chunk
-                    .get("model")
-                    .unwrap_or(&serde_json::json!(""))
-                    .clone();
-
-                let start_event = serde_json::json!({
-                    "type": "message_start",
-                    "message": {
-                        "id": message_id,
-                        "type": "message",
-                        "role": role,
-                        "content": [],
-                        "model": model,
-                        "stop_reason": serde_json::Value::Null,
-                        "stop_sequence": serde_json::Value::Null,
-                        "usage": { "input_tokens": 0, "output_tokens": 0 }
-                    }
-                });
-                if sender.send_data(sse_event(&start_event)).await.is_err() {
+            for event in events {
+                if sender.send_data(sse_event(&event)).await.is_err() {
                     return;
                 }
-                is_first = false;
-            }
-
-            // Handle text content
-            if let Some(text) =
-                delta
-                    .get("content")
-                    .and_then(|c| if c.is_null() { None } else { c.as_str() })
-            {
-                if !text.is_empty() {
-                    // Open text block if needed
-                    if text_block_index.is_none() {
-                        let idx = next_block_index;
-                        next_block_index += 1;
-                        text_block_index = Some(idx);
-
-                        let block_start = serde_json::json!({
-                            "type": "content_block_start",
-                            "index": idx,
-                            "content_block": { "type": "text", "text": "" }
-                        });
-                        if sender.send_data(sse_event(&block_start)).await.is_err() {
-                            return;
-                        }
-                    }
-
-                    accumulated_content.push_str(text);
-                    let delta_event = serde_json::json!({
-                        "type": "content_block_delta",
-                        "index": text_block_index.unwrap(),
-                        "delta": { "type": "text_delta", "text": text }
-                    });
-                    if sender.send_data(sse_event(&delta_event)).await.is_err() {
-                        return;
-                    }
-                }
-            }
-
-            // Handle tool calls
-            if let Some(tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
-                // Close text block before tool blocks
-                if let Some(idx) = text_block_index.take() {
-                    let stop = serde_json::json!(
-                        {"type": "content_block_stop", "index": idx}
-                    );
-                    if sender.send_data(sse_event(&stop)).await.is_err() {
-                        return;
-                    }
-                }
-
-                for tc in tool_calls {
-                    let tc_index =
-                        tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-
-                    // New tool call (has id + function.name)
-                    if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
-                        let name = tc
-                            .get("function")
-                            .and_then(|f| f.get("name"))
-                            .and_then(|n| n.as_str())
-                            .unwrap_or("");
-
-                        let idx = next_block_index;
-                        next_block_index += 1;
-                        tool_blocks.insert(tc_index, idx);
-
-                        let block_start = serde_json::json!({
-                            "type": "content_block_start",
-                            "index": idx,
-                            "content_block": {
-                                "type": "tool_use",
-                                "id": id,
-                                "name": name,
-                                "input": {}
-                            }
-                        });
-                        if sender.send_data(sse_event(&block_start)).await.is_err() {
-                            return;
-                        }
-                    }
-
-                    // Argument delta
-                    if let Some(args) = tc
-                        .get("function")
-                        .and_then(|f| f.get("arguments"))
-                        .and_then(|a| a.as_str())
-                    {
-                        if !args.is_empty() {
-                            if let Some(&idx) = tool_blocks.get(&tc_index) {
-                                let delta_event = serde_json::json!({
-                                    "type": "content_block_delta",
-                                    "index": idx,
-                                    "delta": {
-                                        "type": "input_json_delta",
-                                        "partial_json": args
-                                    }
-                                });
-                                if sender.send_data(sse_event(&delta_event)).await.is_err()
-                                {
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Handle finish
-            if has_finish {
-                // Close text block
-                if let Some(idx) = text_block_index.take() {
-                    let stop = serde_json::json!(
-                        {"type": "content_block_stop", "index": idx}
-                    );
-                    if sender.send_data(sse_event(&stop)).await.is_err() {
-                        return;
-                    }
-                }
-                // Close all tool blocks
-                let mut tool_indices: Vec<usize> = tool_blocks.values().copied().collect();
-                tool_indices.sort();
-                for idx in tool_indices {
-                    let stop = serde_json::json!(
-                        {"type": "content_block_stop", "index": idx}
-                    );
-                    if sender.send_data(sse_event(&stop)).await.is_err() {
-                        return;
-                    }
-                }
-
-                stop_reason = Some(anthropic_stop_reason(
-                    finish_reason.and_then(|fr| fr.as_str()).unwrap_or("stop"),
-                ));
-                tool_blocks.clear();
-                // `message_delta` / `message_stop` follow at `[DONE]` / EOF,
-                // after any trailing usage chunk.
             }
         }
         if stream_ended {
@@ -3914,82 +3688,268 @@ async fn transform_and_forward_stream<S>(
         }
     }
 
-    // No `message_start` yet: the stream carried nothing usable.
-    if is_first {
-        if transport_error {
-            let err = serde_json::json!({
-                "type": "error",
-                "error": {"type": "api_error", "message": "upstream stream failed"}
-            });
-            let _ = sender.send_data(sse_event(&err)).await;
+    for event in encoder.finish(transport_error) {
+        if sender.send_data(sse_event(&event)).await.is_err() {
             return;
         }
-        let start_event = serde_json::json!({
+    }
+    log::debug!("Streaming complete (Anthropic format)");
+}
+
+/// OpenAI chat-completion stream chunks in, Anthropic Messages events out.
+/// Holds which content blocks are open and what the closing events need.
+struct AnthropicStreamEncoder {
+    /// No `message_start` sent yet.
+    is_first: bool,
+    accumulated_content: String,
+    text_block_index: Option<usize>,
+    /// OpenAI tool index -> Anthropic block index.
+    tool_blocks: HashMap<usize, usize>,
+    next_block_index: usize,
+    /// The finish chunk only closes the blocks; the closing events wait for
+    /// `[DONE]` / EOF so a trailing usage chunk can still be read.
+    stop_reason: Option<&'static str>,
+    usage: Option<serde_json::Value>,
+}
+
+impl Default for AnthropicStreamEncoder {
+    fn default() -> Self {
+        Self {
+            is_first: true,
+            accumulated_content: String::new(),
+            text_block_index: None,
+            tool_blocks: HashMap::new(),
+            next_block_index: 0,
+            stop_reason: None,
+            usage: None,
+        }
+    }
+}
+
+fn block_stop(index: usize) -> serde_json::Value {
+    serde_json::json!({"type": "content_block_stop", "index": index})
+}
+
+impl AnthropicStreamEncoder {
+    /// Events for one line of the upstream stream; `None` at `data: [DONE]`.
+    fn push_line(&mut self, line: &str) -> Option<Vec<serde_json::Value>> {
+        let Some(data) = line.strip_prefix("data:") else {
+            return Some(Vec::new());
+        };
+        let data = data.trim_start_matches("data:").trim();
+        if data == "[DONE]" {
+            return None;
+        }
+        Some(match serde_json::from_str::<serde_json::Value>(data) {
+            Ok(chunk) => self.push_chunk(&chunk),
+            Err(_) => Vec::new(),
+        })
+    }
+
+    /// Events for one parsed chat-completion chunk.
+    fn push_chunk(&mut self, json_chunk: &serde_json::Value) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        // The backend's real usage, on a trailing chunk (empty `choices`)
+        // or on the finish chunk itself.
+        if let Some(u) = json_chunk.get("usage").filter(|u| u.is_object()) {
+            self.usage = Some(u.clone());
+        }
+        let choice = json_chunk
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first());
+        let Some(delta) = choice.and_then(|c| c.get("delta")) else {
+            return out;
+        };
+        let finish_reason = choice
+            .and_then(|c| c.get("finish_reason"))
+            .filter(|fr| !fr.is_null());
+        if self.is_first {
+            out.push(Self::message_start(json_chunk, delta));
+            self.is_first = false;
+        }
+        if let Some(text) = delta.get("content").and_then(|c| c.as_str()) {
+            self.on_text(text, &mut out);
+        }
+        if let Some(tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
+            self.on_tool_calls(tool_calls, &mut out);
+        }
+        if let Some(fr) = finish_reason {
+            self.on_finish(fr, &mut out);
+        }
+        out
+    }
+
+    fn message_start(json_chunk: &serde_json::Value, delta: &serde_json::Value) -> serde_json::Value {
+        let role = delta
+            .get("role")
+            .and_then(|r| r.as_str())
+            .unwrap_or("assistant");
+        let message_id = json_chunk.get("id").cloned().unwrap_or(serde_json::json!(""));
+        let model = json_chunk.get("model").cloned().unwrap_or(serde_json::json!(""));
+        serde_json::json!({
             "type": "message_start",
             "message": {
-                "id": "", "type": "message", "role": "assistant", "content": [],
-                "model": "", "stop_reason": serde_json::Value::Null,
+                "id": message_id,
+                "type": "message",
+                "role": role,
+                "content": [],
+                "model": model,
+                "stop_reason": serde_json::Value::Null,
                 "stop_sequence": serde_json::Value::Null,
                 "usage": { "input_tokens": 0, "output_tokens": 0 }
             }
-        });
-        if sender.send_data(sse_event(&start_event)).await.is_err() {
+        })
+    }
+
+    fn on_text(&mut self, text: &str, out: &mut Vec<serde_json::Value>) {
+        if text.is_empty() {
             return;
         }
+        let idx = match self.text_block_index {
+            Some(idx) => idx,
+            None => {
+                let idx = self.next_block_index;
+                self.next_block_index += 1;
+                self.text_block_index = Some(idx);
+                out.push(serde_json::json!({
+                    "type": "content_block_start",
+                    "index": idx,
+                    "content_block": { "type": "text", "text": "" }
+                }));
+                idx
+            }
+        };
+        self.accumulated_content.push_str(text);
+        out.push(serde_json::json!({
+            "type": "content_block_delta",
+            "index": idx,
+            "delta": { "type": "text_delta", "text": text }
+        }));
     }
 
-    // Close blocks still open (the stream ended before a finish chunk).
-    let mut open: Vec<usize> = tool_blocks.values().copied().collect();
-    open.extend(text_block_index.take());
-    open.sort();
-    for idx in open {
-        let stop = serde_json::json!({"type": "content_block_stop", "index": idx});
-        if sender.send_data(sse_event(&stop)).await.is_err() {
-            return;
+    fn on_tool_calls(&mut self, tool_calls: &[serde_json::Value], out: &mut Vec<serde_json::Value>) {
+        // Close the text block before tool blocks.
+        if let Some(idx) = self.text_block_index.take() {
+            out.push(block_stop(idx));
+        }
+        for tc in tool_calls {
+            let tc_index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+            // A new tool call carries its id (and function name).
+            if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                let name = tc
+                    .get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("");
+                let idx = self.next_block_index;
+                self.next_block_index += 1;
+                self.tool_blocks.insert(tc_index, idx);
+                out.push(serde_json::json!({
+                    "type": "content_block_start",
+                    "index": idx,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": id,
+                        "name": name,
+                        "input": {}
+                    }
+                }));
+            }
+            let args = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|a| a.as_str())
+                .filter(|a| !a.is_empty());
+            if let (Some(args), Some(&idx)) = (args, self.tool_blocks.get(&tc_index)) {
+                out.push(serde_json::json!({
+                    "type": "content_block_delta",
+                    "index": idx,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": args
+                    }
+                }));
+            }
         }
     }
 
-    // A connection that broke before the model finished is an error, not a
-    // normal end of turn.
-    if transport_error && stop_reason.is_none() {
-        let err = serde_json::json!({
-            "type": "error",
-            "error": {"type": "api_error", "message": "upstream stream interrupted"}
+    fn on_finish(&mut self, finish_reason: &serde_json::Value, out: &mut Vec<serde_json::Value>) {
+        if let Some(idx) = self.text_block_index.take() {
+            out.push(block_stop(idx));
+        }
+        let mut tool_indices: Vec<usize> = self.tool_blocks.values().copied().collect();
+        tool_indices.sort();
+        out.extend(tool_indices.into_iter().map(block_stop));
+        self.stop_reason = Some(anthropic_stop_reason(finish_reason.as_str().unwrap_or("stop")));
+        self.tool_blocks.clear();
+        // `message_delta` / `message_stop` follow at `[DONE]` / EOF, after any
+        // trailing usage chunk.
+    }
+
+    /// The closing events once the upstream stream is over.
+    fn finish(&mut self, transport_error: bool) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        // No `message_start` yet: the stream carried nothing usable.
+        if self.is_first {
+            if transport_error {
+                out.push(serde_json::json!({
+                    "type": "error",
+                    "error": {"type": "api_error", "message": "upstream stream failed"}
+                }));
+                return out;
+            }
+            out.push(serde_json::json!({
+                "type": "message_start",
+                "message": {
+                    "id": "", "type": "message", "role": "assistant", "content": [],
+                    "model": "", "stop_reason": serde_json::Value::Null,
+                    "stop_sequence": serde_json::Value::Null,
+                    "usage": { "input_tokens": 0, "output_tokens": 0 }
+                }
+            }));
+        }
+        // Close blocks still open (the stream ended before a finish chunk).
+        let mut open: Vec<usize> = self.tool_blocks.values().copied().collect();
+        open.extend(self.text_block_index.take());
+        open.sort();
+        out.extend(open.into_iter().map(block_stop));
+        // A connection that broke before the model finished is an error, not
+        // a normal end of turn.
+        if transport_error && self.stop_reason.is_none() {
+            out.push(serde_json::json!({
+                "type": "error",
+                "error": {"type": "api_error", "message": "upstream stream interrupted"}
+            }));
+            return out;
+        }
+        let stop_reason = self.stop_reason.unwrap_or(if self.tool_blocks.is_empty() {
+            "end_turn"
+        } else {
+            "tool_use"
         });
-        let _ = sender.send_data(sse_event(&err)).await;
-        return;
+        let usage_json = match &self.usage {
+            Some(u) => anthropic_usage(u),
+            None => {
+                // The backend sent no usage: estimate from the text, as before.
+                log::debug!("backend sent no usage; estimating output tokens");
+                serde_json::json!({
+                    "input_tokens": 0,
+                    "output_tokens": self.accumulated_content.split_whitespace().count() as u64
+                })
+            }
+        };
+        out.push(serde_json::json!({
+            "type": "message_delta",
+            "delta": {
+                "stop_reason": stop_reason,
+                "stop_sequence": serde_json::Value::Null
+            },
+            "usage": usage_json
+        }));
+        out.push(serde_json::json!({"type": "message_stop"}));
+        out
     }
-
-    let stop_reason = stop_reason.unwrap_or(if tool_blocks.is_empty() {
-        "end_turn"
-    } else {
-        "tool_use"
-    });
-    let usage_json = match &usage {
-        Some(u) => anthropic_usage(u),
-        None => {
-            // The backend sent no usage: estimate from the text, as before.
-            log::debug!("backend sent no usage; estimating output tokens");
-            serde_json::json!({
-                "input_tokens": 0,
-                "output_tokens": accumulated_content.split_whitespace().count() as u64
-            })
-        }
-    };
-    let delta_event = serde_json::json!({
-        "type": "message_delta",
-        "delta": {
-            "stop_reason": stop_reason,
-            "stop_sequence": serde_json::Value::Null
-        },
-        "usage": usage_json
-    });
-    if sender.send_data(sse_event(&delta_event)).await.is_err() {
-        return;
-    }
-    let final_stop = serde_json::json!({"type": "message_stop"});
-    let _ = sender.send_data(sse_event(&final_stop)).await;
-    log::debug!("Streaming complete (Anthropic format)");
 }
 
 /// Forward non-streaming OpenAI response as Anthropic /messages response
@@ -4744,5 +4704,117 @@ mod request_check_tests {
         assert!(none.is_none());
         let none = quota_refusal(&hyper::Method::POST, "/embeddings", "", "", &cfg, "no-such-folder");
         assert!(none.is_none());
+    }
+}
+
+
+#[cfg(test)]
+mod golden_tests {
+    use serde_json::{json, Value};
+
+    async fn stream_events(chunks: Vec<&'static [u8]>) -> Value {
+        use http_body_util::BodyExt;
+        use hyper::body::Bytes;
+        let chunks: Vec<Result<Bytes, reqwest::Error>> =
+            chunks.into_iter().map(|c| Ok(Bytes::from_static(c))).collect();
+        let (sender, body) = super::body_channel();
+        let run = super::transform_and_forward_stream(futures_util::stream::iter(chunks), sender, "/v1/messages");
+        let (_, out) = tokio::join!(run, body.collect());
+        let out = out.unwrap().to_bytes();
+        let text = String::from_utf8(out.to_vec()).unwrap();
+        // Each event kept as its raw text: byte-equal, not merely
+        // value-equal, output is what the refactor must preserve.
+        Value::Array(text.split_inclusive("\n\n").map(|e| json!(e)).collect())
+    }
+
+    #[tokio::test]
+    async fn golden_anthropic_stream_output() {
+        let cases: Vec<(&str, Vec<&'static [u8]>)> = vec![
+            ("stream_text_usage", vec![
+                b"data: {\"id\":\"m1\",\"model\":\"x\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{\"content\":\"lo there\"},\"finish_reason\":null}]}\n\n",
+                b": keepalive\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}]}\n\n",
+                b"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":3,\"prompt_tokens_details\":{\"cached_tokens\":2}}}\n\n",
+                b"data: [DONE]\n\n",
+            ]),
+            ("stream_text_then_tools", vec![
+                b"data: {\"id\":\"m2\",\"model\":\"y\",\"choices\":[{\"delta\":{\"content\":\"let me\"}}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"t1\",\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"p\\\":\"}}]}}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"t2\",\"function\":{\"name\":\"ls\",\"arguments\":\"{}\"}},{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]}}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":5,\"function\":{\"arguments\":\"lost\"}}]}}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+                b"data: [DONE]\n\n",
+            ]),
+            ("stream_split_utf8_and_lines", vec![
+                b"data: {\"id\":\"m3\",\"choices\":[{\"delta\":{\"content\":\"caf\xc3",
+                b"\xa9 \xe2\x9c",
+                b"\x93\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" ok\"},\"finish_reason\":\"length\"}]}",
+            ]),
+            ("stream_no_finish", vec![
+                b"data: {\"id\":\"m4\",\"choices\":[{\"delta\":{\"content\":\"partial words here\"}}]}\n\n",
+                b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"t9\",\"function\":{\"name\":\"x\"}}]}}]}\n\n",
+                b"data: not json\n\n",
+                b"data: {\"choices\":[]}\n\n",
+            ]),
+            ("stream_empty", vec![]),
+            ("stream_only_garbage", vec![b"event: ping\n\n", b"data: [DONE]\n\n"]),
+        ];
+        for (name, chunks) in cases {
+            crate::core::server::golden::check(name, &stream_events(chunks).await);
+        }
+    }
+
+    #[test]
+    fn golden_convert_messages() {
+        let messages = json!([
+            {"role": "user", "content": "plain"},
+            {"role": "tool", "content": "skipped role"},
+            {"role": "system", "content": "inline system"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "a1"},
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
+                {"type": "tool_use", "id": "u1", "name": "read", "input": {"p": 1}},
+                {"type": "tool_use", "id": "u2", "name": "bad"},
+                {"type": "thinking", "thinking": "hm"}
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "u3", "name": "ls", "input": {}}
+            ]},
+            {"role": "assistant", "content": [{"type": "text", "text": "only text"}]},
+            {"role": "assistant", "content": []},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "u1", "content": "fine"},
+                {"type": "tool_result", "tool_use_id": "u3", "is_error": true, "content": [
+                    {"type": "text", "text": "boom"},
+                    {"type": "image", "source": {"type": "url", "url": "https://x.test/i.png"}}
+                ]},
+                {"type": "tool_result", "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]},
+                {"type": "text", "text": "and then"},
+                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBE"}}
+            ]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "u2"}]},
+            {"role": "developer", "content": [{"type": "text", "text": "d1"}, {"type": "text", "text": "d2"}]},
+            {"role": "other", "content": [{"type": "text", "text": "x"}]}
+        ]);
+        let cases = vec![
+            ("convert_messages_string_system", Some(json!("top system"))),
+            ("convert_messages_block_system", Some(json!([{"type": "text", "text": "s1"}, {"type": "x"}, {"type": "text", "text": "s2"}]))),
+            ("convert_messages_empty_block_system", Some(json!([{"type": "x"}]))),
+            ("convert_messages_no_system", None),
+        ];
+        for (name, system) in cases {
+            let out = super::convert_messages(&messages, system.as_ref());
+            crate::core::server::golden::check(name, &json!(out));
+        }
+        // A malformed message ends the conversion with `None`.
+        crate::core::server::golden::check(
+            "convert_messages_malformed",
+            &json!([
+                super::convert_messages(&json!([{"content": "no role"}]), None),
+                super::convert_messages(&json!([{"role": "user", "content": 5}]), None),
+                super::convert_messages(&json!({"not": "array"}), None),
+            ]),
+        );
     }
 }
