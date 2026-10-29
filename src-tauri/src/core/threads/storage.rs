@@ -53,6 +53,7 @@ pub fn modify_thread_unlocked(root: &Path, mut thread: Value) -> Result<(), Stri
     let on_disk = fs::read(get_thread_metadata_path(root, id))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+    super::helpers::restore_summary_assistants(&mut thread, on_disk.as_ref());
     if let Some(disk) = on_disk {
         match super::branching::thread_active_root(&disk) {
             Some(root_id) if thread.get("metadata").map_or(true, |m| m.is_object() || m.is_null()) => {
@@ -297,5 +298,40 @@ mod revision_tests {
         assert_eq!(lines(&root, thread), 1);
         assert_eq!(read_messages_lossy(&root, thread).unwrap().messages[0]["content"], "three");
         let _ = fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod summary_write_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn a_write_with_a_summary_assistant_keeps_the_stored_instructions() {
+        let dir = tempfile::tempdir().unwrap();
+        let made = create_thread_in(dir.path(), json!({"title": "t", "assistants": [
+            {"id": "a", "name": "A", "model": {"id": "m1"}, "instructions": "be brief", "parameters": {"temperature": 0.2}}
+        ]})).unwrap();
+        let id = made["id"].as_str().unwrap().to_owned();
+        modify_thread_in(dir.path(), json!({"id": id, "title": "renamed", "assistants": [
+            {"id": "a", "name": "A", "model": {"id": "m2"}, "summary": true}
+        ]})).await.unwrap();
+        let disk: Value = serde_json::from_slice(&fs::read(get_thread_metadata_path(dir.path(), &id)).unwrap()).unwrap();
+        let a = &disk["assistants"][0];
+        assert_eq!(disk["title"], "renamed");
+        assert_eq!(a["instructions"], "be brief");
+        assert_eq!(a["parameters"]["temperature"], 0.2);
+        assert_eq!(a["model"]["id"], "m2");
+        assert!(a.get("summary").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_full_assistant_write_replaces_the_stored_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let made = create_thread_in(dir.path(), json!({"assistants": [{"id": "a", "instructions": "old"}]})).unwrap();
+        let id = made["id"].as_str().unwrap().to_owned();
+        modify_thread_in(dir.path(), json!({"id": id, "assistants": [{"id": "a", "instructions": "new"}]})).await.unwrap();
+        let disk: Value = serde_json::from_slice(&fs::read(get_thread_metadata_path(dir.path(), &id)).unwrap()).unwrap();
+        assert_eq!(disk["assistants"][0]["instructions"], "new");
     }
 }
