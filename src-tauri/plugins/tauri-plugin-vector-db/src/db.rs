@@ -1148,9 +1148,24 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("vdb-lock-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("locked.db");
-        let _held = fs::File::create(&path).unwrap();
+        // Rust std opens with FILE_SHARE_DELETE, and remove_file uses POSIX
+        // delete semantics, so a std handle never blocks deletion. Hold it the
+        // way SQLite does (read/write sharing, no delete sharing).
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 0x1;
+        const FILE_SHARE_WRITE: u32 = 0x2;
+        let _held = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(&path)
+            .unwrap();
         assert!(delete_collection_files(&dir, "locked").is_err());
+        assert!(path.exists(), "failed delete must leave the db in place");
         drop(_held);
+        delete_collection_files(&dir, "locked").unwrap();
+        assert!(!path.exists());
         fs::remove_dir_all(&dir).ok();
     }
 
