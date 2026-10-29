@@ -234,6 +234,11 @@ impl Held {
                         continue;
                     }
                 }
+                // Windows: creating a name whose previous holder just deleted
+                // it (delete pending) fails with PermissionDenied. The lock is
+                // being released, so wait and retry; never judge or break it.
+                #[cfg(windows)]
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {}
                 Err(e) => return Err(format!("lock {}: {e}", path.display())),
             }
             if started.elapsed() > wait {
