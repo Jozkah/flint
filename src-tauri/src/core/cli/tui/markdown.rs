@@ -353,25 +353,23 @@ fn wrap_spans(spans: Vec<Span<'static>>, max: usize) -> Vec<Vec<Span<'static>>> 
     let mut used = 0;
     for span in spans {
         let style = span.style;
-        let mut rest: &str = &span.content;
-        while !rest.is_empty() {
-            let room = max - used;
-            let take = rest.chars().count().min(room);
-            let split = rest
-                .char_indices()
-                .nth(take)
-                .map(|(i, _)| i)
-                .unwrap_or(rest.len());
-            let (head, tail) = rest.split_at(split);
-            if !head.is_empty() {
-                row.push(Span::styled(head.to_string(), style));
-                used += take;
-            }
-            rest = tail;
-            if used >= max && !rest.is_empty() {
+        let mut head = String::new();
+        for c in span.content.chars() {
+            // Measured in terminal cells, so a CJK or emoji run fits the
+            // panel instead of overrunning its border (CLIB-039).
+            let w = super::cell_width(c);
+            if used > 0 && used + w > max {
+                if !head.is_empty() {
+                    row.push(Span::styled(std::mem::take(&mut head), style));
+                }
                 out.push(std::mem::take(&mut row));
                 used = 0;
             }
+            head.push(c);
+            used += w;
+        }
+        if !head.is_empty() {
+            row.push(Span::styled(head, style));
         }
     }
     if !row.is_empty() || out.is_empty() {
@@ -401,7 +399,18 @@ pub(super) fn wrap_spans_at_words(
     let mut out: Vec<Vec<Span<'static>>> = Vec::new();
     let mut start = 0;
     while start < cells.len() {
-        let mut end = (start + max).min(cells.len());
+        // As many cells as fit in `max` terminal columns, and always at least
+        // one so a glyph wider than the row still makes progress.
+        let mut end = start;
+        let mut used = 0;
+        while end < cells.len() {
+            let w = super::cell_width(cells[end].0);
+            if end > start && used + w > max {
+                break;
+            }
+            used += w;
+            end += 1;
+        }
         if end < cells.len() {
             if let Some(space) = cells[start..end].iter().rposition(|(c, _)| *c == ' ') {
                 if space > 0 {
@@ -1426,6 +1435,32 @@ mod tests {
             .map(|l| l.spans.iter().map(|s| s.content.chars().count()).sum())
             .collect();
         assert_eq!(widths.len(), 1, "panel borders misaligned: {widths:?}");
+    }
+
+    /// CLIB-039 / P2C-014: a code panel holding CJK and emoji is measured in
+    /// terminal cells, so every row (borders included) is the same display
+    /// width and none overruns the terminal.
+    #[test]
+    fn code_panel_with_wide_glyphs_keeps_its_border_aligned() {
+        use unicode_width::UnicodeWidthStr;
+        let md = "```text\n日本語のテキストがとても長い行になっています日本語のテキスト\nab\t日本\n🙂🙂 ok\n```";
+        let widths: std::collections::HashSet<usize> = format_markdown_lines(md, 30)
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.width()).sum())
+            .collect();
+        assert_eq!(widths.len(), 1, "panel borders misaligned: {widths:?}");
+        assert!(widths.into_iter().all(|w| w <= 30));
+    }
+
+    #[test]
+    fn word_wrap_counts_wide_glyphs_as_two_columns() {
+        use unicode_width::UnicodeWidthStr;
+        let rows = wrap_spans_at_words(vec![Span::raw("日本語 日本語 日本語")], 8);
+        for row in &rows {
+            let w: usize = row.iter().map(|s| s.content.width()).sum();
+            assert!(w <= 8, "row too wide ({w}): {row:?}");
+        }
+        assert_eq!(rows.len(), 3);
     }
 
     #[test]

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { FadeText } from '@/components/ui/fade-text'
 import {
-  Box,
   Copy,
   ExternalLink,
   FileText,
@@ -10,9 +9,6 @@ import {
   FolderPlus,
   GitBranch,
   GitFork,
-  Lock,
-  Pencil,
-  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,43 +20,18 @@ import { Separator } from '@/components/ui/separator'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { basenameOf } from '@/lib/coworkPreview'
-import { sameFolder } from '@/lib/coworkFolders'
 import { truncateMiddle } from '@/lib/utils'
 import { useComposerCollapsed } from '@/containers/ComposerDensity'
+import { type AccessMode, workspaceAccess } from '@/lib/workspaceAccess'
+import {
+  ACCESS_BADGE,
+  AccessBadge,
+  AccessToggle,
+  ExtraFoldersSection,
+  WritesToSection,
+} from './cowork-workspace/WorkspaceSections'
 
-type AccessMode = 'review-only' | 'managed-worktree' | 'edit-folder'
-
-/** What a folder's badge says: read-only, editable, or edited via a worktree. */
-type FolderAccess = 'read-only' | 'editable' | 'worktree'
-
-const BADGE: Record<
-  FolderAccess,
-  { icon: typeof Lock; label: string; title: string }
-> = {
-  'read-only': {
-    icon: Lock,
-    label: 'common:workspace.readOnly',
-    title: 'common:workspace.footnote',
-  },
-  editable: {
-    icon: Pencil,
-    label: 'common:workspace.editable',
-    title: 'common:workspace.footnoteEditable',
-  },
-  worktree: {
-    icon: GitFork,
-    label: 'common:workspace.inWorktree',
-    title: 'common:workspace.footnoteWorktree',
-  },
-}
-
-/** The primary folder's access under `access`. */
-export const primaryFolderAccess = (access?: AccessMode): FolderAccess =>
-  access === 'edit-folder'
-    ? 'editable'
-    : access === 'managed-worktree'
-      ? 'worktree'
-      : 'read-only'
+export { primaryFolderAccess } from '@/lib/workspaceAccess'
 
 type Props = {
   /** Attached project folder, or null when the session is sandbox-only. */
@@ -145,45 +116,22 @@ export function CoworkWorkspacePill({
   const [open, setOpen] = useState(false)
   const serviceHub = useServiceHub()
   const folderName = folder ? basenameOf(folder) : null
-  // Each folder has its own mark. Under Edit this folder the main folder can
-  // be read-only while an extra is editable; the session is Review only
-  // only when no folder is editable.
-  const primaryAccess: FolderAccess =
-    access === 'edit-folder' && mainFolderReadOnly
-      ? 'read-only'
-      : primaryFolderAccess(access)
-  // Whether the session's access lets extra folders be edited at all; each
-  // one is then editable unless the user marked it read-only.
-  const extrasCanEdit = access !== 'review-only' && extraFoldersWritable
-  const extraMarkedReadOnly = (extra: string) =>
-    readOnlyExtraFolders.some((one) => sameFolder(one, extra))
-  const extraAccess = (extra: string): FolderAccess =>
-    extrasCanEdit && !extraMarkedReadOnly(extra) ? 'editable' : 'read-only'
-  const canToggleExtras = extraFoldersWritable && !!onToggleExtraWritable
-  // A worktree is the main folder's own way of being edited: no toggle there.
-  const canToggleMain =
-    extraFoldersWritable && !!onToggleMainWritable && primaryAccess !== 'worktree'
-  const someExtraEditable = extraFolders.some(
-    (extra) => extraAccess(extra) === 'editable'
-  )
-  // Where writes land: the main folder, its worktree, only the editable
-  // extras, or the sandbox when nothing is editable.
-  const writesKind =
-    primaryAccess === 'read-only' && someExtraEditable ? 'extras' : primaryAccess
-  const TriggerIcon = BADGE[primaryAccess].icon
-  const badge = (kind: FolderAccess, size: number) => {
-    const Icon = BADGE[kind].icon
-    return (
-      <span
-        className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border bg-card px-1.5 text-[length:calc(var(--ui-font-base)*0.65625)] font-medium text-secondary-foreground"
-        title={t(BADGE[kind].title)}
-        data-access={kind}
-      >
-        <Icon size={size} aria-hidden />
-        {t(BADGE[kind].label)}
-      </span>
-    )
-  }
+  const {
+    primaryAccess,
+    extraAccess,
+    canToggleExtras,
+    canToggleMain,
+    writesKind,
+  } = workspaceAccess({
+    access,
+    extraFolders,
+    extraFoldersWritable,
+    readOnlyExtraFolders,
+    mainFolderReadOnly,
+    canToggleExtraWritable: !!onToggleExtraWritable,
+    canToggleMainWritable: !!onToggleMainWritable,
+  })
+  const TriggerIcon = ACCESS_BADGE[primaryAccess].icon
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -305,24 +253,15 @@ export function CoworkWorkspacePill({
                   </p>
                 </div>
                 {canToggleMain ? (
-                  <button
-                    type="button"
-                    className="shrink-0 cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    aria-label={t(
-                      primaryAccess === 'editable'
-                        ? 'common:workspace.makeReadOnly'
-                        : 'common:workspace.makeEditable',
-                      { folder: folderName }
-                    )}
-                    data-main-toggle
-                    onClick={() =>
-                      onToggleMainWritable?.(primaryAccess !== 'editable')
-                    }
-                  >
-                    {badge(primaryAccess, 10)}
-                  </button>
+                  <AccessToggle
+                    kind={primaryAccess}
+                    size={10}
+                    folderName={folderName}
+                    onToggle={(writable) => onToggleMainWritable?.(writable)}
+                    mainToggle
+                  />
                 ) : (
-                  badge(primaryAccess, 10)
+                  <AccessBadge kind={primaryAccess} size={10} />
                 )}
               </div>
               {gitBranch && (
@@ -339,118 +278,22 @@ export function CoworkWorkspacePill({
             {/* Folders attached beside the primary one. Each is treated like
                 it; the shell still starts in the primary. */}
             {extraFolders.length > 0 || onAddExtra ? (
-              <section className="px-2.5 pb-2.5">
-                {extraFolders.length > 0 ? (
-                  <>
-                    <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-                      {t('common:workspace.alsoAttached')}
-                    </p>
-                    <ul className="mt-1.5 space-y-1">
-                      {extraFolders.map((extra) => (
-                        <li key={extra} className="flex items-center gap-2">
-                          <Folder
-                            size={13}
-                            className="shrink-0 text-muted-foreground"
-                            aria-hidden
-                          />
-                          <span
-                            className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
-                            title={extra}
-                          >
-                            {truncateMiddle(extra, 40)}
-                          </span>
-                          {canToggleExtras ? (
-                            <button
-                              type="button"
-                              className="shrink-0 cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                              aria-label={t(
-                                extraAccess(extra) === 'editable'
-                                  ? 'common:workspace.makeReadOnly'
-                                  : 'common:workspace.makeEditable',
-                                { folder: basenameOf(extra) }
-                              )}
-                              onClick={() =>
-                                onToggleExtraWritable?.(
-                                  extra,
-                                  extraAccess(extra) !== 'editable'
-                                )
-                              }
-                            >
-                              {badge(extraAccess(extra), 9)}
-                            </button>
-                          ) : (
-                            badge(extraAccess(extra), 9)
-                          )}
-                          {onRemoveExtra ? (
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              className="shrink-0"
-                              aria-label={t('common:workspace.removeFolder', {
-                                folder: basenameOf(extra),
-                              })}
-                              onClick={() => onRemoveExtra(extra)}
-                            >
-                              <X size={12} aria-hidden />
-                            </Button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-                {onAddExtra ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1.5 h-7 px-1.5 text-xs text-muted-foreground"
-                    onClick={onAddExtra}
-                  >
-                    <FolderPlus size={13} aria-hidden />
-                    {t('common:workspace.addFolder')}
-                  </Button>
-                ) : null}
-              </section>
+              <ExtraFoldersSection
+                extraFolders={extraFolders}
+                extraAccess={extraAccess}
+                canToggleExtras={canToggleExtras}
+                onToggleExtraWritable={onToggleExtraWritable}
+                onAddExtra={onAddExtra}
+                onRemoveExtra={onRemoveExtra}
+              />
             ) : null}
 
             <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 
-            {/* Where the agent's changes actually land. The folder above is
-                read-only, so saying "writable project" would be a lie. */}
-            <section className="p-2.5">
-              <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-                {t('common:workspace.writesTo')}
-              </p>
-              <div className="mt-1.5 flex items-start gap-2">
-                <Box
-                  size={15}
-                  className="mt-0.5 shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
-                    {writesKind === 'editable'
-                      ? t('common:workspace.writesFolder')
-                      : writesKind === 'extras'
-                        ? t('common:workspace.writesExtras')
-                        : writesKind === 'worktree'
-                        ? t('common:workspace.writesWorktree')
-                        : t('common:workspace.sandbox')}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {writesKind === 'editable'
-                      ? t('common:workspace.writesFolderNote')
-                      : writesKind === 'extras'
-                        ? t('common:workspace.writesExtrasNote')
-                        : writesKind === 'worktree'
-                        ? t('common:workspace.writesWorktreeNote')
-                        : workspacePath
-                          ? t('common:workspace.sandboxNote')
-                          : t('common:workspace.sandboxPending')}
-                  </p>
-                </div>
-              </div>
-            </section>
+            <WritesToSection
+              writesKind={writesKind}
+              workspacePath={workspacePath}
+            />
 
             <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 

@@ -14,7 +14,7 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
     if (typeof raw !== 'string') return key
     return raw.replace(/\{\{(\w+)\}\}/g, (_m, n) => String(opts?.[n] ?? ''))
   }
-  return { useTranslation: () => ({ t }) }
+  return { useTranslation: () => ({ t }), i18n: { t } }
 })
 
 import { CoworkHandoffNotice } from '../CoworkHandoffNotice'

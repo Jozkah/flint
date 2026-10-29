@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 
@@ -46,6 +47,7 @@ export function CoworkProjectInit({
   /** `FLINT.md` was written; whatever reads it should read it again. */
   onAccepted?: () => void
 }) {
+  const { t } = useTranslation()
   const [innerOpen, setInnerOpen] = useState(false)
   const open = openProp ?? innerOpen
   const setOpen = useCallback(
@@ -73,7 +75,7 @@ export function CoworkProjectInit({
     const token = ++surveyToken.current
     setBusy('survey')
     setError(null)
-    setStatus('Surveying the folder…')
+    setStatus(t('common:projectInit.surveying'))
     try {
       const dataFolder = await getServiceHub().app().getJanDataFolder()
       const found = await projectSurvey(dataFolder ?? '', folder)
@@ -85,7 +87,10 @@ export function CoworkProjectInit({
         surveyedAt: Date.now(),
       })
       setStatus(
-        `Surveyed ${found.filesSeen} files and read ${found.read.length}. Nothing has been written.`
+        t('common:projectInit.surveyed', {
+          seen: found.filesSeen,
+          read: found.read.length,
+        })
       )
     } catch (e) {
       if (token !== surveyToken.current) return
@@ -94,7 +99,7 @@ export function CoworkProjectInit({
     } finally {
       if (token === surveyToken.current) setBusy(null)
     }
-  }, [folder])
+  }, [folder, t])
 
   // Opening with no draft yet starts the survey, whichever control opened it.
   const hasDraft = Boolean(draft)
@@ -114,7 +119,7 @@ export function CoworkProjectInit({
       const dataFolder = await getServiceHub().app().getJanDataFolder()
       await projectInitAccept(dataFolder ?? '', folder, draft.content)
       useProjectInitDrafts.getState().clear(folder)
-      setStatus('Wrote FLINT.md')
+      setStatus(t('common:projectInit.wrote'))
       setOpen(false)
       onAccepted?.()
     } catch (e) {
@@ -127,7 +132,7 @@ export function CoworkProjectInit({
   const discard = () => {
     if (!folder) return
     useProjectInitDrafts.getState().clear(folder)
-    setStatus('Draft discarded. Nothing was written.')
+    setStatus(t('common:projectInit.discarded'))
     setOpen(false)
   }
 
@@ -164,16 +169,14 @@ export function CoworkProjectInit({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl" data-testid="project-init-dialog">
           <DialogHeader>
-            <DialogTitle>Describe this project</DialogTitle>
+            <DialogTitle>{t('common:projectInit.title')}</DialogTitle>
             <DialogDescription>
-              Flint read the folder's manifests and layout and ran nothing. Edit
-              the description; it becomes the folder's FLINT.md only when you
-              accept it.
+              {t('common:projectInit.description')}
             </DialogDescription>
           </DialogHeader>
           {busy === 'survey' && !draft ? (
             <p className="text-sm text-muted-foreground" aria-live="polite">
-              Surveying the folder…
+              {t('common:projectInit.surveying')}
             </p>
           ) : draft ? (
             <div className="flex flex-col gap-2">
@@ -196,7 +199,7 @@ export function CoworkProjectInit({
               />
               {draft.notRead.length > 0 && (
                 <details className="text-xs text-muted-foreground">
-                  <summary>What the survey did not read</summary>
+                  <summary>{t('common:projectInit.notRead')}</summary>
                   <ul
                     className="mt-1 list-disc pl-4"
                     data-testid="project-init-not-read"
@@ -225,7 +228,7 @@ export function CoworkProjectInit({
               disabled={!draft || busy !== null}
               data-testid="project-init-discard"
             >
-              Discard draft
+              {t('common:projectInit.discard')}
             </Button>
             <Button
               variant="outline"
@@ -233,14 +236,14 @@ export function CoworkProjectInit({
               disabled={busy !== null}
               data-testid="project-init-resurvey"
             >
-              Survey again
+              {t('common:projectInit.resurvey')}
             </Button>
             <Button
               onClick={() => void accept()}
               disabled={!draft || busy !== null}
               data-testid="project-init-accept"
             >
-              Accept and write FLINT.md
+              {t('common:projectInit.accept')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -684,7 +684,7 @@ const TEMP_ENV_KEYS: &[&str] = &["TMPDIR", "TMP", "TEMP"];
 fn confine_limits(cmd: &mut Command) {
     // `tokio::process::Command::pre_exec` (unix) is the std `pre_exec`; the call
     // below is what mounts the limits.
-    // # Safety: `pre_exec` runs in the forked child before exec. Only async-signal-
+    // SAFETY: `pre_exec` runs in the forked child before exec. Only async-signal-
     // safe calls are allowed; `getrlimit`/`setrlimit` are. Errors fall back to the
     // parent's values and are ignored (best effort), so a kernel that refuses a
     // limit cannot wedge a launch.
@@ -1530,12 +1530,15 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     // the process it names, so a pid recycled mid-kill can never be hit.
     let tree = win_tree::descendants(&root);
 
+    // SAFETY: `root.handle` is a live handle held by `root` (opened with PROCESS_TERMINATE) until it drops.
     let outcome = if unsafe { TerminateProcess(root.handle, 1) } != 0 {
         KillOutcome::Signalled
     } else {
+        // SAFETY: GetLastError only reads the calling thread's last-error value.
         let error = unsafe { GetLastError() };
         // Terminating a process that has already exited fails too, with
         // "access denied"; tell that apart from a real refusal.
+        // SAFETY: `root.handle` is live (held by `root`) and was opened with PROCESS_SYNCHRONIZE.
         if unsafe { WaitForSingleObject(root.handle, 0) } == WAIT_OBJECT_0 {
             KillOutcome::Gone
         } else {
@@ -1544,6 +1547,7 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     };
     let mut tree = tree;
     for member in &tree {
+        // SAFETY: `member.handle` is live for as long as `tree` holds the member.
         unsafe { TerminateProcess(member.handle, 1) };
     }
     // Anything a member started while a pass ran, as `kill_descendants` does:
@@ -1562,6 +1566,7 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
             break;
         }
         for member in &late {
+            // SAFETY: `member.handle` is live for as long as `late` holds the member.
             unsafe { TerminateProcess(member.handle, 1) };
         }
         tree.extend(late);
@@ -1588,6 +1593,7 @@ pub fn kill_descendants(root: u32) -> usize {
             break;
         }
         for member in &tree {
+            // SAFETY: `member.handle` is live for as long as `tree` holds the member.
             if unsafe { TerminateProcess(member.handle, 1) } != 0 {
                 killed += 1;
             }
@@ -1640,6 +1646,7 @@ pub(crate) fn creation_time_of_pid(pid: u32) -> Option<u64> {
     use windows_sys::Win32::System::Threading::{
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    // SAFETY: OpenProcess takes plain values; the handle is checked for null below.
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
     if handle.is_null() {
         return None;
@@ -1649,7 +1656,9 @@ pub(crate) fn creation_time_of_pid(pid: u32) -> Option<u64> {
         dwHighDateTime: 0,
     };
     let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    // SAFETY: `handle` is non-null (checked above); the four out-pointers are locals.
     let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    // SAFETY: `handle` was opened above and is not used after this close.
     unsafe { CloseHandle(handle) };
     if ok == 0 {
         return None;
@@ -1670,11 +1679,14 @@ pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
     use windows_sys::Win32::System::Threading::{
         OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
     };
+    // SAFETY: OpenProcess takes plain values; the handle is checked for null below.
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
     if handle.is_null() {
         return None;
     }
+    // SAFETY: `handle` is non-null and opened with PROCESS_SYNCHRONIZE; a zero timeout never blocks.
     let waited = unsafe { WaitForSingleObject(handle, 0) };
+    // SAFETY: `handle` was opened above and is not used after this close.
     unsafe { CloseHandle(handle) };
     match waited {
         WAIT_OBJECT_0 => Some(true),
@@ -1702,6 +1714,7 @@ pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> O
         dwHighDateTime: 0,
     };
     let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    // SAFETY: the four out-pointers are locals; an invalid `handle` only makes the call fail.
     let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
     (ok != 0).then_some(((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64)
 }
@@ -1724,26 +1737,33 @@ pub(crate) fn descendants_of(root: u32, root_created: Option<u64>) -> Vec<u32> {
     let Some(root_created) = root_created else {
         return Vec::new();
     };
+    // SAFETY: takes plain values; the result is checked against INVALID_HANDLE_VALUE below.
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot == INVALID_HANDLE_VALUE {
         return Vec::new();
     }
     let mut pairs: Vec<(u32, u32)> = Vec::new();
+    // SAFETY: PROCESSENTRY32W is a plain C struct; all-zero is valid and dwSize is set next.
     let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
     entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    // SAFETY: `snapshot` is valid (checked above) and `entry` has dwSize set.
     let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
     while more {
         pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+        // SAFETY: `snapshot` is valid (checked above) and `entry` has dwSize set.
         more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
     }
+    // SAFETY: `snapshot` was created above and is not used after this close.
     unsafe { CloseHandle(snapshot) };
 
     let created_at = |pid: u32| -> Option<u64> {
+        // SAFETY: OpenProcess takes plain values; the handle is checked for null below.
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if handle.is_null() {
             return None;
         }
         let at = creation_time(handle);
+        // SAFETY: `handle` was opened above and is not used after this close.
         unsafe { CloseHandle(handle) };
         at
     };
@@ -1811,6 +1831,7 @@ mod win_tree {
     impl Owned {
         /// Open `pid` for termination, or return the Win32 error.
         pub fn open(pid: u32) -> Result<Owned, u32> {
+            // SAFETY: OpenProcess takes plain values; the handle is checked for null below.
             let handle = unsafe {
                 OpenProcess(
                     PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
@@ -1819,6 +1840,7 @@ mod win_tree {
                 )
             };
             if handle.is_null() {
+                // SAFETY: GetLastError only reads the calling thread's last-error value.
                 return Err(unsafe { GetLastError() });
             }
             let zero = FILETIME {
@@ -1826,6 +1848,7 @@ mod win_tree {
                 dwHighDateTime: 0,
             };
             let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+            // SAFETY: `handle` is non-null (checked above); the four out-pointers are locals.
             let created = if unsafe {
                 GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user)
             } != 0
@@ -1844,6 +1867,7 @@ mod win_tree {
 
     impl Drop for Owned {
         fn drop(&mut self) {
+            // SAFETY: `self.handle` was opened in `Owned::open`, is owned by this value and closed only here.
             unsafe { CloseHandle(self.handle) };
         }
     }
@@ -1851,6 +1875,7 @@ mod win_tree {
     /// Every running `(pid, parent pid)` pair. Empty when no snapshot could be
     /// taken, which leaves the root to be killed on its own.
     fn snapshot() -> Vec<(u32, u32)> {
+        // SAFETY: takes plain values; the result is checked against INVALID_HANDLE_VALUE below.
         let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
         if snap == INVALID_HANDLE_VALUE {
             return Vec::new();
@@ -1860,11 +1885,14 @@ mod win_tree {
             ..Default::default()
         };
         let mut pairs = Vec::new();
+        // SAFETY: `snap` is valid (checked above) and `entry` has dwSize set.
         let mut more = unsafe { Process32FirstW(snap, &mut entry) } != 0;
         while more {
             pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+            // SAFETY: `snap` is valid (checked above) and `entry` has dwSize set.
             more = unsafe { Process32NextW(snap, &mut entry) } != 0;
         }
+        // SAFETY: `snap` was created above and is not used after this close.
         unsafe { CloseHandle(snap) };
         pairs
     }
@@ -1984,12 +2012,15 @@ mod windows_tests {
         use windows_sys::Win32::System::Threading::{
             GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         };
+        // SAFETY: OpenProcess takes plain values; the handle is checked for null below.
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         if handle.is_null() {
             return false;
         }
         let mut code = 0u32;
+        // SAFETY: `handle` is non-null (checked above) and `code` is a local out-pointer.
         let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        // SAFETY: `handle` was opened above and is not used after this close.
         unsafe { CloseHandle(handle) };
         ok && code == 259
     }
@@ -2048,6 +2079,7 @@ mod windows_tests {
         use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
         use windows_sys::Win32::System::Threading::WaitForSingleObject;
         match win_tree::Owned::open(pid) {
+            // SAFETY: `p.handle` is live while `p` is in scope; a zero timeout never blocks.
             Ok(p) => (unsafe { WaitForSingleObject(p.handle, 0) }) == WAIT_TIMEOUT,
             Err(_) => false,
         }
@@ -2084,6 +2116,7 @@ mod windows_tests {
         for _ in 0..100 {
             use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
             use windows_sys::Win32::System::Threading::WaitForSingleObject;
+            // SAFETY: `pinned.handle` is live while `pinned` is in scope; a zero timeout never blocks.
             if unsafe { WaitForSingleObject(pinned.handle, 0) } == WAIT_OBJECT_0 {
                 gone = true;
                 break;
@@ -2130,8 +2163,10 @@ mod windows_tests {
             .spawn()
             .expect("cmd starts");
         let pid = parent.id();
+        // SAFETY: OpenProcess takes plain values; a null result is tolerated by creation_time and CloseHandle.
         let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
         let created = creation_time(root);
+        // SAFETY: `root` was opened above (or is null, which CloseHandle rejects harmlessly) and is not used after this.
         unsafe { CloseHandle(root) };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let children = loop {
@@ -2401,7 +2436,7 @@ mod tests {
                 rlim_cur: 0,
                 rlim_max: 0,
             };
-            // # Safety: reads the calling process's own limit into a local.
+            // SAFETY: reads the calling process's own limit into a local.
             unsafe {
                 nix::libc::getrlimit(resource, &mut host);
             }
@@ -2428,7 +2463,7 @@ mod tests {
             rlim_cur: 0,
             rlim_max: 0,
         };
-        // # Safety: reads the test process's own limit into a local value.
+        // SAFETY: reads the test process's own limit into a local value.
         assert_eq!(
             unsafe { nix::libc::getrlimit(nix::libc::RLIMIT_NPROC, &mut launcher) },
             0
@@ -2865,6 +2900,7 @@ mod descendant_tests {
         for _ in 0..100 {
             use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
             use windows_sys::Win32::System::Threading::WaitForSingleObject;
+            // SAFETY: `sleeper.handle` is live while `sleeper` is in scope; a zero timeout never blocks.
             if unsafe { WaitForSingleObject(sleeper.handle, 0) } == WAIT_OBJECT_0 {
                 gone = true;
                 break;

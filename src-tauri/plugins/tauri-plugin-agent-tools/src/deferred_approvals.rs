@@ -101,9 +101,9 @@ pub struct FileBase {
     pub stamp: String,
 }
 
-/// The stamp of `path` as it is now: content hash, or `absent`.
+/// The stamp of `path` as it is now: content hash, `absent` or `unreadable`.
 pub fn file_stamp(path: &Path) -> String {
-    crate::patch::BaseStamp::of(std::fs::read(path).ok().as_deref()).hex()
+    crate::patch::BaseStamp::of_read(std::fs::read(path)).hex()
 }
 
 /// The question to record.

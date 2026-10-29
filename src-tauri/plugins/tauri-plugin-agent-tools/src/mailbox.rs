@@ -165,7 +165,9 @@ fn process_alive(pid: u32) -> bool {
             return std::io::Error::last_os_error().raw_os_error() == Some(5);
         }
         let mut code = 0u32;
+        // SAFETY: `handle` is non-null (checked above) and `code` is a local out-pointer.
         let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        // SAFETY: `handle` was opened above and is not used after this close.
         unsafe { CloseHandle(handle) };
         ok && code == 259
     }
@@ -320,7 +322,45 @@ pub fn close(data_folder: &Path, run: &RunId) -> Result<(), MailError> {
             .map_err(|e| MailError::new(MailErrorKind::Io, format!("mailbox: {e}")))?;
     }
     std::fs::write(&marker, crate::audit::now())
-        .map_err(|e| MailError::new(MailErrorKind::Io, format!("mailbox: {e}")))
+        .map_err(|e| MailError::new(MailErrorKind::Io, format!("mailbox: {e}")))?;
+    prune(data_folder);
+    Ok(())
+}
+
+/// How long a closed mailbox keeps its side files.
+const CLOSED_RETENTION: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
+
+/// Remove the side files of mailboxes closed more than [`CLOSED_RETENTION`]
+/// ago: the `.seq` counter, the `.bad` lines and finally the `.closed`
+/// marker. The message file itself stays as the record of what was said
+/// (AGTA-008). Best effort; called when a mailbox closes.
+pub fn prune(data_folder: &Path) {
+    prune_closed_older_than(data_folder, CLOSED_RETENTION);
+}
+
+fn prune_closed_older_than(data_folder: &Path, age: std::time::Duration) {
+    let Ok(entries) = std::fs::read_dir(data_folder.join("mail")) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let marker = entry.path();
+        if marker.extension().and_then(|e| e.to_str()) != Some("closed") {
+            continue;
+        }
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|elapsed| elapsed >= age);
+        if !old {
+            continue;
+        }
+        let _ = std::fs::remove_file(marker.with_extension("seq"));
+        let _ = std::fs::remove_file(marker.with_extension("bad"));
+        // The marker goes last, so a prune cut short is finished next time.
+        let _ = std::fs::remove_file(&marker);
+    }
 }
 
 pub fn is_closed(data_folder: &Path, run: &RunId) -> bool {
@@ -675,6 +715,33 @@ mod tests {
         let inbox = read(&d, &parent, false).unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].body, "said in time");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// AGTA-008: a closed mailbox past retention loses its side files; its
+    /// message file stays as the record, and an open mailbox is untouched.
+    #[test]
+    fn a_closed_mailbox_past_retention_keeps_only_its_messages() {
+        let d = data("prune");
+        let (session, parent, child) = ids("s-prune");
+        send(&d, &session, &child, &parent, "before", "kept as the record").unwrap();
+        send(&d, &session, &parent, &child, "open", "still running").unwrap();
+        close(&d, &parent).unwrap();
+        let closed = path_for(&d, &parent);
+        let open = path_for(&d, &child);
+        std::fs::write(closed.with_extension("bad"), "not json\n").unwrap();
+        assert!(closed.with_extension("seq").is_file());
+
+        // Within retention nothing goes.
+        prune(&d);
+        assert!(closed.with_extension("closed").is_file());
+
+        prune_closed_older_than(&d, std::time::Duration::ZERO);
+        for ext in ["closed", "seq", "bad"] {
+            assert!(!closed.with_extension(ext).exists(), ".{ext} kept");
+        }
+        assert_eq!(read(&d, &parent, false).unwrap()[0].body, "kept as the record");
+        assert!(open.with_extension("seq").is_file(), "an open mailbox lost its counter");
         let _ = std::fs::remove_dir_all(&d);
     }
 

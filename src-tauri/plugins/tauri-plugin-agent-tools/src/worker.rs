@@ -338,6 +338,7 @@ fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::proce
     use jan_process::CommandConsole;
     cmd.background_in_new_group();
 
+    // SAFETY: GetStdHandle takes a constant and returns this process's handle (or null/invalid, filtered below); nothing is freed.
     let handles = unsafe {
         [
             GetStdHandle(STD_INPUT_HANDLE),
@@ -347,12 +348,14 @@ fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::proce
     };
     for handle in handles {
         if !handle.is_null() {
+            // SAFETY: `handle` is this process's own non-null standard handle; only its inherit flag changes and it is restored after the spawn.
             unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) };
         }
     }
     let spawned = cmd.spawn();
     for handle in handles {
         if !handle.is_null() {
+            // SAFETY: `handle` is this process's own non-null standard handle; this restores the inherit flag cleared above.
             unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
         }
     }
@@ -365,6 +368,7 @@ fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::proce
     // A session of its own, so a terminal hang-up or the parent's exit does
     // not reach it. The stdio is already NUL, so there is nothing of this
     // process's to hold open.
+    // SAFETY: the closure only calls setsid, which is async-signal-safe, between fork and exec.
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();

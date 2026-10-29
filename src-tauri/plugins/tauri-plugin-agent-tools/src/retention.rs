@@ -49,6 +49,27 @@ pub(crate) fn lock_for(data_folder: &Path) -> LogGuard {
     LogGuard { _file: file, _mutex: mutex }
 }
 
+/// Open a JSONL log for appending, starting on a fresh line: when a crash left
+/// the last record without its newline, one is written first, so the next
+/// record is not glued onto the torn one and lost with it.
+pub(crate) fn open_for_append(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::io::{Read, Seek, SeekFrom, Write};
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)?;
+    if file.metadata()?.len() > 0 {
+        let mut last = [0u8; 1];
+        file.seek(SeekFrom::End(-1))?;
+        file.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            file.write_all(b"\n")?;
+        }
+    }
+    Ok(file)
+}
+
 /// The lines of a JSO\n log, lossily decoded. A line with invalid UTF-8 (a torn
 /// write, a bad byte from a crash) comes back with replacement characters and
 /// simply fails to parse, instead of ending the iteration and hiding every
@@ -407,6 +428,18 @@ mod tests {
     use serde_json::json;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn an_append_after_a_torn_line_starts_on_its_own_line() {
+        use std::io::Write;
+        let path = dir("torn").join("log.jsonl");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{\"a\":1}\n{\"b\":").unwrap();
+        writeln!(open_for_append(&path).unwrap(), "{{\"c\":3}}").unwrap();
+        writeln!(open_for_append(&path).unwrap(), "{{\"d\":4}}").unwrap();
+        let lines: Vec<String> = lossy_lines(std::fs::File::open(&path).unwrap()).collect();
+        assert_eq!(lines, ["{\"a\":1}", "{\"b\":", "{\"c\":3}", "{\"d\":4}"]);
+    }
 
     fn dir(tag: &str) -> PathBuf {
         static N: AtomicUsize = AtomicUsize::new(0);

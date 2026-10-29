@@ -157,6 +157,33 @@ fn an_unanswered_held_message_expires_and_the_sender_is_told() {
     assert_eq!(told[0].from.session_id, "b");
 }
 
+/// AGTB-023: the sweep runs only when the due time stored on disk has come,
+/// and that time is shared by every process opening the same folder.
+#[test]
+fn the_sweep_runs_only_when_the_stored_due_time_has_come() {
+    let fx = Fx::new("sweep_due");
+    let (mb, t) = fx.mailbox();
+    hold(&mb, &fx, "b");
+    let sent = mb.send("a", "b", "hello?", None, Origin::Agent).unwrap();
+    let sent_at = t.load(Ordering::SeqCst);
+    assert_eq!(mb.held_messages("b").unwrap().len(), 1);
+    let due_path = mb.root.join("sweep-due");
+    let due: i64 = std::fs::read_to_string(&due_path).unwrap().trim().parse().unwrap();
+    assert!(due <= sent_at + HELD_TTL_MS, "due {due} is after the held deadline");
+
+    // A due time in the future skips the sweep, even past the deadline.
+    std::fs::write(&due_path, format!("{}", i64::MAX)).unwrap();
+    t.fetch_add(HELD_TTL_MS, Ordering::SeqCst);
+    assert_eq!(mb.held_messages("b").unwrap().len(), 1, "swept before due");
+
+    // Another process (a second mailbox on the same folder) with no stored
+    // time sweeps, and the held message expires on time.
+    std::fs::remove_file(&due_path).unwrap();
+    let other = Mailbox::open(&fx.data).with_clock(t.clone());
+    assert!(other.held_messages("b").unwrap().is_empty());
+    assert!(!mb.approve_held("b", &sent.message_id).unwrap());
+}
+
 #[test]
 fn an_expired_notice_is_not_announced_again() {
     let fx = Fx::new("notice_expire");

@@ -1,3 +1,43 @@
+/// CLIA-012: recovering an interrupted turn does not delete its checkpoint; a
+/// process killed before the resumed run starts must find it again, and the
+/// resumed run's writer replaces it with the recovered conversation.
+#[test]
+fn recovering_an_interrupted_turn_keeps_its_checkpoint_until_the_run_replaces_it() {
+    let agent_dir = tempfile::tempdir().unwrap();
+    let thread_id = "t-recover";
+    let thread_dir = get_thread_dir(agent_dir.path(), thread_id);
+    std::fs::create_dir_all(&thread_dir).unwrap();
+    let conversation = vec![serde_json::json!({ "role": "user", "content": "fix it" })];
+    let dead = inflight::Checkpoint {
+        v: 1,
+        pid: 0,
+        created: 0,
+        started_at_ms: 0,
+        updated_at_ms: 0,
+        model: "m".into(),
+        conversation: conversation.clone(),
+        partial: "half".into(),
+    };
+    std::fs::write(inflight::path(&thread_dir), serde_json::to_vec(&dead).unwrap()).unwrap();
+    let resumed = session::ResumedSession { thread_id: thread_id.into(), history: conversation.clone() };
+    let recovered = session::recover_interrupted(
+        agent_dir.path(),
+        resumed,
+        Some(inflight::InterruptedChoice::Continue),
+    )
+    .expect("recovered");
+    assert_eq!(recovered.history[0], conversation[0]);
+    assert!(
+        matches!(inflight::state(&thread_dir), inflight::RunState::Interrupted(_)),
+        "a kill before the resumed run starts still finds the interrupted turn"
+    );
+    let writer = inflight::Writer::begin(&thread_dir, "m", recovered.history.clone()).expect("writer");
+    drop(writer);
+    let on_disk: inflight::Checkpoint =
+        serde_json::from_str(&std::fs::read_to_string(inflight::path(&thread_dir)).unwrap()).unwrap();
+    assert_eq!(on_disk.conversation, recovered.history, "the run's writer replaces the old checkpoint");
+}
+
 #[test]
 fn permission_modes_map_to_the_two_switches() {
     assert_eq!(PermissionMode::resolve(None, false, false), Ok((true, false)));

@@ -71,15 +71,17 @@ describe('ImportFromClaudeCodeDialog', () => {
 
     await waitFor(() => expect(ccScan).toHaveBeenCalledWith(undefined))
 
-    expect(screen.getByText('Claude Code (skills)')).toBeInTheDocument()
+    expect(await screen.findByText('Claude Code (skills)')).toBeInTheDocument()
     expect(screen.getByText('Claude Code (plugins)')).toBeInTheDocument()
 
-    const newCheckbox = screen.getByLabelText('brainstorming') as HTMLInputElement
-    const existingCheckbox = screen.getByLabelText('existing-skill') as HTMLInputElement
+    const newCheckbox = (await screen.findByLabelText('brainstorming')) as HTMLInputElement
+    const existingCheckbox = (await screen.findByLabelText('existing-skill')) as HTMLInputElement
     expect(newCheckbox.checked).toBe(true)
     expect(existingCheckbox.checked).toBe(false)
 
-    expect(screen.getByText('common:extensionsManager.import.installed')).toBeInTheDocument()
+    expect(
+      await screen.findByText('common:extensionsManager.import.installed')
+    ).toBeInTheDocument()
   })
 
   it('imports only checked items with kind/name/sourcePath and the overwrite flag, then shows the summary', async () => {
@@ -100,7 +102,7 @@ describe('ImportFromClaudeCodeDialog', () => {
     )
     fireEvent.click(overwriteSwitch)
 
-    fireEvent.click(screen.getByText('common:extensionsManager.import.importSelected'))
+    fireEvent.click(await screen.findByText('common:extensionsManager.import.importSelected'))
 
     await waitFor(() => expect(ccImport).toHaveBeenCalled())
 
@@ -123,7 +125,7 @@ describe('ImportFromClaudeCodeDialog', () => {
 
     await waitFor(() => expect(invalidateSkills).toHaveBeenCalled())
     expect(
-      screen.getByText(/common:extensionsManager.import.done/)
+      await screen.findByText(/common:extensionsManager.import.done/)
     ).toBeInTheDocument()
   })
 
@@ -137,12 +139,14 @@ describe('ImportFromClaudeCodeDialog', () => {
     fireEvent.click(screen.getByText('common:extensionsManager.import.scan'))
     await waitFor(() => expect(ccScan).toHaveBeenCalled())
 
-    expect(screen.getByText('common:extensionsManager.import.linked')).toBeInTheDocument()
+    expect(
+      await screen.findByText('common:extensionsManager.import.linked')
+    ).toBeInTheDocument()
     expect(screen.queryByText('common:extensionsManager.import.installed')).toBeNull()
 
-    fireEvent.click(screen.getByLabelText('brainstorming'))
-    fireEvent.click(screen.getByLabelText('common:extensionsManager.import.linkHooks'))
-    fireEvent.click(screen.getByText('common:extensionsManager.import.importSelected'))
+    fireEvent.click(await screen.findByLabelText('brainstorming'))
+    fireEvent.click(await screen.findByLabelText('common:extensionsManager.import.linkHooks'))
+    fireEvent.click(await screen.findByText('common:extensionsManager.import.importSelected'))
 
     await waitFor(() => expect(ccImport).toHaveBeenCalled())
     expect(ccImport.mock.calls[0][2]).toBe(false)

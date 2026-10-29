@@ -3243,7 +3243,23 @@
     "checkFailed": "The attached folder could not be checked: {{error}}",
     "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
     "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "restore": {
+      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranch": "branch {{branch}}",
+      "atCommit": "commit {{commit}}",
+      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
+      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
+      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
+      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+    },
+    "differs": {
+      "name": "it is named {{actual}}, not {{expected}}",
+      "branch": "it is on branch {{actual}}, not {{expected}}",
+      "noBranch": "it is on no branch, not {{expected}}",
+      "head": "it is at commit {{actual}}, not {{expected}}",
+      "noHead": "it is at no commit, not {{expected}}"
+    }
   },
   "imageLoadFailed": "This image could not be loaded.",
   "attachedImage": "Attached image {{n}}",
@@ -3363,5 +3379,18 @@
   "archiveRestore": {
     "sessionExists": "A session with this id already exists",
     "assistantExists": "An assistant with this id already exists"
+  },
+  "projectInit": {
+    "title": "Describe this project",
+    "continue": "Continue the FLINT.md draft",
+    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
+    "surveying": "Surveying the folder…",
+    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
+    "wrote": "Wrote FLINT.md",
+    "discarded": "Draft discarded. Nothing was written.",
+    "notRead": "What the survey did not read",
+    "discard": "Discard draft",
+    "resurvey": "Survey again",
+    "accept": "Accept and write FLINT.md"
   }
 }
