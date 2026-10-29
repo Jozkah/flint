@@ -113,6 +113,36 @@ function logRunningTimings(
 }
 
 /**
+ * Settled calls whose entries are kept (F9x1-009). Their cards may still be
+ * on screen, so a generous number stays; past it the oldest settled ones go,
+ * with their diffs and output. A queued or running call is never dropped.
+ */
+export const TOOL_RUNTIME_SETTLED_CAP = 500
+
+function pruneSettled(s: ToolCallRuntimeSnapshot): ToolCallRuntimeSnapshot {
+  const settled = Object.keys(s.timings).filter(
+    (id) => s.timings[id].endedAt !== undefined
+  )
+  if (settled.length <= TOOL_RUNTIME_SETTLED_CAP) return s
+  const drop = new Set(
+    settled.slice(0, settled.length - TOOL_RUNTIME_SETTLED_CAP)
+  )
+  const keep = <T>(record: Record<string, T>) =>
+    Object.fromEntries(
+      Object.entries(record).filter(([id]) => !drop.has(id))
+    ) as Record<string, T>
+  return {
+    queue: s.queue,
+    timings: keep(s.timings),
+    progress: keep(s.progress),
+    diffs: keep(s.diffs),
+    output: keep(s.output),
+    firstAttempts: keep(s.firstAttempts),
+    owners: keep(s.owners),
+  }
+}
+
+/**
  * The call currently executing, if any. Returns a primitive, so it is safe to
  * use directly as a store selector.
  */
@@ -199,14 +229,15 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
       delete progress[toolCallId]
       const endedAt = Date.now()
       logToolTiming(toolCallId, s.timings[toolCallId].startedAt, endedAt)
-      return {
+      return pruneSettled({
+        ...s,
         queue: s.queue.filter((id) => id !== toolCallId),
         timings: {
           ...s.timings,
           [toolCallId]: { ...s.timings[toolCallId], endedAt },
         },
         progress,
-      }
+      })
     }),
 
   reportProgress: (update) =>
@@ -304,7 +335,9 @@ export async function withToolTiming<T>(
   run: () => Promise<T>
 ): Promise<T> {
   const runtime = useToolCallRuntime.getState()
-  runtime.enqueue([toolCallId])
+  // Its own owner: serial callers in different places run side by side,
+  // and one starting must not end another's timing as stranded (P2F-010).
+  runtime.enqueue([toolCallId], `timed:${toolCallId}`)
   runtime.markRunning(toolCallId)
   try {
     return await run()

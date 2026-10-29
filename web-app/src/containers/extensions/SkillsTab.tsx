@@ -1,3 +1,4 @@
+import { useSkillEditor } from '@/hooks/useSkillEditor'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import {
@@ -84,11 +85,9 @@ export default function SkillsTab() {
 
   // Editor state: which (group, skill) is open, or a fresh draft.
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [isNew, setIsNew] = useState(false)
-  const [name, setName] = useState('')
-  const [content, setContent] = useState('')
-  const [saving, setSaving] = useState(false)
+  const editor = useSkillEditor()
+  const { selected, isNew, name, setName, content, setContent, saving, editing } =
+    editor
 
   const scopeFor = (group: GroupKey): SkillScope =>
     group === 'global'
@@ -97,20 +96,14 @@ export default function SkillsTab() {
 
   const closeEditor = () => {
     setOpenGroup(null)
-    setSelected(null)
-    setIsNew(false)
-    setName('')
-    setContent('')
+    editor.close()
   }
 
   const openSkill = async (group: GroupKey, skillName: string) => {
     try {
       const body = await readSkill(scopeFor(group), skillName)
       setOpenGroup(group)
-      setSelected(skillName)
-      setIsNew(false)
-      setName(skillName)
-      setContent(body)
+      editor.show(skillName, body)
     } catch (e) {
       toast.error(String(e))
     }
@@ -118,30 +111,16 @@ export default function SkillsTab() {
 
   const startNew = () => {
     setOpenGroup('global')
-    setSelected(null)
-    setIsNew(true)
-    setName('')
-    setContent('---\nname: \ndescription: \n---\n\n')
+    editor.startNew()
   }
 
   const handleSave = async () => {
-    const trimmed = name.trim()
-    if (!trimmed || !openGroup) {
+    if (!openGroup) {
       toast.error(t('common:skillNameRequired'))
       return
     }
-    setSaving(true)
-    try {
-      await writeSkill(scopeFor(openGroup), trimmed, content)
-      setSelected(trimmed)
-      setIsNew(false)
-      toast.success(t('common:skillSaved'))
-      await refresh()
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setSaving(false)
-    }
+    const scope = scopeFor(openGroup)
+    await editor.save((skillName, body) => writeSkill(scope, skillName, body), refresh)
   }
 
   const handleDelete = async (group: GroupKey, skillName: string) => {
@@ -154,7 +133,6 @@ export default function SkillsTab() {
     }
   }
 
-  const editing = isNew || selected !== null
 
   // The matrix id rule from `resolve_extensions`: a plugin skill is keyed by
   // its plugin id, a standalone skill by its own name. Only global-store

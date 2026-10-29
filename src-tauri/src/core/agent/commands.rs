@@ -875,6 +875,13 @@ pub async fn agent_worktree_ensure(
     .await?
 }
 
+/// The branch a new worktree for this session would use (nothing is created),
+/// so the approval prompt can name it before the worktree exists.
+#[tauri::command]
+pub fn agent_worktree_branch_name(session_id: String, title: Option<String>) -> String {
+    worktree::planned_branch(&session_id, title.as_deref())
+}
+
 /// A reopened session's own worktree, if it still exists and is a linked
 /// worktree of the project. Never creates one: `None` means it is gone, an
 /// error means what is there is not safe to re-enter.

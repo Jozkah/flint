@@ -1,5 +1,6 @@
 pub mod asset_scope;
 pub mod commands;
+pub mod data_backup;
 pub mod export_file;
 pub mod picker;
 pub mod grants;

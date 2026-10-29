@@ -1,5 +1,4 @@
-import { memo, useMemo, type ReactNode } from 'react'
-import { Download } from 'lucide-react'
+import { memo, useMemo } from 'react'
 import {
   Tool,
   ToolApprovalActions,
@@ -9,8 +8,6 @@ import {
   ToolOutput,
 } from '@/components/ai-elements/tool'
 import { ToolProgressRow } from '@/components/ai-elements/tool-runtime'
-import { Chip } from '@/components/ui/chip'
-import { ChangeDiff, diffStat } from '@/components/ChangeDiff'
 import { useToolOrigin } from '@/hooks/useToolOrigin'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
@@ -31,10 +28,6 @@ import {
   imagesOfOutput,
   outputTextWithoutImages,
 } from '@/lib/toolOutputImages'
-import { canSaveToolImage, saveToolImageWithToast } from '@/lib/exportImage'
-import { RagToolWidget } from './RagToolWidget'
-import { WebToolWidget } from './WebToolWidget'
-import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
 import { BrowserOpenedCard } from './BrowserOpenedCard'
 import { WidgetCard } from './WidgetCard'
@@ -49,6 +42,9 @@ import {
   toolTargetIsPath,
   useCodeOpenTools,
 } from '@/lib/codeOpen'
+
+import { ToolImages, ToolResult } from './toolCallCardParts'
+import { toolBadge } from './toolBadge'
 
 const identityResolver = (input: string) => Promise.resolve(input)
 
@@ -82,59 +78,6 @@ const headerArg = (bar: ToolCallBar): string => {
         ? `"${bar.target}"`
         : bar.target
   }
-}
-
-const textOf = (output: unknown): string =>
-  typeof output === 'string'
-    ? output
-    : typeof (output as { content?: unknown })?.content === 'string'
-      ? (output as { content: string }).content
-      : ''
-
-/** "5 passed" from a test runner's summary line, when the output has one. */
-const PASSED = /\b(\d+) passed\b/
-
-/** One section of an open card, headed like the mockup's "Result"/"Error". */
-const ResultSection = ({
-  label,
-  failed,
-  children,
-}: {
-  label: string
-  failed?: boolean
-  children: ReactNode
-}) => (
-  <div
-    data-slot="tool-result"
-    className="flex min-w-0 flex-col gap-2 border-t border-dashed border-border px-2.5 py-2"
-  >
-    <h4
-      data-failed={failed || undefined}
-      className="flex min-h-6 items-center text-xs font-medium text-fg-2"
-    >
-      {label}
-    </h4>
-    {children}
-  </div>
-)
-
-/** Five small squares, filled by the share of added against removed lines. */
-const DiffBlocks = ({ add, del }: { add: number; del: number }) => {
-  const total = add + del
-  const green = total === 0 ? 0 : Math.round((add / total) * 5)
-  return (
-    <span aria-hidden className="inline-flex gap-0.5">
-      {Array.from({ length: 5 }, (_, i) => (
-        <i
-          key={i}
-          className={cn(
-            'size-[7px] rounded-[2px]',
-            total === 0 ? 'bg-border' : i < green ? 'bg-success' : 'bg-destructive'
-          )}
-        />
-      ))}
-    </span>
-  )
 }
 
 /** A step's line, its verb in the call kind's colour: Read blue, Searched purple. */
@@ -265,123 +208,14 @@ export const ToolCallCard = memo(
         ? completedToolLabel(toolName, part.input, part.state)
         : toolName
 
-    // A short outcome beside the argument, from the call's own result.
-    let badge: ReactNode = null
-    if (bash && done) {
-      const passed = PASSED.exec(bash.text)?.[1]
-      if (exitFailed) {
-        badge = bash.signaled ? (
-          <Chip tone="err" dot>
-            {t('tools:toolCall.terminated')}
-          </Chip>
-        ) : (
-          <Chip tone="warn" dot className="tabular-nums">
-            {t('tools:toolCall.exitCode', { code: bash.exit })}
-          </Chip>
-        )
-      } else if (passed) {
-        badge = (
-          <Chip tone="ok" dot className="tabular-nums">
-            {t('tools:toolCall.testsPassed', { count: Number(passed) })}
-          </Chip>
-        )
-      }
-    } else if (
-      done &&
-      bar?.variant === 'workspace' &&
-      (bar.tool === 'grep' || bar.tool === 'find')
-    ) {
-      const lines = textOf(cardOutput)
-        .split('\n')
-        .filter((l) => l.trim()).length
-      if (lines > 0) {
-        badge = (
-          <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground tabular-nums">
-            {t('tools:toolCall.matches', { count: lines })}
-          </span>
-        )
-      }
-    } else if (showDiff && diff) {
-      const { add, del } = diffStat(diff)
-      badge = (
-        <>
-          <span className="inline-flex gap-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] font-medium tabular-nums">
-            <span className="text-success">+{add}</span>
-            <span className="text-destructive">−{del}</span>
-          </span>
-          <DiffBlocks add={add} del={del} />
-        </>
-      )
-    }
-
-    const resultLabel = failed
-      ? t('tools:toolCall.error')
-      : t('tools:toolCall.result')
-
-    const widget = !bar ? null : bar.variant === 'documents' ? (
-      <ResultSection label={resultLabel} failed={failed}>
-        <RagToolWidget
-          embedded
-          bar={bar}
-          state={part.state}
-          output={cardOutput}
-          errorText={errorText}
-          messageId={messageId}
-          citationOffset={citationOffset}
-        />
-      </ResultSection>
-    ) : bar.variant === 'terminal' ? (
-      <ResultSection label={resultLabel} failed={failed}>
-        <div className="overflow-hidden">
-          <TerminalWidget
-            embedded
-            bar={bar}
-            state={part.state}
-            output={cardOutput}
-            errorText={errorText}
-            attemptCallId={part.toolCallId}
-          />
-        </div>
-      </ResultSection>
-    ) : bar.variant === 'workspace' ? (
-      showDiff && diff ? (
-        <>
-          {/* Which file, openable, with the change a click away in Changes. */}
-          {bar.target && (
-            <div className="flex min-w-0 items-center gap-1.5 px-2.5 pt-2 font-mono text-xs text-muted-foreground">
-              <OpenablePath
-                path={bar.target}
-                line={lineOfToolInput(part.input)}
-                diffable={toolChangesFile(bar.tool)}
-              />
-            </div>
-          )}
-          {/* The change itself is the result: edge to edge, under a dashed rule. */}
-          <ChangeDiff diff={diff} bleed />
-        </>
-      ) : (
-        <ResultSection label={resultLabel} failed={failed}>
-          <AgentToolWidget
-            embedded
-            bar={bar}
-            state={part.state}
-            output={cardOutput}
-            errorText={errorText}
-            toolCallId={part.toolCallId}
-          />
-        </ResultSection>
-      )
-    ) : (
-      <ResultSection label={resultLabel} failed={failed}>
-        <WebToolWidget
-          embedded
-          bar={bar}
-          state={part.state}
-          output={cardOutput}
-          errorText={errorText}
-        />
-      </ResultSection>
-    )
+    const badge = toolBadge({
+      bash: done ? bash : undefined,
+      exitFailed,
+      bar: done ? bar : undefined,
+      output: cardOutput,
+      diff: showDiff ? diff : undefined,
+      t,
+    })
 
     if (browserTarget) {
       return (
@@ -493,53 +327,34 @@ export const ToolCallCard = memo(
               className="max-h-72 w-full rounded-md border border-border bg-muted object-contain"
             />
           )}
-          {cardImages.length ? (
-            // What a `read` of an image file showed the model. Display only.
-            <div className="flex flex-wrap gap-2" data-testid="tool-images">
-              {cardImages.map((img, n) => (
-                <div key={`${img.name}-${n}`} className="group relative">
-                  <img
-                    alt={img.name}
-                    title={img.name}
-                    src={img.dataUrl}
-                    className="max-h-32 max-w-[12rem] rounded-md border border-border bg-muted object-contain"
-                  />
-                  {canSaveToolImage(img) && (
-                    <button
-                      type="button"
-                      data-testid="tool-image-save"
-                      aria-label={t('tools:toolCall.saveImage', { name: img.name })}
-                      title={t('tools:toolCall.saveImage', { name: img.name })}
-                      onClick={() => void saveToolImageWithToast(img)}
-                      className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-md bg-background/80 text-foreground opacity-0 transition-opacity hover:bg-background focus-visible:opacity-100 group-hover:opacity-100"
-                    >
-                      <Download className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {awaitingApproval
-            ? null
-            : bar
-            ? widget
-            : isError
-              ? (
-                  <ToolOutput
-                    output={undefined}
-                    errorText={errorText}
-                    resolver={identityResolver}
-                  />
-                )
-              : Boolean(cardOutput) && (
-                  <ToolOutput
-                    output={cardOutput as typeof part.output}
-                    errorText={undefined}
-                    resolver={identityResolver}
-                    citationOffset={citationOffset}
-                  />
-                )}
+          <ToolImages images={cardImages} />
+          {awaitingApproval ? null : bar ? (
+            <ToolResult
+              bar={bar}
+              part={part}
+              output={cardOutput}
+              errorText={errorText}
+              failed={failed}
+              diff={showDiff ? diff : undefined}
+              messageId={messageId}
+              citationOffset={citationOffset}
+            />
+          ) : isError ? (
+            <ToolOutput
+              output={undefined}
+              errorText={errorText}
+              resolver={identityResolver}
+            />
+          ) : (
+            Boolean(cardOutput) && (
+              <ToolOutput
+                output={cardOutput as typeof part.output}
+                errorText={undefined}
+                resolver={identityResolver}
+                citationOffset={citationOffset}
+              />
+            )
+          )}
         </ToolContent>
       </Tool>
     )

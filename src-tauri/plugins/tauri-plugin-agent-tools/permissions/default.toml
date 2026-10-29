@@ -66,6 +66,7 @@ permissions = [
     "allow-execute-tool-streaming",
     "allow-execute-tool-unsandboxed-retry",
     "allow-execute-tool-unsandboxed-withdraw",
+    "allow-approval-mint",
     "allow-tool-resources-finish-run",
     "allow-fire-post-tool-batch",
     "allow-undo-journal",

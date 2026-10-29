@@ -39,6 +39,7 @@
     "working": "Đang xử lý...",
     "failed": "{{tool}} thất bại",
     "used": "Đã dùng {{tool}}",
+    "saveImage": "Lưu {{name}}",
     "parameters": "Tham số",
     "result": "Kết quả",
     "error": "Lỗi",

@@ -370,28 +370,22 @@ fn render_draft(
     draft
 }
 
-/// Survey the folder at `root` (already validated by the caller).
-pub fn survey(root: &str) -> Result<Survey, String> {
-    let mut read = Vec::new();
-    let mut not_read = Vec::new();
-    let Walk { files, top_level } = walk(root, &mut not_read)?;
-    not_read.push(
-        "ignored by .gitignore, or dependency and build output (node_modules, target, dist, ...): skipped by design"
-            .to_string(),
-    );
-
+/// What each manifest, build file and the README at `root` says, in the
+/// order they are consulted (earlier ones win the name and description),
+/// with the README's title. Files read or skipped are noted in `read` and
+/// `not_read`.
+fn read_manifests(
+    root: &str,
+    files: &[String],
+    read: &mut Vec<String>,
+    not_read: &mut Vec<String>,
+) -> (Vec<Manifest>, Option<String>) {
     let has = |name: &str| files.iter().any(|f| f.eq_ignore_ascii_case(name));
-    let mut name: Option<String> = None;
-    let mut description: Option<String> = None;
-    let mut build: Vec<String> = Vec::new();
-    let mut take = |m: Manifest| {
-        name = name.take().or(m.name);
-        description = description.take().or(m.description);
-        build.extend(m.build);
-    };
+    let mut found = Vec::new();
+    let mut take = |m: Manifest| found.push(m);
 
     if has("package.json") {
-        if let Some(text) = read_text(root, "package.json", &mut read, &mut not_read) {
+        if let Some(text) = read_text(root, "package.json", read, not_read) {
             let runner = if has("yarn.lock") {
                 "yarn"
             } else if has("pnpm-lock.yaml") {
@@ -403,12 +397,12 @@ pub fn survey(root: &str) -> Result<Survey, String> {
         }
     }
     if has("Cargo.toml") {
-        if let Some(text) = read_text(root, "Cargo.toml", &mut read, &mut not_read) {
+        if let Some(text) = read_text(root, "Cargo.toml", read, not_read) {
             take(cargo_manifest(&text));
         }
     }
     if has("pyproject.toml") {
-        if let Some(text) = read_text(root, "pyproject.toml", &mut read, &mut not_read) {
+        if let Some(text) = read_text(root, "pyproject.toml", read, not_read) {
             take(python_manifest(&text));
         }
     } else if has("requirements.txt") {
@@ -418,12 +412,12 @@ pub fn survey(root: &str) -> Result<Survey, String> {
         });
     }
     if has("go.mod") {
-        if let Some(text) = read_text(root, "go.mod", &mut read, &mut not_read) {
+        if let Some(text) = read_text(root, "go.mod", read, not_read) {
             take(go_manifest(&text));
         }
     }
     if has("Makefile") {
-        if let Some(text) = read_text(root, "Makefile", &mut read, &mut not_read) {
+        if let Some(text) = read_text(root, "Makefile", read, not_read) {
             take(make_targets(&text));
         }
     }
@@ -453,7 +447,7 @@ pub fn survey(root: &str) -> Result<Survey, String> {
         .find(|f| files.iter().any(|g| g == f));
     let mut readme_title = None;
     if let Some(file) = readme {
-        if let Some(text) = read_text(root, file, &mut read, &mut not_read) {
+        if let Some(text) = read_text(root, file, read, not_read) {
             let (title, paragraph) = readme_summary(&text);
             readme_title = title;
             take(Manifest {
@@ -463,6 +457,30 @@ pub fn survey(root: &str) -> Result<Survey, String> {
         }
     }
     drop(take);
+    (found, readme_title)
+}
+
+/// Survey the folder at `root` (already validated by the caller).
+pub fn survey(root: &str) -> Result<Survey, String> {
+    let mut read = Vec::new();
+    let mut not_read = Vec::new();
+    let Walk { files, top_level } = walk(root, &mut not_read)?;
+    not_read.push(
+        "ignored by .gitignore, or dependency and build output (node_modules, target, dist, ...): skipped by design"
+            .to_string(),
+    );
+
+    let has = |name: &str| files.iter().any(|f| f.eq_ignore_ascii_case(name));
+    let (manifests, readme_title) = read_manifests(root, &files, &mut read, &mut not_read);
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    let mut build: Vec<String> = Vec::new();
+    // The first manifest to give a name or description wins; builds add up.
+    for m in manifests {
+        name = name.or(m.name);
+        description = description.or(m.description);
+        build.extend(m.build);
+    }
 
     let folder_name = Path::new(root)
         .file_name()

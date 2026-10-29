@@ -251,6 +251,18 @@ describe('dropFilePaths trust', () => {
     ).toEqual({ paths: ['/home/me/a.txt'], trusted: true })
   })
 
+  it('does not trust the GNOME type on a drag that started in-app', async () => {
+    const { dropFilePaths, setInAppDragForTest } = await import('../fileDrop')
+    setInAppDragForTest(true)
+    try {
+      expect(
+        dropFilePaths(t({ 'x-special/gnome-copied-files': 'copy\nfile:///home/me/a.txt' }))
+      ).toEqual({ paths: ['/home/me/a.txt'], trusted: false })
+    } finally {
+      setInAppDragForTest(false)
+    }
+  })
+
   it('names but does not trust text a page could have set', async () => {
     const { dropFilePaths } = await import('../fileDrop')
     expect(dropFilePaths(t({ 'text/plain': '/home/me/.ssh/id_rsa' }))).toEqual({

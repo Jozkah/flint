@@ -422,6 +422,9 @@ fn check_segment(
             let sub = git_subcommand(&lower_args)?;
             let rest = &lower_args[sub + 1..];
             let has = |f: &str| rest.iter().any(|a| a == f);
+            // Original case: `-D`/`-S`/`-W` differ from their lowercase forms.
+            let raw = &args[sub + 1..];
+            let raw_has = |f: &str| raw.iter().any(|a| a == f);
             match lower_args[sub].as_str() {
                 "reset" if has("--hard") => {
                     Some("`git reset --hard` discards uncommitted work".into())
@@ -432,11 +435,46 @@ fn check_segment(
                         .filter(|a| a.starts_with('-') && !a.starts_with("--"))
                         .map(|a| a.trim_start_matches('-'))
                         .collect();
-                    let force = short.contains('f') || has("--force");
-                    let dirs = short.contains('d');
-                    let ignored = short.contains('x');
-                    (force && (dirs || ignored))
+                    (short.contains('f') || has("--force"))
                         .then(|| "`git clean` deletes untracked files".to_string())
+                }
+                "checkout"
+                    if has("--")
+                        || has(".")
+                        || has("--force")
+                        || rest.iter().any(|a| {
+                            short_cluster_has(a, 'f') || a.starts_with("--pathspec-from-file")
+                        }) =>
+                {
+                    Some("`git checkout` of paths discards uncommitted changes".into())
+                }
+                "restore"
+                    if !(raw_has("--staged") || raw_has("-S"))
+                        || raw_has("--worktree")
+                        || raw_has("-W") =>
+                {
+                    Some("`git restore` discards uncommitted changes".into())
+                }
+                "branch"
+                    if raw.iter().any(|a| {
+                        a.strip_prefix('-').is_some_and(|b| {
+                            !b.is_empty()
+                                && b.chars().all(|c| c.is_ascii_alphabetic())
+                                && b.contains('D')
+                        })
+                    }) || (has("--delete")
+                        && (has("--force") || rest.iter().any(|a| short_cluster_has(a, 'f')))) =>
+                {
+                    Some("`git branch -D` deletes a branch that may be unmerged".into())
+                }
+                "stash" if matches!(rest.first().map(String::as_str), Some("drop" | "clear")) => {
+                    Some("`git stash drop` discards stashed changes".into())
+                }
+                "rebase" if !has("--continue") && !has("--abort") && !has("--quit") => {
+                    Some("`git rebase` rewrites history".into())
+                }
+                name @ ("filter-branch" | "filter-repo") => {
+                    Some(format!("`git {name}` rewrites history"))
                 }
                 "push"
                     if has("--force")

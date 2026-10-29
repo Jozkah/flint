@@ -341,6 +341,15 @@ const BRANCH_MAX_WORDS: usize = 5;
 /// And at most this many characters, cut on a word boundary.
 const BRANCH_MAX_CHARS: usize = 36;
 
+/// The branch [`ensure_with`] gives a new worktree for this session and title,
+/// so a prompt can name it before anything is created.
+pub fn planned_branch(session_id: &str, title: Option<&str>) -> String {
+    match title.map(str::trim) {
+        Some(title) if !title.is_empty() => titled_branch_name(title, session_id),
+        _ => branch_name(session_id),
+    }
+}
+
 /// A branch name made from a session's title, `flint/<words>-<id>`.
 ///
 /// The title makes `git branch` readable: its first few meaningful words, with
@@ -661,10 +670,7 @@ pub fn ensure_with(
     let worktrees_root = &absolute(worktrees_root)?;
     let identity = identity(repo)?;
     let path = worktree_path(worktrees_root, &identity, session_id);
-    let branch = match options.title.as_deref().map(str::trim) {
-        Some(title) if !title.is_empty() => titled_branch_name(title, session_id),
-        _ => branch_name(session_id),
-    };
+    let branch = planned_branch(session_id, options.title.as_deref());
 
     // Where the worktree will actually be, not where the name says. A symlink
     // in Flint's own worktrees directory — or one someone put there — would

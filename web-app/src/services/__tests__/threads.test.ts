@@ -3,6 +3,16 @@ import { DefaultThreadsService } from '../threads/default'
 import { ExtensionManager } from '@/lib/extension'
 import { ConversationalExtension, ExtensionTypeEnum } from '@janhq/core'
 
+const { tauri, invokeCommand } = vi.hoisted(() => ({
+  tauri: { on: false },
+  invokeCommand: vi.fn(),
+}))
+vi.mock('@/lib/providerFetch', async (orig) => ({
+  ...(await orig<typeof import('@/lib/providerFetch')>()),
+  hasTauriRuntime: () => tauri.on,
+}))
+vi.mock('@/lib/backend', () => ({ invokeCommand }))
+
 // Mock ExtensionManager
 vi.mock('@/lib/extension', () => ({
   ExtensionManager: {
@@ -31,6 +41,22 @@ describe('DefaultThreadsService', () => {
   })
 
   describe('fetchThreads', () => {
+    it('lists summaries in the app instead of every full thread', async () => {
+      tauri.on = true
+      try {
+        invokeCommand.mockResolvedValueOnce([
+          { id: '1', title: 'T', assistants: [{ id: 'a', name: 'A', model: { id: 'm', engine: 'openai' }, summary: true }] },
+        ])
+        const result = await threadsService.fetchThreads()
+        expect(invokeCommand).toHaveBeenCalledWith('list_thread_summaries')
+        expect(mockConversationalExtension.listThreads).not.toHaveBeenCalled()
+        expect(result[0].model).toEqual({ id: 'm', provider: 'openai' })
+        expect((result[0].assistants[0] as { summary?: boolean }).summary).toBe(true)
+      } finally {
+        tauri.on = false
+      }
+    })
+
     it('should fetch and transform threads successfully', async () => {
       const mockThreads = [
         {

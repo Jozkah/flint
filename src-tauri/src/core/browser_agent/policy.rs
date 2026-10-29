@@ -232,9 +232,20 @@ pub fn target_block(url: &Url, private_ok: bool) -> Option<Block> {
 /// can be pointed at 127.0.0.1 by anyone who owns a domain, so the name alone
 /// is not enough. Returns the kind of address found.
 pub async fn resolved_block(host: &str, port: u16) -> Option<String> {
-    use std::time::Duration;
     let target = if host.contains(':') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
-    let answers = tokio::time::timeout(Duration::from_secs(5), tokio::net::lookup_host(target)).await;
+    resolved_block_with(host, std::time::Duration::from_secs(5), async move {
+        tokio::net::lookup_host(target).await.map(|a| a.collect::<Vec<_>>())
+    })
+    .await
+}
+
+/// `resolved_block` with the lookup handed in, so tests can make it fail,
+/// stall or answer with any address.
+pub async fn resolved_block_with<F>(host: &str, wait: std::time::Duration, lookup: F) -> Option<String>
+where
+    F: std::future::Future<Output = std::io::Result<Vec<std::net::SocketAddr>>>,
+{
+    let answers = tokio::time::timeout(wait, lookup).await;
     let addrs = match answers {
         Ok(Ok(addrs)) => addrs,
         // Fail closed: a lookup that errors or times out here may still
@@ -679,6 +690,34 @@ mod tests {
         // RFC 6761: `.invalid` never resolves.
         let r = resolved_block("nothing.invalid", 80).await;
         assert!(r.is_some(), "a failed lookup must fail closed");
+    }
+
+    fn sa(ip: &str) -> std::net::SocketAddr {
+        std::net::SocketAddr::new(ip.parse().unwrap(), 443)
+    }
+
+    #[tokio::test]
+    async fn injected_lookup_failure_and_timeout_refuse() {
+        let wait = std::time::Duration::from_millis(50);
+        let failed = resolved_block_with("a.test", wait, async { Err(std::io::Error::other("nxdomain")) }).await;
+        assert!(failed.is_some_and(|m| m.contains("could not be resolved")));
+        let stalled = resolved_block_with("a.test", wait, async {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            Ok(vec![sa("8.8.8.8")])
+        })
+        .await;
+        assert!(stalled.is_some_and(|m| m.contains("in time")));
+    }
+
+    #[tokio::test]
+    async fn injected_private_answers_refuse_and_public_passes() {
+        let wait = std::time::Duration::from_secs(1);
+        for ip in ["127.0.0.1", "10.0.0.7"] {
+            let r = resolved_block_with("rebind.test", wait, async move { Ok(vec![sa("93.184.216.34"), sa(ip)]) }).await;
+            assert!(r.is_some(), "{ip}");
+        }
+        let ok = resolved_block_with("public.test", wait, async { Ok(vec![sa("93.184.216.34")]) }).await;
+        assert_eq!(ok, None);
     }
 
     // --- rules ---

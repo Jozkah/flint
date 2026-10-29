@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useMessages } from '../useMessages'
 import { ThreadMessage } from '@janhq/core'
+import { flushPendingMessageWrites } from '@/lib/messageWriteQueue'
 
 const mockCreateMessage = vi.fn()
 const mockModifyMessage = vi.fn()
@@ -57,6 +58,8 @@ describe('useMessages - coverage', () => {
     })
 
     expect(result.current.messages['t1'][0].content).toBe('updated')
+    // The write is debounced; a flush sends it now.
+    await flushPendingMessageWrites()
     expect(mockModifyMessage).toHaveBeenCalledWith(expect.objectContaining({ content: 'updated' }))
   })
 

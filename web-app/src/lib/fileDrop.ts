@@ -264,11 +264,32 @@ export const pasteFilePaths = (
   transfer: Parameters<typeof namedFilePaths>[0]
 ): { paths: string[]; trusted: boolean } | null => namedFilePaths(transfer)
 
+/**
+ * Whether a drag started inside this window is in flight. Content rendered in
+ * the app (a message, an HTML preview) can set any type on its own drag,
+ * including the GNOME one, so a drop that began in-app never names trusted
+ * files: only a drag the user brought in from outside does.
+ */
+let inAppDrag = false
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('dragstart', () => (inAppDrag = true), true)
+  const end = () => (inAppDrag = false)
+  document.addEventListener('dragend', end, true)
+  document.addEventListener('drop', () => setTimeout(end, 0), true)
+}
+
+/** Test seam: pretend a drag started (or ended) in this window. */
+export function setInAppDragForTest(active: boolean): void {
+  inAppDrag = active
+}
+
 /** A drop's named files (see `namedFilePaths`). */
 export const dropFilePaths = (
   transfer: Parameters<typeof namedFilePaths>[0]
-): { paths: string[]; trusted: boolean } | null =>
-  namedFilePaths(transfer, { allowBarePaths: true })
+): { paths: string[]; trusted: boolean } | null => {
+  const named = namedFilePaths(transfer, { allowBarePaths: true })
+  return named && inAppDrag ? { ...named, trusted: false } : named
+}
 
 /** The text a paste or drop carried, to put back if the user declines to attach it. */
 export function transferText(transfer: TransferLike | null | undefined): string {

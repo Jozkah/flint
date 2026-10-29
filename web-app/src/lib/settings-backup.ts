@@ -254,6 +254,36 @@ function baseUrls(blob: string | null): Map<string, string> {
   return out
 }
 
+/** Per provider: TLS check flag and custom header names (values omitted). */
+function transportSettings(
+  blob: string | null
+): Map<string, { insecureTls: boolean; headers: string }> {
+  const out = new Map<string, { insecureTls: boolean; headers: string }>()
+  if (!blob) return out
+  try {
+    const providers = JSON.parse(blob)?.state?.providers
+    if (!Array.isArray(providers)) return out
+    for (const p of providers) {
+      if (typeof p?.provider !== 'string') continue
+      const headers = Array.isArray(p.custom_header)
+        ? p.custom_header
+            .map((h: { header?: unknown; value?: unknown }) =>
+              typeof h?.header === 'string'
+                ? `${h.header.trim()}=${typeof h.value === 'string' ? h.value : ''}`
+                : ''
+            )
+            .filter(Boolean)
+            .sort()
+            .join('\n')
+        : ''
+      out.set(p.provider, { insecureTls: p.allow_invalid_certs === true, headers })
+    }
+  } catch {
+    // An unreadable blob names no providers.
+  }
+  return out
+}
+
 /** What importing `backup` would change that matters for security. */
 export interface BackupSecurityPreview {
   /** Providers whose Base URL the backup changes. */
@@ -264,6 +294,10 @@ export interface BackupSecurityPreview {
     /** The saved key is dropped: the backup has none for the new address. */
     keyDropped: boolean
   }>
+  /** Providers whose "allow invalid certificates" flag the backup changes. */
+  tlsChanges: Array<{ provider: string; insecureTls: boolean }>
+  /** Providers whose custom request headers the backup changes (names only). */
+  headerChanges: Array<{ provider: string; names: string[] }>
   /** Security stores the backup carries (restored only with permission). */
   securityStores: string[]
 }
@@ -287,10 +321,27 @@ export async function previewBackupSecurity(
       })
     }
   }
+  const tlsChanges: BackupSecurityPreview['tlsChanges'] = []
+  const headerChanges: BackupSecurityPreview['headerChanges'] = []
+  if (providersBlob !== undefined) {
+    const before = transportSettings(await io.get(PROVIDERS_STORE_KEY))
+    for (const [id, next] of transportSettings(providersBlob)) {
+      const prev = before.get(id) ?? { insecureTls: false, headers: '' }
+      if (prev.insecureTls !== next.insecureTls)
+        tlsChanges.push({ provider: id, insecureTls: next.insecureTls })
+      if (prev.headers !== next.headers)
+        headerChanges.push({
+          provider: id,
+          names: next.headers
+            ? [...new Set(next.headers.split('\n').map((h) => h.split('=')[0]))]
+            : [],
+        })
+    }
+  }
   const securityStores = SECURITY_STORE_KEYS.filter(
     (key) => backup.settings[key] !== undefined
   )
-  return { baseUrlChanges, securityStores }
+  return { baseUrlChanges, tlsChanges, headerChanges, securityStores }
 }
 
 export async function applyBackup(

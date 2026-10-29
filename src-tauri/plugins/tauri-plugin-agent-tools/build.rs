@@ -69,6 +69,7 @@ const COMMANDS: &[&str] = &[
     "execute_tool_streaming",
     "execute_tool_unsandboxed_retry",
     "execute_tool_unsandboxed_withdraw",
+    "approval_mint",
     "tool_resources_finish_run",
     "fire_post_tool_batch",
     "undo_journal",

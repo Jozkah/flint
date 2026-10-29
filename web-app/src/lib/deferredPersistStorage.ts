@@ -11,6 +11,18 @@ export const flushDeferredStores = async (): Promise<void> => {
   await Promise.all([...flushers].map((f) => f()))
 }
 
+/**
+ * Add a flusher that runs with the deferred stores (the desktop close path and
+ * `flushDeferredStores`). Returns its removal.
+ */
+export const registerExitFlusher = (f: () => Promise<void>): (() => void) => {
+  flushers.add(f)
+  installExitFlush()
+  return () => {
+    flushers.delete(f)
+  }
+}
+
 let exitFlushInstalled = false
 
 /**

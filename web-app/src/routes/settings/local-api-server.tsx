@@ -160,6 +160,10 @@ function LocalAPIServerContent() {
 
       setServerStatus('pending')
 
+      // Which step failed decides the toast: anything before the server call
+      // is the model step, the server call answers with a stable code.
+      let phase: 'model' | 'server' = 'model'
+
       withTimeout(
         ensureModelForServer({
           modelsService: serviceHub.models(),
@@ -194,6 +198,7 @@ function LocalAPIServerContent() {
         })
         .then(() => {
           // Then start the server
+          phase = 'server'
           return guardServerStart(
             window.core?.api?.startServer({
               host: serverHost,
@@ -236,28 +241,23 @@ function LocalAPIServerContent() {
               ? String(error.message)
               : String(error)
 
-          // Port-related errors (highest priority)
-          // The backend says "Port N (...) is already in use" (see
-          // map_bind_error); the OS wording is "Address already in use".
-          if (/already in use/i.test(errorMsg)) {
+          // `start_server` rejects with { code, message } (ServerStartError).
+          const code =
+            error && typeof error === 'object' && 'code' in error
+              ? String((error as { code: unknown }).code)
+              : undefined
+
+          if (phase === 'server' && code === 'PORT_IN_USE') {
             toast.error(t('model-errors:serverPortOccupied'), {
               description: t('model-errors:serverPortOccupiedDescription', {
                 port: serverPort,
               }),
             })
-          }
-          // Model-related errors
-          else if (errorMsg.includes('Invalid or inaccessible model path')) {
-            toast.error(t('model-errors:serverInvalidModelPath'), {
-              description: errorMsg,
-            })
-          } else if (errorMsg.includes('model')) {
+          } else if (phase === 'model') {
             toast.error(t('model-errors:serverStartModelFailed'), {
               description: errorMsg,
             })
-          }
-          // Generic server errors
-          else {
+          } else {
             toast.error(t('model-errors:serverStartFailed'), {
               description: errorMsg,
             })

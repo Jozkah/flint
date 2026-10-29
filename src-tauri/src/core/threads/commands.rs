@@ -56,6 +56,9 @@ fn thread_summary(mut thread: serde_json::Value) -> serde_json::Value {
                         slim.insert(key.to_string(), v.clone());
                     }
                 }
+                // Marks the entry as cut: a write that carries it back is
+                // restored from disk (`restore_summary_assistants`).
+                slim.insert(super::helpers::SUMMARY_MARKER.to_string(), serde_json::Value::Bool(true));
                 *a = serde_json::Value::Object(slim);
             }
         }
@@ -156,7 +159,7 @@ mod list_threads_cache_tests {
         let s = thread_summary(t.clone());
         assert_eq!(s["title"], "one");
         assert_eq!(s["metadata"], t["metadata"]);
-        assert_eq!(s["assistants"], serde_json::json!([{"id": "a", "name": "A", "model": {"id": "m"}}]));
+        assert_eq!(s["assistants"], serde_json::json!([{"id": "a", "name": "A", "model": {"id": "m"}, "summary": true}]));
     }
 
     #[test]

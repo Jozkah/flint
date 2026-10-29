@@ -1141,6 +1141,7 @@ async fn execute_tool_binds_the_mailbox_only_in_session_scope() {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -1158,6 +1159,7 @@ async fn execute_tool_binds_the_mailbox_only_in_session_scope() {
         None,
         None,
         Some(crate::commands::WorkspaceScope::Thread),
+        None,
         None,
         None,
         None,

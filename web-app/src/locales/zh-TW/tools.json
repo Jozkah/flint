@@ -39,6 +39,7 @@
     "working": "處理中...",
     "failed": "{{tool}} 失敗",
     "used": "已使用 {{tool}}",
+    "saveImage": "儲存 {{name}}",
     "parameters": "參數",
     "result": "結果",
     "error": "錯誤",

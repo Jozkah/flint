@@ -257,7 +257,8 @@ async fn settle<R: Runtime>(wv: &Webview<R>, seq0: u64, block0: u64, start_wait:
     while super::load_seq() == seq0 && !stopped() && t0.elapsed() < start_wait {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    while super::loading() && !stopped() && t0.elapsed() < total {
+    // A hop held for a DNS check is loaded again (or refused) once it resolves.
+    while (super::loading() || super::dns_pending()) && !stopped() && t0.elapsed() < total {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     while !stopped() && t0.elapsed() < total {
@@ -293,9 +294,14 @@ async fn dns_block(url: &Url) -> Option<DenyReason> {
         return None;
     }
     let port = url.port_or_known_default().unwrap_or(443);
-    policy::resolved_block(&host, port)
-        .await
-        .map(|why| DenyReason::Blocked(policy::Block::Private(why)))
+    match policy::resolved_block(&host, port).await {
+        Some(why) => Some(DenyReason::Blocked(policy::Block::Private(why))),
+        None => {
+            // The pane's navigation handler may now let this name through.
+            super::note_resolved_public(&host);
+            None
+        }
+    }
 }
 
 async fn guard<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &NetworkPolicy) -> Gate<R> {

@@ -110,6 +110,14 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
     } else {
         DEFAULT_BASH_TIMEOUT_SECS
     });
+    // The schema caps a foreground wait at 120 s (the lifecycle watchdog stops
+    // it then anyway); a larger value is clamped rather than trusted. 0 keeps
+    // its meaning of "no wait". Background calls keep their own ceiling.
+    let timeout_secs = if background {
+        timeout_secs
+    } else {
+        timeout_secs.min(MAX_FOREGROUND_BASH_TIMEOUT_SECS)
+    };
 
     // Every path the sandbox is given is made absolute first. The confined
     // helper runs with its working directory set to the workspace, so a

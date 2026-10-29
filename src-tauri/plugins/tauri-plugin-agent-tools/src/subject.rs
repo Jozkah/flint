@@ -143,6 +143,17 @@ impl SubjectPattern {
         }
     }
 
+    /// Whether a restricting rule (deny or ask) with this pattern binds
+    /// `subject`. Wider than [`Self::matches`] in one way only: a rule about
+    /// the main agent also binds the subagents it dispatches, so a child
+    /// cannot do what its parent is denied (O05-020). Allow rules keep exact
+    /// matching: allowing the main agent never allows a subagent.
+    pub fn restricts(&self, subject: &Subject) -> bool {
+        self.matches(subject)
+            || (matches!(self, SubjectPattern::Exactly(Subject::MainAgent))
+                && matches!(subject, Subject::NamedAgent(_)))
+    }
+
     pub fn matches(&self, subject: &Subject) -> bool {
         // Unidentified callers match nothing, including `Any`.
         if !subject.is_known() {

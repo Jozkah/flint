@@ -39,6 +39,7 @@
     "working": "Bekerja...",
     "failed": "{{tool}} gagal",
     "used": "Memakai {{tool}}",
+    "saveImage": "Simpan {{name}}",
     "parameters": "Parameter",
     "result": "Hasil",
     "error": "Error",

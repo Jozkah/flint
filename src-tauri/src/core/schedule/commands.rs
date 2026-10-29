@@ -164,11 +164,22 @@ pub async fn schedule_cancel_run<R: Runtime>(
     .await
 }
 
+/// What [`schedule_preview`] found: the next fire times, or `never_fires` for
+/// a schedule that is valid but has no future fire time (31 February). Typed so
+/// the page does not have to recognise the condition from message text.
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SchedulePreview {
+    pub fires: Vec<DateTime<Utc>>,
+    pub never_fires: bool,
+}
+
 /// The next fire times for a schedule that is still being edited, so the page
 /// can show them before anything is saved. Fails with the reason the schedule
-/// would be refused.
+/// would be refused; a schedule that never fires is a typed result, not an
+/// error.
 #[tauri::command]
-pub fn schedule_preview(schedule: Schedule, timezone: String, count: Option<usize>) -> Result<Vec<DateTime<Utc>>, String> {
+pub fn schedule_preview(schedule: Schedule, timezone: String, count: Option<usize>) -> Result<SchedulePreview, String> {
     let tz = parse_timezone(&timezone).map_err(|e| e.message)?;
     let exprs = schedule.compile().map_err(|e| e.message)?;
     let count = count.unwrap_or(5).clamp(1, 20);
@@ -176,7 +187,7 @@ pub fn schedule_preview(schedule: Schedule, timezone: String, count: Option<usiz
     if schedule.is_once() {
         // A one-time schedule fires once; its cron has no year and would repeat.
         return match schedule.once_instant_in(tz) {
-            Some(at) if at > now => Ok(vec![at]),
+            Some(at) if at > now => Ok(SchedulePreview { fires: vec![at], never_fires: false }),
             _ => Err("that time has already passed".to_string()),
         };
     }
@@ -187,10 +198,7 @@ pub fn schedule_preview(schedule: Schedule, timezone: String, count: Option<usiz
     all.sort();
     all.dedup();
     all.truncate(count);
-    if all.is_empty() {
-        return Err("this schedule never fires".to_string());
-    }
-    Ok(all)
+    Ok(SchedulePreview { never_fires: all.is_empty(), fires: all })
 }
 
 /// The cron expressions a preset compiles to, for the page's cron-text toggle.
@@ -295,7 +303,7 @@ mod tests {
     #[test]
     fn the_preview_matches_what_would_be_saved() {
         let s = Schedule::Weekdays { times: vec![TimeOfDay { hour: 9, minute: 0 }, TimeOfDay { hour: 17, minute: 30 }] };
-        let f = schedule_preview(s, "Europe/Berlin".into(), Some(5)).unwrap();
+        let f = schedule_preview(s, "Europe/Berlin".into(), Some(5)).unwrap().fires;
         assert_eq!(f.len(), 5);
         assert!(f.windows(2).all(|w| w[0] < w[1]));
     }
@@ -303,7 +311,7 @@ mod tests {
     #[test]
     fn preview_once_returns_single_future_instant() {
         let s = Schedule::Once { at: "2099-03-04T09:30".into() };
-        let f = schedule_preview(s, "UTC".into(), Some(5)).unwrap();
+        let f = schedule_preview(s, "UTC".into(), Some(5)).unwrap().fires;
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].to_rfc3339(), "2099-03-04T09:30:00+00:00");
     }
@@ -319,9 +327,10 @@ mod tests {
         assert!(schedule_preview(Schedule::Cron { expr: "99 * * * *".into() }, "UTC".into(), None)
             .unwrap_err()
             .contains("minute"));
-        assert!(schedule_preview(Schedule::Cron { expr: "0 0 31 2 *".into() }, "UTC".into(), None)
-            .unwrap_err()
-            .contains("never"));
+        assert_eq!(
+            schedule_preview(Schedule::Cron { expr: "0 0 31 2 *".into() }, "UTC".into(), None).unwrap(),
+            SchedulePreview { fires: vec![], never_fires: true }
+        );
         assert!(schedule_preview(Schedule::Cron { expr: "* * * * *".into() }, "Mars/Base".into(), None)
             .unwrap_err()
             .contains("time zone"));

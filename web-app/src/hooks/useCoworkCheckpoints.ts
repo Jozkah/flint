@@ -149,6 +149,9 @@ const wire = (point: Checkpoint) => ({
   root: point.root,
 })
 
+/** Sessions with a restore in flight: one at a time per session (P2F-018). */
+const restoring = new Set<string>()
+
 export const useCoworkCheckpoints = create<CheckpointsState>()(
   persist(
     (set, get) => {
@@ -163,14 +166,17 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           .reverse()
           .find((one) => one.root === input.root)?.sha
         try {
-          const made = await invokeCommand<Checkpoint>('agent_checkpoint_capture', {
-            root: input.root,
-            threadId: input.sessionId,
-            parent: parent ?? null,
-            label: input.label,
-            changed: input.changed,
-            destination: input.destination,
-          })
+          const made = await invokeCommand<Checkpoint>(
+            'agent_checkpoint_capture',
+            {
+              root: input.root,
+              threadId: input.sessionId,
+              parent: parent ?? null,
+              label: input.label,
+              changed: input.changed,
+              destination: input.destination,
+            }
+          )
           const entry: CheckpointEntry = {
             ...made,
             at: Date.now(),
@@ -180,7 +186,10 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           set((s) => ({
             bySession: {
               ...s.bySession,
-              [input.sessionId]: [...(s.bySession[input.sessionId] ?? []), entry],
+              [input.sessionId]: [
+                ...(s.bySession[input.sessionId] ?? []),
+                entry,
+              ],
             },
             head: { ...s.head, [input.sessionId]: entry.sha },
           }))
@@ -188,6 +197,63 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
         } catch (e) {
           return { ok: false, reason: messageOf(e) }
         }
+      }
+
+      const restoreNow = async (
+        sessionId: string,
+        sha: string,
+        chain: CheckpointEntry[],
+        target: CheckpointEntry
+      ): Promise<{ ok: true } | { ok: false; reason: string }> => {
+        // The newest point, not the known head: the backend removes files
+        // added between the target and this, and a safety point taken just
+        // now is what holds every file currently on disk.
+        const newest = chain[chain.length - 1]
+        const latest = newest?.sha ?? sha
+        // The safety point taken for this restore, named as such. The backend
+        // refuses to restore unless the tree on disk is exactly what that
+        // point holds, so an edit made between the capture and the restore —
+        // or a restore attempted without any capture — is refused rather than
+        // silently overwritten. Without it the backend applies the same check
+        // against `latest`.
+        const safety =
+          newest && newest.safety && newest.sha !== sha ? newest.sha : null
+        try {
+          await invokeCommand('agent_checkpoint_restore', {
+            checkpoint: wire(target),
+            latest,
+            safety,
+            // Voids this session's unspent deferred approvals and tells its
+            // next run which earlier answers no longer stand.
+            session: sessionId,
+          })
+        } catch (e) {
+          return { ok: false, reason: messageOf(e) }
+        }
+        // Everything after the restored point describes a tree that no longer
+        // exists, so it is dropped — except a safety point taken for this
+        // restore, which is the way back from it.
+        // Re-read after the await: a point captured meanwhile was not in
+        // `chain` and is kept, rather than lost to a stale copy.
+        const at = chain.findIndex((one) => one.sha === sha)
+        const dropped = new Set(
+          chain
+            .slice(at + 1)
+            .filter(
+              (one) => !(one === newest && newest.safety && newest.sha !== sha)
+            )
+            .map((one) => one.sha)
+        )
+        set((s) => ({
+          bySession: {
+            ...s.bySession,
+            [sessionId]: (s.bySession[sessionId] ?? []).filter(
+              (one) => !dropped.has(one.sha)
+            ),
+          },
+          head: { ...s.head, [sessionId]: sha },
+        }))
+        return { ok: true }
       }
 
       return {
@@ -215,7 +281,8 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
         plan: async (sessionId, sha) => {
           const chain = get().bySession[sessionId] ?? []
           const target = chain.find((one) => one.sha === sha)
-          if (!target) return { ok: false, reason: 'that point is not recorded' }
+          if (!target)
+            return { ok: false, reason: 'that point is not recorded' }
           // Compared with the state the tree was last known to be in, so
           // edits after it — and only those — are reported as newer.
           const known = get().head[sessionId]
@@ -239,13 +306,17 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
         previewDiff: async (sessionId, sha) => {
           const chain = get().bySession[sessionId] ?? []
           const target = chain.find((one) => one.sha === sha)
-          if (!target) return { ok: false, reason: 'that point is not recorded' }
+          if (!target)
+            return { ok: false, reason: 'that point is not recorded' }
           try {
             return {
               ok: true,
-              diff: await invokeCommand<string>('agent_checkpoint_preview_diff', {
-                checkpoint: wire(target),
-              }),
+              diff: await invokeCommand<string>(
+                'agent_checkpoint_preview_diff',
+                {
+                  checkpoint: wire(target),
+                }
+              ),
             }
           } catch (e) {
             return { ok: false, reason: messageOf(e) }
@@ -255,43 +326,20 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
         restore: async (sessionId, sha) => {
           const chain = get().bySession[sessionId] ?? []
           const target = chain.find((one) => one.sha === sha)
-          if (!target) return { ok: false, reason: 'that point is not recorded' }
-          // The newest point, not the known head: the backend removes files
-          // added between the target and this, and a safety point taken just
-          // now is what holds every file currently on disk.
-          const newest = chain[chain.length - 1]
-          const latest = newest?.sha ?? sha
-          // The safety point taken for this restore, named as such. The backend
-          // refuses to restore unless the tree on disk is exactly what that
-          // point holds, so an edit made between the capture and the restore —
-          // or a restore attempted without any capture — is refused rather than
-          // silently overwritten. Without it the backend applies the same check
-          // against `latest`.
-          const safety =
-            newest && newest.safety && newest.sha !== sha ? newest.sha : null
-          try {
-            await invokeCommand('agent_checkpoint_restore', {
-              checkpoint: wire(target),
-              latest,
-              safety,
-              // Voids this session's unspent deferred approvals and tells its
-              // next run which earlier answers no longer stand.
-              session: sessionId,
-            })
-          } catch (e) {
-            return { ok: false, reason: messageOf(e) }
+          if (!target)
+            return { ok: false, reason: 'that point is not recorded' }
+          if (restoring.has(sessionId)) {
+            return {
+              ok: false,
+              reason: 'a restore is already running for this session',
+            }
           }
-          // Everything after the restored point describes a tree that no longer
-          // exists, so it is dropped — except a safety point taken for this
-          // restore, which is the way back from it.
-          const at = chain.findIndex((one) => one.sha === sha)
-          const kept = chain.slice(0, at + 1)
-          if (newest && newest.safety && newest.sha !== sha) kept.push(newest)
-          set((s) => ({
-            bySession: { ...s.bySession, [sessionId]: kept },
-            head: { ...s.head, [sessionId]: sha },
-          }))
-          return { ok: true }
+          restoring.add(sessionId)
+          try {
+            return await restoreNow(sessionId, sha, chain, target)
+          } finally {
+            restoring.delete(sessionId)
+          }
         },
 
         usable: (sessionId, tree) => {

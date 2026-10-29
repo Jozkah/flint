@@ -216,6 +216,22 @@ export function useChat(
     setChatMessages((messages) => settleStoppedToolCalls(messages))
   }, [stopChat, setChatMessages])
 
+  // While a turn is live, publish a per-thread controller whose abort runs the
+  // same stop as the Stop button, so other surfaces (temporary-chat discard,
+  // llama.cpp router errors, exit dialog) can end it without polling.
+  const live =
+    chatResult.status === 'submitted' || chatResult.status === 'streaming'
+  useEffect(() => {
+    if (!sessionId || !live) return
+    const controller = new AbortController()
+    controller.signal.addEventListener('abort', () => void stop(), {
+      once: true,
+    })
+    useAppState.getState?.()?.setAbortController?.(sessionId, controller)
+    return () =>
+      useAppState.getState?.()?.clearAbortController?.(sessionId, controller)
+  }, [sessionId, live, stop])
+
   useEffect(() => {
     if (sessionId) {
       updateStatus(sessionId, chatResult.status)

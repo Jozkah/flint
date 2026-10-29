@@ -344,7 +344,7 @@ mod tests {
         join(&m, "b", "Beta", repo.path(), false);
         let mut t = ClaimTable::new();
         let file = path_key::file_key(&repo.path().join("src/x.ts"));
-        t.record_write("b", &file, "h", true, 1_000_000 - 120_000);
+        t.record_write("b", &file, true, 1_000_000 - 120_000);
         let line = env_line(&m, &t, "a", 1_000_000).unwrap();
         assert!(line.contains("Beta (idle, on main, edited src/x.ts 2m ago)"), "{line}");
         assert!(line.starts_with("Shared folder: also here: "));
@@ -385,7 +385,7 @@ mod tests {
             join(&m, &id, &format!("A very long session name number {i} indeed"), repo.path(), false);
             for f in 0..5 {
                 let file = path_key::file_key(&repo.path().join(format!("some/deep/folder/file{f}.ts")));
-                t.record_write(&id, &file, "h", true, 999_000);
+                t.record_write(&id, &file, true, 999_000);
             }
         }
         let line = env_line(&m, &t, "me", 1_000_000).unwrap();

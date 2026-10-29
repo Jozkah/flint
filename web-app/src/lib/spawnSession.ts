@@ -253,13 +253,48 @@ export async function runSpawnSession(
       useCoworkSessions.getState().deleteSession(id)
       return refuse(reason)
     }
-    const [{ useCoworkWorktrees }, { useDirectEditGrants }, { getServiceHub }] =
-      await Promise.all([
-        import('@/hooks/useCoworkWorktrees'),
-        import('@/hooks/useDirectEditGrants'),
-        import('@/hooks/useServiceHub'),
-      ])
+    const [
+      { useCoworkWorktrees },
+      { useDirectEditGrants },
+      { getServiceHub },
+      { invokeCommand },
+    ] = await Promise.all([
+      import('@/hooks/useCoworkWorktrees'),
+      import('@/hooks/useDirectEditGrants'),
+      import('@/hooks/useServiceHub'),
+      import('@/lib/backend'),
+    ])
     const dataFolder = (await getServiceHub().app().getJanDataFolder()) ?? ''
+    // Ask before anything touches the repository: the prompt names the branch
+    // the worktree will use, computed the same way the backend names it.
+    if (spawn.mode !== 'bypass') {
+      let planned = ''
+      try {
+        planned = await invokeCommand<string>('agent_worktree_branch_name', {
+          sessionId: id,
+          title,
+        })
+      } catch {
+        planned = ''
+      }
+      let allowed = false
+      try {
+        allowed = await spawn.onApprove!(
+          spawn.toolCallId ?? `spawn-${id}`,
+          SPAWN_SESSION_TOOL_NAME,
+          { title, folder, branch: planned, worktree: true },
+          undefined,
+          spawn.signal
+        )
+      } catch {
+        allowed = false
+      }
+      if (!allowed || spawn.signal?.aborted) {
+        return undo(
+          'the user did not allow a nested chat with its own worktree. Do not retry it unchanged; start it without `worktree`, or wait for instructions.'
+        )
+      }
+    }
     // The project's folder is only the worktree's source; write access is
     // granted on the worktree below, never on the folder.
     useCoworkSessions.getState().setFolder(id, folder)
@@ -274,25 +309,6 @@ export async function runSpawnSession(
         .discard(id, dataFolder, true)
         .catch(() => undefined)
       return undo(reason)
-    }
-    if (spawn.mode !== 'bypass') {
-      let allowed = false
-      try {
-        allowed = await spawn.onApprove!(
-          spawn.toolCallId ?? `spawn-${id}`,
-          SPAWN_SESSION_TOOL_NAME,
-          { title, folder, branch, worktree: true },
-          undefined,
-          spawn.signal
-        )
-      } catch {
-        allowed = false
-      }
-      if (!allowed || spawn.signal?.aborted) {
-        return drop(
-          'the user did not allow a nested chat with its own worktree. Do not retry it unchanged; start it without `worktree`, or wait for instructions.'
-        )
-      }
     }
     const granted = await useDirectEditGrants
       .getState()

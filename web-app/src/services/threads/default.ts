@@ -8,6 +8,7 @@ import { ConversationalExtension, ExtensionTypeEnum } from '@janhq/core'
 import { requireConversational } from '@/services/conversationalExtension'
 import type { ThreadsService } from './types'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
+import { hasTauriRuntime } from '@/lib/providerFetch'
 
 function toModelPayload(model?: Thread['model']) {
   return { id: model?.id ?? '*', engine: model?.provider ?? 'llamacpp' }
@@ -38,7 +39,15 @@ export class DefaultThreadsService implements ThreadsService {
     // Let listThreads failures propagate: a rejected invoke means "backend not
     // ready / errored", not "no threads" — the caller retries instead of
     // wiping the list with [].
-    const threads = await ext.listThreads()
+    // On the desktop and mobile app the sidebar takes the summaries: each
+    // assistant cut to {id, name, model} and marked `summary`, so a long
+    // history does not ship every instruction set (PERF-012). The full
+    // assistant is fetched when a thread is opened (`ensureThreadHydrated`);
+    // a write that still carries a summary is restored from disk by the
+    // backend, so it cannot drop the stored instructions.
+    const threads = hasTauriRuntime()
+      ? await invokeCommand<Thread[]>('list_thread_summaries')
+      : await ext.listThreads()
     if (!Array.isArray(threads)) return []
     // Drop non-object entries (e.g. null from a malformed thread.json) so one
     // bad entry cannot throw and blank the whole list.

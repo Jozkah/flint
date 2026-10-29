@@ -39,6 +39,7 @@
     "working": "Praca...",
     "failed": "{{tool}} nie powiodło się",
     "used": "Użyto {{tool}}",
+    "saveImage": "Zapisz {{name}}",
     "parameters": "Parametry",
     "result": "Wynik",
     "error": "Błąd",

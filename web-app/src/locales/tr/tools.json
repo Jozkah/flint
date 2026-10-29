@@ -39,6 +39,7 @@
     "working": "Çalışıyor...",
     "failed": "{{tool}} başarısız oldu",
     "used": "{{tool}} kullanıldı",
+    "saveImage": "{{name}} kaydet",
     "parameters": "Parametreler",
     "result": "Sonuç",
     "error": "Hata",

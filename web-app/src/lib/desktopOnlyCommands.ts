@@ -11,6 +11,11 @@
  */
 export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: readonly string[] }> = [
   {
+    reason:
+      'The sidebar summaries and the per-thread assistant fetch that fills them in; the browser lists full threads over REST and never needs either.',
+    commands: ['get_thread_assistant', 'list_thread_summaries'],
+  },
+  {
     reason: "Local models, engines and the GPU run on the desktop app's own machine.",
     commands: [
       'diffusion_add_custom_model',
@@ -123,6 +128,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'get_tools_for_servers',
       'list_open_apps',
       'plugin:agent-tools|advertised_tool_schemas',
+      'plugin:agent-tools|approval_mint',
       'plugin:agent-tools|bash_job_kill',
       'plugin:agent-tools|bash_jobs_list',
       'plugin:agent-tools|direct_edit_authorize',
@@ -194,6 +200,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'agent_sandbox_apply_file',
       'agent_sandbox_apply_hunk',
       'agent_sandbox_apply_probe',
+      'agent_worktree_branch_name',
       'agent_worktree_ensure',
       'agent_worktree_export',
       'agent_worktree_optimize',
@@ -503,6 +510,10 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'archive_put',
       'archive_restore',
       'archive_set_settings',
+      'data_backup_apply',
+      'data_backup_discard',
+      'data_backup_load',
+      'data_backup_save',
       'delete_thread_permanently',
       'migration_detect',
       'migration_dismiss',

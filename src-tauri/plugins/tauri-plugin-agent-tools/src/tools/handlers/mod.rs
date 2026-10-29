@@ -82,6 +82,8 @@ const GREP_MAX_RESULTS: usize = 300;
 /// How long a `bash` call waits for the command before backgrounding it, when
 /// the caller doesn't specify `timeout`.
 const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
+/// Longest a foreground `bash` call may wait (the schema maximum).
+const MAX_FOREGROUND_BASH_TIMEOUT_SECS: u64 = 120;
 
 /// Counter for unique temp-file names for truncated bash output.
 static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -358,8 +360,8 @@ pub(crate) async fn execute_text(
                 edit(args, project_root, scratch, ctx.confine_writes, ctx.write_roots).await
             };
             if !out.starts_with("ERROR") {
-                if let Some((path, hash)) = record_seen(args, ctx).await {
-                    crate::shared_folder::tools::record_write(ctx, &path, &hash);
+                if let Some((path, _)) = record_seen(args, ctx).await {
+                    crate::shared_folder::tools::record_write(ctx, &path);
                 }
             }
             out

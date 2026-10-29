@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import { invokeCommand } from '@/lib/backend'
 import type { UIMessage } from '@ai-sdk/react'
 import { useNavigate } from '@tanstack/react-router'
@@ -362,6 +370,283 @@ export function WhatJanIsUsingToggle({
   )
 }
 
+/** What the panel's sections share from the panel (Q2-023). */
+type TFunction = ReturnType<typeof useTranslation>['t']
+
+type SectionCtx = {
+  tabsId: string
+  threadId: string
+  whyOpen: Record<string, boolean>
+  setWhyOpen: Dispatch<SetStateAction<Record<string, boolean>>>
+  expanded: Record<string, boolean>
+  setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>
+  runAction: (action: ContextAction, item: ContextItem) => void
+  retry: () => void
+}
+
+const labelFor = (t: TFunction, item: ContextItem) =>
+  item.labelIsKey ? t(`context:label.${item.label}`) : item.label
+
+const noticeText = (t: TFunction, notice: ContextNotice) => {
+  const values: Record<string, string> = {}
+  for (const [key, value] of Object.entries(notice.values ?? {})) {
+    values[key] = value ?? t('context:notice.noProject')
+  }
+  return t(`context:notice.${notice.key}`, values)
+}
+
+// The empty Files tab says what happened and what to do about it; a bare
+// "could not be listed" read as a broken panel.
+function SectionEmpty({
+  section,
+  onRetry,
+}: {
+  section: ContextSection
+  onRetry: () => void
+}) {
+  const { t } = useTranslation()
+  if (section.id !== 'attachments') {
+    return (
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+        {t(`context:empty.${section.emptyReason}`)}
+      </p>
+    )
+  }
+  const failed = section.emptyReason === 'indexUnavailable'
+  return (
+    <EmptyState
+      className="py-6"
+      data-testid={`context-empty-${section.emptyReason}`}
+      icon={failed ? <FileWarning /> : <Paperclip />}
+      title={t(`context:empty.${section.emptyReason}`)}
+      description={t(`context:empty.${section.emptyReason}Hint`)}
+      action={
+        failed ? (
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="context-files-retry"
+            onClick={onRetry}
+          >
+            <RefreshCw className="size-3.5" aria-hidden />
+            {t('context:retry')}
+          </Button>
+        ) : undefined
+      }
+    />
+  )
+}
+
+// A line of fact under the status: the provider's token usage was recorded.
+// It is not a second request, so it gets no second "Provider responded".
+function UsageLine({ item }: { item: ContextItem }) {
+  const { t } = useTranslation()
+  return (
+  <li
+    key={item.key}
+    className="flex items-start gap-1.5 text-xs text-muted-foreground"
+    data-testid={`context-item-${item.key}`}
+    data-state={item.state}
+  >
+    <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />
+    <span>
+      <span className="text-foreground">{labelFor(t, item)}</span>
+      {item.reason && (
+        <>
+          {' '}
+          <span>{t(`context:reason.${item.reason}`, item.reasonParams)}</span>
+        </>
+      )}
+    </span>
+  </li>
+)
+}
+
+function ContextItemRow({
+  section,
+  item,
+  ctx,
+}: {
+  section: ContextSection
+  item: ContextItem
+  ctx: SectionCtx
+}) {
+  const { t } = useTranslation()
+  const { tabsId, whyOpen, setWhyOpen, runAction } = ctx
+  if (section.id === 'payload' && item.key === 'payload:usage') {
+    return <UsageLine item={item} />
+  }
+  // The request's own line is status, so its reason stays in view; for
+  // everything else the reason is rationale, one tap away behind "Why".
+  const statusLine = section.id === 'payload'
+  const reasonOpen = statusLine || Boolean(whyOpen[item.key])
+  const reasonId = `${tabsId}-why-${item.key}`
+  // The request's line sits under the "Last request" heading already, so
+  // it leads with the provider and model rather than repeating the words.
+  const title =
+    item.key === 'payload:request' && item.detail ? item.detail : labelFor(t, item)
+  const meta = [
+    title === item.detail ? null : item.detail,
+    item.scope ? t(`context:scope.${item.scope}`) : null,
+  ].filter(Boolean)
+  return (
+    <li
+      key={item.key}
+      className="flex flex-col gap-1.5"
+      data-testid={`context-item-${item.key}`}
+      data-state={item.state}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 break-words text-foreground">
+          {title}
+        </p>
+        {meta.length > 0 && (
+          <p className="text-xs leading-relaxed break-words text-muted-foreground">
+            {meta.join(' · ')}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <StateChip
+          state={item.state}
+          label={t(`context:state.${item.state}`)}
+        />
+        {item.reason && !statusLine && (
+          <button
+            type="button"
+            aria-expanded={reasonOpen}
+            aria-controls={reasonId}
+            data-testid={`context-why-${item.key}`}
+            onClick={() =>
+              setWhyOpen((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+            }
+            className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+          >
+            {t('context:why')}
+          </button>
+        )}
+        {item.action && (
+          <Button
+            size="sm"
+            variant="link"
+            className="h-auto px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+            onClick={() => runAction(item.action!, item)}
+          >
+            {t(`context:action.${item.action}`)}
+          </Button>
+        )}
+      </div>
+      {item.reason && (
+        <p
+          id={reasonId}
+          hidden={!reasonOpen}
+          className="text-xs leading-relaxed text-muted-foreground"
+        >
+          {t(`context:reason.${item.reason}`, item.reasonParams)}
+        </p>
+      )}
+    </li>
+  )
+}
+
+function ContextSectionView({
+  section,
+  ctx,
+}: {
+  section: ContextSection
+  ctx: SectionCtx
+}) {
+  const { t } = useTranslation()
+  const { tabsId, threadId, expanded, setExpanded } = ctx
+  return (
+  <section
+    key={section.id}
+    aria-labelledby={`${tabsId}-context-${section.id}`}
+    data-testid={`context-section-${section.id}`}
+    className="border-b border-dashed border-border py-3.5 first:pt-3 last:border-b-0"
+  >
+    <h3
+      id={`${tabsId}-context-${section.id}`}
+      className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium text-foreground"
+    >
+      {t(`context:section.${section.id}`)}
+    </h3>
+    {section.items.length === 0 ? (
+      <SectionEmpty section={section} onRetry={ctx.retry} />
+    ) : (
+      <ul className="flex flex-col gap-3 pt-2">
+        {(expanded[section.id]
+          ? section.items
+          : section.items.slice(0, SECTION_PREVIEW)
+        ).map((item) => (
+            <ContextItemRow key={item.key} section={section} item={item} ctx={ctx} />
+          ))}
+      </ul>
+    )}
+    {section.items.length > SECTION_PREVIEW && (
+      <button
+        type="button"
+        className="mt-2.5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+        aria-expanded={Boolean(expanded[section.id])}
+        onClick={() =>
+          setExpanded((prev) => ({ ...prev, [section.id]: !prev[section.id] }))
+        }
+      >
+        {expanded[section.id]
+          ? t('context:showFewer')
+          : t('context:showAll', { count: section.items.length })}
+      </button>
+    )}
+    {section.notices?.map((notice) =>
+      notice.key === 'adapterBoundary' ? (
+        // The caveat on "verified": reference material, behind a disclosure.
+        <details key={notice.key} className="group mt-3">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              aria-hidden
+              className="size-3.5 shrink-0 -rotate-90 transition-transform group-open:rotate-0"
+            />
+            {t('context:verifiedMeaning')}
+          </summary>
+          <p
+            role="note"
+            className="mt-1.5 pl-5 text-xs leading-relaxed text-muted-foreground"
+            data-testid={`context-notice-${notice.key}`}
+          >
+            {noticeText(t, notice)}
+          </p>
+        </details>
+      ) : (
+        <p
+          key={notice.key}
+          role="note"
+          className="mt-3 rounded-lg bg-warning-tint px-2.5 py-2 text-xs leading-relaxed text-fg-2"
+          data-testid={`context-notice-${notice.key}`}
+        >
+          {noticeText(t, notice)}
+        </p>
+      )
+    )}
+    {section.id === 'memory' && section.items.length > 0 && (
+      <p className="mt-2.5 text-xs text-muted-foreground">
+        {t('context:memoryScopeNote')}
+      </p>
+    )}
+    {section.snapshotId && (
+      <div className="mt-3" data-testid="context-inspect-request">
+        {/* Advanced and collapsed by default: the sanitized record, read
+            back from disk and scoped to this conversation. */}
+        <PromptSnapshotView
+          snapshotId={section.snapshotId}
+          sessionId={threadId}
+          summary={t('context:inspect')}
+        />
+      </div>
+    )}
+  </section>
+)
+}
+
 /**
  * A plain summary of what a chat conversation is using: model and where it
  * runs, instructions, attachments, saved memory and tools, each labelled with
@@ -657,236 +942,16 @@ export function WhatJanIsUsingPanel({
 
   if (!open) return null
 
-  const labelFor = (item: ContextItem) =>
-    item.labelIsKey ? t(`context:label.${item.label}`) : item.label
-
-  const noticeText = (notice: ContextNotice) => {
-    const values: Record<string, string> = {}
-    for (const [key, value] of Object.entries(notice.values ?? {})) {
-      values[key] = value ?? t('context:notice.noProject')
-    }
-    return t(`context:notice.${notice.key}`, values)
+  const ctx: SectionCtx = {
+    tabsId,
+    threadId,
+    whyOpen,
+    setWhyOpen,
+    expanded,
+    setExpanded,
+    runAction,
+    retry: () => setRefreshKey((k) => k + 1),
   }
-
-  // The empty Files tab says what happened and what to do about it; a bare
-  // "could not be listed" read as a broken panel.
-  const renderEmpty = (section: ContextSection) => {
-    if (section.id !== 'attachments') {
-      return (
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-          {t(`context:empty.${section.emptyReason}`)}
-        </p>
-      )
-    }
-    const failed = section.emptyReason === 'indexUnavailable'
-    return (
-      <EmptyState
-        className="py-6"
-        data-testid={`context-empty-${section.emptyReason}`}
-        icon={failed ? <FileWarning /> : <Paperclip />}
-        title={t(`context:empty.${section.emptyReason}`)}
-        description={t(`context:empty.${section.emptyReason}Hint`)}
-        action={
-          failed ? (
-            <Button
-              size="sm"
-              variant="outline"
-              data-testid="context-files-retry"
-              onClick={() => setRefreshKey((k) => k + 1)}
-            >
-              <RefreshCw className="size-3.5" aria-hidden />
-              {t('context:retry')}
-            </Button>
-          ) : undefined
-        }
-      />
-    )
-  }
-
-  // A line of fact under the status: the provider's token usage was recorded.
-  // It is not a second request, so it gets no second "Provider responded".
-  const renderUsage = (item: ContextItem) => (
-    <li
-      key={item.key}
-      className="flex items-start gap-1.5 text-xs text-muted-foreground"
-      data-testid={`context-item-${item.key}`}
-      data-state={item.state}
-    >
-      <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />
-      <span>
-        <span className="text-foreground">{labelFor(item)}</span>
-        {item.reason && (
-          <>
-            {' '}
-            <span>{t(`context:reason.${item.reason}`, item.reasonParams)}</span>
-          </>
-        )}
-      </span>
-    </li>
-  )
-
-  const renderItem = (section: ContextSection, item: ContextItem) => {
-    if (section.id === 'payload' && item.key === 'payload:usage') {
-      return renderUsage(item)
-    }
-    // The request's own line is status, so its reason stays in view; for
-    // everything else the reason is rationale, one tap away behind "Why".
-    const statusLine = section.id === 'payload'
-    const reasonOpen = statusLine || Boolean(whyOpen[item.key])
-    const reasonId = `${tabsId}-why-${item.key}`
-    // The request's line sits under the "Last request" heading already, so
-    // it leads with the provider and model rather than repeating the words.
-    const title =
-      item.key === 'payload:request' && item.detail ? item.detail : labelFor(item)
-    const meta = [
-      title === item.detail ? null : item.detail,
-      item.scope ? t(`context:scope.${item.scope}`) : null,
-    ].filter(Boolean)
-    return (
-      <li
-        key={item.key}
-        className="flex flex-col gap-1.5"
-        data-testid={`context-item-${item.key}`}
-        data-state={item.state}
-      >
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 break-words text-foreground">
-            {title}
-          </p>
-          {meta.length > 0 && (
-            <p className="text-xs leading-relaxed break-words text-muted-foreground">
-              {meta.join(' · ')}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <StateChip
-            state={item.state}
-            label={t(`context:state.${item.state}`)}
-          />
-          {item.reason && !statusLine && (
-            <button
-              type="button"
-              aria-expanded={reasonOpen}
-              aria-controls={reasonId}
-              data-testid={`context-why-${item.key}`}
-              onClick={() =>
-                setWhyOpen((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
-              }
-              className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
-            >
-              {t('context:why')}
-            </button>
-          )}
-          {item.action && (
-            <Button
-              size="sm"
-              variant="link"
-              className="h-auto px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
-              onClick={() => runAction(item.action!, item)}
-            >
-              {t(`context:action.${item.action}`)}
-            </Button>
-          )}
-        </div>
-        {item.reason && (
-          <p
-            id={reasonId}
-            hidden={!reasonOpen}
-            className="text-xs leading-relaxed text-muted-foreground"
-          >
-            {t(`context:reason.${item.reason}`, item.reasonParams)}
-          </p>
-        )}
-      </li>
-    )
-  }
-
-  const renderSection = (section: ContextSection) => (
-    <section
-      key={section.id}
-      aria-labelledby={`${tabsId}-context-${section.id}`}
-      data-testid={`context-section-${section.id}`}
-      className="border-b border-dashed border-border py-3.5 first:pt-3 last:border-b-0"
-    >
-      <h3
-        id={`${tabsId}-context-${section.id}`}
-        className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium text-foreground"
-      >
-        {t(`context:section.${section.id}`)}
-      </h3>
-      {section.items.length === 0 ? (
-        renderEmpty(section)
-      ) : (
-        <ul className="flex flex-col gap-3 pt-2">
-          {(expanded[section.id]
-            ? section.items
-            : section.items.slice(0, SECTION_PREVIEW)
-          ).map((item) => renderItem(section, item))}
-        </ul>
-      )}
-      {section.items.length > SECTION_PREVIEW && (
-        <button
-          type="button"
-          className="mt-2.5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
-          aria-expanded={Boolean(expanded[section.id])}
-          onClick={() =>
-            setExpanded((prev) => ({ ...prev, [section.id]: !prev[section.id] }))
-          }
-        >
-          {expanded[section.id]
-            ? t('context:showFewer')
-            : t('context:showAll', { count: section.items.length })}
-        </button>
-      )}
-      {section.notices?.map((notice) =>
-        notice.key === 'adapterBoundary' ? (
-          // The caveat on "verified": reference material, behind a disclosure.
-          <details key={notice.key} className="group mt-3">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-              <ChevronDown
-                aria-hidden
-                className="size-3.5 shrink-0 -rotate-90 transition-transform group-open:rotate-0"
-              />
-              {t('context:verifiedMeaning')}
-            </summary>
-            <p
-              role="note"
-              className="mt-1.5 pl-5 text-xs leading-relaxed text-muted-foreground"
-              data-testid={`context-notice-${notice.key}`}
-            >
-              {noticeText(notice)}
-            </p>
-          </details>
-        ) : (
-          <p
-            key={notice.key}
-            role="note"
-            className="mt-3 rounded-lg bg-warning-tint px-2.5 py-2 text-xs leading-relaxed text-fg-2"
-            data-testid={`context-notice-${notice.key}`}
-          >
-            {noticeText(notice)}
-          </p>
-        )
-      )}
-      {section.id === 'memory' && section.items.length > 0 && (
-        <p className="mt-2.5 text-xs text-muted-foreground">
-          {t('context:memoryScopeNote')}
-        </p>
-      )}
-      {section.snapshotId && (
-        <div className="mt-3" data-testid="context-inspect-request">
-          {/* Advanced and collapsed by default: the sanitized record, read
-              back from disk and scoped to this conversation. */}
-          <PromptSnapshotView
-            snapshotId={section.snapshotId}
-            sessionId={threadId}
-            summary={t('context:inspect')}
-          />
-        </div>
-      )}
-    </section>
-  )
 
   // The last request leads, then how full the window is, then what went in.
   const payload = sections.filter((s) => s.id === 'payload')
@@ -1008,8 +1073,12 @@ export function WhatJanIsUsingPanel({
             hidden={tab !== 'using'}
           >
             <div className="px-4 pb-1">
-              {included.map(renderSection)}
-              {payload.map(renderSection)}
+              {included.map((section) => (
+                <ContextSectionView key={section.id} section={section} ctx={ctx} />
+              ))}
+              {payload.map((section) => (
+                <ContextSectionView key={section.id} section={section} ctx={ctx} />
+              ))}
             </div>
           </div>
           <div
@@ -1018,7 +1087,9 @@ export function WhatJanIsUsingPanel({
             aria-labelledby={`${tabsId}-tab-files`}
             hidden={tab !== 'files'}
           >
-            <div className="px-4 pb-1">{attachments.map(renderSection)}</div>
+            <div className="px-4 pb-1">{attachments.map((section) => (
+                <ContextSectionView key={section.id} section={section} ctx={ctx} />
+              ))}</div>
           </div>
         </FrameBody>
       </Frame>

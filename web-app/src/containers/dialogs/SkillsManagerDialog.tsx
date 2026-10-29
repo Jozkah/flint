@@ -1,3 +1,4 @@
+import { useSkillEditor } from '@/hooks/useSkillEditor'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -255,12 +256,9 @@ export default function SkillsManagerDialog({
     skills.map((s) => s.name)
   )
 
-  // `selected` is the skill being edited; '' with isNew means a fresh draft.
-  const [selected, setSelected] = useState<string | null>(null)
-  const [isNew, setIsNew] = useState(false)
-  const [name, setName] = useState('')
-  const [content, setContent] = useState('')
-  const [saving, setSaving] = useState(false)
+  const editor = useSkillEditor()
+  const { selected, isNew, name, setName, content, setContent, saving, editing } =
+    editor
 
   // Hub browse state.
   const [hubMode, setHubMode] = useState(false)
@@ -278,10 +276,7 @@ export default function SkillsManagerDialog({
     try {
       const body = await read(skillName)
       setHubMode(false)
-      setSelected(skillName)
-      setIsNew(false)
-      setName(skillName)
-      setContent(body)
+      editor.show(skillName, body)
     } catch (e) {
       toast.error(String(e))
     }
@@ -289,20 +284,12 @@ export default function SkillsManagerDialog({
 
   const startNew = () => {
     setHubMode(false)
-    setSelected(null)
-    setIsNew(true)
-    setName('')
-    // Prefill the SKILL.md frontmatter so new (folder-form) skills carry a
-    // name/description the catalog can read.
-    setContent('---\nname: \ndescription: \n---\n\n')
+    // Prefilled with the SKILL.md frontmatter so new (folder-form) skills
+    // carry a name/description the catalog can read.
+    editor.startNew()
   }
 
-  const closeEditor = () => {
-    setSelected(null)
-    setIsNew(false)
-    setName('')
-    setContent('')
-  }
+  const closeEditor = editor.close
 
   const openHub = async () => {
     closeEditor()
@@ -334,24 +321,7 @@ export default function SkillsManagerDialog({
     }
   }
 
-  const handleSave = async () => {
-    const trimmed = name.trim()
-    if (!trimmed) {
-      toast.error(t('common:skillNameRequired'))
-      return
-    }
-    setSaving(true)
-    try {
-      await write(trimmed, content)
-      setSelected(trimmed)
-      setIsNew(false)
-      toast.success(t('common:skillSaved'))
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setSaving(false)
-    }
-  }
+  const handleSave = () => editor.save(write)
 
   const handleDelete = async (skillName: string) => {
     try {
@@ -372,7 +342,6 @@ export default function SkillsManagerDialog({
     void setEnabled(storedEnabled(next, allNames))
   }
 
-  const editing = isNew || selected !== null
   // A plugin's skill is shown, never saved: the backend refuses writes to it,
   // and the place to change it is the plugin's own source.
   const selectedMeta = selected ? skills.find((s) => s.name === selected) : undefined

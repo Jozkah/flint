@@ -1821,6 +1821,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     this.pinRunModel(options.messages)
+    // The thread's assistant parameters are read below: a listed summary has
+    // none, so load the full assistant first.
+    if (this.threadId) await useThreads.getState().ensureThreadHydrated?.(this.threadId)
     // A server that refuses images ("At most 0 image(s) may be provided")
     // although the model can see: learned from the refusal, then the same
     // request goes again without them. Once per newly learned limit.

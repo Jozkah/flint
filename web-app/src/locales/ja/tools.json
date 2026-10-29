@@ -39,6 +39,7 @@
     "working": "処理中...",
     "failed": "{{tool}} が失敗しました",
     "used": "{{tool}} を使用",
+    "saveImage": "{{name}} を保存",
     "parameters": "パラメーター",
     "result": "結果",
     "error": "エラー",

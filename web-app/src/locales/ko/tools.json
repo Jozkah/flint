@@ -39,6 +39,7 @@
     "working": "작업 중...",
     "failed": "{{tool}} 실패",
     "used": "{{tool}} 사용",
+    "saveImage": "{{name}} 저장",
     "parameters": "매개변수",
     "result": "결과",
     "error": "오류",

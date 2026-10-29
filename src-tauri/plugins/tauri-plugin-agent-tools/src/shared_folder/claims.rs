@@ -26,7 +26,6 @@ pub const DEFAULT_ALLOW_MINUTES: u32 = 30;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claim {
     pub session: String,
-    pub hash: String,
     pub at: i64,
 }
 
@@ -239,11 +238,11 @@ impl ClaimTable {
 
     /// `me` wrote `file`. Takes (or refreshes) the claim when `claim` is set
     /// (false for an isolated session, which holds none).
-    pub fn record_write(&mut self, me: &str, file: &str, hash: &str, claim: bool, now: i64) {
+    pub fn record_write(&mut self, me: &str, file: &str, claim: bool, now: i64) {
         if claim {
             self.claims.insert(
                 file.to_string(),
-                Claim { session: me.to_string(), hash: hash.to_string(), at: now },
+                Claim { session: me.to_string(), at: now },
             );
         }
         let list = self.recent.entry(me.to_string()).or_default();
@@ -382,14 +381,14 @@ mod tests {
     #[test]
     fn own_claim_never_holds() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert_eq!(t.check_write("a", "f", &name, &live, T0 + 1), Decision::Allow);
     }
 
     #[test]
     fn another_sessions_claim_holds_once_then_a_message_lets_the_retry_through() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert_eq!(
             t.check_write("b", "f", &name, &live, T0 + 1000),
             Decision::Hold { owner_id: "a".into() }
@@ -399,14 +398,14 @@ mod tests {
         t.note_message_sent("b", T0 + 3000);
         assert_eq!(t.check_write("b", "f", &name, &live, T0 + 4000), Decision::Allow);
         // The pass consumed the hold: a fresh claim by a starts over.
-        t.record_write("a", "f", "h2", true, T0 + 5000);
+        t.record_write("a", "f", true, T0 + 5000);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 6000), Decision::Hold { .. }));
     }
 
     #[test]
     fn a_message_sent_before_the_hold_is_not_evidence() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         t.note_message_sent("b", T0);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 10), Decision::Hold { .. }));
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 20), Decision::Hold { .. }));
@@ -415,7 +414,7 @@ mod tests {
     #[test]
     fn a_reread_after_the_hold_counts() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 10), Decision::Hold { .. }));
         t.note_read("b", "f", T0 + 20);
         assert_eq!(t.check_write("b", "f", &name, &live, T0 + 30), Decision::Allow);
@@ -424,7 +423,7 @@ mod tests {
     #[test]
     fn a_read_of_another_file_does_not_count() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 10), Decision::Hold { .. }));
         t.note_read("b", "g", T0 + 20);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 30), Decision::Hold { .. }));
@@ -433,7 +432,7 @@ mod tests {
     #[test]
     fn never_a_permanent_block() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         let mut passed_at = None;
         for i in 0..6 {
             if t.check_write("b", "f", &name, &live, T0 + 100 * (i + 1)) == Decision::Allow {
@@ -448,7 +447,7 @@ mod tests {
     #[test]
     fn a_dead_owner_cannot_wedge_anyone() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert_eq!(t.check_write("b", "f", &name, &dead, T0 + 10), Decision::Allow);
         assert!(t.claim_of("f").is_none());
     }
@@ -456,10 +455,10 @@ mod tests {
     #[test]
     fn an_idle_claim_expires() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + CLAIM_IDLE_MS), Decision::Hold { .. }));
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         assert_eq!(
             t.check_write("b", "f", &name, &live, T0 + CLAIM_IDLE_MS + 1),
             Decision::Allow
@@ -469,19 +468,19 @@ mod tests {
     #[test]
     fn the_owners_next_write_keeps_the_claim_fresh() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
-        t.record_write("a", "f", "h2", true, T0 + CLAIM_IDLE_MS);
+        t.record_write("a", "f", true, T0);
+        t.record_write("a", "f", true, T0 + CLAIM_IDLE_MS);
         assert!(matches!(
             t.check_write("b", "f", &name, &live, T0 + CLAIM_IDLE_MS + 1000),
             Decision::Hold { .. }
         ));
-        assert_eq!(t.claim_of("f").unwrap().hash, "h2");
+        assert_eq!(t.claim_of("f").unwrap().at, T0 + CLAIM_IDLE_MS);
     }
 
     #[test]
     fn run_end_releases_claims_but_keeps_history() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         t.release_session("a");
         assert_eq!(t.check_write("b", "f", &name, &live, T0 + 10), Decision::Allow);
         assert_eq!(t.recent_of("a", RECENT_WINDOW_MS, T0 + 10).len(), 1);
@@ -490,7 +489,7 @@ mod tests {
     #[test]
     fn an_isolated_writer_holds_no_claim() {
         let mut t = ClaimTable::new();
-        t.record_write("iso", "f", "h", false, T0);
+        t.record_write("iso", "f", false, T0);
         assert!(t.claim_of("f").is_none());
         assert_eq!(t.recent_of("iso", RECENT_WINDOW_MS, T0).len(), 1);
     }
@@ -498,11 +497,11 @@ mod tests {
     #[test]
     fn user_override_passes_and_expires() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         let until = t.allow("b", Scope::Edit, 10, T0).unwrap();
         assert_eq!(until, T0 + 600_000);
         assert_eq!(t.check_write("b", "f", &name, &live, T0 + 10), Decision::Allow);
-        t.record_write("a", "f", "h", true, T0 + 700_000);
+        t.record_write("a", "f", true, T0 + 700_000);
         assert!(matches!(t.check_write("b", "f", &name, &live, T0 + 700_001), Decision::Hold { .. }));
         // Withdrawn early.
         t.allow("b", Scope::Edit, 10, T0 + 700_002);
@@ -535,7 +534,7 @@ mod tests {
     #[test]
     fn hold_log_for_the_ui() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         let _ = t.check_write("b", "f", &name, &live, T0 + 10);
         let log = t.holds_of("b", T0 + 20);
         assert_eq!(log.len(), 1);
@@ -548,7 +547,7 @@ mod tests {
     fn recent_edits_are_bounded_windowed_and_newest_first() {
         let mut t = ClaimTable::new();
         for i in 0..30 {
-            t.record_write("a", &format!("f{i}"), "h", true, T0 + i);
+            t.record_write("a", &format!("f{i}"), true, T0 + i);
         }
         let all = t.recent_of("a", RECENT_WINDOW_MS, T0 + 100);
         assert_eq!(all.len(), MAX_RECENT);
@@ -559,7 +558,7 @@ mod tests {
     #[test]
     fn forgetting_a_session_clears_everything() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         t.note_message_sent("a", T0);
         t.allow("a", Scope::All, 5, T0);
         t.forget_session("a");
@@ -582,7 +581,7 @@ mod tests {
     #[test]
     fn sweep_drops_the_expired() {
         let mut t = ClaimTable::new();
-        t.record_write("a", "f", "h", true, T0);
+        t.record_write("a", "f", true, T0);
         t.sweep(T0 + CLAIM_IDLE_MS + 1);
         assert!(t.claim_of("f").is_none());
     }

@@ -1,3 +1,4 @@
+import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 import { toast } from 'sonner'
 import { i18n } from '@/i18n/react-i18next-compat'
@@ -17,6 +18,21 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
 import { archiveEnabled, trackArchiveWork } from '@/lib/archive'
+import {
+  cancelPendingMessageWrites,
+  flushPendingMessageWrites,
+} from '@/lib/messageWriteQueue'
+import { invokeCommand } from '@/lib/backend'
+
+/**
+ * True for an assistant the sidebar list cut to {id, name, model}
+ * (`list_thread_summaries`): its instructions and parameters are not loaded.
+ */
+export const isSummaryAssistant = (assistant: unknown): boolean =>
+  Boolean((assistant as { summary?: unknown } | undefined)?.summary === true)
+
+// One fetch per thread at a time.
+const hydrating = new Map<string, Promise<Thread | undefined>>()
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -59,6 +75,13 @@ type ThreadState = {
   updateThreadTimestamp: (threadId: string) => void
   updateThread: (threadId: string, updates: Partial<Thread>) => void
   deleteAllThreadsByProject: (projectId: string) => void
+  /**
+   * Load the full assistant of a thread listed as a summary, replacing the
+   * cut one in the store. Resolves to the thread (unchanged when it was
+   * already full, or when the fetch failed). Await it before reading the
+   * assistant's instructions or parameters outside React.
+   */
+  ensureThreadHydrated: (threadId: string) => Promise<Thread | undefined>
   searchIndex: Fzf<Thread[]> | null
 }
 
@@ -66,6 +89,8 @@ type ThreadState = {
 // so none of them outlives it (a tool grant for a gone thread would otherwise
 // sit in the persisted record forever).
 const forgetThreadState = (threadId: string) => {
+  // A message update still waiting to be written must not recreate the file.
+  cancelPendingMessageWrites(threadId)
   useAgentMode.getState().removeThread(threadId)
   useChatSessions.getState().removeSession(threadId)
   useAppState.getState().clearThreadState(threadId)
@@ -163,97 +188,19 @@ const deleteThreadBackend = (
   return tracked
 }
 
-export const useThreads = create<ThreadState>()((set, get) => ({
-  threads: {},
-  isLoadingThreads: true,
-  setThreadsLoading: (loading) => set({ isLoadingThreads: loading }),
-  searchIndex: null,
-  setThreads: (threads) => {
-    const threadMap = threads.reduce(
-      (acc: Record<string, Thread>, thread) => {
-        acc[thread.id] = {
-          ...thread,
-          model: thread.model
-            ? {
-                provider:
-                  thread.model?.provider?.replace('llama.cpp', 'llamacpp') ??
-                  'llamacpp',
-                // Cortex migration: take first two parts of the ID (the last is file name which is not needed)
-                id:
-                  thread.model?.provider === 'llama.cpp' ||
-                  thread.model?.provider === 'llamacpp'
-                    ? thread.model?.id
-                        ?.split(':')
-                        .slice(0, 2)
-                        .join(getServiceHub().path().sep())
-                    : thread.model?.id,
-              }
-            : undefined,
-        }
-        return acc
-      },
-      {} as Record<string, Thread>
-    )
-    // The search index is built lazily by the next search.
-    set({ threads: threadMap, searchIndex: null })
-  },
-  getFilteredThreads: (searchTerm: string) => {
-    const { threads, searchIndex } = get()
-
-    // Filter out temporary chat from all operations
-    const filteredThreadsValues = Object.values(threads).filter(
-      (t) => t.id !== TEMPORARY_CHAT_ID
-    )
-
-    // If no search term, return all threads
-    if (!searchTerm) {
-      // return all threads
-      return filteredThreadsValues
-    }
-
-    let currentIndex = searchIndex
-    if (!currentIndex?.find) {
-      currentIndex = new Fzf<Thread[]>(filteredThreadsValues.filter(t => t.title), {
-        selector: (item: Thread) => item.title ?? '',
-      })
-      set({ searchIndex: currentIndex })
-    }
-
-    // Use the index to search and return matching threads
-    const fzfResults = currentIndex.find(searchTerm)
-    return fzfResults.map(
-      (result: { item: Thread; positions: Set<number> }) => {
-        // The index only matches titles; read the live thread so a model or
-        // assistant change made since the index was built shows up.
-        const thread = threads[result.item.id] ?? result.item
-
-        return {
-          ...thread,
-          title: thread.title, // Override title with highlighted version
-        }
-      }
-    )
-  },
-  toggleFavorite: (threadId) => {
-    set((state) => {
-      const thread = state.threads[threadId]
-      // The thread may have been deleted between the click and now.
-      if (!thread) return state
-      const next = {
-        ...thread,
-        isFavorite: !thread.isFavorite,
-        updated: Date.now() / 1000,
-      }
-      persistThread(next, thread)
-      const newThreads = { ...state.threads, [threadId]: next }
-      // The search index holds thread objects; without a rebuild a search
-      // result keeps the old favourite flag and timestamp.
-      return {
-        threads: newThreads,
-        searchIndex: null,
-      }
-    })
-  },
+/** Deleting and unstarring threads (Q2-054: the store in slices). */
+const threadDeletion = (
+  set: StoreApi<ThreadState>['setState'],
+  get: StoreApi<ThreadState>['getState']
+): Pick<
+  ThreadState,
+  'deleteThread'
+  | 'deleteThreadAsync'
+  | 'deleteAllThreads'
+  | 'clearAllThreads'
+  | 'deleteAllThreadsByProject'
+  | 'unstarAllThreads'
+> => ({
   deleteThread: (threadId, permanent) => {
     void get().deleteThreadAsync(threadId, permanent).catch(() => undefined)
   },
@@ -384,6 +331,116 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       return { threads: updatedThreads }
     })
   },
+})
+
+export const useThreads = create<ThreadState>()((set, get) => ({
+  threads: {},
+  isLoadingThreads: true,
+  setThreadsLoading: (loading) => set({ isLoadingThreads: loading }),
+  searchIndex: null,
+  setThreads: (threads) => {
+    const threadMap = threads.reduce(
+      (acc: Record<string, Thread>, thread) => {
+        // A reload of the summaries must not undo a hydration already done.
+        const known = get().threads[thread.id]?.assistants?.[0]
+        const listed = thread.assistants?.[0]
+        const assistants =
+          listed &&
+          known &&
+          isSummaryAssistant(listed) &&
+          !isSummaryAssistant(known) &&
+          known.id === listed.id
+            ? [
+                { ...known, name: listed.name, model: listed.model },
+                ...thread.assistants!.slice(1),
+              ]
+            : thread.assistants
+        acc[thread.id] = {
+          ...thread,
+          assistants,
+          model: thread.model
+            ? {
+                provider:
+                  thread.model?.provider?.replace('llama.cpp', 'llamacpp') ??
+                  'llamacpp',
+                // Cortex migration: take first two parts of the ID (the last is file name which is not needed)
+                id:
+                  thread.model?.provider === 'llama.cpp' ||
+                  thread.model?.provider === 'llamacpp'
+                    ? thread.model?.id
+                        ?.split(':')
+                        .slice(0, 2)
+                        .join(getServiceHub().path().sep())
+                    : thread.model?.id,
+              }
+            : undefined,
+        }
+        return acc
+      },
+      {} as Record<string, Thread>
+    )
+    // The search index is built lazily by the next search.
+    set({ threads: threadMap, searchIndex: null })
+  },
+  getFilteredThreads: (searchTerm: string) => {
+    const { threads, searchIndex } = get()
+
+    // Filter out temporary chat from all operations
+    const filteredThreadsValues = Object.values(threads).filter(
+      (t) => t.id !== TEMPORARY_CHAT_ID
+    )
+
+    // If no search term, return all threads
+    if (!searchTerm) {
+      // return all threads
+      return filteredThreadsValues
+    }
+
+    let currentIndex = searchIndex
+    if (!currentIndex?.find) {
+      currentIndex = new Fzf<Thread[]>(filteredThreadsValues.filter(t => t.title), {
+        selector: (item: Thread) => item.title ?? '',
+      })
+      set({ searchIndex: currentIndex })
+    }
+
+    // Use the index to search and return matching threads
+    const fzfResults = currentIndex.find(searchTerm)
+    return fzfResults.map(
+      (result: { item: Thread; positions: Set<number> }) => {
+        // The index only matches titles; read the live thread so a model or
+        // assistant change made since the index was built shows up.
+        const thread = threads[result.item.id] ?? result.item
+
+        return {
+          ...thread,
+          title: thread.title, // Override title with highlighted version
+        }
+      }
+    )
+  },
+  toggleFavorite: (threadId) => {
+    set((state) => {
+      const thread = state.threads[threadId]
+      // The thread may have been deleted between the click and now.
+      if (!thread) return state
+      const next = {
+        ...thread,
+        isFavorite: !thread.isFavorite,
+        updated: Date.now() / 1000,
+      }
+      persistThread(next, thread)
+      const newThreads = { ...state.threads, [threadId]: next }
+      // The search index holds thread objects; without a rebuild a search
+      // result keeps the old favourite flag and timestamp.
+      return {
+        threads: newThreads,
+        searchIndex: null,
+      }
+    })
+  },
+  ...threadDeletion(set, get),
+
   getFavoriteThreads: () => {
     return Object.values(get().threads).filter((thread) => thread.isFavorite)
   },
@@ -391,7 +448,52 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     return get().threads[threadId]
   },
   setCurrentThreadId: (threadId) => {
-    if (threadId !== get().currentThreadId) set({ currentThreadId: threadId })
+    if (threadId) void get().ensureThreadHydrated(threadId)
+    const previous = get().currentThreadId
+    if (threadId === previous) return
+    // The thread being left gets its pending message writes now.
+    if (previous) void flushPendingMessageWrites(previous)
+    set({ currentThreadId: threadId })
+  },
+  ensureThreadHydrated: (threadId) => {
+    const thread = get().threads[threadId]
+    if (!thread || !isSummaryAssistant(thread.assistants?.[0])) {
+      return Promise.resolve(thread)
+    }
+    const pending = hydrating.get(threadId)
+    if (pending) return pending
+    const run = invokeCommand<Assistant>('get_thread_assistant', { threadId })
+      .then((full) => {
+        const current = get().threads[threadId]
+        const slim = current?.assistants?.[0]
+        if (
+          !current ||
+          !slim ||
+          !isSummaryAssistant(slim) ||
+          !full ||
+          full.id !== slim.id
+        ) {
+          return current
+        }
+        const hydrated: Thread = {
+          ...current,
+          assistants: [
+            { ...full, name: slim.name, model: slim.model } as Assistant,
+            ...current.assistants!.slice(1),
+          ],
+        }
+        set((state) => ({
+          threads: { ...state.threads, [threadId]: hydrated },
+        }))
+        return hydrated
+      })
+      .catch((error) => {
+        console.warn('Could not load the thread assistant:', error)
+        return get().threads[threadId]
+      })
+      .finally(() => hydrating.delete(threadId))
+    hydrating.set(threadId, run)
+    return run
   },
   createThread: async (
     model,

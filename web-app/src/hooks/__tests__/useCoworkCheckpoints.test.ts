@@ -34,7 +34,10 @@ describe('a restore that can be undone', () => {
       bySession: { [SESSION]: chain() },
       head: { [SESSION]: 'sha2' },
     })
-    invoke.mockResolvedValueOnce({ ...captured('safe'), label: 'Before restore' })
+    invoke.mockResolvedValueOnce({
+      ...captured('safe'),
+      label: 'Before restore',
+    })
 
     const safety = await store().captureSafety({
       sessionId: SESSION,
@@ -43,7 +46,10 @@ describe('a restore that can be undone', () => {
       access: 'managed-worktree',
     })
 
-    expect(safety).toMatchObject({ ok: true, entry: { sha: 'safe', safety: true } })
+    expect(safety).toMatchObject({
+      ok: true,
+      entry: { sha: 'safe', safety: true },
+    })
     // Chained onto the newest point, and recorded as a whole-tree capture in a
     // tree Jan owns.
     expect(invoke).toHaveBeenCalledWith(
@@ -100,14 +106,24 @@ describe('a restore that can be undone', () => {
       bySession: {
         [SESSION]: [
           ...chain(),
-          { ...captured('safe'), at: 3, access: 'managed-worktree', safety: true },
+          {
+            ...captured('safe'),
+            at: 3,
+            access: 'managed-worktree',
+            safety: true,
+          },
         ],
       },
       // Restored to sha1: the safety point holds what the restore replaced,
       // which is not an edit someone made afterwards.
       head: { [SESSION]: 'sha1' },
     })
-    invoke.mockResolvedValueOnce({ kind: 'restore', sha: 'sha2', files: [], changedSinceLatest: [] })
+    invoke.mockResolvedValueOnce({
+      kind: 'restore',
+      sha: 'sha2',
+      files: [],
+      changedSinceLatest: [],
+    })
 
     await store().plan(SESSION, 'sha2')
 
@@ -259,7 +275,12 @@ describe('the points a session can go back to', () => {
       bySession: {
         [SESSION]: [
           { ...captured('sha1'), at: 1, access: 'managed-worktree' },
-          { ...captured('safe'), at: 2, access: 'managed-worktree', safety: true },
+          {
+            ...captured('safe'),
+            at: 2,
+            access: 'managed-worktree',
+            safety: true,
+          },
         ],
       },
       head: { [SESSION]: 'sha1' },
@@ -285,7 +306,12 @@ describe('the points a session can go back to', () => {
         [SESSION]: [
           { ...captured('sha1'), at: 1, access: 'managed-worktree' },
           { ...captured('sha2'), at: 2, access: 'managed-worktree' },
-          { ...captured('safe'), at: 3, access: 'managed-worktree', safety: true },
+          {
+            ...captured('safe'),
+            at: 3,
+            access: 'managed-worktree',
+            safety: true,
+          },
         ],
       },
       head: { [SESSION]: 'sha2' },
@@ -331,5 +357,54 @@ describe('the points a session can go back to', () => {
 
     expect(invoke).toHaveBeenCalledTimes(2)
     expect(store().bySession[SESSION]).toBeUndefined()
+  })
+})
+
+// P2F-018: the chain is re-read after the restore's await, and one restore
+// runs per session at a time.
+describe('a restore racing other changes', () => {
+  const chain = () => [
+    { ...captured('sha1'), at: 1, access: 'managed-worktree' },
+    { ...captured('sha2'), at: 2, access: 'managed-worktree' },
+  ]
+
+  it('keeps a point captured while the restore was running', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: { [SESSION]: chain() },
+      head: { [SESSION]: 'sha2' },
+    })
+    let finish: (v?: unknown) => void = () => {}
+    invoke.mockImplementationOnce(() => new Promise((r) => (finish = r)))
+    const restoring = store().restore(SESSION, 'sha1')
+    invoke.mockResolvedValueOnce(captured('late'))
+    await store().capture({
+      sessionId: SESSION,
+      root: TREE,
+      label: 'late',
+      changed: [],
+      destination: 'managed',
+      access: 'managed-worktree',
+    })
+    finish()
+    expect(await restoring).toEqual({ ok: true })
+    expect(store().bySession[SESSION].map((one) => one.sha)).toEqual([
+      'sha1',
+      'late',
+    ])
+  })
+
+  it('refuses a second restore of the same session while one runs', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: { [SESSION]: chain() },
+      head: { [SESSION]: 'sha2' },
+    })
+    let finish: (v?: unknown) => void = () => {}
+    invoke.mockImplementationOnce(() => new Promise((r) => (finish = r)))
+    const first = store().restore(SESSION, 'sha1')
+    const second = await store().restore(SESSION, 'sha2')
+    expect(second.ok).toBe(false)
+    finish()
+    expect(await first).toEqual({ ok: true })
+    expect(invoke).toHaveBeenCalledTimes(1)
   })
 })

@@ -74,6 +74,9 @@ export async function forkThread(
   upToMessageId?: string
 ): Promise<string | null> {
   if (threadId === TEMPORARY_CHAT_ID) return null
+  // The copy takes the source's assistant: load it in full first, a listed
+  // summary has no instructions or parameters.
+  await useThreads.getState().ensureThreadHydrated?.(threadId)
   const threads = useThreads.getState()
   const source = threads.threads[threadId]
   // A chat that never picked a model has nothing for the copy to run on.

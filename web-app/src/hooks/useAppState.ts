@@ -72,6 +72,8 @@ type AppState = {
   updateRagToolNames: (names: string[]) => void
   updateMcpToolNames: (names: string[]) => void
   setAbortController: (threadId: string, controller: AbortController) => void
+  /** Drop a thread's controller, only if it is still `controller`. */
+  clearAbortController: (threadId: string, controller: AbortController) => void
   clearAppState: () => void
   setOutOfContextDialog: (show: boolean) => void
   setCancelToolCall: (cancel: (() => void) | undefined) => void
@@ -183,6 +185,14 @@ export const useAppState = create<AppState>()((set) => ({
         [threadId]: controller,
       },
     }))
+  },
+  clearAbortController: (threadId, controller) => {
+    set((state) => {
+      if (state.abortControllers[threadId] !== controller) return state
+      const next = { ...state.abortControllers }
+      delete next[threadId]
+      return { abortControllers: next }
+    })
   },
   clearAppState: () =>
     set({

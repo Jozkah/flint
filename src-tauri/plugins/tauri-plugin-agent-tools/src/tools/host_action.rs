@@ -97,7 +97,10 @@ impl ServiceOp {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    KillProcess { pid: u32 },
+    /// `expect`: the process name the caller saw for `pid` (from host_query).
+    /// When given, a process now under that number with another name is not
+    /// ended: the number was reused since it was looked up (O06-031).
+    KillProcess { pid: u32, expect: Option<String> },
     Service { op: ServiceOp, name: String },
 }
 
@@ -107,6 +110,7 @@ $id=[int]$env:HA_PID
 if ($id -eq [int]$env:HA_SELF) { throw 'refused: that is Flint itself.' }
 $p=Get-Process -Id $id
 $name=$p.ProcessName.ToLower()
+if ($env:HA_EXPECT -and ($name -ne $env:HA_EXPECT.ToLower())) { throw "refused: process $id is now $($p.ProcessName), not $($env:HA_EXPECT); the number was reused. Look it up again with host_query." }
 if (($env:HA_DENY.Split(',')) -contains $name) { throw "refused: $($p.ProcessName) is a protected system process." }
 Stop-Process -Id $id -Force
 "Ended process $id ($($p.ProcessName))."
@@ -146,7 +150,17 @@ pub fn plan(args: &Value) -> Result<Action, String> {
                 .and_then(Value::as_u64)
                 .filter(|p| (5..=u32::MAX as u64).contains(p))
                 .ok_or("ERROR: kill_process needs 'pid', the process number (a whole number above 4). Find it with host_query processes or ports.")?;
-            Ok(Action::KillProcess { pid: pid as u32 })
+            let expect = match args.get("name") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    v.as_str()
+                        .map(|n| n.trim().trim_end_matches(".exe").trim_end_matches(".EXE"))
+                        .filter(|n| valid_service_name(n))
+                        .ok_or("ERROR: kill_process 'name' is the process name host_query showed for that pid, such as chrome (letters, digits, dots, dashes, underscores).")?
+                        .to_string(),
+                ),
+            };
+            Ok(Action::KillProcess { pid: pid as u32, expect })
         }
         "start_service" | "stop_service" | "restart_service" => {
             let name = args
@@ -175,7 +189,8 @@ pub fn plan(args: &Value) -> Result<Action, String> {
 /// (name, path, status) are added by the app.
 pub fn summary(action: &Action) -> String {
     match action {
-        Action::KillProcess { pid } => format!("End process {pid}"),
+        Action::KillProcess { pid, expect: None } => format!("End process {pid}"),
+        Action::KillProcess { pid, expect: Some(name) } => format!("End process {pid} ({name})"),
         Action::Service { op, name } => format!("{} service {name}", {
             let mut word = op.word().to_string();
             word[..1].make_ascii_uppercase();
@@ -206,9 +221,10 @@ pub async fn host_action(args: &Value) -> String {
     let mut cmd = tokio::process::Command::new("powershell.exe");
     cmd.arg("-NoProfile").arg("-NonInteractive").arg("-Command");
     match &action {
-        Action::KillProcess { pid } => {
+        Action::KillProcess { pid, expect } => {
             cmd.arg(crate::tools::host_read::utf8_script(KILL))
                 .env("HA_PID", pid.to_string())
+                .env("HA_EXPECT", expect.as_deref().unwrap_or(""))
                 .env("HA_SELF", std::process::id().to_string())
                 .env("HA_DENY", PROTECTED_PROCESSES.join(","));
         }
@@ -252,10 +268,19 @@ mod tests {
 
     #[test]
     fn a_process_is_named_by_number_only() {
-        assert_eq!(plan(&json!({ "action": "kill_process", "pid": 4321 })), Ok(Action::KillProcess { pid: 4321 }));
-        for bad in [json!({ "action": "kill_process" }), json!({ "action": "kill_process", "name": "chrome" }), json!({ "action": "kill_process", "pid": 0 }), json!({ "action": "kill_process", "pid": 4 }), json!({ "action": "kill_process", "pid": -1 }), json!({ "action": "kill_process", "pid": "12" }), json!({ "action": "kill_process", "pid": 99999999999u64 })] {
+        assert_eq!(plan(&json!({ "action": "kill_process", "pid": 4321 })), Ok(Action::KillProcess { pid: 4321, expect: None }));
+        for bad in [json!({ "action": "kill_process" }), json!({ "action": "kill_process", "pid": 4321, "name": "a*" }), json!({ "action": "kill_process", "pid": 4321, "name": 3 }), json!({ "action": "kill_process", "name": "chrome" }), json!({ "action": "kill_process", "pid": 0 }), json!({ "action": "kill_process", "pid": 4 }), json!({ "action": "kill_process", "pid": -1 }), json!({ "action": "kill_process", "pid": "12" }), json!({ "action": "kill_process", "pid": 99999999999u64 })] {
             assert!(plan(&bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_kill_can_name_the_process_it_expects() {
+        assert_eq!(
+            plan(&json!({ "action": "kill_process", "pid": 4321, "name": "node.exe" })),
+            Ok(Action::KillProcess { pid: 4321, expect: Some("node".into()) })
+        );
+        assert!(KILL.contains("HA_EXPECT") && KILL.contains("was reused"));
     }
 
     #[test]
@@ -297,7 +322,8 @@ mod tests {
 
     #[test]
     fn the_summary_names_the_action_and_target() {
-        assert_eq!(summary(&Action::KillProcess { pid: 12 }), "End process 12");
+        assert_eq!(summary(&Action::KillProcess { pid: 12, expect: None }), "End process 12");
+        assert_eq!(summary(&Action::KillProcess { pid: 12, expect: Some("node".into()) }), "End process 12 (node)");
         assert_eq!(summary(&Action::Service { op: ServiceOp::Stop, name: "Spooler".into() }), "Stop service Spooler");
     }
 
