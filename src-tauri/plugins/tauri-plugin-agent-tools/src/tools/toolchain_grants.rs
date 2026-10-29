@@ -308,6 +308,7 @@ mod win {
     fn any_package_sid() -> Result<Vec<u8>, String> {
         let mut sid = vec![0u8; SECURITY_MAX_SID_SIZE as usize];
         let mut len = sid.len() as u32;
+        // SAFETY: `sid` is a SECURITY_MAX_SID_SIZE buffer and `len` holds its size, so the call cannot write past it; a null domain SID is allowed for this well-known SID.
         let made = unsafe {
             CreateWellKnownSid(
                 WinBuiltinAnyPackageSid,
@@ -330,6 +331,7 @@ mod win {
         let name = wide(path);
         let mut dacl: *mut ACL = std::ptr::null_mut();
         let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; the out-pointers are locals, and the returned `sd` owns `dacl` and is freed by the caller.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 name.as_ptr(),
@@ -354,6 +356,7 @@ mod win {
 
     fn write_dacl(path: &Path, dacl: *mut ACL) -> Result<(), String> {
         let mut name = wide(path);
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; `dacl` is a valid ACL from GetNamedSecurityInfoW/SetEntriesInAclW owned by the caller.
         let status = unsafe {
             SetNamedSecurityInfoW(
                 name.as_mut_ptr(),
@@ -382,18 +385,28 @@ mod win {
         if dacl.is_null() {
             return out;
         }
+        // SAFETY: `dacl` is non-null (checked above) and points into a security descriptor the caller keeps alive.
         let count = unsafe { (*dacl).AceCount } as u32;
         for i in 0..count {
             let mut ace: *mut c_void = std::ptr::null_mut();
+            // SAFETY: `i` is below the ACL's AceCount and `ace` is a local out-pointer.
             if unsafe { GetAce(dacl, i, &mut ace) } == 0 || ace.is_null() {
                 continue;
             }
+            // SAFETY: GetAce succeeded, so `ace` points at an ACE inside `dacl`, which starts with an ACE_HEADER.
             let header = unsafe { &*(ace as *const ACE_HEADER) };
             if header.AceFlags & INHERITED_ACE != 0 {
                 continue;
             }
+            // Only the basic ACE types (allowed, denied, audit, alarm) share
+            // ACCESS_ALLOWED_ACE's layout; an object ACE has its SID further in.
+            if header.AceType > 3 {
+                continue;
+            }
+            // SAFETY: the type check above limits this to basic ACE types, which all have ACCESS_ALLOWED_ACE's layout inside the ACL.
             let body = unsafe { &*(ace as *const ACCESS_ALLOWED_ACE) };
             let ace_sid = &body.SidStart as *const u32 as PSID;
+            // SAFETY: `ace_sid` points at the SID stored in a basic ACE and `sid` holds a valid SID built by CreateWellKnownSid.
             if unsafe { EqualSid(ace_sid, sid.as_mut_ptr() as PSID) } == 0 {
                 continue;
             }
@@ -431,6 +444,7 @@ mod win {
                 },
             };
             let mut merged: *mut ACL = std::ptr::null_mut();
+            // SAFETY: `access` is fully initialised and its trustee names `sid`, alive for the call; `dacl` is the live DACL and `merged` a local out-pointer.
             let status = unsafe { SetEntriesInAclW(1, &access, dacl, &mut merged) };
             if status != ERROR_SUCCESS {
                 return Err(format!(
@@ -439,9 +453,11 @@ mod win {
                 ));
             }
             let written = write_dacl(folder, merged);
+            // SAFETY: `merged` was allocated by SetEntriesInAclW and is not used after this free.
             unsafe { LocalFree(merged as *mut c_void) };
             written
         })();
+        // SAFETY: `sd` came from GetNamedSecurityInfoW in `read_dacl`; `dacl` points into it and is not used after this free.
         unsafe { LocalFree(sd) };
         result
     }
@@ -456,6 +472,7 @@ mod win {
             else {
                 return Ok(false);
             };
+            // SAFETY: `index` came from `explicit_package_aces` on this same `dacl`, so it is a valid ACE index.
             if unsafe { DeleteAce(dacl, index) } == 0 {
                 return Err(format!(
                     "could not remove the entry: {}",
@@ -464,6 +481,7 @@ mod win {
             }
             write_dacl(folder, dacl).map(|_| true)
         })();
+        // SAFETY: `sd` came from GetNamedSecurityInfoW in `read_dacl`; `dacl` points into it and is not used after this free.
         unsafe { LocalFree(sd) };
         result
     }

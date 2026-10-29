@@ -1880,30 +1880,65 @@ pub async fn preview_change(
     write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
 ) -> Result<Option<String>, AgentToolsError> {
+    let Some(t) =
+        previewable_target(&data_folder, &session_id, &name, &args, write_grant.as_deref(), scope).await?
+    else {
+        return Ok(None);
+    };
+    Ok(handlers::preview_diff(t.tool, &t.args, &t.ctx()).await)
+}
+
+/// The resolved target a `write`/`edit` preview reads: the tool, its args
+/// after the executed call's rebase and repair, and the roots a [`ToolContext`]
+/// is built from.
+struct PreviewTarget {
+    tool: &'static crate::tools::BuiltinTool,
+    args: serde_json::Value,
+    root: PathBuf,
+    scratch: PathBuf,
+    store: PathBuf,
+}
+
+impl PreviewTarget {
+    fn ctx(&self) -> ToolContext<'_> {
+        ToolContext::new(&self.root, &self.store, &[]).with_scratch_root(&self.scratch)
+    }
+}
+
+/// Shared prologue of [`preview_change`] and [`check_write_secrets`]. `None`
+/// when the call is not previewable: another tool, no path, or a target
+/// outside every root the call could write.
+async fn previewable_target(
+    data_folder: &str,
+    session_id: &str,
+    name: &str,
+    args: &serde_json::Value,
+    write_grant: Option<&str>,
+    scope: Option<WorkspaceScope>,
+) -> Result<Option<PreviewTarget>, AgentToolsError> {
     if name != "write" && name != "edit" {
         return Ok(None);
     }
-    let Some(tool) = lookup(&name) else {
+    let Some(tool) = lookup(name) else {
         return Ok(None);
     };
     if args.get("path").and_then(|v| v.as_str()).is_none() {
         return Ok(None);
     }
-    let roots =
-        writable_roots_now(&data_folder, &session_id, write_grant.as_deref(), scope).await?;
+    let roots = writable_roots_now(data_folder, session_id, write_grant, scope).await?;
     let root = roots[0].clone();
-    let scratch = workspace::ensure_scratch_dir(&session_id).await?;
+    let scratch = workspace::ensure_scratch_dir(session_id).await?;
     // Same rebase and repair the executed call gets, so a relative path lands
     // in the granted folder the call will really write to.
     let Some(args) = normalise_preview_args(
-        &data_folder,
-        &session_id,
-        write_grant.as_deref(),
-        &name,
+        data_folder,
+        session_id,
+        write_grant,
+        name,
         tool.path_args,
         &root,
         &scratch,
-        &args,
+        args,
     ) else {
         return Ok(None);
     };
@@ -1916,9 +1951,8 @@ pub async fn preview_change(
     if !crate::undo::within(&judged, &roots) {
         return Ok(None);
     }
-    let store = resolve_store(&data_folder, None);
-    let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
-    Ok(handlers::preview_diff(tool, &args, &ctx).await)
+    let store = resolve_store(data_folder, None);
+    Ok(Some(PreviewTarget { tool, args, root, scratch, store }))
 }
 
 /// One flagged line of a change a `write`/`edit` would make, for the
@@ -1946,44 +1980,12 @@ pub async fn check_write_secrets(
     write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
 ) -> Result<Vec<SecretWriteFinding>, AgentToolsError> {
-    if name != "write" && name != "edit" {
-        return Ok(Vec::new());
-    }
-    let Some(tool) = lookup(&name) else {
-        return Ok(Vec::new());
-    };
-    if args.get("path").and_then(|v| v.as_str()).is_none() {
-        return Ok(Vec::new());
-    }
-    let roots =
-        writable_roots_now(&data_folder, &session_id, write_grant.as_deref(), scope).await?;
-    let root = roots[0].clone();
-    let scratch = workspace::ensure_scratch_dir(&session_id).await?;
-    // Same rebase and repair the executed call gets, so a relative path lands
-    // in the granted folder the call will really write to.
-    let Some(args) = normalise_preview_args(
-        &data_folder,
-        &session_id,
-        write_grant.as_deref(),
-        &name,
-        tool.path_args,
-        &root,
-        &scratch,
-        &args,
-    ) else {
+    let Some(t) =
+        previewable_target(&data_folder, &session_id, &name, &args, write_grant.as_deref(), scope).await?
+    else {
         return Ok(Vec::new());
     };
-    let Some(raw) = args.get("path").and_then(|v| v.as_str()) else {
-        return Ok(Vec::new());
-    };
-    let target = crate::tools::sandbox::resolve_path(&root, Some(&scratch), raw);
-    let judged = crate::tools::sandbox::canonicalize_lenient(&target).unwrap_or_else(|_| target.clone());
-    if !crate::undo::within(&judged, &roots) {
-        return Ok(Vec::new());
-    }
-    let store = resolve_store(&data_folder, None);
-    let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
-    Ok(handlers::secret_findings(tool, &args, &ctx)
+    Ok(handlers::secret_findings(t.tool, &t.args, &t.ctx())
         .await
         .into_iter()
         .map(|f| SecretWriteFinding {

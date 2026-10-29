@@ -292,6 +292,54 @@ fn test_unpack_archive_rejects_unknown_extension() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+fn write_zip(path: &std::path::Path, files: &[(&str, Vec<u8>)]) {
+    let mut zip = zip::ZipWriter::new(File::create(path).unwrap());
+    for (name, body) in files {
+        zip.start_file(*name, zip::write::FileOptions::default()).unwrap();
+        zip.write_all(body).unwrap();
+    }
+    zip.finish().unwrap();
+}
+
+#[test]
+fn an_archive_past_the_caps_leaves_no_output_behind() {
+    let dir = unique_test_dir("unpack-bomb");
+    fs::create_dir_all(&dir).unwrap();
+    let archive_path = dir.join("bomb.ZIP");
+    write_zip(&archive_path, &[("a.bin", vec![0u8; 64 * 1024]), ("b.bin", vec![0u8; 64 * 1024])]);
+    let out = dir.join("out");
+    let err = unpack_archive_capped(&archive_path, &out, 100, 100 * 1024).unwrap_err();
+    assert!(err.contains("more than"), "{err}");
+    assert!(!out.exists(), "a refused unpack must not leave its output");
+    let leftovers: Vec<_> = fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name() != "bomb.ZIP")
+        .collect();
+    assert!(leftovers.is_empty(), "staging left behind: {leftovers:?}");
+    // Too many entries is refused too.
+    assert!(unpack_archive_capped(&archive_path, &out, 1, u64::MAX).is_err());
+    // Within the caps, the upper-case extension unpacks.
+    unpack_archive_capped(&archive_path, &out, 100, 1024 * 1024).unwrap();
+    assert_eq!(fs::read(out.join("b.bin")).unwrap().len(), 64 * 1024);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn unpacking_into_an_existing_folder_merges_and_keeps_other_files() {
+    let dir = unique_test_dir("unpack-merge");
+    let out = dir.join("out");
+    fs::create_dir_all(out.join("build")).unwrap();
+    fs::write(out.join("build/keep.txt"), "kept").unwrap();
+    fs::write(out.join("build/new.txt"), "old").unwrap();
+    let archive_path = dir.join("b.zip");
+    write_zip(&archive_path, &[("build/new.txt", b"new".to_vec())]);
+    unpack_archive(&archive_path, &out).unwrap();
+    assert_eq!(fs::read_to_string(out.join("build/keep.txt")).unwrap(), "kept");
+    assert_eq!(fs::read_to_string(out.join("build/new.txt")).unwrap(), "new");
+    let _ = fs::remove_dir_all(&dir);
+}
+
 fn unique_test_dir(label: &str) -> PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
 

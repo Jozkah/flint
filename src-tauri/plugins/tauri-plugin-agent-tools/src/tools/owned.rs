@@ -48,9 +48,11 @@ pub struct OwnedChild {
     stopped: bool,
 }
 
-// The job handle is only used to close it; Windows handles may be used from any
-// thread.
+// SAFETY: the job handle is only used to close it; Windows handles may be used
+// from any thread.
 unsafe impl Send for OwnedChild {}
+// SAFETY: no `&self` method touches the job handle; closing it takes `&mut self`
+// or `self`.
 unsafe impl Sync for OwnedChild {}
 
 impl OwnedChild {
@@ -67,12 +69,16 @@ impl OwnedChild {
         };
         use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
+        // SAFETY: null security attributes and name are allowed; the returned handle is checked for null below.
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job.is_null() {
+            // SAFETY: GetLastError only reads the calling thread's last-error value.
             return Err(format!("no job object could be created (error {})", unsafe { GetLastError() }));
         }
+        // SAFETY: JOBOBJECT_EXTENDED_LIMIT_INFORMATION is a plain C struct of integers; all-zero is a valid value.
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: `job` is a live job handle; the pointer and size describe `limits`, which outlives the call.
         let limited = unsafe {
             SetInformationJobObject(
                 job,
@@ -82,20 +88,29 @@ impl OwnedChild {
             )
         };
         if limited == 0 {
+            // SAFETY: GetLastError only reads the calling thread's last-error value.
             let error = unsafe { GetLastError() };
+            // SAFETY: `job` was created above, is owned here and is not used after this close.
             unsafe { CloseHandle(job) };
             return Err(format!("the job could not be made to end with its owner (error {error})"));
         }
+        // SAFETY: OpenProcess takes plain values; the returned handle is checked for null below.
         let process = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid) };
         if process.is_null() {
+            // SAFETY: GetLastError only reads the calling thread's last-error value.
             let error = unsafe { GetLastError() };
+            // SAFETY: `job` was created above, is owned here and is not used after this close.
             unsafe { CloseHandle(job) };
             return Err(format!("the process could not be opened (error {error})"));
         }
+        // SAFETY: `job` and `process` are both live handles opened above.
         let assigned = unsafe { AssignProcessToJobObject(job, process) };
+        // SAFETY: GetLastError only reads the calling thread's last-error value.
         let error = unsafe { GetLastError() };
+        // SAFETY: `process` was opened above and is not used after this close.
         unsafe { CloseHandle(process) };
         if assigned == 0 {
+            // SAFETY: `job` was created above, is owned here and is not used after this close.
             unsafe { CloseHandle(job) };
             return Err(format!("the process could not be placed in a job (error {error})"));
         }
@@ -121,6 +136,7 @@ impl OwnedChild {
         self.stopped = true;
         let _ = super::proc::kill_tree(self.pid);
         #[cfg(windows)]
+        // SAFETY: `self.job` is the handle created in `own`; `stopped` makes this the only close.
         unsafe {
             // Closing the last handle to a kill-on-close job terminates anything
             // the tree walk above missed.
@@ -135,6 +151,7 @@ impl OwnedChild {
     pub fn release(mut self) {
         self.stopped = true;
         #[cfg(windows)]
+        // SAFETY: `self.job` is the live handle created in `own`; the zeroed struct is valid and outlives the call, and `stopped` makes this the only close.
         unsafe {
             use windows_sys::Win32::System::JobObjects::{
                 JobObjectExtendedLimitInformation, SetInformationJobObject,

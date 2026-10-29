@@ -3103,6 +3103,28 @@ fn truncate_is_char_safe() {
     assert_eq!(super::super::truncate("short", 20), "short");
 }
 
+/// P2C-014: truncation, clipping and panel padding are measured in terminal
+/// cells, so a CJK or emoji row keeps the panel's right border aligned.
+#[test]
+fn panels_measure_wide_glyphs_in_cells() {
+    use crate::core::cli::tui::render::{boxed_panel, clip_spans};
+    use ratatui::text::{Line, Span};
+    use unicode_width::UnicodeWidthStr;
+    // 日本語 is six cells: five cells leave room for 日本 plus the ellipsis,
+    // four for 日 plus the ellipsis (本 would straddle the limit).
+    assert_eq!(super::super::truncate("日本語", 5), "日本…");
+    assert_eq!(super::super::truncate("日本語", 4), "日…");
+    assert_eq!(super::super::truncate("日本語", 6), "日本語");
+    let clipped = clip_spans(vec![Span::raw("ab日本")], 5);
+    assert_eq!(clipped.iter().map(|s| s.content.width()).sum::<usize>(), 4, "the half-fitting 本 is dropped");
+    let rows = vec![Line::from("日本語"), Line::from("🙂 emoji"), Line::from("ascii")];
+    let widths: std::collections::HashSet<usize> = boxed_panel(rows, 40, "  ")
+        .iter()
+        .map(|l| l.spans.iter().map(|s| s.content.width()).sum())
+        .collect();
+    assert_eq!(widths.len(), 1, "right border misaligned: {widths:?}");
+}
+
 #[test]
 fn mouse_tracking_requests_buttons_wheel_and_held_drags() {
     assert!(MOUSE_TRACK_ON.contains("?1000h"), "buttons and wheel");

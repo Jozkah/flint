@@ -174,9 +174,39 @@ pub fn validate_new_data_folder(
     Ok(())
 }
 
+/// The data folder may not be, or contain, the folder holding the app's own
+/// configuration (`settings.json`): copying the data in would then write
+/// over the configuration, and a later data-folder clean or reset would take
+/// the configuration with it.
+pub fn validate_not_config_dir(
+    config_dir: &std::path::Path,
+    new: &std::path::Path,
+) -> Result<(), String> {
+    let cfg = normalised(config_dir);
+    let tgt = normalised(new);
+    if cfg.starts_with(&tgt) {
+        return Err(
+            "INVALID_TARGET: the new data folder cannot be or contain the app's configuration folder"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_configuration_folder_or_a_parent_of_it_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("jan.ai.app");
+        fs::create_dir_all(&cfg).unwrap();
+        assert!(validate_not_config_dir(&cfg, &cfg).is_err());
+        assert!(validate_not_config_dir(&cfg, dir.path()).is_err());
+        assert!(validate_not_config_dir(&cfg, &cfg.join("data")).is_ok());
+        assert!(validate_not_config_dir(&cfg, &dir.path().join("elsewhere")).is_ok());
+    }
     use std::fs;
     use tempfile::TempDir;
 

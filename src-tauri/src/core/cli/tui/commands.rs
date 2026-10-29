@@ -307,7 +307,7 @@ pub(super) const SLASH_COMMANDS: &[SlashCommand] = &[
     },
     SlashCommand {
         name: "/export",
-        hint: "[markdown|obsidian|json] [path]",
+        hint: "[--force] [markdown|obsidian|json] [path]",
         description: "Write this conversation to a file",
         alias_of: None,
     },
@@ -1940,7 +1940,59 @@ pub(super) fn plan_command(app: &mut App, arg: &str) {
     }
 }
 
-/// `/export [format] [path]` -- write this conversation to a file. The format
+/// What `/export` was asked for.
+#[derive(Debug, PartialEq)]
+pub(super) struct ExportArg {
+    pub(super) format: String,
+    pub(super) path: Option<std::path::PathBuf>,
+    pub(super) force: bool,
+}
+
+/// Parse `/export [--force] [format] [path...]` (CLIB-019). Everything after
+/// the format is the path, spaces included, so `C:\My Docs\notes.md` stays
+/// whole. A lone word that is not a format, has no folder separator or
+/// extension and does not exist is taken for a mistyped format rather than
+/// silently becoming a file of that name.
+pub(super) fn parse_export_arg(arg: &str) -> Result<ExportArg, String> {
+    use super::super::thread_export::Format;
+    let mut rest = arg.trim();
+    let mut force = false;
+    if let Some(after) = rest.strip_prefix("--force") {
+        if after.is_empty() || after.starts_with(char::is_whitespace) {
+            force = true;
+            rest = after.trim_start();
+        }
+    }
+    if let Some(before) = rest.strip_suffix("--force") {
+        if before.is_empty() || before.ends_with(char::is_whitespace) {
+            force = true;
+            rest = before.trim_end();
+        }
+    }
+    let (first, remainder) = match rest.split_once(char::is_whitespace) {
+        Some((w, r)) => (w, r.trim()),
+        None => (rest, ""),
+    };
+    if first.is_empty() {
+        return Ok(ExportArg { format: "markdown".into(), path: None, force });
+    }
+    if Format::parse(first).is_ok() {
+        let path = (!remainder.is_empty()).then(|| std::path::PathBuf::from(remainder));
+        return Ok(ExportArg { format: first.to_string(), path, force });
+    }
+    let looks_like_path = rest.contains(['/', '\\'])
+        || std::path::Path::new(rest).extension().is_some()
+        || rest.contains(char::is_whitespace)
+        || std::path::Path::new(rest).exists();
+    if !looks_like_path {
+        return Err(format!(
+            "unknown export format '{rest}': use markdown, obsidian or json, or give a path with a folder or extension"
+        ));
+    }
+    Ok(ExportArg { format: "markdown".into(), path: Some(std::path::PathBuf::from(rest)), force })
+}
+
+/// `/export [--force] [format] [path]` -- write this conversation to a file. The format
 /// is markdown (default), obsidian or json; the path is a file, or a folder to
 /// get a file named after the conversation, and defaults to the project folder.
 pub(super) fn export_command(app: &mut App, arg: &str) {
@@ -1949,20 +2001,25 @@ pub(super) fn export_command(app: &mut App, arg: &str) {
         app.note("nothing to export yet: send a message first");
         return;
     };
-    let mut words = arg.split_whitespace();
-    let (format, path) = match words.next() {
-        Some(w) if Format::parse(w).is_ok() => (w.to_string(), words.next().map(str::to_string)),
-        Some(w) => ("markdown".to_string(), Some(w.to_string())),
-        None => ("markdown".to_string(), None),
+    let parsed = match parse_export_arg(arg) {
+        Ok(p) => p,
+        Err(e) => {
+            app.note(&e);
+            return;
+        }
     };
-    let format = match Format::parse(&format) {
+    let format = match Format::parse(&parsed.format) {
         Ok(f) => f,
         Err(e) => {
             app.note(&e);
             return;
         }
     };
-    let out = path.map(std::path::PathBuf::from).unwrap_or_else(|| app.project_root.clone());
+    let out = parsed.path.unwrap_or_else(|| app.project_root.clone());
+    if !parsed.force && out.is_file() {
+        app.note(&format!("{} already exists; add --force to overwrite it", out.display()));
+        return;
+    }
     match export_thread(&app.agent_dir, &id, format, false, false, Some(&out)) {
         Ok(Some(written)) => app.note(&format!("exported to {}", written.display())),
         Ok(None) => {}
