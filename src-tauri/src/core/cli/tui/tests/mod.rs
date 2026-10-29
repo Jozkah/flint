@@ -978,7 +978,7 @@ pub(super) fn overflow_error() -> String {
 pub(super) fn app_with_history(n: usize) -> TestApp {
     let mut app = test_app();
     for i in 0..n {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": format!("msg{i}")
         }));
