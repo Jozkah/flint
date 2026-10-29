@@ -22,6 +22,17 @@ import {
   cancelPendingMessageWrites,
   flushPendingMessageWrites,
 } from '@/lib/messageWriteQueue'
+import { invokeCommand } from '@/lib/backend'
+
+/**
+ * True for an assistant the sidebar list cut to {id, name, model}
+ * (`list_thread_summaries`): its instructions and parameters are not loaded.
+ */
+export const isSummaryAssistant = (assistant: unknown): boolean =>
+  Boolean((assistant as { summary?: unknown } | undefined)?.summary === true)
+
+// One fetch per thread at a time.
+const hydrating = new Map<string, Promise<Thread | undefined>>()
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -64,6 +75,13 @@ type ThreadState = {
   updateThreadTimestamp: (threadId: string) => void
   updateThread: (threadId: string, updates: Partial<Thread>) => void
   deleteAllThreadsByProject: (projectId: string) => void
+  /**
+   * Load the full assistant of a thread listed as a summary, replacing the
+   * cut one in the store. Resolves to the thread (unchanged when it was
+   * already full, or when the fetch failed). Await it before reading the
+   * assistant's instructions or parameters outside React.
+   */
+  ensureThreadHydrated: (threadId: string) => Promise<Thread | undefined>
   searchIndex: Fzf<Thread[]> | null
 }
 
@@ -323,8 +341,23 @@ export const useThreads = create<ThreadState>()((set, get) => ({
   setThreads: (threads) => {
     const threadMap = threads.reduce(
       (acc: Record<string, Thread>, thread) => {
+        // A reload of the summaries must not undo a hydration already done.
+        const known = get().threads[thread.id]?.assistants?.[0]
+        const listed = thread.assistants?.[0]
+        const assistants =
+          listed &&
+          known &&
+          isSummaryAssistant(listed) &&
+          !isSummaryAssistant(known) &&
+          known.id === listed.id
+            ? [
+                { ...known, name: listed.name, model: listed.model },
+                ...thread.assistants!.slice(1),
+              ]
+            : thread.assistants
         acc[thread.id] = {
           ...thread,
+          assistants,
           model: thread.model
             ? {
                 provider:
@@ -415,11 +448,52 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     return get().threads[threadId]
   },
   setCurrentThreadId: (threadId) => {
+    if (threadId) void get().ensureThreadHydrated(threadId)
     const previous = get().currentThreadId
     if (threadId === previous) return
     // The thread being left gets its pending message writes now.
     if (previous) void flushPendingMessageWrites(previous)
     set({ currentThreadId: threadId })
+  },
+  ensureThreadHydrated: (threadId) => {
+    const thread = get().threads[threadId]
+    if (!thread || !isSummaryAssistant(thread.assistants?.[0])) {
+      return Promise.resolve(thread)
+    }
+    const pending = hydrating.get(threadId)
+    if (pending) return pending
+    const run = invokeCommand<Assistant>('get_thread_assistant', { threadId })
+      .then((full) => {
+        const current = get().threads[threadId]
+        const slim = current?.assistants?.[0]
+        if (
+          !current ||
+          !slim ||
+          !isSummaryAssistant(slim) ||
+          !full ||
+          full.id !== slim.id
+        ) {
+          return current
+        }
+        const hydrated: Thread = {
+          ...current,
+          assistants: [
+            { ...full, name: slim.name, model: slim.model } as Assistant,
+            ...current.assistants!.slice(1),
+          ],
+        }
+        set((state) => ({
+          threads: { ...state.threads, [threadId]: hydrated },
+        }))
+        return hydrated
+      })
+      .catch((error) => {
+        console.warn('Could not load the thread assistant:', error)
+        return get().threads[threadId]
+      })
+      .finally(() => hydrating.delete(threadId))
+    hydrating.set(threadId, run)
+    return run
   },
   createThread: async (
     model,

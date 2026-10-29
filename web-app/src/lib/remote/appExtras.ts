@@ -123,6 +123,8 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
 /** Chats: details, effort, assistant, forks, versions, compaction and titles. */
 const chatExtras: Pick<RemoteExtras, 'chatDetails' | 'setChatEffort' | 'setChatAssistant' | 'assistants' | 'forkChat' | 'selectVersion' | 'compactChat' | 'regenerateTitle'> = {
   chatDetails: async (id): Promise<ChatDetails | null> => {
+    // The full assistant: the listed one may be a summary without instructions.
+    await useThreads.getState().ensureThreadHydrated?.(id)
     const thread = useThreads.getState().threads[id]
     if (!thread) return null
     const { ref, provider, model } = modelOf(id)

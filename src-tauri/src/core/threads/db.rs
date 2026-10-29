@@ -241,7 +241,19 @@ pub async fn db_modify_thread<R: Runtime>(
     let thread_id = thread
         .get("id")
         .and_then(|v| v.as_str())
-        .ok_or("Missing thread id")?;
+        .ok_or("Missing thread id")?
+        .to_owned();
+
+    // A summary assistant from the sidebar must not overwrite the stored one.
+    let stored: Option<Value> = sqlx::query("SELECT data FROM threads WHERE id = ?1")
+        .bind(&thread_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| format!("Failed to read thread: {}", e))?
+        .and_then(|row| row.try_get::<String, _>("data").ok())
+        .and_then(|data| serde_json::from_str(&data).ok());
+    let mut thread = thread;
+    super::helpers::restore_summary_assistants(&mut thread, stored.as_ref());
 
     let data = serde_json::to_string(&thread).map_err(|e| e.to_string())?;
 

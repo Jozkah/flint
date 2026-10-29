@@ -254,6 +254,8 @@ export class RoutedChatTransport extends CustomChatTransport {
   ) {
     // Before routing reads the model: a new message must not see the last run's.
     this.pinRunModel(options.messages)
+    // Routing reads the thread's assistant: load it in full first.
+    if (this.threadId) await useThreads.getState().ensureThreadHydrated?.(this.threadId)
     await this.routeAssistant(options.messages, options.abortSignal)
     return super.sendMessages(options)
   }

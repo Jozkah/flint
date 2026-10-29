@@ -11,6 +11,11 @@
  */
 export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: readonly string[] }> = [
   {
+    reason:
+      'The sidebar summaries and the per-thread assistant fetch that fills them in; the browser lists full threads over REST and never needs either.',
+    commands: ['get_thread_assistant', 'list_thread_summaries'],
+  },
+  {
     reason: "Local models, engines and the GPU run on the desktop app's own machine.",
     commands: [
       'diffusion_add_custom_model',
