@@ -20,6 +20,7 @@
     "errorNotFound": "Không tìm thấy kho mô hình trên Hugging Face.",
     "errorNoRepo": "Hugging Face không trả về kho này.",
     "repoCopied": "Đã sao chép id kho",
+    "repoCopyFailed": "Không thể sao chép id kho lưu trữ",
     "copyRepo": "Sao chép kho",
     "openOnHf": "Mở trên Hugging Face",
     "gatedBadge": "Bị hạn chế",

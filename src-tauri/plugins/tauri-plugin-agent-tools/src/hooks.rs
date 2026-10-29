@@ -622,7 +622,9 @@ pub fn parse(raw: &str) -> Result<Vec<Hook>, HookError> {
         };
         let tools = match item.get("tools") {
             None => Vec::new(),
-            Some(toml::Value::Array(names)) => names
+            // A non-string entry is refused, not dropped: dropping every entry
+            // would leave an empty list, which matches every tool.
+            Some(toml::Value::Array(names)) if names.iter().all(toml::Value::is_str) => names
                 .iter()
                 .filter_map(toml::Value::as_str)
                 .map(str::to_string)
@@ -772,6 +774,16 @@ pub struct HookInput {
     pub last_assistant_message: Option<String>,
 }
 
+/// Scrub every string leaf of `value` in place.
+fn scrub_strings(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => *s = crate::harness_error::scrub(s),
+        serde_json::Value::Array(items) => items.iter_mut().for_each(scrub_strings),
+        serde_json::Value::Object(map) => map.values_mut().for_each(scrub_strings),
+        _ => {}
+    }
+}
+
 impl HookInput {
     fn to_stdin(&self, event: Event, cwd: &Path) -> String {
         let mut value = serde_json::to_value(self).unwrap_or_default();
@@ -779,14 +791,21 @@ impl HookInput {
             map.insert("hook_event_name".into(), event.as_str().into());
             map.insert("cwd".into(), cwd.to_string_lossy().into_owned().into());
             if let Some(input) = map.get_mut("tool_input") {
+                // A secret in an argument must not reach a hook's stdin.
                 let text = input.to_string();
                 if text.len() > MAX_STDIN_INPUT {
                     let mut cut = MAX_STDIN_INPUT;
                     while !text.is_char_boundary(cut) {
                         cut -= 1;
                     }
-                    *input = format!("{}\n[tool_input truncated]", &text[..cut]).into();
+                    let kept = crate::harness_error::scrub(&text[..cut]);
+                    *input = format!("{kept}\n[tool_input truncated]").into();
+                } else {
+                    scrub_strings(input);
                 }
+            }
+            if let Some(serde_json::Value::String(text)) = map.get_mut("last_assistant_message") {
+                *text = crate::harness_error::scrub(text);
             }
             if let Some(resp) = map.get_mut("tool_response") {
                 if let Some(text) = resp.as_str() {
@@ -1381,6 +1400,28 @@ fn bound(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_non_string_tools_entry_is_refused_not_widened() {
+        let err = parse("[[hook]]
+event = \"pre-tool\"
+command = \"x\"
+tools = [1]
+");
+        assert!(err.unwrap_err().message.contains("tools"), "tools = [1] must not match every tool");
+    }
+
+    #[test]
+    fn secrets_in_tool_input_and_last_message_are_scrubbed() {
+        let input = HookInput {
+            tool_input: serde_json::json!({ "env": ["password=hunter2"] }),
+            last_assistant_message: Some("token=abc123".into()),
+            ..HookInput::default()
+        };
+        let out = input.to_stdin(Event::PreTool, Path::new("."));
+        assert!(!out.contains("hunter2"), "{out}");
+        assert!(!out.contains("abc123"), "{out}");
+    }
+
     use super::*;
 
     fn dir(tag: &str) -> PathBuf {

@@ -381,6 +381,7 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::check_jan_browser_extension_connected,
         // Threads
         core::threads::commands::list_threads,
+        core::threads::commands::list_thread_summaries,
         core::threads::commands::create_thread,
         core::threads::commands::modify_thread,
         core::threads::commands::delete_thread,

@@ -278,4 +278,20 @@ describe('ensureModelForServer', () => {
       expect(deps.modelsService.startModel).not.toHaveBeenCalled()
     })
   })
+
+  it('two concurrent calls start the model once', async () => {
+    const llamacpp = makeProvider('llamacpp', ['model-a'])
+    vi.mocked(useModelProvider.getState).mockReturnValue({
+      providers: [llamacpp],
+      getProviderByName: () => llamacpp,
+    } as any)
+    vi.mocked(getModelToStart).mockReturnValue({ model: 'model-a', provider: llamacpp })
+    const deps = makeDeps()
+    const a = ensureModelForServer(deps)
+    const b = ensureModelForServer(deps)
+    await vi.runAllTimersAsync()
+    const [ra, rb] = await Promise.all([a, b])
+    expect(ra).toEqual(rb)
+    expect(deps.modelsService.startModel).toHaveBeenCalledTimes(1)
+  })
 })

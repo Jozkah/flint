@@ -201,6 +201,11 @@ jobs:
       - name: Locale parity
         run: node scripts/check-locale-parity.mjs
 
+      # No new unwrap/expect/panic in production Rust (STD-002). Existing
+      # sites are the baseline; only a file that gains one fails.
+      - name: Unwrap ratchet
+        run: node scripts/unwrap-ratchet.mjs
+
       - name: Install Tauri dependencies
         run: |
           sudo apt update

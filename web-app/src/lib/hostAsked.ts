@@ -14,6 +14,9 @@ export const HOST_ASKED = new Set([
   'clipboard',
   'computer',
   'open_path',
+  // Persist instructions that later sessions read back (audit O06-030).
+  'skill_write',
+  'memory_write',
 ])
 
 /** winget is asked about only when it changes a program; looking is free. */

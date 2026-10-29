@@ -126,7 +126,8 @@ pub fn append_message_line_if_new(
         .open(path)
         .map_err(|e| e.to_string())?;
     file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-    file.flush().map_err(|e| e.to_string())?;
+    // On disk before the caller reports it saved (DAT-034), like revisions.
+    file.sync_data().map_err(|e| e.to_string())?;
     if let (Some(id), Some(mut set)) = (id, ids) {
         set.insert(id.to_owned());
         cache_put_state(path, TailState { len: settled_len + line.len() as u64, ids: set, revisions });

@@ -9,6 +9,7 @@ import {
   summaryDetails,
   summaryLabel,
   summaryPhrases,
+  failedCommandText,
   toolSentence,
   type TraceSummaryPart,
 } from '../traceSummary'
@@ -157,6 +158,14 @@ describe('summaryDetails', () => {
         tool('bash', { command: 'git push' }, 'approval-requested'),
       ])
     ).toBe('✓ Ran ls\n✗ Ran make\n✗ Edited y.ts')
+  })
+})
+
+describe('failedCommandText', () => {
+  it('is the sentence without its verb', () => {
+    expect(failedCommandText(tool('bash', { command: 'make' }))).toBe('make')
+    expect(failedCommandText(tool('bash', {}))).toBe('a command')
+    expect(failedCommandText(tool('bash', { command: 'ls', description: 'Ran out of space' }))).toBe('Ran out of space')
   })
 })
 

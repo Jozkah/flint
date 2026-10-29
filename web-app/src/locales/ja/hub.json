@@ -20,6 +20,7 @@
     "errorNotFound": "Hugging Face にモデルのリポジトリが見つかりません。",
     "errorNoRepo": "Hugging Face がこのリポジトリを返しませんでした。",
     "repoCopied": "リポジトリ ID をコピーしました",
+    "repoCopyFailed": "リポジトリIDをコピーできませんでした",
     "copyRepo": "リポジトリをコピー",
     "openOnHf": "Hugging Face で開く",
     "gatedBadge": "ゲート付き",

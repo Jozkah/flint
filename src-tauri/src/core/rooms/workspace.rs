@@ -388,10 +388,35 @@ pub fn ensure(
     }
     if let Ok(record) = read_record(&dir, participant_id) {
         if Path::new(&record.path).is_dir() {
-            return Ok(WorkspaceInfo {
-                path: record.path,
-                kind: record.kind,
-            });
+            let same_source = match (Path::new(&record.source).canonicalize(), folder.canonicalize()) {
+                (Ok(a), Ok(b)) => a == b,
+                _ => false,
+            };
+            if same_source {
+                return Ok(WorkspaceInfo {
+                    path: record.path,
+                    kind: record.kind,
+                });
+            }
+            // The room now points at another folder (F4-019). Rebuild from it,
+            // but never drop work the participant has not applied yet.
+            let pending = checked_root(&record)
+                .and_then(|root| {
+                    stage(&root)?;
+                    changed_paths(&root)
+                })
+                .map(|c| !c.is_empty())
+                .unwrap_or(true);
+            if pending {
+                return Err(err(format!(
+                    "this participant's workspace was made from {}; apply or reset its changes before switching folders",
+                    record.source
+                )));
+            }
+            if let (WorkspaceKind::Worktree, Some(repo)) = (record.kind, record.repo.as_ref()) {
+                let _ = git(Path::new(repo), &["worktree", "remove", "--force", &record.root]);
+                let _ = git(Path::new(repo), &["worktree", "prune"]);
+            }
         }
     }
     fs::create_dir_all(&dir).map_err(|e| err(e.to_string()))?;
@@ -953,6 +978,27 @@ mod tests {
         let (_t, rooms, folder) = setup();
         assert!(ensure(&rooms, "room1", "p1", &folder, false).is_err());
         assert!(!rooms.join("room1").join(WORKSPACES_DIR).exists());
+    }
+
+    #[test]
+    fn a_new_room_folder_rebuilds_a_clean_workspace_but_keeps_pending_work() {
+        let (t, rooms, folder) = setup();
+        let other = t.path().join("other");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("b.txt"), "bee\n").unwrap();
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        // Unapplied work: switching folders is refused, the work stays.
+        fs::write(Path::new(&a.path).join("a.txt"), "edited\n").unwrap();
+        assert!(ensure(&rooms, "room1", "p1", &other, true).is_err());
+        assert_eq!(fs::read_to_string(Path::new(&a.path).join("a.txt")).unwrap(), "edited\n");
+        // Once reset, the workspace is rebuilt from the new folder.
+        reset(&rooms, "room1", "p1").unwrap();
+        let b = ensure(&rooms, "room1", "p1", &other, true).unwrap();
+        assert!(Path::new(&b.path).join("b.txt").is_file());
+        assert!(!Path::new(&b.path).join("a.txt").exists());
+        // Same folder again: reused as is.
+        let c = ensure(&rooms, "room1", "p1", &other, true).unwrap();
+        assert_eq!(b.path, c.path);
     }
 
     #[test]

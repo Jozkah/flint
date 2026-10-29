@@ -20,6 +20,7 @@
     "errorNotFound": "在 Hugging Face 上找不到該模型儲存庫。",
     "errorNoRepo": "Hugging Face 沒有回傳此儲存庫。",
     "repoCopied": "已複製儲存庫 ID",
+    "repoCopyFailed": "無法複製儲存庫 ID",
     "copyRepo": "複製儲存庫",
     "openOnHf": "在 Hugging Face 上開啟",
     "gatedBadge": "受限",

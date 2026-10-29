@@ -4080,7 +4080,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            Some(ApprovalSource::Prompted),
         )
         .await
         .unwrap();
@@ -4353,7 +4353,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            Some(ApprovalSource::Prompted),
         )
         .await
         .unwrap();

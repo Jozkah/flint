@@ -235,9 +235,13 @@ pub async fn resolved_block(host: &str, port: u16) -> Option<String> {
     use std::time::Duration;
     let target = if host.contains(':') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
     let answers = tokio::time::timeout(Duration::from_secs(5), tokio::net::lookup_host(target)).await;
-    let Ok(Ok(addrs)) = answers else {
-        // A name that does not resolve loads nothing; the page load reports it.
-        return None;
+    let addrs = match answers {
+        Ok(Ok(addrs)) => addrs,
+        // Fail closed: a lookup that errors or times out here may still
+        // succeed for the webview a moment later (and point inside), so the
+        // load is refused rather than let through unchecked (P3A-037).
+        Ok(Err(e)) => return Some(format!("{host} could not be resolved ({e})")),
+        Err(_) => return Some(format!("{host} did not resolve in time")),
     };
     for addr in addrs {
         if let Some(kind) = addr_block(addr.ip()) {
@@ -668,6 +672,13 @@ mod tests {
         let r = resolved_block("localhost", 80).await;
         assert!(r.is_some(), "{r:?}");
         assert!(r.unwrap().contains("loopback"));
+    }
+
+    #[tokio::test]
+    async fn a_name_that_does_not_resolve_is_refused() {
+        // RFC 6761: `.invalid` never resolves.
+        let r = resolved_block("nothing.invalid", 80).await;
+        assert!(r.is_some(), "a failed lookup must fail closed");
     }
 
     // --- rules ---

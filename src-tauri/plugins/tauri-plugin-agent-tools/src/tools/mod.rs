@@ -1038,6 +1038,8 @@ pub fn is_always_ask(name: &str) -> bool {
     matches!(
         name,
         "host_action" | "host_build" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "clipboard" | "open_path" | "computer"
+            // Persist instructions later sessions read back (audit O06-030).
+            | "skill_write" | "memory_write"
     )
 }
 

@@ -20,6 +20,7 @@
     "errorNotFound": "Dépôt du modèle introuvable sur Hugging Face.",
     "errorNoRepo": "Hugging Face n'a pas renvoyé ce dépôt.",
     "repoCopied": "Identifiant du dépôt copié",
+    "repoCopyFailed": "Impossible de copier l'identifiant du dépôt",
     "copyRepo": "Copier le dépôt",
     "openOnHf": "Ouvrir sur Hugging Face",
     "gatedBadge": "Restreint",

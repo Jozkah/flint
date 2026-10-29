@@ -391,19 +391,23 @@ test('a handler that throws answers the call as an error, and the turn goes on',
 
 })
 
-test('a throwing listener fails the runtime instead of crashing the host', { skip: missingRuntime }, async (t) => {
+test('a throwing listener is logged and the turn carries on', { skip: missingRuntime }, async (t) => {
   const { scratch, runtime } = await connect(t, { replies: [PROSE('one')] })
   const session = await runtime.createSession({ cwd: scratch.projectPath, model: 'stub-model', ephemeral: true })
-  const boom = new Error('listener bug')
+  const warnings = []
+  const onWarning = (w) => warnings.push(w)
+  process.on('warning', onWarning)
+  t.after(() => process.off('warning', onWarning))
+  const later = []
   session.on('*', () => {
-    throw boom
+    throw new Error('listener bug')
   })
+  session.on('*', (e) => later.push(e))
   const turn = await session.prompt('say something')
-  await assert.rejects(turn.result(), (error) => {
-    assert.ok(error instanceof JanRuntimeError)
-    assert.equal(error.cause, boom)
-    return true
-  })
+  await turn.result()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.ok(later.length > 0, 'later listeners still run')
+  assert.ok(warnings.some((w) => w.code === 'JAN_LISTENER_RAISED'))
 })
 
 test('a host tool name with padding is declared trimmed and still runs', { skip: missingRuntime }, async (t) => {
