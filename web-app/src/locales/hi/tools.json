@@ -39,6 +39,7 @@
     "working": "काम हो रहा है...",
     "failed": "{{tool}} विफल रहा",
     "used": "{{tool}} इस्तेमाल किया",
+    "saveImage": "{{name}} सहेजें",
     "parameters": "पैरामीटर",
     "result": "नतीजा",
     "error": "त्रुटि",

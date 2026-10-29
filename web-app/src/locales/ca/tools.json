@@ -39,6 +39,7 @@
     "working": "Treballant...",
     "failed": "{{tool}} ha fallat",
     "used": "Ha usat {{tool}}",
+    "saveImage": "Desa {{name}}",
     "parameters": "Paràmetres",
     "result": "Resultat",
     "error": "Error",

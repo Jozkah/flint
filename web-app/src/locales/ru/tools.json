@@ -39,6 +39,7 @@
     "working": "Работа...",
     "failed": "{{tool}}: ошибка",
     "used": "Использовано {{tool}}",
+    "saveImage": "Сохранить {{name}}",
     "parameters": "Параметры",
     "result": "Результат",
     "error": "Ошибка",
