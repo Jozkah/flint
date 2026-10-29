@@ -2,8 +2,8 @@
  * Tauri MCP Service - Desktop implementation
  */
 
-import { invoke } from '@tauri-apps/api/core'
 import { MCPTool } from '@/types/completion'
+import { invokeCommand } from '@/lib/backend'
 import { DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import type { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
 import type {
@@ -64,7 +64,7 @@ export class TauriMCPService extends DefaultMCPService {
   }
 
   async renameMCPServer(oldName: string, newName: string): Promise<boolean> {
-    await invoke('rename_mcp_server', { oldName, newName })
+    await invokeCommand('rename_mcp_server', { oldName, newName })
     return true
   }
 
@@ -120,7 +120,7 @@ export class TauriMCPService extends DefaultMCPService {
   async getTools(options?: ListToolsOptions): Promise<MCPTool[]> {
     // Plain listings stay on the existing bridge; a listing that may start
     // servers on demand passes the flag through.
-    if (options?.start) return invoke('get_tools', { start: true })
+    if (options?.start) return invokeCommand('get_tools', { start: true })
     // No bridge (a page outside the app): an empty list, not `undefined`.
     return (await window.core?.api?.getTools()) ?? []
   }
@@ -130,17 +130,17 @@ export class TauriMCPService extends DefaultMCPService {
     options?: ListToolsOptions
   ): Promise<MCPTool[]> {
     if (options?.start) {
-      return invoke('get_tools_for_servers', { serverNames, start: true })
+      return invokeCommand('get_tools_for_servers', { serverNames, start: true })
     }
-    return invoke('get_tools_for_servers', { serverNames })
+    return invokeCommand('get_tools_for_servers', { serverNames })
   }
 
   async getServerSummaries(): Promise<ServerSummary[]> {
-    return invoke('get_server_summaries')
+    return invokeCommand('get_server_summaries')
   }
 
   async getServerLog(serverName: string, lines?: number): Promise<string[]> {
-    return invoke('get_mcp_server_log', { name: serverName, lines })
+    return invokeCommand('get_mcp_server_log', { name: serverName, lines })
   }
 
   async getConnectedServers(): Promise<string[]> {
@@ -159,30 +159,30 @@ export class TauriMCPService extends DefaultMCPService {
   }
 
   async trustedServers(): Promise<string[]> {
-    return invoke('mcp_trusted_servers')
+    return invokeCommand('mcp_trusted_servers')
   }
 
   async trustReport(): Promise<MCPTrustReport> {
-    return invoke('mcp_trust_report')
+    return invokeCommand('mcp_trust_report')
   }
 
   async serverFingerprints(): Promise<Record<string, string>> {
-    return invoke('mcp_server_fingerprints')
+    return invokeCommand('mcp_server_fingerprints')
   }
 
   async trustServer(serverName: string, fingerprint: string): Promise<void> {
-    await invoke('mcp_trust_server', { serverName, fingerprint })
+    await invokeCommand('mcp_trust_server', { serverName, fingerprint })
   }
 
   async revokeServer(serverName: string): Promise<void> {
-    await invoke('mcp_revoke_server', { serverName })
+    await invokeCommand('mcp_revoke_server', { serverName })
   }
 
   async forgetServer(
     serverName: string,
     reason: MCPForgetReason
   ): Promise<void> {
-    await invoke('mcp_forget_server', { serverName, reason })
+    await invokeCommand('mcp_forget_server', { serverName, reason })
   }
 
   async allowOnceForServer(
@@ -190,7 +190,7 @@ export class TauriMCPService extends DefaultMCPService {
     toolName: string,
     fingerprint: string
   ): Promise<string> {
-    return invoke('mcp_allow_once', { serverName, toolName, fingerprint })
+    return invokeCommand('mcp_allow_once', { serverName, toolName, fingerprint })
   }
 
   callToolWithCancellation(args: {
@@ -237,41 +237,41 @@ export class TauriMCPService extends DefaultMCPService {
     options?: { start?: boolean }
   ): Promise<void> {
     if (options?.start === false) {
-      return await invoke('activate_mcp_server', { name, config, start: false })
+      return await invokeCommand('activate_mcp_server', { name, config, start: false })
     }
-    return await invoke('activate_mcp_server', { name, config })
+    return await invokeCommand('activate_mcp_server', { name, config })
   }
 
   async startMCPServer(name: string): Promise<void> {
-    await invoke('start_mcp_server_now', { name })
+    await invokeCommand('start_mcp_server_now', { name })
   }
 
   async stopMCPServer(name: string): Promise<void> {
-    await invoke('stop_mcp_server_now', { name })
+    await invokeCommand('stop_mcp_server_now', { name })
   }
 
   async getServerStatuses(): Promise<Record<string, MCPServerStatus>> {
-    return (await invoke('get_mcp_server_statuses')) ?? {}
+    return (await invokeCommand('get_mcp_server_statuses')) ?? {}
   }
 
   async deactivateMCPServer(name: string): Promise<void> {
-    return await invoke('deactivate_mcp_server', { name })
+    return await invokeCommand('deactivate_mcp_server', { name })
   }
 
   async checkJanBrowserExtensionConnected(): Promise<boolean> {
-    return await invoke('check_jan_browser_extension_connected')
+    return await invokeCommand('check_jan_browser_extension_connected')
   }
 
   async getMCPAuthStatus(name: string): Promise<MCPAuthStatus> {
-    return await invoke('get_mcp_auth_status', { name })
+    return await invokeCommand('get_mcp_auth_status', { name })
   }
 
   async authorizeMCPServer(name: string): Promise<void> {
-    return await invoke('authorize_mcp_server', { name })
+    return await invokeCommand('authorize_mcp_server', { name })
   }
 
   async clearMCPAuth(name: string): Promise<boolean> {
-    return await invoke('clear_mcp_auth', { name })
+    return await invokeCommand('clear_mcp_auth', { name })
   }
 }
 

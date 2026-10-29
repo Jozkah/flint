@@ -1,5 +1,5 @@
-import { invoke } from '@/lib/previewInvoke'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { create } from 'zustand'
 import { toast } from 'sonner'
 import * as skillStore from '@/lib/skillStore'
@@ -120,7 +120,7 @@ export function useSkills(folder: string | null) {
     try {
       const [list, en] = await Promise.all([
         skillStore.listSkills(scope),
-        invoke<string[]>('agent_skill_enabled_get', { project: folder }),
+        invokeCommand<string[]>('agent_skill_enabled_get', { project: folder }),
       ])
       setSkills(list)
       setEnabledState(en)
@@ -143,7 +143,7 @@ export function useSkills(folder: string | null) {
       setEnabledState(names)
       enabledRef.current = names
       try {
-        await invoke('agent_skill_enabled_set', {
+        await invokeCommand('agent_skill_enabled_set', {
           project: folder,
           enabled: names,
         })
@@ -194,13 +194,13 @@ export function useSkills(folder: string | null) {
   // Anthropic skill hub. `hubList` is project-independent; `hubImport` downloads
   // into the current folder, then bumps so all instances re-fetch.
   const hubList = useCallback(
-    () => invoke<HubSkill[]>('agent_skill_hub_list'),
+    () => invokeCommand<HubSkill[]>('agent_skill_hub_list'),
     []
   )
 
   const hubImport = useCallback(
     async (name: string) => {
-      await invoke('agent_skill_hub_import', { project: folder, name })
+      await invokeCommand('agent_skill_hub_import', { project: folder, name })
       bump()
     },
     [folder, bump]

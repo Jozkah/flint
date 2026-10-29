@@ -1,9 +1,9 @@
 import type { UploadsService, UploadResult } from './types'
+import { invokeCommand } from '@/lib/backend'
 import type { Attachment } from '@/types/attachment'
 import { ulid } from 'ulidx'
 import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, type RAGExtension, type IngestAttachmentsResult } from '@janhq/core'
-import { invoke } from '@tauri-apps/api/core'
 
 // FileReader rather than File.arrayBuffer: available wherever attachments are
 // read, including the test DOM.
@@ -22,7 +22,7 @@ export class DefaultUploadsService implements UploadsService {
     // The bytes as the raw IPC body: no base64 copy a third larger than the
     // file, no JSON round trip. Header values must be ASCII, so the name is
     // percent-encoded. (`save_attachment_file` still takes base64.)
-    return invoke<string>('save_attachment_bytes', bytes, {
+    return invokeCommand<string>('save_attachment_bytes', bytes, {
       headers: {
         'x-flint-file-name': encodeURIComponent(file.name),
         ...(threadId ? { 'x-flint-thread-id': threadId } : {}),

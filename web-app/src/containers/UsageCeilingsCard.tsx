@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { isServedByFlint } from '@/lib/platform/utils'
-import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -184,7 +184,7 @@ export function UsageCeilingsCard() {
   const refresh = useCallback(async () => {
     if (served) return
     try {
-      const next = await invoke<UsageCeilings>('get_usage_ceilings')
+      const next = await invokeCommand<UsageCeilings>('get_usage_ceilings')
       // A poll must not overwrite a limit the user is in the middle of typing:
       // only the standings move; the fields follow what was last saved.
       if (!loaded.current) {
@@ -223,7 +223,7 @@ export function UsageCeilingsCard() {
     setSaving(true)
     try {
       apply(
-        await invoke<UsageCeilings>('set_usage_ceilings', {
+        await invokeCommand<UsageCeilings>('set_usage_ceilings', {
           tokensPer5h: parsedFiveHour,
           tokensPerWeek: parsedWeek,
         })
