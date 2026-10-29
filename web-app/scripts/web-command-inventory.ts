@@ -3,7 +3,7 @@
  *   node scripts/web-command-inventory.ts           (print the report)
  *   node scripts/web-command-inventory.ts --write (refresh the fixture)
  *
- * Commands: first string argument of invoke/call/rpc/hostInvoke/this.invoke,
+ * Commands: first string argument of invoke/call/rpc/invokeCommand/hostInvoke/this.invoke,
  * plus every `plugin:<name>|<command>` literal, across the web app, the
  * bundled extensions and the plugin guest APIs. Routes: the string patterns in
  * each web_server module's `handles` and in `rpc_route`'s own match.
@@ -44,7 +44,7 @@ function walk(dir: string, out: string[]) {
   }
 }
 
-const CALL = /\b(?:invoke|call|rpc|hostInvoke|this\.invoke)(?:<(?:[^<>()]|<[^<>()]*>)*>)?\(\s*['"`]([A-Za-z][\w:|-]*)['"`]/g
+const CALL = /\b(?:invoke|invokeCommand|call|rpc|hostInvoke|this\.invoke)(?:<(?:[^<>()]|<[^<>()]*>)*>)?\(\s*['"`]([A-Za-z][\w:|-]*)['"`]/g
 const PLUGIN = /['"`](plugin:[a-z][\w-]*\|[a-z][\w]*)['"`]/g
 
 /** The exported function a match sits in, if any (the wrapper pages import). */

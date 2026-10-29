@@ -1,3 +1,4 @@
+import { invokeCommand } from '@/lib/backend'
 /**
  * "Verify in browser": the renderer side of `core::browser_verify`.
  *
@@ -128,12 +129,7 @@ export function parseSteps(text: string): { steps: VerifyStep[]; error: string |
   return { steps, error: null }
 }
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<T>(cmd, args)
-}
-
-export const detectBrowser = () => invoke<BrowserInfo>('browser_verify_detect')
+export const detectBrowser = () => invokeCommand<BrowserInfo>('browser_verify_detect')
 
 /**
  * Name a browser executable to use (e.g. Brave, Opera, Vivaldi, Arc or a
@@ -142,7 +138,7 @@ export const detectBrowser = () => invoke<BrowserInfo>('browser_verify_detect')
  * only, so the next launch of Flint starts from the installed browsers again.
  */
 export const setBrowserPath = (path: string) =>
-  invoke<BrowserInfo>('browser_verify_set_browser', { path })
+  invokeCommand<BrowserInfo>('browser_verify_set_browser', { path })
 
 export const runBrowserVerify = (request: {
   id: string
@@ -150,9 +146,9 @@ export const runBrowserVerify = (request: {
   steps: VerifyStep[]
   timeout_ms?: number
   extra_origins?: string[]
-}) => invoke<VerifyReport>('browser_verify_run', { request })
+}) => invokeCommand<VerifyReport>('browser_verify_run', { request })
 
 export const cancelBrowserVerify = (id: string) =>
-  invoke<boolean>('browser_verify_cancel', { id })
+  invokeCommand<boolean>('browser_verify_cancel', { id })
 
 export const PROGRESS_EVENT = 'browser-verify://progress'
