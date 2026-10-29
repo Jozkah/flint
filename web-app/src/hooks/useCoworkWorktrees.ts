@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
@@ -172,7 +172,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
 
   ensure: async (sessionId, project, dataFolder, options) => {
     try {
-      const record = await invoke<WorktreeRecord>('agent_worktree_ensure', {
+      const record = await invokeCommand<WorktreeRecord>('agent_worktree_ensure', {
         dataFolder,
         sessionId,
         project,
@@ -201,7 +201,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
 
   resume: async (sessionId, project, dataFolder) => {
     try {
-      const record = await invoke<WorktreeRecord | null>('agent_worktree_resume', {
+      const record = await invokeCommand<WorktreeRecord | null>('agent_worktree_resume', {
         dataFolder,
         sessionId,
         project,
@@ -222,7 +222,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     if (!record || record.kind === 'copy')
       return { ok: false, reason: 'no worktree for this session' }
     try {
-      const outcome = await invoke<MergeOutcome>('agent_worktree_merge', {
+      const outcome = await invokeCommand<MergeOutcome>('agent_worktree_merge', {
         dataFolder,
         record,
         target: null,
@@ -237,7 +237,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
   unmerged: async (record) => {
     if (record.kind === 'copy') return []
     try {
-      return await invoke<string[]>('agent_worktree_unmerged', { record })
+      return await invokeCommand<string[]>('agent_worktree_unmerged', { record })
     } catch {
       return ['(could not be listed)']
     }
@@ -247,7 +247,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     const record = get().bySession[sessionId]
     if (!record || record.kind === 'copy') return
     try {
-      const next = await invoke<WorktreeRecord>('agent_worktree_rename', {
+      const next = await invokeCommand<WorktreeRecord>('agent_worktree_rename', {
         dataFolder,
         record,
         sessionId,
@@ -274,7 +274,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     if (!record) return null
     if (record.kind === 'copy') {
       try {
-        await invoke('agent_copy_changes', {
+        await invokeCommand('agent_copy_changes', {
           dataFolder: await dataFolderOf(),
           path: record.path,
         })
@@ -284,7 +284,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
       }
     }
     try {
-      return await invoke<WorktreeState>('agent_worktree_state', { record })
+      return await invokeCommand<WorktreeState>('agent_worktree_state', { record })
     } catch {
       // An unanswerable question is not a healthy worktree.
       return 'corrupt'
@@ -296,12 +296,12 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     if (!record) return { ok: true }
     try {
       if (record.kind === 'copy')
-        await invoke('agent_copy_discard', {
+        await invokeCommand('agent_copy_discard', {
           dataFolder,
           path: record.path,
           force,
         })
-      else await invoke('agent_worktree_discard', { dataFolder, record, force })
+      else await invokeCommand('agent_worktree_discard', { dataFolder, record, force })
     } catch (e) {
       // The refusal names what would have been destroyed, and that is the
       // whole value of it: a caller that only learned "it failed" would have
@@ -320,7 +320,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     const record = get().bySession[sessionId]
     if (!record) return { ok: false, reason: 'no worktree for this session' }
     try {
-      await invoke('agent_worktree_optimize', {
+      await invokeCommand('agent_worktree_optimize', {
         dataFolder,
         record,
         symlinkDirectories: options.symlinkDirectories ?? [],
@@ -337,7 +337,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
   pending: async (record) => {
     if (record.kind === 'copy') {
       try {
-        const changes = await invoke<{ path: string }[]>('agent_copy_changes', {
+        const changes = await invokeCommand<{ path: string }[]>('agent_copy_changes', {
           dataFolder: await dataFolderOf(),
           path: record.path,
         })
@@ -347,7 +347,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
       }
     }
     try {
-      return await invoke<string[]>('agent_worktree_pending', { record })
+      return await invokeCommand<string[]>('agent_worktree_pending', { record })
     } catch {
       // An unanswerable question is not "nothing to lose". Reporting empty
       // here would turn a failed check into a silent forced removal.
@@ -357,7 +357,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
 
   list: async (project, dataFolder) => {
     try {
-      const found = await invoke<
+      const found = await invokeCommand<
         WorktreeRecord[] | { worktrees?: WorktreeRecord[] } | null
       >('agent_worktree_list', {
         dataFolder,

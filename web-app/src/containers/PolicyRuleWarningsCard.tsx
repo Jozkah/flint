@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { AlertTriangle } from 'lucide-react'
 import { Card } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { hasDesktopBackend } from '@/lib/desktopBackend'
-import { invoke } from '@/lib/previewInvoke'
 
 export type RuleWarning = {
   list: string
@@ -34,7 +34,7 @@ export function PolicyRuleWarningsCard() {
   useEffect(() => {
     if (!hasDesktopBackend()) return
     let live = true
-    invoke<ProjectRuleWarnings[]>('agent_policy_rule_warnings', {})
+    invokeCommand<ProjectRuleWarnings[]>('agent_policy_rule_warnings', {})
       .then((rows) => {
         if (live && Array.isArray(rows)) setProjects(rows)
       })

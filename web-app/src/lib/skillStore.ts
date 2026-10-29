@@ -1,4 +1,5 @@
-import { invoke, previewCall } from '@/lib/previewInvoke'
+import { previewCall } from '@/lib/previewInvoke'
+import { invokeCommand } from '@/lib/backend'
 import {
   skillList,
   skillRead,
@@ -59,7 +60,7 @@ const dataFolder = async (): Promise<string> => {
 
 export async function listSkills(scope: SkillScope): Promise<SkillMeta[]> {
   if (scope.kind === 'project') {
-    return await invoke<SkillMeta[]>('agent_skill_list', {
+    return await invokeCommand<SkillMeta[]>('agent_skill_list', {
       project: scope.folder,
     })
   }
@@ -75,7 +76,7 @@ export async function readSkill(
   name: string
 ): Promise<string> {
   if (scope.kind === 'project') {
-    return await invoke<string>('agent_skill_read', {
+    return await invokeCommand<string>('agent_skill_read', {
       project: scope.folder,
       name,
     })
@@ -92,7 +93,7 @@ export async function writeSkill(
   content: string
 ): Promise<void> {
   if (scope.kind === 'project') {
-    await invoke('agent_skill_write', {
+    await invokeCommand('agent_skill_write', {
       project: scope.folder,
       name,
       content,
@@ -109,7 +110,7 @@ export async function deleteSkill(
   name: string
 ): Promise<void> {
   if (scope.kind === 'project') {
-    await invoke('agent_skill_delete', { project: scope.folder, name })
+    await invokeCommand('agent_skill_delete', { project: scope.folder, name })
     notifySkillsChanged()
     return
   }

@@ -76,8 +76,14 @@ export type RemoteActions = {
   ): Promise<PlannedAttachments>
   /** Stages documents in the conversation's composer, read at send time. */
   stageDocs?(id: string, docs: Attachment[]): void
-  /** The desktop composer's busy path: queue, or steer (Ctrl+Enter). */
-  enqueue(queueId: string, text: string, steer: boolean): void
+  /** The desktop composer's busy path: queue, or steer (Ctrl+Enter). A
+   * message with attachments is queued (never steered) and sent with them. */
+  enqueue(
+    queueId: string,
+    text: string,
+    steer: boolean,
+    attachments?: { files: SubmittedFile[]; docs: Attachment[] }
+  ): void
   /** Stop current task, as the desktop's Stop does. Returns whether a run
    * was reached. */
   stop(kind: SessionKind, id: string): Promise<boolean>
@@ -524,7 +530,12 @@ export function createActionHandlers(
   ): Promise<SendResult> => {
     const attaching = att.files.length + att.docs.length > 0
     if (busy() && attaching) {
-      throw new RemoteRpcError('busy', 'Wait for the reply to finish to send files')
+      // Queued with its attachments and sent with them once the run ends.
+      // The uploads are already taken on the desktop; refusing would make the
+      // phone upload them again.
+      a.enqueue(id, text, false, { files: att.files, docs: att.docs })
+      a.open(kind, id)
+      return { kind, id, delivery: 'queued', ...(att.rejected.length ? { rejected: att.rejected } : {}) }
     }
     if (busy()) {
       a.enqueue(id, text, steer)

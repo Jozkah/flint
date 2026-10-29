@@ -106,8 +106,8 @@ vi.mock('@/hooks/useAppState', () => ({
       ),
   },
 }))
-vi.mock('@/lib/previewInvoke', () => ({
-  invoke: vi.fn(async (command: string, args: unknown) => {
+vi.mock('@/lib/backend', () => ({
+  invokeCommand: vi.fn(async (command: string, args: unknown) => {
     if (command === 'run_cc_context_hooks') {
       h.ccCalls.push(args)
       return h.cc

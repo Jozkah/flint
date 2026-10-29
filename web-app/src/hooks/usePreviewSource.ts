@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
+import { convertFileSrc } from '@tauri-apps/api/core'
 
 /** Must match `PREVIEW_SCHEME` in `src-tauri/src/core/preview.rs`. */
 export const PREVIEW_SCHEME = 'flintpreview'
@@ -55,14 +56,14 @@ export function usePreviewSource(
     if (!protocol || !doc) return
     let cancelled = false
     let registered: string | null = null
-    invoke<string>('preview_register', {
+    invokeCommand<string>('preview_register', {
       html: doc,
       allowNetwork,
       allowScripts,
     }).then(
       (id) => {
         if (cancelled) {
-          void invoke('preview_release', { id }).catch(() => {})
+          void invokeCommand('preview_release', { id }).catch(() => {})
           return
         }
         registered = id
@@ -75,7 +76,7 @@ export function usePreviewSource(
     return () => {
       cancelled = true
       if (registered) {
-        void invoke('preview_release', { id: registered }).catch(() => {})
+        void invokeCommand('preview_release', { id: registered }).catch(() => {})
       }
     }
   }, [protocol, doc, allowNetwork, allowScripts])

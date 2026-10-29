@@ -8,6 +8,7 @@
  * makes no request.
  */
 import type { SlashCatalogEntry } from '@/lib/slashCommands'
+import { invokeCommand } from '@/lib/backend'
 import type { DecisionBackend } from '@/lib/decisionBackends'
 import { isWorkProfileId, WORK_PROFILE_IDS } from '@/lib/workProfiles'
 
@@ -67,16 +68,11 @@ type RerankDecision = {
   model: string | null
 }
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<T>(cmd, args)
-}
-
-export const jevStatus = () => invoke<JevStatus>('jev_status')
-export const jevReceipts = () => invoke<JevReceipt[]>('jev_receipts')
+export const jevStatus = () => invokeCommand<JevStatus>('jev_status')
+export const jevReceipts = () => invokeCommand<JevReceipt[]>('jev_receipts')
 /** Write-only: the key is stored in the protected secret store, never read back. */
-export const jevSetKey = (key: string) => invoke<void>('jev_key_set', { key })
-export const jevClearKey = () => invoke<void>('jev_key_clear')
+export const jevSetKey = (key: string) => invokeCommand<void>('jev_key_set', { key })
+export const jevClearKey = () => invokeCommand<void>('jev_key_clear')
 
 /** The skills a suggestion may name: exactly the surface's own `/` catalog. */
 export function eligibleSkills(catalog: SlashCatalogEntry[]) {
@@ -114,7 +110,7 @@ async function jevChooseWorkProfile(
   message: string,
   profiles: { name: string; description: string }[]
 ): Promise<SkillDecision> {
-  const decision = await invoke<RerankDecision>('jev_rerank', {
+  const decision = await invokeCommand<RerankDecision>('jev_rerank', {
     query: message,
     candidates: profiles.map((profile) => ({
       id: profile.name,
@@ -137,7 +133,7 @@ export const jevSuggestSkill = (
 ) =>
   isWorkProfileCatalog(skills)
     ? jevChooseWorkProfile(message, skills)
-    : invoke<SkillDecision>('jev_suggest_skill', { message, skills })
+    : invokeCommand<SkillDecision>('jev_suggest_skill', { message, skills })
 
 /**
  * Whether one of `models` would handle `message` clearly better than `current`.
@@ -148,7 +144,7 @@ export const jevSuggestModel = (
   message: string,
   current: { name: string; description: string },
   models: { name: string; description: string }[]
-) => invoke<SkillDecision>('jev_suggest_model', { message, current, models })
+) => invokeCommand<SkillDecision>('jev_suggest_model', { message, current, models })
 
 /**
  * The work-profile chooser Cowork hands to `chooseWorkProfile`, or undefined
