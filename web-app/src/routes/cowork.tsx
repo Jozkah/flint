@@ -1,7 +1,6 @@
 import { useSecondClock } from '@/lib/sharedClock'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
-import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
@@ -17,8 +16,6 @@ import type { VerifyReport } from '@/lib/browserVerify'
 import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { type WidgetHost } from '@/lib/visualize/hostContext'
-import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
-import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
 import {
   CoworkSplitWorkspace,
@@ -40,8 +37,6 @@ import {
   useState,
 } from 'react'
 import { toast } from 'sonner'
-import { invoke } from '@tauri-apps/api/core'
-import { projectReadFile } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
 import {
   ArrowLeft,
@@ -50,9 +45,6 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
-import { codePathExists } from '@/lib/codePathExists'
-import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
@@ -122,13 +114,6 @@ import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirec
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import {
-  buildOriginLedger,
-  destinationOfOrigin,
-  summarizeRun,
-  type JanFileCall,
-  type RunOrigins,
-} from '@/lib/coworkOrigins'
-import {
   authorityMayChange,
   useCoworkActiveWork,
   type WorkKind,
@@ -161,12 +146,6 @@ import {
   useCoworkView,
   type CoworkRail,
 } from '@/hooks/useCoworkView'
-import {
-  isChange,
-  type FileActivityEvent,
-  type FileOrigin,
-} from '@/lib/fileActivity'
-import { loadGitStatus } from '@/lib/coworkGit'
 import { awaitsModel } from '@/lib/agentActivity'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { configuredContextTokens } from '@/lib/coworkContextWindow'
@@ -182,7 +161,6 @@ import {
   planSandboxApply,
   } from '@/lib/coworkSandboxApply'
 import { probeSandboxFile } from '@/lib/coworkApplyAll'
-import { absoluteChangePath, shortToolPath } from '@/lib/codePathResolve'
 import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
 import {
   NO_USER_EDITS,
@@ -193,24 +171,10 @@ import { CoworkBackgroundTasksPanel } from '@/containers/CoworkBackgroundTasksPa
 import { ReviewChangesContext } from '@/containers/TaskCheckoutLink'
 import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
-import {
-  codeRefToken,
-  emptyCodePanelState,
-  artifactTab,
-  openTabAt,
-  projectKeyOf,
-  projectTab,
-  sandboxTab,
-  shouldOpenInCode,
-  relativeToRoot,
-  type CodeRef,
-  type CodeTab,
-} from '@/lib/coworkCode'
+import { type CodeRef } from '@/lib/coworkCode'
 import {
   extraFoldersOf,
-  isInsideAnyFolder,
   mainFolderReadOnlyOf,
-  sameFolder,
   writableExtraFoldersOf,
 } from '@/lib/coworkFolders'
 import {
@@ -249,22 +213,13 @@ import {
   accessOf,
   accessShortLabelKey,
   effectiveAccess,
-  runCarries,
   type AccessMode,
 } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
-  COMPATIBILITY_INSTRUCTION_FILES,
-  LEGACY_NATIVE_INSTRUCTION_FILE,
-  MAX_INSTRUCTION_BYTES,
-  NATIVE_INSTRUCTION_FILE,
-  bindingKey,
-  classifyInstruction,
-  isMissingFileError,
   resolveSkills,
   type ContextAccounting,
   type InstructionFile,
-  type InstructionProbe,
 } from '@/lib/coworkReadiness'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import {
@@ -276,7 +231,7 @@ import {
   useCoworkWorktrees,
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
-import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
+import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
@@ -294,22 +249,15 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 import {
   allowedRemoteModes,
   isRemoteSession,
-  modeToAccess,
   serverPageMode,
   setRemoteMode,
-  startRemoteSession,
   useRemoteCowork,
   useRunnerInfo,
 } from '@/lib/remoteCowork'
 import { setRunModel } from '@/lib/remoteRunner'
 import { isServerTransport } from '@/lib/serverTransportFlag'
-import { pickServerFolder } from '@/lib/serverFolderPicker'
-import {
-  listSubagents,
-  type SubagentDefinition,
-} from '@/lib/coworkSubagentRegistry'
-import { errorText } from '@/lib/errorText'
-import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
+import { type SubagentDefinition } from '@/lib/coworkSubagentRegistry'
+import { type LoadedTooling } from '@/lib/projectTooling'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { runStatus } from '@/lib/runStatus'
@@ -323,6 +271,9 @@ import {
 import { CoworkRunChip } from '@/containers/CoworkRunChip'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { useCoworkFolderActions } from '@/hooks/cowork/useCoworkFolderActions'
+import { useCoworkFolderScans } from '@/hooks/cowork/useCoworkFolderScans'
+import { useCoworkPathActions } from '@/hooks/cowork/useCoworkPathActions'
 
 
 export const Route = createFileRoute(route.cowork)({
@@ -348,8 +299,6 @@ const NO_LIVE_TURNS: CoworkTurn[] = []
 /** Below 768px Cowork shows one of these at a time. */
 const PHONE_VIEWS: readonly CoworkPhoneView[] = ['content', 'output', 'details']
 
-/** Shared so a rejected Tauri command never renders as `[object Object]`. */
-const messageOf = errorText
 
 
 const NO_BROWSER_REPORTS: VerifyReport[] = []
@@ -957,304 +906,36 @@ export function CoworkPage() {
       useCoworkView.getState().setRail(sessionIdForView, next),
     [sessionIdForView]
   )
-  // The last artifact previewed this session, so re-opening Preview from the
-  // rail toolbar returns to it instead of an empty pane.
-  const [lastPreviewPath, setLastPreviewPath] = useState<string | undefined>(
-    undefined
-  )
-  const [lastPreviewRoot, setLastPreviewRoot] = useState<string | undefined>(undefined)
-  /** Open a tab in the Code panel. `sandbox` marks paths under the session
-   * workspace (agent artifacts) rather than the attached project. */
-  const openCode = useCallback(
-    (tab: CodeTab, options: CodeOpenOptions = {}) => {
-      const sid = ensureCurrentSession(paneSessionIdRef.current)
-      const store = useCoworkSessions.getState()
-      const current = store.sessions.find((s) => s.id === sid)
-      store.setCodePanel(
-        sid,
-        openTabAt(current?.codePanel ?? emptyCodePanelState(), tab, options)
-      )
-      // In the background the tab is queued without leaving what is on screen.
-      if (!options.background) setRail({ kind: 'code' })
-    },
-    [setRail]
-  )
-
-  /**
-   * Open a path a tool acted on, from its widget in the transcript.
-   *
-   * The path comes from the tool call's own `path` argument — structured
-   * data, never text parsed out of the model's prose. It still has to land in
-   * an allowed root: paths under the attached project open as project paths,
-   * everything else is treated as the session sandbox, which is the only
-   * other place the agent can write. Non-source files are left alone rather
-   * than opened as code.
-   */
-  // With a live grant the backend rebases relative paths onto the write
-  // root; without one they are the sandbox's.
-  const relativeIsProject = !!runCarries(effective, {
+  const {
+    originOfPath,
+    recordOrigins,
+    setLastPreviewPath,
+    setLastPreviewRoot,
+    openToolPath,
+    selectRail,
+    checkToolPath,
+    toolPathExists,
+    openToolDiff,
+    displayToolPath,
+    pathLinkRoots,
+    showPreview,
+    openSummaryPath,
+    resolveToolPath,
+    relativeIsProject,
+  } = useCoworkPathActions({
+    paneSessionIdRef,
+    setRail,
+    effective,
     folder,
-    grantId: liveGrant?.grantId ?? null,
-  }).writeGrant
-  const resolveToolPath = useCallback(
-    (path: string) =>
-      resolveCodePath(path, {
-        treeRoot,
-        workspacePath,
-        extraFolders,
-        relativeIsProject,
-        hasSession: !!session?.id,
-      }),
-    [treeRoot, workspacePath, extraFolders, relativeIsProject, session?.id]
-  )
-  const openToolPath = useCallback(
-    (path: string, options?: CodeOpenOptions) => {
-      if (!shouldOpenInCode(path) && previewKindFor(path) !== 'file') {
-        const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(path)
-        const root = absolute
-          ? [treeRoot, workspacePath, ...extraFolders].find(
-              (candidate) => candidate && resolveInRoot(candidate, path)
-            )
-          : relativeIsProject ? treeRoot : workspacePath
-        if (root) {
-          setLastPreviewPath(path)
-          setLastPreviewRoot(root)
-          setRail({ kind: 'preview', path, root })
-        }
-        return
-      }
-      const resolved = resolveToolPath(path)
-      // The tree the Code panel browses, so the tab is not born detached in a
-      // managed session.
-      const projectKey = projectKeyOf(treeRoot)
-      if (resolved.kind === 'project' && projectKey) {
-        openCode(projectTab(resolved.rel, projectKey), options)
-      } else if (resolved.kind === 'sandbox' && session?.id) {
-        openCode(sandboxTab(resolved.rel, session.id), options)
-      }
-    },
-    [resolveToolPath, treeRoot, workspacePath, extraFolders, relativeIsProject, openCode, session?.id, setRail]
-  )
-  /** Why a path cannot be opened, for its tooltip. */
-  const checkToolPath = useCallback(
-    (path: string): CodePathCheck => {
-      if (previewKindFor(path) !== 'file') {
-        const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(path)
-        const root = absolute
-          ? [treeRoot, workspacePath, ...extraFolders].find(
-              (candidate) => candidate && resolveInRoot(candidate, path)
-            )
-          : relativeIsProject ? treeRoot : workspacePath
-        return root ? { ok: true } : { ok: false, reason: t('common:preview.outside') }
-      }
-      const resolved = resolveToolPath(path)
-      return resolved.kind === 'unresolved'
-        ? {
-            ok: false,
-            reason: t(`common:codePanel.unresolved.${resolved.reason}`),
-          }
-        : { ok: true }
-    },
-    [resolveToolPath, treeRoot, workspacePath, extraFolders, relativeIsProject, t]
-  )
-  /** Does a clicked path's file exist? Only a definite "not found" is false. */
-  const toolPathExists = useCallback(
-    (path: string) =>
-      codePathExists(resolveToolPath(path), {
-        project: async (rel) => {
-          if (!treeRoot) return
-          const dataFolder = await serviceHub.app().getJanDataFolder()
-          if (!dataFolder) return
-          await projectReadFile(dataFolder, treeRoot, rel, false)
-        },
-        sandboxMissing: async (rel) => {
-          const abs = workspacePath ? resolveInRoot(workspacePath, rel) : null
-          if (!abs) return false
-          const read = await readTextBounded(await toAssetUrl(abs), {
-            maxBytes: 4096,
-          })
-          return read.status === 'missing'
-        },
-      }),
-    [resolveToolPath, treeRoot, workspacePath, serviceHub]
-  )
-  /**
-   * A tool path as shown: relative to the sandbox or the attached folder it
-   * is in, else just its name. The full path stays in the tooltip.
-   */
-  const displayToolPath = useCallback(
-    (path: string) =>
-      // Roots in order, for paths the Code panel cannot open (non-source).
-      shortToolPath(resolveToolPath(path), path, [
-        ...(workspacePath ? [workspacePath] : []),
-        ...(treeRoot ? [treeRoot] : []),
-        ...extraFolders,
-      ]),
-    [resolveToolPath, extraFolders, workspacePath, treeRoot]
-  )
-  // The folders a path in a reply may open from: sandbox, project tree,
-  // attached folder and extras.
-  const pathLinkRoots = useMemo(
-    () =>
-      [workspacePath, treeRoot, folder, ...extraFolders].filter(
-        (r): r is string => typeof r === 'string' && r.length > 0
-      ),
-    [workspacePath, treeRoot, folder, extraFolders]
-  )
-  /**
-   * A path in the run summary: the Code panel or preview where one can show
-   * it, otherwise the system's default app, so no listed file is a dead label.
-   */
-  const openSummaryPath = useCallback(
-    (path: string) => {
-      if (shouldOpenInCode(path) || previewKindFor(path) !== 'file') {
-        openToolPath(path)
-        return
-      }
-      const absolute = absoluteChangePath(path, 'session', {
-        treeRoot,
-        workspacePath,
-        resolved: resolveToolPath(path),
-      })
-      if (!absolute) return
-      void serviceHub
-        .opener()
-        .openPath(absolute, pathLinkRoots)
-        .catch((e) => toast.error(errorText(e)))
-    },
-    [openToolPath, treeRoot, workspacePath, resolveToolPath, serviceHub, pathLinkRoots]
-  )
-  /** Show a changed file in Changes. */
-  const openToolDiff = useCallback(
-    (path: string) => setRail({ kind: 'diff', focusPath: path }),
-    [setRail]
-  )
-
-  /**
-   * Which root a path belongs to. The activity record needs this to separate
-   * the read-only project from the sandbox the agent writes into.
-   */
-  const originOfPath = useCallback(
-    (path: string): FileOrigin => {
-      // Against the tree the run works in, not the attached folder: in a
-      // managed session every project path is under the worktree, and matching
-      // on the folder would file all of them as external.
-      if (treeRoot && relativeToRoot(treeRoot, path) !== path) return 'project'
-      if (workspacePath && relativeToRoot(workspacePath, path) !== path)
-        return 'sandbox'
-      // Every attached folder is inside, not only the primary one.
-      if (isInsideAnyFolder(extraFolders, path)) return 'project'
-      return 'external'
-    },
-    [treeRoot, workspacePath, extraFolders]
-  )
-
-  /**
-   * Write the run's origin ledger, from evidence rather than from the model.
-   *
-   * Successful Flint file calls are the only thing claimed outright. Everything
-   * else found differing at the end is either proved pre-existing by the
-   * baseline, reported as merely observed during the run, or — with no usable
-   * baseline — reported as unknown. A file being inside the repository is
-   * never itself treated as evidence of anything.
-   */
-  const recordOrigins = useCallback(
-    async (input: {
-      sessionId: string
-      origins: RunOrigins
-      events: readonly FileActivityEvent[]
-    }) => {
-      const { sessionId, origins, events } = input
-      const { baseline, binding, destination } = origins
-      // Where the changes are, which is not always where the session is
-      // attached. Falling back to the folder keeps a ledger recorded before
-      // this distinction existed readable.
-      const tree = origins.tree ?? binding.folder
-
-      const janCalls: JanFileCall[] = events
-        .filter((event) => isChange(event.operation) && event.ok)
-        .map((event) => ({
-          // Compared against Git's repo-relative paths, so a project path has
-          // to be expressed the same way before the two can be matched.
-          path:
-            event.origin === 'project' && tree
-              ? relativeToRoot(tree, event.path)
-              : event.path,
-          // An extra folder is attached directly, never worktreed, so a
-          // write there landed in the user's own folder even in a managed run.
-          destination:
-            destination === 'managed' &&
-            isInsideAnyFolder(extraFolders, event.path)
-              ? 'repository'
-              : destinationOfOrigin(event.origin, destination),
-          ok: true,
-        }))
-
-      let endDifferences: string[] = []
-      if (tree) {
-        try {
-          const status = await loadGitStatus(tree, 'all')
-          endDifferences = (status?.files ?? []).map((file) => file.path)
-        } catch {
-          // Nothing found is nothing claimed: a failed read leaves the ledger
-          // with Flint's own calls and no assertions about anything else.
-        }
-      }
-
-      const entries = buildOriginLedger({
-        baseline,
-        janCalls,
-        endDifferences,
-        destinationOf: (path) =>
-          destinationOfOrigin(
-            originOfPath(tree ? `${tree}/${path}` : path),
-            destination
-          ),
-      })
-      useCoworkOrigins.getState().record(sessionId, {
-        entries,
-        summary: summarizeRun(entries, baseline, origins),
-        at: Date.now(),
-      })
-    },
-    [originOfPath, extraFolders]
-  )
-
-  // Source artifacts open as code, not as a plain-text preview dump.
-  const showPreview = useCallback(
-    (path: string) => {
-      // An artifact is something the agent generated: it lives in the session
-      // workspace, never in the user's project.
-      // An artifact is something the agent generated: it lives in this
-      // session's workspace, never in the user's project.
-      if (shouldOpenInCode(path) && session?.id) {
-        openCode(artifactTab(path, session.id))
-      } else {
-        setLastPreviewPath(path)
-        setLastPreviewRoot(workspacePath ?? undefined)
-        setRail({ kind: 'preview', path, root: workspacePath ?? undefined })
-      }
-    },
-    [openCode, session?.id, setRail, workspacePath]
-  )
-
-  // The rail toolbar's four mutually-exclusive modes map onto the rail state
-  // (Changes is the diff panel, Activity the tasks panel). Selecting the active
-  // mode again closes it, so the toolbar toggles. Code and Preview open into
-  // their own empty states, so neither is ever disabled.
-  const selectRail = useCallback(
-    (mode: RailMode) => {
-      if (mode === 'code') ensureCurrentSession(paneSessionIdRef.current)
-      const kind =
-        mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
-      if (rail?.kind === kind) {
-        setRail(null)
-        return
-      }
-      setRail(kind === 'preview' ? { kind, path: lastPreviewPath, root: lastPreviewRoot } : { kind })
-    },
-    [lastPreviewPath, lastPreviewRoot, rail?.kind, setRail]
-  )
+    liveGrant,
+    treeRoot,
+    workspacePath,
+    extraFolders,
+    session,
+    t,
+    serviceHub,
+    rail,
+  })
   /** The toolbar's semantic mode for the currently open rail, or null. */
   const activeRail: RailMode | null =
     rail?.kind === 'diff'
@@ -1270,361 +951,39 @@ export function CoworkPage() {
     handleScroll: handleReasoningScroll,
     forceScrollToBottom: forceScrollReasoningToBottom,
   } = useAutoScroll()
-
-  // Saved definitions name the `task` tool's options. Loaded once: the list is
-  // only advertised, so a definition added mid-session applies at the next run.
-  useEffect(() => {
-    let alive = true
-    void listSubagents().then((defs) => {
-      if (alive) setSubagentDefs(defs)
-    })
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!folder) {
-      setGitBranch(null)
-      return
-    }
-    // Like the tooling effect below: a slow answer for a folder no longer
-    // attached must not name the branch of the one that is.
-    let alive = true
-    invoke<string | null>('agent_git_branch', { project: folder })
-      .then((branch) => {
-        if (alive) setGitBranch(branch)
-      })
-      .catch(() => {
-        if (alive) setGitBranch(null)
-      })
-    return () => {
-      alive = false
-    }
-  }, [folder])
-
-  // Read once per attached folder. A failure is a typed state, never a throw,
-  // and never stops the folder from being used.
-  useEffect(() => {
-    if (!folder) {
-      setTooling(null)
-      return
-    }
-    let alive = true
-    setTooling({ folder, loaded: null })
-    void loadProjectTooling(folder).then((loaded) => {
-      if (alive) setTooling({ folder, loaded })
-    })
-    return () => {
-      alive = false
-    }
-  }, [folder])
-
-  // Every instruction file at the attached root, in one pass.
-  //
-  // `JAN.md` is Flint's own and the only one whose text reaches the model.
-  // `AGENTS.md` and `CLAUDE.md` are recognised and reported so a repository
-  // written for another harness does not look instruction-less — detected is
-  // not the same as ingested, and nothing here reads them into the prompt.
-  //
-  // Read through the same root-contained reader the code panel uses, so this
-  // cannot become a way to pull in a file from outside the attached folder.
-  useEffect(() => {
-    if (!folder) {
-      setInstructionFiles([])
-      setProjectInstructions(null)
-      return
-    }
-    // The binding this read belongs to. A result for the previous folder must
-    // not land on the current one, so it is compared before anything is set.
-    const startedFor = bindingKey({ sessionId: sessionIdRef.current, folder })
-    let alive = true
-    void (async () => {
-      const probe = async (
-        name: string,
-        role: 'native' | 'compatibility'
-      ): Promise<InstructionProbe> => {
-        try {
-          const dataFolder = await serviceHub.app().getJanDataFolder()
-          if (!dataFolder)
-            return { name, role, error: 'data folder unavailable' }
-          const file = await projectReadFile(dataFolder, folder, name, false)
-          if (file.binary) return { name, role, error: 'not text' }
-          if (file.oversized) {
-            return {
-              name,
-              role,
-              content: 'x'.repeat(MAX_INSTRUCTION_BYTES + 1),
-            }
-          }
-          return { name, role, content: file.content }
-        } catch (e) {
-          const message = messageOf(e)
-          // Absent is the ordinary case and is not a failure.
-          return isMissingFileError(message)
-            ? { name, role }
-            : { name, role, error: message }
-        }
-      }
-
-      // FLINT.md is the native instructions file; JAN.md is the legacy name a
-      // project created before the rename still uses. Prefer FLINT.md; fall
-      // back to JAN.md only when FLINT.md is simply absent (a FLINT.md that
-      // exists but cannot be read is surfaced as-is, not masked by a legacy
-      // file). FLINT.md wins when both exist.
-      const flintProbe = await probe(NATIVE_INSTRUCTION_FILE, 'native')
-      let nativeProbe = flintProbe
-      if (flintProbe.content == null && !flintProbe.error) {
-        const legacy = await probe(LEGACY_NATIVE_INSTRUCTION_FILE, 'native')
-        if (legacy.content != null || legacy.error) nativeProbe = legacy
-      }
-      const probes = [
-        nativeProbe,
-        ...(await Promise.all(
-          COMPATIBILITY_INSTRUCTION_FILES.map((name) =>
-            probe(name, 'compatibility')
-          )
-        )),
-      ]
-      if (!alive) return
-      if (
-        bindingKey({ sessionId: sessionIdRef.current, folder }) !== startedFor
-      ) {
-        return
-      }
-      const files = probes.map(classifyInstruction)
-      setInstructionFiles(files)
-      // The prompt gets exactly what the card calls active, from the same
-      // list, so the two cannot describe different runs.
-      const native = files.find((file) => file.role === 'native' && file.active)
-      setProjectInstructions(native ? (nativeProbe.content ?? null) : null)
-    })()
-    return () => {
-      alive = false
-    }
-  }, [folder, serviceHub, instructionsVersion])
+  useCoworkFolderScans({
+    setSubagentDefs,
+    folder,
+    setGitBranch,
+    setTooling,
+    setInstructionFiles,
+    setProjectInstructions,
+    sessionIdRef,
+    serviceHub,
+    instructionsVersion,
+  })
 
   // Selected-code references staged by “Add to chat”: the visible prompt gets
   // the concise `@path:start-end` token, and the refs wait here until submit,
   // when the model's copy of the message is expanded with the selected text.
   const pendingRefs = useRef<CodeRef[]>([])
-  // Cleared when the session changes *or* when the attached project does: a
-  // reference carries the bytes and the path of the project it was taken
-  // from, and sending it after a switch would label another project's source
-  // as this one's.
-  useEffect(() => {
-    pendingRefs.current = []
-  }, [session?.id, folder])
-
-  const addCodeToChat = useCallback((ref: CodeRef) => {
-    pendingRefs.current = [
-      ...pendingRefs.current.filter(
-        (existing) => codeRefToken(existing) !== codeRefToken(ref)
-      ),
-      ref,
-    ]
-    const { prompt, setPrompt } = usePrompt.getState()
-    const token = codeRefToken(ref)
-    if (!prompt.includes(token)) {
-      setPrompt(prompt ? `${prompt.trimEnd()} ${token} ` : `${token} `)
-    }
-  }, [])
-
-  /**
-   * Refuse a folder change while something is still writing, and say why.
-   *
-   * Asked of the one active-work model rather than of a run flag: a subagent,
-   * a foreground shell and a background job can each still touch the old root
-   * after the turn that started them has ended.
-   */
-  const folderHeld = useCallback(
-    (sessionId: string | null | undefined) => {
-      if (authorityMayChange(sessionId)) return false
-      const kind = useCoworkActiveWork.getState().blockingKind(sessionId)
-      toast.error(t('common:coworkAccess.folderHeld'), {
-        description: kind ? t(`common:coworkAccess.busy.${kind}`) : undefined,
-      })
-      return true
-    },
-    [t]
-  )
-
-  const attachFolder = useCallback(async (given?: string) => {
-    const openingSessionId = session?.id
-    // A browser cannot open a native folder dialog: on a page `flint serve`
-    // serves, the folders come from the server's allowed roots instead.
-    const picked =
-      typeof given === 'string'
-        ? given
-        : isServerTransport()
-          ? await pickServerFolder()
-          : await serviceHub.dialog().open({ directory: true })
-    if (typeof picked !== 'string') return
-    // Nothing else checks a path handed in (typed, pasted, or from a stale
-    // list): attaching one that is not there built suggestions out of nothing.
-    if (isPlatformTauri() && !isServerTransport()) {
-      let isFolder = true
-      try {
-        const { fs } = await import('@janhq/core')
-        if (typeof fs?.fileStat === 'function') {
-          const stat = await fs.fileStat(picked)
-          isFolder = Boolean(stat?.isDirectory)
-        }
-      } catch {
-        isFolder = false
-      }
-      if (!isFolder) {
-        toast.error(t('common:workspace.folderNotFound', { path: picked }))
-        return
-      }
-    }
-    // A split-view pane's session is never the global current one, so it is
-    // compared against the pane's own id.
-    if (openingSessionId &&
-      (paneSessionIdRef.current ?? useCoworkSessions.getState().currentId) !==
-        openingSessionId) return
-    const sid = ensureCurrentSession(paneSessionIdRef.current)
-    // A page `flint serve` serves has no agent tools of its own: a blank
-    // local session given a server folder becomes a server session there.
-    if (isServerTransport() && typeof given !== 'string' && !isRemoteSession(sid)) {
-      const current = useCoworkSessions.getState().sessions.find((x) => x.id === sid)
-      if (!current || isSessionEmpty(current)) {
-        try {
-          // The mode picked before the folder travels with the new session.
-          await startRemoteSession({
-            folder: picked,
-            ...(current?.mode ? { access: modeToAccess(current.mode) } : {}),
-          })
-          return
-        } catch (e) {
-          // A server that does not run sessions: attach as before.
-          console.warn('server session not started', e)
-        }
-      }
-    }
-    if (!useCoworkRun.getState().runs[sid] && authorityMayChange(sid))
-      useCoworkSessions.getState().setFolder(sid, picked)
-    else setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
-    setPendingAccess((pending) => {
-      if (!pending[sid]) return pending
-      const next = { ...pending }
-      delete next[sid]
-      return next
-    })
-  }, [serviceHub, session?.id, t])
-
-  const detachFolder = useCallback(async () => {
-    if (!session?.id || folderHeld(session.id)) return
-    await useDirectEditGrants.getState().revokeSession(session.id)
-    useCoworkSessions.getState().setFolder(session.id, null)
-  }, [session?.id, folderHeld])
-
-  /**
-   * Attach or detach one of the session's extra folders.
-   *
-   * The grant covers the folders it was issued for, so changing the set
-   * withdraws it first and the session returns to Review only until the user
-   * confirms again -- the same as changing the primary folder.
-   */
-  const addExtraFolder = useCallback(async () => {
-    if (!session?.id || folderHeld(session.id)) return
-    const picked = isServerTransport()
-      ? await pickServerFolder()
-      : await serviceHub.dialog().open({ directory: true })
-    if (typeof picked !== 'string') return
-    if (folderHeld(session.id)) return
-    const sid = session.id
-    await useDirectEditGrants.getState().revokeSession(sid)
-    useCoworkSessions.getState().addExtraFolder(sid, picked)
-  }, [serviceHub, session?.id, folderHeld])
-
-  const removeExtraFolder = useCallback(
-    async (extra: string) => {
-      if (!session?.id || folderHeld(session.id)) return
-      const sid = session.id
-      await useDirectEditGrants.getState().revokeSession(sid)
-      useCoworkSessions.getState().removeExtraFolder(sid, extra)
-    },
-    [session?.id, folderHeld]
-  )
-
-  /**
-   * Mark one folder, the main one (`null`) or an extra, editable or
-   * read-only. Every folder has its own mark, in any combination.
-   *
-   * The grant covers exactly the editable folders, so it is re-issued for the
-   * new set (the backend replaces the session's grant); a grant that leaves
-   * the main folder out refuses writes there. Making a folder editable from
-   * Review only makes that one folder editable and moves the session to Edit
-   * this folder; marking the last editable folder read-only returns it to
-   * Review only. If re-issuing fails, the old grant may cover a folder now
-   * marked read-only, so it is withdrawn and the session returns to Review
-   * only. In a managed worktree the main folder is edited through the
-   * worktree and only the extras toggle.
-   */
-  const setFolderWritable = useCallback(
-    async (target: string | null, writable: boolean) => {
-      if (!session?.id || !session.folder || folderHeld(session.id)) return
-      const sid = session.id
-      const store = useCoworkSessions.getState()
-      const before = store.sessions.find((x) => x.id === sid)
-      if (!before?.folder) return
-      const worktreeMode = accessOf(before) === 'managed-worktree'
-      if (target === null && worktreeMode) return
-      const grant = useDirectEditGrants.getState().grantFor(sid)
-      // No grant: nothing is editable (Review only), or a worktree run whose
-      // grant has not arrived; only the former is left by a toggle.
-      if (!grant && (worktreeMode || !writable)) return
-      if (!grant) {
-        store.setMainFolderReadOnly(sid, target !== null)
-        for (const extra of extraFoldersOf(before)) {
-          store.setExtraFolderWritable(
-            sid,
-            extra,
-            target !== null && sameFolder(extra, target)
-          )
-        }
-      } else if (target === null) {
-        store.setMainFolderReadOnly(sid, !writable)
-      } else {
-        store.setExtraFolderWritable(sid, target, writable)
-      }
-      const updated = useCoworkSessions
-        .getState()
-        .sessions.find((x) => x.id === sid)
-      if (!updated) return
-      const mainWritable = worktreeMode || !mainFolderReadOnlyOf(updated)
-      const extras = writableExtraFoldersOf(updated)
-      const fallBack = async () => {
-        await useDirectEditGrants.getState().revokeSession(sid)
-        useCoworkSessions.getState().setAccess(sid, 'review-only')
-      }
-      if (!mainWritable && extras.length === 0) {
-        // No folder is editable any more: the session is Review only.
-        await fallBack()
-        return
-      }
-      const dataFolder = await serviceHub.app().getJanDataFolder()
-      const result = dataFolder
-        ? await useDirectEditGrants
-            .getState()
-            .authorize(
-              sid,
-              grant?.folder ?? before.folder,
-              dataFolder,
-              extras,
-              mainWritable
-            )
-        : { ok: false as const, reason: 'no data folder' }
-      if (!result.ok) {
-        await fallBack()
-        if (result.reason !== 'superseded') toast.error(result.reason)
-        return
-      }
-      if (!grant) useCoworkSessions.getState().setAccess(sid, 'edit-folder')
-    },
-    [session?.id, session?.folder, folderHeld, serviceHub]
-  )
+  const {
+    attachFolder,
+    detachFolder,
+    setFolderWritable,
+    addExtraFolder,
+    removeExtraFolder,
+    addCodeToChat,
+  } = useCoworkFolderActions({
+    pendingRefs,
+    session,
+    folder,
+    t,
+    serviceHub,
+    paneSessionIdRef,
+    setPendingFolder,
+    setPendingAccess,
+  })
 
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
@@ -2956,7 +2315,7 @@ export function CoworkPage() {
     setLastPreviewRoot(workspacePath ?? undefined)
     setRail({ kind: 'preview', path: pendingPreview.path, root: workspacePath ?? undefined })
     useCoworkRun.getState().clearPendingPreview()
-  }, [pendingPreview, session?.id, setRail, workspacePath])
+  }, [pendingPreview, session?.id, setRail, workspacePath, setLastPreviewPath, setLastPreviewRoot])
 
   // The file-activity view parks a request the same way, for a path it wants
   // shown but cannot open itself. Consumed once.
