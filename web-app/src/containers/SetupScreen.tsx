@@ -7,26 +7,18 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useMemo, useCallback, useState, useRef } from 'react'
 import { AppEvent, events } from '@janhq/core'
 import { Button } from '@/components/ui/button'
-import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  Cpu,
-  Info,
-  Loader2,
-} from 'lucide-react'
-import { cn, getModelDisplayName } from '@/lib/utils'
+import { AlertTriangle, Check, Info, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useSetupChecklist } from '@/hooks/useSetupChecklist'
-import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
-import { ModelSetupCard } from './ModelSetupCard'
-import { ModelSupportStatus } from './ModelSupportStatus'
-import { DEFAULT_CTX_LENGTH } from '@/lib/modelCompatibility'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useThreads } from '@/hooks/useThreads'
-import { destinationFor, INTENTS } from '@/lib/onboarding'
+import { destinationFor } from '@/lib/onboarding'
 import { isChatCapable } from '@/lib/providerReadiness'
-import { SidebarItemsPicker } from './SidebarItemsPicker'
+import { SetupProgress } from './setup/SetupProgress'
+import { IntentionList } from './setup/IntentionList'
+import { EngineInstallStatus } from './setup/EngineInstallStatus'
+import { ModelPickStep } from './setup/ModelPickStep'
 import {
   engineBackendNameOf,
   FINISH_STEP,
@@ -50,10 +42,6 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
 
   const serviceHub = useServiceHub()
   const llamaProvider = getProviderByName('llamacpp')
-  /** Whichever local model the user picks on the last page, if any. */
-  const [chosenModel, setChosenModel] = useState<string | null>(null)
-  /** The finish page's inline sidebar picker, closed until asked for. */
-  const [customizingSidebar, setCustomizingSidebar] = useState(false)
   const guide = useOnboardingGuide()
   const threadCount = useThreads((s) => Object.keys(s.threads ?? {}).length)
   // Where setup was left last time. Read once: resuming is a starting point,
@@ -89,7 +77,6 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
   const { stages, warnings, gpu, isRunning, rerun } = useSetupChecklist({
     enabled: hasStarted,
   })
-  const [showDetails, setShowDetails] = useState(false)
 
 
 
@@ -155,14 +142,6 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
     }
   }, [serviceHub, setProviders])
 
-
-  // Named dependencies come from the same warning the standalone dialog would
-  // have raised; the advice is rendered inline here instead.
-  const dependencyWarning = warnings.find(
-    (warning) => (warning.missingLibraries?.length ?? 0) > 0
-  )
-  const missingLibraries = dependencyWarning?.missingLibraries ?? []
-  const dependencyBackend = dependencyWarning?.backend ?? ''
 
   /**
    * Local models already on disk that can hold a conversation. The embedding
@@ -249,34 +228,7 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
           >
             {currentPage && (
               <>
-                <div className="flex items-center justify-between gap-4">
-                  <span
-                    className="text-xs font-medium tabular-nums text-muted-foreground"
-                    data-testid="setup-step-counter"
-                  >
-                    {t('setup:stepCounter', {
-                      current: currentIndex + 1,
-                      total: pages.length,
-                    })}
-                  </span>
-                  {/* Segments rather than dots: they read as distance covered,
-                      which is what a first-run flow needs to convey. */}
-                  <span className="flex items-center gap-1" aria-hidden>
-                    {pages.map((page, index) => (
-                      <span
-                        key={page.id}
-                        className={cn(
-                          'h-1 w-6 rounded-full motion-safe:transition-colors',
-                          index === currentIndex
-                            ? 'bg-primary'
-                            : index < currentIndex
-                              ? 'bg-secondary-foreground'
-                              : 'bg-track'
-                        )}
-                      />
-                    ))}
-                  </span>
-                </div>
+                <SetupProgress pages={pages} currentIndex={currentIndex} />
 
                 <div className="mt-4">
                   {isSetupPage && (
@@ -324,87 +276,10 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
 
                 {currentPage.id === 'welcome' && (
                   <>
-                    <fieldset className="mt-5" data-testid="setup-intents">
-                      <legend className="text-sm font-semibold text-foreground">
-                        {t('onboarding:intentHeading')}
-                      </legend>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {t('onboarding:intentHint')}
-                      </p>
-                      <div
-                        role="radiogroup"
-                        aria-label={t('onboarding:intentHeading')}
-                        className="mt-3 flex flex-col gap-2"
-                        onKeyDown={(event) => {
-                          // Arrow keys move and select within the group, as a
-                          // native radio group does; Tab still leaves it.
-                          const step =
-                            event.key === 'ArrowDown' || event.key === 'ArrowRight'
-                              ? 1
-                              : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
-                                ? -1
-                                : 0
-                          if (!step) return
-                          event.preventDefault()
-                          // With nothing chosen yet, the first arrow picks the
-                          // first (down) or last (up) option.
-                          const current = guide.intent
-                            ? INTENTS.indexOf(guide.intent)
-                            : step > 0
-                              ? -1
-                              : 0
-                          const next =
-                            INTENTS[(current + step + INTENTS.length) % INTENTS.length]
-                          guide.setIntent(next)
-                          ;(
-                            event.currentTarget.querySelector(
-                              `[data-testid="setup-intent-${next}"]`
-                            ) as HTMLElement | null
-                          )?.focus()
-                        }}
-                      >
-                        {INTENTS.map((intent) => {
-                          const isChosen = guide.intent === intent
-                          return (
-                            <button
-                              key={intent}
-                              type="button"
-                              role="radio"
-                              aria-checked={isChosen}
-                              data-testid={`setup-intent-${intent}`}
-                              onClick={() => guide.setIntent(intent)}
-                              className={cn(
-                                'flex min-h-11 items-start gap-3 rounded-lg border-[0.8px] px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
-                                isChosen
-                                  ? 'border-primary bg-accent'
-                                  : 'border-border bg-card hover:border-border-strong hover:bg-hover-row'
-                              )}
-                            >
-                              {/* The radio mark: a ring, filled when chosen. */}
-                              <span
-                                aria-hidden
-                                className={cn(
-                                  'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border',
-                                  isChosen ? 'border-primary' : 'border-input'
-                                )}
-                              >
-                                {isChosen && (
-                                  <span className="size-2 rounded-full bg-primary" />
-                                )}
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block font-medium text-foreground">
-                                  {t(`onboarding:intent.${intent}.title`)}
-                                </span>
-                                <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-                                  {t(`onboarding:intent.${intent}.description`)}
-                                </span>
-                              </span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </fieldset>
+                    <IntentionList
+                      intent={guide.intent}
+                      onIntent={guide.setIntent}
+                    />
                     <Button
                       size="lg"
                       className="mt-5 w-full pointer-coarse:h-11"
@@ -423,267 +298,28 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                   </>
                 )}
 
-                {/* The one fact a user cannot infer from a progress line:
-                    whether the work they are waiting for lands on the GPU. */}
                 {isSetupPage && (
-                  <div
-                    className={cn(
-                      'mt-5 flex items-start gap-2.5 rounded-md border px-3.5 py-3',
-                      gpu.willUse
-                        ? 'border-success/30 bg-success-tint'
-                        : 'border-border bg-muted'
-                    )}
-                    data-testid="setup-gpu-badge"
-                  >
-                    <span
-                      className={cn(
-                        'mt-0.5 shrink-0',
-                        gpu.willUse ? 'text-success' : 'text-muted-foreground'
-                      )}
-                    >
-                      {gpu.willUse === undefined ? (
-                        <Loader2 className="size-[15px] motion-safe:animate-spin" />
-                      ) : gpu.willUse ? (
-                        <Check className="size-[15px]" />
-                      ) : (
-                        <Cpu className="size-[15px]" />
-                      )}
-                    </span>
-                    <div className="min-w-0">
-                      <p
-                        className={cn(
-                          'text-sm font-medium',
-                          gpu.willUse ? 'text-success' : 'text-foreground'
-                        )}
-                      >
-                        {gpu.willUse === undefined
-                          ? t('setup:badgeGpuUnknown')
-                          : gpu.willUse
-                            ? t('setup:badgeGpu')
-                            : t('setup:badgeCpu')}
-                      </p>
-                      {gpu.label && (
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {gpu.label}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {isSetupPage && isWarning && (
-                  <div className="mt-4" data-testid="setup-page-warning">
-                    {warnings.length > 1 && (
-                      <p className="mb-2 text-xs text-destructive">
-                        {t('setup:otherWarnings', {
-                          count: warnings.length - 1,
-                        })}
-                      </p>
-                    )}
-                    {currentPage.detail && (
-                      <>
-                        <button
-                          type="button"
-                          aria-expanded={showDetails}
-                          className="rounded-sm text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
-                          onClick={() => setShowDetails((prev) => !prev)}
-                        >
-                          {showDetails
-                            ? t('setup:hideDetails')
-                            : t('setup:showDetails')}
-                        </button>
-                        {showDetails && (
-                          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-muted p-2.5 font-mono text-xs text-fg-2">
-                            {currentPage.detail}
-                          </pre>
-                        )}
-                      </>
-                    )}
-                    {missingLibraries.length > 0 && (
-                      <div className="mt-3">
-                        <DependencyAdvice
-                          backend={dependencyBackend}
-                          missingLibraries={missingLibraries}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {isSetupPage && (
-                  <>
-                    {/* The engine's asset name: a caption, never the sentence. */}
-                    {engineBackendName && (
-                      <p
-                        className="mt-3 truncate font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
-                        title={engineBackendName}
-                      >
-                        {engineBackendName}
-                      </p>
-                    )}
-                    <div className="mt-5 flex flex-wrap items-center gap-3">
-                      {/* Continue once the work is done; the same button skips
-                          ahead while it is still running, since this page covers
-                          a backend download and waiting must not be the only
-                          option. */}
-                      <Button
-                        className="flex-1 pointer-coarse:h-11"
-                        onClick={() => acknowledge('setup')}
-                      >
-                        {isSetupComplete
-                          ? t('setup:continueStep')
-                          : isWarning
-                            ? t('setup:continueAnyway')
-                            : t('setup:skipStep')}
-                      </Button>
-                      {isWarning && !isRunning && (
-                        <Button
-                          variant="link"
-                          onClick={() => void rerun()}
-                          className="px-0"
-                        >
-                          {t('setup:retryChecks')}
-                        </Button>
-                      )}
-                    </div>
-                  </>
+                  <EngineInstallStatus
+                    page={currentPage}
+                    gpu={gpu}
+                    warnings={warnings}
+                    isWarning={isWarning}
+                    isSetupComplete={isSetupComplete}
+                    isRunning={isRunning}
+                    engineBackendName={engineBackendName}
+                    onContinue={() => acknowledge('setup')}
+                    onRerun={() => void rerun()}
+                  />
                 )}
 
                 {currentPage.id === 'finish' && (
-                  <div className="mt-5" data-testid="setup-finish">
-                    <section
-                      aria-labelledby="setup-processing-heading"
-                      className="mb-4 rounded-md border border-border bg-muted px-3.5 py-3 text-xs leading-relaxed"
-                      data-testid="setup-processing"
-                    >
-                      <h2
-                        id="setup-processing-heading"
-                        className="text-sm font-semibold text-foreground"
-                      >
-                        {t('onboarding:processingHeading')}
-                      </h2>
-                      <p className="mt-1.5 text-fg-2">
-                        {t('onboarding:processingLocal')}
-                      </p>
-                      <p className="mt-1.5 text-fg-2">
-                        {t('onboarding:processingRemote')}
-                      </p>
-                      <Button
-                        variant="link"
-                        className="mt-1 h-auto px-0 text-xs pointer-coarse:min-h-11"
-                        data-testid="setup-connect-remote"
-                        onClick={() =>
-                          navigate({ to: route.settings.model_providers })
-                        }
-                      >
-                        {t('onboarding:connectRemote')}
-                      </Button>
-                    </section>
-                    <section
-                      aria-labelledby="setup-sidebar-heading"
-                      className="mb-4 rounded-md border border-border bg-muted px-3.5 py-3 text-xs leading-relaxed"
-                      data-testid="setup-sidebar"
-                    >
-                      <h2
-                        id="setup-sidebar-heading"
-                        className="text-sm font-semibold text-foreground"
-                      >
-                        {t('onboarding:sidebar.title')}
-                      </h2>
-                      <p className="mt-1.5 text-fg-2">
-                        {t('onboarding:sidebar.body')}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 pointer-coarse:h-11"
-                        data-testid="setup-customize-sidebar"
-                        aria-expanded={customizingSidebar}
-                        onClick={() => setCustomizingSidebar((open) => !open)}
-                      >
-                        {customizingSidebar
-                          ? t('onboarding:sidebar.close')
-                          : t('onboarding:sidebar.customize')}
-                      </Button>
-                      {customizingSidebar && (
-                        <div className="mt-3 rounded-md border border-border bg-card px-3 py-2">
-                          <SidebarItemsPicker preview={false} />
-                        </div>
-                      )}
-                    </section>
-                    {localModels.length > 0 ? (
-                      <div
-                        role="radiogroup"
-                        aria-label={t('setup:finishChooseModel')}
-                        className="flex flex-col gap-1.5"
-                      >
-                        {localModels.map((model) => {
-                          const isChosen = chosenModel === model.id
-                          return (
-                            <button
-                              key={model.id}
-                              type="button"
-                              role="radio"
-                              aria-checked={isChosen}
-                              data-testid="setup-local-model"
-                              onClick={() => setChosenModel(model.id)}
-                              className={cn(
-                                'flex min-h-11 items-center justify-between gap-2 rounded-lg border-[0.8px] px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
-                                isChosen
-                                  ? 'border-primary bg-accent'
-                                  : 'border-border bg-card hover:border-border-strong hover:bg-hover-row'
-                              )}
-                            >
-                              <span className="truncate">
-                                {getModelDisplayName(model)}
-                              </span>
-                              {isChosen && (
-                                <Check className="size-4 shrink-0 text-acc-text" />
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <>
-                        <p className="mb-3 text-sm text-muted-foreground">
-                          {t('setup:finishNoModels')}
-                        </p>
-                        <ModelSetupCard />
-                      </>
-                    )}
-
-                    {/* Fit advice for the model just picked, from the same
-                        check the model picker uses; read-only, runs nothing. */}
-                    {chosenModel && (
-                      <div
-                        className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"
-                        data-testid="setup-model-fit"
-                      >
-                        <span>{t('onboarding:fit.heading')}</span>
-                        <ModelSupportStatus
-                          modelId={chosenModel}
-                          provider="llamacpp"
-                          contextSize={DEFAULT_CTX_LENGTH}
-                        />
-                      </div>
-                    )}
-
-                    <div className="mt-5 flex flex-wrap items-center gap-2">
-                      <Button
-                        data-testid="setup-finish-start"
-                        className="pointer-coarse:h-11"
-                        onClick={() =>
-                          void completeSetup(chosenModel ?? undefined)
-                        }
-                      >
-                        {chosenModel
-                          ? t('setup:finishStartChat')
-                          : t('setup:finishWithoutModel')}
-                        <ArrowRight className="size-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  <ModelPickStep
+                    localModels={localModels}
+                    onConnectRemote={() =>
+                      navigate({ to: route.settings.model_providers })
+                    }
+                    onFinish={(modelId) => void completeSetup(modelId)}
+                  />
                 )}
               </>
             )}
