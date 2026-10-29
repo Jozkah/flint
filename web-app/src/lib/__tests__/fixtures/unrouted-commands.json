@@ -1161,6 +1161,9 @@
     "web-app/src/lib/studio/studio.ts",
     "web-app/src/services/models/default.ts (via releaseImageModelForChat)"
   ],
+  "export_diagnostic_bundle": [
+    "web-app/src/services/app/tauri.ts"
+  ],
   "export_provider_keys_for_backup": [
     "web-app/src/containers/SettingsBackupCard.tsx"
   ],

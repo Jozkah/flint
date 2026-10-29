@@ -66,6 +66,7 @@ const dataFolderMocks = vi.hoisted(() => ({
   stopAllModels: vi.fn(),
   emit: vi.fn(),
   exportLogs: vi.fn(),
+  exportBundle: vi.fn(),
 }))
 
 vi.mock('@/containers/dialogs/ChangeDataFolderLocation', () => ({
@@ -214,6 +215,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
     app: () => ({
       factoryReset: vi.fn(),
       exportRedactedLogs: dataFolderMocks.exportLogs,
+      exportDiagnosticBundle: dataFolderMocks.exportBundle,
       getJanDataFolder: vi.fn().mockResolvedValue('/test/data/folder'),
       getUnavailableJanDataFolder: mockGetUnavailableJanDataFolder,
       relocateJanDataFolder: vi.fn(),
@@ -394,6 +396,40 @@ describe('Data Settings Route', () => {
       fireEvent.click(screen.getByTitle('settings:general.exportLogsDesc'))
     })
     expect(toast.success).toHaveBeenCalled()
+  })
+
+  it('saves a diagnostic bundle from Settings, reporting where or why not', async () => {
+    const { toast } = await import('sonner')
+    global.IS_TAURI = true
+    dataFolderMocks.exportBundle.mockResolvedValueOnce(null)
+    const Component = DataRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    const button = screen.getByTitle('settings:general.diagnosticBundleDesc')
+    expect(button).toHaveTextContent('settings:general.diagnosticBundle')
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    expect(dataFolderMocks.exportBundle).toHaveBeenCalledWith()
+    expect(toast.success).not.toHaveBeenCalled()
+
+    dataFolderMocks.exportBundle.mockResolvedValueOnce('/x/flint-diagnostics.tar.gz')
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    expect(toast.success).toHaveBeenCalledWith(
+      'settings:general.diagnosticBundleSaved'
+    )
+
+    dataFolderMocks.exportBundle.mockRejectedValueOnce(new Error('disk full'))
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      'settings:general.diagnosticBundleFailed',
+      { description: 'disk full' }
+    )
   })
 
   it('leaves the data folder and update check out of the browser client', async () => {

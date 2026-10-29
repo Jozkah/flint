@@ -833,6 +833,48 @@ Known secrets are stripped; the scan is best-effort, so review before sharing.
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// The desktop diagnostic bundle's members: what `flint bug-report` carries
+/// that the desktop has (version, environment, the app log redacted), cut to
+/// the same per-member and total caps.
+fn diagnostic_members(log_tail: &str) -> Vec<(String, String)> {
+    use crate::core::diagnostics_bundle::{cap_members, MEMBER_CAP, TOTAL_CAP};
+    let mut members = vec![
+        ("version.txt".to_string(), format!("Flint {}\n", env!("CARGO_PKG_VERSION"))),
+        (
+            "environment.txt".to_string(),
+            format!("os={}\narch={}\n", std::env::consts::OS, std::env::consts::ARCH),
+        ),
+        ("logs/app.log".to_string(), redact_log_text(log_tail)),
+    ];
+    cap_members(&mut members, MEMBER_CAP, TOTAL_CAP);
+    members
+}
+
+/// Save a diagnostic bundle (`.tar.gz`, the CLI bug-report format) to a file
+/// the user picks in a save dialog opened here. No thread contents, nothing
+/// uploaded. `None` means the user cancelled.
+#[tauri::command]
+pub async fn export_diagnostic_bundle<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, String> {
+    use crate::core::diagnostics_bundle::MEMBER_CAP;
+    use crate::core::filesystem::export_file::{pick_path, sanitize_file_name, write_atomically};
+    let log_path = get_jan_data_folder_path(app).join("logs").join("app.log");
+    // A missing log is not fatal: the bundle still says which build and OS.
+    let tail = tokio::task::spawn_blocking(move || read_log_tail(&log_path, MEMBER_CAP as u64, usize::MAX))
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let archive = crate::core::diagnostics_bundle::write_archive(Vec::new(), &diagnostic_members(&tail))?;
+    let name = sanitize_file_name("flint-diagnostics.tar", "gz");
+    let Some(path) = pick_path("gz", &name).await else {
+        return Ok(None);
+    };
+    if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err("Refusing to write through a symbolic link".to_string());
+    }
+    write_atomically(&path, &archive)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 #[tauri::command]
 pub fn launch_claude_code_with_config(
     api_url: String,
@@ -1731,6 +1773,44 @@ mod tests {
         let at = src.find("pub async fn export_redacted_logs").unwrap();
         let sig = &src[at..at + src[at..].find('{').unwrap()];
         assert!(!sig.contains("destination") && !sig.contains("path"), "{sig}");
+        let at = src.find("pub async fn export_diagnostic_bundle").unwrap();
+        let sig = &src[at..at + src[at..].find('{').unwrap()];
+        assert!(!sig.contains("destination") && !sig.contains("path"), "{sig}");
+    }
+
+    /// The desktop bundle holds the CLI bundle's caps and strips secrets from
+    /// the log, and its archive round-trips to exactly those members.
+    #[test]
+    fn diagnostic_bundle_is_capped_redacted_and_archived() {
+        use crate::core::diagnostics_bundle::{write_archive, MEMBER_CAP};
+        use std::io::Read;
+        let key = concat!("sk-", "abcdefghijklmnopqrstu");
+        let mut log = format!("INFO upstream said {key}\n");
+        while log.len() <= 2 * MEMBER_CAP {
+            log.push_str("INFO a long and boring line of log text\n");
+        }
+        let members = super::diagnostic_members(&log);
+        let names: Vec<&str> = members.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["version.txt", "environment.txt", "logs/app.log"]);
+        let app_log = &members[2].1;
+        assert!(app_log.starts_with("[truncated: kept the last"), "log not capped");
+        assert!(app_log.len() <= MEMBER_CAP + 80, "{}", app_log.len());
+        let small = super::diagnostic_members(&format!("INFO upstream said {key}\n"));
+        assert!(!small[2].1.contains(key), "secret survived: {}", small[2].1);
+
+        let archive = write_archive(Vec::new(), &small).unwrap();
+        let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive.as_slice()));
+        let unpacked: Vec<(String, String)> = tar
+            .entries()
+            .unwrap()
+            .map(|e| {
+                let mut e = e.unwrap();
+                let mut body = String::new();
+                e.read_to_string(&mut body).unwrap();
+                (e.path().unwrap().display().to_string(), body)
+            })
+            .collect();
+        assert_eq!(unpacked, small);
     }
 
     #[test]

@@ -29,6 +29,9 @@ pub mod browser_verify;
 #[cfg(not(feature = "cli"))]
 pub mod browser_agent;
 pub mod cli_bridge;
+// Diagnostic bundle caps and archive format, shared by `flint bug-report` and
+// the desktop "Save diagnostic bundle" action.
+pub mod diagnostics_bundle;
 pub use jan_process::compat_env;
 #[cfg(not(feature = "cli"))]
 pub mod crash_trace;

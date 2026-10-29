@@ -165,6 +165,10 @@ export class TauriAppService extends DefaultAppService {
     return await invokeCommand<string | null>('export_redacted_logs')
   }
 
+  async exportDiagnosticBundle(): Promise<string | null> {
+    return await invokeCommand<string | null>('export_diagnostic_bundle')
+  }
+
   async readYaml<T = unknown>(path: string): Promise<T> {
     return await invokeCommand<T>('read_yaml', { path })
   }
