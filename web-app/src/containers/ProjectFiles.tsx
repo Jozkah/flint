@@ -39,14 +39,20 @@ import {
 import { cn, formatBytes } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { createDocumentAttachment, type Attachment } from '@/types/attachment'
+import { createDocumentAttachment } from '@/types/attachment'
 import { useAttachments } from '@/hooks/useAttachments'
-import { ExtensionTypeEnum, FileStat, VectorDBExtension } from '@janhq/core'
+import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
-import { collectFilesFromDirectory } from '@/lib/directoryWalk'
-import { namedFilePaths } from '@/lib/fileDrop'
+import {
+  SUPPORTED_EXTENSIONS,
+  getFilesFromPaths,
+  maxBytesOf,
+  prepareDocumentAttachments,
+  splitDuplicates,
+} from '@/lib/documentIngest'
+import { useProjectFileDrop } from '@/hooks/useProjectFileDrop'
 import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
 import {
   checkProjectFiles,
@@ -165,176 +171,6 @@ type ProjectFile = {
   size?: number
   chunk_count: number
   mtime?: number | null
-}
-
-const SUPPORTED_EXTENSIONS = [
-  // Documents
-  'pdf',
-  'docx',
-  'txt',
-  'md',
-  'csv',
-  'xlsx',
-  'xls',
-  'ods',
-  'pptx',
-  'html',
-  'htm',
-  'xhtml',
-  // JavaScript / TypeScript
-  'js',
-  'mjs',
-  'cjs',
-  'ts',
-  'mts',
-  'cts',
-  'jsx',
-  'tsx',
-  // Python
-  'py',
-  'pyw',
-  'pyi',
-  // C / C++
-  'c',
-  'h',
-  'cpp',
-  'cc',
-  'cxx',
-  'hpp',
-  'hh',
-  // Systems languages
-  'rs',
-  'go',
-  'swift',
-  'zig',
-  // JVM languages
-  'java',
-  'kt',
-  'kts',
-  'scala',
-  'groovy',
-  // Scripting languages
-  'rb',
-  'php',
-  'lua',
-  'pl',
-  'r',
-  'jl',
-  // .NET
-  'cs',
-  'fs',
-  'vb',
-  'xaml',
-  'csproj',
-  'sln',
-  // CUDA
-  'cu',
-  'cuh',
-  // Shaders
-  'hlsl',
-  'glsl',
-  'cg',
-  'shader',
-  // Shell / Scripting
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'ps1',
-  'bat',
-  'cmd',
-  'vbs',
-  // More languages
-  'asm',
-  's',
-  'm',
-  'mm',
-  'pas',
-  'pp',
-  'erl',
-  'hrl',
-  'ex',
-  'exs',
-  'clj',
-  'cljs',
-  'hs',
-  'lhs',
-  'ml',
-  'mli',
-  'f',
-  'f90',
-  // Web
-  'css',
-  'scss',
-  'sass',
-  'less',
-  'vue',
-  'svelte',
-  'astro',
-  'asp',
-  'aspx',
-  'jsp',
-  // Data / config formats
-  'json',
-  'jsonc',
-  'yaml',
-  'yml',
-  'toml',
-  'xml',
-  'ini',
-  'cfg',
-  'conf',
-  'env',
-  'properties',
-  'dockerfile',
-  'makefile',
-  'cmake',
-  'lock',
-  // Query / markup
-  'sql',
-  'graphql',
-  'gql',
-  'tex',
-  'rst',
-  'adoc',
-  'textile',
-  // Misc text
-  'log',
-  'diff',
-  'patch',
-  'gitignore',
-]
-
-async function getFilesFromPaths(paths: string[]): Promise<string[]> {
-  const files: string[] = []
-  const { fs } = await import('@janhq/core')
-
-  for (const path of paths) {
-    try {
-      const stat: FileStat | undefined = await fs.fileStat(path)
-      if (stat?.isDirectory) {
-        // Recursively get files from directory
-        const dirFiles = await getFilesFromDirectory(path, fs)
-        files.push(...dirFiles)
-      } else {
-        files.push(path)
-      }
-    } catch (e) {
-      console.warn(`Failed to get stat for ${path}:`, e)
-      files.push(path)
-    }
-  }
-  return files
-}
-
-function getFilesFromDirectory(
-  dirPath: string,
-  fs: typeof import('@janhq/core').fs
-): Promise<string[]> {
-  return collectFilesFromDirectory(dirPath, fs, (entry) => {
-    const ext = entry.split('.').pop()?.toLowerCase()
-    return !!ext && SUPPORTED_EXTENSIONS.includes(ext)
-  })
 }
 
 type FileRowProps = {
@@ -532,7 +368,6 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   )
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     () => new Set()
   )
@@ -660,69 +495,40 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
       // Get files from paths (recursively for directories)
       const filePaths = await getFilesFromPaths(paths)
 
-      const maxFileSizeBytes =
-        typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
-          ? maxFileSizeMB * 1024 * 1024
-          : undefined
-
-      const preparedAttachments: Attachment[] = []
-      for (const p of filePaths) {
-        const name = p.split(/[\\/]/).pop() || p
-        const fileType = name.split('.').pop()?.toLowerCase()
-
-        // Filter unsupported file types
-        if (!fileType || !SUPPORTED_EXTENSIONS.includes(fileType)) {
-          toast.warning(
-            t('common:toast.unsupportedFileType.title'),
-            {
-              description: t('common:toast.unsupportedFileType.description', {
-                extension: fileType || 'unknown',
-              }),
+      const { attachments: preparedAttachments } =
+        await prepareDocumentAttachments(filePaths, {
+          maxBytes: maxBytesOf(maxFileSizeMB),
+          statSize: async (p) => {
+            const stat = await import('@janhq/core').then((m) => m.fs.fileStat(p))
+            return stat?.size ? Number(stat.size) : undefined
+          },
+          // Reported as each file is reached, as before the split.
+          onSkip: (skip) => {
+            if (skip.reason === 'unsupported') {
+              toast.warning(t('common:toast.unsupportedFileType.title'), {
+                description: t('common:toast.unsupportedFileType.description', {
+                  extension: skip.extension,
+                }),
+              })
+            } else {
+              toast.error(t('common:errors.fileTooLarge') ?? 'File too large', {
+                description: t('common:errors.fileTooLargeDescription', {
+                  fileName: skip.name,
+                  maxFileSizeMB,
+                }),
+              })
             }
-          )
-          continue
-        }
-
-        let size: number | undefined = undefined
-        try {
-          const stat = await import('@janhq/core').then((m) => m.fs.fileStat(p))
-          size = stat?.size ? Number(stat.size) : undefined
-        } catch (e) {
-          console.warn('Failed to read file size for', p, e)
-        }
-
-        if (maxFileSizeBytes !== undefined && size && size > maxFileSizeBytes) {
-          toast.error(t('common:errors.fileTooLarge') ?? 'File too large', {
-            description: t('common:errors.fileTooLargeDescription', {
-              fileName: name,
-              maxFileSizeMB,
-            }),
-          })
-          continue
-        }
-
-        preparedAttachments.push(
-          createDocumentAttachment({
-            name,
-            path: p,
-            fileType,
-            size,
-          })
-        )
-      }
+          },
+        })
 
       // Filter duplicates
       const existingPaths = new Set(
         files.filter((f) => f.path).map((f) => f.path)
       )
-      const duplicates: string[] = []
-      const newAttachments = preparedAttachments.filter((att) => {
-        if (existingPaths.has(att.path)) {
-          duplicates.push(att.name)
-          return false
-        }
-        return true
-      })
+      const { fresh: newAttachments, duplicates } = splitDuplicates(
+        preparedAttachments,
+        existingPaths
+      )
 
       if (duplicates.length > 0) {
         toast.warning(
@@ -808,89 +614,12 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
   }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-
-    if (!attachmentsEnabled) {
-      toast.info(
-        t('common:toast.attachmentsDisabledInfo.title') ??
-          'Attachments are disabled in Settings'
-      )
-      return
-    }
-
-    // Get file paths from the drop event (Tauri provides paths directly)
-    const paths: string[] = []
-    const items = e.dataTransfer.items
-    if (items) {
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (item.kind === 'file') {
-          const file = item.getAsFile()
-          if (file && 'path' in file && typeof file.path === 'string') {
-            paths.push(file.path)
-          }
-        }
-      }
-    }
-
-    if (paths.length === 0) {
-      // Fallback for web: check dataTransfer.files
-      const dtFiles = e.dataTransfer.files
-      for (let i = 0; i < dtFiles.length; i++) {
-        const file = dtFiles[i]
-        if ('path' in file && typeof file.path === 'string') {
-          paths.push(file.path)
-        }
-      }
-    }
-
-    // WebKitGTK may give no File objects (and Tauri's File has no `path`),
-    // but a file-manager drop names its files as URIs. Bare text paths are
-    // not taken: dragging `/home/me` out of a terminal is not an upload. A
-    // folder named this way is never walked without the user saying so.
-    if (paths.length === 0) {
-      // Bare text paths are not taken: dragging `/home/me` is not an upload.
-      const found = namedFilePaths(e.dataTransfer)
-      const named = found?.paths ?? []
-      const { fs } = await import('@janhq/core')
-      for (const p of named) {
-        const stat = await fs.fileStat(p).catch(() => undefined)
-        // Only GNOME's own drag type is trusted to attach by itself: a page
-        // can name any path in text a dragged link carries. Everything else is
-        // asked about, like a folder.
-        if (!stat?.isDirectory && found?.trusted) {
-          paths.push(p)
-          continue
-        }
-        const name = p.split(/[\\/]/).filter(Boolean).pop() || p
-        toast.info(t(stat?.isDirectory ? 'common:pastedPath.folder' : 'common:pastedPath.file', { name }), {
-          action: {
-            label: t('common:pastedPath.attach'),
-            onClick: () => void processFilePaths([p]),
-          },
-        })
-      }
-    }
-
-    if (paths.length > 0) {
-      await processFilePaths(paths)
-    }
-  }
+  const { isDragging, handleDragOver, handleDragLeave, handleDrop } =
+    useProjectFileDrop({
+      enabled: attachmentsEnabled,
+      onPaths: processFilePaths,
+      t,
+    })
 
   // Deleting drops the file's embeddings with no undo, so both row entry
   // points (trash icon, context menu) only ask; the dialog does the delete.
