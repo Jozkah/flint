@@ -12,7 +12,7 @@
  *   about, and any prompt starts the count over.
  */
 
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { threadWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'

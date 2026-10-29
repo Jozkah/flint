@@ -199,7 +199,6 @@ fn cut(text: &str) -> String {
 
 #[cfg(windows)]
 pub async fn host_action(args: &Value) -> String {
-    use std::process::Stdio;
     let action = match plan(args) {
         Ok(action) => action,
         Err(message) => return message,
@@ -220,8 +219,9 @@ pub async fn host_action(args: &Value) -> String {
                 .env("HA_DENY", PROTECTED_SERVICES.join(","));
         }
     }
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).creation_flags(0x0800_0000);
-    match tokio::time::timeout(Duration::from_secs(TIMEOUT_SECS), cmd.output()).await {
+    cmd.creation_flags(0x0800_0000);
+    // A timeout stops the whole tree, not just powershell (F07-014).
+    match crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(TIMEOUT_SECS)).await {
         Err(_) => format!("ERROR: {} did not finish in {TIMEOUT_SECS} seconds. Check its state with host_query.", summary(&action)),
         Ok(Err(e)) => format!("ERROR: could not run the action: {e}"),
         Ok(Ok(out)) => {

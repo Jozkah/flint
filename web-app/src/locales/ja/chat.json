@@ -241,6 +241,7 @@
     "filterImages": "画像",
     "attachFailed": "ドキュメントを添付できませんでした",
     "removeFailed": "添付ファイルを削除できませんでした",
+    "attachmentRemoved": "{{name}} を削除しました",
     "ingestFailed": "{{name}} を処理できませんでした",
     "readAudioFailed": "音声ファイルを読み取れませんでした",
     "readVideoFailed": "動画ファイルを読み取れませんでした",

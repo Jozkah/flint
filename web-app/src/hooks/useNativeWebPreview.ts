@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { listen } from '@tauri-apps/api/event'
 import { useWebPreview } from '@/hooks/useWebPreview'
 import {
@@ -40,7 +40,7 @@ export function useNativeWebPreview({
   reloadNonce,
   container,
   suspended = false,
-  invokeFn = invoke as InvokeFn,
+  invokeFn = invokeCommand as InvokeFn,
 }: {
   enabled: boolean
   url: string

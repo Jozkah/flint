@@ -6,7 +6,7 @@
  * Rust core is the source of truth; this module only mirrors its serde shapes
  * (all `snake_case`) and forwards calls. Nothing here does filesystem work.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /** How the migration treats the source JAN data. */
 export type MigrationMode = 'copy' | 'reuse' | 'move' | 'fresh'

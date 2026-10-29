@@ -719,15 +719,6 @@ impl ResourceRule {
         })
     }
 
-    /// Whether this rule is about `authority`.
-    ///
-    /// Every level of the delegation chain must be permitted, so a subagent is
-    /// bound by its parent's rules as well as its own, and an unidentified
-    /// subject anywhere denies the whole chain.
-    pub fn applies_to(&self, authority: &crate::subject::Authority) -> bool {
-        authority.permits(&self.subject)
-    }
-
     /// The subject qualifier, for audit records and the rules UI.
     pub fn subject(&self) -> &crate::subject::SubjectPattern {
         &self.subject

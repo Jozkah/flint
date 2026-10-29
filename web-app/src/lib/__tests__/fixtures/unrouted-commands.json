@@ -410,7 +410,8 @@
   ],
   "agent_plugin_install": [
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via installPlugin)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via installPlugin)",
+    "web-app/src/containers/extensions/plugins/InstallPluginForm.tsx (via installPlugin)",
+    "web-app/src/hooks/usePluginMarket.ts (via installPlugin)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_install_cancel": [
@@ -428,7 +429,7 @@
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_search": [
-    "web-app/src/containers/extensions/PluginsTab.tsx (via searchPlugins)",
+    "web-app/src/hooks/usePluginMarket.ts (via searchPlugins)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_set_enabled": [
@@ -455,6 +456,7 @@
     "web-app/src/containers/PrBar.tsx (via usePrStatusStore)",
     "web-app/src/hooks/useSessionPrList.ts (via usePrStatusStore)",
     "web-app/src/lib/coworkDispatch.ts (via usePrStatusStore)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via usePrStatusStore)",
     "web-app/src/lib/hydrateStores.ts (via usePrStatusStore)",
     "web-app/src/lib/prClaimBackfill.ts (via usePrStatusStore)",
     "web-app/src/lib/remote/push.ts (via usePrStatusStore)",
@@ -702,6 +704,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_empty": [
@@ -713,6 +716,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_list": [
@@ -724,6 +728,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_preview": [
@@ -735,6 +740,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_purge": [
@@ -746,6 +752,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_put": [
@@ -757,6 +764,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_restore": [
@@ -768,6 +776,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "archive_set_settings": [
@@ -779,6 +788,7 @@
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
     "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/hydrateStores.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
   "attribute_git_call": [
@@ -1169,7 +1179,7 @@
   ],
   "folder_trust_grandfather": [
     "web-app/src/lib/grandfatherFolderTrust.ts",
-    "web-app/src/providers/DataProvider.tsx (via grandfatherFolderTrust)"
+    "web-app/src/providers/dataProviderHooks.ts (via grandfatherFolderTrust)"
   ],
   "folder_trust_grant": [
     "web-app/src/containers/TrustedFoldersCard.tsx (via trustFolder)",
@@ -1221,7 +1231,7 @@
     "web-app/src/services/mcp/tauri.ts"
   ],
   "get_provider_keys": [
-    "web-app/src/providers/DataProvider.tsx"
+    "web-app/src/providers/dataProviderHooks.ts"
   ],
   "get_server_status": [
     "web-app/src/services/app/tauri.ts"
@@ -1835,8 +1845,8 @@
   ],
   "plugin:agent-tools|project_list_dir": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/containers/CoworkCodePanel.tsx (via projectListDir)",
     "web-app/src/containers/CoworkDetailsBody.tsx (via projectListDir)",
+    "web-app/src/hooks/useCodePanelFiles.ts (via projectListDir)",
     "web-app/src/hooks/useCompatManifest.ts (via projectListDir)",
     "web-app/src/lib/remote/appExtras.ts (via projectListDir)",
     "web-app/src/lib/safeReferences.ts (via projectListDir)"
@@ -1846,6 +1856,7 @@
     "web-app/src/containers/CoworkCodePanel.tsx (via projectReadFile)",
     "web-app/src/hooks/cowork/useCoworkFolderScans.ts (via projectReadFile)",
     "web-app/src/hooks/cowork/useCoworkPathActions.ts (via projectReadFile)",
+    "web-app/src/hooks/useCodePanelFiles.ts (via projectReadFile)",
     "web-app/src/hooks/useCompatManifest.ts (via projectReadFile)",
     "web-app/src/lib/remote/appExtras.ts (via projectReadFile)",
     "web-app/src/lib/safeReferences.ts (via projectReadFile)"
@@ -2097,14 +2108,14 @@
     "web-app/src/lib/providerFetch.ts"
   ],
   "provider_http_cancel": [
-    "web-app/src/lib/hostInvoke.ts (via hasTauriRuntime)",
+    "web-app/src/lib/backend.ts (via hasTauriRuntime)",
     "web-app/src/lib/providerFetch.ts"
   ],
   "provider_http_request": [
     "web-app/src/lib/huggingface.ts"
   ],
   "provider_http_stream": [
-    "web-app/src/lib/hostInvoke.ts (via hasTauriRuntime)",
+    "web-app/src/lib/backend.ts (via hasTauriRuntime)",
     "web-app/src/lib/providerFetch.ts"
   ],
   "read_logs": [
@@ -2115,7 +2126,7 @@
   ],
   "register_provider_config": [
     "web-app/src/lib/migrateLocalStorageSettings.ts",
-    "web-app/src/providers/DataProvider.tsx"
+    "web-app/src/providers/dataProviderHooks.ts"
   ],
   "register_secret_values": [
     "web-app/src/lib/providerHeaderSecrets.ts"
@@ -2369,13 +2380,13 @@
   ],
   "set_keep_awake": [
     "web-app/src/lib/keepAwake.ts",
-    "web-app/src/providers/DataProvider.tsx (via startKeepAwakeSync)"
+    "web-app/src/providers/dataProviderHooks.ts (via startKeepAwakeSync)"
   ],
   "set_model_param_defaults": [
-    "web-app/src/providers/DataProvider.tsx"
+    "web-app/src/providers/dataProviderHooks.ts"
   ],
   "set_provider_tls_trust": [
-    "web-app/src/providers/DataProvider.tsx"
+    "web-app/src/providers/dataProviderHooks.ts"
   ],
   "set_server_run_in_background": [
     "web-app/src/services/app/tauri.ts"
@@ -2485,7 +2496,7 @@
     "web-app/src/routes/settings/general.tsx"
   ],
   "unregister_provider_config": [
-    "web-app/src/providers/DataProvider.tsx"
+    "web-app/src/providers/dataProviderHooks.ts"
   ],
   "utility_agent_record": [
     "web-app/src/lib/utilityAgents.ts"

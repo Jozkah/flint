@@ -296,6 +296,25 @@ fn sessions_in_any_project_or_none_can_message_each_other() {
 }
 
 #[test]
+fn two_run_ends_racing_send_one_automatic_reply() {
+    let fx = Fixture::new("auto-race");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    let asked = mb.send("a", "b", "which chart lib?", None, Origin::Agent).unwrap();
+    let sent: Vec<bool> = std::thread::scope(|s| {
+        let runs: Vec<_> = (0..4)
+            .map(|i| {
+                let (mb, id) = (mb.clone(), asked.message_id.clone());
+                s.spawn(move || mb.auto_reply("b", &id, &format!("answer {i}")).unwrap().is_some())
+            })
+            .collect();
+        runs.into_iter().map(|r| r.join().unwrap()).collect()
+    });
+    assert_eq!(sent.iter().filter(|s| **s).count(), 1, "{sent:?}");
+    assert_eq!(mb.pending("a").unwrap().len(), 1);
+}
+
+#[test]
 fn a_final_answer_goes_back_once_and_only_when_the_agent_did_not_reply() {
     let fx = Fixture::new("auto");
     let mb = Mailbox::open(&fx.data);

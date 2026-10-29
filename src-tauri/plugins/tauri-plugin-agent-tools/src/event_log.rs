@@ -337,6 +337,42 @@ pub fn append(data_folder: &Path, event: NewEvent) -> Result<Envelope, LogError>
     append_within(data_folder, event, Limits::standard())
 }
 
+/// `create_dir_all` once per folder per process, not on every append
+/// (PERF-020). A folder removed later is made again: see
+/// [`open_lock`].
+fn ensure_dir(dir: &Path) -> std::io::Result<()> {
+    static MADE: std::sync::OnceLock<Mutex<std::collections::HashSet<PathBuf>>> = std::sync::OnceLock::new();
+    let made = MADE.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if made.lock().unwrap_or_else(|p| p.into_inner()).contains(dir) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dir)?;
+    made.lock().unwrap_or_else(|p| p.into_inner()).insert(dir.to_path_buf());
+    Ok(())
+}
+
+/// The session's sidecar lock file, the folder made again if it was removed
+/// after [`ensure_dir`] remembered it.
+fn open_lock(path: &Path) -> std::io::Result<std::fs::File> {
+    let open = || {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(path.with_extension("lock"))
+    };
+    match open() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            open()
+        }
+        other => other,
+    }
+}
+
 /// [`append`], under explicit bounds.
 pub fn append_within(
     data_folder: &Path,
@@ -370,19 +406,13 @@ pub fn append_within(
     let payload = bounded(payload);
     let path = log_path(data_folder, &event.session);
     let io = |e: std::io::Error| LogError::Io(e.to_string());
-    std::fs::create_dir_all(events_dir(data_folder)).map_err(io)?;
+    ensure_dir(&events_dir(data_folder)).map_err(io)?;
 
     let key = path.to_string_lossy().to_string();
     // Exclusive across processes (the CLI and the desktop can write one
     // session): held from the re-read of the tail to the end of the write.
     // A sidecar file is locked so readers of the log itself are never blocked.
-    let lock_file = std::fs::OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(path.with_extension("lock"))
-        .map_err(io)?;
+    let lock_file = open_lock(&path).map_err(io)?;
     lock_file.lock().map_err(io)?;
     let unlock = Unlock(&lock_file);
     // The cache is trusted only while the file is the size this process left
@@ -470,7 +500,8 @@ pub fn append_within(
         }
         return Err(LogError::TooLarge);
     }
-    let fresh = !path.exists();
+    // An empty or missing log is a new one; known from the state, no stat.
+    let fresh = state.bytes == 0;
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(io)?;
     if let Err(e) = file.write_all(line.as_bytes()).and_then(|()| file.flush()) {
         // A partial write would leave a torn line mid-log, and the next append

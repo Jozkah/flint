@@ -317,6 +317,13 @@ export type RoomMessageKind =
 
 export type VoteChoice = 'agree' | 'disagree' | 'abstain'
 
+/**
+ * A system note as data: a `rooms:notes.*` key and its values, drawn in the
+ * interface language when shown. `text` keeps the English-or-whatever it
+ * was written in, for readers that predate notes (and the phone).
+ */
+export type RoomNote = { key: string; values?: Record<string, string | number> }
+
 export type RoomMessage = {
   v: typeof ROOM_SCHEMA_VERSION
   id: string
@@ -346,6 +353,8 @@ export type RoomMessage = {
   directive?: ModeratorDirective
   /** The read-only tools a tool-capable participant used to produce this reply. */
   toolCalls?: RoomToolActivity[]
+  /** For system notes: what the note says, as a key to draw in the current language. */
+  note?: RoomNote
   /** For system notes: the history was compacted here (drawn as a divider). */
   compaction?: RoomCompaction
   /** Compare answers: the model that wrote it and the question it answers. */

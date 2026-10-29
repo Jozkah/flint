@@ -196,6 +196,14 @@ fn resolve_rel(root_canon: &Path, rel: &str) -> Result<PathBuf, String> {
     if !canonical.starts_with(root_canon) {
         return Err(format!("path escapes the project root: {rel}"));
     }
+    // `.git` is never listed; a direct path or a link into it is refused too,
+    // judged on both the spelling and where it really lands.
+    let in_git = |p: &Path| {
+        p.components().any(|c| matches!(c, Component::Normal(n) if n.to_string_lossy().eq_ignore_ascii_case(".git")))
+    };
+    if in_git(rel_path) || canonical.strip_prefix(root_canon).is_ok_and(in_git) {
+        return Err(format!("{rel} is inside .git, which is not browsable"));
+    }
     Ok(canonical)
 }
 
@@ -484,6 +492,17 @@ mod tests {
         assert!(list_dir(root.to_str().unwrap(), "../..").is_err());
         assert!(read_file(root.to_str().unwrap(), "../secret", false).is_err());
         assert!(read_file(root.to_str().unwrap(), "/etc/passwd", false).is_err());
+    }
+
+    #[test]
+    fn refuses_direct_reads_inside_git() {
+        let root = temp_project();
+        std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git").join("config"), "[core]").unwrap();
+        let r = root.to_str().unwrap();
+        assert!(read_file(r, ".git/config", false).unwrap_err().contains(".git"));
+        assert!(read_file(r, "./.GIT/config", false).is_err());
+        assert!(list_dir(r, ".git").is_err());
     }
 
     #[cfg(unix)]

@@ -8,8 +8,8 @@
  * it only for calls inside that scope. Nothing here decides what a rule
  * covers: that is `scoped_rules` in the Rust plugin, and this file only asks it.
  */
-import { invoke } from '@/lib/previewInvoke'
 import { i18n } from '@/i18n/react-i18next-compat'
+import { invokeCommand } from '@/lib/backend'
 import type { ApprovalChoice } from '@/hooks/useToolApprovalRequests'
 
 /** How far an approval reaches, as the backend spells it. */
@@ -80,7 +80,7 @@ export async function approvalScopeOptions(
   input: unknown
 ): Promise<ApprovalScopeWire[]> {
   try {
-    const options = await invoke<ApprovalScopeWire[]>('agent_approval_scope_options', {
+    const options = await invokeCommand<ApprovalScopeWire[]>('agent_approval_scope_options', {
       root,
       tool,
       args: asArgs(input),
@@ -101,7 +101,7 @@ export async function checkScopedRule(
 ): Promise<ScopedRule | null> {
   try {
     return (
-      (await invoke<ScopedRule | null>('agent_approval_rule_check', {
+      (await invokeCommand<ScopedRule | null>('agent_approval_rule_check', {
         root,
         tool,
         args: asArgs(input),
@@ -119,7 +119,7 @@ export function addScopedRule(
   input: unknown,
   scope: ApprovalScopeWire
 ): Promise<ScopedRule> {
-  return invoke<ScopedRule>('agent_approval_rule_add', {
+  return invokeCommand<ScopedRule>('agent_approval_rule_add', {
     root,
     tool,
     args: asArgs(input),
@@ -128,20 +128,20 @@ export function addScopedRule(
 }
 
 export function listScopedRules(project?: string): Promise<ScopedRule[]> {
-  return invoke<ScopedRule[]>('agent_approval_rules_list', {
+  return invokeCommand<ScopedRule[]>('agent_approval_rules_list', {
     project: project ?? null,
   })
 }
 
 export function revokeScopedRule(id: string): Promise<boolean> {
-  return invoke<boolean>('agent_approval_rule_revoke', { id })
+  return invokeCommand<boolean>('agent_approval_rule_revoke', { id })
 }
 
 export function listDeferred(
   includeSettled = false,
   project?: string
 ): Promise<DeferredApproval[]> {
-  return invoke<DeferredApproval[]>('agent_deferred_list', {
+  return invokeCommand<DeferredApproval[]>('agent_deferred_list', {
     project: project ?? null,
     includeSettled,
   })
@@ -151,11 +151,11 @@ export function answerDeferred(
   id: string,
   allow: boolean
 ): Promise<DeferredApproval> {
-  return invoke<DeferredApproval>('agent_deferred_answer', { id, allow })
+  return invokeCommand<DeferredApproval>('agent_deferred_answer', { id, allow })
 }
 
 export function discardDeferred(id: string): Promise<boolean> {
-  return invoke<boolean>('agent_deferred_discard', { id })
+  return invokeCommand<boolean>('agent_deferred_discard', { id })
 }
 
 /** Stable id of a standing scope as an option of the form. */

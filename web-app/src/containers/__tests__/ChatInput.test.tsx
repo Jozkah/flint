@@ -1181,6 +1181,32 @@ describe('ChatInput', () => {
     expect(updater(attachmentsList).map((a: any) => a.name)).toEqual(['a.md'])
   })
 
+  it('offers to undo a Backspace removal and puts the chip back in place', async () => {
+    const { toast } = await import('sonner')
+    promptState = ''
+    attachmentsList = [
+      { type: 'document', name: 'a.md', fileType: 'md' },
+      { type: 'document', name: 'b.md', fileType: 'md' },
+    ]
+    renderInput()
+    fireEvent.keyDown(getTextarea(), { key: 'Backspace' })
+    const info = vi.mocked(toast.info)
+    const opts = info.mock.calls[info.mock.calls.length - 1][1] as any
+    expect(info.mock.calls[info.mock.calls.length - 1][0]).toBe(
+      'chat:composer.attachmentRemoved'
+    )
+    opts.action.onClick()
+    expect(setAttachmentsMock).toHaveBeenCalledTimes(2)
+    const restore = setAttachmentsMock.mock.calls[1][1]
+    expect(restore([attachmentsList[0]]).map((a: any) => a.name)).toEqual([
+      'a.md',
+      'b.md',
+    ])
+    // Closing after the undo deletes nothing and restores nothing more.
+    opts.onDismiss()
+    expect(setAttachmentsMock).toHaveBeenCalledTimes(2)
+  })
+
   it('leaves chips alone on Backspace while there is text', () => {
     promptState = 'hello'
     attachmentsList = [{ type: 'document', name: 'a.md', fileType: 'md' }]

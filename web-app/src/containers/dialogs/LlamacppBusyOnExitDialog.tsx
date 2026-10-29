@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { listen } from '@tauri-apps/api/event'
 import { forceStopEngine } from '@janhq/tauri-plugin-llamacpp-api'
 import { AlertTriangle } from 'lucide-react'
@@ -68,7 +68,7 @@ export default function LlamacppBusyOnExitDialog() {
       ])
       threadIds.forEach((tid) => state.clearThreadState(tid))
       await forceStopEngine()
-      await invoke('confirm_exit')
+      await invokeCommand('confirm_exit')
     } catch (e) {
       console.error('force-quit failed:', e)
       setForcing(false)
@@ -80,7 +80,7 @@ export default function LlamacppBusyOnExitDialog() {
     toast.dismiss('llamacpp-closing')
     // Stop the backend's wait-then-quit loop; without this the app still
     // quits the moment the model goes idle (#185).
-    invoke('cancel_exit').catch((e) => {
+    invokeCommand('cancel_exit').catch((e) => {
       console.warn('cancel_exit failed:', e)
     })
   }

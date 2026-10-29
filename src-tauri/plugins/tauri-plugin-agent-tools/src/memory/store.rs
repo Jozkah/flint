@@ -334,6 +334,36 @@ pub fn insert_capped(store_root: &Path, record: &MemoryRecord, cap: usize) -> Re
     })
 }
 
+/// Store a pending (proposed) record under the same ceiling as
+/// [`insert_capped`], so unanswered questions cannot grow a scope without
+/// bound (O04-007). A proposal with the same content already waiting is not
+/// stored twice: its id comes back instead, and nothing is written.
+pub fn insert_pending(store_root: &Path, record: &MemoryRecord, cap: usize) -> Result<Option<MemoryId>, String> {
+    update(store_root, record.scope, |records| {
+        if let Some(existing) = records.iter().find(|r| {
+            r.id != record.id
+                && r.content_hash == record.content_hash
+                && matches!(r.status, super::record::Status::Proposed { .. })
+        }) {
+            return Ok((false, Some(existing.id.clone())));
+        }
+        let live = records
+            .iter()
+            .filter(|r| !matches!(r.status, super::record::Status::Deleted) && r.id != record.id)
+            .count();
+        if live >= cap {
+            return Err(format!(
+                "ERROR: this scope already holds {cap} memories; forget some before saving more"
+            ));
+        }
+        match records.iter_mut().find(|r| r.id == record.id) {
+            Some(existing) => *existing = record.clone(),
+            None => records.push(record.clone()),
+        }
+        Ok((true, None))
+    })
+}
+
 /// Remove one record outright. Idempotent.
 ///
 /// Callers wanting an undoable delete set [`super::record::Status::Deleted`]
@@ -357,6 +387,24 @@ mod tests {
     fn unique_root() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         std::env::temp_dir().join(format!("jan_memstore_test_{}_{}", std::process::id(), n))
+    }
+
+    #[test]
+    fn pending_proposals_are_capped_and_not_stored_twice() {
+        let root = unique_root();
+        let pending = |id: &str, text: &str| {
+            let mut r = MemoryRecord::new(MemoryId::new(id), text, Scope::User, Creator::Agent, Origin::Inferred, 1);
+            r.status = Status::Proposed { reason: "automatic-saving-disabled".into() };
+            r
+        };
+        assert_eq!(insert_pending(&root, &pending("mem-a", "Tabs."), 2).unwrap(), None);
+        // The same text again: the waiting one is named, nothing new is stored.
+        assert_eq!(insert_pending(&root, &pending("mem-b", "Tabs."), 2).unwrap(), Some(MemoryId::new("mem-a")));
+        assert_eq!(insert_pending(&root, &pending("mem-c", "Spaces."), 2).unwrap(), None);
+        // Pending questions count against the scope's ceiling.
+        assert!(insert_pending(&root, &pending("mem-d", "Rust."), 2).is_err());
+        assert_eq!(load(&root, Scope::User).records.len(), 2);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// A holder whose lock was taken over leaves the new owner's lock alone.

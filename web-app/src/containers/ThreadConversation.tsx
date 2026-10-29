@@ -6,6 +6,7 @@ import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markThreadHasDocuments } from '@/lib/threadDocuments'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteChatActions, useRemoteComposer } from '@/lib/remote/composer'
+import { sendQueuedViaComposer } from '@/lib/remote/queuedSend'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
 import { addSnapshotSink } from '@/lib/providerFetch'
@@ -1980,7 +1981,6 @@ export function ThreadConversation({
             name: `audio-${Date.now()}`,
             mimeType: file.mediaType,
             dataUrl: file.url,
-            base64,
             audioFormat: file.mediaType === 'audio/mpeg' ? 'mp3' : 'wav',
             size,
           })
@@ -1990,7 +1990,6 @@ export function ThreadConversation({
             name: `video-${Date.now()}`,
             mimeType: file.mediaType,
             dataUrl: file.url,
-            base64,
             size,
           })
         }
@@ -1998,7 +1997,6 @@ export function ThreadConversation({
           name: `image-${Date.now()}`,
           mimeType: file.mediaType,
           dataUrl: file.url,
-          base64,
           size,
         })
       })
@@ -2914,7 +2912,17 @@ export function ThreadConversation({
     if (!next) return
 
     processingQueueRef.current = true
-    sendQueuedMessage(next.text, next.steered)
+    // A phone's message queued with attachments goes through this chat's
+    // composer entry, as a phone's send to an idle chat does, so its media
+    // and documents go with it. This view registers that entry, so the
+    // text-only fallback is only for a send racing an unmount.
+    const { attachments } = next
+    const sending = attachments
+      ? sendQueuedViaComposer('chat', threadId, next.text, attachments).then(
+          (sent) => (sent ? undefined : sendQueuedMessage(next.text, false))
+        )
+      : sendQueuedMessage(next.text, next.steered)
+    sending
       .catch((err) => {
         console.error('Failed to send queued message:', err)
       })
@@ -3387,21 +3395,27 @@ export function ThreadConversation({
                       message={message}
                       isFirstMessage={isFirstMessage}
                       isLastMessage={isLastMessage}
-                      switchedFrom={switchedFromOf(chatMessages, index)}
                       status={effectiveStatus}
-                      reasoningContainerRef={reasoningContainerRef}
-                      isReasoningAtBottom={isReasoningAtBottom}
-                      onReasoningScroll={handleReasoningScroll}
-                      onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                      onRegenerate={handleRegenerate}
-                      onFork={handleFork}
-                      onContinue={handleContinue}
-                      onEdit={handleEditMessage}
-                      onDelete={handleDeleteMessage}
                       versionInfo={versionInfoById[message.id]}
-                      onSwitchVersion={handleSwitchVersion}
-                      isAnimating={!pendingContinueMessage}
-                      hideActions={!!pendingContinueMessage}
+                      view={{
+                        switchedFrom: switchedFromOf(chatMessages, index),
+                        isAnimating: !pendingContinueMessage,
+                        hideActions: !!pendingContinueMessage,
+                      }}
+                      reasoning={{
+                        containerRef: reasoningContainerRef,
+                        isAtBottom: isReasoningAtBottom,
+                        onScroll: handleReasoningScroll,
+                        onScrollToBottom: forceScrollReasoningToBottom,
+                      }}
+                      actions={{
+                        onRegenerate: handleRegenerate,
+                        onFork: handleFork,
+                        onContinue: handleContinue,
+                        onEdit: handleEditMessage,
+                        onDelete: handleDeleteMessage,
+                        onSwitchVersion: handleSwitchVersion,
+                      }}
                     />
                   </Fragment>
                 )
@@ -3414,15 +3428,21 @@ export function ThreadConversation({
                   isFirstMessage={false}
                   isLastMessage={true}
                   status={effectiveStatus}
-                  reasoningContainerRef={reasoningContainerRef}
-                  isReasoningAtBottom={isReasoningAtBottom}
-                  onReasoningScroll={handleReasoningScroll}
-                  onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                  onRegenerate={handleRegenerate}
-                  onEdit={handleEditMessage}
-                  onDelete={handleDeleteMessage}
-                  hideActions
-                  isAnimating={false}
+                  view={{
+                    hideActions: true,
+                    isAnimating: false,
+                  }}
+                  reasoning={{
+                    containerRef: reasoningContainerRef,
+                    isAtBottom: isReasoningAtBottom,
+                    onScroll: handleReasoningScroll,
+                    onScrollToBottom: forceScrollReasoningToBottom,
+                  }}
+                  actions={{
+                    onRegenerate: handleRegenerate,
+                    onEdit: handleEditMessage,
+                    onDelete: handleDeleteMessage,
+                  }}
                 />
               )}
               {memoryLocation && (

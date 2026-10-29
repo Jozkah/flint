@@ -444,7 +444,16 @@ pub async fn memory_record_propose_inferred(
                 // every prompt while it waits, and `memory_proposals_list` is what
                 // the approval card reads.
                 let pending = inferred::as_pending(&proposal, reason);
-                super::store::upsert(&store_root, &pending).map_err(AgentToolsError::from)?;
+                let waiting = super::store::insert_pending(
+                    &store_root,
+                    &pending,
+                    super::create::MAX_RECORDS_PER_SCOPE,
+                )
+                .map_err(AgentToolsError::from)?;
+                // The same question already waiting: show that one, not a copy.
+                if let Some(id) = waiting {
+                    proposal.record.id = id;
+                }
                 return Ok(InferredOutcome::NeedsApproval {
                     proposal: Box::new(ProposalView::from(&proposal)),
                     reason,
@@ -2669,6 +2678,20 @@ mod provenance_tests {
         assert_eq!(r.provenance.uses.len(), crate::memory::record::MAX_USES);
         assert_eq!(r.provenance.uses.last().unwrap().turn_id.as_deref(), Some("t24"));
         assert_eq!(r.provenance.used_by_sessions, vec!["s".to_string()]);
+    }
+
+    #[test]
+    fn sessions_and_history_are_bounded_newest_kept() {
+        use crate::memory::record::{MAX_HISTORY, MAX_USED_BY_SESSIONS};
+        let mut r = MemoryRecord::new(MemoryId::new("m"), "x", Scope::User, Creator::User, Origin::Explicit, 1);
+        for i in 0..1000 {
+            r.record_use(crate::memory::record::MemoryUse { session_id: format!("s{i}"), at: i, ..Default::default() });
+            r.revise(format!("v{i}"), i);
+        }
+        assert_eq!(r.provenance.used_by_sessions.len(), MAX_USED_BY_SESSIONS);
+        assert_eq!(r.provenance.used_by_sessions.last().map(String::as_str), Some("s999"));
+        assert_eq!(r.history.len(), MAX_HISTORY);
+        assert_eq!(r.history.last().map(|h| h.version + 1), r.version);
     }
 
     #[test]

@@ -232,11 +232,8 @@ vi.mock('@/containers/ChatInput', () => ({
 vi.mock('@/containers/MessageItem', () => ({
   MessageItem: ({
     message,
-    onRegenerate,
-    onEdit,
-    onDelete,
     versionInfo,
-    onSwitchVersion,
+    actions: { onRegenerate, onEdit, onDelete, onSwitchVersion } = {},
   }: any) => (
     <div data-testid={`message-${message.id}`} data-role={message.role}>
       <span>{message.id}</span>

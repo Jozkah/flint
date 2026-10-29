@@ -252,6 +252,7 @@
     "filterImages": "Immagini",
     "attachFailed": "Impossibile allegare i documenti",
     "removeFailed": "Impossibile rimuovere l'allegato",
+    "attachmentRemoved": "{{name}} rimosso",
     "ingestFailed": "Impossibile elaborare {{name}}",
     "readAudioFailed": "Impossibile leggere il file audio",
     "readVideoFailed": "Impossibile leggere il file video",

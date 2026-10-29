@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { create } from 'zustand'
 import type { WorkspaceScope } from '@janhq/tauri-plugin-agent-tools-api'
 import { useToolApproval } from '@/hooks/useToolApproval'

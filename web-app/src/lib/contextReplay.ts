@@ -14,7 +14,7 @@
  * original's, so "the model received the same context again" is checked on
  * the record, not assumed here.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { create } from 'zustand'
 import { errorText } from '@/lib/errorText'
 import {

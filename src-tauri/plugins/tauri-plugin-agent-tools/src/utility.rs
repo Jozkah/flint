@@ -8,7 +8,7 @@
 //! The record holds what happened, never what was said: kind, session, model,
 //! outcome, duration and token counts. No prompt, no transcript, no output.
 
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -64,6 +64,34 @@ pub fn log_path(data_folder: &Path) -> PathBuf {
     data_folder.join("audit").join("utility-agents.jsonl")
 }
 
+/// The log is cut back to its newest half once it grows past this.
+const MAX_LOG_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Keep the newest lines that fit in half the cap. Callers hold the log lock.
+fn trim_if_over(path: &Path, cap: u64) -> Result<(), String> {
+    let len = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+    if len <= cap {
+        return Ok(());
+    }
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let lines: Vec<String> = crate::retention::lossy_lines(file).filter(|l| !l.trim().is_empty()).collect();
+    let mut kept: Vec<&str> = Vec::new();
+    let mut size = 0u64;
+    for line in lines.iter().rev() {
+        size += line.len() as u64 + 1;
+        if size > cap / 2 {
+            break;
+        }
+        kept.push(line);
+    }
+    kept.reverse();
+    let mut body = kept.join("\n");
+    if !body.is_empty() {
+        body.push('\n');
+    }
+    crate::atomic_file::write_atomic(path, body.as_bytes())
+}
+
 /// The fields that may be persisted, checked rather than trusted: the record
 /// arrives over IPC, and a free-text field is where content would leak in.
 fn sanitized(record: &UtilityInvocation) -> UtilityInvocation {
@@ -100,18 +128,18 @@ fn sanitized(record: &UtilityInvocation) -> UtilityInvocation {
 pub fn append(data_folder: &Path, record: &UtilityInvocation) {
     let record = sanitized(record);
     let result = (|| -> Result<(), String> {
+        // The request-log lock: the desktop app and the CLI append here too.
+        let _guard = crate::retention::lock_for(data_folder);
         let path = log_path(data_folder);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| e.to_string())?;
+        let mut file = crate::retention::open_for_append(&path).map_err(|e| e.to_string())?;
         writeln!(file, "{line}").map_err(|e| e.to_string())?;
-        file.flush().map_err(|e| e.to_string())
+        file.flush().map_err(|e| e.to_string())?;
+        drop(file);
+        trim_if_over(&path, MAX_LOG_BYTES)
     })();
     if let Err(e) = result {
         eprintln!("utility agent audit: could not record {}: {e}", record.id);
@@ -126,9 +154,8 @@ pub fn for_session(data_folder: &Path, session: &str) -> Result<Vec<UtilityInvoc
     let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
         return Ok(Vec::new());
     };
-    Ok(std::io::BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
+    // Lossy: one bad line (a torn write) must not hide every record after it.
+    Ok(crate::retention::lossy_lines(file)
         .filter_map(|l| serde_json::from_str::<UtilityInvocation>(&l).ok())
         .filter(|r| r.session == session)
         .collect())
@@ -176,6 +203,35 @@ mod tests {
         let found = for_session(&d, "s1").unwrap();
         assert_eq!(found.len(), 2);
         assert_eq!(found[1].outcome, UtilityOutcome::Cancelled);
+    }
+
+    #[test]
+    fn the_log_is_cut_to_its_newest_records_past_the_cap() {
+        let d = dir("trim");
+        for i in 0..40 {
+            append(&d, &UtilityInvocation { id: format!("util-{i}"), ..record("s1") });
+        }
+        let path = log_path(&d);
+        let full = std::fs::metadata(&path).unwrap().len();
+        trim_if_over(&path, full / 2).unwrap();
+        let kept = for_session(&d, "s1").unwrap();
+        assert!(!kept.is_empty() && kept.len() < 40, "{}", kept.len());
+        assert_eq!(kept.last().unwrap().id, "util-39", "the newest record is kept");
+        assert!(std::fs::metadata(&path).unwrap().len() <= full / 4);
+    }
+
+    #[test]
+    fn a_torn_line_does_not_hide_later_records() {
+        let d = dir("torn");
+        append(&d, &record("s1"));
+        let path = log_path(&d);
+        let mut text = std::fs::read(&path).unwrap();
+        text.extend_from_slice(b"{\"broken\xff");
+        std::fs::write(&path, text).unwrap();
+        append(&d, &UtilityInvocation { id: "util-after".into(), ..record("s1") });
+        let found = for_session(&d, "s1").unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1].id, "util-after");
     }
 
     #[test]

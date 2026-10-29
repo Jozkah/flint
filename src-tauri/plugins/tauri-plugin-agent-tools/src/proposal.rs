@@ -236,6 +236,8 @@ pub enum ProposalError {
     /// Every file was written, and then the proposal's own record could not
     /// be saved: the change is on disk but the proposal still reads pending.
     NotRecorded(String),
+    /// Another apply or reject of the same proposal is in progress.
+    Busy,
 }
 
 impl ProposalError {
@@ -294,6 +296,9 @@ impl ProposalError {
             ProposalError::NotRecorded(e) => format!(
                 "the change was written in full, but the proposal's record could not be saved ({e}); it may still show as pending"
             ),
+            ProposalError::Busy => {
+                "that proposal is being applied or rejected right now; nothing was written".into()
+            }
         }
     }
 }
@@ -1132,6 +1137,11 @@ pub fn plan(
             Some(id) => Some(read_blob(data_folder, id).map_err(ProposalError::Io)?),
             None => None,
         };
+        // Sensitivity is worked out again from the path and content, not
+        // taken from the record's own `sensitive` field, which is on disk.
+        if is_sensitive(&file.path, proposed.as_deref()) {
+            return Err(ProposalError::Sensitive(file.path.clone()));
+        }
         // From the content, not from the record's `flags`: a record whose
         // flags were emptied on disk still needs the acknowledgement.
         let flagged = !file.flags.is_empty()
@@ -1390,12 +1400,57 @@ fn roll_back(dest_root: &Path, written: &[&PlannedFile]) -> Vec<String> {
     not_restored
 }
 
+/// A lock file held while one proposal is applied or rejected, so two approvals
+/// of the same proposal (two windows, a double click) cannot both plan against
+/// the pending record and both write. Removed on drop.
+struct ProposalLock(PathBuf);
+
+/// A lock older than this is from a crashed process and is taken over.
+const PROPOSAL_LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(600);
+
+impl ProposalLock {
+    fn take(data_folder: &Path, id: &str) -> Result<Self, ProposalError> {
+        if !valid_id(id) {
+            return Err(ProposalError::NotFound);
+        }
+        let path = proposals_root(data_folder).join(format!("{id}.lock"));
+        for _ in 0..2 {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(_) => return Ok(ProposalLock(path)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age > PROPOSAL_LOCK_STALE);
+                    if !stale {
+                        return Err(ProposalError::Busy);
+                    }
+                    let _ = std::fs::remove_file(&path);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(ProposalError::NotFound),
+                Err(e) => return Err(ProposalError::Io(e.to_string())),
+            }
+        }
+        Err(ProposalError::Busy)
+    }
+}
+
+impl Drop for ProposalLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// Apply an approval. All files land, or none do.
 pub fn apply(
     data_folder: &Path,
     dest_root: &Path,
     approval: &Approval,
 ) -> Result<ApplyReport, ProposalError> {
+    // Held across plan, write and save: the pending check in `plan` is only
+    // true while no other apply of this proposal can run.
+    let _lock = ProposalLock::take(data_folder, &approval.proposal_id)?;
     let (mut record, planned) = match plan(data_folder, dest_root, approval) {
         Ok(ok) => ok,
         Err(err) => {
@@ -1490,6 +1545,7 @@ pub fn reject(
     id: &str,
     scope: &ProposalScope,
 ) -> Result<ProposalRecord, ProposalError> {
+    let _lock = ProposalLock::take(data_folder, id)?;
     let mut record = load(data_folder, id)?;
     if record.state != ProposalState::Pending {
         return Err(ProposalError::NotPending(record.state));
@@ -2445,6 +2501,29 @@ mod tests {
         let err = apply(&data, &dest, &approve(&record, &dest, vec![all("package.json")])).unwrap_err();
         assert_eq!(err, ProposalError::Unacknowledged(vec!["package.json".into()]));
         assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_BEFORE);
+    }
+
+    #[test]
+    fn a_second_apply_of_the_same_proposal_waits_its_turn() {
+        let (data, dest) = dirs("apply-lock");
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc",
+            vec![FileInput { path: "n.txt".into(), base: None, proposed: Some(b"n\n".to_vec()) }],
+        )
+        .unwrap();
+        let held = ProposalLock::take(&data, &record.id).unwrap();
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("n.txt")])).unwrap_err();
+        assert_eq!(err, ProposalError::Busy);
+        assert!(!dest.join("n.txt").exists(), "nothing written while another apply holds it");
+        assert_eq!(reject(&data, &record.id, &scope(&dest)).unwrap_err(), ProposalError::Busy);
+        drop(held);
+        apply(&data, &dest, &approve(&record, &dest, vec![all("n.txt")])).unwrap();
+        assert!(dest.join("n.txt").exists());
+        // The finished apply leaves no lock behind; the next one sees it applied.
+        let again = apply(&data, &dest, &approve(&record, &dest, vec![all("n.txt")])).unwrap_err();
+        assert!(matches!(again, ProposalError::NotPending(_)), "{again:?}");
     }
 
     #[test]

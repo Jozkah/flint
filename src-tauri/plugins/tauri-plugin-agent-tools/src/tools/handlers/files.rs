@@ -246,7 +246,7 @@ pub(super) async fn read(
     // plain read (no offset/limit) does this, since slicing an image makes no
     // sense and offset/limit still refers to text lines.
     if offset.is_none() && limit.is_none() && bytes.len() <= MAX_IMAGE_BYTES {
-        if let Some(mime) = crate::tools::image::detect(&target) {
+        if let Some(mime) = crate::tools::image::detect_bytes(&target, &bytes) {
             use base64::Engine;
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             let name = target
@@ -260,6 +260,18 @@ pub(super) async fn read(
                 name,
             };
             return (note, Some(vec![image]));
+        }
+    }
+    if offset.is_none() && limit.is_none() && bytes.len() > MAX_IMAGE_BYTES {
+        if let Some(mime) = crate::tools::image::detect_bytes(&target, &bytes) {
+            return (
+                format!(
+                    "ERROR: {path} is a {mime} image of {total_bytes} bytes, over the {} KB limit for \
+                     images sent to the model. Ask the user for a smaller copy.",
+                    MAX_IMAGE_BYTES / 1024
+                ),
+                None,
+            );
         }
     }
 
@@ -349,9 +361,28 @@ pub(super) fn read_hashes() -> &'static ReadHashes {
     HASHES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub(super) fn content_hash(bytes: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(bytes).into()
+/// The SHA-256 of the file at `path`, read in chunks so a large file is
+/// never held in memory whole (P2B-018).
+pub(super) async fn file_hash(path: &Path) -> Option<[u8; 32]> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut file = std::fs::File::open(&path).ok()?;
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let n = file.read(&mut buf).ok()?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        Some(hasher.finalize().into())
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 pub(super) fn stale_key(ctx: &ToolContext<'_>) -> Option<String> {
@@ -373,7 +404,7 @@ pub(super) async fn record_seen(
     let (Some(key), Some(path)) = (stale_key(ctx), tracked_path(args, ctx)) else {
         return None;
     };
-    let hash = tokio::fs::read(&path).await.ok().map(|b| content_hash(&b));
+    let hash = file_hash(&path).await;
     let mut all = read_hashes().lock().unwrap_or_else(|e| e.into_inner());
     let seen = all.entry(key).or_default();
     match hash {
@@ -402,7 +433,7 @@ pub(super) async fn stale_edit_refusal(
 ) -> Option<String> {
     let key = stale_key(ctx)?;
     let path = tracked_path(args, ctx)?;
-    let now = content_hash(&tokio::fs::read(&path).await.ok()?);
+    let now = file_hash(&path).await?;
     let shown = arg_str(args, "path").unwrap_or_default();
     let seen = read_hashes()
         .lock()
@@ -546,17 +577,30 @@ pub(super) async fn write(
         Ok(p) => p,
         Err(e) => return format!("ERROR: refused to write {path}: {e}"),
     };
+    // Only a regular file is overwritten, and the old content is read for the
+    // "no change" answer only when it is the same size as the new: a large
+    // target is never loaded whole just to be replaced (AGTB-025).
+    let prior_len = match tokio::fs::symlink_metadata(&open_at).await {
+        Ok(meta) if meta.is_file() => Some(meta.len()),
+        Ok(meta) if meta.is_dir() => return format!("ERROR: {shown}: is a directory, not a file"),
+        Ok(_) => return format!("ERROR: {shown}: not a regular file"),
+        Err(_) => None,
+    };
     // Existence decides created/overwrote; a non-UTF8 file still exists, so it
     // must not be a UTF-8 decode that answers that question. Read through the
     // same no-follow walk as the write, so a swapped link is refused here too.
-    let prior = match read_no_follow(&open_at).await {
-        Ok(prior) => Some(prior),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) if nofollow::is_link_refused(&e) => return swapped_link("write", path),
-        Err(_) => Some(Vec::new()),
+    let prior = if prior_len.is_some_and(|n| n != content.len() as u64) {
+        Some(None)
+    } else {
+        match read_no_follow(&open_at).await {
+            Ok(prior) => Some(Some(prior)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) if nofollow::is_link_refused(&e) => return swapped_link("write", path),
+            Err(_) => Some(None),
+        }
     };
     let existed = prior.is_some();
-    let unchanged = prior.is_some_and(|prior| prior == content.as_bytes());
+    let unchanged = prior.flatten().is_some_and(|prior| prior == content.as_bytes());
     let bytes = content.len();
     match write_no_follow(&open_at, content).await {
         Err(e) if nofollow::is_link_refused(&e) => swapped_link("write", path),
@@ -639,6 +683,13 @@ pub(super) async fn edit(
         Ok(p) => p,
         Err(e) => return format!("ERROR: refused to edit {path}: {e}"),
     };
+    // Size and type first: a FIFO blocks and a huge file is not loaded whole
+    // (AGTB-025). A missing file falls through to the read's own error.
+    if tokio::fs::symlink_metadata(&open_at).await.is_ok() {
+        if let Err(e) = readable_file_with(&open_at, true).await {
+            return format!("ERROR: {shown}: {e}");
+        }
+    }
     let content = match read_no_follow(&open_at).await {
         Ok(bytes) => match String::from_utf8(bytes) {
             Ok(c) => c,

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /** A desktop rectangle (screen pixels) the `computer` tool never acts in. */
 export type ExcludedRegion = {

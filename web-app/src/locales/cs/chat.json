@@ -262,6 +262,7 @@
     "filterImages": "Obrázky",
     "attachFailed": "Dokumenty se nepodařilo připojit",
     "removeFailed": "Přílohu se nepodařilo odebrat",
+    "attachmentRemoved": "Odebráno: {{name}}",
     "ingestFailed": "{{name}} se nepodařilo zpracovat",
     "readAudioFailed": "Zvukový soubor se nepodařilo přečíst",
     "readVideoFailed": "Videosoubor se nepodařilo přečíst",

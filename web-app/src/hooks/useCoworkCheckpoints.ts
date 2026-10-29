@@ -1,6 +1,6 @@
 import { create } from 'zustand'
+import { invokeCommand } from '@/lib/backend'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { invoke } from '@tauri-apps/api/core'
 import { backendStorage } from '@/lib/backendStorage'
 import { deferredPersistStorage } from '@/lib/deferredPersistStorage'
 import { localStorageKey } from '@/constants/localStorage'
@@ -163,7 +163,7 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           .reverse()
           .find((one) => one.root === input.root)?.sha
         try {
-          const made = await invoke<Checkpoint>('agent_checkpoint_capture', {
+          const made = await invokeCommand<Checkpoint>('agent_checkpoint_capture', {
             root: input.root,
             threadId: input.sessionId,
             parent: parent ?? null,
@@ -226,7 +226,7 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           try {
             return {
               ok: true,
-              plan: await invoke<RewindPlan>('agent_checkpoint_plan', {
+              plan: await invokeCommand<RewindPlan>('agent_checkpoint_plan', {
                 checkpoint: wire(target),
                 latest,
               }),
@@ -243,7 +243,7 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           try {
             return {
               ok: true,
-              diff: await invoke<string>('agent_checkpoint_preview_diff', {
+              diff: await invokeCommand<string>('agent_checkpoint_preview_diff', {
                 checkpoint: wire(target),
               }),
             }
@@ -270,7 +270,7 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           const safety =
             newest && newest.safety && newest.sha !== sha ? newest.sha : null
           try {
-            await invoke('agent_checkpoint_restore', {
+            await invokeCommand('agent_checkpoint_restore', {
               checkpoint: wire(target),
               latest,
               safety,
@@ -306,7 +306,7 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           const roots = [...new Set(chain.map((one) => one.root))]
           for (const root of roots) {
             try {
-              await invoke('agent_checkpoint_forget', {
+              await invokeCommand('agent_checkpoint_forget', {
                 root,
                 threadId: sessionId,
               })

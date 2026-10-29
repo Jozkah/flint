@@ -16,7 +16,7 @@ import type {
   MemoryLocation,
   MemoryRetrieved,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 
 /** Mirrors the backend's `JAN_PROJECT_PREFIX`. */

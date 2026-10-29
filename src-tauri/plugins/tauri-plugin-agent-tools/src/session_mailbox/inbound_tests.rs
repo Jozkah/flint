@@ -262,6 +262,17 @@ fn a_notice_is_never_answered_automatically() {
 }
 
 #[test]
+fn a_corrupt_subscriptions_file_is_kept_aside_not_overwritten() {
+    let fx = Fx::new("sub_corrupt");
+    let (mb, _) = fx.mailbox();
+    std::fs::create_dir_all(&mb.root).unwrap();
+    std::fs::write(mb.subs_path(), b"{not json").unwrap();
+    mb.subscribe_idle("a", "b").unwrap();
+    assert_eq!(std::fs::read(mb.subs_path().with_extension("json.corrupt")).unwrap(), b"{not json");
+    assert_eq!(mb.idle_subscriptions("a").len(), 1);
+}
+
+#[test]
 fn a_subscription_fires_once_when_the_target_finishes_a_turn() {
     let fx = Fx::new("sub_idle");
     let (mb, _) = fx.mailbox();

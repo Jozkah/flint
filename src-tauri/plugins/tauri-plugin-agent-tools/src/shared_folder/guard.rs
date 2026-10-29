@@ -168,8 +168,21 @@ fn bisect(rest: &[String]) -> Option<&'static str> {
 /// Classify the arguments after `git` (or after `gh`, with `program` `"gh"`).
 pub fn classify_args(program: &str, args: &[String], probe: &dyn Probe) -> Option<TreeChange> {
     if program == "gh" {
-        let mut it = args.iter().filter(|a| !a.starts_with('-'));
-        return match (it.next().map(String::as_str), it.next().map(String::as_str)) {
+        // `gh -R owner/repo pr checkout 1`: the repo value is not a word.
+        let mut words = Vec::new();
+        let mut skip = false;
+        for a in args {
+            if std::mem::take(&mut skip) {
+                continue;
+            }
+            if a == "-R" || a == "--repo" {
+                skip = true;
+            } else if !a.starts_with('-') {
+                words.push(a.as_str());
+            }
+        }
+        let mut it = words.into_iter();
+        return match (it.next(), it.next()) {
             (Some("pr"), Some("checkout" | "co")) => {
                 Some(TreeChange { kind: "pr-checkout", dir: None })
             }
@@ -192,9 +205,16 @@ pub fn classify_args(program: &str, args: &[String], probe: &dyn Probe) -> Optio
                 }
             }
             i += 2;
+        } else if a == "--work-tree" {
+            // The tree that changes is this one, not the current folder.
+            dir = args.get(i + 1).cloned();
+            i += 2;
+        } else if let Some(tree) = a.strip_prefix("--work-tree=") {
+            dir = Some(tree.to_string());
+            i += 1;
         } else if VALUE_GLOBALS.contains(&a) {
             i += 2;
-        } else if a.starts_with("--git-dir=") || a.starts_with("--work-tree=") {
+        } else if a.starts_with("--git-dir=") {
             i += 1;
         } else if a.starts_with('-') {
             i += 1;
@@ -238,6 +258,22 @@ pub fn classify_args(program: &str, args: &[String], probe: &dyn Probe) -> Optio
         "clean" => clean(&rest),
         "restore" => restore(&rest),
         "bisect" => bisect(&rest),
+        // Plumbing and helpers that rewrite the working tree too. User-defined
+        // aliases (other than `-c alias.x=`) are not resolved here.
+        "rm" => (!wants_help(&rest)
+            && !flags(&rest).any(|f| f == "--cached" || f == "--dry-run" || short_cluster_has(f, 'n'))
+            && positionals(&rest).iter().chain(paths_after_dashdash(&rest).iter()).any(|p| is_broad(p)))
+        .then_some("rm"),
+        "checkout-index" => flags(&rest)
+            .any(|f| matches!(f.as_str(), "--all" | "--force") || short_cluster_has(f, 'a') || short_cluster_has(f, 'f'))
+            .then_some("checkout-index"),
+        "read-tree" => flags(&rest).any(|f| f == "-u" || f == "--reset").then_some("read-tree"),
+        "sparse-checkout" => matches!(
+            positionals(&rest).first().copied(),
+            Some("set" | "add" | "reapply" | "disable" | "init")
+        )
+        .then_some("sparse-checkout"),
+        "submodule" => (positionals(&rest).first().copied() == Some("update")).then_some("submodule-update"),
         _ => None,
     }?;
     Some(TreeChange { kind, dir })
@@ -327,9 +363,29 @@ mod tests {
             ("git am patch.mbox", "am"),
             ("git bisect start", "bisect"),
             ("gh pr checkout 123", "pr-checkout"),
+            ("gh -R owner/repo pr checkout 123", "pr-checkout"),
+            ("git read-tree -u -m HEAD", "read-tree"),
+            ("git checkout-index -a -f", "checkout-index"),
+            ("git sparse-checkout set src", "sparse-checkout"),
+            ("git submodule update --init", "submodule-update"),
+            ("git rm -r .", "rm"),
+            ("git rm -r -- :/", "rm"),
         ] {
             assert_eq!(hit(command), vec![kind], "{command}");
         }
+    }
+
+    #[test]
+    fn a_work_tree_option_names_the_folder_that_changes() {
+        let got = classify_args("git", &["--work-tree=../other".into(), "checkout".into(), "main".into()], &NoProbe);
+        assert_eq!(got.and_then(|t| t.dir).as_deref(), Some("../other"));
+        let got = classify_args("git", &["--work-tree".into(), "w".into(), "reset".into(), "--hard".into()], &NoProbe);
+        assert_eq!(got.and_then(|t| t.dir).as_deref(), Some("w"));
+        // Narrow or index-only forms still pass.
+        assert!(hit("git rm --cached .").is_empty());
+        assert!(hit("git rm src/a.ts").is_empty());
+        assert!(hit("git read-tree HEAD").is_empty());
+        assert!(hit("git submodule status").is_empty());
     }
 
     /// Passed: read-only, or confined to a named file.

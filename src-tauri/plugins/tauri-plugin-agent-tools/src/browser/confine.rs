@@ -93,6 +93,15 @@ impl OriginPolicy {
         &self.allowed
     }
 
+    /// Also allow `more`, keeping the order and the primary origin first.
+    pub fn extend(&mut self, more: &[Origin]) {
+        for o in more {
+            if !self.allowed.contains(o) {
+                self.allowed.push(o.clone());
+            }
+        }
+    }
+
     /// Whether a request for `raw` may go ahead. Same origin means same
     /// scheme, host and port: `localhost` and `127.0.0.1` are different
     /// origins, as they are to the browser.
@@ -237,6 +246,12 @@ mod tests {
         assert!(!p.permits("https://localhost:5173/"));
         assert!(!p.permits("https://fonts.googleapis.com/css"));
         assert!(!p.permits("ws://localhost:9229/"));
+        let (_, other) = local_origin("http://127.0.0.1:5173/").unwrap();
+        let mut q = OriginPolicy::new(other.clone(), &[]).unwrap();
+        q.extend(p.allowed());
+        q.extend(&[other]);
+        assert!(q.permits("http://127.0.0.1:5173/") && q.permits("http://localhost:5173/"));
+        assert_eq!(q.allowed().len(), 1 + p.allowed().len());
         assert!(!p.permits("blob:https://evil.example/0f7c"));
         assert!(!p.permits("file:///etc/passwd"));
         assert!(!p.permits("chrome://settings"));

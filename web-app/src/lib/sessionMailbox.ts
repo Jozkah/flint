@@ -10,7 +10,7 @@
  * Nothing here touches permissions, approvals or grants, and nothing may: a
  * message is coordination data, never authority.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
 /** Emitted by the backend after each append to an inbox. */

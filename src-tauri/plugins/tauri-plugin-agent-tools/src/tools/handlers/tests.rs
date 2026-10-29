@@ -348,6 +348,22 @@ async fn edit_file(root: &Path, file: &str, old: &str, new: &str) -> String {
     .await
 }
 
+/// AGTB-025: an edit target over the ceiling is refused before it is read,
+/// and a write over a large file replaces it without loading it.
+#[tokio::test]
+async fn edit_refuses_a_huge_file_and_write_replaces_it() {
+    let root = unique_root();
+    let big = std::fs::File::create(root.join("big.bin")).unwrap();
+    big.set_len(super::files::READ_MAX_BYTES_ALLOW_LARGE + 1).unwrap();
+    drop(big);
+    let out = edit_file(&root, "big.bin", "a", "b").await;
+    assert!(out.starts_with("ERROR") && out.contains("ceiling"), "{out}");
+    let out = execute_builtin(lookup("write").unwrap(), &json!({"path": "big.bin", "content": "small"}), &root).await;
+    assert!(out.starts_with("Overwrote"), "{out}");
+    assert_eq!(std::fs::read(root.join("big.bin")).unwrap(), b"small");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[tokio::test]
 async fn edit_matches_a_multi_line_old_string_in_a_crlf_file() {
     let root = unique_root();
@@ -1123,8 +1139,15 @@ async fn read_image_over_cap_falls_back_to_text_error() {
         images.is_none(),
         "an over-cap image must not yield image parts"
     );
-    assert!(content.starts_with("ERROR"), "got: {content}");
+    assert!(content.starts_with("ERROR") && content.contains("image/png image"), "got: {content}");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_image_cap_bounds_the_encoded_payload() {
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(vec![0u8; MAX_IMAGE_BYTES]);
+    assert!(encoded.len() <= MAX_IMAGE_ENCODED_BYTES, "{}", encoded.len());
 }
 
 #[tokio::test]

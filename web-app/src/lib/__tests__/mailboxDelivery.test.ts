@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   createMailboxDelivery,
   dequeueClaimedReady,
@@ -346,6 +346,20 @@ describe('mailbox delivery', () => {
     useCoworkSessions.setState({ currentId: 'A' })
     await drainIdleSession('A', run, fake.mailbox)
     expect(sent.map(([into]) => into)).toEqual(['A'])
+    expect(q('A')).toEqual([])
+  })
+
+  it('the idle drain hands a queued message its attachments', async () => {
+    const attachments = {
+      files: [{ type: 'file', mediaType: 'image/png', url: 'data:' }],
+      docs: [],
+    }
+    useMessageQueue
+      .getState()
+      .enqueue('A', { id: 'p1', text: 'look', createdAt: 1, attachments })
+    const run = vi.fn()
+    await drainIdleSession('A', run, fake.mailbox)
+    expect(run).toHaveBeenCalledWith('look', undefined, attachments)
     expect(q('A')).toEqual([])
   })
 

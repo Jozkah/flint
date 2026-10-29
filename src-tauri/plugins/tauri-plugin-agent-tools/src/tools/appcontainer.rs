@@ -491,6 +491,9 @@ pub fn await_startup_sweep() {
 /// machine, the user's keys or Flint's settings. Checked by the helper for
 /// every folder it grants, whatever asked for it; the data folder itself is
 /// also refused when a grant is authorized ([`crate::grants`]).
+/// Folder name, under the host temp folder, of the granted-write-roots record.
+const ROOTS_RECORD_DIR_NAME: &str = "jan-appcontainer-write-roots";
+
 pub fn grant_refusal(path: &Path) -> Option<String> {
     let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let protected: Vec<PathBuf> = [
@@ -502,6 +505,9 @@ pub fn grant_refusal(path: &Path) -> Option<String> {
     ]
     .iter()
     .filter_map(|v| std::env::var_os(v).map(PathBuf::from))
+    // The record of granted write roots: a grant on it (or on the temp folder
+    // holding it) would let a sandboxed command erase it and keep a grant alive.
+    .chain(std::iter::once(std::env::temp_dir().join(ROOTS_RECORD_DIR_NAME)))
     .collect();
     // Flint's data folder is checked where the grant is issued, which knows
     // it: its managed worktrees live inside it and must stay grantable.
@@ -1085,7 +1091,7 @@ mod win {
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
     use windows_sys::Win32::System::Threading::{
         CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
@@ -1239,17 +1245,23 @@ mod win {
         ))
     }
 
-    /// Whether `path`'s own DACL holds an ACE naming `sid`. Test support.
+    /// Run `f` on `path`'s own DACL, freeing the descriptor afterwards on every
+    /// path (including a panic in `f`). Test support.
     #[cfg(test)]
-    pub(super) fn acl_names(path: &Path, sid: PSID) -> bool {
-        use windows_sys::Win32::Security::{
-            AclSizeInformation, EqualSid, GetAce, GetAclInformation, ACCESS_ALLOWED_ACE,
-            ACL_SIZE_INFORMATION,
-        };
+    fn with_dacl<T>(path: &Path, f: impl FnOnce(*mut ACL) -> T) -> T {
+        struct Free(PSECURITY_DESCRIPTOR);
+        impl Drop for Free {
+            fn drop(&mut self) {
+                if !self.0.is_null() {
+                    // SAFETY: the descriptor came from GetNamedSecurityInfoW and is freed once, here; the ACL inside it is not used after `f` returns.
+                    unsafe { LocalFree(self.0) };
+                }
+            }
+        }
         let object = wide(path.as_os_str());
         let mut acl: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed by `Free`.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1262,38 +1274,9 @@ mod win {
                 &mut descriptor,
             )
         };
+        let _free = Free(descriptor);
         assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
-        // SAFETY: ACL_SIZE_INFORMATION is a plain C struct of integers; all-zero is valid.
-        let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
-        // SAFETY: `acl` points into `descriptor`, alive until the free below; pointer and size describe the local `info`.
-        let ok = unsafe {
-            GetAclInformation(
-                acl,
-                &mut info as *mut _ as *mut c_void,
-                std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
-                AclSizeInformation,
-            )
-        };
-        assert_ne!(ok, 0, "GetAclInformation");
-        let mut found = false;
-        for i in 0..info.AceCount {
-            let mut ace: *mut c_void = std::ptr::null_mut();
-            // SAFETY: `i` is below AceCount and `ace` is a local out-pointer.
-            if unsafe { GetAce(acl, i, &mut ace) } == 0 {
-                continue;
-            }
-            // Allowed and denied ACEs share this layout: header, mask, SID.
-            let entry = ace as *const ACCESS_ALLOWED_ACE;
-            // SAFETY: test-only: GetAce succeeded, and the folders these tests make hold only basic allow/deny ACEs, which have this layout; addr_of! takes the field address without reading.
-            let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
-            // SAFETY: `ace_sid` points at the SID inside the ACE and `sid` is a valid SID from the caller.
-            if unsafe { EqualSid(ace_sid, sid) } != 0 {
-                found = true;
-            }
-        }
-        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `acl` points into it and is not used after this free.
-        unsafe { LocalFree(descriptor) };
-        found
+        f(acl)
     }
 
     /// The ACEs on `path`'s own DACL naming `sid`, as `(ace type, flags,
@@ -1305,55 +1288,45 @@ mod win {
             AclSizeInformation, EqualSid, GetAce, GetAclInformation, ACCESS_ALLOWED_ACE,
             ACL_SIZE_INFORMATION,
         };
-        let object = wide(path.as_os_str());
-        let mut acl: *mut ACL = std::ptr::null_mut();
-        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
-        let status = unsafe {
-            GetNamedSecurityInfoW(
-                object.as_ptr(),
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &mut acl,
-                std::ptr::null_mut(),
-                &mut descriptor,
-            )
-        };
-        assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
-        // SAFETY: ACL_SIZE_INFORMATION is a plain C struct of integers; all-zero is valid.
-        let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
-        // SAFETY: `acl` points into `descriptor`, alive until the free below; pointer and size describe the local `info`.
-        let ok = unsafe {
-            GetAclInformation(
-                acl,
-                &mut info as *mut _ as *mut c_void,
-                std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
-                AclSizeInformation,
-            )
-        };
-        assert_ne!(ok, 0, "GetAclInformation");
-        let mut out = Vec::new();
-        for i in 0..info.AceCount {
-            let mut ace: *mut c_void = std::ptr::null_mut();
-            // SAFETY: `i` is below AceCount and `ace` is a local out-pointer.
-            if unsafe { GetAce(acl, i, &mut ace) } == 0 {
-                continue;
+        with_dacl(path, |acl| {
+            // SAFETY: ACL_SIZE_INFORMATION is a plain C struct of integers; all-zero is valid.
+            let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
+            // SAFETY: `acl` points into the descriptor `with_dacl` keeps alive; pointer and size describe the local `info`.
+            let ok = unsafe {
+                GetAclInformation(
+                    acl,
+                    &mut info as *mut _ as *mut c_void,
+                    std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                    AclSizeInformation,
+                )
+            };
+            assert_ne!(ok, 0, "GetAclInformation");
+            let mut out = Vec::new();
+            for i in 0..info.AceCount {
+                let mut ace: *mut c_void = std::ptr::null_mut();
+                // SAFETY: `i` is below AceCount and `ace` is a local out-pointer.
+                if unsafe { GetAce(acl, i, &mut ace) } == 0 {
+                    continue;
+                }
+                // Allowed and denied ACEs share this layout: header, mask, SID.
+                let entry = ace as *const ACCESS_ALLOWED_ACE;
+                // SAFETY: test-only: GetAce succeeded, and the folders these tests make hold only basic allow/deny ACEs, which have this layout; addr_of! takes the field address without reading.
+                let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
+                // SAFETY: `ace_sid` points at the SID inside the ACE and `sid` is a valid SID from the caller.
+                if unsafe { EqualSid(ace_sid, sid) } != 0 {
+                    // SAFETY: `entry` points at a basic ACE inside `acl`, alive while `with_dacl` runs this closure.
+                    let e = unsafe { &*entry };
+                    out.push((e.Header.AceType, e.Header.AceFlags, e.Mask));
+                }
             }
-            let entry = ace as *const ACCESS_ALLOWED_ACE;
-            // SAFETY: test-only: GetAce succeeded, and the folders these tests make hold only basic allow/deny ACEs, which have this layout; addr_of! takes the field address without reading.
-            let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
-            // SAFETY: `ace_sid` points at the SID inside the ACE and `sid` is a valid SID from the caller.
-            if unsafe { EqualSid(ace_sid, sid) } != 0 {
-                // SAFETY: `entry` points at a basic ACE inside `acl`, alive until the free below.
-                let e = unsafe { &*entry };
-                out.push((e.Header.AceType, e.Header.AceFlags, e.Mask));
-            }
-        }
-        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `acl` points into it and is not used after this free.
-        unsafe { LocalFree(descriptor) };
-        out
+            out
+        })
+    }
+
+    /// Whether `path`'s own DACL holds an ACE naming `sid`. Test support.
+    #[cfg(test)]
+    pub(super) fn acl_names(path: &Path, sid: PSID) -> bool {
+        !aces_for(path, sid).is_empty()
     }
 
     /// The rights the DACL of `path` gives `sid`, deny ACEs applied
@@ -1361,37 +1334,20 @@ mod win {
     #[cfg(test)]
     pub(super) fn effective_rights(path: &Path, sid: PSID) -> u32 {
         use windows_sys::Win32::Security::Authorization::GetEffectiveRightsFromAclW;
-        let object = wide(path.as_os_str());
-        let mut acl: *mut ACL = std::ptr::null_mut();
-        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
-        let status = unsafe {
-            GetNamedSecurityInfoW(
-                object.as_ptr(),
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &mut acl,
-                std::ptr::null_mut(),
-                &mut descriptor,
-            )
-        };
-        assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
-        let trustee = TRUSTEE_W {
-            pMultipleTrustee: std::ptr::null_mut(),
-            MultipleTrusteeOperation: 0,
-            TrusteeForm: TRUSTEE_IS_SID,
-            TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
-            ptstrName: sid as PWSTR,
-        };
-        let mut mask: u32 = 0;
-        // SAFETY: `acl` points into `descriptor`, still alive; `trustee` names the caller's valid SID; `mask` is a local out-pointer.
-        let status = unsafe { GetEffectiveRightsFromAclW(acl, &trustee, &mut mask) };
-        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `acl` points into it and is not used after this free.
-        unsafe { LocalFree(descriptor) };
-        assert_eq!(status, ERROR_SUCCESS, "GetEffectiveRightsFromAclW");
-        mask
+        with_dacl(path, |acl| {
+            let trustee = TRUSTEE_W {
+                pMultipleTrustee: std::ptr::null_mut(),
+                MultipleTrusteeOperation: 0,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+                ptstrName: sid as PWSTR,
+            };
+            let mut mask: u32 = 0;
+            // SAFETY: `acl` points into the descriptor `with_dacl` keeps alive; `trustee` names the caller's valid SID; `mask` is a local out-pointer.
+            let status = unsafe { GetEffectiveRightsFromAclW(acl, &trustee, &mut mask) };
+            assert_eq!(status, ERROR_SUCCESS, "GetEffectiveRightsFromAclW");
+            mask
+        })
     }
 
     /// Grant `path` the pre-#124 way (FILE_ALL_ACCESS, merged). Test support.
@@ -1448,7 +1404,7 @@ mod win {
     }
 
     pub(super) fn roots_record_dir() -> PathBuf {
-        std::env::temp_dir().join("jan-appcontainer-write-roots")
+        std::env::temp_dir().join(super::ROOTS_RECORD_DIR_NAME)
     }
 
     /// Revoke every folder the named container has recorded, then forget the
@@ -1939,7 +1895,14 @@ mod win {
                     continue;
                 }
                 seen += 1;
-                if seen > MAX_PROTECTED_WALK {
+                // Only a grant stops at the cap (and says so). A revoke walks
+                // everything: an explicit entry left past the cap would keep
+                // the container's access after it was taken away.
+                if seen > MAX_PROTECTED_WALK && mask != 0 {
+                    eprintln!(
+                        "[appcontainer] stopped looking for protected folders under {} after {MAX_PROTECTED_WALK} directories",
+                        path.display()
+                    );
                     return Ok(());
                 }
                 if dacl_is_protected(&child) {
@@ -2157,6 +2120,10 @@ mod win {
         out
     }
 
+    /// Most processes alive at once in one sandboxed command's tree, the helper
+    /// included.
+    const SANDBOX_MAX_PROCESSES: u32 = 256;
+
     /// Put this process in a kill-on-close job, so the shell -- created inside the
     /// job by inheritance -- dies whenever the helper does. `kill_on_drop` and
     /// `kill_tree` reach the helper, not the extra process layer it adds, so
@@ -2172,7 +2139,11 @@ mod win {
         }
         // SAFETY: JOBOBJECT_EXTENDED_LIMIT_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // A fork bomb in the sandbox stops at a process count instead of taking
+        // the machine down (P2B-016). Generous for builds, which run tens.
+        limits.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+        limits.BasicLimitInformation.ActiveProcessLimit = SANDBOX_MAX_PROCESSES;
         // SAFETY: `job` is a live job handle; pointer and size describe `limits`, a local that outlives the call.
         let sized = unsafe {
             SetInformationJobObject(
@@ -2926,6 +2897,17 @@ mod tests {
         }
         // Long-path spellings compare like their plain form.
         assert!(refused("\\\\?\\C:\\Users\\me"));
+    }
+
+    #[test]
+    fn grants_refuse_the_write_roots_record_and_its_temp_folder() {
+        let record = std::env::temp_dir().join(ROOTS_RECORD_DIR_NAME);
+        assert!(grant_refusal(&record).is_some());
+        assert!(grant_refusal(&record.join("moniker")).is_some());
+        assert!(grant_refusal(&std::env::temp_dir()).is_some());
+        // A sibling under the temp folder is still grantable by this rule.
+        let sibling = std::env::temp_dir().join("flint-some-repo");
+        assert!(grant_refusal(&sibling).is_none_or(|why| !why.contains("protected")));
     }
 
     /// Jozkah/jan#124: every granted worktree gets its `.jan` cut off, and a

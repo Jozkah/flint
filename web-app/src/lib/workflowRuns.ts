@@ -8,7 +8,7 @@
  * after it. Pure apart from [`RunIo`], which is the only thing that touches the
  * app data folder (never an attached project folder).
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import type { TaskResult, TeamTask } from '@/lib/coworkTeam'
 

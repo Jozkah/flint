@@ -252,6 +252,7 @@
     "filterImages": "Hình ảnh",
     "attachFailed": "Không thể đính kèm tài liệu",
     "removeFailed": "Không thể xóa tệp đính kèm",
+    "attachmentRemoved": "Đã xóa {{name}}",
     "ingestFailed": "Không thể xử lý {{name}}",
     "readAudioFailed": "Không thể đọc tệp âm thanh",
     "readVideoFailed": "Không thể đọc tệp video",

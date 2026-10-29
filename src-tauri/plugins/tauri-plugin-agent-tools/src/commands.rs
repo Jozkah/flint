@@ -1172,6 +1172,9 @@ async fn execute_tool_inner(
         .as_deref()
         .filter(|id| crate::grants::main_writable(id, &thread_id))
         .and_then(|_| write_roots.first().cloned());
+    // The folder whose `agent.toml` governs this run: the attached project, or
+    // the folder the run may edit when nothing was attached read-only.
+    let policy_root: Option<PathBuf> = read_only_project.as_deref().map(PathBuf::from).or_else(|| edit_folder.clone());
     let mut write_roots = write_roots;
     for root in access_write {
         if !write_roots.contains(&root) {
@@ -1222,7 +1225,7 @@ async fn execute_tool_inner(
     // denied a tool or a path was obeyed by the CLI and ignored by the
     // desktop. Read here, at the gate, because a policy passed in from the
     // renderer is one the caller can choose not to send.
-    let policy = crate::policy::load(read_only_project.as_deref().map(Path::new), allow_network);
+    let policy = crate::policy::load(policy_root.as_deref(), allow_network);
     let permissions = policy.permissions.clone();
     // Widen the read roots by any absolute directories the project's own allow
     // rules make readable (e.g. `allow = ["read(C:/data/**)"]`), so a policy
@@ -2008,6 +2011,16 @@ fn output_sink(
     channel: tauri::ipc::Channel<ToolOutputChunk>,
     call_id: Option<String>,
 ) -> crate::tools::OutputSink {
+    budgeted_sink(call_id, move |chunk| channel.send(chunk).is_ok())
+}
+
+/// The sink's numbering and byte budget, around `send` (which says whether the
+/// chunk was delivered). Shared by the channel sink and its tests (O03-022).
+#[cfg_attr(not(feature = "tauri"), allow(dead_code))]
+fn budgeted_sink<F>(call_id: Option<String>, send: F) -> crate::tools::OutputSink
+where
+    F: Fn(ToolOutputChunk) -> bool + Send + Sync + 'static,
+{
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -2015,13 +2028,16 @@ fn output_sink(
     let sent = Arc::new(AtomicUsize::new(0));
     let stopped = Arc::new(AtomicBool::new(false));
     Arc::new(move |text: String| {
-        if stopped.load(Ordering::Relaxed) {
+        if stopped.load(Ordering::Acquire) {
             return;
         }
         let total = sent.fetch_add(text.len(), Ordering::Relaxed) + text.len();
-        // One honest final chunk rather than silently going quiet.
+        // One honest final chunk rather than silently going quiet: only the
+        // call that flips `stopped` sends it, so racing calls send one marker.
         let payload = if total > MAX_STREAMED_BYTES {
-            stopped.store(true, Ordering::Relaxed);
+            if stopped.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+                return;
+            }
             "\n[output truncated in the live view]\n".to_string()
         } else {
             text
@@ -2033,8 +2049,8 @@ fn output_sink(
         };
         // A send error means the webview is gone; stop rather than keep trying
         // for the lifetime of a backgrounded job.
-        if channel.send(chunk).is_err() {
-            stopped.store(true, Ordering::Relaxed);
+        if !send(chunk) {
+            stopped.store(true, Ordering::Release);
         }
     })
 }
@@ -4719,31 +4735,33 @@ mod tests {
         assert!(seen[0].2.contains("truncated"), "{}", seen[0].2);
     }
 
-    /// Mirrors `output_sink`'s accounting without a `Channel`, which cannot be
-    /// constructed outside a webview.
+    /// The production `budgeted_sink`, sending into a list instead of a
+    /// `Channel`, which cannot be constructed outside a webview.
     fn test_sink(seen: Seen, call_id: Option<String>) -> crate::tools::OutputSink {
-        use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-        use std::sync::Arc;
-        let seq = Arc::new(AtomicU64::new(0));
-        let sent = Arc::new(AtomicUsize::new(0));
-        let stopped = Arc::new(AtomicBool::new(false));
-        Arc::new(move |text: String| {
-            if stopped.load(Ordering::Relaxed) {
-                return;
-            }
-            let total = sent.fetch_add(text.len(), Ordering::Relaxed) + text.len();
-            let payload = if total > MAX_STREAMED_BYTES {
-                stopped.store(true, Ordering::Relaxed);
-                "\n[output truncated in the live view]\n".to_string()
-            } else {
-                text
-            };
-            seen.lock().unwrap().push((
-                seq.fetch_add(1, Ordering::Relaxed),
-                call_id.clone(),
-                payload,
-            ));
+        super::budgeted_sink(call_id, move |chunk| {
+            seen.lock().unwrap().push((chunk.seq, chunk.call_id, chunk.text));
+            true
         })
+    }
+
+    /// Many threads over the cap at once still send one marker.
+    #[test]
+    fn the_truncation_marker_is_sent_once_under_contention() {
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = test_sink(seen.clone(), None);
+        sink("x".repeat(MAX_STREAMED_BYTES - 10));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let sink = sink.clone();
+                std::thread::spawn(move || sink("y".repeat(100)))
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let seen = seen.lock().unwrap();
+        let markers = seen.iter().filter(|c| c.2.contains("truncated")).count();
+        assert_eq!(markers, 1, "{seen:?}");
     }
     /// A plain chat (thread scope, no Cowork session, no write grant) reads
     /// the folders it attached: the first as `read_only_project`, the rest as

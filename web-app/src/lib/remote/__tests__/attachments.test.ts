@@ -63,10 +63,29 @@ describe('chat.send with attachments', () => {
     expect(r).toMatchObject({ error: { code: 'rejected', message: 'x.png: Cannot read images' } })
   })
 
-  it('refuses bad upload ids and files while a run is going', async () => {
+  it('refuses bad upload ids', async () => {
     const { call } = setup({ prepareAttachments: async () => ({ files: [{ type: 'file', mediaType: 'image/png', url: 'd' }], docs: [], rejected: [] }), chatBusy: () => true })
     expect(await call({ clientId: 'client-3', id: 'c1', text: 'x', attachments: ['../etc'] })).toMatchObject({ error: { code: 'bad_params' } })
-    expect(await call({ clientId: 'client-4', id: 'c1', text: 'x', attachments: [ID] })).toMatchObject({ error: { code: 'busy' } })
+  })
+
+  it('queues files with the message while a run is going, never as steering', async () => {
+    const files = [{ type: 'file', mediaType: 'image/png', url: 'd' }]
+    const docs = [{ type: 'document' as const, name: 'a.pdf', path: '/p/a.pdf' }]
+    const rejected = [{ name: 'b.mp3', reason: 'needs-audio', message: 'No audio' }]
+    const enqueue = vi.fn()
+    const { a, call } = setup({ enqueue, prepareAttachments: async () => ({ files, docs, rejected }), chatBusy: () => true })
+    const r = await call({ clientId: 'client-4', id: 'c1', text: 'x', steer: true, attachments: [ID] })
+    expect(enqueue).toHaveBeenCalledWith('c1', 'x', false, { files, docs })
+    expect(a.sendViaComposer).not.toHaveBeenCalled()
+    expect(a.stageDocs).not.toHaveBeenCalled()
+    expect(r).toMatchObject({ result: { delivery: 'queued', rejected: [{ name: 'b.mp3' }] } })
+  })
+
+  it('a text-only message while busy is still queued or steered as before', async () => {
+    const enqueue = vi.fn()
+    const { call } = setup({ enqueue, chatBusy: () => true })
+    expect(await call({ clientId: 'client-6', id: 'c1', text: 'hi', steer: true })).toMatchObject({ result: { delivery: 'steered' } })
+    expect(enqueue).toHaveBeenCalledWith('c1', 'hi', true)
   })
 
   it('a new chat gets its files with the first message', async () => {
