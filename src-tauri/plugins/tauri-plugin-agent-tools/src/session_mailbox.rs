@@ -1574,26 +1574,8 @@ impl Mailbox {
                 Origin::Agent => caller.chain.clone(),
                 Origin::Notice => extras.chain.clone(),
             };
-            let (chain_id, hops, chain_path) = match inherited {
-                Some(c) => (c.chain_id, c.hops.saturating_add(1), c.path),
-                None => (id.clone(), 0, Vec::new()),
-            };
-            let max_hops = max_hops_for(caller.folder.as_deref());
-            if hops >= max_hops {
-                return Err(MailboxError::new(
-                    code::CHAIN_LIMIT,
-                    format!(
-                        "chain limit reached: this would be hop {hops} of a chain of agent-to-agent messages (limit {max_hops}). Do not relay it further; tell the user and ask them how to continue"
-                    ),
-                ));
-            }
-            let hold = if hops == 0 {
-                None
-            } else {
-                self.wake_hold(from_id, to_id, &chain_id, &chain_path, now)
-            };
-            let mut chain_path = chain_path;
-            chain_path.push(from_id.to_string());
+            let (chain_id, hops, chain_path, hold) =
+                self.stamp_chain(from_id, to_id, &id, inherited, caller.folder.as_deref(), now)?;
 
             let envelope = MailEnvelope {
                 v: 1,
@@ -1617,25 +1599,7 @@ impl Mailbox {
                 hold: hold.map(str::to_string),
                 inbound_hold: inbound == Inbound::Hold,
             };
-            // Outbox first: if the inbox append then fails, the attempt still
-            // counts against the limits, which fails closed.
-            if !is_notice {
-                append_jsonl(
-                    &self.outbox_path(from_id),
-                    &OutboxEntry {
-                        id: envelope.id.clone(),
-                        to: to_id.to_string(),
-                        at: now,
-                        reply_to: reply_to.map(str::to_string),
-                    },
-                )?;
-            }
-            append_jsonl(&self.inbox_path(to_id), &envelope)?;
-            let overflow = if inbound == Inbound::Hold {
-                self.record_held(to_id, &envelope.id, now)?
-            } else {
-                Vec::new()
-            };
+            let overflow = self.persist(from_id, to_id, &envelope, is_notice, now)?;
             (
                 (
                     SendReceipt {
@@ -1658,6 +1622,73 @@ impl Mailbox {
             );
         }
         Ok(receipt)
+    }
+
+    /// The chain a message joins, stamped by the host: the inherited chain one
+    /// hop further, or a new chain named after the message. Refuses a hop at
+    /// or past the folder's limit. Returns the chain id, the hop count, the
+    /// path with the sender appended, and the wake hold for a relayed message.
+    fn stamp_chain(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        id: &str,
+        inherited: Option<ChainContext>,
+        folder: Option<&str>,
+        now: i64,
+    ) -> Result<(String, u8, Vec<String>, Option<&'static str>)> {
+        let (chain_id, hops, mut chain_path) = match inherited {
+            Some(c) => (c.chain_id, c.hops.saturating_add(1), c.path),
+            None => (id.to_string(), 0, Vec::new()),
+        };
+        let max_hops = max_hops_for(folder);
+        if hops >= max_hops {
+            return Err(MailboxError::new(
+                code::CHAIN_LIMIT,
+                format!(
+                    "chain limit reached: this would be hop {hops} of a chain of agent-to-agent messages (limit {max_hops}). Do not relay it further; tell the user and ask them how to continue"
+                ),
+            ));
+        }
+        let hold = if hops == 0 {
+            None
+        } else {
+            self.wake_hold(from_id, to_id, &chain_id, &chain_path, now)
+        };
+        chain_path.push(from_id.to_string());
+        Ok((chain_id, hops, chain_path, hold))
+    }
+
+    /// Writes a checked message: the sender's outbox (not for a notice), the
+    /// recipient's inbox, and the held list when the recipient holds inbound
+    /// mail. Returns the held messages that overflowed and were dropped.
+    fn persist(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        envelope: &MailEnvelope,
+        is_notice: bool,
+        now: i64,
+    ) -> Result<Vec<MailEnvelope>> {
+        // Outbox first: if the inbox append then fails, the attempt still
+        // counts against the limits, which fails closed.
+        if !is_notice {
+            append_jsonl(
+                &self.outbox_path(from_id),
+                &OutboxEntry {
+                    id: envelope.id.clone(),
+                    to: to_id.to_string(),
+                    at: now,
+                    reply_to: envelope.reply_to.clone(),
+                },
+            )?;
+        }
+        append_jsonl(&self.inbox_path(to_id), envelope)?;
+        if envelope.inbound_hold {
+            self.record_held(to_id, &envelope.id, now)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     /// The recipient `to_id`, checked: a registered session other than the
