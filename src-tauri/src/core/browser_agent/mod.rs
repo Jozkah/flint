@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use url::Url;
+use url::{Host, Url};
 
 /// The one pane the web side opens (`NATIVE_PREVIEW_ID = 'rail'`).
 pub const PANE_LABEL: &str = "web-preview-rail";
@@ -96,6 +96,49 @@ pub struct BlockInfo {
 static BLOCK_SEQ: AtomicU64 = AtomicU64::new(0);
 static LAST_BLOCK: Mutex<Option<BlockInfo>> = Mutex::new(None);
 static LAST_PROMPT: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+/// Names that resolved to public addresses a moment ago. The navigation handler
+/// cannot do DNS itself (it must never wait), so a redirect hop to a name is
+/// let through only once that name is in here; anything else is held and
+/// resolved off the webview's thread first (P3A-037). The pinned-address
+/// proxy that would also stop a later rebind is a separate follow-up.
+const DNS_OK_TTL: Duration = Duration::from_secs(60);
+static DNS_OK: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
+/// Hops held by the handler until their name is resolved.
+static DNS_QUEUE: Mutex<Vec<Url>> = Mutex::new(Vec::new());
+static DNS_PENDING: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn note_resolved_public(host: &str) {
+    let mut g = DNS_OK.lock().unwrap_or_else(|e| e.into_inner());
+    g.retain(|(h, at)| h != host && at.elapsed() < DNS_OK_TTL);
+    g.push((host.to_string(), Instant::now()));
+}
+
+fn resolved_public(host: &str) -> bool {
+    DNS_OK
+        .try_lock()
+        .is_ok_and(|g| g.iter().any(|(h, at)| h == host && at.elapsed() < DNS_OK_TTL))
+}
+
+/// A held hop is still being resolved: a tool call waiting on the load keeps waiting.
+pub(crate) fn dns_pending() -> bool {
+    DNS_PENDING.load(Ordering::SeqCst) > 0
+}
+
+/// The host a hop names, when only DNS can say where it points.
+fn name_to_resolve(url: &Url) -> Option<String> {
+    match url.host()? {
+        Host::Domain(_) => policy::host_key(url),
+        _ => None,
+    }
+}
+
+fn note_block(info: BlockInfo) {
+    if let Ok(mut g) = LAST_BLOCK.try_lock() {
+        *g = Some(info);
+    }
+    BLOCK_SEQ.fetch_add(1, Ordering::SeqCst);
+}
+
 /// A tool call is opening a page and will itself report a blocked hop (and ask),
 /// so the handler must not raise a second prompt for it.
 static OPEN_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
@@ -131,7 +174,23 @@ pub fn navigation_permitted(label: &str, url: &Url) -> bool {
         return true;
     }
     let (reason, needs) = match STORE.nav_check(url) {
-        store::NavCheck::NoLease | store::NavCheck::Verdict(policy::Hop::Allow) => return true,
+        store::NavCheck::NoLease => return true,
+        store::NavCheck::Verdict(policy::Hop::Allow) => {
+            let Some(host) = name_to_resolve(url) else {
+                return true;
+            };
+            if resolved_public(&host) || STORE.nav_private_ok(&host) == Some(true) {
+                return true;
+            }
+            // Not checked yet: hold the hop. `report_block` resolves it off this
+            // thread and loads it again, or refuses it (fail closed).
+            if let Ok(mut q) = DNS_QUEUE.try_lock() {
+                q.push(url.clone());
+                DNS_PENDING.fetch_add(1, Ordering::SeqCst);
+                return false;
+            }
+            (format!("the address of {host} could not be checked; try again"), None)
+        }
         store::NavCheck::Verdict(policy::Hop::NeedsApproval { host }) => (
             format!("{host} has not been approved. A page on an approved site sent the browser there, so it was stopped before anything was requested"),
             Some(host),
@@ -141,10 +200,7 @@ pub fn navigation_permitted(label: &str, url: &Url) -> bool {
     };
     // Remembered for the tool call waiting on this load. try_lock: the handler
     // never waits, and losing a note under contention only loses the wording.
-    if let Ok(mut g) = LAST_BLOCK.try_lock() {
-        *g = Some(BlockInfo { url: url.to_string(), reason, needs_approval: needs });
-    }
-    BLOCK_SEQ.fetch_add(1, Ordering::SeqCst);
+    note_block(BlockInfo { url: url.to_string(), reason, needs_approval: needs });
     log::warn!("agent browser blocked navigation to {}", redact(url));
     false
 }
@@ -163,6 +219,14 @@ fn redact(url: &Url) -> String {
 /// webview's thread.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn report_block<R: tauri::Runtime>(app: &tauri::AppHandle<R>, url: &Url) {
+    let held = {
+        let mut q = DNS_QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+        q.iter().position(|u| u == url).map(|i| q.remove(i))
+    };
+    if let Some(hop) = held {
+        resume_after_dns(app.clone(), hop);
+        return;
+    }
     let Some(info) = last_block().filter(|b| b.url == url.as_str()) else {
         return;
     };
@@ -204,6 +268,41 @@ pub fn report_block<R: tauri::Runtime>(app: &tauri::AppHandle<R>, url: &Url) {
     });
 }
 
+/// Resolve a held hop. Public: remember the name and load the hop again (the
+/// handler now lets it through). Internal, failed or slow: refuse it.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn resume_after_dns<R: tauri::Runtime>(app: tauri::AppHandle<R>, hop: Url) {
+    tauri::async_runtime::spawn(async move {
+        let host = name_to_resolve(&hop).unwrap_or_default();
+        let port = hop.port_or_known_default().unwrap_or(443);
+        match policy::resolved_block(&host, port).await {
+            None => {
+                note_resolved_public(&host);
+                // Only while the agent still holds the pane: otherwise the user
+                // may have moved on and must not be pulled back.
+                if !matches!(STORE.nav_check(&hop), store::NavCheck::NoLease) {
+                    if let Some(wv) = tauri::Manager::get_webview(&app, PANE_LABEL) {
+                        let next = hop.clone();
+                        let _ = tokio::task::spawn_blocking(move || wv.navigate(next)).await;
+                    }
+                }
+            }
+            Some(why) => {
+                let shown = redact(&hop);
+                log::warn!("agent browser blocked navigation to {shown}: {why}");
+                note_block(BlockInfo { url: hop.to_string(), reason: why.clone(), needs_approval: None });
+                use tauri::{Emitter, EventTarget};
+                let _ = app.emit_to(
+                    EventTarget::webview("main"),
+                    EVENT_BLOCKED,
+                    serde_json::json!({ "url": shown, "reason": why }),
+                );
+            }
+        }
+        DNS_PENDING.fetch_sub(1, Ordering::SeqCst);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +322,7 @@ mod tests {
         let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         STORE.set_lease(&policy::NetworkPolicy::open(), false, true);
         STORE.add_visit("approved-site.test");
+        note_resolved_public("docs.approved-site.test");
         let (tx, rx) = mpsc::channel();
         let (held_tx, held_rx) = mpsc::channel::<()>();
         let (release_tx, release_rx) = mpsc::channel::<()>();
@@ -288,6 +388,32 @@ mod tests {
         // ...and a later call (the window restored) takes the lease again.
         STORE.set_lease(&policy::NetworkPolicy::open(), false, true);
         assert!(STORE.lease().is_some());
+        STORE.clear_lease();
+    }
+
+    /// P3A-037: a redirect hop to a name nobody has resolved is held (not
+    /// loaded, not reported as a block) until DNS says where it points; a name
+    /// checked a moment ago, or one with the user's local-address rule, passes.
+    #[test]
+    fn a_hop_to_an_unresolved_name_is_held_for_dns() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        STORE.set_lease(&policy::NetworkPolicy::open(), false, true);
+        STORE.add_visit("held.test");
+        let before = block_seq();
+        let hop = u("https://www.held.test/next");
+        assert!(!navigation_permitted(PANE_LABEL, &hop));
+        assert_eq!(block_seq(), before, "a held hop is not a block yet");
+        assert!(dns_pending());
+        let held = {
+            let mut q = DNS_QUEUE.lock().unwrap();
+            let i = q.iter().position(|x| *x == hop).expect("queued for resolution");
+            q.remove(i)
+        };
+        DNS_PENDING.fetch_sub(1, Ordering::SeqCst);
+        assert_eq!(held, hop);
+
+        note_resolved_public("www.held.test");
+        assert!(navigation_permitted(PANE_LABEL, &hop));
         STORE.clear_lease();
     }
 
