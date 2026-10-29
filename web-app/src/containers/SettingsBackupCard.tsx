@@ -10,25 +10,11 @@ import {
   defaultBackupName,
   parseBackup,
   previewBackupSecurity,
-  type BackupIo,
   type BackupSecurityPreview,
   type SettingsBackup,
 } from '@/lib/settings-backup'
 import { Checkbox } from '@/components/ui/checkbox'
-
-const io: BackupIo = {
-  get: (key) => invokeCommand<string | null>('settings_get', { key }),
-  set: (key, value) => invokeCommand('settings_set', { key, value }),
-  // Keys leave the credential store only for a backup the user chose to put
-  // secrets in; the command refuses without the explicit confirm.
-  getProviderKeys: (provider) =>
-    invokeCommand<string[]>('export_provider_keys_for_backup', {
-      provider,
-      confirm: true,
-    }),
-  setProviderKeys: (provider, keys) =>
-    invokeCommand('settings_backup_store_provider_keys', { provider, keys }),
-}
+import { settingsBackupIo } from '@/lib/settings-backup-io'
 
 /**
  * Export the preference stores to a JSON file and import one back. Cloud sync
@@ -57,7 +43,7 @@ export function SettingsBackupCard() {
   const handleExport = async () => {
     setBusy(true)
     try {
-      const backup = await buildBackup(io, { includeSecrets })
+      const backup = await buildBackup(settingsBackupIo, { includeSecrets })
       const report = await invokeCommand<{ path: string } | null>(
         'settings_backup_save',
         {
@@ -83,7 +69,7 @@ export function SettingsBackupCard() {
       const text = await invokeCommand<string | null>('settings_backup_load')
       if (text == null) return
       const backup = parseBackup(text)
-      setPreview(await previewBackupSecurity(io, backup))
+      setPreview(await previewBackupSecurity(settingsBackupIo, backup))
       setIncludePermissions(false)
       setPending(backup)
     } catch (e) {
@@ -99,7 +85,7 @@ export function SettingsBackupCard() {
     if (!pending) return
     setBusy(true)
     try {
-      const result = await applyBackup(io, pending, { includePermissions })
+      const result = await applyBackup(settingsBackupIo, pending, { includePermissions })
       toast.success(t('settings:backup.importedRestarting'), {
         description:
           result.skipped.length > 0
@@ -175,7 +161,10 @@ export function SettingsBackupCard() {
                   : ''}{' '}
                 {t('settings:backup.pendingOverwrite')}
               </p>
-              {preview && preview.baseUrlChanges.length > 0 && (
+              {preview &&
+                (preview.baseUrlChanges.length > 0 ||
+                  (preview.tlsChanges?.length ?? 0) > 0 ||
+                  (preview.headerChanges?.length ?? 0) > 0) && (
                 <div
                   className="text-sm text-destructive"
                   data-testid="settings-backup-base-url-changes"
@@ -190,6 +179,24 @@ export function SettingsBackupCard() {
                           to: c.to || '-',
                         })}
                         {c.keyDropped ? ` ${t('settings:backup.keyDropped')}` : ''}
+                      </li>
+                    ))}
+                    {(preview.tlsChanges ?? []).map((c) => (
+                      <li key={`tls-${c.provider}`}>
+                        {t(
+                          c.insecureTls
+                            ? 'settings:backup.tlsChangeOff'
+                            : 'settings:backup.tlsChangeOn',
+                          { provider: c.provider }
+                        )}
+                      </li>
+                    ))}
+                    {(preview.headerChanges ?? []).map((c) => (
+                      <li key={`hdr-${c.provider}`}>
+                        {t('settings:backup.headerChange', {
+                          provider: c.provider,
+                          names: c.names.join(', ') || '-',
+                        })}
                       </li>
                     ))}
                   </ul>

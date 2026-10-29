@@ -23,8 +23,6 @@ import {
   schedulePreview,
   scheduleTimeZones,
   scheduleTools,
-  type CatchUp,
-  type OnBlock,
   type ScheduleTool,
   type ScheduledTask,
   type WriteMode,
@@ -40,9 +38,13 @@ import {
   type FormErrors,
   type TaskForm,
 } from './scheduleForm'
-import { Field, ScheduleBudgets, ScheduleWhenSection } from './ScheduleEditorSections'
-import { Select } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Field,
+  ScheduleBudgets,
+  ScheduleRunPolicy,
+  ScheduleToolsField,
+  ScheduleWhenSection,
+} from './ScheduleEditorSections'
 
 type Props = {
   open: boolean
@@ -137,13 +139,6 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
       // Cancelling the dialog is not an error.
     }
   }
-
-  const toggleTool = (name: string) =>
-    patch({
-      allowTools: form.allowTools.includes(name)
-        ? form.allowTools.filter((x) => x !== name)
-        : [...form.allowTools, name],
-    })
 
   const submit = async () => {
     setSubmitted(true)
@@ -245,30 +240,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
             />
           </Field>
 
-          <Field label={t('schedules:editor.tools')} hint={t('schedules:editor.toolsHint')} error={err('tools')}>
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5" role="group" aria-label={t('schedules:editor.tools')}>
-              {tools.map((tool) => (
-                <label
-                  key={tool.name}
-                  className="inline-flex cursor-pointer items-center gap-1.5 font-mono text-xs"
-                  title={
-                    tool.capability === 'write' || tool.capability === 'exec'
-                      ? t('schedules:editor.toolNeedsApproval')
-                      : undefined
-                  }
-                >
-                  <Checkbox
-                    checked={form.allowTools.includes(tool.name)}
-                    onChange={() => toggleTool(tool.name)}
-                  />
-                  {tool.name}
-                  {(tool.capability === 'write' || tool.capability === 'exec') && (
-                    <span className="text-[length:calc(var(--ui-font-base)*0.625)] text-warning">{tool.capability}</span>
-                  )}
-                </label>
-              ))}
-            </div>
-          </Field>
+          <ScheduleToolsField {...section} tools={tools} />
 
           <Field
             label={t('schedules:editor.write')}
@@ -291,31 +263,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
 
           <ScheduleBudgets {...section} />
 
-          <div className="grid gap-3 @min-[32rem]:grid-cols-2 sm:grid-cols-2">
-            <Field label={t('schedules:editor.onBlock')} htmlFor={`${uid}-onblock`}>
-              <Select
-                id={`${uid}-onblock`}
-                className={selectClassName}
-                value={form.onBlock}
-                onChange={(e) => patch({ onBlock: e.target.value as OnBlock })}
-              >
-                <option value="continue">{t('schedules:editor.onBlockContinue')}</option>
-                <option value="end">{t('schedules:editor.onBlockEnd')}</option>
-              </Select>
-            </Field>
-            <Field label={t('schedules:editor.catchUp')} htmlFor={`${uid}-catchup`}>
-              <Select
-                id={`${uid}-catchup`}
-                className={selectClassName}
-                value={form.catchUp}
-                onChange={(e) => patch({ catchUp: e.target.value as CatchUp })}
-              >
-                <option value="skip">{t('schedules:editor.catchUpSkip')}</option>
-                <option value="once">{t('schedules:editor.catchUpOnce')}</option>
-                <option value="all_capped">{t('schedules:editor.catchUpAllCapped')}</option>
-              </Select>
-            </Field>
-          </div>
+          <ScheduleRunPolicy {...section} />
 
           {neverRunsWarnings(form, preview.error).map((key) => (
             <p

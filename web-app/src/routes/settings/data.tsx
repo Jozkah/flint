@@ -13,6 +13,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useEffect, useState } from 'react'
 import { SettingsBackupCard } from '@/containers/SettingsBackupCard'
+import { DataBackupCard } from '@/containers/DataBackupCard'
 import { BulkConversationsCard } from '@/containers/BulkConversationsCard'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform/utils'
@@ -85,7 +86,7 @@ function DataSettings() {
           />
         }
         // Slots count hidden groups, so each tab keeps its own columns.
-        layout={[0, 1, 1, 0, 1]}
+        layout={[0, 1, 1, 1, 0, 1]}
       >
         {/* Location - Desktop only */}
         {tab === 'storage' && isPlatformTauri() && (
@@ -97,6 +98,8 @@ function DataSettings() {
         )}
 
         {tab === 'storage' && IS_TAURI && <SettingsBackupCard />}
+
+        {tab === 'storage' && IS_TAURI && <DataBackupCard />}
 
         {/* Import - Desktop only */}
         {tab === 'storage' && isPlatformTauri() && <DataImportCard />}
