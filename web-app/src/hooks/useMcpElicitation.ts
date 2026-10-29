@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import type { UnlistenFn } from '@/services/events/types'
@@ -69,7 +69,7 @@ export async function respondToElicitation(
 ): Promise<void> {
   useMcpElicitationStore.getState().remove(id)
   try {
-    await invoke('mcp_elicitation_respond', {
+    await invokeCommand('mcp_elicitation_respond', {
       id,
       action,
       content: content ?? null,
@@ -104,7 +104,7 @@ export function useMcpElicitation() {
           return
         }
         unlisten = fn
-        void invoke('mcp_elicitation_ready', { ready: true }).catch(() => {})
+        void invokeCommand('mcp_elicitation_ready', { ready: true }).catch(() => {})
       })
       .catch((error) => {
         console.warn('[mcp-elicitation] listen failed:', error)
@@ -113,7 +113,7 @@ export function useMcpElicitation() {
     return () => {
       cancelled = true
       unlisten?.()
-      void invoke('mcp_elicitation_ready', { ready: false }).catch(() => {})
+      void invokeCommand('mcp_elicitation_ready', { ready: false }).catch(() => {})
       useMcpElicitationStore.setState({ queue: [] })
     }
   }, [serviceHub])

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { isPlatformTauri } from '@/lib/platform/utils'
@@ -240,8 +241,7 @@ export const usePrStatusStore = create<PrStatusState>()(
     }))
     let lookup: PrLookup
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      lookup = await invoke<PrLookup>('agent_pr_status', { project: folder ?? '', pr: url })
+      lookup = await invokeCommand<PrLookup>('agent_pr_status', { project: folder ?? '', pr: url })
     } catch (e) {
       lookup = { kind: 'failed', message: String(e) }
     }
@@ -278,8 +278,7 @@ export const usePrStatusStore = create<PrStatusState>()(
     }))
     let lookup: PrLookup
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      lookup = await invoke<PrLookup>('agent_pr_status', { project: folder })
+      lookup = await invokeCommand<PrLookup>('agent_pr_status', { project: folder })
     } catch (e) {
       lookup = { kind: 'failed', message: String(e) }
     }

@@ -159,8 +159,8 @@ pub async fn windows_events(args: &Value) -> String {
         Err(_) => format!("ERROR: windows_events did not finish in {TIMEOUT_SECS} seconds and was stopped. Narrow the query."),
         Ok(Err(e)) => format!("ERROR: could not run wevtutil: {e}"),
         Ok(Ok(out)) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stdout = decode_console(&out.stdout);
+            let stderr = decode_console(&out.stderr);
             if !out.status.success() {
                 let reason = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
                 return format!("ERROR: wevtutil refused the query: {}", bounded(reason));
@@ -174,6 +174,43 @@ pub async fn windows_events(args: &Value) -> String {
     }
 }
 
+/// wevtutil writes text in the console's OEM code page (437, 850, ...) when piped,
+/// not UTF-8, so accented event text came out as replacement characters. Keep
+/// UTF-8 when the bytes are valid UTF-8; otherwise decode with the OEM code page.
+#[cfg(windows)]
+fn decode_console(bytes: &[u8]) -> String {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_string();
+    }
+    // SAFETY: GetOEMCP takes no arguments and only reads process state.
+    let page = unsafe { windows_sys::Win32::Globalization::GetOEMCP() };
+    decode_code_page(bytes, page).unwrap_or_else(|| String::from_utf8_lossy(bytes).into_owned())
+}
+
+/// Decode `bytes` from Windows code page `page`; None when Windows refuses it.
+#[cfg(windows)]
+fn decode_code_page(bytes: &[u8], page: u32) -> Option<String> {
+    use windows_sys::Win32::Globalization::MultiByteToWideChar;
+    if bytes.is_empty() {
+        return Some(String::new());
+    }
+    let len = i32::try_from(bytes.len()).ok()?;
+    // SAFETY: `bytes` is valid for `len` bytes; a null output buffer with size 0
+    // asks only for the needed length.
+    let need = unsafe { MultiByteToWideChar(page, 0, bytes.as_ptr(), len, std::ptr::null_mut(), 0) };
+    if need <= 0 {
+        return None;
+    }
+    let mut wide = vec![0u16; need as usize];
+    // SAFETY: `wide` holds exactly `need` u16 slots, the size Windows asked for.
+    let wrote = unsafe { MultiByteToWideChar(page, 0, bytes.as_ptr(), len, wide.as_mut_ptr(), need) };
+    if wrote <= 0 {
+        return None;
+    }
+    wide.truncate(wrote as usize);
+    Some(String::from_utf16_lossy(&wide))
+}
+
 #[cfg(not(windows))]
 pub async fn windows_events(args: &Value) -> String {
     let _ = (args, Duration::from_secs(TIMEOUT_SECS));
@@ -184,6 +221,18 @@ pub async fn windows_events(args: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(windows)]
+    #[test]
+    fn oem_code_page_output_keeps_its_accents() {
+        // u-umlaut is 0x81 in code pages 437 and 850.
+        let bytes = b"Ereignis f\x81r Dienst";
+        assert_eq!(decode_code_page(bytes, 437).unwrap(), "Ereignis f\u{fc}r Dienst");
+        assert_eq!(decode_code_page(bytes, 850).unwrap(), "Ereignis f\u{fc}r Dienst");
+        assert_eq!(decode_code_page(b"caf\xe9", 1252).unwrap(), "caf\u{e9}");
+        // Valid UTF-8 is kept as it is.
+        assert_eq!(decode_console("caf\u{e9}".as_bytes()), "caf\u{e9}");
+    }
 
     #[test]
     fn defaults_read_the_newest_application_events() {

@@ -349,8 +349,9 @@ pub(super) async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'
             // place they may not be looking, and never again.
             // `Status::Proposed` keeps it out of every prompt meanwhile.
             let pending = inferred::as_pending(&proposal, reason);
-            match crate::memory::store::upsert(&store_root, &pending) {
-                Ok(()) => format!(
+            let cap = crate::memory::create::MAX_RECORDS_PER_SCOPE;
+            match crate::memory::store::insert_pending(&store_root, &pending, cap) {
+                Ok(_) => format!(
                     "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
                     reason.explain()
                 ),

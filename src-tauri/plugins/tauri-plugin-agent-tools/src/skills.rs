@@ -499,25 +499,16 @@ pub fn paths_match(root: &Path, patterns: &[String]) -> bool {
     false
 }
 
-/// Split leading `---\n...\n---` YAML frontmatter from the markdown body.
-/// Tolerant: no opening/closing fence -> no frontmatter, whole input is body.
-pub fn parse(content: &str) -> ParsedSkill {
+/// Split leading `---\n...\n---` YAML frontmatter from the markdown body: the
+/// YAML text, and the body with leading blank lines dropped. Tolerant: no
+/// opening or closing fence means no frontmatter and the whole input (less a
+/// BOM) is the body. The one splitter for skills, agents and slash commands in
+/// both crates (Q1-042).
+pub fn split_frontmatter(content: &str) -> (Option<String>, String) {
     let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let mut lines = content.lines();
     if lines.next().map(str::trim_end) != Some("---") {
-        return ParsedSkill {
-            description: None,
-            body: content.to_string(),
-            user_invocable: true,
-            model_invocable: true,
-            needs: Vec::new(),
-            version: None,
-            requires: Vec::new(),
-            always: false,
-            triggers: Vec::new(),
-            paths: Vec::new(),
-            fork: false,
-        };
+        return (None, content.to_string());
     }
     let mut yaml = String::new();
     let mut body: Vec<&str> = Vec::new();
@@ -536,6 +527,16 @@ pub fn parse(content: &str) -> ParsedSkill {
     }
     if !closed {
         // Unterminated fence: treat the whole file as body (no frontmatter).
+        return (None, content.to_string());
+    }
+    (Some(yaml), body.join("\n").trim_start_matches('\n').to_string())
+}
+
+/// Parse a skill: frontmatter (see [`split_frontmatter`]) plus markdown body.
+pub fn parse(content: &str) -> ParsedSkill {
+    let (yaml, body) = split_frontmatter(content);
+    let Some(yaml) = yaml else {
+        let content = body;
         return ParsedSkill {
             description: None,
             body: content.to_string(),
@@ -549,7 +550,7 @@ pub fn parse(content: &str) -> ParsedSkill {
             paths: Vec::new(),
             fork: false,
         };
-    }
+    };
     // Fail closed (W30): a restriction that cannot be read must not vanish.
     // Invalid YAML, or a security-relevant key of the wrong shape, keeps the
     // skill away from the model rather than silently dropping the restriction.
@@ -595,7 +596,7 @@ pub fn parse(content: &str) -> ParsedSkill {
             .as_ref()
             .and_then(lenient_string)
             .map(|d| d.trim().to_string()),
-        body: body.join("\n").trim_start_matches('\n').to_string(),
+        body,
         user_invocable,
         model_invocable: !disable_model && !restricted,
         needs: allowed

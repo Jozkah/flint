@@ -1,5 +1,5 @@
-import { invoke } from '@/lib/previewInvoke'
 import type { SkillMeta } from '@/lib/skillStore'
+import { invokeCommand } from '@/lib/backend'
 
 export type { SkillMeta }
 
@@ -29,7 +29,7 @@ function surfaceArgs(surface: Surface): Record<string, unknown> {
 }
 
 async function call<T>(command: string, args: Record<string, unknown>): Promise<T> {
-  return await invoke<T>(command, args)
+  return await invokeCommand<T>(command, args)
 }
 
 export const resolveExtensions = (surface: Surface) =>

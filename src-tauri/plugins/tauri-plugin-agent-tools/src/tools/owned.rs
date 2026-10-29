@@ -199,6 +199,11 @@ async fn output_with_timeout_kept(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    // Unix: the child leads its own process group from its first instruction,
+    // which is what `OwnedChild::own` needs for a timeout to reach grandchildren
+    // (O07-012). Windows still assigns the job just after spawn.
+    #[cfg(unix)]
+    cmd.process_group(0);
     let child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => return Ok(Err(e)),

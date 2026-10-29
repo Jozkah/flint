@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { invokeCommand } from '@/lib/backend'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useThreads } from '@/hooks/useThreads'
-import { invoke } from '@tauri-apps/api/core'
 import { route } from '@/constants/routes'
 import {
   SettingsPageBody,
@@ -49,7 +49,7 @@ function General() {
 
   useEffect(() => {
     if (!IS_TAURI) return
-    invoke<{ installed: boolean; path: string | null }>('check_jan_cli_installed')
+    invokeCommand<{ installed: boolean; path: string | null }>('check_jan_cli_installed')
       .then(async (s) => {
         setCliInstalled(s.installed)
         setCliPath(s.path)
@@ -70,7 +70,7 @@ function General() {
   const handleInstallCli = async () => {
     setIsCliLoading(true)
     try {
-      const s = await invoke<{ installed: boolean; path: string | null }>('install_jan_cli')
+      const s = await invokeCommand<{ installed: boolean; path: string | null }>('install_jan_cli')
       setCliInstalled(s.installed)
       setCliPath(s.path)
       setCliForeign(false)
@@ -85,7 +85,7 @@ function General() {
   const handleUninstallCli = async () => {
     setIsCliLoading(true)
     try {
-      await invoke('uninstall_jan_cli')
+      await invokeCommand('uninstall_jan_cli')
       setCliInstalled(false)
       setCliPath(null)
       toast.success(t('settings:general.cli.uninstalledToast'))

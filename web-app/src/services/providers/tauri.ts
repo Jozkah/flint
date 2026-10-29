@@ -3,13 +3,13 @@
  */
 
 import { predefinedProviders } from '@/constants/providers'
+import { invokeCommand } from '@/lib/backend'
 import { providerModels } from '@/constants/models'
 import { EngineManager, SettingComponentProps } from '@janhq/core'
 import { ModelCapabilities } from '@/types/models'
 import { modelSettings } from '@/lib/predefined'
 import { ExtensionManager } from '@/lib/extension'
 import { providerFetch as fetchTauri } from '@/lib/providerFetch'
-import { invoke } from '@tauri-apps/api/core'
 import { DefaultProvidersService } from './default'
 import { getModelCapabilities } from '@/lib/models'
 import {
@@ -160,7 +160,7 @@ export class TauriProvidersService extends DefaultProvidersService {
 
   async deleteProviderKeys(providerName: string): Promise<void> {
     try {
-      await invoke('delete_provider_keys', { provider: providerName })
+      await invokeCommand('delete_provider_keys', { provider: providerName })
     } catch (error) {
       console.error(`Failed to delete keyring keys for ${providerName}:`, error)
     }

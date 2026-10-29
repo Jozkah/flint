@@ -7,7 +7,7 @@
  * backend does this once and only for folders that carry something to run.
  */
 import { toast } from 'sonner'
-import { invoke } from '@/lib/previewInvoke'
+import { invokeCommand } from '@/lib/backend'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useThreads } from '@/hooks/useThreads'
 import { chatFoldersOf } from '@/lib/chatFolders'
@@ -32,7 +32,7 @@ export function foldersInUse(): string[] {
  */
 export async function grandfatherFolderTrust(
   folders: string[] = foldersInUse(),
-  call: (cmd: string, args: { folders: string[] }) => Promise<unknown> = (cmd, args) => invoke(cmd, args)
+  call: (cmd: string, args: { folders: string[] }) => Promise<unknown> = (cmd, args) => invokeCommand(cmd, args)
 ): Promise<string[]> {
   try {
     const trusted = (await call('folder_trust_grandfather', { folders })) as string[] | undefined

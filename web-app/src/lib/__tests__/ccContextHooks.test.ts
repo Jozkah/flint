@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UIMessage } from 'ai'
 
 const invokeMock = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/previewInvoke', () => ({ invoke: invokeMock }))
+vi.mock('@/lib/backend', () => ({ invokeCommand: invokeMock }))
 
 import {
   appendSessionContext,

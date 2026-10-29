@@ -1,6 +1,6 @@
 import { useCallback, useId, useRef, useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { invoke } from '@tauri-apps/api/core'
 import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -138,7 +138,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
       const call =
         props.onStop ??
         ((args: { session?: string; run?: string; call?: string }) =>
-          invoke<StopReport>('agent_emergency_stop', args))
+          invokeCommand<StopReport>('agent_emergency_stop', args))
       setReport(await call(scopeArgs(chosen, props)))
     } catch (e) {
       setError(errorText(e))
