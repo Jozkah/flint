@@ -17,7 +17,7 @@ import { getBundledExtensions } from './bundled-extensions'
 const BROWSER_EXTENSIONS = ['@janhq/llamacpp-extension']
 
 export class BrowserCoreService extends DefaultCoreService {
-  async invokeCommand<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
+  async invoke<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
     return invokeCommand<T>(command, args)
   }
 
