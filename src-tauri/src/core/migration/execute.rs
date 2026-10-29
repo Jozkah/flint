@@ -49,6 +49,11 @@ pub struct ExecuteOpts {
     pub fail_on_category: Option<Category>,
     /// Test hook (Move): fail after copy + backup, before removing the source.
     pub fail_before_source_removal: bool,
+    /// Test hook (Move): delete part of the first source directory, then fail
+    /// the removal (a half-deleted source).
+    pub fail_mid_source_removal: bool,
+    /// Test hook (Move): make the restore after a failed removal fail.
+    pub fail_source_restore: bool,
 }
 
 impl ExecuteOpts {
@@ -631,16 +636,37 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
             return;
         }
 
-        if let Err(e) = remove_source(plan) {
-            // Restore removed source from backup, then roll back flint.
-            let _ = restore_source_from_backup(plan, &backup_root);
-            fail_and_rollback(
-                plan,
-                &mut m,
-                &run,
-                result,
-                &format!("source removal failed (restored): {e}"),
-            );
+        if let Err(e) = remove_source(plan, opts.fail_mid_source_removal) {
+            // Restore the source from the backup (overwriting what is left of a
+            // half-deleted item). Only once that worked is it safe to roll the
+            // Flint copy back.
+            let restored = if opts.fail_source_restore {
+                Err("forced restore failure".to_string())
+            } else {
+                restore_source_from_backup(plan, &backup_root)
+            };
+            match restored {
+                Ok(()) => fail_and_rollback(
+                    plan,
+                    &mut m,
+                    &run,
+                    result,
+                    &format!("source removal failed (JAN data restored from backup): {e}"),
+                ),
+                Err(re) => {
+                    // The JAN source may be partly deleted. Keep Flint's
+                    // complete copy and the backup, and say where the backup is.
+                    log::error!("migration: source removal failed ({e}) and restore failed ({re})");
+                    run.cleanup_scratch();
+                    m.mark_complete();
+                    let _ = manifest::write(&flint_config, &m);
+                    result.status = Status::Failed;
+                    result.error = Some(format!(
+                        "removing the JAN data failed ({e}) and restoring it failed ({re}).                          The JAN folder may be incomplete. A full copy of it is kept in {}                          and Flint's migrated copy was kept.",
+                        backup_root.display()
+                    ));
+                }
+            }
             return;
         }
     }
@@ -1005,10 +1031,20 @@ fn backup_source(plan: &MigrationPlan, backup_root: &Path) -> Result<(), String>
 
 /// Remove every migrated source item (Move only). Errors stop at the first
 /// failure so the caller can restore from backup.
-fn remove_source(plan: &MigrationPlan) -> Result<(), String> {
+fn remove_source(plan: &MigrationPlan, fail_midway: bool) -> Result<(), String> {
     for item in &plan.items {
         if !item.source.exists() {
             continue;
+        }
+        if fail_midway && item.source.is_dir() {
+            // Test hook: remove one file from this directory, then fail.
+            if let Some(Ok(entry)) = std::fs::read_dir(&item.source)
+                .map_err(|e| e.to_string())?
+                .find(|e| e.as_ref().is_ok_and(|e| e.path().is_file()))
+            {
+                std::fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
+            }
+            return Err("forced failure mid source removal".to_string());
         }
         if item.source.is_dir() {
             std::fs::remove_dir_all(&item.source).map_err(|e| e.to_string())?;
@@ -1019,7 +1055,9 @@ fn remove_source(plan: &MigrationPlan) -> Result<(), String> {
     Ok(())
 }
 
-/// Restore source items from a Move backup after a failed removal.
+/// Restore source items from a Move backup after a failed removal. Every
+/// backed-up item is copied back over its source, so an item that was only
+/// partly deleted is made whole again (not just items that vanished).
 fn restore_source_from_backup(plan: &MigrationPlan, backup_root: &Path) -> Result<(), String> {
     for item in &plan.items {
         let sub = match item.root {
@@ -1027,7 +1065,7 @@ fn restore_source_from_backup(plan: &MigrationPlan, backup_root: &Path) -> Resul
             SourceRoot::Data => "data",
         };
         let backup = backup_root.join(sub).join(&item.name);
-        if backup.exists() && !item.source.exists() {
+        if backup.exists() {
             fsutil::copy_tree_preserving_mtime(&backup, &item.source).map_err(|e| e.to_string())?;
         }
     }
@@ -1392,6 +1430,59 @@ mod tests {
         // Third launch is a no-op (idempotent).
         let r3 = execute(&p, &ExecuteOpts::with_holder("test"));
         assert_eq!(r3.status, Status::Complete);
+    }
+
+    fn tree_files(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = fs::read_dir(&d) else { continue };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else {
+                    out.push(p.strip_prefix(root).unwrap().to_path_buf());
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn half_deleted_move_source_is_restored_whole() {
+        let (_td, roots) = setup();
+        let l = legacy_paths(&roots);
+        let before_data = tree_files(&l.data_folder);
+        let before_config = tree_files(&l.config_dir);
+        let p = make_plan(&roots, Mode::Move, Conflict::UseJan);
+        let mut opts = ExecuteOpts::with_holder("test");
+        opts.fail_mid_source_removal = true;
+        let r = execute(&p, &opts);
+        assert_eq!(r.status, Status::Failed);
+        assert!(r.rolled_back);
+        assert!(r.error.as_deref().unwrap().contains("restored"));
+        assert_eq!(tree_files(&l.data_folder), before_data);
+        assert_eq!(tree_files(&l.config_dir), before_config);
+    }
+
+    #[test]
+    fn failed_restore_keeps_flint_copy_and_names_backup() {
+        let (_td, roots) = setup();
+        let p = make_plan(&roots, Mode::Move, Conflict::UseJan);
+        let mut opts = ExecuteOpts::with_holder("test");
+        opts.fail_mid_source_removal = true;
+        opts.fail_source_restore = true;
+        let r = execute(&p, &opts);
+        assert_eq!(r.status, Status::Failed);
+        assert!(!r.rolled_back);
+        let backup = r.backup_path.clone().expect("backup path reported");
+        assert!(backup.exists(), "backup must be kept");
+        let err = r.error.unwrap();
+        assert!(err.contains(&backup.display().to_string()), "err={err}");
+        let f = flint_paths(&roots);
+        assert!(f.data_folder.join("threads/thread_1/thread.json").is_file());
     }
 
     #[test]
