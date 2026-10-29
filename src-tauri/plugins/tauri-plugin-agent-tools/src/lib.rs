@@ -69,6 +69,7 @@ pub mod invisible;
 pub mod tools;
 pub mod undo;
 pub mod unsandboxed_retry;
+#[cfg(feature = "tauri")]
 pub mod approval_tokens;
 pub mod usage;
 pub mod utility;
