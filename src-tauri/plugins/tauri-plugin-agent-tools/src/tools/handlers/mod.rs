@@ -58,11 +58,14 @@ pub use bash::strip_ansi;
 
 const MAX_BYTES: usize = 64 * 1024;
 const MAX_LINES: usize = 2000;
-/// Cap on a `read` image payload returned as an `image_url` content part.
-/// Mirrors the TUI's `MAX_IMAGE_BYTES` so an oversized raster (or a large
-/// text file whose name ends in an image extension) cannot flood the model
-/// context as a base64 blob.
-const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
+/// Cap on the base64 data URL a `read` image becomes. Providers refuse larger
+/// images (5 MiB is the strictest common limit), and a base64 blob is a third
+/// bigger than the file, so the cap is on the encoded size, not the raw one.
+const MAX_IMAGE_ENCODED_BYTES: usize = 5 * 1024 * 1024;
+/// Largest raw image whose base64 form fits [`MAX_IMAGE_ENCODED_BYTES`], so an
+/// oversized raster (or a large text file whose name ends in an image
+/// extension) cannot flood the model context.
+const MAX_IMAGE_BYTES: usize = MAX_IMAGE_ENCODED_BYTES / 4 * 3;
 /// bash output caps, matching the `read` tool. Overflow is not lost: it spills
 /// to a temp file the `read` tool can page through, so the cap is tuned for
 /// context economy (~16k tokens worst case) rather than for fitting everything.

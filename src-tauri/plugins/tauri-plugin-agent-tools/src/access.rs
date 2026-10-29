@@ -671,13 +671,31 @@ fn persisted_path(data_folder: &Path) -> PathBuf {
 /// callers that only read treat it as "no kept grants" (fail closed).
 fn load_persisted_checked(data_folder: &Path) -> Result<Vec<AccessGrant>, String> {
     let path = persisted_path(data_folder);
+    // Every gate check reads the kept grants; reparse only when the file changed.
+    let stamp = std::fs::metadata(&path).ok().map(|m| (m.modified().ok(), m.len()));
+    if let Some(stamp) = stamp {
+        let cache = kept_cache().lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((_, _, grants)) = cache.iter().find(|(p, s, _)| *p == path && *s == stamp) {
+            return Ok(grants.clone());
+        }
+    }
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(format!("could not read {}: {e}", path.display())),
     };
     match serde_json::from_str::<Vec<AccessGrant>>(&text) {
-        Ok(v) => Ok(v),
+        Ok(v) => {
+            if let Some(stamp) = stamp.filter(|(modified, _)| modified.is_some()) {
+                let mut cache = kept_cache().lock().unwrap_or_else(|p| p.into_inner());
+                cache.retain(|(p, _, _)| *p != path);
+                if cache.len() >= 8 {
+                    cache.remove(0);
+                }
+                cache.push((path.clone(), stamp, v.clone()));
+            }
+            Ok(v)
+        }
         Err(e) => {
             let aside = path.with_extension(format!("json.corrupt-{}", now_secs()));
             eprintln!(
@@ -705,7 +723,20 @@ fn load_persisted(data_folder: &Path) -> Vec<AccessGrant> {
 
 fn save_persisted(data_folder: &Path, grants: &[AccessGrant]) -> Result<(), String> {
     let body = serde_json::to_string_pretty(grants).map_err(|e| e.to_string())?;
-    crate::atomic_file::write_atomic(&persisted_path(data_folder), body.as_bytes())
+    let path = persisted_path(data_folder);
+    // Drop the cached copy first: a rewrite within the clock's resolution with
+    // the same length must not be served stale.
+    kept_cache().lock().unwrap_or_else(|p| p.into_inner()).retain(|(p, _, _)| *p != path);
+    crate::atomic_file::write_atomic(&path, body.as_bytes())
+}
+
+/// File modification time and length a cached kept-grant list was parsed at.
+type KeptStamp = (Option<std::time::SystemTime>, u64);
+
+/// Parsed kept-grant files, keyed by path and stamp (a few data folders at most).
+fn kept_cache() -> &'static Mutex<Vec<(PathBuf, KeptStamp, Vec<AccessGrant>)>> {
+    static CACHE: OnceLock<Mutex<Vec<(PathBuf, KeptStamp, Vec<AccessGrant>)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// Longest session grant a caller can ask for.
@@ -1337,6 +1368,19 @@ mod tests {
         assert_eq!(active_roots(&f.data, "c", now_secs()).0.len(), 1);
         assert!(revoke(&f.data, &g.id));
         assert!(active_roots(&f.data, "c", now_secs()).0.is_empty());
+    }
+
+    #[test]
+    fn kept_grants_follow_an_outside_edit_of_the_file() {
+        let f = fixture("keepcache");
+        let e = env(&f);
+        let g = grant(&f.data, &e, "a", &s(&f.outside), AccessMode::Read, "keep", true, None).unwrap();
+        assert_eq!(active_roots(&f.data, "b", now_secs()).0.len(), 1);
+        assert_eq!(active_roots(&f.data, "b", now_secs()).0.len(), 1, "cached read agrees");
+        // Another process empties the file: the cache must not keep serving the grant.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(f.data.join(PERSISTED_FILE), "[]").unwrap();
+        assert!(active_roots(&f.data, "b", now_secs()).0.is_empty(), "{}", g.id);
     }
 
     #[test]

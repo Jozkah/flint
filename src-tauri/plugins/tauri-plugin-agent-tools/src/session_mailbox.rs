@@ -138,6 +138,10 @@ pub mod code {
     pub const IO: &str = "io";
 }
 
+/// Internal: an automatic reply found the message already answered once it
+/// held the lock. Never returned to a caller; `auto_reply` turns it into `None`.
+const ALREADY_ANSWERED: &str = "already_answered";
+
 /// Why mail is held for the user instead of waking its recipient. Stamped by
 /// the host at send time; the renderer shows it and never auto-wakes on it.
 pub mod hold {
@@ -1546,6 +1550,11 @@ impl Mailbox {
             let text = crate::harness_error::scrub(text);
             let (target, inbound) = Self::check_recipient(&registry, from_id, to_id)?;
             let (depth, parent_env) = self.reply_depth(from_id, to_id, reply_to)?;
+            // An automatic reply is checked again here, under the same lock as
+            // the append: two runs ending together must not both answer.
+            if origin == Origin::Auto && self.already_answered(from_id, reply_to) {
+                return Err(MailboxError::new(ALREADY_ANSWERED, "already answered"));
+            }
 
             let now = self.now();
             // A host notice is sent as the watched session but is not that
@@ -1870,11 +1879,7 @@ impl Mailbox {
         check_session_id(from_id)?;
         let parent = {
             let _guard = lock();
-            let answered = valid_id(reply_to)
-                && read_jsonl::<OutboxEntry>(&self.outbox_path(from_id))
-                    .iter()
-                    .any(|e| e.reply_to.as_deref() == Some(reply_to));
-            if answered {
+            if self.already_answered(from_id, Some(reply_to)) {
                 return Ok(None);
             }
             valid_id(reply_to)
@@ -1901,14 +1906,21 @@ impl Mailbox {
         } else {
             text.to_string()
         };
-        self.send(
-            from_id,
-            &parent.from.session_id,
-            &text,
-            Some(reply_to),
-            Origin::Auto,
-        )
-        .map(Some)
+        match self.send(from_id, &parent.from.session_id, &text, Some(reply_to), Origin::Auto) {
+            Ok(receipt) => Ok(Some(receipt)),
+            Err(e) if e.code == ALREADY_ANSWERED => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Whether `from_id` already sent a reply to `reply_to`. Callers hold `lock()`.
+    fn already_answered(&self, from_id: &str, reply_to: Option<&str>) -> bool {
+        reply_to.is_some_and(|r| {
+            valid_id(r)
+                && read_jsonl::<OutboxEntry>(&self.outbox_path(from_id))
+                    .iter()
+                    .any(|e| e.reply_to.as_deref() == Some(r))
+        })
     }
 
     fn inbox_with_state(&self, session_id: &str) -> (Vec<MailEnvelope>, DeliveryState) {

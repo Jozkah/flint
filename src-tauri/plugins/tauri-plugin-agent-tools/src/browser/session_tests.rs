@@ -192,7 +192,7 @@ async fn a_model_style_sequence_works_end_to_end_and_leaves_nothing_behind() {
     let temp_before: Vec<_> = std::fs::read_dir(std::env::temp_dir())
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().starts_with("flint-browser-"))
+        .filter(|e| e.file_name().to_string_lossy().starts_with(&session::profile_prefix()))
         .map(|e| e.path())
         .collect();
 
@@ -238,7 +238,7 @@ async fn a_model_style_sequence_works_end_to_end_and_leaves_nothing_behind() {
     wait_until("eight notices (one per action)", 10, || activity_for("seq").len() >= 8).await;
     assert_eq!(activity_for("seq").len(), 8, "one notice per action, nothing more");
 
-    let profile_marker = "flint-browser-";
+    let profile_marker = session::profile_prefix();
     let closed = act(&c, json!({ "action": "close" })).await;
     assert!(closed.contains("Browser closed") && closed.contains("profile was deleted"), "{closed}");
     assert!(!session::is_open("seq"));
@@ -246,11 +246,11 @@ async fn a_model_style_sequence_works_end_to_end_and_leaves_nothing_behind() {
         .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(profile_marker))
+        .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(&profile_marker))
         .filter(|p| !temp_before.contains(p))
         .count();
     assert_eq!(dir_left, 0, "a temporary profile was left behind");
-    wait_until("the browser processes to be gone", 10, || browser_processes_using("flint-browser-") == 0).await;
+    wait_until("the browser processes to be gone", 10, || browser_processes_using(&session::profile_prefix()) == 0).await;
     wait_until("the closing notice", 10, || activity_for("seq").iter().any(|a| a.kind == "closed")).await;
     let notices = activity_for("seq");
     assert_eq!(notices.last().map(|a| a.kind.as_str()), Some("closed"));
@@ -498,7 +498,7 @@ async fn ending_a_run_stopping_it_going_idle_and_closing_all_tear_the_browser_do
             .map(|d| {
                 d.filter_map(|e| e.ok())
                     .map(|e| e.path())
-                    .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with("flint-browser-"))
+                    .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(&session::profile_prefix()))
                     .collect()
             })
             .unwrap_or_default()
@@ -538,7 +538,7 @@ async fn ending_a_run_stopping_it_going_idle_and_closing_all_tear_the_browser_do
     session::close_all();
     assert!(!session::is_open("td-all"));
 
-    wait_until("every browser process to be gone", 15, || browser_processes_using("flint-browser-") == 0).await;
+    wait_until("every browser process to be gone", 15, || browser_processes_using(&session::profile_prefix()) == 0).await;
     wait_until("every profile directory this test made to be gone", 15, || profiles().is_subset(&before)).await;
 }
 
@@ -592,7 +592,7 @@ async fn the_dispatcher_runs_a_sequence_returns_an_image_and_a_cancelled_run_tea
     wait_until("the cancelled run's browser to go", 15, || !session::is_open("run-d")).await;
     let (after_cancel, _) = run_call(8, json!({ "action": "snapshot" })).await;
     assert!(after_cancel.contains("No browser page is open"), "{after_cancel}");
-    wait_until("no browser process left", 15, || browser_processes_using("flint-browser-") == 0).await;
+    wait_until("no browser process left", 15, || browser_processes_using(&session::profile_prefix()) == 0).await;
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -663,7 +663,6 @@ async fn windows_the_page_opens_are_closed_unless_the_run_opts_into_popups() {
     let snap = act(&c, json!({ "action": "snapshot" })).await;
     let link = ref_of(&snap, "link \"Open elsewhere\"");
     act(&c, json!({ "action": "click", "ref": link })).await;
-    wait_until("the popup to become a tab", 10, || false || true).await;
     let mut listing = String::new();
     for _ in 0..40 {
         listing = act(&c, json!({ "action": "tab" })).await;
@@ -917,5 +916,5 @@ async fn closing_by_conversation_id_ends_a_desktop_style_session() {
     assert!(session::is_open("thread-9"), "another conversation's close does not reach it");
     assert_eq!(session::close_for("thread-9"), 1);
     assert!(!session::is_open("thread-9"));
-    wait_until("no browser process left", 15, || browser_processes_using("flint-browser-") == 0).await;
+    wait_until("no browser process left", 15, || browser_processes_using(&session::profile_prefix()) == 0).await;
 }
