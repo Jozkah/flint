@@ -60,5 +60,7 @@ export interface AppService {
   ): Promise<void>
   /** Write the redacted app log to `destination`; returns the path written. */
   exportRedactedLogs(): Promise<string | null>
+  /** Save a diagnostic bundle (.tar.gz) where the user picks; null if cancelled. */
+  exportDiagnosticBundle(): Promise<string | null>
   readYaml<T = unknown>(path: string): Promise<T>
 }

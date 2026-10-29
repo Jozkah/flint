@@ -80,6 +80,10 @@ export class DefaultAppService implements AppService {
     throw new Error('Log export is only available in the desktop app')
   }
 
+  async exportDiagnosticBundle(): Promise<string | null> {
+    throw new Error('Diagnostic bundles are only available in the desktop app')
+  }
+
   async readYaml<T = unknown>(path: string): Promise<T> {
     console.log('readYaml called with path:', path)
     throw new Error('readYaml not implemented in default app service')

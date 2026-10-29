@@ -371,6 +371,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'agent_replays_list',
       'audit_export',
       'export_redacted_logs',
+      'export_diagnostic_bundle',
       'get_attribution_settings',
       'get_compaction_policy',
       'get_usage_attribution',

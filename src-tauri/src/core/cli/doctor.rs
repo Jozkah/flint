@@ -12,9 +12,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use flate2::write::GzEncoder;
-use flate2::Compression;
-
 use crate::core::cli::secrets::Redactor;
 use crate::core::threads::constants::{MESSAGES_FILE, THREADS_FILE};
 use crate::core::threads::utils::{get_thread_dir, get_thread_metadata_path};
@@ -107,39 +104,8 @@ pub struct Preview {
     pub truncated: Vec<String>,
 }
 
-/// Largest one member may be: the newest bytes are kept.
-pub const MEMBER_CAP: usize = 1024 * 1024;
-/// Largest the members may be together.
-pub const TOTAL_CAP: usize = 8 * 1024 * 1024;
-
-/// Cut each member to its share, keeping its tail (the newest messages and
-/// log lines) behind a note that says what was dropped. Returns one line per
-/// member cut, for the preview.
-fn cap_members(members: &mut [(String, String)], member_cap: usize, total_cap: usize) -> Vec<String> {
-    let mut notes = Vec::new();
-    let mut left = total_cap;
-    for (name, content) in members.iter_mut() {
-        let cap = member_cap.min(left);
-        if content.len() > cap {
-            let original = content.len();
-            let mut start = original - cap;
-            while !content.is_char_boundary(start) {
-                start += 1;
-            }
-            // Start on a whole line when one begins inside the kept part.
-            if let Some(nl) = content[start..].find('\n') {
-                if nl + 1 < content.len() - start {
-                    start += nl + 1;
-                }
-            }
-            let kept = content.len() - start;
-            *content = format!("[truncated: kept the last {kept} of {original} bytes]\n{}", &content[start..]);
-            notes.push(format!("{name}: kept the last {kept} of {original} bytes"));
-        }
-        left = left.saturating_sub(content.len());
-    }
-    notes
-}
+pub use crate::core::diagnostics_bundle::{MEMBER_CAP, TOTAL_CAP};
+use crate::core::diagnostics_bundle::cap_members;
 
 impl Preview {
     pub fn redacted_any(&self) -> bool {
@@ -208,20 +174,7 @@ impl Preview {
         let file = options
             .open(&self.destination)
             .map_err(|e| format!("cannot create {}: {e}", self.destination.display()))?;
-        let mut tar = tar::Builder::new(GzEncoder::new(file, Compression::default()));
-        for (name, content) in &self.members {
-            let mut header = tar::Header::new_gnu();
-            header.set_size(content.len() as u64);
-            header.set_mode(0o600);
-            header.set_mtime(chrono::Utc::now().timestamp().max(0) as u64);
-            header.set_cksum();
-            tar.append_data(&mut header, name, content.as_bytes())
-                .map_err(|e| format!("archive write error: {e}"))?;
-        }
-        let enc = tar
-            .into_inner()
-            .map_err(|e| format!("archive finalize error: {e}"))?;
-        let mut file = enc.finish().map_err(|e| format!("gzip finish error: {e}"))?;
+        let mut file = crate::core::diagnostics_bundle::write_archive(file, &self.members)?;
         file.flush().map_err(|e| format!("flush error: {e}"))?;
         Ok(self.destination.clone())
     }

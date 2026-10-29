@@ -59,6 +59,18 @@ export function DataFolderCard({
     }
   }
 
+  const handleSaveBundle = async () => {
+    try {
+      const path = await serviceHub.app().exportDiagnosticBundle()
+      if (!path) return
+      toast.success(t('settings:general.diagnosticBundleSaved', { path }))
+    } catch (error) {
+      toast.error(t('settings:general.diagnosticBundleFailed'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -250,6 +262,15 @@ export function DataFolderCard({
                 title={t('settings:general.exportLogsDesc')}
               >
                 <span>{t('settings:general.exportLogs')}</span>
+              </Button>
+            )}
+            {IS_TAURI && (
+              <Button
+                variant="outline"
+                onClick={handleSaveBundle}
+                title={t('settings:general.diagnosticBundleDesc')}
+              >
+                <span>{t('settings:general.diagnosticBundle')}</span>
               </Button>
             )}
           </div>

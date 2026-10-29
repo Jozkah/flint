@@ -116,6 +116,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::read_logs,
         core::system::commands::read_logs_since,
         core::system::commands::export_redacted_logs,
+        core::system::commands::export_diagnostic_bundle,
         core::system::commands::launch_claude_code_with_config,
         core::system::commands::check_jan_cli_installed,
         core::system::commands::install_jan_cli,
