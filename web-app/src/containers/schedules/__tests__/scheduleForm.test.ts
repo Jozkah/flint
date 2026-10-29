@@ -222,22 +222,19 @@ describe('form to task', () => {
 
 describe('warnings for a task that will never run', () => {
   it('flags a switched-off task but not an enabled one', () => {
-    expect(neverRunsWarnings(valid(), null)).toEqual([])
-    expect(neverRunsWarnings(valid({ enabled: false }), null)).toEqual([
+    expect(neverRunsWarnings(valid(), false)).toEqual([])
+    expect(neverRunsWarnings(valid({ enabled: false }), false)).toEqual([
       'schedules:warnings.disabled',
     ])
   })
 
-  it('flags a schedule the backend says never fires, and only that error', () => {
-    expect(neverRunsWarnings(valid(), 'this schedule never fires')).toEqual([
-      'schedules:warnings.neverFires',
-    ])
-    expect(neverRunsWarnings(valid(), 'the minute range 61-61 is outside 0-59')).toEqual([])
+  it('flags a schedule the backend says never fires', () => {
+    expect(neverRunsWarnings(valid(), true)).toEqual(['schedules:warnings.neverFires'])
   })
 
   it('can raise both at once', () => {
     expect(
-      neverRunsWarnings(valid({ enabled: false }), 'this schedule never fires')
+      neverRunsWarnings(valid({ enabled: false }), true)
     ).toHaveLength(2)
   })
 })

@@ -24,6 +24,27 @@ pub struct StartServerConfig {
     pub verbose_logs: Option<bool>,
 }
 
+/// What `start_server` rejects with: a stable `code` for the page to switch
+/// on, and the message to show (RTE-005). Codes: `ALREADY_RUNNING`,
+/// `PORT_IN_USE`, `PORT_FORBIDDEN`, `API_KEY_REQUIRED`, `START_FAILED`.
+#[derive(Debug, serde::Serialize, PartialEq)]
+pub struct ServerStartError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+pub const START_ERR_API_KEY_REQUIRED: &str = "API_KEY_REQUIRED";
+pub const START_ERR_FAILED: &str = "START_FAILED";
+
+impl ServerStartError {
+    fn from_proxy(e: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        match e.downcast_ref::<proxy::StartError>() {
+            Some(s) => Self { code: s.code, message: s.message.clone() },
+            None => Self { code: START_ERR_FAILED, message: e.to_string() },
+        }
+    }
+}
+
 /// A server reachable beyond this machine must not run without an API key.
 /// Loopback binds may stay keyless (the default).
 fn validate_bind(host: &str, api_key: &str) -> Result<(), String> {
@@ -46,7 +67,7 @@ pub async fn start_server<R: Runtime>(
     app_handle: AppHandle<R>,
     state: State<'_, AppState>,
     config: StartServerConfig,
-) -> Result<u16, String> {
+) -> Result<u16, ServerStartError> {
     let StartServerConfig {
         host,
         port,
@@ -58,7 +79,10 @@ pub async fn start_server<R: Runtime>(
         cors_enabled,
         verbose_logs,
     } = config;
-    validate_bind(&host, &api_key)?;
+    validate_bind(&host, &api_key).map_err(|message| ServerStartError {
+        code: START_ERR_API_KEY_REQUIRED,
+        message,
+    })?;
     proxy::set_verbose_logs(verbose_logs.unwrap_or(false));
     let server_handle = state.server_handle.clone();
     let llama_state: State<Arc<LlamacppState>> = app_handle.state();
@@ -96,7 +120,7 @@ pub async fn start_server<R: Runtime>(
         cors_enabled.unwrap_or(true),
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(ServerStartError::from_proxy)?;
 
     #[cfg(feature = "desktop")]
     crate::core::setup::show_tray(&app_handle);
@@ -224,5 +248,31 @@ mod bind_tests {
     #[test]
     fn whitespace_key_is_empty() {
         assert!(validate_bind("0.0.0.0", "   ").is_err());
+    }
+}
+
+#[cfg(test)]
+mod start_error_tests {
+    use super::*;
+
+    #[test]
+    fn a_proxy_start_error_keeps_its_code() {
+        let e: Box<dyn std::error::Error + Send + Sync> = Box::new(proxy::StartError {
+            code: proxy::START_ERR_PORT_IN_USE,
+            message: "Port 1337 is already in use".into(),
+        });
+        let out = ServerStartError::from_proxy(e);
+        assert_eq!(out.code, "PORT_IN_USE");
+        assert_eq!(out.message, "Port 1337 is already in use");
+    }
+
+    #[test]
+    fn any_other_error_is_start_failed_with_its_text() {
+        let e: Box<dyn std::error::Error + Send + Sync> = "boom".into();
+        let out = ServerStartError::from_proxy(e);
+        assert_eq!(out, ServerStartError { code: START_ERR_FAILED, message: "boom".into() });
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json["code"], "START_FAILED");
+        assert_eq!(json["message"], "boom");
     }
 }

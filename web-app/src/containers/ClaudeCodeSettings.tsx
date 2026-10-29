@@ -266,9 +266,9 @@ export function ClaudeCodeSettings() {
           })
         )
       } catch (startErr) {
-        const msg =
-          startErr instanceof Error ? startErr.message : String(startErr)
-        if (!msg.includes('already running')) throw startErr
+        // `start_server` rejects with { code, message } (ServerStartError).
+        const code = (startErr as { code?: unknown } | null)?.code
+        if (code !== 'ALREADY_RUNNING') throw startErr
       }
 
       if (actualPort) {

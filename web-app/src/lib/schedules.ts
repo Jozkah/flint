@@ -114,12 +114,18 @@ export const scheduleRuns = (taskId: string, limit?: number) =>
 export const scheduleCancelRun = (taskId: string, runId: string) =>
   invoke<void>('schedule_cancel_run', { taskId, runId })
 
-/** Next fire times for a schedule that is still being edited. */
+/**
+ * Next fire times for a schedule that is still being edited. `neverFires` is
+ * set for a valid schedule with no future fire time (31 February); a schedule
+ * the backend would refuse rejects with the reason.
+ */
+export type SchedulePreview = { fires: string[]; neverFires: boolean }
+
 export const schedulePreview = (
   schedule: ScheduleSpec,
   timezone: string,
   count = 5
-) => invoke<string[]>('schedule_preview', { schedule, timezone, count })
+) => invoke<SchedulePreview>('schedule_preview', { schedule, timezone, count })
 
 export const scheduleTimeZones = () => invoke<string[]>('schedule_time_zones')
 

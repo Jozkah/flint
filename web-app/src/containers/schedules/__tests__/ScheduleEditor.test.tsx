@@ -60,7 +60,10 @@ vi.mock('@/lib/schedules', async () => {
 describe('ScheduleEditor', () => {
   beforeEach(() => {
     preview.mockReset()
-    preview.mockResolvedValue(['2026-05-02T09:00:00Z', '2026-05-03T09:00:00Z'])
+    preview.mockResolvedValue({
+      fires: ['2026-05-02T09:00:00Z', '2026-05-03T09:00:00Z'],
+      neverFires: false,
+    })
     open.mockReset()
   })
 
@@ -139,7 +142,7 @@ describe('ScheduleEditor', () => {
 
   it('warns when the schedule has no future run time', async () => {
     const user = userEvent.setup()
-    preview.mockRejectedValue('this schedule never fires')
+    preview.mockResolvedValue({ fires: [], neverFires: true })
     render(<ScheduleEditor open task={null} onClose={() => {}} onSave={vi.fn()} />)
     await user.click(screen.getByRole('button', { name: 'Edit as cron' }))
     const cron = screen.getByLabelText('Cron expression')
