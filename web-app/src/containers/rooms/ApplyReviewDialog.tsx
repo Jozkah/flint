@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  FolderOpen,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  XCircle,
-} from 'lucide-react'
+import { FolderOpen, Loader2, Maximize2, Minimize2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -17,128 +8,28 @@ import { cn, truncateMiddle } from '@/lib/utils'
 import {
   buildPatch,
   canApply,
-  capRows,
-  diffRows,
   dirtyOverlap,
-  gutterNumber,
   preflight,
-  ROWS_PAGE,
   splitPatch,
   summarize,
   type ApplyPreview,
-  type PatchFile,
-  type PatchFileStatus,
 } from '@/lib/rooms/applyReview'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ApplyChip } from './apply/ApplyChip'
+import { FileDiff } from './apply/FileDiff'
+import { PatchFileRow } from './apply/PatchFileRow'
+import { PreflightPanel } from './apply/PreflightPanel'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
 /** Files open on arrival when the whole patch is at most this many rows. */
 const OPEN_ALL_ROWS = 600
 
-const STATUS_TONE: Record<PatchFileStatus, string> = {
-  added: 'bg-success-tint text-success',
-  modified: 'bg-muted text-muted-foreground',
-  deleted: 'bg-destructive-tint text-destructive',
-  renamed: 'bg-warning-tint text-warning',
-}
-
 const errorText = (e: unknown): string =>
   e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e)
 
-/** A small bordered label on a file row or in the header. */
-function Chip({ className, children, ...rest }: React.HTMLAttributes<HTMLSpanElement>) {
-  return (
-    <span
-      className={cn(
-        'inline-flex h-[22px] shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border px-1.5 text-xs text-muted-foreground',
-        className
-      )}
-      {...rest}
-    >
-      {children}
-    </span>
-  )
-}
-
-/**
- * One file of a patch as a gutter diff: one line-number column, +/− marks,
- * long lines wrapped so the dialog never scrolls sideways.
- */
-export function FileDiff({ file, t }: { file: PatchFile; t: T }) {
-  const rows = useMemo(() => diffRows(file.diff), [file])
-  const [limit, setLimit] = useState(ROWS_PAGE)
-  if (file.binary) {
-    return <p className="px-4 py-3 text-xs text-muted-foreground">{t('rooms:apply.binary')}</p>
-  }
-  if (rows.length === 0) {
-    return <p className="px-4 py-3 text-xs text-muted-foreground">{t('rooms:apply.noLines')}</p>
-  }
-  const { shown, hidden } = capRows(rows, limit)
-  const width = String(rows.reduce((m, r) => Math.max(m, gutterNumber(r) ?? 0), 0)).length
-  const num = { width: `${width + 2}ch` }
-  return (
-    <div>
-      <div className="bg-code-bg font-mono text-xs leading-[1.6]" data-testid="apply-file-diff">
-        {shown.map((r, i) =>
-          r.kind === 'hunk' ? (
-            <div key={i} className="truncate bg-muted/50 px-4 py-1 text-subtle-foreground">
-              {r.text}
-            </div>
-          ) : (
-            <div
-              key={i}
-              data-kind={r.kind}
-              className={cn(
-                'flex min-w-0',
-                r.kind === 'add' && 'bg-diff-add-bg',
-                r.kind === 'remove' && 'bg-diff-del-bg',
-                r.kind === 'context' && 'text-fg-2',
-                r.kind === 'meta' && 'text-muted-foreground italic'
-              )}
-            >
-              <span
-                aria-hidden
-                style={num}
-                className={cn(
-                  'shrink-0 select-none py-px pr-2 pl-2 text-right tabular-nums',
-                  r.kind === 'add'
-                    ? 'bg-diff-add-ln text-diff-add'
-                    : r.kind === 'remove'
-                      ? 'bg-diff-del-ln text-diff-del'
-                      : 'text-subtle-foreground'
-                )}
-              >
-                {gutterNumber(r) ?? ''}
-              </span>
-              <span
-                aria-hidden
-                className={cn(
-                  'w-5 shrink-0 select-none py-px text-center',
-                  r.kind === 'add' && 'text-diff-add',
-                  r.kind === 'remove' && 'text-diff-del'
-                )}
-              >
-                {r.kind === 'add' ? '+' : r.kind === 'remove' ? '−' : ''}
-              </span>
-              <span className="min-w-0 flex-1 py-px pr-4 break-words whitespace-pre-wrap">{r.text || ' '}</span>
-            </div>
-          )
-        )}
-      </div>
-      {hidden > 0 && (
-        <button
-          type="button"
-          onClick={() => setLimit((l) => l + ROWS_PAGE)}
-          className="w-full border-t border-border px-4 py-2 text-left text-xs text-muted-foreground hover:bg-hover-row hover:text-foreground"
-        >
-          {t('rooms:apply.showMore', { count: Math.min(hidden, ROWS_PAGE) })}{' '}
-          <span className="opacity-70">{t('rooms:apply.hiddenLines', { count: hidden })}</span>
-        </button>
-      )}
-    </div>
-  )
-}
+/** Kept here too: TurnChangeCard imports the diff from this module. */
+export { FileDiff }
 
 /**
  * The review step before a participant's change is written into the user's
@@ -210,7 +101,6 @@ export function ApplyReviewDialog({
   const allSelected = files.length > 0 && selected.size === files.length
   const allExpanded = files.length > 0 && files.every((f) => expanded.has(f.path))
   const conflicting = files.filter((f) => reasons.get(f.path)?.ok === false && !preview?.clean)
-  const hasIssues = check.state === 'conflict' || check.state === 'failed' || dirty.length > 0
 
   const toggle = (set: Set<string>, path: string) => {
     const next = new Set(set)
@@ -282,95 +172,25 @@ export function ApplyReviewDialog({
               </button>
             )}
             {preview && (
-              <Chip data-testid="apply-summary" className="gap-1.5">
+              <ApplyChip data-testid="apply-summary" className="gap-1.5">
                 <span>{t('rooms:apply.files', { count: total.fileCount })}</span>
                 <span className="font-mono tabular-nums">
                   <span className="text-diff-add">+{total.additions}</span>{' '}
                   <span className="text-diff-del">−{total.deletions}</span>
                 </span>
-              </Chip>
+              </ApplyChip>
             )}
-            {source && <Chip>{t('rooms:apply.source', { name: source.name, round: source.round })}</Chip>}
+            {source && <ApplyChip>{t('rooms:apply.source', { name: source.name, round: source.round })}</ApplyChip>}
           </div>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4 sm:px-6">
-          {/* One quiet line while checking or when all is well; a card with
-              one row per issue otherwise. */}
-          <div
-            role="status"
-            aria-live="polite"
-            data-testid="apply-preflight"
-            data-state={check.state}
-            className={cn(
-              hasIssues && 'flex flex-col divide-y divide-border rounded-lg border-[0.8px] border-border bg-card'
-            )}
-          >
-            {check.state === 'checking' && (
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 aria-hidden className="size-3.5 animate-spin" />
-                {t('rooms:apply.checking')}
-              </p>
-            )}
-            {check.state === 'clean' && (
-              <p className={cn('flex items-center gap-2 text-xs font-medium text-success', hasIssues && 'px-3.5 py-3')}>
-                <CheckCircle2 aria-hidden className="size-3.5" />
-                {t('rooms:apply.clean')}
-              </p>
-            )}
-            {check.state === 'failed' && (
-              <div className="flex items-start gap-2.5 px-3.5 py-3 text-xs">
-                <XCircle aria-hidden className="mt-px size-4 shrink-0 text-destructive" />
-                <p className="min-w-0 break-words text-foreground">{t('rooms:apply.checkFailed', { message: check.message })}</p>
-              </div>
-            )}
-            {check.state === 'conflict' && (
-              <div className="flex flex-col gap-2 px-3.5 py-3 text-xs">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                  <p className="flex min-w-0 basis-full items-center gap-2.5 sm:flex-1 sm:basis-auto">
-                    <XCircle aria-hidden className="size-4 shrink-0 text-destructive" />
-                    <span className="font-medium text-foreground">
-                      {t('rooms:apply.conflict', { count: check.conflicts.length })}
-                    </span>
-                  </p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    data-testid="apply-leave-out"
-                    className="ml-[26px] self-start sm:ml-0"
-                    onClick={leaveOutConflicts}
-                  >
-                    {t('rooms:apply.leaveOut')}
-                  </Button>
-                </div>
-                <p className="pl-[26px] text-muted-foreground">{t('rooms:apply.conflictHint')}</p>
-                <details className="group/d pl-[26px]">
-                  <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                    <ChevronDown aria-hidden className="size-3.5 -rotate-90 transition-transform group-open/d:rotate-0" />
-                    {t('rooms:apply.details')}
-                  </summary>
-                  <ul className="mt-2 flex flex-col gap-1 rounded-md bg-code-bg px-3 py-2 font-mono">
-                    {check.conflicts.map((c) => (
-                      <li key={c.path} className="min-w-0 break-words">
-                        <span className="text-foreground">{c.path}</span>
-                        <span className="text-muted-foreground"> — {c.reason ?? t('rooms:apply.notChecked')}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              </div>
-            )}
-            {dirty.length > 0 && (
-              <div data-testid="apply-dirty" className="flex flex-col gap-1 px-3.5 py-3 text-xs">
-                <p className="flex items-center gap-2.5">
-                  <AlertTriangle aria-hidden className="size-4 shrink-0 text-warning" />
-                  <span className="font-medium text-foreground">{t('rooms:apply.dirtyTitle', { count: dirty.length })}</span>
-                </p>
-                <p className="min-w-0 pl-[26px] font-mono break-words text-muted-foreground">{dirty.join(', ')}</p>
-                <p className="pl-[26px] text-muted-foreground">{t('rooms:apply.dirtyHint')}</p>
-              </div>
-            )}
-          </div>
+          <PreflightPanel
+            check={check}
+            dirty={dirty}
+            onLeaveOutConflicts={leaveOutConflicts}
+            t={t}
+          />
 
           {preview && files.length === 0 && <p className="text-xs text-muted-foreground">{t('rooms:changes.empty')}</p>}
 
@@ -400,87 +220,19 @@ export function ApplyReviewDialog({
               </div>
 
               <ul className="flex flex-col gap-2">
-                {files.map((f) => {
-                  const isOpen = expanded.has(f.path)
-                  const on = selected.has(f.path)
-                  const bad = reasons.get(f.path)?.ok === false && !preview?.clean
-                  const mine = dirtySet.has(f.path) || (!!f.oldPath && dirtySet.has(f.oldPath))
-                  const slash = f.path.lastIndexOf('/')
-                  return (
-                    <li
-                      key={f.path}
-                      data-testid="apply-file"
-                      className={cn(
-                        'min-w-0 overflow-hidden rounded-lg border-[0.8px] border-border bg-card transition-opacity',
-                        !on && 'opacity-55'
-                      )}
-                    >
-                      <div className="flex min-h-10 items-center gap-2.5 px-3 py-2">
-                        <Checkbox
-                          className="size-3.5 shrink-0"
-                          checked={on}
-                          onChange={() => setSelected((s) => toggle(s, f.path))}
-                          aria-label={t('rooms:apply.include', { path: f.path })}
-                        />
-                        <button
-                          type="button"
-                          aria-expanded={isOpen}
-                          onClick={() => setExpanded((s) => toggle(s, f.path))}
-                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"
-                        >
-                          <ChevronDown
-                            aria-hidden
-                            className={cn(
-                              'size-3.5 shrink-0 text-muted-foreground transition-transform',
-                              !isOpen && '-rotate-90'
-                            )}
-                          />
-                          <span
-                            className="min-w-0 truncate font-mono text-xs"
-                            title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
-                          >
-                            {slash > 0 && <span className="text-muted-foreground">{f.path.slice(0, slash + 1)}</span>}
-                            <span className="font-medium text-foreground">{f.path.slice(slash + 1)}</span>
-                            {f.oldPath && (
-                              <span className="text-muted-foreground"> {t('rooms:apply.renamedFrom', { path: f.oldPath })}</span>
-                            )}
-                          </span>
-                        </button>
-                        {bad && (
-                          <Chip className="border-destructive/40 text-destructive max-[479px]:hidden">
-                            <XCircle aria-hidden className="size-3" />
-                            {t('rooms:apply.fileConflict')}
-                          </Chip>
-                        )}
-                        {mine && (
-                          <Chip className="border-warning/40 text-warning max-[479px]:hidden">
-                            <AlertTriangle aria-hidden className="size-3" />
-                            {t('rooms:apply.fileDirty')}
-                          </Chip>
-                        )}
-                        <span
-                          className={cn(
-                            'shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium',
-                            STATUS_TONE[f.status]
-                          )}
-                        >
-                          {t(`rooms:apply.status.${f.status}`)}
-                        </span>
-                        {!f.binary && (
-                          <span className="hidden min-w-[7ch] shrink-0 text-right whitespace-nowrap font-mono text-xs tabular-nums min-[420px]:inline">
-                            <span className="text-diff-add">+{f.additions}</span>{' '}
-                            <span className="text-diff-del">−{f.deletions}</span>
-                          </span>
-                        )}
-                      </div>
-                      {isOpen && (
-                        <div className="border-t border-border">
-                          <FileDiff file={f} t={t} />
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
+                {files.map((f) => (
+                  <PatchFileRow
+                    key={f.path}
+                    file={f}
+                    selected={selected.has(f.path)}
+                    expanded={expanded.has(f.path)}
+                    conflict={reasons.get(f.path)?.ok === false && !preview?.clean}
+                    dirty={dirtySet.has(f.path) || (!!f.oldPath && dirtySet.has(f.oldPath))}
+                    onToggleSelected={() => setSelected((s) => toggle(s, f.path))}
+                    onToggleExpanded={() => setExpanded((s) => toggle(s, f.path))}
+                    t={t}
+                  />
+                ))}
               </ul>
             </div>
           )}
