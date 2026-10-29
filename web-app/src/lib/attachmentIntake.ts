@@ -341,3 +341,28 @@ export async function splitNewImages(
   }
   return { fresh, duplicates }
 }
+
+/**
+ * `list` without `target`. Removal waits on the backend (a document is
+ * deleted from the vector store first), and the list can change meanwhile:
+ * an earlier chip removed, an ingest finishing. An index taken before the
+ * wait could then name a different chip, so the chip is found again by
+ * identity, or, when an update replaced the object, by type, name and
+ * content hash or path.
+ */
+export function withoutAttachment(
+  list: Attachment[],
+  target: Attachment
+): Attachment[] {
+  let at = list.indexOf(target)
+  if (at === -1) {
+    const key = (a: Attachment) => a.contentHash ?? a.path
+    at = list.findIndex(
+      (a) =>
+        a.type === target.type &&
+        a.name === target.name &&
+        key(a) === key(target)
+    )
+  }
+  return at === -1 ? list : list.filter((_, i) => i !== at)
+}
