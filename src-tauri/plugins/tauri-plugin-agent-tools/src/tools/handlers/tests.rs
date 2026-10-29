@@ -2946,12 +2946,15 @@ fn process_alive(pid: u32) -> bool {
     use windows_sys::Win32::System::Threading::{
         GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    // SAFETY: OpenProcess takes plain values; the handle is checked for null below.
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
     if handle.is_null() {
         return false;
     }
     let mut code = 0u32;
+    // SAFETY: `handle` is non-null (checked above) and `code` is a local out-pointer.
     let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+    // SAFETY: `handle` was opened above and is not used after this close.
     unsafe { CloseHandle(handle) };
     ok && code == 259
 }

@@ -21,6 +21,7 @@ extern "C" {
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" { fn CFRelease(object: Event); }
 pub fn capture_note(width: u32, height: u32) -> String {
+    // SAFETY: CGMainDisplayID and CGDisplayBounds take and return plain values.
     let bounds = unsafe { CGDisplayBounds(CGMainDisplayID()) };
     let scale = width as f64 / bounds.size.width;
     format!("Captured the primary display at {width} × {height} image pixels. Desktop coordinates use logical points: divide image x and y by {scale}, then add origin ({}, {}). Verify the target before acting.", bounds.origin.x, bounds.origin.y)
@@ -108,6 +109,7 @@ pub async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
     }
     let action = action.clone();
     let cancel = crate::lifecycle::current();
+    // SAFETY: `input` posts CoreGraphics events from owned values; the closure owns `action` and `cancel`, so nothing it borrows can dangle.
     tokio::task::spawn_blocking(move || unsafe { input(&action, cancel.as_ref()) }).await.map_err(|e| e.to_string())??;
     Ok(None)
 }

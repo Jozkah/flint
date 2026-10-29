@@ -254,6 +254,12 @@ pub async fn cli_review(
     fix: bool,
     json: bool,
 ) -> Result<(), String> {
+    // The fix run prints its own transcript, so `--json` stdout would hold the
+    // review document followed by text no JSON reader can take. Refused
+    // before any model call is spent.
+    if json && fix {
+        return Err("--json and --fix cannot be combined: run `review --json`, then `review --fix` separately".to_string());
+    }
     let root = resolve_project_root(project);
     let input = crate::core::agent::review::collect_diff(&root, base)?;
     let mut session = prepare_agent_session(

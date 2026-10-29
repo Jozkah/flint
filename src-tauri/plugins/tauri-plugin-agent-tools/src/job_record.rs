@@ -399,8 +399,10 @@ pub fn creation_time_of(pid: u32) -> Option<u64> {
 pub fn creation_time_of(pid: u32) -> Option<u64> {
     // macOS has no /proc: the kernel reports the start time through
     // proc_pidinfo, in microseconds since the epoch.
+    // SAFETY: proc_bsdinfo is a plain C struct; all-zero is a valid value.
     let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
     let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    // SAFETY: the pointer and size describe `info`, a local that outlives the call.
     let got = unsafe {
         libc::proc_pidinfo(
             pid as libc::c_int,

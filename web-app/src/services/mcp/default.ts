@@ -81,7 +81,7 @@ export class DefaultMCPService implements MCPService {
     return {}
   }
 
-  async trustServer(serverName: string, fingerprint?: string): Promise<void> {
+  async trustServer(serverName: string, fingerprint: string): Promise<void> {
     void fingerprint
     throw new Error(
       `cannot trust MCP server '${serverName}': that needs the desktop backend`
@@ -106,7 +106,7 @@ export class DefaultMCPService implements MCPService {
   async allowOnceForServer(
     serverName: string,
     toolName: string,
-    fingerprint?: string
+    fingerprint: string
   ): Promise<string> {
     void fingerprint
     throw new Error(

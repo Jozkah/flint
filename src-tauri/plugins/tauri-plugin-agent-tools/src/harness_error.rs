@@ -802,7 +802,10 @@ pub fn classify_tool(tool: &str, content: &str) -> Option<HarnessError> {
     if has(&["cancelled", "canceled", "stopped by the user", "stop requested"]) {
         return made(ErrorKind::Cancelled);
     }
-    if has(&["denied by user", "declined", "user said no", "approval"]) {
+    // No bare "approval": a tool error that merely mentions one ("needs
+    // approval to write", "approval file missing") is not a person refusing.
+    // Real refusals carry the `ERROR [approval_refused]:` tag.
+    if has(&["denied by user", "declined", "user said no"]) {
         return made(ErrorKind::ApprovalRefused);
     }
     if has(&[
@@ -1177,6 +1180,8 @@ mod tests {
             ("ERROR: tool 'bash' timed out after 30s and was stopped", ErrorKind::Timeout),
             ("ERROR: the run was cancelled", ErrorKind::Cancelled),
             ("ERROR: something nobody has classified", ErrorKind::ToolFailed),
+            ("ERROR: the approval file could not be parsed", ErrorKind::ToolFailed),
+            ("ERROR: write denied by user", ErrorKind::ApprovalRefused),
         ] {
             let classified = classify_tool("bash", content).expect("a failure");
             assert_eq!(classified.kind(), expected, "{content:?}");

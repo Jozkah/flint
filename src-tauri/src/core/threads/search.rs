@@ -120,7 +120,50 @@ pub fn search_messages_in(
     query: &str,
     limit: usize,
 ) -> Result<Vec<MessageHit>, String> {
+    search_messages_until(root, query, limit, &|| false)
+}
+
+/// Bumped by every [`search_messages_latest`]; a scan whose number is no
+/// longer current stops, so typing does not pile up full scans.
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// [`search_messages_in`] that gives up (returning what it has) as soon as a
+/// newer call starts: each keystroke in the search box supersedes the last.
+pub fn search_messages_latest(
+    root: &Path,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<MessageHit>, String> {
+    use std::sync::atomic::Ordering;
+    let mine = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    search_messages_until(root, query, limit, &|| GENERATION.load(Ordering::SeqCst) != mine)
+}
+
+/// A cheap test on the raw JSON line before it is parsed: when the needle is
+/// plain ASCII with nothing JSON escapes, a line that does not hold it
+/// (ASCII case folded) cannot hold it in any text part either.
+fn ascii_prefilter(needle: &[char]) -> Option<String> {
+    needle
+        .iter()
+        .all(|c| c.is_ascii() && !c.is_ascii_control() && *c != '"' && *c != '\\')
+        .then(|| needle.iter().collect())
+}
+
+fn line_may_match(line: &str, ascii_needle: &str) -> bool {
+    let n = ascii_needle.as_bytes();
+    line.as_bytes()
+        .windows(n.len())
+        .any(|w| w.eq_ignore_ascii_case(n))
+}
+
+fn search_messages_until(
+    root: &Path,
+    query: &str,
+    limit: usize,
+    superseded: &dyn Fn() -> bool,
+) -> Result<Vec<MessageHit>, String> {
     let needle: Vec<char> = query.trim().chars().map(fold).collect();
+    let prefilter = ascii_prefilter(&needle);
     if needle.is_empty() {
         return Ok(Vec::new());
     }
@@ -165,12 +208,18 @@ pub fn search_messages_in(
 
     let mut hits = Vec::new();
     'threads: for (id, title, updated) in threads {
+        if superseded() {
+            break;
+        }
         let Ok(file) = fs::File::open(get_messages_path(root, &id)) else {
             continue;
         };
         let mut in_thread = 0;
         for line in BufReader::new(file).lines() {
             let Ok(line) = line else { break };
+            if prefilter.as_deref().is_some_and(|n| !line_may_match(&line, n)) {
+                continue;
+            }
             let Ok(message) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
@@ -274,6 +323,39 @@ mod tests {
         assert!(search_messages_in(tmp.path(), "needle", 20)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn the_raw_line_prefilter_keeps_case_and_non_ascii_matches() {
+        let tmp = tempfile::tempdir().unwrap();
+        thread(
+            tmp.path(),
+            "t1",
+            "T",
+            1,
+            vec![
+                msg("m1", "user", "The Quartz CODEWORD"),
+                msg("m2", "user", "Grüße aus München"),
+                msg("m3", "user", "nothing here"),
+            ],
+        );
+        let hits = search_messages_in(tmp.path(), "quartz codeword", 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].message_id, "m1");
+        // A non-ASCII needle skips the prefilter and still matches.
+        let hits = search_messages_in(tmp.path(), "MÜNCHEN", 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].message_id, "m2");
+        assert!(ascii_prefilter(&['a', '"']).is_none());
+    }
+
+    #[test]
+    fn a_superseded_scan_stops_early() {
+        let tmp = tempfile::tempdir().unwrap();
+        thread(tmp.path(), "t1", "T", 1, vec![msg("m1", "user", "needle")]);
+        let hits = search_messages_until(tmp.path(), "needle", 20, &|| true).unwrap();
+        assert!(hits.is_empty());
+        assert_eq!(search_messages_latest(tmp.path(), "needle", 20).unwrap().len(), 1);
     }
 
     #[test]
