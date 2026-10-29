@@ -174,11 +174,27 @@ fn is_code_bearing_env(name: &str) -> bool {
         "USERPROFILE",
         "APPDATA",
         "LOCALAPPDATA",
+        // Go module fetching and toolchain selection.
+        "GOFLAGS",
+        "GOPROXY",
+        "GOROOT",
+        "GOPATH",
+        "GOTOOLCHAIN",
+        "GOINSECURE",
+        "GONOSUMDB",
+        "GOPRIVATE",
     ];
     const PREFIX: &[&str] = &[
         "LD_", "DYLD_", "PYTHON", "NODE_", "NPM_CONFIG_", "UV_", "PIP_", "BUN_", "YARN_", "XDG_",
+        // .NET profiler/CLR hooks load arbitrary DLLs; OpenSSL config and
+        // certificate stores decide whose TLS endpoints are trusted.
+        "COR_", "CORECLR_", "DOTNET_", "OPENSSL_", "SSL_CERT_",
     ];
-    EXACT.contains(&n.as_str()) || PREFIX.iter().any(|p| n.starts_with(p))
+    // Where traffic goes and which certificates vouch for it.
+    const SUFFIX: &[&str] = &["_PROXY", "CA_BUNDLE"];
+    EXACT.contains(&n.as_str())
+        || PREFIX.iter().any(|p| n.starts_with(p))
+        || SUFFIX.iter().any(|s| n.ends_with(s))
 }
 
 fn code_bearing_env_digests(env: Option<&Value>) -> serde_json::Map<String, Value> {
@@ -355,6 +371,17 @@ mod tests {
             assert!(is_code_bearing_env(name), "{name}");
         }
         assert!(!is_code_bearing_env("API_TOKEN"));
+    }
+
+    #[test]
+    fn clr_tls_proxy_and_go_settings_are_code_bearing() {
+        for name in [
+            "COR_PROFILER_PATH", "CORECLR_PROFILER", "DOTNET_ROOT", "OPENSSL_CONF", "SSL_CERT_FILE",
+            "https_proxy", "ALL_PROXY", "REQUESTS_CA_BUNDLE", "GOPROXY", "GOFLAGS",
+        ] {
+            assert!(is_code_bearing_env(name), "{name}");
+        }
+        assert!(!is_code_bearing_env("GOOGLE_API_KEY"));
     }
 
     fn stdio() -> Value {

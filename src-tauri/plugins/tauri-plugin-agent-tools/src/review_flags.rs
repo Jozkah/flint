@@ -50,6 +50,8 @@ pub struct ReviewFlag {
 pub fn flags_for(path: &str, base: Option<&[u8]>, proposed: Option<&[u8]>) -> Vec<ReviewFlag> {
     let text = |b: Option<&[u8]>| b.map(|b| String::from_utf8_lossy(b).into_owned());
     let (before, after) = (text(base), text(proposed));
+    // A Windows spelling (`db\migrations\x.sql`) is the same path.
+    let path = &path.replace('\\', "/");
     let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
     let mut out = Vec::new();
     if let Some(flag) = dependency_flag(&name, before.as_deref(), after.as_deref()) {
@@ -64,7 +66,9 @@ pub fn flags_for(path: &str, base: Option<&[u8]>, proposed: Option<&[u8]>) -> Ve
             details: Vec::new(),
         });
     }
-    if let Some(flag) = migration_flag(path, after.as_deref(), proposed.is_none()) {
+    // A deleted file has no `after`; its effects are what the old text did.
+    let sql_text = after.as_deref().or(before.as_deref());
+    if let Some(flag) = migration_flag(path, sql_text, proposed.is_none()) {
         out.push(flag);
     }
     let not_text = |b: Option<&[u8]>| b.is_some_and(|b| b.contains(&0) || std::str::from_utf8(b).is_err());
@@ -574,6 +578,15 @@ mod tests {
         assert_eq!(kinds("web/yarn.lock", None, Some("b")), vec![FlagKind::Lockfile]);
         assert_eq!(kinds("go.sum", Some("a"), None), vec![FlagKind::Lockfile, FlagKind::Deletion]);
         assert!(kinds("notes/lock.md", Some("a"), Some("b")).is_empty());
+    }
+
+    #[test]
+    fn backslash_paths_and_deleted_sql_are_flagged() {
+        let win = flags_for("db\\migrations\\0003_x.sql", None, Some(b"SELECT 1;\n"));
+        assert_eq!(win[0].kind, FlagKind::Migration);
+        let gone = flags_for("scripts/backfill.sql", Some(b"UPDATE users SET plan = 'free';\n"), None);
+        assert_eq!(gone[0].kind, FlagKind::Migration);
+        assert!(gone[0].summary.contains("deleted"), "{}", gone[0].summary);
     }
 
     #[test]

@@ -38,9 +38,14 @@ export function useServerLogs(): LogEntry[] {
     let cancelled = false
     let unsubscribe: (() => void) | undefined
 
-    serviceHub
-      .app()
-      .readLogs()
+    // The tail of the file is enough for a capped view; reading all of a
+    // 10 MB log on every open is what readLogsSince avoids.
+    const app = serviceHub.app()
+    const readHistory =
+      typeof app.readLogsSince === 'function'
+        ? app.readLogsSince().then((chunk) => chunk.entries)
+        : app.readLogs()
+    readHistory
       .then((logData) => {
         if (cancelled) return
         const history = (logData ?? []).filter(

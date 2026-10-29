@@ -955,7 +955,10 @@ pub(super) fn recover_interrupted(
                     inflight::InterruptedChoice::DiscardPartial => "discarded the unfinished reply",
                 }
             );
-            inflight::clear(&thread_dir);
+            // The checkpoint stays until the resumed run replaces it
+            // (`Writer::begin` writes the recovered conversation over it): a
+            // process killed between here and that point must still find the
+            // interrupted turn on the next resume (CLIA-012).
             Ok(ResumedSession { thread_id: resumed.thread_id, history: recovered })
         }
     }

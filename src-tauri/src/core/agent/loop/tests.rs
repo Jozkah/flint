@@ -5404,8 +5404,9 @@ fn the_chain_only_moves_on_from_a_provider_that_never_answered() {
         // A stream that arrived malformed: part of the reply may already be
         // on screen, so sending the same request again could duplicate it.
         ("unexpected end of stream", ErrorKind::InvalidResponse, false),
-        // The user stopped it.
-        ("the run was cancelled by the user", ErrorKind::Cancelled, false),
+        // A provider-side cancel is not the user's stop: only the run's own
+        // token says that (O03-017), so this may move on.
+        ("context canceled", ErrorKind::Transport, true),
     ];
     for (text, kind, may_move_on) in cases {
         let classified = classify_upstream(text);

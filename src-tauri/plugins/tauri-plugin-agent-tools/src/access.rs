@@ -338,6 +338,43 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
         Ok(None) => requested,
         Err(e) => return Err(Refusal::new(RefusalCode::InvalidPath, e)),
     };
+    check_requested_text(requested)?;
+    let path = Path::new(requested);
+    let (canonical, display) = resolve_grantable(path, requested)?;
+    check_secret_locations(&canonical, &display, env)?;
+    let is_dir = canonical.is_dir();
+    if !is_dir {
+        if let Some(name) = canonical.file_name() {
+            if is_sensitive_file_name(&name.to_string_lossy()) {
+                return Err(Refusal::new(
+                    RefusalCode::Sensitive,
+                    format!("{display} looks like a credential or key file"),
+                ));
+            }
+        }
+    }
+    check_flint_locations(&canonical, &display, env)?;
+    if mode == AccessMode::Write && is_system_location(&canonical) {
+        return Err(Refusal::new(
+            RefusalCode::SystemWrite,
+            format!("{display} is a system location and cannot be granted for writing"),
+        ));
+    }
+
+    let resolved_differs = key(Path::new(requested)) != key(&canonical);
+    Ok(Prepared {
+        canonical,
+        display,
+        is_dir,
+        mode,
+        requested: requested.to_string(),
+        resolved_differs,
+    })
+}
+
+/// The request as text: one absolute, local, wildcard-free path with no
+/// `..`, device name or alternate data stream.
+fn check_requested_text(requested: &str) -> Result<(), Refusal> {
     if requested.is_empty() || requested.contains('\0') {
         return Err(Refusal::new(RefusalCode::InvalidPath, "path is empty"));
     }
@@ -399,7 +436,12 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
             _ => {}
         }
     }
+    Ok(())
+}
 
+/// The real path and its display spelling, refused when it resolves onto a
+/// share or device or is a filesystem root.
+fn resolve_grantable(path: &Path, requested: &str) -> Result<(PathBuf, String), Refusal> {
     let canonical = path.canonicalize().map_err(|e| {
         Refusal::new(
             RefusalCode::NotFound,
@@ -421,11 +463,16 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
             format!("{display} is a drive or filesystem root; name the folder you need"),
         ));
     }
+    Ok((canonical, display))
+}
 
+/// Refuse the home folder, anything holding it, credential stores under it,
+/// protected locations and folders named like secret stores.
+fn check_secret_locations(canonical: &Path, display: &str, env: &Env) -> Result<(), Refusal> {
     if let Some(home) = env.home.as_deref() {
         let home = canonical_or_self(home);
-        if within(&home, &canonical) {
-            let code = if key(&home) == key(&canonical) {
+        if within(&home, canonical) {
+            let code = if key(&home) == key(canonical) {
                 RefusalCode::HomeDirectory
             } else {
                 RefusalCode::ContainsHome
@@ -440,7 +487,7 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
         }
         for rel in SENSITIVE_UNDER_HOME {
             let loc = home.join(rel);
-            if within(&canonical, &loc) {
+            if within(canonical, &loc) {
                 return Err(Refusal::new(
                     RefusalCode::Sensitive,
                     format!(
@@ -449,7 +496,7 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
                     ),
                 ));
             }
-            if within(&loc, &canonical) {
+            if within(&loc, canonical) {
                 return Err(Refusal::new(
                     RefusalCode::ContainsSensitive,
                     format!(
@@ -463,7 +510,7 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
     }
     for extra in &env.extra_sensitive {
         let extra = canonical_or_self(extra);
-        if within(&canonical, &extra) || within(&extra, &canonical) {
+        if within(canonical, &extra) || within(&extra, canonical) {
             return Err(Refusal::new(
                 RefusalCode::Sensitive,
                 format!("{display} overlaps a protected location"),
@@ -481,17 +528,12 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
             }
         }
     }
-    let is_dir = canonical.is_dir();
-    if !is_dir {
-        if let Some(name) = canonical.file_name() {
-            if is_sensitive_file_name(&name.to_string_lossy()) {
-                return Err(Refusal::new(
-                    RefusalCode::Sensitive,
-                    format!("{display} looks like a credential or key file"),
-                ));
-            }
-        }
-    }
+    Ok(())
+}
+
+/// Refuse Flint's own data folder and the session workspace, which need no
+/// grant or must never get one.
+fn check_flint_locations(canonical: &Path, display: &str, env: &Env) -> Result<(), Refusal> {
     if let Some(data) = env.data_folder.as_deref() {
         let data = canonical_or_self(data);
         // The session workspace sits inside the data folder on the desktop, so
@@ -499,7 +541,7 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
         // own scratch space, already readable and writable: say that, and that
         // the project is somewhere else.
         if let Some(ws) = env.workspace.as_deref() {
-            if within(&canonical, &canonical_or_self(ws)) {
+            if within(canonical, &canonical_or_self(ws)) {
                 return Err(Refusal::new(
                     RefusalCode::Workspace,
                     format!(
@@ -508,7 +550,7 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
                 ));
             }
         }
-        if within(&canonical, &data) || within(&data, &canonical) {
+        if within(canonical, &data) || within(&data, canonical) {
             return Err(Refusal::new(
                 RefusalCode::DataFolder,
                 format!(
@@ -521,35 +563,20 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
     }
     if let Some(ws) = env.workspace.as_deref() {
         let ws = canonical_or_self(ws);
-        if within(&canonical, &ws) {
+        if within(canonical, &ws) {
             return Err(Refusal::new(
                 RefusalCode::Workspace,
                 format!("{display} is already inside the workspace; no grant is needed"),
             ));
         }
-        if within(&ws, &canonical) {
+        if within(&ws, canonical) {
             return Err(Refusal::new(
                 RefusalCode::ContainsHome,
                 format!("{display} contains the agent workspace; ask for a narrower folder"),
             ));
         }
     }
-    if mode == AccessMode::Write && is_system_location(&canonical) {
-        return Err(Refusal::new(
-            RefusalCode::SystemWrite,
-            format!("{display} is a system location and cannot be granted for writing"),
-        ));
-    }
-
-    let resolved_differs = key(Path::new(requested)) != key(&canonical);
-    Ok(Prepared {
-        canonical,
-        display,
-        is_dir,
-        mode,
-        requested: requested.to_string(),
-        resolved_differs,
-    })
+    Ok(())
 }
 
 fn is_system_location(path: &Path) -> bool {

@@ -592,9 +592,24 @@ pub fn probe_filesystem(project_root: Option<&Path>, now_ms: i64) -> ComponentRe
             now_ms,
         );
     }
-    let probe = root.join(format!(".jan-write-probe-{}", std::process::id()));
-    let writable = std::fs::write(&probe, b"").is_ok();
-    let _ = std::fs::remove_file(&probe);
+    // `create_new`, so the probe never truncates a file that happens to share
+    // its name, and only a file this probe created is removed (O04-022).
+    let probe = root.join(format!(
+        ".jan-write-probe-{}-{:x}",
+        std::process::id(),
+        probe_nonce()
+    ));
+    let writable = match std::fs::OpenOptions::new().write(true).create_new(true).open(&probe) {
+        Ok(file) => {
+            drop(file);
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        // Somebody else's file by that name: the folder took a file once, so
+        // it is writable, and that file is left alone.
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => true,
+        Err(_) => false,
+    };
     if !writable {
         return ComponentReport::new(
             Component::Filesystem,
@@ -679,14 +694,32 @@ pub fn probe_sandbox(now_ms: i64) -> ComponentReport {
 /// "failed to start" and `bash` was withheld from every run asked about with no
 /// project root. That includes every Cowork run, whose tool list is built that
 /// way. A folder-scoped probe on the same machine found PowerShell in a third
-/// of a second. Falls back to the temporary directory only if the empty one
-/// cannot be made.
-fn unattached_probe_root() -> std::path::PathBuf {
+/// of a second.
+///
+/// The name stays fixed: on Windows the sandbox's container identity is
+/// derived from the workspace path, so a fresh folder per probe would mint a
+/// new AppContainer profile every time. `None` when it cannot be made, or is
+/// not a plain directory (a link planted there is refused): there is no
+/// fallback to the shared temporary directory itself (F5x2-001).
+fn unattached_probe_root() -> Option<std::path::PathBuf> {
     let dir = std::env::temp_dir().join("jan-shell-probe");
-    match std::fs::create_dir_all(&dir) {
-        Ok(()) => dir,
-        Err(_) => std::env::temp_dir(),
+    match std::fs::create_dir(&dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(_) => return None,
     }
+    let meta = std::fs::symlink_metadata(&dir).ok()?;
+    (meta.is_dir() && !meta.file_type().is_symlink()).then_some(dir)
+}
+
+/// A per-call nonce for probe names: time and a process-wide counter.
+fn probe_nonce() -> u64 {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    nanos ^ COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).rotate_left(48)
 }
 
 pub fn probe_shell(project_root: Option<&Path>, now_ms: i64) -> ComponentReport {
@@ -699,7 +732,16 @@ pub fn probe_shell(project_root: Option<&Path>, now_ms: i64) -> ComponentReport 
     // than refused -- refusing withheld `bash` from every session without a
     // folder.
     let Some(root) = project_root else {
-        return probe_shell(Some(&unattached_probe_root()), now_ms);
+        let Some(dir) = unattached_probe_root() else {
+            return ComponentReport::new(
+                Component::Shell,
+                State::Unavailable,
+                Reason::ShellProbeFailed,
+                "No private folder could be made in the temporary directory to start a shell in.",
+                now_ms,
+            );
+        };
+        return probe_shell(Some(&dir), now_ms);
     };
     if !root.is_dir() {
         return ComponentReport::new(
@@ -1317,7 +1359,7 @@ mod tests {
             started.elapsed()
         );
         assert_ne!(
-            unattached_probe_root(),
+            unattached_probe_root().expect("probe folder"),
             std::env::temp_dir(),
             "the whole temporary directory must never be the probe's workspace"
         );
