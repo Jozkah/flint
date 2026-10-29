@@ -665,7 +665,7 @@ fn an_over_cap_line_is_reported_with_a_truncated_echo() {
 #[test]
 fn follow_ups_the_run_never_read_are_reported() {
     let input = StreamInput::default();
-    input.queue_user("and the docs".to_string());
+    input.queue_user("and the docs".to_string()).unwrap();
     report_dropped_follow_ups(&input, OutputFormat::StreamJson);
     assert!(
         input.take_queued().is_empty(),

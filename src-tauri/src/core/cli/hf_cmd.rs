@@ -267,12 +267,15 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
     if url.host_str() != crate::core::hf_endpoint::hf_endpoint()?.host_str() {
         return Err("Refusing a non-Hugging Face download URL".to_string());
     }
-    let expected = files(repo)
+    // A failed lookup is not the same as "no hash listed": without it a
+    // tampered or truncated file would be kept as if it were fine.
+    let rows = files(repo)
         .await
-        .ok()
-        .and_then(|rows| {
-            rows.as_array()?.iter().find(|r| r["name"] == file).and_then(|r| r["sha256"].as_str().map(str::to_string))
-        });
+        .map_err(|e| format!("Could not look up the file's SHA-256 to verify the download, so nothing was downloaded: {e}"))?;
+    let expected = rows
+        .as_array()
+        .and_then(|rows| rows.iter().find(|r| r["name"] == file))
+        .and_then(|r| r["sha256"].as_str().map(str::to_string));
     let final_path = download_path(data, repo, file);
     if let Some(parent) = final_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
@@ -281,6 +284,7 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
         "{}.part",
         final_path.file_name().and_then(|n| n.to_str()).unwrap_or("model")
     ));
+    let _lock = PartLock::acquire(&part)?;
     let have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
 
     let http = client(env_token().as_deref())?;
@@ -349,6 +353,48 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
         eprintln!();
     }
     finish_blocking(&part, &final_path, expected.as_deref(), quiet).await
+}
+
+/// Exclusive claim on a `.part` file: two downloads of the same file would
+/// append to it at once and splice their bytes together. Holds the owner pid;
+/// a lock left by a process that is gone is taken over.
+struct PartLock(PathBuf);
+
+impl PartLock {
+    fn acquire(part: &Path) -> Result<Self, String> {
+        let path = part.with_file_name(format!(
+            "{}.lock",
+            part.file_name().and_then(|n| n.to_str()).unwrap_or("model.part")
+        ));
+        for _ in 0..2 {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(mut f) => {
+                    let _ = write!(f, "{}", std::process::id());
+                    return Ok(Self(path));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let owner = std::fs::read_to_string(&path).ok().and_then(|s| s.trim().parse::<u32>().ok());
+                    match owner {
+                        Some(pid) if crate::core::migration::lock::pid_alive(pid) => {
+                            return Err(format!("this file is already being downloaded by another process (pid {pid})"));
+                        }
+                        // Dead owner or unreadable stamp: stale, take it over.
+                        _ => {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+                Err(e) => return Err(format!("create {}: {e}", path.display())),
+            }
+        }
+        Err(format!("could not claim {}", path.display()))
+    }
+}
+
+impl Drop for PartLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// [`finish`] off the async worker: hashing a multi-gigabyte model takes
@@ -472,6 +518,20 @@ mod tests {
         std::fs::write(&part, b"xyz").unwrap();
         finish(&part, &target, None, true).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"xyz");
+    }
+
+    #[test]
+    fn a_part_file_is_claimed_by_one_download_at_a_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        let lock = PartLock::acquire(&part).unwrap();
+        let err = PartLock::acquire(&part).err().unwrap();
+        assert!(err.contains("already being downloaded"), "{err}");
+        drop(lock);
+        assert!(!dir.path().join("m.gguf.part.lock").exists());
+        // A stamp from a process that no longer runs is taken over.
+        std::fs::write(dir.path().join("m.gguf.part.lock"), "not-a-pid").unwrap();
+        let _again = PartLock::acquire(&part).unwrap();
     }
 
     #[test]

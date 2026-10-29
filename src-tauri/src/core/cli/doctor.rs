@@ -103,6 +103,42 @@ pub struct Preview {
     pub members: Vec<(String, String)>,
     /// A human line per redaction rule that fired, with its count.
     pub stripped: Vec<String>,
+    /// A line per member cut to fit [`MEMBER_CAP`] / [`TOTAL_CAP`].
+    pub truncated: Vec<String>,
+}
+
+/// Largest one member may be: the newest bytes are kept.
+pub const MEMBER_CAP: usize = 1024 * 1024;
+/// Largest the members may be together.
+pub const TOTAL_CAP: usize = 8 * 1024 * 1024;
+
+/// Cut each member to its share, keeping its tail (the newest messages and
+/// log lines) behind a note that says what was dropped. Returns one line per
+/// member cut, for the preview.
+fn cap_members(members: &mut [(String, String)], member_cap: usize, total_cap: usize) -> Vec<String> {
+    let mut notes = Vec::new();
+    let mut left = total_cap;
+    for (name, content) in members.iter_mut() {
+        let cap = member_cap.min(left);
+        if content.len() > cap {
+            let original = content.len();
+            let mut start = original - cap;
+            while !content.is_char_boundary(start) {
+                start += 1;
+            }
+            // Start on a whole line when one begins inside the kept part.
+            if let Some(nl) = content[start..].find('\n') {
+                if nl + 1 < content.len() - start {
+                    start += nl + 1;
+                }
+            }
+            let kept = content.len() - start;
+            *content = format!("[truncated: kept the last {kept} of {original} bytes]\n{}", &content[start..]);
+            notes.push(format!("{name}: kept the last {kept} of {original} bytes"));
+        }
+        left = left.saturating_sub(content.len());
+    }
+    notes
 }
 
 impl Preview {
@@ -133,6 +169,9 @@ impl Preview {
                 content.lines().count()
             ));
         }
+        for note in &self.truncated {
+            out.push(format!("Truncated to fit the bundle caps: {note}"));
+        }
         if self.redacted_any() {
             out.push(format!("Known secrets stripped: {}", self.stripped.join(", ")));
             out.push("The scan is best-effort: review the members before sharing.".to_string());
@@ -158,16 +197,23 @@ impl Preview {
             .parent()
             .ok_or_else(|| format!("no parent for {}", self.destination.display()))?;
         fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
-        let file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // A bundle holds conversation text: readable by its owner only.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
             .open(&self.destination)
             .map_err(|e| format!("cannot create {}: {e}", self.destination.display()))?;
         let mut tar = tar::Builder::new(GzEncoder::new(file, Compression::default()));
         for (name, content) in &self.members {
             let mut header = tar::Header::new_gnu();
             header.set_size(content.len() as u64);
-            header.set_mode(0o644);
+            header.set_mode(0o600);
+            header.set_mtime(chrono::Utc::now().timestamp().max(0) as u64);
             header.set_cksum();
             tar.append_data(&mut header, name, content.as_bytes())
                 .map_err(|e| format!("archive write error: {e}"))?;
@@ -237,7 +283,7 @@ pub fn prepare(
         }
     };
 
-    let members = vec![
+    let mut members = vec![
         (
             "version.txt".to_string(),
             format!("{}\n", crate::core::cli::version::build_version()),
@@ -258,6 +304,8 @@ pub fn prepare(
         ("thread/display.jsonl".to_string(), redact(&journal)),
         ("logs/jan.log".to_string(), redact(&log_tail)),
     ];
+
+    let truncated = cap_members(&mut members, MEMBER_CAP, TOTAL_CAP);
 
     let mut stripped: Vec<String> = redactor
         .rules
@@ -285,6 +333,7 @@ pub fn prepare(
         destination,
         members,
         stripped,
+        truncated,
     })
 }
 
@@ -473,6 +522,20 @@ mod tests {
         fs::write(&active, "newest\n").unwrap();
         assert_eq!(tail(&active, 100).unwrap(), "oldest\nmiddle\nnewest");
         assert_eq!(tail(&active, 1).unwrap(), "newest");
+    }
+
+    #[test]
+    fn members_are_cut_to_their_caps_keeping_the_newest_lines() {
+        let big = (0..100).map(|i| format!("line {i:03}\n")).collect::<String>();
+        let mut members = vec![("a".to_string(), big.clone()), ("b".to_string(), "small\n".to_string()), ("c".to_string(), big)];
+        let notes = cap_members(&mut members, 200, 400);
+        assert!(members[0].1.starts_with("[truncated: kept the last"), "{}", members[0].1);
+        assert!(members[0].1.ends_with("line 099\n"));
+        assert_eq!(members[1].1, "small\n");
+        let total: usize = members.iter().map(|(_, c)| c.len()).sum();
+        assert!(total <= 400 + 3 * 60, "notes aside, the total cap holds: {total}");
+        assert_eq!(notes.len(), 2);
+        assert!(notes[0].starts_with("a: kept the last"));
     }
 
     #[test]

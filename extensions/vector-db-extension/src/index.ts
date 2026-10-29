@@ -16,6 +16,22 @@ const EMBEDDING_CONTEXT_SAFETY_TOKENS = 8
  * string or a plain `{ message }` object (a Tauri command error), which
  * `String(e)` turns into "[object Object]".
  */
+/**
+ * Where to halve an oversized chunk: the whitespace nearest the middle
+ * (within a quarter of the length), else the middle moved off a UTF-16
+ * surrogate pair so no character is cut in two.
+ */
+export function splitPoint(text: string): number {
+  const mid = Math.floor(text.length / 2)
+  const reach = Math.floor(text.length / 4)
+  for (let d = 0; d <= reach; d++) {
+    if (mid - d > 0 && /\s/.test(text[mid - d])) return mid - d
+    if (mid + d < text.length && /\s/.test(text[mid + d])) return mid + d
+  }
+  const code = text.charCodeAt(mid - 1)
+  return code >= 0xd800 && code <= 0xdbff ? mid - 1 : mid
+}
+
 function describeError(e: unknown): string {
   if (e instanceof Error) return e.message
   if (typeof e === 'string') return e
@@ -179,7 +195,7 @@ export default class VectorDBExt extends VectorDBExtension {
     const chunks = await this.chunkText(text, opts.chunkSize, opts.chunkOverlap)
 
     if (!chunks.length) {
-      await this.createCollectionForProject(projectId, 384)
+      await this.createCollectionForProject(projectId, await this.emptyFileDimension())
       return await vecdb.createFile(this.collectionForProject(projectId), file)
     }
 
@@ -215,6 +231,21 @@ export default class VectorDBExt extends VectorDBExtension {
 
   async deleteFileForProject(projectId: string, fileId: string): Promise<void> {
     return await vecdb.deleteFile(this.collectionForProject(projectId), fileId)
+  }
+
+  /**
+   * The collection dimension for a file with no text to embed: the embedding
+   * model's real dimension, so a 768-dim model's later files fit the same
+   * collection. 384 (the bundled model) only when the model cannot be asked.
+   */
+  private async emptyFileDimension(): Promise<number> {
+    try {
+      const [probe] = await embedTexts(['probe'])
+      if (probe && probe.length > 0) return probe.length
+    } catch (e) {
+      console.warn('Embedding dimension probe failed, using 384:', describeError(e))
+    }
+    return 384
   }
 
   // Optional helper for chunking
@@ -295,7 +326,7 @@ export default class VectorDBExt extends VectorDBExtension {
       )
     }
     if (count <= budget || text.length <= MIN_CHUNK_SIZE_CHARS) return [text]
-    const mid = Math.floor(text.length / 2)
+    const mid = splitPoint(text)
     return [
       ...(await this.splitChunkToFit(text.slice(0, mid), budget, llm)),
       ...(await this.splitChunkToFit(text.slice(mid), budget, llm)),
@@ -323,6 +354,9 @@ export default class VectorDBExt extends VectorDBExtension {
     const text = await ragApi.parseDocument(file.path, file.type || 'application/octet-stream')
     const chunks = await this.chunkText(text, opts.chunkSize, opts.chunkOverlap)
     if (!chunks.length) {
+      // The file row needs its collection, as on the project path; a fresh
+      // thread has none yet.
+      await this.createCollection(threadId, await this.emptyFileDimension())
       const fi = await vecdb.createFile(this.collectionForThread(threadId), file)
       return fi
     }

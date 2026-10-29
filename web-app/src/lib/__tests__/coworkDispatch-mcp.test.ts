@@ -16,6 +16,9 @@ vi.mock('@/hooks/useServiceHub', () => ({
     mcp: () => ({
       callTool: h.callTool,
       allowOnceForServer: h.allowOnceForServer,
+      // No fingerprint is handed over by the approval here, so the
+      // dispatcher fetches the current one before minting a ticket.
+      serverFingerprints: async () => ({ 'ida-multi-mcp': 'sha256:ida' }),
       cancelToolCall: h.cancelToolCall,
     }),
   }),
