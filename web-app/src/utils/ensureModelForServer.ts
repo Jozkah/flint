@@ -54,9 +54,22 @@ function firstLocalModel(
  *
  * The model is started with its existing context size settings (no enforcement).
  */
-export async function ensureModelForServer(
+export function ensureModelForServer(
   deps: EnsureModelDeps
 ): Promise<EnsureModelResult> {
+  // Two callers at once (server start racing a request) would both see no
+  // loaded model and start two. Share the run that is already going.
+  if (!inFlight) {
+    inFlight = ensureOnce(deps).finally(() => {
+      inFlight = null
+    })
+  }
+  return inFlight
+}
+
+let inFlight: Promise<EnsureModelResult> | null = null
+
+async function ensureOnce(deps: EnsureModelDeps): Promise<EnsureModelResult> {
   const { modelsService, modelOverride, onLoadStart, onLoadEnd } = deps
 
   // Both local engines count: starting a GGUF model with bypassAutoUnload

@@ -297,6 +297,7 @@ pub fn plan_import(
         let record = &mut proposal.record;
         record.category = m.category.clone();
         record.expires_at = m.expires_at;
+        record.pinned = m.pinned;
         // The chain goes back to where it was first written: re-exporting an
         // import keeps the original author, not the machine that relayed it.
         let first = m.imported_from.as_ref();
@@ -398,6 +399,16 @@ mod tests {
         let line = serde_json::to_string(r).unwrap();
         let back: MemoryRecord = serde_json::from_str(&line).unwrap();
         assert_eq!(back.provenance.imported_from, r.provenance.imported_from);
+    }
+
+    #[test]
+    fn importing_keeps_the_pin() {
+        let mut m = rec("m1", "Prefer small commits", Creator::User, 100);
+        m.pinned = true;
+        let file = export(&[m], Scope::User, "exp-1", 200);
+        let parsed = parse(&serde_json::to_vec(&file).unwrap()).unwrap();
+        let (accepted, _) = plan_import(&parsed, Scope::User, None, None, &[], 300, ids());
+        assert!(accepted[0].1.record.pinned);
     }
 
     #[test]
