@@ -51,6 +51,28 @@ fn read(path: &Path) -> Doc {
         .unwrap_or_default()
 }
 
+/// The list for a read-modify-write, under the cross-process file lock so two
+/// processes adding at once both keep their folder. A list that does not parse
+/// is moved to `<store>.corrupt` first, so the write that follows does not
+/// silently replace what it held.
+fn read_for_update(store: &Path) -> Result<(Doc, crate::mailbox::Held), String> {
+    let held = crate::mailbox::Held::take(store)?;
+    let doc = match std::fs::read(store) {
+        Ok(bytes) => match serde_json::from_slice::<Doc>(&bytes) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let aside = store.with_extension("json.corrupt");
+                eprintln!("[folder-trust] {} is unreadable ({e}); kept as {}", store.display(), aside.display());
+                std::fs::rename(store, &aside).map_err(|e| format!("could not set the damaged trust list aside: {e}"))?;
+                Doc::default()
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Doc::default(),
+        Err(e) => return Err(format!("could not read the trust list: {e}")),
+    };
+    Ok((doc, held))
+}
+
 /// A folder as the list compares it: absolute, forward slashes, no trailing
 /// slash, lower-cased on Windows where paths ignore case.
 pub fn key(folder: &Path) -> String {
@@ -131,7 +153,7 @@ pub fn is_trusted_in(store: &Path, folder: &Path) -> bool {
 
 /// Add `folder` to the list at `store`. Trusting it twice changes nothing.
 pub fn trust_in(store: &Path, folder: &Path) -> Result<(), String> {
-    let mut doc = read(store);
+    let (mut doc, _held) = read_for_update(store)?;
     let k = key(folder);
     if !doc.folders.iter().any(|t| fold_case(t.clone()) == k) {
         doc.folders.push(spelled(folder));
@@ -170,14 +192,22 @@ pub fn grandfather_in(store: &Path, folders: impl IntoIterator<Item = PathBuf>) 
         return Vec::new();
     }
     let mut trusted = Vec::new();
+    let mut failed = false;
     for folder in folders {
-        if folder.is_dir() && carries(&folder).any() && broad_folder(&folder).is_none() && trust_in(store, &folder).is_ok()
-        {
-            trusted.push(key(&folder));
+        if folder.is_dir() && carries(&folder).any() && broad_folder(&folder).is_none() {
+            match trust_in(store, &folder) {
+                Ok(()) => trusted.push(key(&folder)),
+                Err(_) => failed = true,
+            }
         }
     }
     trusted.sort();
     trusted.dedup();
+    // A failed write keeps the migration open: closing it would leave that
+    // folder's hooks switched off for good.
+    if failed {
+        return trusted;
+    }
     if let Some(dir) = marker.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -283,7 +313,7 @@ pub fn broad_folder(folder: &Path) -> Option<&'static str> {
 
 /// Remove `folder` from the list at `store`. Returns whether it was there.
 pub fn revoke_in(store: &Path, folder: &Path) -> Result<bool, String> {
-    let mut doc = read(store);
+    let (mut doc, _held) = read_for_update(store)?;
     let k = key(folder);
     let before = doc.folders.len();
     doc.folders.retain(|t| fold_case(t.clone()) != k);
@@ -674,6 +704,19 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(&store, b"{ not json").unwrap();
         assert!(!is_trusted_in(&store, &project));
+    }
+
+    #[test]
+    fn a_damaged_list_is_kept_aside_before_a_trust_writes_over_it() {
+        let dir = temp();
+        let store = dir.path().join("trust.json");
+        let project = dir.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(&store, b"{ not json").unwrap();
+        trust_in(&store, &project).unwrap();
+        assert_eq!(std::fs::read(store.with_extension("json.corrupt")).unwrap(), b"{ not json");
+        assert!(is_trusted_in(&store, &project));
+        assert!(!store.with_extension("lock").exists());
     }
 
     #[test]

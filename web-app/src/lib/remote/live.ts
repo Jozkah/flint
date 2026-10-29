@@ -131,5 +131,11 @@ export function diffLiveReply(
       out.push({ type: 'stream.tool', kind, id, messageId: next.messageId, step })
     }
   }
+  const after = new Set(next.tools.map((s) => s.id))
+  for (const stepId of before.keys()) {
+    if (!after.has(stepId)) {
+      out.push({ type: 'stream.toolRemoved', kind, id, messageId: next.messageId, stepId })
+    }
+  }
   return out
 }

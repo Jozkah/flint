@@ -43,6 +43,29 @@ pub fn safe_file_name(suggested: &str) -> String {
     name
 }
 
+/// Refuse a download folder inside `.git`, before anything is written there.
+pub fn check_folder(dest: &Path) -> Result<(), String> {
+    if crate::tools::sandbox::names_git_internals(&dest.to_string_lossy()) {
+        return Err("downloads cannot be saved inside a .git folder; choose another folder.".into());
+    }
+    Ok(())
+}
+
+/// `name` for a download kept in `dest`, judged together with the folder by the
+/// same guards a write gets: a folder inside `.git` is refused, and a name that
+/// would land as a hook, task or startup file (`.vscode/tasks.json`,
+/// `.husky/pre-commit`, a shell profile) gets `.download` appended so nothing
+/// runs it. The flag says it was renamed.
+pub fn guarded_name(dest: &Path, name: &str) -> Result<(String, bool), String> {
+    use crate::tools::sandbox::{names_git_internals, names_protected_persistence};
+    check_folder(dest)?;
+    let full = dest.join(name);
+    if names_git_internals(&full.to_string_lossy()) || names_protected_persistence(&full.to_string_lossy()) {
+        return Ok((format!("{name}.download"), true));
+    }
+    Ok((name.to_string(), false))
+}
+
 /// `dir/name`, or `dir/name (2)` ... when taken: an existing file is never replaced.
 pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
     let first = dir.join(name);
@@ -123,6 +146,16 @@ mod tests {
         assert_eq!(safe_file_name(""), "download");
         assert_eq!(safe_file_name("..."), "download");
         assert!(safe_file_name(&format!("{}.zip", "a".repeat(500))).chars().count() <= 111);
+    }
+
+    #[test]
+    fn download_names_pass_the_git_and_persistence_guards() {
+        let root = Path::new("/work/repo");
+        assert!(guarded_name(&root.join(".git"), "config").is_err());
+        assert!(check_folder(&root.join(".git").join("hooks")).is_err());
+        assert_eq!(guarded_name(&root.join(".vscode"), "tasks.json").unwrap(), ("tasks.json.download".into(), true));
+        assert_eq!(guarded_name(root, ".npmrc").unwrap(), (".npmrc.download".into(), true));
+        assert_eq!(guarded_name(root, "report.pdf").unwrap(), ("report.pdf".into(), false));
     }
 
     #[test]

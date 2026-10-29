@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /**
  * "Start with the computer": an opt-in entry in the OS's per-user startup

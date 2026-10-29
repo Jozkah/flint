@@ -534,6 +534,7 @@ export function handleEvent(e: RemoteEvent) {
     }
     case 'stream.delta':
     case 'stream.tool':
+    case 'stream.toolRemoved':
     case 'stream.done': {
       const out = handleStreamEvent(e)
       if (out.gap) void syncStream(out.gap.kind, out.gap.id)

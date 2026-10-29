@@ -243,5 +243,28 @@
   "tabs": {
     "providersAndModels": "Fournisseurs et modèles",
     "defaults": "Valeurs par défaut"
+  },
+  "dependencies": {
+    "redownload": {
+      "label": "Re-download the backend",
+      "description": "Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Flint settings."
+    },
+    "cuda": {
+      "windows": "Install the CUDA Toolkit{{version}} from NVIDIA. During installation, select \"CUDA\" components.",
+      "linux": "Install the CUDA Toolkit{{version}} from NVIDIA. On Debian/Ubuntu: sudo apt install cuda-toolkit-{{apt}}. On RHEL/Fedora: use the NVIDIA repo."
+    },
+    "nccl": {
+      "windows": "Install NCCL from the NVIDIA Developer site. NCCL is used for multi-GPU collective communications.",
+      "linux": "Install NCCL via the NVIDIA package repository. On Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. See the NVIDIA NCCL install guide for your distro."
+    },
+    "cudnn": {
+      "windows": "Install cuDNN from the NVIDIA Developer site and place the DLLs alongside the application or in System32.",
+      "linux": "Install cuDNN via the NVIDIA package repository or download the tarball and copy libs to /usr/local/cuda/lib64."
+    },
+    "vulkan": {
+      "label": "Vulkan Runtime",
+      "windows": "Install the Vulkan Runtime from LunarG. Your GPU driver may already include it — update your GPU driver first.",
+      "linux": "Install the Vulkan loader: on Ubuntu/Debian: sudo apt install libvulkan1. On Arch: sudo pacman -S vulkan-icd-loader. On RHEL/Fedora: sudo dnf install vulkan-loader."
+    }
   }
 }

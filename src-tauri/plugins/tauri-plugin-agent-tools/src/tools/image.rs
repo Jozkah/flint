@@ -42,11 +42,17 @@ pub fn mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
 
 /// The MIME type of the image at `path`, decided by file signature first and
 /// extension second. `None` when neither identifies a supported image.
+#[allow(dead_code)]
 pub fn detect(path: &std::path::Path) -> Option<&'static str> {
     use std::io::Read;
     let mut header = Vec::with_capacity(16);
     std::fs::File::open(path).ok()?.take(16).read_to_end(&mut header).ok()?;
     mime_from_signature(&header).or_else(|| mime_from_extension(path))
+}
+
+/// [`detect`] on bytes already read from `path`, with no second disk read.
+pub fn detect_bytes(path: &std::path::Path, bytes: &[u8]) -> Option<&'static str> {
+    mime_from_signature(&bytes[..bytes.len().min(16)]).or_else(|| mime_from_extension(path))
 }
 
 #[cfg(test)]
@@ -79,6 +85,14 @@ mod tests {
         std::fs::write(&file, data).unwrap();
         assert_eq!(detect(&file), Some("image/png"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_bytes_uses_the_bytes_in_hand() {
+        let p = std::path::Path::new("no-such-file.bin");
+        assert_eq!(detect_bytes(p, b"\x89PNG\r\n\x1a\nrest"), Some("image/png"));
+        assert_eq!(detect_bytes(std::path::Path::new("x.gif"), b"text"), Some("image/gif"));
+        assert_eq!(detect_bytes(p, b""), None);
     }
 
     #[test]

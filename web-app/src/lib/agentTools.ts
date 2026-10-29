@@ -1,4 +1,5 @@
 import type { ToolImage } from '@/lib/toolOutputImages'
+import i18n from '@/i18n'
 import type { ApprovalSource } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   approvalSourceFor,
@@ -548,17 +549,21 @@ export async function approveSecretWrite(
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
 /** Host calls ask unless an explicit action-scoped grant covers them. */
-/** What the question says it is about, by tool. */
+/** What the question says it is about, by tool (a `tools:hostApproval.context` key). */
 const HOST_CONTEXT: Record<string, string> = {
-  [HOST_BUILD_NAME]: 'Build',
-  host_powershell: 'PowerShell on this computer',
-  host_package: 'Programs on this computer',
-  host_wsl: 'Command in WSL',
-  host_ssh: 'Command over SSH',
-  clipboard: 'Clipboard',
-  computer: 'Keyboard and mouse',
-  open_path: 'Open on screen',
+  [HOST_BUILD_NAME]: 'build',
+  host_powershell: 'powershell',
+  host_package: 'package',
+  host_wsl: 'wsl',
+  host_ssh: 'ssh',
+  clipboard: 'clipboard',
+  computer: 'computer',
+  open_path: 'openPath',
 }
+
+/** A host approval line in the person's language (shown to them, not the model). */
+const hostText = (key: string, values?: Record<string, unknown>) =>
+  i18n.t(`tools:hostApproval.${key}`, values)
 
 /** One row of a `host_query` answer, or none. */
 async function hostQueryRows(
@@ -591,43 +596,54 @@ export async function describeHostAction(
       typeof navigator !== 'undefined' &&
       /linux/i.test(navigator.userAgent) &&
       !/android/i.test(navigator.userAgent)
-    const target = `screen (${String(a.x)}, ${String(a.y)})`
-    if (a.action === 'screenshot') return `Capture a screenshot of the primary display${linux ? ' (the X11 root)' : ''}`
-    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text${linux ? ' (on Wayland this also replaces the clipboard)' : ''}:\n${String(a.text ?? '')}`
-    if (a.action === 'key') return `Click ${target} and press ${Array.isArray(a.keys) ? a.keys.join(' + ') : ''}`
-    if (a.action === 'scroll') return `Click ${target} and scroll ${String(a.amount)} wheel steps (positive down)`
-    return `${a.action === 'move' ? 'Move the pointer to' : `${a.count === 2 ? 'Double-click' : 'Click'} with the ${String(a.button ?? 'left')} button at`} ${target}`
+    const target = hostText('computer.target', { x: String(a.x), y: String(a.y) })
+    const os = linux ? 'Linux' : ''
+    if (a.action === 'screenshot') return hostText(`computer.screenshot${os}`)
+    if (a.action === 'type') {
+      const kind = a.replace === true ? 'replace' : 'type'
+      return hostText(`computer.${kind}${os}`, { target, text: String(a.text ?? '') })
+    }
+    if (a.action === 'key') {
+      return hostText('computer.key', { target, keys: Array.isArray(a.keys) ? a.keys.join(' + ') : '' })
+    }
+    if (a.action === 'scroll') return hostText('computer.scroll', { target, amount: String(a.amount) })
+    if (a.action === 'move') return hostText('computer.move', { target })
+    return hostText(a.count === 2 ? 'computer.doubleClick' : 'computer.click', {
+      target,
+      button: String(a.button ?? 'left'),
+    })
   }
   if (toolName === 'clipboard') {
     if (a.action === 'write') {
       const text = String(a.text ?? '')
-      return `Replace the clipboard with ${[...text].length} characters:\n${text}`
+      return hostText('clipboard.write', { count: [...text].length, text })
     }
-    return 'Read the current clipboard content'
+    return hostText('clipboard.read')
   }
   if (toolName === 'host_package') {
     const verb = String(a.action ?? '')
-    const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
-    return `${label} ${String(a.id ?? '')} with winget`
+    const label = verb ? verb[0].toUpperCase() + verb.slice(1) : hostText('change')
+    return hostText('package', { verb: label, id: String(a.id ?? '') })
   }
   if (toolName === 'host_wsl' || toolName === 'host_ssh') {
     const command = String(a.command ?? '')
-    const where =
-      toolName === 'host_ssh'
-        ? `on ${String(a.host ?? '')}${a.port ? ` port ${String(a.port)}` : ''} over SSH`
-        : `in WSL (${typeof a.distro === 'string' && a.distro ? a.distro : 'the default distribution'})`
-    return `Run this ${where}:\n${command}`
+    if (toolName === 'host_ssh') {
+      const host = String(a.host ?? '')
+      return a.port
+        ? hostText('sshPort', { host, port: String(a.port), command })
+        : hostText('ssh', { host, command })
+    }
+    const distro = typeof a.distro === 'string' && a.distro ? a.distro : hostText('defaultDistro')
+    return hostText('wsl', { distro, command })
   }
   if (toolName === 'host_powershell') {
     const script = String(a.script ?? '')
     const where =
-      typeof a.cwd === 'string' && a.cwd ? a.cwd : 'the project folder'
-    return `Run this script as you, outside the sandbox, in ${where}:\n${script}`
+      typeof a.cwd === 'string' && a.cwd ? a.cwd : hostText('projectFolder')
+    return hostText('powershell', { where, script })
   }
   if (toolName === 'open_path') {
-    return a.reveal === true
-      ? `Show ${String(a.path)} in Explorer`
-      : `Open ${String(a.path)} with its default app`
+    return hostText(a.reveal === true ? 'reveal' : 'open', { path: String(a.path) })
   }
   if (typeof a.program === 'string') {
     const words = Array.isArray(a.args) ? a.args.map(String) : []
@@ -635,10 +651,8 @@ export async function describeHostAction(
       .map((w) => (/\s/.test(w) ? `"${w}"` : w))
       .join(' ')
     const where =
-      typeof a.cwd === 'string' && a.cwd
-        ? ` in ${a.cwd}`
-        : ' in the project folder'
-    return `Run \`${command}\`${where}, outside the sandbox (it runs the project's own build scripts)`
+      typeof a.cwd === 'string' && a.cwd ? a.cwd : hostText('projectFolder')
+    return hostText('build', { command, where })
   }
   if (a.action === 'kill_process') {
     const row = (
@@ -646,19 +660,23 @@ export async function describeHostAction(
     )[0]
     const who = row
       ? `${String(row.ProcessName)}${row.Path ? ` (${String(row.Path)})` : ''}`
-      : 'no process with that number is running'
-    return `End process ${String(a.pid)}: ${who}`
+      : hostText('noProcess')
+    return hostText('kill', { pid: String(a.pid), who })
   }
   const name = String(a.name ?? '')
   const verb = String(a.action ?? '').replace('_service', '')
   const row = (await hostQueryRows({ query: 'services', name }, threadId)).find(
     (r) => String(r.Name).toLowerCase() === name.toLowerCase()
   )
-  const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
-  const detail = row
-    ? ` (${String(row.DisplayName)}, now ${String(row.Status)})`
-    : ''
-  return `${label} service ${name}${detail}`
+  const label = verb ? verb[0].toUpperCase() + verb.slice(1) : hostText('change')
+  return row
+    ? hostText('serviceDetail', {
+        verb: label,
+        name,
+        display: String(row.DisplayName),
+        status: String(row.Status),
+      })
+    : hostText('service', { verb: label, name })
 }
 
 /**
@@ -688,7 +706,10 @@ export async function approveHostAction(
     return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
   }
   const what = await describeHostAction(input, threadId, toolName)
-  const context = `${HOST_CONTEXT[toolName] ?? 'Change this computer'}: ${what}`
+  const context = hostText('line', {
+    context: hostText(`context.${HOST_CONTEXT[toolName] ?? 'default'}`),
+    what,
+  })
   const ok = options.approve
     ? await options.approve({ context, alwaysAsk: true, input })
     : await useToolApprovalRequests

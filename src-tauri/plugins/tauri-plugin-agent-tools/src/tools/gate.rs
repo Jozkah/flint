@@ -337,13 +337,28 @@ fn deletes_home_or_root(command: &str) -> bool {
                         && (l[1..].contains('r') || "-recurse".starts_with(&l)))
             }),
             "rmdir" | "rd" | "del" | "erase" => args.iter().any(|a| a.eq_ignore_ascii_case("/s")),
+            // `find ~ -delete`, `find / -exec rm {} +`.
+            "find" => args.iter().any(|a| {
+                matches!(a.as_str(), "-delete" | "-exec" | "-execdir" | "-ok" | "-okdir")
+            }),
+            "rsync" => args.iter().any(|a| a.starts_with("--delete") || a == "--remove-source-files"),
+            "robocopy" => args.iter().any(|a| a.eq_ignore_ascii_case("/mir") || a.eq_ignore_ascii_case("/purge")),
+            // Moving a home or root away, or shredding under it, loses it as surely.
+            "mv" | "move-item" | "shred" => true,
+            "chmod" | "chown" | "chgrp" => args.iter().any(|a| {
+                a == "--recursive" || (a.starts_with('-') && !a.starts_with("--") && a[1..].contains('R'))
+            }),
             _ => false,
         };
-        recursive
-            && args
-                .iter()
-                .filter(|a| !a.starts_with('-') && !(program != "rm" && a.starts_with('/') && a.len() == 2))
-                .any(|a| names_home_or_root(a))
+        let mut targets: Vec<&String> = args
+            .iter()
+            .filter(|a| !a.starts_with('-') && !(program != "rm" && a.starts_with('/') && a.len() == 2))
+            .collect();
+        // `mv file ~` moves into the home folder; only a source is lost.
+        if matches!(program, "mv" | "move-item") {
+            targets.pop();
+        }
+        recursive && targets.into_iter().any(|a| names_home_or_root(a))
     })
 }
 
@@ -1340,6 +1355,15 @@ fn capability_default(c: &GateCtx) -> Decision {
                     && crate::tools::readonly_shell::is_read_only(
                         command,
                         crate::tools::proc::shell().flavor,
+                    )
+                    // `git status` runs whatever the repository's own config
+                    // names (fsmonitor, a pager, a diff or filter driver).
+                    && !crate::tools::readonly_shell::git_reads_unsafe_repo_config(
+                        command,
+                        &args
+                            .get("cwd")
+                            .and_then(|v| v.as_str())
+                            .map_or_else(|| project_root.to_path_buf(), |c| project_root.join(c)),
                     ))
             {
                 Decision::Allow
@@ -3412,6 +3436,14 @@ mod security_corpus {
             "rm -rf ../x",
             // A quoted literal '~' is still judged as home: asking is the safe side.
             "rm -rf '~'",
+            "find ~ -delete",
+            "find / -exec rm {} +",
+            "rsync -a --delete empty/ ~/",
+            "robocopy C:\\empty C:\\Users\\Jozkah /MIR",
+            "mv ~ x",
+            "shred -u ~",
+            "chmod -R 000 ~",
+            "chown -R nobody /",
         ] {
             let d = decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open());
             assert_eq!(d, Decision::Prompt(PromptKind::Ask), "{command}");
@@ -3434,6 +3466,10 @@ mod security_corpus {
             "ls ~",
             "git commit -m 'never run rm -rf ~'",
             "echo rm -rf /",
+            "mv notes.txt ~",
+            "find ~ -name x",
+            "chmod 644 ~/a",
+            "rsync -a src/ ~/backup/",
         ] {
             let d = decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open());
             assert_ne!(d, Decision::Prompt(PromptKind::Ask), "{command}");

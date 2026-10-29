@@ -9,7 +9,7 @@
  * Reviewing one makes an ordinary proposal, so applying it goes through the
  * same approval, hashes and conflict checks as any other.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { create } from 'zustand'
 import { errorText } from '@/lib/errorText'
 import type { Outcome, ProposalRecord } from '@/lib/proposals'

@@ -110,6 +110,24 @@ fn new_store() -> (tempfile::TempDir, RoomStore) {
 }
 
 #[test]
+fn a_system_note_keeps_its_key_and_values_through_the_journal() {
+    let (_dir, store) = new_store();
+    store.save(room("r1"), 5000).unwrap();
+    let mut with_note = message_json("r1", "m1", "Bob is available again.");
+    with_note["message"]["kind"] = json!("system");
+    with_note["message"]["author"] = json!({ "kind": "system" });
+    with_note["message"]["note"] = json!({ "key": "availableAgain", "values": { "name": "Bob" } });
+    store.append("r1", parse_record(with_note).unwrap()).unwrap();
+    store.append("r1", message("r1", "m2", "an old note")).unwrap();
+    let loaded = store.get("r1").unwrap();
+    let raw = serde_json::to_value(&loaded.journal).unwrap();
+    assert_eq!(raw[0]["message"]["note"], json!({ "key": "availableAgain", "values": { "name": "Bob" } }));
+    assert_eq!(raw[0]["message"]["text"], json!("Bob is available again."));
+    // A message written before notes existed has none, and none is written.
+    assert!(raw[1]["message"].get("note").is_none());
+}
+
+#[test]
 fn save_get_round_trip() {
     let (_dir, store) = new_store();
     let saved = store.save(room("r1"), 5000).unwrap();
@@ -378,6 +396,40 @@ fn append_is_idempotent_by_message_id() {
     store.append("r1", turn_start("t9")).unwrap();
     store.append("r1", turn_start("t9")).unwrap();
     assert_eq!(store.get("r1").unwrap().journal.len(), 2);
+}
+
+#[test]
+fn appends_reuse_the_journal_index_and_an_outside_edit_rescans() {
+    let (_dir, store) = new_store();
+    store.save(room("r1"), 1).unwrap();
+    let scans = || FULL_SCANS.with(|n| n.get());
+    store.append("r1", message("r1", "m0", "first")).unwrap();
+    let before = scans();
+    for i in 1..200 {
+        let rec = store.append("r1", message("r1", &format!("m{i}"), "x")).unwrap();
+        assert_eq!(seq_of(&rec), i + 1);
+    }
+    // A duplicate is still answered with the stored record.
+    let again = store.append("r1", message("r1", "m7", "changed")).unwrap();
+    assert_eq!(seq_of(&again), 8);
+    store.append("r1", turn_start("t1")).unwrap();
+    store.append("r1", turn_start("t1")).unwrap();
+    assert_eq!(scans(), before, "appends must not re-read the journal");
+
+    // Someone else edits the journal: the next append reads it again.
+    let journal_path = store.root().join("r1").join(JOURNAL_FILE);
+    let mut raw = fs::read_to_string(&journal_path).unwrap();
+    raw.push_str(&serde_json::to_string(&message_json("r1", "outside", "x")).unwrap().replace("\"seq\":0", "\"seq\":500"));
+    raw.push('\n');
+    fs::write(&journal_path, raw).unwrap();
+    let next = store.append("r1", message("r1", "after", "y")).unwrap();
+    assert_eq!(scans(), before + 1);
+    assert_eq!(seq_of(&next), 501);
+    assert_eq!(store.get("r1").unwrap().journal.len(), 203);
+
+    // Cleared: the index is not trusted and seq starts over.
+    store.clear_journal("r1").unwrap();
+    assert_eq!(seq_of(&store.append("r1", message("r1", "m0", "again")).unwrap()), 1);
 }
 
 #[test]

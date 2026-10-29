@@ -18,7 +18,8 @@ fn recovering_an_interrupted_turn_keeps_its_checkpoint_until_the_run_replaces_it
         conversation: conversation.clone(),
         partial: "half".into(),
     };
-    std::fs::write(inflight::path(&thread_dir), serde_json::to_vec(&dead).unwrap()).unwrap();
+    // An older build's single-file checkpoint: still read, then replaced.
+    std::fs::write(inflight::legacy_path(&thread_dir), serde_json::to_vec(&dead).unwrap()).unwrap();
     let resumed = session::ResumedSession { thread_id: thread_id.into(), history: conversation.clone() };
     let recovered = session::recover_interrupted(
         agent_dir.path(),
@@ -33,8 +34,7 @@ fn recovering_an_interrupted_turn_keeps_its_checkpoint_until_the_run_replaces_it
     );
     let writer = inflight::Writer::begin(&thread_dir, "m", recovered.history.clone()).expect("writer");
     drop(writer);
-    let on_disk: inflight::Checkpoint =
-        serde_json::from_str(&std::fs::read_to_string(inflight::path(&thread_dir)).unwrap()).unwrap();
+    let on_disk = inflight::read(&thread_dir).expect("checkpoint");
     assert_eq!(on_disk.conversation, recovered.history, "the run's writer replaces the old checkpoint");
 }
 

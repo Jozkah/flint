@@ -155,6 +155,99 @@ describe('PluginsTab', () => {
     expect(screen.getByLabelText('plugins:install.git')).toBeInTheDocument()
     expect(screen.getByLabelText('plugins:install.marketplace')).toBeInTheDocument()
   })
+
+  it('installing from a marketplace card installs by name in global scope and selects the plugin', async () => {
+    getPluginSources.mockResolvedValue({
+      marketplace: 'https://example.com/index.json',
+      gitAvailable: true,
+    })
+    installPlugin.mockResolvedValue({ ...stubPlugin, name: 'market-plugin' })
+    render(<PluginsTab view="marketplace" />)
+    expect(await screen.findByText('market-plugin')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'plugins:install.submit' }))
+    await waitFor(() =>
+      expect(installPlugin).toHaveBeenCalledWith(
+        '',
+        { kind: 'marketplace', name: 'market-plugin' },
+        expect.any(String),
+        'global'
+      )
+    )
+    await waitFor(() => expect(getPluginDetails).toHaveBeenCalledWith('', 'demo-plugin', 'global'))
+  })
+
+  it('a market card for an installed plugin says Installed and cannot install again', async () => {
+    getPluginSources.mockResolvedValue({
+      marketplace: 'https://example.com/index.json',
+      gitAvailable: true,
+    })
+    searchPlugins.mockResolvedValue([
+      { name: 'Demo Plugin', description: 'x', repo: 'org/repo', ref: null },
+    ])
+    render(<PluginsTab view="marketplace" />)
+    const button = await screen.findByRole('button', { name: 'plugins:state.installed' })
+    expect(button).toBeDisabled()
+  })
+
+  it('install form: a failed install shows the error inline, Back returns to the list', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+    installPlugin.mockRejectedValue(new Error('nope'))
+    render(<PluginsTab />)
+    await waitFor(() => expect(listPlugins).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('plugins-install-button'))
+    fireEvent.change(screen.getByLabelText('plugins:install.localPathLabel'), {
+      target: { value: '/some/plugin' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'plugins:install.submit' }))
+    await waitFor(() =>
+      expect(installPlugin).toHaveBeenCalledWith(
+        '',
+        expect.objectContaining({ kind: 'local' }),
+        expect.any(String),
+        'global'
+      )
+    )
+    expect(
+      await screen.findByText((text) => text.startsWith('plugins:install.failed'))
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByText('plugins:install.back'))
+    expect(screen.queryByText('plugins:install.title')).toBeNull()
+  })
+
+  it('installRequest bumps open the install panel; the close button shuts it', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+    const { rerender } = render(<PluginsTab hideToolbar installRequest={0} />)
+    await waitFor(() => expect(listPlugins).toHaveBeenCalled())
+    expect(screen.queryByText('plugins:install.title')).toBeNull()
+    rerender(<PluginsTab hideToolbar installRequest={1} />)
+    expect(screen.getByText('plugins:install.title')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'engine:extensions.closePanel' }))
+    expect(screen.queryByText('plugins:install.title')).toBeNull()
+  })
+
+  it('details pane shows source and offers Update for git plugins', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+    getPluginDetails.mockResolvedValue({
+      ...stubPlugin,
+      sourceKind: 'git',
+      source: 'https://github.com/o/r',
+      commitSha: 'abcdef0123456789',
+      installedPath: '/inst/demo',
+      installedAtMs: null,
+      gitRef: null,
+      skillNames: [],
+      commandNames: [],
+      agentNames: [],
+      hasMcpConfig: false,
+      executableFiles: [],
+      executableFileCount: 0,
+    })
+    render(<PluginsTab />)
+    fireEvent.click((await screen.findAllByRole('button', { name: /Demo Plugin/ }))[0])
+    expect(await screen.findByText('/inst/demo')).toBeInTheDocument()
+    expect(screen.getByText('abcdef012345')).toBeInTheDocument()
+    expect(screen.getByText('plugins:update.button')).toBeInTheDocument()
+  })
 })
 
 describe('PluginsTab details ordering (#241)', () => {

@@ -244,14 +244,18 @@ const REQUEST_STATE: Record<RequestAttribution['sendState'], UsageState> = {
   failed: 'request-failed',
 }
 
-export function summarizeChatContext(input: ChatContextInput): ContextSection[] {
-  const sections: ContextSection[] = []
-  const evidence = input.evidence ?? { status: 'none' }
-  const verified = evidence.status === 'loaded' ? evidence : null
-  const attribution = input.attribution ?? null
+/** What every section reads: the input and what the last request proves. */
+type SummaryContext = {
+  input: ChatContextInput
+  evidence: SnapshotEvidence
+  /** The loaded snapshot of the last request, when there is one. */
+  verified: Extract<SnapshotEvidence, { status: 'loaded' }> | null
+  attribution: RequestAttribution | null
+}
 
-  // ---- Model and where it runs ---------------------------------------------
-  sections.push({
+/** The model and where it runs. */
+function modelSection({ input }: SummaryContext): ContextSection {
+  return {
     id: 'model',
     items: input.model.id
       ? [
@@ -276,10 +280,11 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
         ]
       : [],
     emptyReason: 'noModel',
-  })
+  }
+}
 
-  // ---- Instructions ----------------------------------------------------------
-  sections.push({
+function instructionsSection({ input }: SummaryContext): ContextSection {
+  return {
     id: 'instructions',
     items: input.assistant?.hasInstructions
       ? [
@@ -295,9 +300,10 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
       : [],
     // Chat has no project-instruction files; Cowork reads FLINT.md/CLAUDE.md.
     emptyReason: 'noInstructions',
-  })
+  }
+}
 
-  // ---- Attachments -----------------------------------------------------------
+function attachmentsSection({ input, verified }: SummaryContext): ContextSection {
   const attachments: ContextItem[] = []
   for (const file of input.pendingFiles) {
     attachments.push({
@@ -347,13 +353,14 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
       scope: 'conversation',
     })
   }
-  sections.push({
+  return {
     id: 'attachments',
     items: attachments,
     emptyReason: input.indexedFiles === null ? 'indexUnavailable' : 'noAttachments',
-  })
+  }
+}
 
-  // ---- Memory ----------------------------------------------------------------
+function memorySection({ input, verified, attribution }: SummaryContext): ContextSection {
   const memoryItems: ContextItem[] = []
   const memoryNotices: ContextNotice[] = []
   const memory = input.memory
@@ -462,14 +469,15 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
       })
     }
   }
-  sections.push({
+  return {
     id: 'memory',
     items: memoryItems,
     emptyReason: 'noMemory',
     ...(memoryNotices.length ? { notices: memoryNotices } : {}),
-  })
+  }
+}
 
-  // ---- Tools -----------------------------------------------------------------
+function toolsSection({ input, verified, attribution }: SummaryContext): ContextSection {
   const disabled = new Set(input.tools.disabled)
   const enabled = input.tools.known.filter((k) => !disabled.has(k))
   const advertised = new Set(attribution?.tools ?? [])
@@ -544,9 +552,11 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
       })
     }
   }
-  sections.push({ id: 'tools', items: toolItems, emptyReason: 'noTools' })
+  return { id: 'tools', items: toolItems, emptyReason: 'noTools' }
+}
 
-  // ---- The request itself ------------------------------------------------------
+/** The request itself. */
+function payloadSection({ evidence, attribution }: SummaryContext): ContextSection {
   const payloadItems: ContextItem[] = []
   const payloadNotices: ContextNotice[] = []
   if (!attribution) {
@@ -584,12 +594,31 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
     }
     payloadNotices.push({ key: 'adapterBoundary' })
   }
-  sections.push({
+  return {
     id: 'payload',
     items: payloadItems,
     ...(payloadNotices.length ? { notices: payloadNotices } : {}),
     ...(attribution?.snapshotId ? { snapshotId: attribution.snapshotId } : {}),
-  })
+  }
+}
 
-  return sections
+/** The sections in the order the card shows them; each is a pure function. */
+const SECTIONS = [
+  modelSection,
+  instructionsSection,
+  attachmentsSection,
+  memorySection,
+  toolsSection,
+  payloadSection,
+] as const
+
+export function summarizeChatContext(input: ChatContextInput): ContextSection[] {
+  const evidence = input.evidence ?? { status: 'none' }
+  const ctx: SummaryContext = {
+    input,
+    evidence,
+    verified: evidence.status === 'loaded' ? evidence : null,
+    attribution: input.attribution ?? null,
+  }
+  return SECTIONS.map((section) => section(ctx))
 }

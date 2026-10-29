@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { asJournal, createFakeApi, makeMessage, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
+import { t } from './roomsT'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
@@ -339,5 +340,26 @@ describe('the header of a message', () => {
     expect(screen.getByTestId('widget-card')).toBeInTheDocument()
     expect(screen.getByTestId('widget-frame').getAttribute('sandbox')).toBe('allow-scripts')
     expect(screen.queryByTestId('message-tools')).toBeNull()
+  })
+})
+
+
+describe('RoomTranscript system notes', () => {
+  it('draws a typed note from its key in the current language, not its stored text', () => {
+    const room = makeRoom()
+    const messages = [
+      makeMessage({
+        author: { kind: 'system' },
+        kind: 'system',
+        text: 'Pausiert von einer alten Sprache',
+        note: { key: 'availableAgain', values: { name: 'Bob' } },
+      }),
+      makeMessage({ author: { kind: 'system' }, kind: 'system', text: 'An old note without a key' }),
+    ]
+    render(<RoomTranscript room={room} journal={asJournal(messages)} liveTurn={null} />)
+    const [typed, old] = byKind('system')
+    expect(typed).toHaveTextContent(t('rooms:notes.availableAgain', { name: 'Bob' }))
+    expect(typed).not.toHaveTextContent('Pausiert')
+    expect(old).toHaveTextContent('An old note without a key')
   })
 })

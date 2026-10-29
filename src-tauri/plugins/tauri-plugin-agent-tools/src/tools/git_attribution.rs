@@ -149,7 +149,17 @@ fn read_file(base: &Path, raw: &str) -> Option<String> {
         return None;
     }
     let path = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
-    let meta = std::fs::metadata(&path).ok()?;
+    // A link inside the folder can still point at a key elsewhere: judge where
+    // the file really is, and never inline one named like a credential.
+    let real = std::fs::canonicalize(&path).ok()?;
+    if !real.starts_with(std::fs::canonicalize(base).ok()?) {
+        return None;
+    }
+    let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if crate::project_browse::is_sensitive_name(&name) {
+        return None;
+    }
+    let meta = std::fs::metadata(&real).ok()?;
     if !meta.is_file() || meta.len() > MAX_FILE {
         return None;
     }
@@ -579,6 +589,16 @@ mod tests {
         std::fs::write(dir.join("body.md"), "Details").unwrap();
         let got = run_with("gh", &["pr", "create", "--title", "T", "--body-file", "body.md"], Settings::default(), &dir);
         assert_eq!(got, vec!["pr", "create", "--title", "T", "--body", &format!("Details\n\n{PR_FOOTER}")]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_credential_named_body_file_is_not_inlined() {
+        let dir = std::env::temp_dir().join(format!("flint-attr-cred-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".env"), "TOKEN=x").unwrap();
+        let got = run_with("git", &["commit", "-F", ".env"], Settings::default(), &dir);
+        assert_eq!(got, vec!["commit", "-F", ".env", "--trailer", T]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

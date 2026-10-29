@@ -3,7 +3,7 @@
  * Schedules page makes. The Rust side (`core/schedule`) owns validation; these
  * types mirror its JSON (camelCase fields, snake_case enum values).
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 export type TimeOfDay = { hour: number; minute: number }
 

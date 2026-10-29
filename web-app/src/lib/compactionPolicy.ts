@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /**
  * The one compaction policy (AH-076), as the backend resolves it: defaults,

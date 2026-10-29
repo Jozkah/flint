@@ -47,6 +47,73 @@ pub fn is_read_only(command: &str, flavor: ShellFlavor) -> bool {
     any
 }
 
+/// Whether `command` runs git in a repository (found from `cwd` upward) whose
+/// own config could make a "read-only" git command run a program: fsmonitor,
+/// a pager, a diff driver or `diff.external`, a filter, or an include that
+/// could bring any of those in. A config that cannot be read counts as unsafe.
+/// `false` when the command does not name git or no repository is found.
+pub fn git_reads_unsafe_repo_config(command: &str, cwd: &std::path::Path) -> bool {
+    let names_git = command.split(|c: char| c.is_whitespace() || matches!(c, ';' | '|' | '&' | '(' | ')')).any(|w| {
+        let base = w.trim_matches(['"', '\'']).rsplit(['/', '\\']).next().unwrap_or("").to_ascii_lowercase();
+        base == "git" || base == "git.exe"
+    });
+    if !names_git {
+        return false;
+    }
+    let Some(dot_git) = cwd.ancestors().map(|d| d.join(".git")).find(|p| p.exists()) else {
+        return false;
+    };
+    let mut configs = Vec::new();
+    if dot_git.is_dir() {
+        configs.push(dot_git.join("config"));
+    } else {
+        // A worktree or submodule: `.git` is a file naming the real git dir.
+        let Ok(text) = std::fs::read_to_string(&dot_git) else { return true };
+        let Some(dir) = text.lines().find_map(|l| l.trim().strip_prefix("gitdir:")) else { return true };
+        let base = dot_git.parent().unwrap_or(cwd);
+        let git_dir = base.join(dir.trim());
+        configs.push(git_dir.join("config"));
+        if let Ok(common) = std::fs::read_to_string(git_dir.join("commondir")) {
+            configs.push(git_dir.join(common.trim()).join("config"));
+        }
+    }
+    configs.iter().any(|path| match std::fs::read_to_string(path) {
+        Ok(text) => config_runs_programs(&text),
+        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+    })
+}
+
+/// [`git_reads_unsafe_repo_config`] on one config file's text.
+fn config_runs_programs(text: &str) -> bool {
+    let mut section = String::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(['#', ';']) {
+            continue;
+        }
+        if let Some(head) = line.strip_prefix('[') {
+            section = head.split([']', ' ', '"', '.']).next().unwrap_or("").to_ascii_lowercase();
+            if matches!(section.as_str(), "include" | "includeif" | "pager" | "filter") {
+                return true;
+            }
+            continue;
+        }
+        let (key, value) = line.split_once('=').unwrap_or((line, "true"));
+        let key = key.trim().to_ascii_lowercase();
+        let value = value.trim().trim_matches('"').to_ascii_lowercase();
+        let off = matches!(value.as_str(), "" | "false" | "no" | "off" | "0");
+        let risky = match section.as_str() {
+            "core" => matches!(key.as_str(), "fsmonitor" | "pager"),
+            "diff" => matches!(key.as_str(), "external" | "textconv" | "command"),
+            _ => false,
+        };
+        if risky && !off {
+            return true;
+        }
+    }
+    false
+}
+
 /// The words of each `|`/`&&`/`||`/`;` segment, quotes removed, or `None` when
 /// the line holds anything this parser will not reason about.
 #[allow(unused_assignments)]
@@ -825,6 +892,30 @@ mod tests {
         ] {
             assert!(!ro(cmd), "must ask: {cmd}");
         }
+    }
+
+    #[test]
+    fn repo_config_that_runs_programs_is_spotted() {
+        assert!(config_runs_programs("[core]\n\tfsmonitor = .git/hooks/x\n"));
+        assert!(config_runs_programs("[core]\n\tpager = evil\n"));
+        assert!(config_runs_programs("[diff \"x\"]\n\ttextconv = run\n"));
+        assert!(config_runs_programs("[diff]\n\texternal = run\n"));
+        assert!(config_runs_programs("[filter \"lfs\"]\n\tclean = git-lfs clean\n"));
+        assert!(config_runs_programs("[include]\n\tpath = other\n"));
+        assert!(!config_runs_programs("[core]\n\tfsmonitor = false\n\tbare = false\n[diff]\n\talgorithm = histogram\n[remote \"origin\"]\n\turl = x\n"));
+    }
+
+    #[test]
+    fn git_status_in_a_repo_with_fsmonitor_is_not_auto_allowed() {
+        let dir = std::env::temp_dir().join(format!("flint-ro-git-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::write(dir.join(".git").join("config"), "[core]\n\tfsmonitor = ./run.sh\n").unwrap();
+        assert!(git_reads_unsafe_repo_config("git status", &dir));
+        assert!(!git_reads_unsafe_repo_config("ls -la", &dir));
+        std::fs::write(dir.join(".git").join("config"), "[core]\n\tbare = false\n").unwrap();
+        assert!(!git_reads_unsafe_repo_config("git status", &dir));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

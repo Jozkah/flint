@@ -166,6 +166,26 @@ export async function collectPrClaims(
   return claims
 }
 
+/**
+ * Drops pull-request records and claims of sessions that are neither live
+ * nor archived (older builds kept a deleted session's forever). Needs both
+ * lists: with no live sessions (not loaded yet) or an unreadable archive it
+ * does nothing rather than drop what an archived session would want back.
+ * Never throws.
+ */
+export async function pruneOrphanPrRecords(
+  liveIds: readonly string[],
+  listArchivedIds: () => Promise<string[]>
+): Promise<void> {
+  if (liveIds.length === 0) return
+  try {
+    const archived = await listArchivedIds()
+    usePrStatusStore.getState().pruneSessions(new Set([...liveIds, ...archived]))
+  } catch (e) {
+    console.warn('PR record pruning skipped', e)
+  }
+}
+
 export const SESSION_PRS_BACKFILL_VERSION = 2
 
 /** Run the backfill unless it already ran. Never throws. */

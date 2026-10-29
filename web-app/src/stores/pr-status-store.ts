@@ -70,6 +70,11 @@ const FRESH_MS = 2 * 60_000
 
 type Entry = { lookup: PrLookup | null; at: number; loading: boolean }
 
+/** Recorded pull requests kept per session, latest last. */
+export const MAX_PRS_PER_SESSION = 50
+/** Live statuses of recorded pull requests kept in memory. */
+export const MAX_URL_ENTRIES = 200
+
 /**
  * A pull request a session opened or named, recorded from its own tool call
  * whatever the folder has checked out: a session opened KewScraper #34 from
@@ -98,6 +103,14 @@ type PrStatusState = {
   /** Record pull requests for sessions; one already recorded is kept. */
   addSessionPrs: (add: Record<string, SessionPr[]>) => void
   markSessionPrsBackfilled: (version: number) => void
+  /** Drop what a deleted session recorded and claimed. */
+  forgetSession: (id: string) => void
+  /**
+   * Drop records and claims of sessions not in `keep` (live or archived), and
+   * cap each session's list. Run once after load: older builds never dropped
+   * them, so a deleted session's records stayed in storage forever.
+   */
+  pruneSessions: (keep: ReadonlySet<string>) => void
   /** Ask for one recorded pull request's status. */
   refreshUrl: (url: string, folder?: string | null, force?: boolean) => Promise<void>
   /** `folder#number` to the id of the session that opened or pushed it. */
@@ -186,9 +199,35 @@ export const usePrStatusStore = create<PrStatusState>()(
         const list = [...(next[id] ?? [])]
         for (const pr of prs) if (!list.some((p) => p.url === pr.url)) list.push(pr)
         list.sort((a, b) => a.at.localeCompare(b.at))
-        next[id] = list
+        next[id] = list.slice(-MAX_PRS_PER_SESSION)
       }
       return { sessionPrs: next }
+    }),
+  forgetSession: (id) =>
+    set((s) => {
+      const owned = Object.keys(s.claims).some((k) => s.claims[k] === id)
+      if (!owned && !s.sessionPrs[id]) return s
+      const sessionPrs = { ...s.sessionPrs }
+      delete sessionPrs[id]
+      const claims = Object.fromEntries(Object.entries(s.claims).filter(([, owner]) => owner !== id))
+      return { sessionPrs, claims }
+    }),
+  pruneSessions: (keep) =>
+    set((s) => {
+      const sessionPrs: Record<string, SessionPr[]> = {}
+      let changed = false
+      for (const [id, prs] of Object.entries(s.sessionPrs)) {
+        if (!keep.has(id)) {
+          changed = true
+          continue
+        }
+        const capped = prs.length > MAX_PRS_PER_SESSION ? prs.slice(-MAX_PRS_PER_SESSION) : prs
+        if (capped !== prs) changed = true
+        sessionPrs[id] = capped
+      }
+      const claims = Object.fromEntries(Object.entries(s.claims).filter(([, owner]) => keep.has(owner)))
+      if (Object.keys(claims).length !== Object.keys(s.claims).length) changed = true
+      return changed ? { sessionPrs, claims } : s
     }),
   markSessionPrsBackfilled: (version) =>
     set({ sessionPrsBackfilled: true, sessionPrsBackfillVersion: version }),
@@ -206,7 +245,17 @@ export const usePrStatusStore = create<PrStatusState>()(
     } catch (e) {
       lookup = { kind: 'failed', message: String(e) }
     }
-    set((s) => ({ byUrl: { ...s.byUrl, [url]: { lookup, at: Date.now(), loading: false } } }))
+    set((s) => {
+      const byUrl = { ...s.byUrl }
+      // Re-inserted last, so key order is least recently answered first.
+      delete byUrl[url]
+      byUrl[url] = { lookup, at: Date.now(), loading: false }
+      const keys = Object.keys(byUrl)
+      for (const old of keys.slice(0, Math.max(0, keys.length - MAX_URL_ENTRIES))) {
+        if (!byUrl[old].loading) delete byUrl[old]
+      }
+      return { byUrl }
+    })
   },
   claims: {},
   backfilled: false,

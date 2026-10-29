@@ -7,7 +7,7 @@
  * confirmation of a submit-like click. Rust re-decides everything on each call,
  * so nothing here is trusted to have asked.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import {
   useBrowserAgentPrompt,

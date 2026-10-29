@@ -1,5 +1,5 @@
 import i18n from '@/i18n'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { mergeById, searchVariants } from '@/lib/huggingfaceSearch'
 
 export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all' | 'image' | 'video'
@@ -220,18 +220,25 @@ export function quantizationFromFilename(filename: string): string | null {
   return known.find((q) => upper.includes(q)) ?? null
 }
 
-export function explainQuantization(quant: string | null): string {
-  if (!quant) return 'Unknown quantization'
+/** The `hub:quant.explain.*` key that describes a quantization. */
+export function explainQuantizationKey(quant: string | null): string {
+  const key = (k: string) => `hub:quant.explain.${k}`
+  if (!quant) return key('unknown')
   const q = quant.toUpperCase()
-  if (q === 'F32' || q === 'BF16' || q === 'F16') return 'Highest fidelity, very large memory footprint'
-  if (q.startsWith('Q8')) return 'Near-original quality, large memory footprint'
-  if (q.startsWith('Q6')) return 'Very high quality with moderate compression'
-  if (q.startsWith('Q5')) return 'High quality and a strong quality/size trade-off'
-  if (q === 'Q4_K_M' || q === 'IQ4_XS' || q === 'Q4_K_L') return 'Recommended balance of quality, speed, and memory for most systems'
-  if (q.startsWith('Q4') || q.endsWith('FP4')) return 'Balanced size and quality for everyday local inference'
-  if (q.startsWith('Q3') || q.startsWith('IQ3')) return 'Smaller and faster, with a noticeable quality trade-off'
-  if (q.startsWith('Q2') || q.startsWith('IQ2') || q.startsWith('IQ1') || q.startsWith('Q1') || q.startsWith('TQ')) return 'Very small footprint with the largest quality trade-off'
-  return 'Quantized GGUF model'
+  if (q === 'F32' || q === 'BF16' || q === 'F16') return key('full')
+  if (q.startsWith('Q8')) return key('q8')
+  if (q.startsWith('Q6')) return key('q6')
+  if (q.startsWith('Q5')) return key('q5')
+  if (q === 'Q4_K_M' || q === 'IQ4_XS' || q === 'Q4_K_L') return key('recommended')
+  if (q.startsWith('Q4') || q.endsWith('FP4')) return key('q4')
+  if (q.startsWith('Q3') || q.startsWith('IQ3')) return key('q3')
+  if (q.startsWith('Q2') || q.startsWith('IQ2') || q.startsWith('IQ1') || q.startsWith('Q1') || q.startsWith('TQ')) return key('q2')
+  return key('other')
+}
+
+/** One line on a quantization's quality and size, in the person's language. */
+export function explainQuantization(quant: string | null): string {
+  return i18n.t(explainQuantizationKey(quant))
 }
 
 export function quantPreference(quant: string | null): number {

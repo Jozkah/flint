@@ -2672,6 +2672,20 @@ mod provenance_tests {
     }
 
     #[test]
+    fn sessions_and_history_are_bounded_newest_kept() {
+        use crate::memory::record::{MAX_HISTORY, MAX_USED_BY_SESSIONS};
+        let mut r = MemoryRecord::new(MemoryId::new("m"), "x", Scope::User, Creator::User, Origin::Explicit, 1);
+        for i in 0..1000 {
+            r.record_use(crate::memory::record::MemoryUse { session_id: format!("s{i}"), at: i, ..Default::default() });
+            r.revise(format!("v{i}"), i);
+        }
+        assert_eq!(r.provenance.used_by_sessions.len(), MAX_USED_BY_SESSIONS);
+        assert_eq!(r.provenance.used_by_sessions.last().map(String::as_str), Some("s999"));
+        assert_eq!(r.history.len(), MAX_HISTORY);
+        assert_eq!(r.history.last().map(|h| h.version + 1), r.version);
+    }
+
+    #[test]
     fn the_source_type_follows_who_wrote_it_and_how() {
         let mk = |c, o| MemoryRecord::new(MemoryId::new("m"), "x", Scope::User, c, o, 1);
         assert_eq!(mk(Creator::User, Origin::Explicit).source_type(), "user-authored");

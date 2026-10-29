@@ -10,7 +10,7 @@
  * The backend classifies every call too and refuses what the renderer did not
  * vouch for, so nothing here is trusted to have asked.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 export const BROWSER_TOOL_NAME = 'browser'
 

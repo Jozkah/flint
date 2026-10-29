@@ -234,7 +234,7 @@ pub fn spawn(
                     if !text.contains("ERR_BLOCKED_BY_CLIENT") && !favicon {
                         sink(Observed::Log {
                             level: e["level"].as_str().unwrap_or_default().to_string(),
-                            text: text.to_string(),
+                            text: clip(text),
                             url: e["url"].as_str().map(display_url).unwrap_or_default(),
                         });
                     }
@@ -299,7 +299,7 @@ pub fn spawn(
                     };
                     if mains.has_frame(frame) {
                         if let Some(url) = url {
-                            sink(Observed::Navigated { url: url.to_string() });
+                            sink(Observed::Navigated { url: display_url(url) });
                         }
                     }
                 }
