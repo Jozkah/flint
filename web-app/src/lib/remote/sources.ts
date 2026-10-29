@@ -31,12 +31,13 @@ import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { buildBootAppearance } from '@/lib/bootAppearance'
 import { i18n } from '@/i18n/react-i18next-compat'
-import { uiMessageText, type RemoteSources } from './handlers'
+import { pageOf, uiMessageText, type RemoteSources } from './handlers'
 import { approvalOf, coworkDetailOf, messageExtrasOf, roomDetailOf, toolStepsOf } from './details'
 import { convertThreadMessageToUIMessage } from '@/lib/messages'
 import { appAsks } from './appAsks'
 import { appPrompts } from './appPrompts'
 import { isInterrupted } from '@/lib/coworkInflight'
+import { toMs } from '@/lib/messageTime'
 import type { CoworkEndingKind } from './protocol'
 import { remoteApi } from './api'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -168,6 +169,38 @@ function coworkEndingOf(session: CoworkSession): { by: CoworkEndingKind; message
   return { by, ...(message ? { message: message.slice(0, 500) } : {}) }
 }
 
+/** A chat's conversation in force (not every edited or regenerated version)
+ * and how one of its messages reads on a phone; null for no such chat. */
+async function chatActivePath(id: string) {
+  if (!useThreads.getState().threads[id]) return null
+  const stored = await getServiceHub().messages().fetchMessages(id)
+  const messages = activePathOf(stored, useThreads.getState().threads[id]?.metadata)
+  const branched = hasBranching(stored)
+  const convert = (m: ThreadMessage): RemoteMessage => {
+    const info = branched ? getVersionInfo(stored, m) : undefined
+    // The message as the desktop draws it: its tool calls, its reasoning,
+    // the files sent with it.
+    const ui = convertThreadMessageToUIMessage(m)
+    const tools = m.role === 'assistant' ? toolStepsOf(ui) : []
+    const extras = messageExtrasOf(ui)
+    const failed = String(m.status) === 'error'
+    const notes = [...(extras.notes ?? []), ...(failed ? [{ kind: 'error' as const, text: chatErrorText(m) }] : [])]
+    return {
+      id: m.id,
+      role: m.role as RemoteMessage['role'],
+      text: threadMessageText(m),
+      createdAt: ms(m.created_at),
+      ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
+      ...(info && info.count > 1 ? { versions: info } : {}),
+      ...(tools.length ? { tools } : {}),
+      ...(extras.reasoning ? { reasoning: extras.reasoning } : {}),
+      ...(extras.attachments ? { attachments: extras.attachments } : {}),
+      ...(notes.length ? { notes } : {}),
+    }
+  }
+  return { messages, convert }
+}
+
 export const appSources: RemoteSources = {
   chats: () =>
     Object.values(useThreads.getState().threads).map((t) => {
@@ -217,37 +250,16 @@ export const appSources: RemoteSources = {
     })),
 
   chatMessages: async (id) => {
-    if (!useThreads.getState().threads[id]) return []
-    const stored = await getServiceHub().messages().fetchMessages(id)
-    // The phone gets the conversation in force, not every edited or
-    // regenerated version, and the version position where there is one.
-    const messages = activePathOf(
-      stored,
-      useThreads.getState().threads[id]?.metadata
-    )
-    const branched = hasBranching(stored)
-    return messages.map((m): RemoteMessage => {
-      const info = branched ? getVersionInfo(stored, m) : undefined
-      // The message as the desktop draws it: its tool calls, its reasoning,
-      // the files sent with it.
-      const ui = convertThreadMessageToUIMessage(m)
-      const tools = m.role === 'assistant' ? toolStepsOf(ui) : []
-      const extras = messageExtrasOf(ui)
-      const failed = String(m.status) === 'error'
-      const notes = [...(extras.notes ?? []), ...(failed ? [{ kind: 'error' as const, text: chatErrorText(m) }] : [])]
-      return {
-        id: m.id,
-        role: m.role as RemoteMessage['role'],
-        text: threadMessageText(m),
-        createdAt: ms(m.created_at),
-        ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
-        ...(info && info.count > 1 ? { versions: info } : {}),
-        ...(tools.length ? { tools } : {}),
-        ...(extras.reasoning ? { reasoning: extras.reasoning } : {}),
-        ...(extras.attachments ? { attachments: extras.attachments } : {}),
-        ...(notes.length ? { notes } : {}),
-      }
-    })
+    const path = await chatActivePath(id)
+    return path ? path.messages.map(path.convert) : []
+  },
+
+  chatMessagesPage: async (id, before, limit) => {
+    const path = await chatActivePath(id)
+    if (!path) return { items: [], start: 0, total: 0 }
+    // Only the page is converted: a long chat's older messages stay untouched.
+    const { items, start, total } = pageOf(path.messages, before, limit)
+    return { items: items.map(path.convert), start, total }
   },
 
   coworkMessages: (id) => {
@@ -264,7 +276,9 @@ export const appSources: RemoteSources = {
         id: m.id,
         role: m.role as RemoteMessage['role'],
         text: uiMessageText(m),
-        createdAt: session.updated,
+        // Each message keeps its stored time; old rows without one fall back
+        // to the session's last change.
+        createdAt: toMs((m.metadata as { createdAt?: unknown } | undefined)?.createdAt) ?? session.updated,
         ...(tools.length ? { tools } : {}),
         ...messageExtrasOf(m),
       }

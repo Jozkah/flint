@@ -64,6 +64,13 @@ export type RemoteSources = {
   /** Pending approval prompts, by the conversation they belong to. */
   approvals: () => { requestId: string; threadId: string }[]
   chatMessages: (id: string) => Promise<RemoteMessage[]>
+  /** One page of a chat, converting only that page; null for no such chat.
+   * When missing, `chatMessages` is paged instead. */
+  chatMessagesPage?: (
+    id: string,
+    before: number | undefined,
+    limit: number
+  ) => Promise<{ items: RemoteMessage[]; start: number; total: number } | null>
   coworkMessages: (id: string) => RemoteMessage[] | null
   roomMessages: (id: string) => Promise<RemoteMessage[]>
   providers: () => {
@@ -270,7 +277,9 @@ export function createRemoteHandlers(
         }
       }
       out.sort((a, b) => b.updatedAt - a.updatedAt)
-      return { sessions: out.slice(0, limit) }
+      const before = typeof p.before === 'number' && Number.isFinite(p.before) ? p.before : undefined
+      const page = before === undefined ? out : out.filter((s) => s.updatedAt < before)
+      return { sessions: page.slice(0, limit), total: out.length }
     },
 
     'thread.messages': async (params) => {
@@ -278,12 +287,17 @@ export function createRemoteHandlers(
       if (typeof p.id !== 'string' || !p.id || !KINDS.includes(p.kind as SessionKind)) {
         throw new RemoteRpcError('bad_params', 'id and kind are required')
       }
+      const before = typeof p.before === 'number' ? p.before : undefined
+      if (p.kind === 'chat' && src.chatMessagesPage) {
+        const page = await src.chatMessagesPage(p.id, before, clampLimit(p.limit))
+        if (!page) throw new RemoteRpcError('not_found', 'No such conversation')
+        return { messages: page.items, start: page.start, total: page.total }
+      }
       let all: RemoteMessage[] | null
       if (p.kind === 'chat') all = await src.chatMessages(p.id)
       else if (p.kind === 'cowork') all = src.coworkMessages(p.id)
       else all = await src.roomMessages(p.id)
       if (!all) throw new RemoteRpcError('not_found', 'No such conversation')
-      const before = typeof p.before === 'number' ? p.before : undefined
       const { items, start, total } = pageOf(all, before, clampLimit(p.limit))
       return { messages: items, start, total }
     },

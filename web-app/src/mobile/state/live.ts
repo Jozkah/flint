@@ -71,11 +71,22 @@ export function applyStreamEvent(
   streams: Record<string, LiveStream>,
   e: RemoteEvent
 ): StreamOutcome {
-  if (e.type !== 'stream.delta' && e.type !== 'stream.tool' && e.type !== 'stream.done') {
+  if (
+    e.type !== 'stream.delta' &&
+    e.type !== 'stream.tool' &&
+    e.type !== 'stream.toolRemoved' &&
+    e.type !== 'stream.done'
+  ) {
     return { streams }
   }
   const cur = streams[e.id]
   const same = cur && cur.messageId === e.messageId
+  if (e.type === 'stream.toolRemoved') {
+    if (!same || !cur.tools.some((s) => s.id === e.stepId)) return { streams }
+    return {
+      streams: { ...streams, [e.id]: { ...cur, tools: cur.tools.filter((s) => s.id !== e.stepId) } },
+    }
+  }
   if (e.type === 'stream.done') {
     if (!same) return { streams, finished: { kind: e.kind, id: e.id } }
     return { streams: { ...streams, [e.id]: { ...cur, done: true } }, finished: { kind: e.kind, id: e.id } }
