@@ -102,7 +102,7 @@ describe('Flint branding', () => {
   it('renders product marks from the canonical Flint PNG', () => {
     for (const file of [
       'web-app/src/components/MermaidError.tsx',
-      'web-app/src/routes/settings/mcp-servers.tsx',
+      'web-app/src/containers/McpServerCard.tsx',
     ]) {
       const source = readFileSync(join(REPO, file), 'utf8')
       expect(source, file).toContain('/images/flint-logo.png')
