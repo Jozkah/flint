@@ -3103,6 +3103,24 @@ fn truncate_is_char_safe() {
     assert_eq!(super::super::truncate("short", 20), "short");
 }
 
+/// F2x1-008: the `/settings` box shows a global row's value from the global
+/// config, never a same-named key that happens to sit in the project's
+/// `agent.toml`.
+#[test]
+fn settings_prompt_shows_a_global_rows_value_from_its_own_scope() {
+    use crate::core::cli::tui::commands::SettingsPrompt;
+    use crate::core::cli::tui::render::settings_prompt_lines;
+    let dir = tempfile::tempdir().unwrap();
+    let toml_path = dir.path().join("agent.toml");
+    std::fs::write(&toml_path, "[agent]\nask_timeout_secs = 987654\n").unwrap();
+    let prompt = SettingsPrompt { key: "ask_timeout_secs", input: String::new(), error: None };
+    let text: String = settings_prompt_lines(&prompt, &toml_path, 200)
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.to_string()))
+        .collect();
+    assert!(!text.contains("987654"), "project value shown for a global row: {text}");
+}
+
 /// P2C-014: truncation, clipping and panel padding are measured in terminal
 /// cells, so a CJK or emoji row keeps the panel's right border aligned.
 #[test]
