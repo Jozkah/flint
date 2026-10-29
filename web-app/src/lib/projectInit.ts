@@ -12,6 +12,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { folderKey } from '@/lib/referenceAliases'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 export type ProjectInitDraft = {
   content: string
@@ -63,4 +64,4 @@ export const useProjectInitDrafts = create<DraftState>()(
 
 /** The offer's label: a saved draft is continued rather than started over. */
 export const projectInitLabel = (hasDraft: boolean) =>
-  hasDraft ? 'Continue the FLINT.md draft' : 'Describe this project'
+  i18n.t(hasDraft ? 'common:projectInit.continue' : 'common:projectInit.title')

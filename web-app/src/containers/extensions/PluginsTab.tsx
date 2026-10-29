@@ -96,6 +96,7 @@ export default function PluginsTab({
     removeError,
     setRemoveError,
     updating,
+    updateError,
     refresh,
     toggle,
     runUpdate,
@@ -607,6 +608,12 @@ export default function PluginsTab({
           <p role="alert" className={ALERT}>
             <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0">{removeError}</span>
+          </p>
+        )}
+        {updateError && (
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{updateError}</span>
           </p>
         )}
         {detailsError ? (
