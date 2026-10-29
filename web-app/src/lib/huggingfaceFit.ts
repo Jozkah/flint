@@ -1,5 +1,6 @@
 import type { HardwareData } from '@/hooks/useHardware'
 import { parseGgufArchitecture } from '@/lib/ggufHeader'
+import i18n from '@/i18n'
 import {
   approxWeightsBytes,
   chooseMmproj,
@@ -131,13 +132,11 @@ export function repoFitsHardware(fit: GroupFit | null): boolean {
 export function fitBasis(fit: GroupFit): string {
   const parts: string[] = []
   parts.push(
-    fit.kvMethod === 'gguf-metadata'
-      ? 'Context memory read from the model file.'
-      : 'Context memory estimated from the file size.'
+    i18n.t(fit.kvMethod === 'gguf-metadata' ? 'hub:fit.basis.fromFile' : 'hub:fit.basis.fromSize')
   )
-  if (fit.sizeEstimated) parts.push('File size estimated from parameters.')
+  if (fit.sizeEstimated) parts.push(i18n.t('hub:fit.basis.sizeEstimated'))
   if (fit.assumptions.includes('gpu-disabled-in-settings')) {
-    parts.push('A GPU you turned off is not counted.')
+    parts.push(i18n.t('hub:fit.basis.gpuOff'))
   }
   return parts.join(' ')
 }
