@@ -260,31 +260,31 @@ export function CoworkTranscript({
                     <MessageItem
                       message={message}
                       isFirstMessage={i === 0 && k === 0}
-                      switchedFrom={
-                        k === 0 ? switchedFromOf(uiMessages, i) : undefined
-                      }
                       isLastMessage={
                         i === uiMessages.length - 1 &&
                         k === segments.length - 1
                       }
-                      hideActions={k < segments.length - 1 || undefined}
-                      continuation={k > 0 || undefined}
-                      midReply={k < segments.length - 1 || undefined}
-                      runParts={
-                        segments.length > 1 ? whole.parts : undefined
-                      }
                       status={running ? 'streaming' : 'ready'}
-                      onRegenerate={handleRegenerate}
-                      reasoningContainerRef={reasoningContainerRef}
-                      isReasoningAtBottom={isReasoningAtBottom}
-                      onReasoningScroll={handleReasoningScroll}
-                      onReasoningScrollToBottom={
-                        forceScrollReasoningToBottom
-                      }
-                      // The tool calls are the work here, not scaffolding
-                      // behind an answer: they stay in the conversation
-                      // unless the display option hides the finished ones.
-                      keepToolActivity
+                      view={{
+                        switchedFrom:
+                          k === 0 ? switchedFromOf(uiMessages, i) : undefined,
+                        hideActions: k < segments.length - 1 || undefined,
+                        continuation: k > 0 || undefined,
+                        midReply: k < segments.length - 1 || undefined,
+                        runParts:
+                          segments.length > 1 ? whole.parts : undefined,
+                        // The tool calls are the work here, not scaffolding
+                        // behind an answer: they stay in the conversation
+                        // unless the display option hides the finished ones.
+                        keepToolActivity: true,
+                      }}
+                      reasoning={{
+                        containerRef: reasoningContainerRef,
+                        isAtBottom: isReasoningAtBottom,
+                        onScroll: handleReasoningScroll,
+                        onScrollToBottom: forceScrollReasoningToBottom,
+                      }}
+                      actions={{ onRegenerate: handleRegenerate }}
                     />
                     {/* The plan as this run left it, after its prompt. */}
                     {k === segments.length - 1 &&

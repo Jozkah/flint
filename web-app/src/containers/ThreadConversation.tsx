@@ -3387,21 +3387,27 @@ export function ThreadConversation({
                       message={message}
                       isFirstMessage={isFirstMessage}
                       isLastMessage={isLastMessage}
-                      switchedFrom={switchedFromOf(chatMessages, index)}
                       status={effectiveStatus}
-                      reasoningContainerRef={reasoningContainerRef}
-                      isReasoningAtBottom={isReasoningAtBottom}
-                      onReasoningScroll={handleReasoningScroll}
-                      onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                      onRegenerate={handleRegenerate}
-                      onFork={handleFork}
-                      onContinue={handleContinue}
-                      onEdit={handleEditMessage}
-                      onDelete={handleDeleteMessage}
                       versionInfo={versionInfoById[message.id]}
-                      onSwitchVersion={handleSwitchVersion}
-                      isAnimating={!pendingContinueMessage}
-                      hideActions={!!pendingContinueMessage}
+                      view={{
+                        switchedFrom: switchedFromOf(chatMessages, index),
+                        isAnimating: !pendingContinueMessage,
+                        hideActions: !!pendingContinueMessage,
+                      }}
+                      reasoning={{
+                        containerRef: reasoningContainerRef,
+                        isAtBottom: isReasoningAtBottom,
+                        onScroll: handleReasoningScroll,
+                        onScrollToBottom: forceScrollReasoningToBottom,
+                      }}
+                      actions={{
+                        onRegenerate: handleRegenerate,
+                        onFork: handleFork,
+                        onContinue: handleContinue,
+                        onEdit: handleEditMessage,
+                        onDelete: handleDeleteMessage,
+                        onSwitchVersion: handleSwitchVersion,
+                      }}
                     />
                   </Fragment>
                 )
@@ -3414,15 +3420,21 @@ export function ThreadConversation({
                   isFirstMessage={false}
                   isLastMessage={true}
                   status={effectiveStatus}
-                  reasoningContainerRef={reasoningContainerRef}
-                  isReasoningAtBottom={isReasoningAtBottom}
-                  onReasoningScroll={handleReasoningScroll}
-                  onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                  onRegenerate={handleRegenerate}
-                  onEdit={handleEditMessage}
-                  onDelete={handleDeleteMessage}
-                  hideActions
-                  isAnimating={false}
+                  view={{
+                    hideActions: true,
+                    isAnimating: false,
+                  }}
+                  reasoning={{
+                    containerRef: reasoningContainerRef,
+                    isAtBottom: isReasoningAtBottom,
+                    onScroll: handleReasoningScroll,
+                    onScrollToBottom: forceScrollReasoningToBottom,
+                  }}
+                  actions={{
+                    onRegenerate: handleRegenerate,
+                    onEdit: handleEditMessage,
+                    onDelete: handleDeleteMessage,
+                  }}
                 />
               )}
               {memoryLocation && (

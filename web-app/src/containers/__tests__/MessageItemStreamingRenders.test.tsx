@@ -91,9 +91,13 @@ function Transcript({ handlersReadRef }: { handlersReadRef: boolean }) {
           isFirstMessage={index === 0}
           isLastMessage={index === messages.length - 1}
           status="streaming"
-          onContinue={onContinue}
-          onDelete={onContinue}
-          isAnimating
+          view={{
+            isAnimating: true,
+          }}
+          actions={{
+            onContinue,
+            onDelete: onContinue,
+          }}
         />
       ))}
     </>
