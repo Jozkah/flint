@@ -199,16 +199,28 @@ async fn output_with_timeout_kept(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    // Unix: the child leads its own process group from its first instruction,
-    // which is what `OwnedChild::own` needs for a timeout to reach grandchildren
-    // (O07-012). Windows still assigns the job just after spawn.
+    // The child is in its stoppable tree from its first instruction (O07-012).
+    // Unix: it leads its own process group. Windows: it starts suspended, is
+    // placed in the job, and only then runs, so nothing it starts escapes.
     #[cfg(unix)]
     cmd.process_group(0);
+    #[cfg(windows)]
+    cmd.creation_flags(
+        jan_process::BACKGROUND_GROUP_FLAGS | windows_sys::Win32::System::Threading::CREATE_SUSPENDED,
+    );
     let child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => return Ok(Err(e)),
     };
     let owner = child.id().and_then(|pid| OwnedChild::own(pid).ok());
+    #[cfg(windows)]
+    if let Some(pid) = child.id() {
+        if let Err(e) = resume_threads(pid) {
+            // A child that cannot be resumed would hang until the timeout.
+            drop(owner);
+            return Ok(Err(e));
+        }
+    }
     match tokio::time::timeout(timeout, bounded_output_with(child, CAPTURE_CAP, keep_tail)).await {
         Ok(out) => {
             if let Some(owner) = owner {
@@ -222,6 +234,51 @@ async fn output_with_timeout_kept(
             Err(elapsed)
         }
     }
+}
+
+/// Resume every thread of the suspended process `pid` (started with
+/// `CREATE_SUSPENDED`, so it has exactly its main thread).
+#[cfg(windows)]
+fn resume_threads(pid: u32) -> std::io::Result<()> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+    // SAFETY: plain values; the returned handle is checked below.
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    if snap == INVALID_HANDLE_VALUE {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: THREADENTRY32 is a plain C struct; all-zero is valid once dwSize is set.
+    let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+    let mut resumed = 0;
+    // SAFETY: `snap` is a live snapshot handle and `entry` is a valid, sized out-struct.
+    let mut more = unsafe { Thread32First(snap, &mut entry) } != 0;
+    while more {
+        if entry.th32OwnerProcessID == pid {
+            // SAFETY: plain values; the returned handle is checked for null.
+            let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
+            if !thread.is_null() {
+                // SAFETY: `thread` is a live handle opened above and closed right after.
+                unsafe {
+                    if ResumeThread(thread) != u32::MAX {
+                        resumed += 1;
+                    }
+                    CloseHandle(thread);
+                }
+            }
+        }
+        // SAFETY: as for Thread32First.
+        more = unsafe { Thread32Next(snap, &mut entry) } != 0;
+    }
+    // SAFETY: `snap` was created above and is not used after this close.
+    unsafe { CloseHandle(snap) };
+    if resumed == 0 {
+        return Err(std::io::Error::other(format!("process {pid} could not be resumed")));
+    }
+    Ok(())
 }
 
 /// `cmd.output()` for sync callers, with a deadline (W10): stdin is null, both
@@ -408,6 +465,53 @@ mod tests {
         let _ = child.wait();
         let left: Vec<u32> = everyone.into_iter().filter(|p| process_exists(*p)).collect();
         assert!(left.is_empty(), "still running after the owner was dropped: {left:?}");
+    }
+
+    /// The child is in the job before it runs a single instruction, so a
+    /// timeout reaches a grandchild started at once (O07-012).
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn timeout_ends_a_grandchild_started_at_once() {
+        let mut cmd = tokio::process::Command::new("cmd");
+        cmd.args(["/c", "ping -n 60 127.0.0.1 >NUL"]);
+        let r = output_with_timeout(&mut cmd, std::time::Duration::from_millis(1500)).await;
+        assert!(r.is_err(), "should time out");
+        // No ping started by that cmd outlives the timeout.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let in_job_ok = loop {
+            let out = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='PING.EXE'\" | Where-Object { $_.CommandLine -like '*-n 77 127.0.0.1*' } | Measure-Object | ForEach-Object Count"])
+                .output();
+            let alive = match out {
+                Ok(o) => String::from_utf8_lossy(&o.stdout).trim() != "0",
+                Err(_) => false,
+            };
+            if !alive {
+                break true;
+            }
+            if std::time::Instant::now() >= deadline {
+                break false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        assert!(in_job_ok, "ping outlived the timeout");
+    }
+
+    /// A child started suspended still runs to completion.
+    #[tokio::test]
+    async fn output_with_timeout_runs_the_child() {
+        let mut cmd = if cfg!(windows) {
+            let mut c = tokio::process::Command::new("cmd");
+            c.args(["/c", "echo hi"]);
+            c
+        } else {
+            let mut c = tokio::process::Command::new("sh");
+            c.args(["-c", "echo hi"]);
+            c
+        };
+        let out = output_with_timeout(&mut cmd, std::time::Duration::from_secs(20)).await.expect("no timeout").expect("ran");
+        assert!(out.status.success());
+        assert!(String::from_utf8_lossy(&out.stdout).contains("hi"));
     }
 
     /// A query that never answers is stopped at its deadline (W10).

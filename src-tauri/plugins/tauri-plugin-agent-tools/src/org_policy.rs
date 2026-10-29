@@ -249,19 +249,29 @@ pub fn system_path() -> PathBuf {
 /// the system, so it cannot be moved by the process being constrained.
 #[cfg(windows)]
 fn program_data() -> PathBuf {
+    // Not the environment's answer when the API fails: a fixed path is wrong
+    // far less often than a path the caller chose.
+    known_folder(&windows_sys::Win32::UI::Shell::FOLDERID_ProgramData)
+        .unwrap_or_else(|| PathBuf::from("C:\\ProgramData"))
+}
+
+/// A known folder (`FOLDERID_*`) as Windows reports it, not as the process
+/// environment says.
+#[cfg(windows)]
+pub(crate) fn known_folder(id: &windows_sys::core::GUID) -> Option<PathBuf> {
     use std::os::windows::ffi::OsStringExt;
-    use windows_sys::Win32::UI::Shell::{FOLDERID_ProgramData, SHGetKnownFolderPath};
+    use windows_sys::Win32::UI::Shell::SHGetKnownFolderPath;
 
     let mut raw: windows_sys::core::PWSTR = std::ptr::null_mut();
     // SAFETY: the call writes one owned wide string, which is freed below, and
-    // is given a null token to mean "this machine's common folder".
-    let ok = unsafe {
-        SHGetKnownFolderPath(&FOLDERID_ProgramData, 0, std::ptr::null_mut(), &mut raw) == 0
-    };
+    // is given a null token to mean "this machine's folder".
+    let ok = unsafe { SHGetKnownFolderPath(id, 0, std::ptr::null_mut(), &mut raw) == 0 };
     if !ok || raw.is_null() {
-        // Not the environment's answer: a fixed path is wrong far less often
-        // than a path the caller chose.
-        return PathBuf::from("C:\\ProgramData");
+        if !raw.is_null() {
+            // SAFETY: a failed call may still hand back memory to free.
+            unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(raw as *mut _) };
+        }
+        return None;
     }
     let mut len = 0usize;
     // SAFETY: `raw` is a null-terminated wide string owned by the shell.
@@ -275,7 +285,7 @@ fn program_data() -> PathBuf {
     // SAFETY: `raw` came from SHGetKnownFolderPath, which asks the caller to
     // free it with CoTaskMemFree; `wide` is not used after this.
     unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(raw as *mut _) };
-    PathBuf::from(path)
+    Some(PathBuf::from(path))
 }
 
 /// The strictest reading of a policy that is there but cannot be seen.

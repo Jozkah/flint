@@ -53,6 +53,15 @@ pub async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
         if size > 20 * 1024 * 1024 { return Err("Desktop capture exceeds 20 MB".into()); }
         return Ok(Some(tokio::fs::read(path).await.map_err(|e| e.to_string())?));
     }
+    // Typing goes through the clipboard (F06-006): keep what the user had
+    // there and put it back afterwards, whether or not the input went through.
+    let saved = if matches!(action, Action::Type {..}) { Some(clipboard_snapshot().await) } else { None };
+    let result = run_steps(action).await;
+    if let Some(saved) = saved { clipboard_restore(saved).await; }
+    result.map(|()| None)
+}
+
+async fn run_steps(action: &Action) -> Result<(), String> {
     for (program,args) in steps(action) {
         let mut cmd = tokio::process::Command::new(program);
         // ydotool and wl-copy are the host's: keep an AppImage's bundled libs out.
@@ -60,7 +69,47 @@ pub async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
         cmd.args(args);
         output(cmd).await.map_err(|e| format!("{e}. Wayland input requires ydotool 1.x, a running ydotoold with uinput access, and an accessible YDOTOOL_SOCKET. Text entry also needs wl-clipboard (wl-copy). Flint does not start a privileged daemon."))?;
     }
-    Ok(None)
+    Ok(())
+}
+
+/// Largest clipboard content saved and put back; bigger content is left alone.
+const CLIPBOARD_SAVE_CAP: usize = 8 * 1024 * 1024;
+
+/// What the clipboard held before typing: `Some(bytes)` to put back, `None`
+/// when it was empty (cleared afterwards), or `Err` when it cannot be read or
+/// is too large (left with the typed text, as before).
+async fn clipboard_snapshot() -> Result<Option<Vec<u8>>, ()> {
+    let mut cmd = tokio::process::Command::new("wl-paste");
+    jan_process::HostProcessEnv::host_env(&mut cmd);
+    cmd.arg("--no-newline");
+    match output(cmd).await {
+        Ok(out) if out.stdout.len() <= CLIPBOARD_SAVE_CAP => Ok(Some(out.stdout)),
+        Ok(_) => Err(()),
+        // wl-paste exits non-zero with "Nothing is copied" on an empty clipboard.
+        Err(e) if e.to_ascii_lowercase().contains("nothing is copied") => Ok(None),
+        Err(_) => Err(()),
+    }
+}
+
+async fn clipboard_restore(saved: Result<Option<Vec<u8>>, ()>) {
+    use tokio::io::AsyncWriteExt;
+    let Ok(saved) = saved else { return };
+    let mut cmd = tokio::process::Command::new("wl-copy");
+    jan_process::HostProcessEnv::host_env(&mut cmd);
+    // Let the paste land before the content is swapped back.
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    let Some(bytes) = saved else {
+        cmd.arg("--clear");
+        let _ = output(cmd).await;
+        return;
+    };
+    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).kill_on_drop(true);
+    let Ok(mut child) = cmd.spawn() else { return };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(&bytes).await;
+    }
+    // wl-copy forks a server and returns once it holds the content.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
 }
 #[cfg(test)]
 mod tests {
