@@ -2317,14 +2317,9 @@ mod win {
         }
     }
 
-    /// Set up the container, then spawn the shell inside it and wait. Returns the
-    /// shell's exit code so the helper is transparent to the caller.
-    pub fn run(req: &Request) -> Result<i32, LaunchFailure> {
-        // The container is named after the path exactly as the host passed it,
-        // so `release` and the records keep matching.
-        let name = moniker(&req.workspace);
-        let long = with_long_paths(req);
-        let req = &long;
+    /// The folders and the shell a launch needs, checked before anything is
+    /// created: a missing one is refused with the stage that names it.
+    fn validate_request(req: &Request) -> Result<(), LaunchFailure> {
         if !req.workspace.is_dir() {
             return Err(LaunchFailure::new(
                 Stage::SandboxPolicy,
@@ -2352,13 +2347,23 @@ mod win {
                  start.",
             ));
         }
+        Ok(())
+    }
+
+    /// Creates (or reuses) the container profile and its synthetic home, then
+    /// grants the container the workspace, the scratch or home, and the
+    /// authorized roots. Returns the container SID and the home.
+    fn prepare_container(
+        req: &Request,
+        name: &str,
+    ) -> Result<(ContainerSid, PathBuf), LaunchFailure> {
         reap_children_with_this_process();
-        let sid = ensure_profile(&name).map_err(|detail| {
+        let sid = ensure_profile(name).map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "CreateAppContainerProfile", detail)
         })?;
         // The home is created before the grants so the inheritable ACE a grant
         // installs on the scratch reaches it.
-        let home = synthetic_home(req, &name)?;
+        let home = synthetic_home(req, name)?;
         grant_path(&req.workspace, sid.0).map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
@@ -2403,7 +2408,7 @@ mod win {
             super::SHELL_HOLDER.to_string()
         };
         sync_holder_roots(
-            &write_root_record(&name),
+            &write_root_record(name),
             sid.0,
             &holder,
             &req.write_roots,
@@ -2412,6 +2417,19 @@ mod win {
         .map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
+        Ok((sid, home))
+    }
+
+    /// Set up the container, then spawn the shell inside it and wait. Returns the
+    /// shell's exit code so the helper is transparent to the caller.
+    pub fn run(req: &Request) -> Result<i32, LaunchFailure> {
+        // The container is named after the path exactly as the host passed it,
+        // so `release` and the records keep matching.
+        let name = moniker(&req.workspace);
+        let long = with_long_paths(req);
+        let req = &long;
+        validate_request(req)?;
+        let (sid, home) = prepare_container(req, &name)?;
 
         let env = sandbox_env(req, &home)?;
         let mut env_block = env.encode().map_err(|e| {

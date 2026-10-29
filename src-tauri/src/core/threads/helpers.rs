@@ -23,6 +23,43 @@ pub static MESSAGE_LOCKS: OnceLock<std::sync::Mutex<HashMap<String, Arc<Mutex<()
 /// O(1) in the common case instead of scanning every entry.
 const LOCK_SWEEP_AT: usize = 256;
 
+/// Key `list_thread_summaries` sets on an assistant it cut to `{id, name, model}`.
+pub const SUMMARY_MARKER: &str = "summary";
+
+/// A thread write that carries a summary assistant back (the sidebar's copy,
+/// not yet hydrated) must not overwrite the stored instructions and
+/// parameters: each marked assistant is replaced by the stored one with the
+/// same id, keeping only the incoming `model` and `name`. With no stored match
+/// the marker is just dropped. Never writes the marker.
+pub fn restore_summary_assistants(thread: &mut serde_json::Value, stored: Option<&serde_json::Value>) {
+    let stored_list = stored
+        .and_then(|s| s.get("assistants"))
+        .and_then(|a| a.as_array());
+    let Some(list) = thread.get_mut("assistants").and_then(|a| a.as_array_mut()) else {
+        return;
+    };
+    for a in list.iter_mut() {
+        let Some(obj) = a.as_object_mut() else { continue };
+        if obj.remove(SUMMARY_MARKER).is_none() {
+            continue;
+        }
+        let id = obj.get("id").cloned();
+        let full = stored_list.and_then(|l| {
+            l.iter().find(|s| id.is_some() && s.get("id") == id.as_ref())
+        });
+        if let Some(serde_json::Value::Object(full)) = full {
+            let mut merged = full.clone();
+            merged.remove(SUMMARY_MARKER);
+            for key in ["model", "name"] {
+                if let Some(v) = obj.get(key) {
+                    merged.insert(key.to_string(), v.clone());
+                }
+            }
+            *obj = merged;
+        }
+    }
+}
+
 /// Check if the platform should use SQLite (mobile platforms)
 pub fn should_use_sqlite() -> bool {
     cfg!(any(target_os = "android", target_os = "ios"))

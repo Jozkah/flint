@@ -616,6 +616,10 @@
     "web-app/src/containers/CoworkTeamReviews.tsx (via listTeamChildren)",
     "web-app/src/lib/teamChildren.ts"
   ],
+  "agent_worktree_branch_name": [
+    "web-app/src/lib/coworkDispatch.ts (via runSpawnSession)",
+    "web-app/src/lib/spawnSession.ts"
+  ],
   "agent_worktree_ensure": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",
@@ -929,6 +933,22 @@
     "web-app/src/hooks/useMemoryConsolidation.ts (via consolidateMemory)",
     "web-app/src/lib/agentWorkspace.ts"
   ],
+  "data_backup_apply": [
+    "web-app/src/containers/DataBackupCard.tsx",
+    "web-app/src/routes/settings/data.tsx (via DataBackupCard)"
+  ],
+  "data_backup_discard": [
+    "web-app/src/containers/DataBackupCard.tsx",
+    "web-app/src/routes/settings/data.tsx (via DataBackupCard)"
+  ],
+  "data_backup_load": [
+    "web-app/src/containers/DataBackupCard.tsx",
+    "web-app/src/routes/settings/data.tsx (via DataBackupCard)"
+  ],
+  "data_backup_save": [
+    "web-app/src/containers/DataBackupCard.tsx",
+    "web-app/src/routes/settings/data.tsx (via DataBackupCard)"
+  ],
   "deactivate_mcp_server": [
     "web-app/src/services/mcp/tauri.ts"
   ],
@@ -1165,7 +1185,7 @@
     "web-app/src/services/app/tauri.ts"
   ],
   "export_provider_keys_for_backup": [
-    "web-app/src/containers/SettingsBackupCard.tsx"
+    "web-app/src/lib/settings-backup-io.ts"
   ],
   "export_redacted_logs": [
     "web-app/src/services/app/tauri.ts"
@@ -1247,6 +1267,72 @@
     "web-app/src/providers/ThemeProvider.tsx",
     "web-app/src/shell/MainRoot.tsx (via ThemeProvider)"
   ],
+  "get_thread_assistant": [
+    "web-app/src/components/shell/HeaderLiveChips.tsx (via useThreads)",
+    "web-app/src/components/shell/TopHeader.tsx (via useThreads)",
+    "web-app/src/components/shell/nav/ChatsNav.tsx (via useThreads)",
+    "web-app/src/containers/BulkConversationsCard.tsx (via useThreads)",
+    "web-app/src/containers/BulkKindDialog.tsx (via useThreads)",
+    "web-app/src/containers/ChatFoldersChip.tsx (via useThreads)",
+    "web-app/src/containers/ChatInput.tsx (via useThreads)",
+    "web-app/src/containers/CommandPalette.tsx (via useThreads)",
+    "web-app/src/containers/DropdownModelProvider.tsx (via useThreads)",
+    "web-app/src/containers/DropdownToolsAvailable.tsx (via useThreads)",
+    "web-app/src/containers/GettingStartedCard.tsx (via useThreads)",
+    "web-app/src/containers/NewTemporaryChatButton.tsx (via useThreads)",
+    "web-app/src/containers/SetupScreen.tsx (via useThreads)",
+    "web-app/src/containers/SplitConversation.tsx (via useThreads)",
+    "web-app/src/containers/ThreadConversation.tsx (via useThreads)",
+    "web-app/src/containers/ThreadList.tsx (via useThreads)",
+    "web-app/src/containers/WhatJanIsUsing.tsx (via useThreads)",
+    "web-app/src/containers/dialogs/DeleteProjectDialog.tsx (via useThreads)",
+    "web-app/src/containers/dialogs/SearchDialog.tsx (via useThreads)",
+    "web-app/src/containers/permissions/ConversationGrantsSection.tsx (via useThreads)",
+    "web-app/src/containers/settings-data/DataImportCard.tsx (via useThreads)",
+    "web-app/src/hooks/useActiveMessages.ts (via useThreads)",
+    "web-app/src/hooks/useAssistant.ts (via useThreads)",
+    "web-app/src/hooks/useChatMemoryBinding.ts (via useThreads)",
+    "web-app/src/hooks/useComposerSend.ts (via useThreads)",
+    "web-app/src/hooks/useConversationPane.ts (via useThreads)",
+    "web-app/src/hooks/useMemoryConversations.ts (via useThreads)",
+    "web-app/src/hooks/useNestStatus.ts (via useThreads)",
+    "web-app/src/hooks/useSplitPaneTitle.ts (via useThreads)",
+    "web-app/src/hooks/useTemporaryChat.ts (via useThreads)",
+    "web-app/src/hooks/useThreadManagement.ts (via useThreads)",
+    "web-app/src/hooks/useThreads.ts",
+    "web-app/src/hooks/useTokensCount.ts (via useThreads)",
+    "web-app/src/hooks/useWindowTitle.ts (via useThreads)",
+    "web-app/src/lib/archiveRestore.ts (via useThreads)",
+    "web-app/src/lib/branchSelect.ts (via useThreads)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via useThreads)",
+    "web-app/src/lib/chat/transport/promptBuilder.ts (via useThreads)",
+    "web-app/src/lib/chat/transport/toolRefresh.ts (via useThreads)",
+    "web-app/src/lib/chatCompaction.ts (via useThreads)",
+    "web-app/src/lib/chatDelegation.ts (via useThreads)",
+    "web-app/src/lib/chatFolders.ts (via useThreads)",
+    "web-app/src/lib/chatMentionSources.ts (via useThreads)",
+    "web-app/src/lib/continueFromSummary.ts (via useThreads)",
+    "web-app/src/lib/convertChatToCowork.ts (via useThreads)",
+    "web-app/src/lib/custom-chat-transport.ts (via useThreads)",
+    "web-app/src/lib/forkThread.ts (via useThreads)",
+    "web-app/src/lib/grandfatherFolderTrust.ts (via useThreads)",
+    "web-app/src/lib/groups/homeMirror.ts (via useThreads)",
+    "web-app/src/lib/nestPrune.ts (via useThreads)",
+    "web-app/src/lib/projectMcpServers.ts (via useThreads)",
+    "web-app/src/lib/regenerateTitle.ts (via useThreads)",
+    "web-app/src/lib/remote/appActions.ts (via useThreads)",
+    "web-app/src/lib/remote/appExtras.ts (via useThreads)",
+    "web-app/src/lib/remote/mobileMutations.ts (via useThreads)",
+    "web-app/src/lib/remote/push.ts (via useThreads)",
+    "web-app/src/lib/remote/sources.ts (via useThreads)",
+    "web-app/src/lib/routed-chat-transport.ts (via useThreads)",
+    "web-app/src/lib/threadDocuments.ts (via useThreads)",
+    "web-app/src/lib/threadPreview.ts (via useThreads)",
+    "web-app/src/providers/dataProviderHooks.ts (via useThreads)",
+    "web-app/src/routes/index.tsx (via useThreads)",
+    "web-app/src/routes/project/$projectId.tsx (via useThreads)",
+    "web-app/src/routes/settings/general.tsx (via useThreads)"
+  ],
   "get_titlebar_layout": [
     "web-app/src/components/WindowControls.tsx",
     "web-app/src/components/solo/SoloRoot.tsx (via WindowControls)",
@@ -1310,6 +1396,9 @@
   "list_open_apps": [
     "web-app/src/containers/ComputerExclusionSettings.tsx (via listOpenApps)",
     "web-app/src/lib/computerExclusions.ts"
+  ],
+  "list_thread_summaries": [
+    "web-app/src/services/threads/default.ts"
   ],
   "mailbox_auto_reply": [
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
@@ -1621,23 +1710,23 @@
     "web-app/src/services/mcp/tauri.ts"
   ],
   "migration_detect": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationDetect)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationDetect)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_dismiss": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationDismiss)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationDismiss)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_execute": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationExecute)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationExecute)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_plan": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationPlan)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationPlan)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_rollback": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationRollback)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationRollback)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_status": [
@@ -1671,6 +1760,10 @@
     "web-app/src/lib/agentTools.ts",
     "web-app/src/lib/agentTools.ts (via advertisedToolSchemas)",
     "web-app/src/lib/cowork/run/runRequest.ts (via getSandboxToolchains)"
+  ],
+  "plugin:agent-tools|approval_mint": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via executeTool)"
   ],
   "plugin:agent-tools|bash_job_kill": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -2112,14 +2205,16 @@
   ],
   "provider_http_cancel": [
     "web-app/src/lib/backend.ts (via hasTauriRuntime)",
-    "web-app/src/lib/providerFetch.ts"
+    "web-app/src/lib/providerFetch.ts",
+    "web-app/src/services/threads/default.ts (via hasTauriRuntime)"
   ],
   "provider_http_request": [
     "web-app/src/lib/huggingface.ts"
   ],
   "provider_http_stream": [
     "web-app/src/lib/backend.ts (via hasTauriRuntime)",
-    "web-app/src/lib/providerFetch.ts"
+    "web-app/src/lib/providerFetch.ts",
+    "web-app/src/services/threads/default.ts (via hasTauriRuntime)"
   ],
   "read_logs": [
     "web-app/src/services/app/tauri.ts"
@@ -2412,7 +2507,7 @@
     "web-app/src/routes/settings/data.tsx (via SettingsBackupCard)"
   ],
   "settings_backup_store_provider_keys": [
-    "web-app/src/containers/SettingsBackupCard.tsx"
+    "web-app/src/lib/settings-backup-io.ts"
   ],
   "shared_folder_allow": [
     "web-app/src/containers/SharedFolderBar.tsx (via sharedFolder)",

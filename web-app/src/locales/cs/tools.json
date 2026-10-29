@@ -39,6 +39,7 @@
     "working": "Pracuje se...",
     "failed": "{{tool}} selhalo",
     "used": "Použito {{tool}}",
+    "saveImage": "Uložit {{name}}",
     "parameters": "Parametry",
     "result": "Výsledek",
     "error": "Chyba",

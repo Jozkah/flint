@@ -67,9 +67,11 @@ export class TauriProvidersService extends DefaultProvidersService {
         }
       }).filter(Boolean)
 
-      const runtimeProviders: ModelProvider[] = []
-      for (const [providerName, value] of EngineManager.instance().engines) {
-        try {
+      // Engines are listed side by side (HKS-034): one slow engine no longer
+      // holds up the rest. Order is the engines' order, as before.
+      const engines = [...EngineManager.instance().engines]
+      const loaded = await Promise.allSettled(
+        engines.map(async ([providerName, value]) => {
           const models = await value.list() ?? []
           const provider: ModelProvider = {
             active: false,
@@ -143,13 +145,16 @@ export class TauriProvidersService extends DefaultProvidersService {
               })
             ),
           }
-          runtimeProviders.push(provider)
-        } catch (error) {
-          // One failing engine must not empty the whole provider list
-          // (janhq/jan#9376).
-          console.error(`Failed to load provider ${providerName}:`, error)
-        }
-      }
+          return provider
+        })
+      )
+      const runtimeProviders: ModelProvider[] = []
+      loaded.forEach((result, i) => {
+        if (result.status === 'fulfilled') runtimeProviders.push(result.value)
+        // One failing engine must not empty the whole provider list
+        // (janhq/jan#9376).
+        else console.error(`Failed to load provider ${engines[i][0]}:`, result.reason)
+      })
 
       return runtimeProviders.concat(builtinProviders as ModelProvider[])
     } catch (error: unknown) {
