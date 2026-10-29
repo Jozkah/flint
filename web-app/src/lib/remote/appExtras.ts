@@ -120,7 +120,8 @@ async function dataFolder(): Promise<string> {
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-export const appExtras: RemoteExtras = {
+/** Chats: details, effort, assistant, forks, versions, compaction and titles. */
+const chatExtras: Pick<RemoteExtras, 'chatDetails' | 'setChatEffort' | 'setChatAssistant' | 'assistants' | 'forkChat' | 'selectVersion' | 'compactChat' | 'regenerateTitle'> = {
   chatDetails: async (id): Promise<ChatDetails | null> => {
     const thread = useThreads.getState().threads[id]
     if (!thread) return null
@@ -285,7 +286,6 @@ export const appExtras: RemoteExtras = {
     delete metadata.jevRoutedAssistantId
     threads.updateThread(id, { assistants: [next], metadata })
   },
-
   assistants: () => ({
     assistants: useAssistant.getState().assistants.map((a) => ({
       id: a.id,
@@ -295,7 +295,6 @@ export const appExtras: RemoteExtras = {
     })),
     routing: useAutomationSettings.getState().routeAssistants,
   }),
-
   forkChat: (id, messageId) => forkThread(id, messageId),
   selectVersion: (id, messageId, dir) => {
     // A reply being written is on the path; moving it under the stream would
@@ -309,7 +308,6 @@ export const appExtras: RemoteExtras = {
     return true
   },
   compactChat: (id) => requestChatCompaction(id),
-
   regenerateTitle: async (kind, id) => {
     try {
       if (kind === 'chat') return await regenerateTitle(id)
@@ -319,11 +317,17 @@ export const appExtras: RemoteExtras = {
       return 'failed'
     }
   },
+}
 
+/** Rooms. */
+const roomExtras: Pick<RemoteExtras, 'clearRoom'> = {
   clearRoom: async (id, scope) => {
     await roomController.clearRoom(id, scope)
   },
+}
 
+/** Cowork: the session's files and previews. */
+const coworkExtras: Pick<RemoteExtras, 'coworkFiles' | 'coworkFile' | 'coworkPreview'> = {
   // CoworkCodePanel's explorer and viewer: the attached project, read-only.
   coworkFiles: async (id, path) => {
     const found = coworkTurnsOf(id)
@@ -333,7 +337,6 @@ export const appExtras: RemoteExtras = {
     const listing = await projectListDir(await dataFolder(), folder, path)
     return { root: folder, entries: listing.entries, truncated: listing.truncated }
   },
-
   coworkFile: async (id, path) => {
     const found = coworkTurnsOf(id)
     if (!found) return null
@@ -389,7 +392,10 @@ export const appExtras: RemoteExtras = {
       return { ...empty, kind, note: messageOf(e) }
     }
   },
+}
 
+/** Hugging Face: search and downloads. */
+const hubExtras: Pick<RemoteExtras, 'hfSearch' | 'hfDownload' | 'downloads'> = {
   hfSearch: async ({ query, modality }) => {
     const token = useGeneralSetting.getState().huggingfaceToken || undefined
     const found = await searchHuggingFaceModels(query ?? '', token, 'gguf')
@@ -451,7 +457,6 @@ export const appExtras: RemoteExtras = {
     await startGgufBundle({ bundleId, repo, modelId, group, groups, token, models: getServiceHub().models() })
     return bundleId
   },
-
   downloads: () =>
     Object.values(useHuggingFaceDownloads.getState().tasks).map((task) => ({
       id: task.id,
@@ -463,3 +468,11 @@ export const appExtras: RemoteExtras = {
       bytesPerSecond: task.bytesPerSecond ?? null,
     })),
 }
+
+export const appExtras: RemoteExtras = Object.assign(
+  {},
+  chatExtras,
+  roomExtras,
+  coworkExtras,
+  hubExtras
+)
