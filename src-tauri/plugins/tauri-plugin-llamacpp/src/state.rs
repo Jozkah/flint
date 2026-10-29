@@ -27,6 +27,8 @@ pub struct LlamacppState {
     pub addon_busy: std::sync::atomic::AtomicBool,
     /// Set to stop the running download.
     pub addon_cancel: std::sync::atomic::AtomicBool,
+    /// Native confirmation before a custom llama-server path is spawned.
+    pub custom_exe: crate::engine::custom_exe::CustomExeGate,
 }
 
 impl Default for LlamacppState {
@@ -39,6 +41,7 @@ impl Default for LlamacppState {
             addon_in_use: std::sync::Mutex::new(None),
             addon_busy: std::sync::atomic::AtomicBool::new(false),
             addon_cancel: std::sync::atomic::AtomicBool::new(false),
+            custom_exe: Default::default(),
         }
     }
 }

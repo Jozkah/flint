@@ -256,12 +256,9 @@ pub async fn start_engine<R: tauri::Runtime>(
     // A custom llama-server replaces the bundled worker outright, so the
     // worker's add-on packs do not apply to it.
     let (handle, addon) = if let Some(exe) = custom {
-        if !exe.is_file() {
-            return Err(format!(
-                "The custom llama-server path {} is not a file",
-                exe.display()
-            ));
-        }
+        // The path comes from the webview: only run it once the user has
+        // confirmed this exact file in a native dialog.
+        let exe = state.custom_exe.authorize(&exe).await?;
         let handle = worker::spawn_external(
             &exe,
             &PathBuf::from(preset_path),
