@@ -228,33 +228,38 @@
   ],
   "agent_checkpoint_capture": [
     "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
+    "web-app/src/hooks/cowork/useCoworkTranscript.ts (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
-    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
-    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkCheckpoints)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_forget": [
     "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
+    "web-app/src/hooks/cowork/useCoworkTranscript.ts (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
-    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
-    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkCheckpoints)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_plan": [
     "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
+    "web-app/src/hooks/cowork/useCoworkTranscript.ts (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
-    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
-    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkCheckpoints)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_preview_diff": [
     "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
+    "web-app/src/hooks/cowork/useCoworkTranscript.ts (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
-    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
-    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkCheckpoints)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)"
   ],
   "agent_checkpoint_restore": [
     "web-app/src/containers/CoworkDiffRail.tsx (via useCoworkCheckpoints)",
+    "web-app/src/hooks/cowork/useCoworkTranscript.ts (via useCoworkCheckpoints)",
     "web-app/src/hooks/useCoworkCheckpoints.ts",
-    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
-    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkCheckpoints)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)"
   ],
   "agent_copy_apply": [
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
@@ -268,12 +273,16 @@
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via copyApi)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/teamTool.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
@@ -294,11 +303,15 @@
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/teamTool.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
@@ -353,10 +366,13 @@
     "web-app/src/lib/prClaimBackfill.ts (via listEvents)"
   ],
   "agent_events_record": [
+    "web-app/src/hooks/cowork/useCoworkViewState.ts (via recordEvents)",
     "web-app/src/lib/chatRun.ts (via recordEvents)",
+    "web-app/src/lib/cowork/run/runRequest.ts (via recordEvents)",
+    "web-app/src/lib/cowork/run/stepHandlers.ts (via recordEvents)",
+    "web-app/src/lib/cowork/run/streamSink.ts (via recordEvents)",
     "web-app/src/lib/coworkChildRunner.ts (via recordEvents)",
-    "web-app/src/lib/eventLog.ts",
-    "web-app/src/routes/cowork.tsx (via recordEvents)"
+    "web-app/src/lib/eventLog.ts"
   ],
   "agent_events_run": [
     "web-app/src/containers/CoworkTimelinePanel.tsx (via loadRunRecording)",
@@ -506,16 +522,16 @@
     "web-app/src/lib/coworkReview.ts"
   ],
   "agent_sandbox_apply_file": [
-    "web-app/src/lib/coworkSandboxApply.ts",
-    "web-app/src/routes/cowork.tsx (via applySandboxFile)"
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via applySandboxFile)",
+    "web-app/src/lib/coworkSandboxApply.ts"
   ],
   "agent_sandbox_apply_hunk": [
     "web-app/src/containers/CoworkCodeRail.tsx (via applySandboxHunk)",
     "web-app/src/lib/coworkSandboxApply.ts"
   ],
   "agent_sandbox_apply_probe": [
-    "web-app/src/lib/coworkApplyAll.ts",
-    "web-app/src/routes/cowork.tsx (via probeSandboxFile)"
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via probeSandboxFile)",
+    "web-app/src/lib/coworkApplyAll.ts"
   ],
   "agent_skill_delete": [
     "web-app/src/containers/extensions/SkillsTab.tsx (via deleteSkill)",
@@ -525,24 +541,28 @@
     "web-app/src/containers/SkillSelector.tsx (via useSkills)",
     "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
     "web-app/src/hooks/useSkills.ts",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useSkills)",
     "web-app/src/routes/cowork.tsx (via useSkills)"
   ],
   "agent_skill_enabled_set": [
     "web-app/src/containers/SkillSelector.tsx (via useSkills)",
     "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
     "web-app/src/hooks/useSkills.ts",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useSkills)",
     "web-app/src/routes/cowork.tsx (via useSkills)"
   ],
   "agent_skill_hub_import": [
     "web-app/src/containers/SkillSelector.tsx (via useSkills)",
     "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
     "web-app/src/hooks/useSkills.ts",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useSkills)",
     "web-app/src/routes/cowork.tsx (via useSkills)"
   ],
   "agent_skill_hub_list": [
     "web-app/src/containers/SkillSelector.tsx (via useSkills)",
     "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
     "web-app/src/hooks/useSkills.ts",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useSkills)",
     "web-app/src/routes/cowork.tsx (via useSkills)"
   ],
   "agent_skill_list": [
@@ -565,10 +585,10 @@
     "web-app/src/lib/slashCatalog.ts"
   ],
   "agent_subagent_list": [
+    "web-app/src/hooks/cowork/useCoworkFolderScans.ts (via listSubagents)",
     "web-app/src/lib/chatDelegation.ts (via listSubagents)",
     "web-app/src/lib/coworkSubagentRegistry.ts",
-    "web-app/src/lib/surfaceDelegation.ts (via listSubagents)",
-    "web-app/src/routes/cowork.tsx (via listSubagents)"
+    "web-app/src/lib/surfaceDelegation.ts (via listSubagents)"
   ],
   "agent_subagent_memory_load": [
     "web-app/src/lib/coworkSubagent.ts (via parseMemoryScope)",
@@ -579,16 +599,16 @@
     "web-app/src/lib/coworkSubagentMemory.ts"
   ],
   "agent_team_child_begin": [
-    "web-app/src/lib/teamChildren.ts",
-    "web-app/src/routes/cowork.tsx (via beginTeamChild)"
+    "web-app/src/lib/cowork/run/teamTool.ts (via beginTeamChild)",
+    "web-app/src/lib/teamChildren.ts"
   ],
   "agent_team_child_propose": [
     "web-app/src/containers/CoworkTeamReviews.tsx (via proposeTeamChild)",
     "web-app/src/lib/teamChildren.ts"
   ],
   "agent_team_child_settle": [
-    "web-app/src/lib/teamChildren.ts",
-    "web-app/src/routes/cowork.tsx (via settleTeamChild)"
+    "web-app/src/lib/cowork/run/teamTool.ts (via settleTeamChild)",
+    "web-app/src/lib/teamChildren.ts"
   ],
   "agent_team_children_list": [
     "web-app/src/containers/CoworkTeamReviews.tsx (via listTeamChildren)",
@@ -600,11 +620,15 @@
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/teamTool.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
@@ -623,11 +647,15 @@
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/teamTool.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
@@ -642,11 +670,15 @@
     "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkEditAuthority.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/cowork/useCoworkSessionContext.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
     "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/runRequest.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/cowork/run/teamTool.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
@@ -825,8 +857,8 @@
     "web-app/src/containers/ThreadConversation.tsx (via closeBrowserSession)",
     "web-app/src/lib/agentTools.ts (via closeBrowserSession)",
     "web-app/src/lib/browserTool.ts",
-    "web-app/src/lib/cowork/run/settleRun.ts (via closeBrowserSession)",
-    "web-app/src/routes/cowork.tsx (via closeBrowserSession)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via closeBrowserSession)",
+    "web-app/src/lib/cowork/run/settleRun.ts (via closeBrowserSession)"
   ],
   "browser_tool_describe": [
     "web-app/src/lib/agentTools.ts (via describeBrowserCall)",
@@ -1164,12 +1196,13 @@
     "web-app/src/containers/CompactionPolicySettings.tsx (via getCompactionPolicy)",
     "web-app/src/containers/ThreadConversation.tsx (via getCompactionPolicy)",
     "web-app/src/containers/WhatJanIsUsing.tsx (via getCompactionPolicy)",
+    "web-app/src/hooks/cowork/useCoworkRunActions.ts (via getCompactionPolicy)",
     "web-app/src/lib/chat/transport/overflowRecovery.ts (via getCompactionPolicy)",
     "web-app/src/lib/compactionPolicy.ts",
+    "web-app/src/lib/cowork/run/runRequest.ts (via getCompactionPolicy)",
     "web-app/src/lib/custom-chat-transport.ts (via getCompactionPolicy)",
     "web-app/src/lib/remote/appExtras.ts (via getCompactionPolicy)",
-    "web-app/src/lib/rooms/compactionSettings.ts (via getCompactionPolicy)",
-    "web-app/src/routes/cowork.tsx (via getCompactionPolicy)"
+    "web-app/src/lib/rooms/compactionSettings.ts (via getCompactionPolicy)"
   ],
   "get_computer_exclusions": [
     "web-app/src/containers/ComputerExclusionSettings.tsx (via getComputerExclusions)",
@@ -1615,16 +1648,16 @@
     "web-app/src/lib/payloadUsage.ts"
   ],
   "payload_usage_record": [
+    "web-app/src/lib/cowork/run/stepHandlers.ts (via recordPayloadUsage)",
     "web-app/src/lib/custom-chat-transport.ts (via recordPayloadUsage)",
-    "web-app/src/lib/payloadUsage.ts",
-    "web-app/src/routes/cowork.tsx (via recordPayloadUsage)"
+    "web-app/src/lib/payloadUsage.ts"
   ],
   "plugin:agent-tools|advertised_tool_schemas": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
     "web-app/src/containers/SandboxToolchainGrants.tsx (via getSandboxToolchains)",
     "web-app/src/lib/agentTools.ts",
     "web-app/src/lib/agentTools.ts (via advertisedToolSchemas)",
-    "web-app/src/routes/cowork.tsx (via getSandboxToolchains)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via getSandboxToolchains)"
   ],
   "plugin:agent-tools|bash_job_kill": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1690,7 +1723,7 @@
   ],
   "plugin:agent-tools|memory_conflicts": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryConflicts)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryConflicts)"
   ],
   "plugin:agent-tools|memory_delete": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1698,11 +1731,11 @@
   ],
   "plugin:agent-tools|memory_export": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryExport)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryExport)"
   ],
   "plugin:agent-tools|memory_import": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryImport)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryImport)"
   ],
   "plugin:agent-tools|memory_list": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1722,15 +1755,15 @@
   ],
   "plugin:agent-tools|memory_record_commit": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordCommit)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordCommit)"
   ],
   "plugin:agent-tools|memory_record_edit": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordEdit)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordEdit)"
   ],
   "plugin:agent-tools|memory_record_forget": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordForget)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordForget)"
   ],
   "plugin:agent-tools|memory_record_get": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1741,15 +1774,15 @@
   ],
   "plugin:agent-tools|memory_record_pin": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordPin)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordPin)"
   ],
   "plugin:agent-tools|memory_record_propose": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordPropose)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordPropose)"
   ],
   "plugin:agent-tools|memory_record_restore": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordRestore)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordRestore)"
   ],
   "plugin:agent-tools|memory_record_set_expiration": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
@@ -1760,7 +1793,7 @@
   ],
   "plugin:agent-tools|memory_records_list": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryRecordsList)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryRecordsList)"
   ],
   "plugin:agent-tools|memory_retrieve": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1768,21 +1801,21 @@
   ],
   "plugin:agent-tools|memory_scope_clear": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryScopeClear)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryScopeClear)"
   ],
   "plugin:agent-tools|memory_settings_get": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memorySettingsGet)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memorySettingsGet)"
   ],
   "plugin:agent-tools|memory_settings_update": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/lib/memoryBinding.ts",
-    "web-app/src/routes/settings/memory.tsx (via memorySettingsUpdate)",
-    "web-app/src/routes/settings/memory.tsx (via setMemoryEnabled)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memorySettingsUpdate)",
+    "web-app/src/hooks/memory/useMemorySettings.ts (via setMemoryEnabled)",
+    "web-app/src/lib/memoryBinding.ts"
   ],
   "plugin:agent-tools|memory_storage_summary": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/settings/memory.tsx (via memoryStorageSummary)"
+    "web-app/src/hooks/memory/useMemorySettings.ts (via memoryStorageSummary)"
   ],
   "plugin:agent-tools|memory_write": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1811,10 +1844,11 @@
   "plugin:agent-tools|project_read_file": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
     "web-app/src/containers/CoworkCodePanel.tsx (via projectReadFile)",
+    "web-app/src/hooks/cowork/useCoworkFolderScans.ts (via projectReadFile)",
+    "web-app/src/hooks/cowork/useCoworkPathActions.ts (via projectReadFile)",
     "web-app/src/hooks/useCompatManifest.ts (via projectReadFile)",
     "web-app/src/lib/remote/appExtras.ts (via projectReadFile)",
-    "web-app/src/lib/safeReferences.ts (via projectReadFile)",
-    "web-app/src/routes/cowork.tsx (via projectReadFile)"
+    "web-app/src/lib/safeReferences.ts (via projectReadFile)"
   ],
   "plugin:agent-tools|project_survey": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
@@ -1889,7 +1923,7 @@
   ],
   "plugin:agent-tools|tool_resources_finish_run": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
-    "web-app/src/routes/cowork.tsx (via finishRunResources)"
+    "web-app/src/lib/cowork/run/runRequest.ts (via finishRunResources)"
   ],
   "plugin:agent-tools|tool_schemas": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
@@ -2228,7 +2262,7 @@
     "web-app/src/lib/ccContextHooks.ts",
     "web-app/src/lib/custom-chat-transport.ts (via runCcContextHooks)"
   ],
-  "save_attachment_file": [
+  "save_attachment_bytes": [
     "web-app/src/services/uploads/default.ts"
   ],
   "save_dialog": [
@@ -2434,9 +2468,9 @@
   ],
   "tool_activity_items": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via loadToolActivity)",
+    "web-app/src/hooks/cowork/useCoworkTranscript.ts (via loadToolActivity)",
     "web-app/src/hooks/useCampaignTaskSteps.ts (via loadToolActivity)",
-    "web-app/src/lib/toolActivity.ts",
-    "web-app/src/routes/cowork.tsx (via loadToolActivity)"
+    "web-app/src/lib/toolActivity.ts"
   ],
   "tool_activity_record": [
     "web-app/src/containers/ThreadConversation.tsx (via recordToolActivity)",

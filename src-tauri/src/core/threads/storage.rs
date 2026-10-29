@@ -6,8 +6,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::helpers::{
-    append_message_line_if_new, get_lock_for_thread, preserve_bad_lines, read_messages_lossy,
-    update_thread_metadata, write_file_atomically, write_messages_to_file,
+    append_message_line_if_new, append_message_revision, get_lock_for_thread, preserve_bad_lines,
+    read_messages_lossy, update_thread_metadata, write_file_atomically, write_messages_to_file,
+    MAX_REVISIONS,
 };
 use super::utils::{
     ensure_data_dirs, ensure_thread_dir_exists, get_messages_path, get_thread_dir,
@@ -168,17 +169,32 @@ pub async fn modify_message_in(root: &Path, message: Value) -> Result<Value, Str
         .ok_or("Missing message id")?;
     let lock = get_lock_for_thread(thread_id).await;
     let _guard = lock.lock().await;
-    let read = read_messages_lossy(root, thread_id)?;
-    let mut messages = read.messages;
-    preserve_bad_lines(root, thread_id, &read.bad_lines)?;
-    if let Some(index) = messages.iter().position(|item| item.get("id").and_then(Value::as_str) == Some(message_id)) {
-        messages[index] = message.clone();
-    } else {
-        ensure_thread_dir_exists(root, thread_id)?;
-        messages.push(message.clone());
+    ensure_thread_dir_exists(root, thread_id)?;
+    let path = get_messages_path(root, thread_id);
+    // An update is one appended revision line, not a rewrite of the whole
+    // file: readers fold it onto the message (or add it, for a new id).
+    let revisions = append_message_revision(&path, &message, message_id)?;
+    // Compact once enough revisions piled up, or when this process does not
+    // know how many there are (another writer touched the file).
+    if revisions.is_none_or(|n| n >= MAX_REVISIONS) {
+        compact_messages_unlocked(root, thread_id)?;
     }
-    write_messages_to_file(&messages, &get_messages_path(root, thread_id))?;
     Ok(message)
+}
+
+/// Rewrite a thread's messages file with its revisions folded in, if it
+/// carries any. Callers hold the thread's lock.
+pub fn compact_messages_unlocked(root: &Path, thread_id: &str) -> Result<(), String> {
+    let read = read_messages_lossy(root, thread_id)?;
+    let path = get_messages_path(root, thread_id);
+    if read.revisions == 0 {
+        super::helpers::remember_compacted(&path, &read.messages);
+        return Ok(());
+    }
+    preserve_bad_lines(root, thread_id, &read.bad_lines)?;
+    write_messages_to_file(&read.messages, &path)?;
+    super::helpers::remember_compacted(&path, &read.messages);
+    Ok(())
 }
 
 pub async fn delete_message_in(root: &Path, thread_id: &str, message_id: &str) -> Result<(), String> {
@@ -215,5 +231,71 @@ mod create_tests {
         }
         let made = create_thread_in(dir.path(), serde_json::json!({"title": "t"})).unwrap();
         assert!(made["id"].is_string());
+    }
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn root() -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("jan_revisions_{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn lines(root: &Path, thread: &str) -> usize {
+        fs::read_to_string(get_messages_path(root, thread)).unwrap().lines().count()
+    }
+
+    #[tokio::test]
+    async fn updates_append_revisions_that_fold_and_compact_once() {
+        let root = root();
+        let thread = "t-revisions";
+        let msg = |id: &str, text: &str| json!({"id": id, "thread_id": thread, "role": "assistant", "content": text});
+        create_message_in(&root, msg("a", "first")).await.unwrap();
+        create_message_in(&root, msg("b", "second")).await.unwrap();
+        // The first update after the process learned the file appends one line.
+        for i in 0..(MAX_REVISIONS - 1) {
+            modify_message_in(&root, msg("a", &format!("rev {i}"))).await.unwrap();
+        }
+        assert_eq!(lines(&root, thread), 2 + MAX_REVISIONS - 1, "updates append, never rewrite");
+        let read = read_messages_lossy(&root, thread).unwrap();
+        assert_eq!(read.revisions, MAX_REVISIONS - 1);
+        assert_eq!(read.messages.len(), 2);
+        assert_eq!(read.messages[0]["content"], format!("rev {}", MAX_REVISIONS - 2));
+        assert_eq!(read.messages[1]["content"], "second", "order is where a message first appeared");
+
+        // One more reaches the bound: exactly one compaction.
+        modify_message_in(&root, msg("a", "final")).await.unwrap();
+        assert_eq!(lines(&root, thread), 2);
+        let folded = super::super::helpers::read_messages_from_file(&root, thread).unwrap();
+        assert_eq!(folded[0]["content"], "final");
+
+        // A new id through modify is added, and a delete still works.
+        modify_message_in(&root, msg("c", "new")).await.unwrap();
+        delete_message_in(&root, thread, "a").await.unwrap();
+        let after = read_messages_lossy(&root, thread).unwrap();
+        let ids: Vec<&str> = after.messages.iter().map(|m| m["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["b", "c"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_file_changed_by_another_writer_is_compacted_on_update() {
+        let root = root();
+        let thread = "t-foreign";
+        let msg = |id: &str, text: &str| json!({"id": id, "thread_id": thread, "role": "user", "content": text});
+        create_message_in(&root, msg("a", "one")).await.unwrap();
+        // Another process appends a revision this one never saw.
+        let path = get_messages_path(&root, thread);
+        let mut raw = fs::read_to_string(&path).unwrap();
+        raw.push_str(&format!("{}\n", msg("a", "two")));
+        fs::write(&path, raw).unwrap();
+        modify_message_in(&root, msg("a", "three")).await.unwrap();
+        assert_eq!(lines(&root, thread), 1);
+        assert_eq!(read_messages_lossy(&root, thread).unwrap().messages[0]["content"], "three");
+        let _ = fs::remove_dir_all(&root);
     }
 }

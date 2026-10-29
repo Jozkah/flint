@@ -18,18 +18,20 @@ describe('DefaultUploadsService.saveDroppedFile', () => {
     vi.mocked(invoke).mockReset()
   })
 
-  it('hands the file name and base64 contents to the backend and returns the saved path', async () => {
+  it('sends the raw bytes with the encoded name and returns the saved path', async () => {
     vi.mocked(invoke).mockResolvedValue('D:/data/attachments/01J/report.pdf')
     // Bytes that are not valid UTF-8, so a text round-trip would corrupt them.
     const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x00, 0xff, 0xfe, 0x80])
-    const file = new File([bytes], 'report.pdf', { type: 'application/pdf' })
+    const file = new File([bytes], 'rapport été.pdf', { type: 'application/pdf' })
 
     const path = await new DefaultUploadsService().saveDroppedFile(file)
 
     expect(path).toBe('D:/data/attachments/01J/report.pdf')
-    expect(invoke).toHaveBeenCalledWith('save_attachment_file', {
-      fileName: 'report.pdf',
-      dataBase64: Buffer.from(bytes).toString('base64'),
+    const [cmd, body, options] = vi.mocked(invoke).mock.calls[0]
+    expect(cmd).toBe('save_attachment_bytes')
+    expect(Array.from(body as Uint8Array)).toEqual(Array.from(bytes))
+    expect(options).toEqual({
+      headers: { 'x-flint-file-name': 'rapport%20%C3%A9t%C3%A9.pdf' },
     })
   })
 
@@ -38,23 +40,19 @@ describe('DefaultUploadsService.saveDroppedFile', () => {
 
     await new DefaultUploadsService().saveDroppedFile(new File(['x'], 'a.txt'), 'thread-1')
 
-    expect(invoke).toHaveBeenCalledWith('save_attachment_file', {
-      fileName: 'a.txt',
-      dataBase64: Buffer.from('x').toString('base64'),
-      threadId: 'thread-1',
+    expect(vi.mocked(invoke).mock.calls[0][2]).toEqual({
+      headers: { 'x-flint-file-name': 'a.txt', 'x-flint-thread-id': 'thread-1' },
     })
   })
 
-  it('encodes files larger than one conversion chunk intact', async () => {
+  it('sends large files intact', async () => {
     vi.mocked(invoke).mockResolvedValue('saved')
     const bytes = new Uint8Array(200_000).map((_, i) => i % 256)
 
     await new DefaultUploadsService().saveDroppedFile(new File([bytes], 'big.bin'))
 
-    const [, args] = vi.mocked(invoke).mock.calls[0]
-    expect((args as { dataBase64: string }).dataBase64).toBe(
-      Buffer.from(bytes).toString('base64')
-    )
+    const [, body] = vi.mocked(invoke).mock.calls[0]
+    expect(Array.from(body as Uint8Array)).toEqual(Array.from(bytes))
   })
 })
 
