@@ -1,10 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  engineSlotsIdle,
-  findSessionByModel,
-  readGgufMetadata,
-} from '@janhq/tauri-plugin-llamacpp-api'
 import { cn, formatBytes } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,38 +11,27 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { useServiceHub } from '@/hooks/useServiceHub'
-import { useHardware } from '@/hooks/useHardware'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { offloadFor, useGpuOffload } from '@/hooks/useGpuOffload'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { providerFetch } from '@/lib/providerFetch'
 import {
-  assessModelFit,
-  DEFAULT_CTX_LENGTH,
-  kvArchitectureFromGguf,
-  resolveFitKvSettings,
-  settingValues,
+  runtimeVersion,
+  useCompatibilityTest,
+  useModelFitData,
+} from '@/hooks/useModelFit'
+import {
   tierForVerdict,
   type FitAssessment,
   type FitTier,
-  type KvArchitecture,
 } from '@/lib/modelCompatibility'
 import {
-  deviceSignature,
-  evidenceFor,
   resultKey,
-  settingsFromModel,
   type ConditionDifference,
   type EvidenceState,
   type TestMetrics,
 } from '@/lib/modelEvidence'
-import {
-  runCompatibilityTest,
-  type CompatibilityTestPlan,
-} from '@/lib/modelCompatibilityTest'
 
 interface ModelSupportStatusProps {
   modelId: string | undefined
@@ -73,15 +56,9 @@ function tierFor(state: EvidenceState, assessment: FitAssessment): FitTier {
   return tierForVerdict(assessment.verdict)
 }
 
-export const runtimeVersion = (): string =>
-  typeof VERSION !== 'undefined' ? VERSION : 'unknown'
+export { runtimeVersion }
 
 const bytes = (value: number) => formatBytes(value, { decimals: 1 })
-
-type TestState =
-  | { phase: 'idle' }
-  | { phase: 'running' }
-  | { phase: 'confirm'; plan: CompatibilityTestPlan }
 
 export const ModelSupportStatus = ({
   modelId,
@@ -91,20 +68,14 @@ export const ModelSupportStatus = ({
   onAdjustSettings,
 }: ModelSupportStatusProps) => {
   const { t } = useTranslation()
-  const serviceHub = useServiceHub()
-  const hardwareData = useHardware((s) => s.hardwareData)
   const providerObject = useModelProvider((s) =>
     provider ? s.getProviderByName(provider) : undefined
   )
   const activeModels = useAppState((s) => s.activeModels)
-  const setActiveModels = useAppState((s) => s.setActiveModels)
   const offload = useGpuOffload((s) =>
     modelId && activeModels.includes(modelId)
       ? offloadFor(s, modelId, activeModels)
       : undefined
-  )
-  const results = useModelEvidence((s) =>
-    provider && modelId ? s.results[resultKey(provider, modelId)] : undefined
   )
   const preferredModel = useModelEvidence((s) => s.preferredModel)
   const dismissed = useModelEvidence((s) =>
@@ -112,241 +83,18 @@ export const ModelSupportStatus = ({
       ? s.dismissedHints.includes(resultKey(provider, modelId))
       : false
   )
-  const { addResult, setPreferredModel, dismissHint, restoreHint } =
+  const { setPreferredModel, dismissHint, restoreHint } =
     useModelEvidence.getState()
 
-  const [sizes, setSizes] = useState<Record<string, number>>({})
-  const [modelPath, setModelPath] = useState<string | undefined>()
-  const [architecture, setArchitecture] = useState<KvArchitecture | null>(null)
-  const [testState, setTestState] = useState<TestState>({ phase: 'idle' })
-  const [notice, setNotice] = useState<string>('')
-  const abortRef = useRef<AbortController | null>(null)
-
-  const isLocalEngine = provider === 'llamacpp'
-
-  useEffect(() => {
-    if (!modelId || !isLocalEngine) {
-      setSizes({})
-      setModelPath(undefined)
-      return
-    }
-    let cancelled = false
-    serviceHub
-      .models()
-      .fetchModels()
-      .then((infos) => {
-        if (cancelled) return
-        const next: Record<string, number> = {}
-        for (const info of infos) {
-          if (info.providerId === provider && info.sizeBytes) {
-            next[info.id] = info.sizeBytes
-          }
-        }
-        setSizes(next)
-        setModelPath(
-          infos.find((i) => i.id === modelId && i.providerId === provider)?.path
-        )
-      })
-      .catch(() => {
-        if (!cancelled) setSizes({})
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [modelId, provider, isLocalEngine, serviceHub])
-
-  // The attention shape turns the KV estimate from a guess into arithmetic.
-  useEffect(() => {
-    if (!modelPath) {
-      setArchitecture(null)
-      return
-    }
-    let cancelled = false
-    readGgufMetadata(modelPath)
-      .then((meta) => {
-        if (!cancelled) setArchitecture(kvArchitectureFromGguf(meta?.metadata))
-      })
-      .catch(() => {
-        if (!cancelled) setArchitecture(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [modelPath])
-
-  // Leaving mid-test cancels it, and the runner releases what it loaded.
-  useEffect(() => () => abortRef.current?.abort(), [])
-
-  const modelConfig = providerObject?.models.find((m) => m.id === modelId)
-  const settings = useMemo(() => settingsFromModel(modelConfig), [modelConfig])
-  const sizeBytes = modelId ? (sizes[modelId] ?? null) : null
-  const otherLoadedBytes = activeModels
-    .filter((id) => id !== modelId)
-    .reduce((sum, id) => sum + (sizes[id] ?? 0), 0)
-
-  const kvSettings = useMemo(
-    () =>
-      resolveFitKvSettings(
-        settingValues(modelConfig?.settings as never),
-        settingValues(providerObject?.settings as never)
-      ),
-    [modelConfig, providerObject]
-  )
-
-  const assessment = useMemo(
-    () =>
-      assessModelFit({
-        weightsBytes: sizeBytes,
-        ctxLength: contextSize || DEFAULT_CTX_LENGTH,
-        hardware: hardwareData,
-        architecture,
-        cacheTypeK: kvSettings.cacheTypeK,
-        cacheTypeV: kvSettings.cacheTypeV,
-        noKvOffload: kvSettings.noKvOffload,
-        gpuLayers: typeof settings.ngl === 'number' ? settings.ngl : undefined,
-        otherLoadedBytes,
-      }),
-    [
-      kvSettings,
-      sizeBytes,
-      contextSize,
-      hardwareData,
-      architecture,
-      settings,
-      otherLoadedBytes,
-    ]
-  )
-
-  const currentConditions = useMemo(
-    () => ({
-      modelSizeBytes: sizeBytes,
-      settings,
-      runtimeVersion: runtimeVersion(),
-      device: deviceSignature(hardwareData),
-    }),
-    [sizeBytes, settings, hardwareData]
-  )
-  const evidence = useMemo(
-    () => evidenceFor(results, currentConditions),
-    [results, currentConditions]
-  )
-
-  const runTest = useCallback(
-    async (allowUnload: string[] = []) => {
-      if (!modelId || !providerObject) return
-      const controller = new AbortController()
-      abortRef.current = controller
-      setTestState({ phase: 'running' })
-      setNotice(t('model-fit:test.running'))
-      const modelsMax = Number(
-        providerObject.settings?.find((s) => s.key === 'models_max')
-          ?.controller_props?.value ?? 1
-      )
-      const startedConditions = currentConditions
-      try {
-        const outcome = await runCompatibilityTest(
-          {
-            modelId,
-            modelsMax: Number.isFinite(modelsMax) ? modelsMax : 1,
-            allowUnload,
-            signal: controller.signal,
-          },
-          {
-            getActiveModels: () =>
-              serviceHub.models().getActiveModels('llamacpp'),
-            startModel: (id) =>
-              serviceHub.models().startModel(providerObject, id),
-            stopModel: (id) => serviceHub.models().stopModel(id, 'llamacpp'),
-            findSession: findSessionByModel,
-            fetch: providerFetch,
-            now: () => performance.now(),
-            isModelIdle: (id) => engineSlotsIdle(id),
-          }
-        )
-        if (outcome.kind === 'needs-confirmation') {
-          setTestState({ phase: 'confirm', plan: outcome.plan })
-          setNotice(t('model-fit:test.needsConfirmation'))
-          return
-        }
-        if (outcome.kind === 'blocked') {
-          setTestState({ phase: 'idle' })
-          setNotice(
-            outcome.reason === 'model-busy'
-              ? t('model-fit:test.blockedBusy', {
-                  models: outcome.models.join(', '),
-                })
-              : t('model-fit:test.blockedInProgress')
-          )
-          return
-        }
-        const restoreText =
-          outcome.notRestored.length > 0
-            ? ` ${t('model-fit:test.notRestored', { models: outcome.notRestored.join(', ') })}`
-            : outcome.restored.length > 0
-              ? ` ${t('model-fit:test.restored', { models: outcome.restored.join(', ') })}`
-              : ''
-        if (outcome.kind === 'cancelled') {
-          setTestState({ phase: 'idle' })
-          setNotice(
-            (outcome.released
-              ? t('model-fit:test.cancelled')
-              : t('model-fit:test.cancelledNotReleased')) + restoreText
-          )
-          return
-        }
-        addResult({
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          provider: 'llamacpp',
-          modelId,
-          testedAt: Date.now(),
-          outcome: outcome.outcome,
-          workload: 'short-reply',
-          conditions: {
-            ...startedConditions,
-            concurrentModels: outcome.concurrentModels,
-          },
-          metrics: outcome.metrics,
-          ...(outcome.error ? { error: outcome.error } : {}),
-          unloadedModels: outcome.unloadedModels,
-        })
-        setTestState({ phase: 'idle' })
-        const summary =
-          outcome.outcome === 'success'
-            ? t('model-fit:test.succeeded')
-            : t('model-fit:test.failed', {
-                reason: outcome.error?.message ?? '',
-              })
-        setNotice(
-          (outcome.released
-            ? summary
-            : `${summary} ${t('model-fit:test.notReleased')}`) + restoreText
-        )
-      } catch (error) {
-        setTestState({ phase: 'idle' })
-        setNotice(
-          t('model-fit:test.couldNotRun', {
-            reason: error instanceof Error ? error.message : String(error),
-          })
-        )
-      } finally {
-        abortRef.current = null
-        serviceHub
-          .models()
-          .getActiveModels()
-          .then((models) => setActiveModels(models || []))
-          .catch(() => {})
-      }
-    },
-    [
-      modelId,
-      providerObject,
-      currentConditions,
-      serviceHub,
-      addResult,
-      setActiveModels,
-      t,
-    ]
-  )
+  const { isLocalEngine, assessment, currentConditions, evidence } = useModelFitData({
+    modelId,
+    provider,
+    contextSize,
+    providerObject,
+    activeModels,
+  })
+  const { testState, setTestState, notice, setNotice, abortRef, runTest } =
+    useCompatibilityTest({ modelId, providerObject, currentConditions })
 
   if (!modelId || !provider || !isLocalEngine) return null
   if (
