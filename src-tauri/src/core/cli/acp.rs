@@ -23,7 +23,7 @@ use tokio::sync::mpsc;
 use super::providers::ProviderOverrides;
 use super::rpc::{await_mcp, input_lines, output_lines};
 use super::turn_host::{begin_turn, settle_turn, spawn_turn, Persist, TurnMessage, TurnTask};
-use super::{agent_dir_for, prepare_agent_session, AgentSession, SessionFlags};
+use super::{agent_dir_for, prepare_agent_session, AgentSession, PermissionRegistry, SessionFlags};
 use crate::core::agent::events::StreamEvent;
 
 /// The ACP version this server speaks.
@@ -341,10 +341,65 @@ pub(crate) fn decision_from_answer(message: &Value) -> PermissionDecision {
 
 // ── process plumbing ────────────────────────────────────────────────────────
 
+/// What the message loop needs from one session. The real one wraps an
+/// [`AgentSession`]; the tests drive the loop with a scripted one.
+trait AcpSession: Send + Sync {
+    /// Start a turn for `text`.
+    fn start(&mut self, text: String) -> TurnTask;
+    /// The gate prompts this session's turns wait on.
+    fn permissions(&self) -> PermissionRegistry;
+    /// Fold a finished turn into the session (and persist it); the error the
+    /// client is told about, if any.
+    fn settle(
+        &mut self,
+        session_id: &str,
+        updated_history: Option<Vec<Value>>,
+        result: &Result<Value, String>,
+        cancelled: bool,
+    ) -> Option<String>;
+}
+
 struct Session {
     agent: AgentSession,
     history: Vec<Value>,
 }
+
+impl AcpSession for Session {
+    fn start(&mut self, text: String) -> TurnTask {
+        let body = begin_turn(&self.agent, &mut self.history, Value::String(text), true);
+        spawn_turn(self.agent.args.clone(), body)
+    }
+
+    fn permissions(&self) -> PermissionRegistry {
+        self.agent.permission_requests.clone()
+    }
+
+    fn settle(
+        &mut self,
+        session_id: &str,
+        updated_history: Option<Vec<Value>>,
+        result: &Result<Value, String>,
+        cancelled: bool,
+    ) -> Option<String> {
+        let project = self.agent.args.project_root.clone();
+        let base = project.as_deref().map(agent_dir_for);
+        settle_turn(
+            &mut self.history,
+            updated_history,
+            result,
+            cancelled,
+            base.as_deref().map(|base| Persist {
+                base,
+                session_id,
+                model: &self.agent.model,
+                metadata: None,
+            }),
+        )
+        .error
+    }
+}
+
+type Sessions = HashMap<String, Box<dyn AcpSession>>;
 
 struct ActiveTurn {
     session_id: String,
@@ -366,24 +421,24 @@ async fn send(out: &mpsc::Sender<Value>, record: Value) -> Result<(), String> {
 }
 
 /// Answer one gate prompt, if it is still waiting.
-async fn resolve(agent: &AgentSession, request_id: &str, decision: PermissionDecision) {
-    if let Some(sender) = agent.permission_requests.lock().await.remove(request_id) {
+async fn resolve(registry: &PermissionRegistry, request_id: &str, decision: PermissionDecision) {
+    if let Some(sender) = registry.lock().await.remove(request_id) {
         let _ = sender.send(decision);
     }
 }
 
 /// Deny every prompt the turn still holds.
-async fn deny_all(agent: &AgentSession, pending: &mut HashMap<u64, PendingPermission>) {
+async fn deny_all(registry: &PermissionRegistry, pending: &mut HashMap<u64, PendingPermission>) {
     for (_, waiting) in pending.drain() {
-        resolve(agent, &waiting.request_id, PermissionDecision::Deny).await;
+        resolve(registry, &waiting.request_id, PermissionDecision::Deny).await;
     }
     // Dropping the rest resolves them to Deny on the loop's side.
-    agent.permission_requests.lock().await.clear();
+    registry.lock().await.clear();
 }
 
 /// Fold a finished turn into its session and answer its `session/prompt`.
 async fn finish(
-    sessions: &mut HashMap<String, Session>,
+    sessions: &mut Sessions,
     mut turn: ActiveTurn,
     result: Result<Value, String>,
     cancelled: bool,
@@ -393,24 +448,11 @@ async fn finish(
     let Some(session) = sessions.get_mut(&turn.session_id) else {
         return send(out, error(&turn.rpc_id, -32603, "session missing")).await;
     };
-    let project = session.agent.args.project_root.clone();
-    let base = project.as_deref().map(agent_dir_for);
-    let settled = settle_turn(
-        &mut session.history,
-        turn.updated_history.take(),
-        &result,
-        cancelled,
-        base.as_deref().map(|base| Persist {
-            base,
-            session_id: &turn.session_id,
-            model: &session.agent.model,
-            metadata: None,
-        }),
-    );
+    let settled_error = session.settle(&turn.session_id, turn.updated_history.take(), &result, cancelled);
     for record in close_open_calls(&turn.session_id, &mut turn.tracker) {
         send(out, record).await?;
     }
-    let reply = match (cancelled, settled.error) {
+    let reply = match (cancelled, settled_error) {
         (false, Some(message)) => error(&turn.rpc_id, -32603, &message),
         _ => response(
             &turn.rpc_id,
@@ -420,7 +462,7 @@ async fn finish(
     send(out, reply).await
 }
 
-async fn new_session(cwd: &str, session_id: &str) -> Result<Session, String> {
+async fn new_session(cwd: &str, session_id: &str) -> Result<Box<dyn AcpSession>, String> {
     if !std::path::Path::new(cwd).is_dir() {
         return Err("cwd is not a directory".to_owned());
     }
@@ -433,7 +475,7 @@ async fn new_session(cwd: &str, session_id: &str) -> Result<Session, String> {
     )?;
     await_mcp(&mut agent).await;
     agent.args.session_id = Some(session_id.to_owned());
-    Ok(Session { agent, history: Vec::new() })
+    Ok(Box::new(Session { agent, history: Vec::new() }))
 }
 
 /// Serve ACP until stdin closes.
@@ -451,11 +493,11 @@ pub async fn serve() -> Result<(), String> {
 async fn serve_loop<F, Fut>(mut input: mpsc::Receiver<(Vec<u8>, bool)>, out: mpsc::Sender<Value>, init: F) -> Result<(), String>
 where
     F: Fn(String, String) -> Fut,
-    Fut: std::future::Future<Output = Result<Session, String>>,
+    Fut: std::future::Future<Output = Result<Box<dyn AcpSession>, String>>,
 {
     use futures_util::StreamExt;
     let mut inits = futures_util::stream::FuturesUnordered::new();
-    let mut sessions = HashMap::<String, Session>::new();
+    let mut sessions = Sessions::new();
     let mut active: Option<ActiveTurn> = None;
     let mut pending = HashMap::<u64, PendingPermission>::new();
     let mut next_request_id: u64 = 1;
@@ -479,8 +521,7 @@ where
                         let reply = if active.is_some() {
                             Some(error(&id, -32001, "a prompt is already running"))
                         } else if let Some(session) = sessions.get_mut(&session_id) {
-                            let body = begin_turn(&session.agent, &mut session.history, Value::String(text), true);
-                            let task = spawn_turn(session.agent.args.clone(), body);
+                            let task = session.start(text);
                             active = Some(ActiveTurn { session_id, rpc_id: id, task, updated_history: None, tracker: ToolTracker::default() });
                             None
                         } else {
@@ -493,7 +534,7 @@ where
                             let turn = active.take().expect("checked");
                             turn.task.runner.abort();
                             if let Some(session) = sessions.get(&session_id) {
-                                deny_all(&session.agent, &mut pending).await;
+                                deny_all(&session.permissions(), &mut pending).await;
                             }
                             finish(&mut sessions, turn, Err("cancelled".to_owned()), true, &out).await?;
                         }
@@ -502,7 +543,7 @@ where
                         let waiting = id.as_u64().and_then(|n| pending.remove(&n));
                         let session = active.as_ref().and_then(|turn| sessions.get(&turn.session_id));
                         if let (Some(waiting), Some(session)) = (waiting, session) {
-                            resolve(&session.agent, &waiting.request_id, decision_from_answer(&message)).await;
+                            resolve(&session.permissions(), &waiting.request_id, decision_from_answer(&message)).await;
                         }
                     }
                 }
@@ -564,7 +605,7 @@ where
                     let waiting = pending.remove(&id).expect("listed");
                     log::warn!("ACP: permission request {id} was not answered in time; denied");
                     if let Some(session) = active.as_ref().and_then(|turn| sessions.get(&turn.session_id)) {
-                        resolve(&session.agent, &waiting.request_id, PermissionDecision::Deny).await;
+                        resolve(&session.permissions(), &waiting.request_id, PermissionDecision::Deny).await;
                     }
                 }
             }
@@ -573,7 +614,7 @@ where
     // The editor is gone: deny what is waiting and stop the turn.
     if let Some(turn) = active.take() {
         if let Some(session) = sessions.get(&turn.session_id) {
-            deny_all(&session.agent, &mut pending).await;
+            deny_all(&session.permissions(), &mut pending).await;
         }
         turn.task.runner.abort();
         let _ = finish(&mut sessions, turn, Err("client gone".to_owned()), true, &out).await;
@@ -614,7 +655,7 @@ mod tests {
         let flag = started.clone();
         let task = tokio::spawn(serve_loop(in_rx, out_tx, move |_, _| {
             flag.store(true, std::sync::atomic::Ordering::SeqCst);
-            std::future::pending::<Result<Session, String>>()
+            std::future::pending::<Result<Box<dyn AcpSession>, String>>()
         }));
         let line = |s: &str| (s.as_bytes().to_vec(), false);
         in_tx.send(line(r#"{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":".","mcpServers":[]}}"#)).await.unwrap();
@@ -625,6 +666,172 @@ mod tests {
         assert!(started.load(std::sync::atomic::Ordering::SeqCst));
         drop(in_tx);
         tokio::time::timeout(Duration::from_secs(5), task).await.expect("loop did not stop").unwrap().unwrap();
+    }
+
+    /// A scripted session: each started turn hands the test the sender for its
+    /// events, so the test plays the engine.
+    struct FakeSession {
+        turns: std::sync::Arc<std::sync::Mutex<Vec<(String, mpsc::Sender<TurnMessage>)>>>,
+        registry: PermissionRegistry,
+    }
+
+    impl AcpSession for FakeSession {
+        fn start(&mut self, text: String) -> TurnTask {
+            let (tx, events) = mpsc::channel(16);
+            self.turns.lock().unwrap().push((text, tx));
+            TurnTask {
+                events,
+                runner: tokio::spawn(std::future::pending()),
+                steerer: tokio::spawn(std::future::pending()),
+                pending: Default::default(),
+            }
+        }
+        fn permissions(&self) -> PermissionRegistry {
+            self.registry.clone()
+        }
+        fn settle(&mut self, _: &str, _: Option<Vec<Value>>, _: &Result<Value, String>, _: bool) -> Option<String> {
+            None
+        }
+    }
+
+    struct Harness {
+        input: mpsc::Sender<(Vec<u8>, bool)>,
+        output: mpsc::Receiver<Value>,
+        turns: std::sync::Arc<std::sync::Mutex<Vec<(String, mpsc::Sender<TurnMessage>)>>>,
+        registry: PermissionRegistry,
+        task: tokio::task::JoinHandle<Result<(), String>>,
+    }
+
+    impl Harness {
+        fn start() -> Self {
+            let (input, in_rx) = mpsc::channel(16);
+            let (out_tx, output) = mpsc::channel(64);
+            let turns = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let registry: PermissionRegistry = Default::default();
+            let (t, r) = (turns.clone(), registry.clone());
+            let task = tokio::spawn(serve_loop(in_rx, out_tx, move |_, _| {
+                let session: Box<dyn AcpSession> = Box::new(FakeSession { turns: t.clone(), registry: r.clone() });
+                async move { Ok(session) }
+            }));
+            Harness { input, output, turns, registry, task }
+        }
+
+        async fn send(&self, line: &str) {
+            self.input.send((line.as_bytes().to_vec(), false)).await.unwrap();
+        }
+
+        async fn recv(&mut self) -> Value {
+            tokio::time::timeout(Duration::from_secs(5), self.output.recv()).await.expect("no record").expect("loop gone")
+        }
+
+        async fn new_session(&mut self, id: u64) -> String {
+            let cwd = serde_json::to_string(&std::env::temp_dir()).unwrap();
+            self.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"session/new","params":{{"cwd":{cwd},"mcpServers":[]}}}}"#)).await;
+            let reply = self.recv().await;
+            assert_eq!(reply["id"], id, "{reply}");
+            reply["result"]["sessionId"].as_str().expect("session id").to_owned()
+        }
+
+        async fn prompt(&self, id: u64, session: &str, text: &str) {
+            self.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"session/prompt","params":{{"sessionId":"{session}","prompt":[{{"type":"text","text":"{text}"}}]}}}}"#)).await;
+        }
+
+        /// The event sender of the `n`th started turn, once it has started.
+        async fn turn(&self, n: usize) -> mpsc::Sender<TurnMessage> {
+            for _ in 0..500 {
+                if let Some((_, tx)) = self.turns.lock().unwrap().get(n) {
+                    return tx.clone();
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            panic!("turn {n} never started");
+        }
+
+        async fn stop(self) {
+            drop(self.input);
+            tokio::time::timeout(Duration::from_secs(5), self.task).await.expect("loop did not stop").unwrap().unwrap();
+        }
+    }
+
+    fn token(text: &str) -> TurnMessage {
+        TurnMessage::Event(Box::new(StreamEvent::Token { text: text.into() }))
+    }
+
+    #[tokio::test]
+    async fn a_prompt_streams_its_turn_and_answers_with_the_stop_reason() {
+        let mut h = Harness::start();
+        let sid = h.new_session(1).await;
+        h.prompt(2, &sid, "hi").await;
+        let turn = h.turn(0).await;
+        assert_eq!(h.turns.lock().unwrap()[0].0, "hi");
+        turn.send(token("hello")).await.unwrap();
+        let update = h.recv().await;
+        assert_eq!(update["method"], "session/update");
+        assert_eq!(update["params"]["sessionId"], sid.as_str());
+        assert_eq!(update["params"]["update"]["content"]["text"], "hello");
+        turn.send(TurnMessage::Finished(Ok(json!({})))).await.unwrap();
+        let reply = h.recv().await;
+        assert_eq!(reply["id"], 2);
+        assert_eq!(reply["result"]["stopReason"], "end_turn");
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_prompt_for_an_unknown_session_is_a_params_error() {
+        let mut h = Harness::start();
+        h.prompt(3, "sess_missing", "hi").await;
+        let reply = h.recv().await;
+        assert_eq!(reply["id"], 3);
+        assert_eq!(reply["error"]["code"], -32602);
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_second_prompt_on_the_running_session_is_refused() {
+        let mut h = Harness::start();
+        let sid = h.new_session(1).await;
+        h.prompt(2, &sid, "one").await;
+        h.turn(0).await;
+        h.prompt(3, &sid, "two").await;
+        let reply = h.recv().await;
+        assert_eq!(reply["id"], 3);
+        assert_eq!(reply["error"]["code"], -32001);
+        assert_eq!(h.turns.lock().unwrap().len(), 1);
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn cancel_ends_the_turn_as_cancelled() {
+        let mut h = Harness::start();
+        let sid = h.new_session(1).await;
+        h.prompt(2, &sid, "hi").await;
+        let turn = h.turn(0).await;
+        h.send(&format!(r#"{{"jsonrpc":"2.0","method":"session/cancel","params":{{"sessionId":"{sid}"}}}}"#)).await;
+        let reply = h.recv().await;
+        assert_eq!(reply["id"], 2);
+        assert_eq!(reply["result"]["stopReason"], "cancelled");
+        // The turn's channel is dropped with it.
+        tokio::time::timeout(Duration::from_secs(5), turn.closed()).await.expect("turn kept alive");
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_gate_prompt_is_asked_and_the_answer_reaches_the_gate() {
+        let mut h = Harness::start();
+        let sid = h.new_session(1).await;
+        h.prompt(2, &sid, "hi").await;
+        let turn = h.turn(0).await;
+        let (gate_tx, gate_rx) = tokio::sync::oneshot::channel();
+        h.registry.lock().await.insert("perm-1".into(), gate_tx);
+        turn.send(TurnMessage::Event(Box::new(prompt_event()))).await.unwrap();
+        let request = h.recv().await;
+        assert_eq!(request["method"], "session/request_permission");
+        assert_eq!(request["params"]["sessionId"], sid.as_str());
+        let rpc_id = request["id"].clone();
+        h.send(&json!({"jsonrpc":"2.0","id":rpc_id,"result":{"outcome":{"outcome":"selected","optionId":"allow_once"}}}).to_string()).await;
+        let decision = tokio::time::timeout(Duration::from_secs(5), gate_rx).await.expect("gate never answered").unwrap();
+        assert_eq!(decision, PermissionDecision::AllowOnce);
+        h.stop().await;
     }
 
     #[test]
