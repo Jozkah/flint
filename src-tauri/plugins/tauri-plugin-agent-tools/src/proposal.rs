@@ -1132,6 +1132,11 @@ pub fn plan(
             Some(id) => Some(read_blob(data_folder, id).map_err(ProposalError::Io)?),
             None => None,
         };
+        // Sensitivity is worked out again from the path and content, not
+        // taken from the record's own `sensitive` field, which is on disk.
+        if is_sensitive(&file.path, proposed.as_deref()) {
+            return Err(ProposalError::Sensitive(file.path.clone()));
+        }
         // From the content, not from the record's `flags`: a record whose
         // flags were emptied on disk still needs the acknowledgement.
         let flagged = !file.flags.is_empty()

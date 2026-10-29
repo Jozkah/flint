@@ -1172,6 +1172,9 @@ async fn execute_tool_inner(
         .as_deref()
         .filter(|id| crate::grants::main_writable(id, &thread_id))
         .and_then(|_| write_roots.first().cloned());
+    // The folder whose `agent.toml` governs this run: the attached project, or
+    // the folder the run may edit when nothing was attached read-only.
+    let policy_root: Option<PathBuf> = read_only_project.as_deref().map(PathBuf::from).or_else(|| edit_folder.clone());
     let mut write_roots = write_roots;
     for root in access_write {
         if !write_roots.contains(&root) {
@@ -1222,7 +1225,7 @@ async fn execute_tool_inner(
     // denied a tool or a path was obeyed by the CLI and ignored by the
     // desktop. Read here, at the gate, because a policy passed in from the
     // renderer is one the caller can choose not to send.
-    let policy = crate::policy::load(read_only_project.as_deref().map(Path::new), allow_network);
+    let policy = crate::policy::load(policy_root.as_deref(), allow_network);
     let permissions = policy.permissions.clone();
     // Widen the read roots by any absolute directories the project's own allow
     // rules make readable (e.g. `allow = ["read(C:/data/**)"]`), so a policy

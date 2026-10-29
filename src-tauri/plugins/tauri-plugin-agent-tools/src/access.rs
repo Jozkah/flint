@@ -912,16 +912,19 @@ pub fn revoke(data_folder: &Path, id: &str) -> bool {
 
 /// Withdraw every session grant a session holds (kept grants stay).
 pub fn revoke_session(data_folder: &Path, session: &str) -> usize {
-    let Ok(mut reg) = registry().lock() else {
-        return 0;
+    // Removed under the registry lock; audited after it is released, so a
+    // slow audit write never holds up every other grant lookup.
+    let gone: Vec<AccessGrant> = {
+        let Ok(mut reg) = registry().lock() else {
+            return 0;
+        };
+        let gone: Vec<AccessGrant> = reg.values().filter(|g| g.session == session).cloned().collect();
+        for g in &gone {
+            reg.remove(&g.id);
+        }
+        gone
     };
-    let gone: Vec<AccessGrant> = reg
-        .values()
-        .filter(|g| g.session == session)
-        .cloned()
-        .collect();
     for g in &gone {
-        reg.remove(&g.id);
         audit_event(data_folder, session, "revoked", &g.display, g.mode, "session ended");
     }
     gone.len()
