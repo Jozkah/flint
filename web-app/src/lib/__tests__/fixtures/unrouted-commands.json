@@ -1692,6 +1692,10 @@
     "web-app/src/lib/agentTools.ts (via advertisedToolSchemas)",
     "web-app/src/lib/cowork/run/runRequest.ts (via getSandboxToolchains)"
   ],
+  "plugin:agent-tools|approval_mint": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via executeTool)"
+  ],
   "plugin:agent-tools|bash_job_kill": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
     "web-app/src/lib/coworkCancel.ts (via bashJobKill)"

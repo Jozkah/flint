@@ -924,10 +924,20 @@ pub async fn execute_tool(
     // `read_only_project` and validated the same way.
     extra_projects: Option<Vec<String>>,
     // Whether the renderer asked the user before sending this call, or a mode
-    // or grant allowed it. Only recorded; it never widens what the gate allows.
+    // or grant allowed it. `prompted`, `bypass` and `secret` widen the gate,
+    // so they count only with `approval_token` minted for this exact call.
     approval: Option<ApprovalSource>,
+    approval_token: Option<String>,
 ) -> Result<ToolResult, AgentToolsError> {
     crate::breadcrumb::note(&format!("execute_tool {name}"));
+    let approval = crate::approval_tokens::verify(
+        approval_token.as_deref(),
+        &thread_id,
+        call_id.as_deref(),
+        &name,
+        &args,
+        approval,
+    )?;
     execute_tool_inner(
         data_folder,
         thread_id,
@@ -978,9 +988,18 @@ pub async fn execute_tool_streaming(
     actor: Option<ActorInput>,
     extra_projects: Option<Vec<String>>,
     approval: Option<ApprovalSource>,
+    approval_token: Option<String>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
 ) -> Result<ToolResult, AgentToolsError> {
     crate::breadcrumb::note(&format!("execute_tool_streaming {name}"));
+    let approval = crate::approval_tokens::verify(
+        approval_token.as_deref(),
+        &thread_id,
+        call_id.as_deref(),
+        &name,
+        &args,
+        approval,
+    )?;
     let sink = output_sink(on_output, call_id.clone());
     execute_tool_inner(
         data_folder,
@@ -1044,6 +1063,27 @@ pub async fn execute_tool_unsandboxed_retry(
         None,
     )
     .await
+}
+
+/// Mint a one-shot token for `approval` on this exact call (O02-024). The
+/// execute commands accept `prompted`, `bypass` and `secret` only with a token
+/// bound to the same session, call id, tool name, arguments and approval; it is
+/// consumed on use and expires after a short while.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn approval_mint(
+    thread_id: String,
+    call_id: Option<String>,
+    name: String,
+    args: serde_json::Value,
+    approval: ApprovalSource,
+) -> String {
+    crate::approval_tokens::tokens().mint(crate::approval_tokens::Binding::new(
+        &thread_id,
+        call_id.as_deref(),
+        &name,
+        &args,
+        approval,
+    ))
 }
 
 /// Drop an unsandboxed-retry offer the user declined, so the id cannot be
@@ -3205,6 +3245,7 @@ mod tests {
             actor("agent", ""),
             None,
             None,
+            None,
         )
         .await
         .expect("the write runs");
@@ -3224,6 +3265,7 @@ mod tests {
             None,
             Some("run-1".into()),
             actor("agent:explorer", "Explorer"),
+            None,
             None,
             None,
         )
@@ -3264,6 +3306,7 @@ mod tests {
             actor("session:s-actor", "The user"),
             None,
             None,
+            None,
         )
         .await
         .expect_err("an identity that is not an agent is refused");
@@ -3290,6 +3333,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "a.txt", "content": "hello"}),
+            None,
             None,
             None,
             None,
@@ -3414,6 +3458,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -3462,6 +3507,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -3485,6 +3531,7 @@ mod tests {
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
+            None,
             None,
             None,
             None,
@@ -3536,6 +3583,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("an escaping read must be refused");
@@ -3575,6 +3623,7 @@ mod tests {
                 None,
                 None,
                 None,
+            None,
             None,
             )
             .await
@@ -3619,6 +3668,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a scratch write is the session scratch and must succeed");
@@ -3636,6 +3686,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
+            None,
             None,
             None,
             None,
@@ -3679,6 +3730,7 @@ mod tests {
             None,
             "bash".into(),
             json!({"command": "echo hi"}),
+            None,
             None,
             None,
             None,
@@ -3743,6 +3795,7 @@ mod tests {
                 None,
                 None,
                 None,
+            None,
             None,
             )
         };
@@ -3843,6 +3896,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3908,6 +3962,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3930,6 +3985,7 @@ mod tests {
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
+            None,
             None,
             None,
             None,
@@ -3974,6 +4030,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../isolation-thread-one/secret.txt"}),
+            None,
             None,
             None,
             None,
@@ -4034,6 +4091,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         {
@@ -4054,6 +4112,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
         let _ = crate::workspace::remove_scratch_dir(t1).await;
         let _ = crate::workspace::remove_scratch_dir(t2).await;
+    }
+
+    /// O02-024: a widening approval sent as a bare string, with a forged
+    /// token, a token for other arguments, or a replayed token is refused at
+    /// the command layer; only a fresh token for this exact call runs it.
+    #[tokio::test]
+    async fn approval_needs_a_token_bound_to_this_call() {
+        let t: &str = &unique_thread("approval_needs_a_token_bound_to_this_call");
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let run = |token: Option<String>| {
+            let df = df.clone();
+            async move {
+                execute_tool(
+                    df, t.into(), None, "memory_write".into(),
+                    json!({"name": "a", "content": "x"}),
+                    None, None, None, None, None, None, None, None, None,
+                    Some(ApprovalSource::Prompted), token,
+                )
+                .await
+            }
+        };
+        let refused = |r: Result<ToolResult, AgentToolsError>| match r {
+            Err(e) => assert!(e.message.contains("approval token"), "{}", e.message),
+            Ok(_) => panic!("ran without a valid token"),
+        };
+        refused(run(None).await);
+        refused(run(Some("appr-forged".into())).await);
+        let other = approval_mint(
+            t.into(), None, "memory_write".into(),
+            json!({"name": "a", "content": "DIFFERENT"}), ApprovalSource::Prompted,
+        );
+        refused(run(Some(other)).await);
+        let good = approval_mint(
+            t.into(), None, "memory_write".into(),
+            json!({"name": "a", "content": "x"}), ApprovalSource::Prompted,
+        );
+        assert!(run(Some(good.clone())).await.is_ok());
+        refused(run(Some(good)).await);
+        let _ = std::fs::remove_dir_all(&data);
+        let _ = crate::workspace::remove_scratch_dir(t).await;
     }
 
     /// Memory is permanent: wiping a thread's sandbox leaves it untouched, and a
@@ -4081,6 +4180,7 @@ mod tests {
             None,
             None,
             Some(ApprovalSource::Prompted),
+            Some(approval_mint(t1.into(), None, "memory_write".into(), json!({"name": "prefs", "content": "user likes tabs"}), ApprovalSource::Prompted)),
         )
         .await
         .unwrap();
@@ -4097,6 +4197,7 @@ mod tests {
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
+            None,
             None,
             None,
             None,
@@ -4134,6 +4235,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
+            None,
             None,
             None,
             None,
@@ -4207,6 +4309,7 @@ mod tests {
                     None,
                     None,
             None,
+            None,
                 )
                 .await
                 .is_err(),
@@ -4239,6 +4342,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("agent config must be hard-denied");
@@ -4261,6 +4365,7 @@ mod tests {
             None,
             "rm_rf".to_string(),
             json!({}),
+            None,
             None,
             None,
             None,
@@ -4354,6 +4459,7 @@ mod tests {
             None,
             None,
             Some(ApprovalSource::Prompted),
+            Some(approval_mint(t1.into(), None, "skill_write".into(), json!({"name": "deploy", "content": "---\ndescription: d\n---\nrun it"}), ApprovalSource::Prompted)),
         )
         .await
         .unwrap();
@@ -4367,6 +4473,7 @@ mod tests {
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
+            None,
             None,
             None,
             None,
@@ -4412,6 +4519,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4427,6 +4535,7 @@ mod tests {
             None,
             None,
             attached,
+            None,
             None,
             None,
             None,
@@ -4475,6 +4584,7 @@ mod tests {
                 None,
                 extras,
             None,
+            None,
             )
         };
 
@@ -4515,6 +4625,7 @@ mod tests {
                 None,
                 None,
                 None,
+            None,
             None,
             )
         };
@@ -4591,6 +4702,7 @@ mod tests {
             None, None, None, None, None, None, None, None,
             None,
             None,
+            None,
         )
         .await;
         assert!(other.is_err(), "grant leaked to another session");
@@ -4654,6 +4766,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         assert!(out.is_err() || out.unwrap().is_error);
@@ -4684,6 +4797,7 @@ mod tests {
             None,
             None,
             Some(inside.to_string_lossy().to_string()),
+            None,
             None,
             None,
             None,
@@ -4796,6 +4910,7 @@ mod tests {
                 None,
                 None,
                 attached.then(|| vec![b_str.clone()]),
+            None,
             None,
             )
         };
