@@ -242,6 +242,7 @@
     "filterImages": "Görseller",
     "attachFailed": "Belgeler eklenemedi",
     "removeFailed": "Ek kaldırılamadı",
+    "attachmentRemoved": "{{name}} kaldırıldı",
     "ingestFailed": "{{name}} işlenemedi",
     "readAudioFailed": "Ses dosyası okunamadı",
     "readVideoFailed": "Video dosyası okunamadı",

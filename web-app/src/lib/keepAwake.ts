@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { useCoworkActiveWork } from '@/hooks/useCoworkActiveWork'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 

@@ -3,7 +3,7 @@
  * session is put in its own worktree automatically, and the "Work on a copy"
  * lifecycle for folders that are not Git repositories.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { AutoState } from '@/hooks/useCoworkParallel'
 import {
   useCoworkWorktrees,

@@ -501,6 +501,14 @@ pub struct ModeratorDirective {
     pub reason: String,
 }
 
+/// A system note as data: an interface-text key and the values it takes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoomNote {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub values: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomMessage {
@@ -532,6 +540,11 @@ pub struct RoomMessage {
     /// reply. Absent on messages from participants without tools.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<RoomToolCall>>,
+    /// For system notes: what the note says, as a `rooms:notes.*` key and its
+    /// values, so it is drawn in the interface language. `text` keeps the
+    /// rendered fallback for readers that predate notes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<RoomNote>,
     /// For system notes: the discussion was compacted here. Drawn as a
     /// divider that expands to the summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -806,6 +819,8 @@ fn read_room_file(path: &Path) -> Result<Room, RoomError> {
 
 struct JournalScan {
     records: Vec<RoomJournalRecord>,
+    /// Byte span (start, end without the newline) of each record.
+    spans: Vec<(usize, usize)>,
     /// Byte length of the file worth keeping: everything up to the last
     /// newline, plus a trailing unterminated line only if it parses.
     keep_len: usize,
@@ -825,7 +840,10 @@ fn parse_line(line: &[u8]) -> Option<RoomJournalRecord> {
 /// unterminated trailing line that does not parse is a torn write and is
 /// dropped.
 fn scan_journal(bytes: &[u8]) -> JournalScan {
+    #[cfg(test)]
+    FULL_SCANS.with(|n| n.set(n.get() + 1));
     let mut records = Vec::new();
+    let mut spans = Vec::new();
     let mut pos = 0;
     let mut keep_len = 0;
     let mut missing_newline = false;
@@ -834,6 +852,7 @@ fn scan_journal(bytes: &[u8]) -> JournalScan {
             Some(offset) => {
                 if let Some(record) = parse_line(&bytes[pos..pos + offset]) {
                     records.push(record);
+                    spans.push((pos, pos + offset));
                 }
                 pos += offset + 1;
                 keep_len = pos;
@@ -841,6 +860,7 @@ fn scan_journal(bytes: &[u8]) -> JournalScan {
             None => {
                 if let Some(record) = parse_line(&bytes[pos..]) {
                     records.push(record);
+                    spans.push((pos, bytes.len()));
                     keep_len = bytes.len();
                     missing_newline = true;
                 }
@@ -850,9 +870,80 @@ fn scan_journal(bytes: &[u8]) -> JournalScan {
     }
     JournalScan {
         records,
+        spans,
         keep_len,
         missing_newline,
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Full journal parses on this thread, so a test can see that appends
+    /// stop re-reading the whole journal.
+    pub(super) static FULL_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// What an append needs to know about a journal without reading it: the
+/// highest message seq, where each message and turn-start record sits (to
+/// answer a duplicate with the stored record), and the file's length and
+/// mtime when this was built. A journal whose length or mtime differ (an
+/// external edit, a clear, a torn tail) is scanned again in full.
+struct JournalIndex {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    max_seq: u64,
+    messages: std::collections::HashMap<String, (usize, usize)>,
+    turns: std::collections::HashMap<String, (usize, usize)>,
+}
+
+impl JournalIndex {
+    fn from_scan(scan: &JournalScan) -> Self {
+        let mut index = JournalIndex {
+            len: 0,
+            modified: None,
+            max_seq: 0,
+            messages: Default::default(),
+            turns: Default::default(),
+        };
+        for (record, span) in scan.records.iter().zip(&scan.spans) {
+            index.add(record, *span);
+        }
+        index
+    }
+
+    fn add(&mut self, record: &RoomJournalRecord, span: (usize, usize)) {
+        match record {
+            RoomJournalRecord::Message { message } => {
+                self.max_seq = self.max_seq.max(message.seq);
+                self.messages.entry(message.id.clone()).or_insert(span);
+            }
+            RoomJournalRecord::TurnStart { turn_id, .. } => {
+                self.turns.entry(turn_id.clone()).or_insert(span);
+            }
+        }
+    }
+
+    fn fresh_for(&self, meta: &fs::Metadata) -> bool {
+        let modified = meta.modified().ok();
+        self.len == meta.len() && modified.is_some() && self.modified == modified
+    }
+}
+
+/// Journal indexes by journal path. Only touched under [`write_guard`].
+fn journal_indexes() -> &'static Mutex<std::collections::HashMap<PathBuf, JournalIndex>> {
+    static INDEXES: std::sync::OnceLock<Mutex<std::collections::HashMap<PathBuf, JournalIndex>>> =
+        std::sync::OnceLock::new();
+    INDEXES.get_or_init(Default::default)
+}
+
+/// The record stored at `span` of the journal at `path`.
+fn read_record_at(path: &Path, span: (usize, usize)) -> Option<RoomJournalRecord> {
+    use std::io::Read;
+    let mut file = File::open(path).ok()?;
+    file.seek(SeekFrom::Start(span.0 as u64)).ok()?;
+    let mut buf = vec![0; span.1.checked_sub(span.0)?];
+    file.read_exact(&mut buf).ok()?;
+    parse_line(&buf)
 }
 
 fn read_journal_bytes(path: &Path) -> Result<Vec<u8>, RoomError> {
@@ -1040,30 +1131,39 @@ impl RoomStore {
             ));
         }
         let path = dir.join(JOURNAL_FILE);
-        let bytes = read_journal_bytes(&path)?;
-        let scan = scan_journal(&bytes);
+        let mut indexes = journal_indexes().lock().unwrap_or_else(|p| p.into_inner());
+        // The cached index stands in for a full read while the file is
+        // exactly as the last append left it; anything else scans again.
+        let cached = match fs::metadata(&path) {
+            Ok(meta) => indexes.get(&path).is_some_and(|i| i.fresh_for(&meta)),
+            Err(_) => false,
+        };
+        let (mut index, keep_len, current_len, missing_newline) = if cached {
+            let index = indexes.remove(&path).expect("checked above");
+            let len = index.len as usize;
+            (index, len, len, false)
+        } else {
+            let bytes = read_journal_bytes(&path)?;
+            let scan = scan_journal(&bytes);
+            (JournalIndex::from_scan(&scan), scan.keep_len, bytes.len(), scan.missing_newline)
+        };
 
-        match &mut record {
-            RoomJournalRecord::Message { message } => {
-                let mut max_seq = 0;
-                for existing in &scan.records {
-                    if let RoomJournalRecord::Message { message: stored } = existing {
-                        if stored.id == message.id {
-                            return Ok(existing.clone());
-                        }
-                        max_seq = max_seq.max(stored.seq);
-                    }
+        let existing = match &mut record {
+            RoomJournalRecord::Message { message } => match index.messages.get(&message.id) {
+                Some(span) => Some(*span),
+                None => {
+                    message.seq = index.max_seq + 1;
+                    None
                 }
-                message.seq = max_seq + 1;
-            }
-            RoomJournalRecord::TurnStart { turn_id, .. } => {
-                let duplicate = scan.records.iter().find(|existing| {
-                    matches!(existing, RoomJournalRecord::TurnStart { turn_id: stored, .. } if stored == turn_id)
-                });
-                if let Some(existing) = duplicate {
-                    return Ok(existing.clone());
-                }
-            }
+            },
+            RoomJournalRecord::TurnStart { turn_id, .. } => index.turns.get(turn_id.as_str()).copied(),
+        };
+        if let Some(span) = existing {
+            let stored = read_record_at(&path, span);
+            indexes.insert(path.clone(), index);
+            return stored.ok_or_else(|| {
+                RoomError::new(RoomErrorCode::Io, "read journal.jsonl: stored record moved".to_string())
+            });
         }
 
         let mut line = serde_json::to_vec(&record).map_err(|e| {
@@ -1078,27 +1178,35 @@ impl RoomStore {
                 line.len()
             )));
         }
-        if scan.missing_newline {
+        if missing_newline {
             line.insert(0, b'\n');
         }
+        let start = keep_len + usize::from(missing_newline);
         line.push(b'\n');
 
-        let write = || -> std::io::Result<()> {
+        let write = || -> std::io::Result<fs::Metadata> {
             let mut file = OpenOptions::new()
                 .create(true)
                 .truncate(false)
                 .write(true)
                 .open(&path)?;
-            if scan.keep_len < bytes.len() {
+            if keep_len < current_len {
                 // Cut the torn tail so the new record starts on a fresh line.
-                file.set_len(scan.keep_len as u64)?;
+                file.set_len(keep_len as u64)?;
             }
-            file.seek(SeekFrom::Start(scan.keep_len as u64))?;
+            file.seek(SeekFrom::Start(keep_len as u64))?;
             file.write_all(&line)?;
-            file.sync_data()
+            file.sync_data()?;
+            file.metadata()
         };
-        write()
+        let meta = write()
             .map_err(|e| RoomError::new(RoomErrorCode::Io, format!("append journal.jsonl: {e}")))?;
+        index.add(&record, (start, keep_len + line.len() - 1));
+        index.len = meta.len();
+        index.modified = meta.modified().ok();
+        if index.len == (keep_len + line.len()) as u64 {
+            indexes.insert(path, index);
+        }
         Ok(record)
     }
 

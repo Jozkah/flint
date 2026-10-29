@@ -8,7 +8,7 @@
  * the call's own work (`agent_emergency_stop` at call scope), which kills the
  * shell's whole process tree.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 const stops = new Map<string, () => void>()
 

@@ -1831,7 +1831,10 @@ pub(super) struct App {
     pub(super) context_warned: bool,
     /// Lines scrolled back from the tail; 0 pins the view to the bottom so new
     /// content follows. Non-zero survives streaming so scroll-back stays usable.
-    pub(super) scrollback: u16,
+    /// `usize`, like every transcript-height count: a long session passes
+    /// 65,535 wrapped rows, and a `u16` count saturated there and left the top
+    /// of the session unreachable (P2C-010).
+    pub(super) scrollback: usize,
     /// A full repaint is owed before the next frame. Set by Ctrl-L and by a
     /// terminal resize, never per frame: a foreign write to the TTY (a
     /// `wall(1)` broadcast) or an emulator's own reflow changes the physical
@@ -1909,7 +1912,7 @@ pub(super) struct App {
     pub(super) transcript_rect: Rect,
     /// Wrapped-line scroll offset from the last draw (`0` = top). Only the
     /// selection anchor uses it now, to follow content that moved under it.
-    pub(super) last_scroll: u16,
+    pub(super) last_scroll: usize,
     /// Body screen row -> source transcript index from the last draw (`None`
     /// for synthetic rows: top padding, awaiting throbbers, streaming prose).
     /// One entry per visible row, in wrapped coordinates, so a click maps

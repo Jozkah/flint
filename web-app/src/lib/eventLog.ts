@@ -10,7 +10,7 @@
  *
  * Exports are written under Flint's data folder and never sent anywhere.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { errorText } from '@/lib/errorText'
 
 export type RunEvent = {

@@ -217,6 +217,10 @@ pub struct ImportedFrom {
 
 /// How many uses a record keeps. Older ones fall off; the count keeps going.
 pub const MAX_USES: usize = 20;
+/// How many distinct sessions a record lists as having used it; newest kept.
+pub const MAX_USED_BY_SESSIONS: usize = 100;
+/// How many earlier versions a record keeps; the version number keeps going.
+pub const MAX_HISTORY: usize = 50;
 
 /// One dispatch that carried a memory.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,6 +327,8 @@ impl MemoryRecord {
             content_hash: self.content_hash.clone(),
             replaced_at: now,
         });
+        let over = self.history.len().saturating_sub(MAX_HISTORY);
+        self.history.drain(..over);
         self.content_hash = content_hash(&content);
         self.content = content;
         self.version = Some(previous + 1);
@@ -335,6 +341,8 @@ impl MemoryRecord {
         self.last_used_at = Some(used.at);
         if !self.provenance.used_by_sessions.contains(&used.session_id) {
             self.provenance.used_by_sessions.push(used.session_id.clone());
+            let over = self.provenance.used_by_sessions.len().saturating_sub(MAX_USED_BY_SESSIONS);
+            self.provenance.used_by_sessions.drain(..over);
         }
         self.provenance.uses.push(used);
         let over = self.provenance.uses.len().saturating_sub(MAX_USES);

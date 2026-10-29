@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /**
  * Delete what the model was sent in one conversation. AH-078.

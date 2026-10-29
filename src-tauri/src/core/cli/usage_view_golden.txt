@@ -1,0 +1,214 @@
+== Summary Folded
+account total
+  $1240.10224445  15049 req · 277414K in (1577471K cached) · 10931K out · 27161K cache write
+  caching saved $1200.5278263
+  2026-08-23 to 2026-09-22
+
+top models
+  anthropic/claude-opus-5    $195.67393925  2987 req · 8640K in (224636K cached) · 1547K out · 237K cache write
+  tokamak-1-preview          $69.454827     4884 req · 263420K in · 2879K out
+  anthropic/claude-sonnet-5  $46.7142352    1238 req · 4409K in (105370K cached) · 1296K out · 1546K cache write
+  claude-opus-4-8            $12.5          300 req · 890K in · 120K out
+  claude-haiku-4-5           $3.25          120 req · 100K in · 20K out
+  +1 more model  ·  m to show all
+
+reported by the provider - not the local session estimate
+== Summary Unfolded
+account total
+  $1240.10224445  15049 req · 277414K in (1577471K cached) · 10931K out · 27161K cache write
+  caching saved $1200.5278263
+  2026-08-23 to 2026-09-22
+
+top models
+  anthropic/claude-opus-5    $195.67393925  2987 req · 8640K in (224636K cached) · 1547K out · 237K cache write
+  tokamak-1-preview          $69.454827     4884 req · 263420K in · 2879K out
+  anthropic/claude-sonnet-5  $46.7142352    1238 req · 4409K in (105370K cached) · 1296K out · 1546K cache write
+  claude-opus-4-8            $12.5          300 req · 890K in · 120K out
+  claude-haiku-4-5           $3.25          120 req · 100K in · 20K out
+  cheap-model                $0.087158      29 req · 56K in · 2.2K out
+  m to fold the tail
+
+reported by the provider - not the local session estimate
+== Summary Fixed
+account total
+  $1240.10224445  15049 req · 277414K in (1577471K cached) · 10931K out · 27161K cache write
+  caching saved $1200.5278263
+  2026-08-23 to 2026-09-22
+
+top models
+  anthropic/claude-opus-5    $195.67393925  2987 req · 8640K in (224636K cached) · 1547K out · 237K cache write
+  tokamak-1-preview          $69.454827     4884 req · 263420K in · 2879K out
+  anthropic/claude-sonnet-5  $46.7142352    1238 req · 4409K in (105370K cached) · 1296K out · 1546K cache write
+  claude-opus-4-8            $12.5          300 req · 890K in · 120K out
+  claude-haiku-4-5           $3.25          120 req · 100K in · 20K out
+  cheap-model                $0.087158      29 req · 56K in · 2.2K out
+
+reported by the provider - not the local session estimate
+== Summary Folded
+spend_usd  1.25
+
+reported by the provider - not the local session estimate
+== Summary Unfolded
+spend_usd  1.25
+
+reported by the provider - not the local session estimate
+== Summary Fixed
+spend_usd  1.25
+
+reported by the provider - not the local session estimate
+== Summary Folded
+  {}
+
+reported by the provider - not the local session estimate
+== Summary Unfolded
+  {}
+
+reported by the provider - not the local session estimate
+== Summary Fixed
+  {}
+
+reported by the provider - not the local session estimate
+== Daily Folded
+most recent day
+  $66.8881106  1095 req · 2644K in · 625K out
+  2026-09-22
+
+by day
+  2026-09-22        $66.8881106  1095 req · 2644K in · 625K out
+  2026-09-21 13:45  $57.56311    915 req · 3476K in (12 cached) · 940K out
+
+reported by the provider - not the local session estimate
+== Daily Unfolded
+most recent day
+  $66.8881106  1095 req · 2644K in · 625K out
+  2026-09-22
+
+by day
+  2026-09-22        $66.8881106  1095 req · 2644K in · 625K out
+  2026-09-21 13:45  $57.56311    915 req · 3476K in (12 cached) · 940K out
+
+reported by the provider - not the local session estimate
+== Daily Fixed
+most recent day
+  $66.8881106  1095 req · 2644K in · 625K out
+  2026-09-22
+
+by day
+  2026-09-22        $66.8881106  1095 req · 2644K in · 625K out
+  2026-09-21 13:45  $57.56311    915 req · 3476K in (12 cached) · 940K out
+
+reported by the provider - not the local session estimate
+== Daily Folded
+no recorded days
+
+reported by the provider - not the local session estimate
+== Daily Unfolded
+no recorded days
+
+reported by the provider - not the local session estimate
+== Daily Fixed
+no recorded days
+
+reported by the provider - not the local session estimate
+== Requests Folded
+6 recorded requests
+  2026-09-22 08:57  $0.0322445  anthropic/claude-opus-5  (not_billed)
+    460 in (41K cached) · 371 out · 4b1e70d6
+  2026-09-21  unavailable  unavailable  (billed)  [HTTP 500]
+    5 in · 1 out · e2
+    unavailable  unavailable
+    5 in · 1 out · e3
+    unavailable  unavailable
+    5 in · 1 out · e4
+    unavailable  unavailable
+    5 in · 1 out · e5
+  +1 more request  ·  m to show all
+
+reported by the provider - not the local session estimate
+== Requests Unfolded
+6 recorded requests
+  2026-09-22 08:57  $0.0322445  anthropic/claude-opus-5  (not_billed)
+    460 in (41K cached) · 371 out · 4b1e70d6
+  2026-09-21  unavailable  unavailable  (billed)  [HTTP 500]
+    5 in · 1 out · e2
+    unavailable  unavailable
+    5 in · 1 out · e3
+    unavailable  unavailable
+    5 in · 1 out · e4
+    unavailable  unavailable
+    5 in · 1 out · e5
+    unavailable  unavailable
+    5 in · 1 out · e6
+  m to fold the tail
+
+reported by the provider - not the local session estimate
+== Requests Fixed
+6 recorded requests
+  2026-09-22 08:57  $0.0322445  anthropic/claude-opus-5  (not_billed)
+    460 in (41K cached) · 371 out · 4b1e70d6
+  2026-09-21  unavailable  unavailable  (billed)  [HTTP 500]
+    5 in · 1 out · e2
+    unavailable  unavailable
+    5 in · 1 out · e3
+    unavailable  unavailable
+    5 in · 1 out · e4
+    unavailable  unavailable
+    5 in · 1 out · e5
+    unavailable  unavailable
+    5 in · 1 out · e6
+
+reported by the provider - not the local session estimate
+== Requests Folded
+no recorded requests
+
+reported by the provider - not the local session estimate
+== Requests Unfolded
+no recorded requests
+
+reported by the provider - not the local session estimate
+== Requests Fixed
+no recorded requests
+
+reported by the provider - not the local session estimate
+== Limits Folded
+spending is allowed
+  no limit decisions recorded
+
+usage limits and wallet credit are separate checks
+
+reported by the provider - not the local session estimate
+== Limits Unfolded
+spending is allowed
+  no limit decisions recorded
+
+usage limits and wallet credit are separate checks
+
+reported by the provider - not the local session estimate
+== Limits Fixed
+spending is allowed
+  no limit decisions recorded
+
+usage limits and wallet credit are separate checks
+
+reported by the provider - not the local session estimate
+== Limits Folded
+spending is blocked by a usage limit
+  limit=monthly  used=120.00
+
+usage limits and wallet credit are separate checks
+
+reported by the provider - not the local session estimate
+== Limits Unfolded
+spending is blocked by a usage limit
+  limit=monthly  used=120.00
+
+usage limits and wallet credit are separate checks
+
+reported by the provider - not the local session estimate
+== Limits Fixed
+spending is blocked by a usage limit
+  limit=monthly  used=120.00
+
+usage limits and wallet credit are separate checks
+
+reported by the provider - not the local session estimate

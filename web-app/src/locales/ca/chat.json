@@ -252,6 +252,7 @@
     "filterImages": "Imatges",
     "attachFailed": "No s'han pogut adjuntar els documents",
     "removeFailed": "No s'ha pogut treure l'adjunt",
+    "attachmentRemoved": "S'ha tret {{name}}",
     "ingestFailed": "No s'ha pogut processar {{name}}",
     "readAudioFailed": "No s'ha pogut llegir el fitxer d'àudio",
     "readVideoFailed": "No s'ha pogut llegir el fitxer de vídeo",

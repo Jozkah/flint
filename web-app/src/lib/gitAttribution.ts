@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { isPlainObject, parseToolInput } from '@/lib/toolInputSummary'
 
 /**

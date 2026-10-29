@@ -18,7 +18,7 @@
  */
 import { useUsageStats } from '@/stores/usage-stats-store'
 import type { ChangeActorInput } from '@janhq/tauri-plugin-agent-tools-api'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { summarizeToolInput } from '@/lib/toolInputSummary'
 import { backgroundJobId } from '@/lib/coworkTasks'
 import { bashExitCode } from '@/lib/redact'

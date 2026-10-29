@@ -241,6 +241,7 @@
     "filterImages": "圖片",
     "attachFailed": "附加文件失敗",
     "removeFailed": "移除附件失敗",
+    "attachmentRemoved": "已移除 {{name}}",
     "ingestFailed": "處理 {{name}} 失敗",
     "readAudioFailed": "讀取音訊檔失敗",
     "readVideoFailed": "讀取影片檔失敗",

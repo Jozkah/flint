@@ -201,6 +201,15 @@ pub(crate) struct ProfileSection {
     /// `[skills].enabled` for this profile.
     #[serde(default)]
     pub skills: Option<Vec<String>>,
+    /// `[profiles.X.notify]`: replaces the project's `[notify]` whole, so a
+    /// profile's notification target never inherits half of another's.
+    #[serde(default)]
+    #[cfg(feature = "cli")]
+    pub notify: Option<crate::core::agent::notify::NotifySection>,
+    /// `[profiles.X.output]`: `density` for this profile.
+    #[serde(default)]
+    #[cfg(feature = "cli")]
+    pub output: Option<OutputSection>,
 }
 
 /// Fold a named profile into a configuration (AH-186).
@@ -235,6 +244,12 @@ pub(crate) fn apply_profile(mut cfg: AgentToml, name: &str) -> Result<AgentToml,
         }
         if let Some(window) = profile.context_window {
             cfg.agent.context_window = Some(window);
+        }
+        if let Some(notify) = profile.notify.clone() {
+            cfg.notify = notify;
+        }
+        if let Some(density) = profile.output.as_ref().and_then(|o| o.density.clone()) {
+            cfg.output.density = Some(density);
         }
     }
     if let Some(default) = profile.tools_default.clone() {
@@ -1464,6 +1479,38 @@ max_tokens = 10
             assert_eq!(quiet.agent.model.as_deref(), Some("base/model"));
         }
         assert_eq!(quiet.skills.enabled, vec!["one".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// CLIA-006: a profile may name its own notification target and output
+    /// density; one that names neither keeps the project's.
+    #[cfg(feature = "cli")]
+    #[test]
+    fn a_profile_overrides_notify_and_output_density() {
+        let root = project_with(
+            r#"
+[notify]
+command = ["echo", "base"]
+
+[output]
+density = "compact"
+
+[profiles.ci]
+output = { density = "verbose" }
+
+[profiles.ci.notify]
+command = ["echo", "ci"]
+
+[profiles.plain]
+max_tokens = 5
+"#,
+        );
+        let ci = load_agent_config_with_profile(&root, Some("ci")).expect("ci");
+        assert_eq!(ci.notify.command, ["echo", "ci"]);
+        assert_eq!(ci.output.density.as_deref(), Some("verbose"));
+        let plain = load_agent_config_with_profile(&root, Some("plain")).expect("plain");
+        assert_eq!(plain.notify.command, ["echo", "base"]);
+        assert_eq!(plain.output.density.as_deref(), Some("compact"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
