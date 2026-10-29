@@ -2,6 +2,37 @@
 
 use super::*;
 
+/// CLIB-019: `/export` keeps a path with spaces whole, takes a lone unknown
+/// word for a mistyped format, and reads `--force`.
+#[test]
+fn export_arguments_keep_spaced_paths_and_reject_format_typos() {
+    use crate::core::cli::tui::commands::{parse_export_arg, ExportArg};
+    use std::path::PathBuf;
+    assert_eq!(
+        parse_export_arg("").unwrap(),
+        ExportArg { format: "markdown".into(), path: None, force: false }
+    );
+    assert_eq!(
+        parse_export_arg("json").unwrap(),
+        ExportArg { format: "json".into(), path: None, force: false }
+    );
+    assert_eq!(
+        parse_export_arg(r"C:\My Docs\notes").unwrap().path,
+        Some(PathBuf::from(r"C:\My Docs\notes"))
+    );
+    assert_eq!(
+        parse_export_arg(r"obsidian C:\My Docs\notes.md").unwrap(),
+        ExportArg { format: "obsidian".into(), path: Some(PathBuf::from(r"C:\My Docs\notes.md")), force: false }
+    );
+    assert_eq!(parse_export_arg("out.md").unwrap().path, Some(PathBuf::from("out.md")));
+    assert!(parse_export_arg("markdwon").unwrap_err().contains("unknown export format"));
+    assert_eq!(
+        parse_export_arg("--force json out.json").unwrap(),
+        ExportArg { format: "json".into(), path: Some(PathBuf::from("out.json")), force: true }
+    );
+    assert!(parse_export_arg("out.md --force").unwrap().force);
+}
+
 #[test]
 fn steering_cancel_removes_only_pending_input() {
     let mut app = test_app();
