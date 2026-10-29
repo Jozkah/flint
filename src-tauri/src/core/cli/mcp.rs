@@ -478,6 +478,7 @@ async fn connect_in(
         match (params.transport_type.as_deref(), params.url.as_deref()) {
             (Some(transport @ ("http" | "sse")), Some(url)) => {
                 crate::core::mcp::netguard::enforce_url(url).map_err(ConnectError::Failed)?;
+                crate::core::mcp::netguard::preflight_url(url).await.map_err(ConnectError::Failed)?;
                 let base = http_client(&params.headers)?;
                 // A credential problem we can already name (expired with no refresh
                 // token, or issued for a different url) is `NeedsAuth` outright --
