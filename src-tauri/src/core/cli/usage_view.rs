@@ -604,6 +604,57 @@ mod tests {
         assert!(text.contains("120.00"), "{text}");
     }
 
+    /// Byte-exact output of every view in every fold mode, pinned so a
+    /// restructuring of the renderer cannot change a single line.
+    #[test]
+    fn every_view_renders_byte_for_byte_as_pinned() {
+        use crate::core::cli::tokamak::usage::{parse_payload_for_test, Query};
+        use super::Fold;
+        let requests = r#"{"data":[{"execution_id":"4b1e70d6","billing_status":"not_billed",
+             "model":"anthropic/claude-opus-5","prompt_tokens":460,
+             "completion_tokens":371,"cache_read_tokens":41339,
+             "estimated_cost_usd":"0.0322445","status":200,
+             "created_at":"2026-09-22T08:57:20.751721Z"},
+             {"execution_id":"e2","billing_status":"billed","prompt_tokens":5,
+             "completion_tokens":1,"status":500,"created_at":"2026-09-21T00:00:00Z"},
+             {"execution_id":"e3","prompt_tokens":5,"completion_tokens":1},
+             {"execution_id":"e4","prompt_tokens":5,"completion_tokens":1},
+             {"execution_id":"e5","prompt_tokens":5,"completion_tokens":1},
+             {"execution_id":"e6","prompt_tokens":5,"completion_tokens":1}]}"#;
+        let days = r#"[{"date":"2026-09-22T00:00:00Z","total_prompt_tokens":2643716,
+             "total_completion_tokens":624644,"request_count":1095,
+             "estimated_cost_usd":"66.8881106"},
+            {"date":"2026-09-21T13:45:00Z","total_prompt_tokens":3475890,
+             "total_completion_tokens":939555,"request_count":915,
+             "estimated_cost_usd":"57.56311","cache_read_tokens":12}]"#;
+        let cases: Vec<(Query, &str)> = vec![
+            (Query::Summary, ACCOUNT_BODY),
+            (Query::Summary, r#"{"spend_usd":"1.25"}"#),
+            (Query::Summary, r#"{}"#),
+            (Query::Daily, days),
+            (Query::Daily, "[]"),
+            (Query::Requests, requests),
+            (Query::Requests, r#"{"data":[]}"#),
+            (Query::Limits, r#"{"allowed":true,"decisions":null}"#),
+            (Query::Limits, r#"{"allowed":false,"decisions":[{"limit":"monthly","used":"120.00"}]}"#),
+        ];
+        let mut out = String::new();
+        for (query, body) in &cases {
+            let payload = parse_payload_for_test(body);
+            for fold in [Fold::Folded, Fold::Unfolded, Fold::Fixed] {
+                out.push_str(&format!("== {query:?} {fold:?}\n"));
+                for line in super::reported_usage_lines(query, &payload, fold) {
+                    out.push_str(&line);
+                    out.push('\n');
+                }
+            }
+        }
+        let golden = include_str!("usage_view_golden.txt").replace("\r\n", "\n");
+        if out != golden {
+            std::fs::write(std::env::temp_dir().join("usage_view_actual.txt"), &out).ok();
+        }
+        assert_eq!(out, golden);
+    }
 
     /// A live account summary, trimmed to six models. Shaped exactly as
     /// `GET /v1/usage/me` answers, including the empty `provider` fields and
