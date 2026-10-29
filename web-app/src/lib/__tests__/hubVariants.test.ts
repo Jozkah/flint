@@ -3,8 +3,12 @@ import type { HuggingFaceFileGroup } from '@/lib/huggingface'
 import {
   groupVariants,
   quantFamily,
+  quantFamilyLabel,
   selectShortList,
 } from '@/lib/hubVariants'
+import { i18n } from '@/i18n/react-i18next-compat'
+
+const tr = (key: string, options?: Record<string, unknown>) => i18n.t(key, options)
 
 const g = (quant: string, size = 1): HuggingFaceFileGroup => {
   const file = { name: `m-${quant}.gguf`, size }
@@ -54,13 +58,17 @@ describe('groupVariants', () => {
       g('F16'),
     ]
     const titles = groupVariants(list).map((s) => s.title)
-    expect(titles).toEqual(
-      expect.arrayContaining(['4-bit', '8-bit', 'Compact (IQ)', 'Full precision'])
-    )
+    expect(titles).toEqual(['bit-4', 'bit-8', 'compact', 'full'])
   })
 
-  it('names families', () => {
-    expect(quantFamily('BF16')).toBe('Full precision')
-    expect(quantFamily(null)).toBe('Other')
+  it('names families by key and words them in the language', () => {
+    expect(quantFamily('BF16')).toBe('full')
+    expect(quantFamily(null)).toBe('other')
+    expect(quantFamilyLabel('full', tr)).toBe('Full precision')
+    expect(quantFamilyLabel('compact', tr)).toBe('Compact (IQ)')
+    expect(quantFamilyLabel('bit-4', tr)).toBe('4-bit')
+    expect(quantFamilyLabel('other', tr)).toBe('Other')
+    const stub = (key: string, o?: Record<string, unknown>) => `[${key}${o?.bits ? `:${o.bits}` : ''}]`
+    expect(quantFamilyLabel('bit-6', stub)).toBe('[hub:quant.family.bits:6]')
   })
 })
