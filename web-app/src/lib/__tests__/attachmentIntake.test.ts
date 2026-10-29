@@ -105,7 +105,8 @@ describe('prepareAudioFiles', () => {
       ['a.wav', 'wav', 'audio/wav', 12],
       ['b.mp3', 'mp3', 'audio/mpeg', 12],
     ])
-    expect(batch.prepared[0].base64).toBe('QUJD')
+    expect(batch.prepared[0].base64).toBeUndefined()
+    expect(batch.prepared[0].dataUrl).toBe(DATA)
   })
 
   it('reports an invalid type and an oversized file without reading them', async () => {
