@@ -2992,6 +2992,7 @@
     "openProvider": "Apri impostazioni del provider",
     "errorDetails": "Dettagli",
     "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Scegli una lingua di origine per invertire"
   },
   "markdownImage": {

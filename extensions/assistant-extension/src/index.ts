@@ -60,11 +60,13 @@ export default class JanAssistantExtension extends AssistantExtension {
   /**
    * Saves the migration version to storage
    */
-  private async saveMigrationVersion(version: number): Promise<void> {
+  private async saveMigrationVersion(version: number): Promise<boolean> {
     try {
       await fs.writeFileSync(this.MIGRATION_FILE, version.toString())
+      return true
     } catch (error) {
       logger.error('Failed to save migration version:', error)
+      return false
     }
   }
 
@@ -77,31 +79,34 @@ export default class JanAssistantExtension extends AssistantExtension {
     if (currentVersion < 1) {
       logger.info('Running migration v1: Update assistant instructions')
       await this.migrateAssistantInstructions()
-      await this.saveMigrationVersion(1)
+      if (!(await this.saveMigrationVersion(1))) return
     }
 
     if (currentVersion < 2) {
       logger.info('Running migration v2: Update to Menlo Research instructions')
       await this.migrateToMenloInstructions()
-      await this.saveMigrationVersion(2)
+      if (!(await this.saveMigrationVersion(2))) return
     }
 
     if (currentVersion < 3) {
       logger.info('Running migration v3: Strip identity preamble from default assistant')
       await this.migrateStripIdentityPreamble()
-      await this.saveMigrationVersion(3)
+      if (!(await this.saveMigrationVersion(3))) return
     }
 
     if (currentVersion < 4) {
       logger.info('Running migration v4: Seed specialized built-in assistants')
+      // Seeding migrations record their version first: if it cannot be
+      // stored, skip seeding rather than re-adding assistants the user
+      // deleted on every launch.
+      if (!(await this.saveMigrationVersion(4))) return
       await this.migrateSeedBuiltInAssistants()
-      await this.saveMigrationVersion(4)
     }
 
     if (currentVersion < 5) {
       logger.info('Running migration v5: Seed starter assistants')
+      if (!(await this.saveMigrationVersion(5))) return
       await this.migrateSeedStarterAssistants()
-      await this.saveMigrationVersion(5)
     }
 
     logger.info(

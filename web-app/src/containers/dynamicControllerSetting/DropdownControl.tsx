@@ -53,13 +53,15 @@ export function DropdownControl({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-70">
-        {options.map((option, optionIndex) => (
+        {options.map((option) => (
           <DropdownMenuItem
-            key={optionIndex}
+            key={String(option.value)}
             onClick={() => onChange(option.value)}
+            role="menuitemradio"
+            aria-checked={option.value === value}
             className={cn(
               'flex items-center justify-between my-1',
-              isSelected === option.name
+              option.value === value
                 ? 'bg-secondary/60 hover:bg-secondary/40'
                 : ''
             )}

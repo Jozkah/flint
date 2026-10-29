@@ -205,14 +205,22 @@ export function ExtensionsSettings() {
               <RenderMarkdown
                 content={item.description ?? ''}
                 components={{
-                  a: ({ ...props }) => (
+                  // Descriptions are third-party text: only http(s) links
+                  // become clickable, anything else renders as plain text.
+                  a: ({ href, children, ...props }) =>
+                    href && /^https?:\/\//i.test(href) ? (
                     <a
+                      href={href}
                       {...props}
                       className="text-acc-text underline-offset-4 hover:underline"
                       target="_blank"
                       rel="noopener noreferrer"
-                    />
-                  ),
+                    >
+                      {children}
+                    </a>
+                    ) : (
+                      <span>{children}</span>
+                    ),
                   p: ({ ...props }) => <p {...props} className="mb-0!" />,
                 }}
               />

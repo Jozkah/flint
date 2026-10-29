@@ -2886,6 +2886,7 @@
     "openProvider": "Buka pengaturan penyedia",
     "errorDetails": "Detail",
     "pasteHint": "Akses papan klip diblokir. Klik kotak teks lalu tekan {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Pilih bahasa sumber untuk menukar"
   },
   "markdownImage": {

@@ -2992,6 +2992,7 @@
     "openProvider": "Obre la configuració del proveïdor",
     "errorDetails": "Detalls",
     "pasteHint": "L'accés al porta-retalls s'ha bloquejat. Fes clic al quadre de text i prem {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Tria una llengua d'origen per intercanviar"
   },
   "markdownImage": {

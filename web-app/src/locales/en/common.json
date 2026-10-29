@@ -2312,6 +2312,7 @@
     "openProvider": "Open provider settings",
     "errorDetails": "Details",
     "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Pick a source language to swap"
   },
   "appRail": {

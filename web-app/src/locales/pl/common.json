@@ -3052,6 +3052,7 @@
     "openProvider": "Otwórz ustawienia dostawcy",
     "errorDetails": "Szczegóły",
     "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Wybierz język źródłowy, aby zamienić"
   },
   "markdownImage": {

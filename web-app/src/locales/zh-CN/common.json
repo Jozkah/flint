@@ -2932,6 +2932,7 @@
     "openProvider": "打开提供商设置",
     "errorDetails": "详情",
     "pasteHint": "剪贴板访问被阻止。请点击文本框并按 {{keys}}。",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "选择源语言后才能互换"
   },
   "markdownImage": {

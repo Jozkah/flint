@@ -2927,6 +2927,7 @@
     "openProvider": "プロバイダー設定を開く",
     "errorDetails": "詳細",
     "pasteHint": "クリップボードへのアクセスがブロックされました。テキスト欄をクリックして {{keys}} を押してください。",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "入れ替えるには翻訳元の言語を選んでください"
   },
   "markdownImage": {

@@ -2993,6 +2993,7 @@
     "openProvider": "Mở cài đặt nhà cung cấp",
     "errorDetails": "Chi tiết",
     "pasteHint": "Quyền truy cập bảng nhớ tạm đã bị chặn. Nhấp vào ô văn bản và nhấn {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Chọn ngôn ngữ nguồn để hoán đổi"
   },
   "markdownImage": {

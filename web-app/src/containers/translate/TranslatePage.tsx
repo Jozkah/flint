@@ -18,6 +18,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { LanguagePicker } from './LanguagePicker'
 import { Textarea } from '@/components/ui/textarea'
+
+/** Past this length a single prompt may not fit a small local model's context. */
+const LONG_INPUT_CHARS = 12000
 import { useTranslateDraft } from '@/hooks/useTranslateDraft'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { ModelFactory } from '@/lib/model-factory'
@@ -283,6 +286,11 @@ export function TranslatePage() {
               className="px-3 pb-2 text-right text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums"
               data-testid="translate-count"
             >
+              {input.length > LONG_INPUT_CHARS && (
+                <span className="mr-2 text-warning" data-testid="translate-long-warning">
+                  {t('common:translate.longInput')}
+                </span>
+              )}
               {t('common:translate.characters', { count: input.length })}
             </div>
           </FrameBody>
