@@ -66,6 +66,7 @@ export function usePluginManager({
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
 
   // Loaders read `t` through a ref so an unstable `t` identity cannot
   // re-trigger the load effect on every render.
@@ -138,6 +139,7 @@ export function usePluginManager({
     setSelectedId(id)
     setToggleError(null)
     setRemoveError(null)
+    setUpdateError(null)
     void loadDetails(id)
   }
 
@@ -181,6 +183,7 @@ export function usePluginManager({
     if (unavailable) return
     setUpdating(plugin.id)
     setRemoveError(null)
+    setUpdateError(null)
     try {
       const report = await updatePlugin(
         folder ?? '',
@@ -197,7 +200,7 @@ export function usePluginManager({
       await refresh()
       await loadDetails(report.id)
     } catch (e) {
-      setRemoveError(
+      setUpdateError(
         t('plugins:update.failed', { name: plugin.name, error: pluginErrorText(t, e) })
       )
     } finally {
@@ -210,6 +213,7 @@ export function usePluginManager({
     const target = confirmRemove
     setRemoving(true)
     setRemoveError(null)
+    setUpdateError(null)
     try {
       const report = await removePlugin(folder ?? '', target.id, ...scope)
       toast.success(
@@ -266,6 +270,7 @@ export function usePluginManager({
     removeError,
     setRemoveError,
     updating,
+    updateError,
     refresh,
     loadDetails,
     select,

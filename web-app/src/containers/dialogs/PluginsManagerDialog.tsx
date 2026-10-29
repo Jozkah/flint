@@ -223,6 +223,7 @@ export default function PluginsManagerDialog({
     removeError,
     setRemoveError,
     updating,
+    updateError,
     refresh,
     loadDetails,
     toggle,
@@ -466,6 +467,12 @@ export default function PluginsManagerDialog({
           <p role="alert" className={ALERT}>
             <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0">{removeError}</span>
+          </p>
+        )}
+        {updateError && (
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{updateError}</span>
           </p>
         )}
         {detailsError ? (

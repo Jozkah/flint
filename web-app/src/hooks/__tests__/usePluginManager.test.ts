@@ -189,4 +189,18 @@ describe('usePluginManager', () => {
     // The directory may be gone even when the cleanup after it failed.
     expect(mocks.invalidateSkills).toHaveBeenCalled()
   })
+
+  it('keeps a failed update apart from removal errors', async () => {
+    mocks.updatePlugin.mockRejectedValue(new PluginError('io', 'offline'))
+    const { result } = renderHook(() => usePluginManager({ scopeFolder: '/proj' }))
+    await waitFor(() => expect(result.current.plugins).toHaveLength(1))
+    await act(async () => {
+      await result.current.runUpdate(details() as never)
+    })
+    expect(result.current.updateError).toContain('plugins:update.failed')
+    expect(result.current.removeError).toBeNull()
+    expect(result.current.updating).toBeNull()
+    act(() => result.current.select('alpha'))
+    expect(result.current.updateError).toBeNull()
+  })
 })

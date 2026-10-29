@@ -17,6 +17,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { SessionBundle } from '@/lib/sessionBundle'
 import { errorText } from '@/lib/errorText'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** A folder as another machine can recognise it. */
 export type FolderIdentity = {
@@ -82,18 +83,29 @@ export function restoreReport(
 export function describeRestoreItem(item: RestoreItem): string {
   switch (item.kind) {
     case 'folder': {
-      const at = [
-        item.expected.branch ? `branch ${item.expected.branch}` : null,
-        item.expected.head ? `commit ${item.expected.head.slice(0, 12)}` : null,
-      ]
-        .filter(Boolean)
-        .join(' at ')
-      return `This session worked in a folder named ${item.expected.name}${at ? ` (${at})` : ''}. Attach that folder on this computer to continue.`
+      const { name, branch, head } = item.expected
+      const commit = head ? head.slice(0, 12) : null
+      const at =
+        branch && commit
+          ? i18n.t('common:handoff.restore.atBranchCommit', { branch, commit })
+          : branch
+            ? i18n.t('common:handoff.restore.atBranch', { branch })
+            : commit
+              ? i18n.t('common:handoff.restore.atCommit', { commit })
+              : null
+      return at
+        ? i18n.t('common:handoff.restore.folderAt', { name, at })
+        : i18n.t('common:handoff.restore.folder', { name })
     }
     case 'provider':
-      return `The provider ${item.provider} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.`
+      return i18n.t('common:handoff.restore.provider', {
+        provider: item.provider,
+      })
     case 'model':
-      return `The model ${item.id} is not available from ${item.provider} on this computer. Choose another model to continue.`
+      return i18n.t('common:handoff.restore.model', {
+        id: item.id,
+        provider: item.provider,
+      })
   }
 }
 
@@ -108,16 +120,34 @@ export function compareFolder(
 ): FolderMatch {
   const differences: string[] = []
   if (expected.name !== actual.name) {
-    differences.push(`it is named ${actual.name}, not ${expected.name}`)
+    differences.push(
+      i18n.t('common:handoff.differs.name', {
+        actual: actual.name,
+        expected: expected.name,
+      })
+    )
   }
   if (expected.branch && expected.branch !== actual.branch) {
     differences.push(
-      `it is on ${actual.branch ? `branch ${actual.branch}` : 'no branch'}, not ${expected.branch}`
+      actual.branch
+        ? i18n.t('common:handoff.differs.branch', {
+            actual: actual.branch,
+            expected: expected.branch,
+          })
+        : i18n.t('common:handoff.differs.noBranch', {
+            expected: expected.branch,
+          })
     )
   }
   if (expected.head && expected.head !== actual.head) {
+    const want = expected.head.slice(0, 12)
     differences.push(
-      `it is at ${actual.head ? `commit ${actual.head.slice(0, 12)}` : 'no commit'}, not ${expected.head.slice(0, 12)}`
+      actual.head
+        ? i18n.t('common:handoff.differs.head', {
+            actual: actual.head.slice(0, 12),
+            expected: want,
+          })
+        : i18n.t('common:handoff.differs.noHead', { expected: want })
     )
   }
   return differences.length
