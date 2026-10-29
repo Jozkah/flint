@@ -1,6 +1,12 @@
-import { useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  CHIP,
+  CheckList,
+  PathGroup,
+  SectionHeading,
+  STATUS_TONE,
+} from './cowork-run-summary/RunSummaryParts'
 import { cn } from '@/lib/utils'
 import { BrowserVerifyEvidence } from '@/containers/BrowserVerifyPanel'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -11,8 +17,6 @@ import {
   checkVerdict,
   deriveRunOutcome,
   summarizeVerification,
-  type CheckKind,
-  type CheckVerdict,
   type HeadlineCode,
   type RunOutcome,
   type RunStatus,
@@ -122,35 +126,6 @@ function locationText(t: TFn, kind: TreeKind): string {
   }
 }
 
-function kindLabel(t: TFn, kind: CheckKind): string {
-  switch (kind) {
-    case 'test':
-      return t('results:checks.kind.test')
-    case 'build':
-      return t('results:checks.kind.build')
-    case 'lint':
-      return t('results:checks.kind.lint')
-    case 'command':
-      return t('results:checks.kind.command')
-  }
-}
-
-function verdictLabel(t: TFn, verdict: CheckVerdict): string {
-  switch (verdict) {
-    case 'passed':
-      return t('results:checks.outcome.passed')
-    case 'failed':
-      return t('results:checks.outcome.failed')
-    case 'did-not-finish':
-      return t('results:checks.outcome.didNotFinish')
-    case 'running':
-      return t('results:checks.outcome.running')
-    case 'not-run':
-      return t('results:checks.outcome.notRun')
-    case 'unknown':
-      return t('results:checks.outcome.unknown')
-  }
-}
 
 /**
  * The checks, summarised in plain sentences from what was recorded: passes
@@ -260,27 +235,6 @@ function unresolvedText(t: TFn, item: UnresolvedItem): string {
   }
 }
 
-// Semantic chips: the accent never says "passed", and a status is never told by
-// colour alone -- the label is always inside the chip.
-const CHIP =
-  'inline-flex h-5 shrink-0 items-center rounded-md border-[0.8px] px-1.5 text-[length:calc(var(--ui-font-base)*0.65625)] font-medium leading-none'
-
-const VERDICT_TONE: Record<CheckVerdict, string> = {
-  passed: 'border-success/30 bg-success-tint text-success',
-  failed: 'border-destructive/30 bg-destructive-tint text-destructive',
-  'did-not-finish': 'border-warning/30 bg-warning-tint text-warning',
-  running: 'border-border bg-card text-secondary-foreground',
-  'not-run': 'border-border bg-muted text-fg-2',
-  unknown: 'border-border bg-muted text-fg-2',
-}
-
-const STATUS_TONE: Record<RunStatus, string> = {
-  completed: 'border-success/30 bg-success-tint text-success',
-  partial: 'border-warning/30 bg-warning-tint text-warning',
-  cancelled: 'border-border bg-muted text-fg-2',
-  failed: 'border-destructive/30 bg-destructive-tint text-destructive',
-  running: 'border-border bg-card text-secondary-foreground',
-}
 
 export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   const { t } = useTranslation()
@@ -308,47 +262,14 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   const openable = (path: string) =>
     Boolean(props.onOpenPath) && (props.canOpenPath?.(path) ?? true)
 
-  const pathRow = (path: string, open: boolean) => (
-    <li
-      key={path}
-      className="flex min-w-0 items-center gap-2 border-b border-dashed border-border py-1.5 font-mono text-xs text-fg-2 last:border-b-0"
-    >
-      {open && openable(path) ? (
-        <button
-          type="button"
-          className="min-w-0 flex-1 break-all text-left text-acc-text underline decoration-dotted underline-offset-2 hover:text-foreground"
-          onClick={() => props.onOpenPath?.(path)}
-        >
-          {path}
-        </button>
-      ) : (
-        <span className="min-w-0 flex-1 break-all">{path}</span>
-      )}
-      {open && openable(path) ? (
-        <Button
-          variant="link"
-          size="sm"
-          className="h-6 shrink-0 px-1 font-sans text-[length:calc(var(--ui-font-base)*0.78125)] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:h-11"
-          aria-label={t('results:location.open', { path })}
-          onClick={() => props.onOpenPath?.(path)}
-        >
-          {t('results:actions.openResult')}
-        </Button>
-      ) : null}
-    </li>
-  )
-
-  /**
-   * One group of this session's own writes: the first few, with "Show all"
-   * for the rest.
-   */
-  const group = (label: string, paths: readonly string[], open = false) =>
+  const group = (label: string, paths: readonly string[]) =>
     paths.length === 0 ? null : (
       <PathGroup
         key={label}
         label={label}
         paths={paths}
-        row={(path) => pathRow(path, open)}
+        openable={openable}
+        onOpenPath={props.onOpenPath}
       />
     )
 
@@ -420,38 +341,6 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   const offersRetry =
     outcome.nextActions.includes('retry') && Boolean(props.onRetry)
 
-  const checkRow = (check: (typeof outcome.checks)[number], index: number) => (
-    <li
-      key={`${check.callId ?? check.command}-${index}`}
-      className="flex min-w-0 flex-wrap items-center gap-2.5 py-1 text-[length:calc(var(--ui-font-base)*0.78125)]"
-    >
-      <span className={`${CHIP} ${VERDICT_TONE[checkVerdict(check)]}`}>
-        {verdictLabel(t, checkVerdict(check))}
-      </span>
-      <span className="shrink-0 text-fg-2">{kindLabel(t, check.kind)}</span>
-      <code className="min-w-0 break-all font-mono text-xs text-foreground">
-        {check.command}
-      </code>
-      {check.exitCode !== null ? (
-        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-          {t('results:checks.exit', { code: check.exitCode })}
-        </span>
-      ) : null}
-      <span className="shrink-0 text-muted-foreground">
-        {t(`results:checks.completion.${check.completion}`)}
-      </span>
-      {check.limitations.length > 0 ? (
-        <ul
-          className="basis-full pl-4 text-muted-foreground"
-          data-testid="cowork-check-limitations"
-        >
-          {check.limitations.map((limit) => (
-            <li key={limit}>{t(`results:checks.limitation.${limit}`)}</li>
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  )
   // A check that passed is evidence; one that did not is a finding. Only the
   // finding stays up front, the passes sit under Details.
   const attentionChecks = outcome.checks.filter(
@@ -459,12 +348,6 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   )
   const passedChecks = outcome.checks.filter(
     (c) => checkVerdict(c) === 'passed'
-  )
-
-  const heading = (text: string) => (
-    <h4 className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-      {text}
-    </h4>
   )
 
   return (
@@ -549,7 +432,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
               attention and the way to act on it. Everything else is under
               Details, one click away. */}
           <div className="flex flex-col gap-1">
-            {heading(t('results:sections.happened'))}
+            <SectionHeading text={t('results:sections.happened')} />
             <p className="text-foreground">
               {headlineText(t, outcome.headline)}
             </p>
@@ -559,7 +442,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            {heading(t('results:sections.where'))}
+            <SectionHeading text={t('results:sections.where')} />
             {nothingFound ? (
               <p className="text-fg-2">
                 {t('common:coworkOrigins.nothing')}
@@ -571,30 +454,26 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                     t(
                       `common:coworkOrigins.janWrites.${written.destination satisfies ChangeDestination}`
                     ),
-                    written.paths,
-                    true
+                    written.paths
                   )
                 )}
                 {group(
                   t('common:coworkOrigins.overExisting'),
-                  changes.janWritesOverExisting,
-                  true
+                  changes.janWritesOverExisting
                 )}
               </>
             )}
           </div>
 
           <div className="flex flex-col gap-1" data-testid="cowork-run-checks">
-            {heading(t('results:sections.checked'))}
+            <SectionHeading text={t('results:sections.checked')} />
             {outcome.checks.length === 0 ? (
               <p className="text-fg-2">{t('results:checks.none')}</p>
             ) : (
               <>
                 {/* Anything that did not pass stays in view. */}
                 {attentionChecks.length > 0 ? (
-                  <ul className="flex flex-col">
-                    {attentionChecks.map(checkRow)}
-                  </ul>
+                  <CheckList className="flex flex-col" checks={attentionChecks} />
                 ) : null}
                 <ul
                   className="flex flex-col gap-0.5 text-xs text-muted-foreground"
@@ -612,7 +491,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
 
           {visibleUnresolved.length > 0 ? (
             <div className="flex flex-col gap-1 shadow-[inset_3px_0_0_var(--warning)]">
-              {heading(t('results:sections.unresolved'))}
+              <SectionHeading text={t('results:sections.unresolved')} />
               <ul className="flex list-disc flex-col gap-0.5 pl-4">
                 {visibleUnresolved.map((item, index) => (
                   <li key={index} className="break-words text-foreground">
@@ -635,7 +514,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
 
           {actions.length > 0 ? (
             <div className="flex flex-col gap-1">
-              {heading(t('results:sections.next'))}
+              <SectionHeading text={t('results:sections.next')} />
               <div className="flex flex-wrap gap-1.5">{actions}</div>
               {offersRetry ? (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -673,7 +552,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                   {t(`common:coworkOrigins.baseline.${changes.baseline}`)}
                 </p>
                 {passedChecks.length > 0 ? (
-                  <ul className="flex flex-col">{passedChecks.map(checkRow)}</ul>
+                  <CheckList className="flex flex-col" checks={passedChecks} />
                 ) : null}
                 {verification.otherCommands > 0 ? (
                   <p
@@ -711,37 +590,5 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
         </div>
       </details>
     </section>
-  )
-}
-
-const OWN_SHOWN = 10
-
-function PathGroup(props: {
-  label: string
-  paths: readonly string[]
-  row: (path: string) => ReactNode
-}) {
-  const { t } = useTranslation()
-  const [all, setAll] = useState(false)
-  const { label, paths, row } = props
-  const count = paths.length
-  const shown = all ? paths : paths.slice(0, OWN_SHOWN)
-  return (
-    <div className="flex flex-col gap-1" data-testid="cowork-path-group">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <ul className="flex flex-col">{shown.map(row)}</ul>
-      {count > shown.length ? (
-        <button
-          type="button"
-          className="self-start text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground"
-          onClick={() => setAll(true)}
-        >
-          {t('common:coworkOrigins.showAll', {
-            count,
-            formattedCount: count.toLocaleString(),
-          })}
-        </button>
-      ) : null}
-    </div>
   )
 }
