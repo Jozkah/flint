@@ -37,6 +37,15 @@ const SETTINGS_FILE: &str = "archive-settings.json";
 /// Collision suffixes tried before giving up.
 const MAX_SUFFIX: u32 = 1000;
 
+/// Held by every move into, out of, or deletion from the archive in this
+/// process, so a restore and a purge (the startup sweep, Empty archive) of
+/// the same item cannot interleave and leave it half moved.
+static ARCHIVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn archive_lock() -> std::sync::MutexGuard<'static, ()> {
+    ARCHIVE_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -359,6 +368,7 @@ pub fn archive_dir(
     extra: Option<Value>,
 ) -> Result<String, String> {
     check_id(id)?;
+    let _held = archive_lock();
     let live = kind
         .live_dir(data)
         .ok_or_else(|| format!("{} is not a directory kind", kind.as_str()))?;
@@ -391,6 +401,7 @@ pub fn archive_payload(
     extra: Option<Value>,
 ) -> Result<String, String> {
     check_id(id)?;
+    let _held = archive_lock();
     if kind.live_dir(data).is_some() {
         return Err(format!("{} is a directory kind", kind.as_str()));
     }
@@ -426,6 +437,7 @@ pub fn archive_studio(
     title: &str,
 ) -> Result<String, String> {
     check_id(id)?;
+    let _held = archive_lock();
     if !GALLERIES.contains(&gallery) {
         return Err(format!("unknown gallery {gallery:?}"));
     }
@@ -572,6 +584,7 @@ pub(super) fn item_dir(data: &Path, kind: Kind, archive_id: &str) -> Result<Path
 /// Put an archived item back. A directory item returns to its live place; a
 /// payload item hands its payload back for the caller to re-register.
 pub fn restore(data: &Path, kind: Kind, archive_id: &str) -> Result<Restored, String> {
+    let _held = archive_lock();
     let dir = item_dir(data, kind, archive_id)?;
     let meta = read_meta(&dir)?;
     // The destination comes from the validated id, not from anything stored.
@@ -668,11 +681,43 @@ pub fn purge_with<F>(data: &Path, kind: Kind, archive_id: &str, hook: &mut F) ->
 where
     F: FnMut(&ArchiveMeta, &Path) -> Result<(), String>,
 {
-    let dir = item_dir(data, kind, archive_id)?;
-    if let Ok(meta) = read_meta(&dir) {
-        hook(&meta, &dir)?;
+    purge_one(data, kind, archive_id, None, hook).map(|_| ())
+}
+
+/// [`purge_with`] under the archive lock, re-checking under it that the item
+/// is still there and (with `cutoff_ms`) still old enough: a restore, or a
+/// restore and a fresh archive under the same name, may have run since the
+/// caller listed it. `Ok(false)` when it no longer qualifies.
+fn purge_one<F>(
+    data: &Path,
+    kind: Kind,
+    archive_id: &str,
+    cutoff_ms: Option<u64>,
+    hook: &mut F,
+) -> Result<bool, String>
+where
+    F: FnMut(&ArchiveMeta, &Path) -> Result<(), String>,
+{
+    let _held = archive_lock();
+    let dir = match item_dir(data, kind, archive_id) {
+        Ok(dir) => dir,
+        Err(e) if cutoff_ms.is_some() => {
+            log::debug!("archive purge skipped: {e}");
+            return Ok(false);
+        }
+        Err(e) => return Err(e),
+    };
+    let meta = read_meta(&dir).ok();
+    if let (Some(cutoff), Some(meta)) = (cutoff_ms, &meta) {
+        if meta.archived_at > cutoff {
+            return Ok(false);
+        }
     }
-    fs::remove_dir_all(&dir).map_err(|e| format!("delete {}: {e}", dir.display()))
+    if let Some(meta) = &meta {
+        hook(meta, &dir)?;
+    }
+    fs::remove_dir_all(&dir).map_err(|e| format!("delete {}: {e}", dir.display()))?;
+    Ok(true)
 }
 
 /// Purge every item (optionally one kind, optionally only those archived at or
@@ -694,8 +739,9 @@ where
         if cutoff_ms.is_some_and(|c| item.meta.archived_at > c) {
             continue;
         }
-        match purge_with(data, item.meta.kind, &item.archive_id, hook) {
-            Ok(()) => report.purged += 1,
+        match purge_one(data, item.meta.kind, &item.archive_id, cutoff_ms, hook) {
+            Ok(true) => report.purged += 1,
+            Ok(false) => {}
             Err(reason) => report.blocked.push(Blocked {
                 kind: item.meta.kind,
                 archive_id: item.archive_id,

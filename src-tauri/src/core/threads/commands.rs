@@ -26,10 +26,17 @@ pub async fn list_threads<R: Runtime>(
         return db::db_list_threads(app_handle).await;
     }
 
-    // Use file-based storage on desktop
+    // Use file-based storage on desktop. Reading every thread.json is file
+    // IO: keep it off the async runtime's worker threads.
     let data_folder = get_jan_data_folder_path(app_handle);
-    ensure_data_dirs(&data_folder)?;
-    let data_dir = get_data_dir(&data_folder);
+    tokio::task::spawn_blocking(move || list_threads_in(&data_folder))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn list_threads_in(data_folder: &std::path::Path) -> Result<Vec<serde_json::Value>, String> {
+    ensure_data_dirs(data_folder)?;
+    let data_dir = get_data_dir(data_folder);
     let mut threads = Vec::new();
 
     if !data_dir.exists() {
@@ -113,7 +120,9 @@ pub async fn create_thread<R: Runtime>(
 
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
-    super::storage::create_thread_in(&data_folder, thread)
+    tokio::task::spawn_blocking(move || super::storage::create_thread_in(&data_folder, thread))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Modifies an existing thread's metadata by overwriting its thread.json file.
@@ -188,7 +197,11 @@ pub async fn list_messages<R: Runtime>(
 
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
-    super::helpers::read_messages_lossy(&data_folder, &thread_id).map(|r| r.messages)
+    tokio::task::spawn_blocking(move || {
+        super::helpers::read_messages_lossy(&data_folder, &thread_id).map(|r| r.messages)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Finds a phrase in the text of every conversation: where it was said, with a
@@ -206,7 +219,7 @@ pub async fn search_messages<R: Runtime>(
     let limit = limit.unwrap_or(30);
     // A scan reads every chat's file; keep it off the async runtime's threads.
     tokio::task::spawn_blocking(move || {
-        super::search::search_messages_in(&data_folder, &query, limit)
+        super::search::search_messages_latest(&data_folder, &query, limit)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -283,10 +296,14 @@ pub async fn get_thread_assistant<R: Runtime>(
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
     let path = get_thread_metadata_path(&data_folder, &thread_id);
-    if !path.exists() {
-        return Err("Thread not found".to_string());
-    }
-    let data = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let data = tokio::task::spawn_blocking(move || {
+        if !path.exists() {
+            return Err("Thread not found".to_string());
+        }
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let thread: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
     if let Some(assistants) = thread.get("assistants").and_then(|a| a.as_array()) {
         if let Some(first) = assistants.first() {

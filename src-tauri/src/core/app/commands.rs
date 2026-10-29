@@ -549,9 +549,11 @@ pub async fn change_app_data_folder<R: Runtime>(
     let allow_merge = allow_merge.unwrap_or(false);
 
     let (current, target) = (current_data_folder, new_data_folder_path);
+    let config_dir = app_data_dir_with_fallback(&app_handle);
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         // Validate before creating or copying anything.
         validate_new_data_folder(&current, &target, allow_merge)?;
+        super::helpers::validate_not_config_dir(&config_dir, &target)?;
         let target_had_content = target.exists()
             && fs::read_dir(&target).map(|mut d| d.next().is_some()).unwrap_or(false);
 
