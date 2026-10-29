@@ -1977,37 +1977,85 @@ const ChatInput = memo(function ChatInput({
     }
   }
 
+  /**
+   * Deletes an ingested document from the vector store. False (after a toast)
+   * when the backend refused, so the chip has to stay.
+   */
+  const deleteAttachmentFromBackend = async (
+    attachment: Attachment,
+    threadId: string | undefined
+  ): Promise<boolean> => {
+    if (!attachment.id || !threadId || attachment.type !== 'document') {
+      return true
+    }
+    try {
+      const vectorDBExtension = ExtensionManager.getInstance().get(
+        ExtensionTypeEnum.VectorDB
+      ) as VectorDBExtension | undefined
+      if (vectorDBExtension?.deleteFile) {
+        await vectorDBExtension.deleteFile(threadId, attachment.id)
+      }
+      return true
+    } catch (error) {
+      console.error('Failed to delete attachment from backend:', error)
+      toast.error(t('chat:composer.removeFailed'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
+  }
+
   const handleRemoveAttachment = async (indexToRemove: number) => {
     const attachmentToRemove = attachments[indexToRemove]
-
-    // If attachment was ingested (has an ID), delete it from the backend
-    if (attachmentToRemove?.id && currentThreadId) {
-      try {
-        if (attachmentToRemove.type === 'document') {
-          const vectorDBExtension = ExtensionManager.getInstance().get(
-            ExtensionTypeEnum.VectorDB
-          ) as VectorDBExtension | undefined
-
-          if (vectorDBExtension?.deleteFile) {
-            await vectorDBExtension.deleteFile(
-              currentThreadId,
-              attachmentToRemove.id
-            )
-          }
-        }
-      } catch (error) {
-        console.error('Failed to delete attachment from backend:', error)
-        toast.error(t('chat:composer.removeFailed'), {
-          description: error instanceof Error ? error.message : String(error),
-        })
-        return
-      }
-    }
-
     if (!attachmentToRemove) return
+    // If attachment was ingested (has an ID), delete it from the backend
+    if (
+      attachmentToRemove.id &&
+      !(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId))
+    )
+      return
     setAttachmentsForThread(attachmentsKey, (prev) =>
       withoutAttachment(prev, attachmentToRemove)
     )
+  }
+
+  /**
+   * Backspace in an empty box: the chip goes at once and a toast offers to
+   * put it back. An ingested document is only deleted from the backend once
+   * the toast closes without an undo; if that delete fails the chip returns.
+   */
+  const removeAttachmentWithUndo = (index: number) => {
+    const target = attachments[index]
+    if (!target) return
+    const key = attachmentsKey
+    const threadId = currentThreadId
+    const restore = () =>
+      setAttachmentsForThread(key, (prev) =>
+        prev.includes(target)
+          ? prev
+          : [...prev.slice(0, index), target, ...prev.slice(index)]
+      )
+    setAttachmentsForThread(key, (prev) => withoutAttachment(prev, target))
+    let settled = false
+    const finalize = () => {
+      if (settled) return
+      settled = true
+      void deleteAttachmentFromBackend(target, threadId).then((ok) => {
+        if (!ok) restore()
+      })
+    }
+    toast.info(t('chat:composer.attachmentRemoved', { name: target.name }), {
+      action: {
+        label: t('common:undo'),
+        onClick: () => {
+          if (settled) return
+          settled = true
+          restore()
+        },
+      },
+      onAutoClose: finalize,
+      onDismiss: finalize,
+    })
   }
 
   /**
@@ -3242,7 +3290,7 @@ const ChatInput = memo(function ChatInput({
                   stopStreaming(currentThreadId ?? '')
                   return
                 }
-                // Backspace in an empty box takes the last chip back off.
+                // Backspace in an empty box takes the last chip back off, with undo.
                 if (
                   event.key === 'Backspace' &&
                   // A held key removes one chip, not the whole row.
@@ -3256,7 +3304,7 @@ const ChatInput = memo(function ChatInput({
                   const last = attachments.length - 1
                   if (last >= 0 && !attachments[last].processing) {
                     event.preventDefault()
-                    void handleRemoveAttachment(last)
+                    removeAttachmentWithUndo(last)
                     return
                   }
                 }

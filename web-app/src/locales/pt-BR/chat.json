@@ -252,6 +252,7 @@
     "filterImages": "Imagens",
     "attachFailed": "Falha ao anexar os documentos",
     "removeFailed": "Falha ao remover o anexo",
+    "attachmentRemoved": "{{name}} removido",
     "ingestFailed": "Falha ao processar {{name}}",
     "readAudioFailed": "Falha ao ler o arquivo de áudio",
     "readVideoFailed": "Falha ao ler o arquivo de vídeo",

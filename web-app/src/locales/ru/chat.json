@@ -262,6 +262,7 @@
     "filterImages": "Изображения",
     "attachFailed": "Не удалось прикрепить документы",
     "removeFailed": "Не удалось удалить вложение",
+    "attachmentRemoved": "{{name}} удалён",
     "ingestFailed": "Не удалось обработать {{name}}",
     "readAudioFailed": "Не удалось прочитать аудиофайл",
     "readVideoFailed": "Не удалось прочитать видеофайл",

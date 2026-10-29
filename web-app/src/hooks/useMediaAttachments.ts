@@ -7,7 +7,7 @@ import {
   mediaBatchErrors,
   prepareAudioFiles,
   prepareVideoFiles,
-  splitNewByName,
+  splitNewByContent,
   videoMimeForExt,
   type MediaBatch,
 } from '@/lib/attachmentIntake'
@@ -83,7 +83,7 @@ function useMediaKind(
       const current = useChatAttachments
         .getState()
         .getAttachments(attachmentsKey)
-      const { fresh, duplicates } = splitNewByName(
+      const { fresh, duplicates } = await splitNewByContent(
         batch.prepared,
         current,
         kind
