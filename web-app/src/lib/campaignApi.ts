@@ -175,7 +175,12 @@ export type TaskDiff = {
   uncommitted: boolean
 }
 
-export type GateChoice = { source: string; command?: string | null }
+export type GateChoice = {
+  source: string
+  command?: string | null
+  /** Set when the gate will not run: the agent changed the package scripts. */
+  blocked?: string
+}
 
 export type FinalizeReport = {
   gate: NonNullable<Campaign['gate']>
