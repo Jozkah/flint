@@ -251,7 +251,35 @@ describe('ingestFile (thread)', () => {
     } as any)
     expect(res).toEqual({ id: 'f1' })
     expect(mockVecdb.insertChunks).not.toHaveBeenCalled()
-    expect(mockVecdb.createCollection).not.toHaveBeenCalled()
+    // A fresh thread has no collection: one is made before the file row.
+    expect(mockVecdb.createCollection).toHaveBeenCalledWith('attachments_t1', 384)
+  })
+
+  it('sizes an empty file collection from the embedding model', async () => {
+    mockRag.parseDocument.mockResolvedValue('')
+    mockVecdb.chunkText.mockResolvedValue([])
+    mockVecdb.createFile.mockResolvedValue({ id: 'f1' })
+    getByName.mockReturnValue(
+      makeEngine({
+        getEmbeddingContextSize: undefined,
+        countEmbeddingTokens: undefined,
+        embed: vi.fn().mockResolvedValue({ data: [{ embedding: new Array(768).fill(0), index: 0 }] }),
+      })
+    )
+    await ext.ingestFile('t1', { name: 'a', path: '/a', type: 'text/plain' } as any, {
+      chunkSize: 100,
+      chunkOverlap: 10,
+    } as any)
+    expect(mockVecdb.createCollection).toHaveBeenCalledWith('attachments_t1', 768)
+  })
+
+  it('never splits a chunk inside a surrogate pair and prefers whitespace', async () => {
+    const { splitPoint } = await import('./index')
+    const emoji = 'a'.repeat(9) + '\u{1F600}' + 'b'.repeat(9)
+    const at = splitPoint(emoji)
+    expect(emoji.slice(0, at) + emoji.slice(at)).toBe(emoji)
+    expect(Array.from(emoji.slice(0, at)).join('')).not.toMatch(/[\uD800-\uDBFF]$/)
+    expect(splitPoint('aaaa bbbbbbb')).toBe(4)
   })
 
   it('throws when embeddings have no dimension', async () => {

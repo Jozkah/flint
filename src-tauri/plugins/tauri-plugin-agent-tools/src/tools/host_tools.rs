@@ -955,6 +955,7 @@ mod win {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; null security attributes and template are allowed; the handle is checked below.
         let handle = unsafe {
             CreateFileW(
                 name.as_ptr(),
@@ -967,12 +968,14 @@ mod win {
             )
         };
         if handle == INVALID_HANDLE_VALUE {
+            // SAFETY: GetLastError only reads the calling thread's last-error value.
             return if unsafe { GetLastError() } == ERROR_ACCESS_DENIED {
                 Some(false)
             } else {
                 None
             };
         }
+        // SAFETY: `handle` is a valid handle opened above and is not used after this close.
         unsafe { CloseHandle(handle) };
         Some(true)
     }
@@ -984,6 +987,7 @@ mod win {
             .collect();
         let mut dacl: *mut ACL = std::ptr::null_mut();
         let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; the out-pointers are locals, and `sd` (which owns `dacl`) is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 name.as_ptr(),
@@ -1001,6 +1005,7 @@ mod win {
         }
         let mut sid_buf = vec![0u8; SECURITY_MAX_SID_SIZE as usize];
         let mut len = sid_buf.len() as u32;
+        // SAFETY: `sid_buf` is a SECURITY_MAX_SID_SIZE buffer and `len` holds its size; a null domain SID is allowed for this well-known SID.
         let made = unsafe {
             CreateWellKnownSid(
                 WinBuiltinAnyPackageSid,
@@ -1015,13 +1020,16 @@ mod win {
             // A null DACL grants everyone everything.
             Some(true)
         } else {
+            // SAFETY: `dacl` is non-null (checked above) and points into `sd`, which stays alive until the LocalFree below.
             let count = unsafe { (*dacl).AceCount } as u32;
             let (mut read, mut exec, mut denied) = (false, false, false);
             for i in 0..count {
                 let mut ace: *mut core::ffi::c_void = std::ptr::null_mut();
+                // SAFETY: `i` is below the ACL's AceCount and `ace` is a local out-pointer.
                 if unsafe { GetAce(dacl, i, &mut ace) } == 0 || ace.is_null() {
                     continue;
                 }
+                // SAFETY: GetAce succeeded, so `ace` points at an ACE inside `dacl`, which starts with an ACE_HEADER.
                 let header = unsafe { &*(ace as *const ACE_HEADER) };
                 if header.AceFlags & INHERIT_ONLY_ACE != 0 {
                     continue;
@@ -1032,8 +1040,10 @@ mod win {
                     continue;
                 }
                 // ACCESS_DENIED_ACE has the same layout as ACCESS_ALLOWED_ACE.
+                // SAFETY: the type check above limits this to allowed/denied ACEs, which share ACCESS_ALLOWED_ACE's layout.
                 let body = unsafe { &*(ace as *const ACCESS_ALLOWED_ACE) };
                 let sid = &body.SidStart as *const u32 as PSID;
+                // SAFETY: `sid` points at the SID stored in the ACE and `sid_buf` holds a valid SID built by CreateWellKnownSid.
                 if unsafe { EqualSid(sid, sid_buf.as_mut_ptr() as PSID) } == 0 {
                     continue;
                 }
@@ -1048,6 +1058,7 @@ mod win {
             }
             Some(!denied && read && exec)
         };
+        // SAFETY: `sd` came from the successful GetNamedSecurityInfoW above; `dacl` points into it and is not used after this free.
         unsafe { LocalFree(sd) };
         result
     }

@@ -640,6 +640,16 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
     while args.first().map(String::as_str) == Some("--no-pager") {
         args.remove(0);
     }
+    let sub = git_subcommand(&args)?;
+    let rest: Vec<String> = args[1..].to_vec();
+    deny_common_git(&sub, &rest)?;
+    let mut plan = plan_of(Program::Git, args.clone(), GitClass::Local);
+    classify_git(&mut plan, &sub, &rest)?;
+    Ok(plan)
+}
+
+/// The subcommand, refusing `-C` and any other global option before it.
+fn git_subcommand(args: &[String]) -> Result<String, String> {
     let Some(sub) = args.first().cloned() else {
         return Err("no git subcommand given (e.g. [\"status\"])".into());
     };
@@ -661,138 +671,210 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
             "global options before the subcommand (`{sub}`) are not allowed; pass the folder as `cwd` instead of -C, and do not override configuration with -c"
         ));
     }
-    let rest: Vec<String> = args[1..].to_vec();
-    deny_common_git(&sub, &rest)?;
-    let mut plan = plan_of(Program::Git, args.clone(), GitClass::Local);
-    let first = rest.first().map(String::as_str);
-    match sub.as_str() {
+    Ok(sub)
+}
+
+/// One subcommand's classification, by subcommand.
+fn classify_git(plan: &mut GitPlan, sub: &str, rest: &[String]) -> Result<(), String> {
+    match sub {
         "status" | "log" | "diff" | "show" | "rev-parse" | "ls-files" | "ls-tree" | "blame"
         | "shortlog" | "describe" | "cat-file" | "grep" | "rev-list" | "merge-base"
         | "name-rev" | "show-ref" | "for-each-ref" | "whatchanged" | "count-objects"
         | "check-ignore" | "version" | "diff-tree" | "diff-index" | "diff-files" | "range-diff" => {
-            plan.class = GitClass::Read;
-            if matches!(sub.as_str(), "diff" | "diff-tree" | "diff-index" | "diff-files" | "range-diff") {
-                check_diff_paths(&rest)?;
-            }
+            classify_read(plan, sub, rest)
         }
-        "merge-tree" => {
-            if rest.len() != 3 || rest[0] != "--write-tree"
-                || rest[1].starts_with('-') || rest[2].starts_with('-') {
-                return Err("`git merge-tree` requires [\"--write-tree\", \"<base>\", \"<head>\"]".into());
-            }
-            plan.class = GitClass::Local;
-        }
-        "ls-remote" => {
-            plan.class = GitClass::Read;
+        "merge-tree" => classify_merge_tree(plan, rest),
+        "ls-remote" => classify_ls_remote(plan, rest),
+        "branch" => classify_branch(plan, rest),
+        "tag" => classify_tag(plan, sub, rest),
+        "remote" => classify_remote(plan, rest),
+        "stash" => classify_stash(plan, rest),
+        "config" => classify_config(plan, rest),
+        "worktree" => classify_worktree(plan, rest),
+        "reflog" => classify_reflog(plan, rest),
+        "reset" | "clean" | "checkout" | "switch" | "restore" | "rm" => classify_working_tree(plan, sub, rest),
+        "commit" | "notes" | "merge" | "am" | "apply" => check_message_files(sub, rest),
+        "add" | "mv" | "rebase" | "cherry-pick" | "revert" | "init" | "sparse-checkout"
+        | "update-index" => Ok(()),
+        "clone" => classify_clone(plan, rest),
+        "fetch" | "pull" => classify_fetch(plan, rest),
+        "push" => classify_push(plan, rest),
+        other => Err(format!(
+            "`git {other}` is not supported by this tool. Supported: status, log, diff, show, merge-tree, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)"
+        )),
+    }
+}
+
+/// Read-only subcommands; the diff family also checks its paths.
+fn classify_read(plan: &mut GitPlan, sub: &str, rest: &[String]) -> Result<(), String> {
+    plan.class = GitClass::Read;
+    if matches!(sub, "diff" | "diff-tree" | "diff-index" | "diff-files" | "range-diff") {
+        check_diff_paths(&rest)?;
+    }
+    Ok(())
+}
+
+/// `git merge-tree`: only the `--write-tree <base> <head>` shape.
+fn classify_merge_tree(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    if rest.len() != 3 || rest[0] != "--write-tree"
+        || rest[1].starts_with('-') || rest[2].starts_with('-') {
+        return Err("`git merge-tree` requires [\"--write-tree\", \"<base>\", \"<head>\"]".into());
+    }
+    plan.class = GitClass::Local;
+    Ok(())
+}
+
+/// `git ls-remote`: reads a remote.
+fn classify_ls_remote(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    plan.class = GitClass::Read;
+    plan.reaches_remote = true;
+    plan.remote = positionals(&rest, &["--upload-pack", "--exec", "-o", "--server-option", "--sort"])
+        .first()
+        .map(|s| s.to_string());
+    if let Some(r) = &plan.remote {
+        check_remote_arg(r)?;
+    }
+    Ok(())
+}
+
+/// `git branch`: listing reads; changing, deleting and forcing do not.
+fn classify_branch(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    let deleting = has_opt(&rest, &["-d", "--delete", "-D"]);
+    let forced = has(&rest, &["-D", "-M", "-C"])
+        || (deleting && has_opt(&rest, &["-f", "--force"]));
+    let changes = deleting
+        || has_opt(
+            &rest,
+            &[
+                "-m", "-M", "--move", "-c", "-C", "--copy", "-u", "--set-upstream-to",
+                "--unset-upstream", "--edit-description", "-f", "--force", "-t", "--track",
+            ],
+        );
+    let listing = has_opt(
+        &rest,
+        &[
+            "-l", "--list", "-a", "--all", "-r", "--remotes", "--show-current",
+            "--contains", "--no-contains", "--merged", "--no-merged", "--points-at",
+        ],
+    );
+    let values = ["--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--format", "--sort", "--color", "--column"];
+    if changes {
+        plan.class = GitClass::Local;
+    } else if listing || positionals(&rest, &values).is_empty() {
+        plan.class = GitClass::Read;
+    }
+    if forced {
+        plan.destructive = Some("deletes or overwrites a branch even if its commits are not merged".into());
+    }
+    plan.branch = positionals(&rest, &values).first().map(|s| s.to_string());
+    Ok(())
+}
+
+/// `git tag`: listing reads; creating, deleting and moving do not.
+fn classify_tag(plan: &mut GitPlan, sub: &str, rest: &[String]) -> Result<(), String> {
+    check_message_files(&sub, &rest)?;
+    let listing = has_opt(&rest, &["-l", "--list", "--contains", "--points-at", "--merged", "--no-merged", "-n", "-v", "--verify"]);
+    let values = ["--contains", "--points-at", "--merged", "--no-merged", "-m", "--message", "-F", "--file", "--sort", "--format"];
+    if !has_opt(&rest, &["-d", "--delete", "-a", "-s", "-f", "--force", "-m", "--message"])
+        && (listing || positionals(&rest, &values).is_empty())
+    {
+        plan.class = GitClass::Read;
+    }
+    if has_opt(&rest, &["-f", "--force"]) {
+        plan.destructive = Some("moves an existing tag".into());
+    }
+    Ok(())
+}
+
+/// `git remote`: showing reads; changing checks any URL it names.
+fn classify_remote(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    let first = rest.first().map(String::as_str);
+    match first {
+    None | Some("-v") | Some("--verbose") | Some("show") | Some("get-url") => {
+        plan.class = GitClass::Read;
+        if first == Some("show") {
             plan.reaches_remote = true;
-            plan.remote = positionals(&rest, &["--upload-pack", "--exec", "-o", "--server-option", "--sort"])
-                .first()
-                .map(|s| s.to_string());
+            plan.remote = positionals(&rest[1..], &[]).first().map(|s| s.to_string());
             if let Some(r) = &plan.remote {
                 check_remote_arg(r)?;
             }
         }
-        "branch" => {
-            let deleting = has_opt(&rest, &["-d", "--delete", "-D"]);
-            let forced = has(&rest, &["-D", "-M", "-C"])
-                || (deleting && has_opt(&rest, &["-f", "--force"]));
-            let changes = deleting
-                || has_opt(
-                    &rest,
-                    &[
-                        "-m", "-M", "--move", "-c", "-C", "--copy", "-u", "--set-upstream-to",
-                        "--unset-upstream", "--edit-description", "-f", "--force", "-t", "--track",
-                    ],
-                );
-            let listing = has_opt(
-                &rest,
-                &[
-                    "-l", "--list", "-a", "--all", "-r", "--remotes", "--show-current",
-                    "--contains", "--no-contains", "--merged", "--no-merged", "--points-at",
-                ],
-            );
-            let values = ["--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--format", "--sort", "--color", "--column"];
-            if changes {
-                plan.class = GitClass::Local;
-            } else if listing || positionals(&rest, &values).is_empty() {
-                plan.class = GitClass::Read;
-            }
-            if forced {
-                plan.destructive = Some("deletes or overwrites a branch even if its commits are not merged".into());
-            }
-            plan.branch = positionals(&rest, &values).first().map(|s| s.to_string());
-        }
-        "tag" => {
-            check_message_files(&sub, &rest)?;
-            let listing = has_opt(&rest, &["-l", "--list", "--contains", "--points-at", "--merged", "--no-merged", "-n", "-v", "--verify"]);
-            let values = ["--contains", "--points-at", "--merged", "--no-merged", "-m", "--message", "-F", "--file", "--sort", "--format"];
-            if !has_opt(&rest, &["-d", "--delete", "-a", "-s", "-f", "--force", "-m", "--message"])
-                && (listing || positionals(&rest, &values).is_empty())
-            {
-                plan.class = GitClass::Read;
-            }
-            if has_opt(&rest, &["-f", "--force"]) {
-                plan.destructive = Some("moves an existing tag".into());
+    }
+    Some("add") | Some("rename") | Some("remove") | Some("rm") | Some("set-url")
+    | Some("set-head") | Some("set-branches") | Some("prune") | Some("update") => {
+        plan.class = GitClass::Local;
+        if let Some(url) = positionals(&rest[1..], &["-t", "-m"]).get(1) {
+            if first == Some("add") || first == Some("set-url") {
+                check_clone_url(url)?;
             }
         }
-        "remote" => match first {
-            None | Some("-v") | Some("--verbose") | Some("show") | Some("get-url") => {
-                plan.class = GitClass::Read;
-                if first == Some("show") {
-                    plan.reaches_remote = true;
-                    plan.remote = positionals(&rest[1..], &[]).first().map(|s| s.to_string());
-                    if let Some(r) = &plan.remote {
-                        check_remote_arg(r)?;
-                    }
-                }
-            }
-            Some("add") | Some("rename") | Some("remove") | Some("rm") | Some("set-url")
-            | Some("set-head") | Some("set-branches") | Some("prune") | Some("update") => {
-                plan.class = GitClass::Local;
-                if let Some(url) = positionals(&rest[1..], &["-t", "-m"]).get(1) {
-                    if first == Some("add") || first == Some("set-url") {
-                        check_clone_url(url)?;
-                    }
-                }
-            }
-            Some(other) => return Err(format!("`git remote {other}` is not supported by this tool")),
-        },
-        "stash" => match first {
-            Some("list") | Some("show") => plan.class = GitClass::Read,
-            Some("drop") | Some("clear") => {
-                plan.destructive = Some("discards stashed changes".into());
-            }
-            _ => {}
-        },
-        "config" => {
-            if has_opt(&rest, &["--global", "--system", "--file", "-f", "--blob", "--worktree", "--includes"]) {
-                return Err("`git config --global/--system/--file` is not allowed; ask the user to change their Git configuration".into());
-            }
-            let reading = has_opt(
-                &rest,
-                &["--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "--get-color", "--get-colorbool"],
-            ) || matches!(first, Some("get") | Some("list"))
-                || (rest.len() == 1 && !rest[0].starts_with('-'));
-            if !reading {
-                return Err("changing Git configuration is not allowed through this tool; ask the user to run it".into());
-            }
-            plan.class = GitClass::Read;
-        }
-        "worktree" => match first {
-            Some("list") => plan.class = GitClass::Read,
-            Some("remove") if has_opt(&rest, &["-f", "--force"]) => {
-                plan.destructive = Some("removes a worktree with uncommitted changes".into());
-            }
-            Some("add") | Some("remove") | Some("move") | Some("prune") | Some("lock")
-            | Some("unlock") | Some("repair") => {}
-            _ => return Err("`git worktree` supports list, add, remove, move, prune, lock, unlock, repair".into()),
-        },
-        "reflog" => match first {
-            Some("expire") | Some("delete") | Some("drop") => {
-                plan.destructive = Some("deletes reflog entries, the record that recovers lost commits".into());
-            }
-            _ => plan.class = GitClass::Read,
-        },
+    }
+    Some(other) => return Err(format!("`git remote {other}` is not supported by this tool")),
+    }
+    Ok(())
+}
+
+/// `git stash`: list and show read; drop and clear lose work.
+fn classify_stash(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    let first = rest.first().map(String::as_str);
+    match first {
+    Some("list") | Some("show") => plan.class = GitClass::Read,
+    Some("drop") | Some("clear") => {
+        plan.destructive = Some("discards stashed changes".into());
+    }
+    _ => {}
+    }
+    Ok(())
+}
+
+/// `git config`: reading only, never another file's scope.
+fn classify_config(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    let first = rest.first().map(String::as_str);
+    if has_opt(&rest, &["--global", "--system", "--file", "-f", "--blob", "--worktree", "--includes"]) {
+        return Err("`git config --global/--system/--file` is not allowed; ask the user to change their Git configuration".into());
+    }
+    let reading = has_opt(
+        &rest,
+        &["--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "--get-color", "--get-colorbool"],
+    ) || matches!(first, Some("get") | Some("list"))
+        || (rest.len() == 1 && !rest[0].starts_with('-'));
+    if !reading {
+        return Err("changing Git configuration is not allowed through this tool; ask the user to run it".into());
+    }
+    plan.class = GitClass::Read;
+    Ok(())
+}
+
+/// `git worktree`: the supported actions; a forced remove loses work.
+fn classify_worktree(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    let first = rest.first().map(String::as_str);
+    match first {
+    Some("list") => plan.class = GitClass::Read,
+    Some("remove") if has_opt(&rest, &["-f", "--force"]) => {
+        plan.destructive = Some("removes a worktree with uncommitted changes".into());
+    }
+    Some("add") | Some("remove") | Some("move") | Some("prune") | Some("lock")
+    | Some("unlock") | Some("repair") => {}
+    _ => return Err("`git worktree` supports list, add, remove, move, prune, lock, unlock, repair".into()),
+    }
+    Ok(())
+}
+
+/// `git reflog`: reading, unless it deletes entries.
+fn classify_reflog(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    let first = rest.first().map(String::as_str);
+    match first {
+    Some("expire") | Some("delete") | Some("drop") => {
+        plan.destructive = Some("deletes reflog entries, the record that recovers lost commits".into());
+    }
+    _ => plan.class = GitClass::Read,
+    }
+    Ok(())
+}
+
+/// Subcommands that can discard uncommitted work: reset, clean, checkout, switch, restore, rm.
+fn classify_working_tree(plan: &mut GitPlan, sub: &str, rest: &[String]) -> Result<(), String> {
+    match sub {
         "reset" => {
             if has_opt(&rest, &["--hard", "--merge", "--keep"]) {
                 plan.destructive = Some("discards uncommitted changes in the working tree".into());
@@ -836,62 +918,64 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
                 plan.destructive = Some("removes files with uncommitted changes".into());
             }
         }
-        "commit" | "notes" | "merge" | "am" | "apply" => check_message_files(&sub, &rest)?,
-        "add" | "mv" | "rebase" | "cherry-pick" | "revert" | "init" | "sparse-checkout"
-        | "update-index" => {}
-        "clone" => {
-            plan.reaches_remote = true;
-            let values = ["-b", "--branch", "--depth", "-o", "--origin", "-j", "--jobs", "--filter", "--shallow-since", "--shallow-exclude", "--bundle-uri"];
-            let pos = positionals(&rest, &values);
-            let Some(url) = pos.first() else {
-                return Err("git clone needs a repository URL".into());
-            };
-            check_clone_url(url)?;
-            plan.remote = Some(url.to_string());
-        }
-        "fetch" | "pull" => {
-            plan.reaches_remote = true;
-            let pos = positionals(&rest, &["--depth", "-j", "--jobs", "-s", "--strategy", "-X", "--strategy-option"]);
-            plan.remote = pos.first().map(|s| s.to_string());
-            plan.branch = pos.get(1).map(|s| s.to_string());
-            if let Some(r) = &plan.remote {
-                check_remote_arg(r)?;
-            }
-        }
-        "push" => {
-            plan.class = GitClass::Remote;
-            plan.reaches_remote = true;
-            let pos = positionals(&rest, &["-o", "--push-option", "--repo", "--receive-pack", "--exec"]);
-            // `--repo=<url>` names the destination as a positional would.
-            let repo_opt = rest.iter().enumerate().find_map(|(i, a)| match a.as_str() {
-                "--repo" => rest.get(i + 1).cloned(),
-                _ => a.strip_prefix("--repo=").map(str::to_string),
-            });
-            plan.remote = repo_opt.or_else(|| pos.first().map(|s| s.to_string()));
-            if let Some(r) = &plan.remote {
-                check_remote_arg(r)?;
-            }
-            let refs: Vec<&str> = pos.iter().skip(1).copied().collect();
-            if !refs.is_empty() {
-                plan.branch = Some(refs.join(" "));
-            }
-            let force = has_opt(&rest, &["-f", "--force", "--force-with-lease", "--force-if-includes", "--mirror"])
-                || refs.iter().any(|r| r.starts_with('+'));
-            let deletes = has_opt(&rest, &["-d", "--delete", "--prune"])
-                || refs.iter().any(|r| r.starts_with(':'));
-            if force {
-                plan.destructive = Some("force push: rewrites history on the remote that others may have".into());
-            } else if deletes {
-                plan.destructive = Some("deletes branches or tags on the remote".into());
-            }
-        }
-        other => {
-            return Err(format!(
-                "`git {other}` is not supported by this tool. Supported: status, log, diff, show, merge-tree, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)"
-            ))
-        }
+        _ => {}
     }
-    Ok(plan)
+    Ok(())
+}
+
+/// `git clone`: reaches the remote it names, which must be a safe URL.
+fn classify_clone(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    plan.reaches_remote = true;
+    let values = ["-b", "--branch", "--depth", "-o", "--origin", "-j", "--jobs", "--filter", "--shallow-since", "--shallow-exclude", "--bundle-uri"];
+    let pos = positionals(&rest, &values);
+    let Some(url) = pos.first() else {
+        return Err("git clone needs a repository URL".into());
+    };
+    check_clone_url(url)?;
+    plan.remote = Some(url.to_string());
+    Ok(())
+}
+
+/// `git fetch` / `git pull`: reach the named remote.
+fn classify_fetch(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    plan.reaches_remote = true;
+    let pos = positionals(&rest, &["--depth", "-j", "--jobs", "-s", "--strategy", "-X", "--strategy-option"]);
+    plan.remote = pos.first().map(|s| s.to_string());
+    plan.branch = pos.get(1).map(|s| s.to_string());
+    if let Some(r) = &plan.remote {
+        check_remote_arg(r)?;
+    }
+    Ok(())
+}
+
+/// `git push`: reaches a remote; forcing or deleting there is destructive.
+fn classify_push(plan: &mut GitPlan, rest: &[String]) -> Result<(), String> {
+    plan.class = GitClass::Remote;
+    plan.reaches_remote = true;
+    let pos = positionals(&rest, &["-o", "--push-option", "--repo", "--receive-pack", "--exec"]);
+    // `--repo=<url>` names the destination as a positional would.
+    let repo_opt = rest.iter().enumerate().find_map(|(i, a)| match a.as_str() {
+        "--repo" => rest.get(i + 1).cloned(),
+        _ => a.strip_prefix("--repo=").map(str::to_string),
+    });
+    plan.remote = repo_opt.or_else(|| pos.first().map(|s| s.to_string()));
+    if let Some(r) = &plan.remote {
+        check_remote_arg(r)?;
+    }
+    let refs: Vec<&str> = pos.iter().skip(1).copied().collect();
+    if !refs.is_empty() {
+        plan.branch = Some(refs.join(" "));
+    }
+    let force = has_opt(&rest, &["-f", "--force", "--force-with-lease", "--force-if-includes", "--mirror"])
+        || refs.iter().any(|r| r.starts_with('+'));
+    let deletes = has_opt(&rest, &["-d", "--delete", "--prune"])
+        || refs.iter().any(|r| r.starts_with(':'));
+    if force {
+        plan.destructive = Some("force push: rewrites history on the remote that others may have".into());
+    } else if deletes {
+        plan.destructive = Some("deletes branches or tags on the remote".into());
+    }
+    Ok(())
 }
 
 /// How gh calls are written, for refusals that should teach the shape.
@@ -2111,6 +2195,27 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
     };
     let mut cmd = tokio::process::Command::new(&bin);
     jan_process::HostProcessEnv::host_env(&mut cmd);
+    harden_git(&mut cmd, plan);
+    let (identity, url) = network_identity(&mut cmd, &bin, plan, cwd).await;
+    cmd.args(argv_for(plan));
+    isolate_env(&mut cmd, cwd);
+    let secs = if plan.reaches_remote {
+        REMOTE_TIMEOUT_SECS
+    } else {
+        LOCAL_TIMEOUT_SECS
+    };
+    let shown = crate::secrets::redact_secrets(&plan.display());
+    let out = match crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(secs)).await {
+        Err(_) => return format!("ERROR: `{shown}` timed out after {secs}s and was stopped"),
+        Ok(Err(e)) => return format!("ERROR: could not start {}: {e}", plan.program.as_str()),
+        Ok(Ok(out)) => out,
+    };
+    render_output(&shown, &out, identity.as_ref(), url.as_deref())
+}
+
+/// Nothing the repository's own files can name runs: no hooks, fsmonitor,
+/// pager or editor, and no inherited merge driver for the conflict probe.
+fn harden_git(cmd: &mut tokio::process::Command, plan: &GitPlan) {
     if plan.program == Program::Git && plan.args.first().map(String::as_str) == Some("merge-tree") {
         // Repository attributes may name a merge driver. Local drivers are
         // refused by check_repo_config; do not inherit one from user or system
@@ -2131,6 +2236,16 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
             "core.pager=cat",
         ]);
     }
+}
+
+/// For a network git call to an https remote, the identity it authenticates
+/// with (and the `-c` that names it), plus the remote's URL.
+async fn network_identity(
+    cmd: &mut tokio::process::Command,
+    bin: &Path,
+    plan: &GitPlan,
+    cwd: &Path,
+) -> (Option<GitIdentity>, Option<String>) {
     // A git call that talks to an https remote authenticates with the GitHub
     // CLI login when gh is logged in for that host: that is the identity the
     // user connected, and git's own helper can hold a different (or stale)
@@ -2180,7 +2295,12 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
             }
         }
     }
-    cmd.args(argv_for(plan));
+    (identity, url)
+}
+
+/// The child's working folder and an environment no prompt, pager, editor
+/// or inherited repository variable can reach.
+fn isolate_env(cmd: &mut tokio::process::Command, cwd: &Path) {
     cmd.current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
@@ -2211,17 +2331,17 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
     }
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
-    let secs = if plan.reaches_remote {
-        REMOTE_TIMEOUT_SECS
-    } else {
-        LOCAL_TIMEOUT_SECS
-    };
-    let shown = crate::secrets::redact_secrets(&plan.display());
-    let out = match crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(secs)).await {
-        Err(_) => return format!("ERROR: `{shown}` timed out after {secs}s and was stopped"),
-        Ok(Err(e)) => return format!("ERROR: could not start {}: {e}", plan.program.as_str()),
-        Ok(Ok(out)) => out,
-    };
+}
+
+/// What the model is shown for a finished call: the command and its output,
+/// redacted and capped, with a note naming the identity when an
+/// authentication refusal is the reason it failed.
+fn render_output(
+    shown: &str,
+    out: &std::process::Output,
+    identity: Option<&GitIdentity>,
+    url: Option<&str>,
+) -> String {
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     let err = String::from_utf8_lossy(&out.stderr);
     if !err.trim().is_empty() {
@@ -2239,9 +2359,9 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
             format!("$ {shown}\n{body}")
         }
     } else {
-        let note = match &identity {
+        let note = match identity {
             Some(id) if auth_refused(&body) => {
-                let shown_url = url.as_deref().map(without_userinfo);
+                let shown_url = url.map(without_userinfo);
                 format!("\n{}", id.refusal_note(shown_url.as_deref()))
             }
             _ => String::new(),
@@ -2314,6 +2434,46 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+#[path = "git_plan_characterization_tests.rs"]
+mod git_plan_characterization_tests;
+
+#[cfg(test)]
+mod render_output_tests {
+    use super::*;
+
+    fn output(code: u32, stdout: &str, stderr: &str) -> std::process::Output {
+        #[cfg(windows)]
+        let status = <std::process::ExitStatus as std::os::windows::process::ExitStatusExt>::from_raw(code);
+        #[cfg(unix)]
+        let status = <std::process::ExitStatus as std::os::unix::process::ExitStatusExt>::from_raw((code as i32) << 8);
+        std::process::Output { status, stdout: stdout.into(), stderr: stderr.into() }
+    }
+
+    /// Q1-023: the output step split out of `execute` says what it said.
+    #[test]
+    fn a_finished_call_is_rendered_as_before() {
+        assert_eq!(render_output("git status", &output(0, "", ""), None, None), "$ git status\n(exit 0, no output)");
+        assert_eq!(
+            render_output("git log", &output(0, "a", "warn\n"), None, None),
+            "$ git log\na\nwarn"
+        );
+        assert_eq!(
+            render_output("git push", &output(1, "", "fatal: nope\n"), None, None),
+            "ERROR: `git push` exited with 1\nfatal: nope"
+        );
+        let id = GitIdentity::Helper { helpers: vec![], host: Some("github.com".into()) };
+        let refused = render_output(
+            "git push",
+            &output(128, "", "remote: Permission to a/b.git denied to x.\nfatal: unable to access: The requested URL returned error: 403\n"),
+            Some(&id),
+            Some("https://user:pw@github.com/a/b.git"),
+        );
+        assert!(refused.starts_with("ERROR: `git push` exited with 128\n"), "{refused}");
+        assert!(!refused.contains("user:pw"), "{refused}");
+    }
 }
 
 #[cfg(test)]

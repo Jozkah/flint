@@ -360,11 +360,7 @@ fn try_append(data_folder: &Path, record: &PermissionRecord) -> Result<(), Strin
     }
     let mut line = serde_json::to_string(record).map_err(|e| e.to_string())?;
     line.push('\n');
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
+    let mut file = crate::retention::open_for_append(&path).map_err(|e| e.to_string())?;
     file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
     // Flushed per record: a decision that is not on disk when the process dies
     // is a decision nobody can audit.

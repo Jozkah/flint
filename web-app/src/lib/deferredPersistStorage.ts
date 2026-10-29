@@ -57,7 +57,11 @@ export function deferredPersistStorage<S>(
   inner: PersistStorage<S>,
   delay = 1500,
   options: DeferredPersistOptions = {}
-): PersistStorage<S> & { flush: () => Promise<void> } {
+): PersistStorage<S> & {
+  flush: () => Promise<void>
+  /** Write what is pending, then drop the page listeners and the exit flusher. */
+  dispose: () => Promise<void>
+} {
   const pending = new Map<string, StorageValue<S>>()
   let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -100,11 +104,22 @@ export function deferredPersistStorage<S>(
   flushers.add(flush)
   installExitFlush()
 
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') void flush()
+  }
+  const onPageHide = () => void flush()
   if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void flush()
-    })
-    window.addEventListener('pagehide', () => void flush())
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', onPageHide)
+  }
+
+  const dispose = async () => {
+    flushers.delete(flush)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onPageHide)
+    }
+    await flush()
   }
 
   return {
@@ -126,5 +141,6 @@ export function deferredPersistStorage<S>(
       await inner.removeItem(name)
     },
     flush,
+    dispose,
   }
 }

@@ -32,11 +32,11 @@ pub(super) async fn apply_input_line(
     let registry = targets.permissions;
     match parse_input_line(line)? {
         InputMessage::User(text) => {
-            input.queue_user(text);
+            input.queue_user(text)?;
             Ok(InputFlow::Continue)
         }
         InputMessage::UserParts(parts) => {
-            input.queue_user_parts(parts);
+            input.queue_user_parts(parts)?;
             Ok(InputFlow::Continue)
         }
         InputMessage::Abort => {
