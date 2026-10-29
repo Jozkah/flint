@@ -333,6 +333,7 @@ impl RemoteHub {
             log::info!("remote: phone '{}' was unpaired", d.name);
             let _ = self.revoked.send(d.id.clone());
             lock(&self.tickets).revoke_device(&d.id);
+            lock(&self.uploads).remove_device(&d.id);
             self.frontend.devices_changed();
         }
         removed.is_some()
@@ -452,8 +453,18 @@ impl RemoteHub {
     }
 
     pub fn poll_pairing(&self, ip: IpAddr, poll_id: &str) -> PollResult {
-        let r = lock(&self.pairing).poll(poll_id, Instant::now());
-        if r == PollResult::Expired {
+        let now = Instant::now();
+        let r = {
+            let mut book = lock(&self.pairing);
+            // Only a wrong poll id against a live pairing is a probe. Polls
+            // after the pairing expired or was collected are a phone that
+            // kept asking, and must not ban its IP (F2m-002).
+            let live = book.any_live(now);
+            let r = book.poll(poll_id, now);
+            (r, live)
+        };
+        let (r, live) = r;
+        if live && r == PollResult::Expired {
             self.note_failure(ip);
         }
         r

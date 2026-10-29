@@ -126,6 +126,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "Save a skill",
+      "memoryWrite": "Save to memory",
       "default": "Change this computer"
     },
     "computer": {

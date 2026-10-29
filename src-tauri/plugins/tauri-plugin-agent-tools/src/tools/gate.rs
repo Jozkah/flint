@@ -1238,8 +1238,13 @@ fn stage_per_tool(c: &GateCtx) -> Option<Decision> {
             | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
         });
     }
-    // Dedicated skill/memory tools act only on the agent's own workspace by a
-    // sanitized name, so they never prompt (deny above still wins).
+    // Skill and memory writes persist instructions the model will read back in
+    // later sessions, so the user approves each one (audit O06-030). Reads act
+    // only on the agent's own workspace by a sanitized name and never prompt.
+    // The deny check above still wins.
+    if matches!(tool.name, "skill_write" | "memory_write") {
+        return Some(Decision::Prompt(PromptKind::Ask));
+    }
     if crate::tools::is_workspace_tool(tool.name) {
         return Some(Decision::Allow);
     }
@@ -2528,7 +2533,7 @@ mod tests {
         let root = unique_root();
         let grants = SessionGrants::default();
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
-        for name in ["memory_read", "memory_write", "skill_write", "memory_list"] {
+        for name in ["memory_read", "memory_list", "skill_list", "skill_read"] {
             let d = resolve_decision(
                 lookup(name).unwrap(),
                 &json!({"name": "x", "content": "y"}),
@@ -2557,6 +2562,28 @@ mod tests {
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::HardDeny(DenyReason::Policy));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn skill_and_memory_writes_ask_first() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        for name in ["memory_write", "skill_write"] {
+            let d = resolve_decision(
+                lookup(name).unwrap(),
+                &json!({"name": "x", "content": "y"}),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            );
+            assert_eq!(d, Decision::Prompt(PromptKind::Ask), "{name} should ask");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -4489,8 +4516,13 @@ fn resolve_decision_frozen(
             | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
         };
     }
-    // Dedicated skill/memory tools act only on the agent's own workspace by a
-    // sanitized name, so they never prompt (deny above still wins).
+    // Skill and memory writes persist instructions the model will read back in
+    // later sessions, so the user approves each one (audit O06-030). Reads act
+    // only on the agent's own workspace by a sanitized name and never prompt.
+    // The deny check above still wins.
+    if matches!(tool.name, "skill_write" | "memory_write") {
+        return Decision::Prompt(PromptKind::Ask);
+    }
     if crate::tools::is_workspace_tool(tool.name) {
         return Decision::Allow;
     }

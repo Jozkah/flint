@@ -20,6 +20,7 @@
     "errorNotFound": "Repositori model tidak ditemukan di Hugging Face.",
     "errorNoRepo": "Hugging Face tidak mengembalikan repositori ini.",
     "repoCopied": "ID repositori disalin",
+    "repoCopyFailed": "Tidak dapat menyalin id repositori",
     "copyRepo": "Salin repo",
     "openOnHf": "Buka di Hugging Face",
     "gatedBadge": "Terbatas",

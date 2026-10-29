@@ -20,6 +20,7 @@
     "errorNotFound": "在 Hugging Face 上未找到该模型仓库。",
     "errorNoRepo": "Hugging Face 没有返回此仓库。",
     "repoCopied": "已复制仓库 ID",
+    "repoCopyFailed": "无法复制仓库 ID",
     "copyRepo": "复制仓库",
     "openOnHf": "在 Hugging Face 上打开",
     "gatedBadge": "受限",

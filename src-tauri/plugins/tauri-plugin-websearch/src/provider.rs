@@ -298,7 +298,22 @@ pub fn set_proxy_hook(hook: ProxyHook) {
     let _ = PROXY_HOOK.set(hook);
 }
 
+/// The shared providers' client (O09-017): built once and cloned (a clone
+/// shares its connection pool), instead of a new client per search. The proxy
+/// stays live because the hook is consulted per request; a client built before
+/// the hook was set is kept apart so it never hides the proxy.
 fn build_http_client(provider: &str) -> Result<reqwest::Client, String> {
+    static WITH_HOOK: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    static WITHOUT_HOOK: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let slot = if PROXY_HOOK.get().is_some() { &WITH_HOOK } else { &WITHOUT_HOOK };
+    if let Some(c) = slot.get() {
+        return Ok(c.clone());
+    }
+    let client = new_http_client(provider)?;
+    Ok(slot.get_or_init(|| client).clone())
+}
+
+fn new_http_client(provider: &str) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS));
     if PROXY_HOOK.get().is_some() {

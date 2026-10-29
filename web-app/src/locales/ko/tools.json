@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "스킬 저장",
+      "memoryWrite": "메모리에 저장",
       "default": "Change this computer"
     },
     "computer": {

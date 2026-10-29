@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "Salvar uma habilidade",
+      "memoryWrite": "Salvar na memória",
       "default": "Change this computer"
     },
     "computer": {

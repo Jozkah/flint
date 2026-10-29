@@ -71,6 +71,10 @@ fn atom(text: &str, f: &Field) -> Result<u32, CronError> {
     if let Some(i) = f.names.iter().position(|n| *n == lower) {
         return Ok(i as u32 + f.name_base);
     }
+    // Digits only: `parse` would also take a leading `+`.
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return err(format!("'{text}' is not a valid {} value", f.name));
+    }
     match text.parse::<u32>() {
         Ok(n) => Ok(n),
         Err(_) => err(format!("'{text}' is not a valid {} value", f.name)),
@@ -95,6 +99,7 @@ fn parse_field(text: &str, f: &Field) -> Result<u64, CronError> {
             }
             None => (part, None),
         };
+        let top = if weekday { 7 } else { f.max };
         let (lo, hi) = if range == "*" {
             (f.min, f.max)
         } else if let Some((a, b)) = range.split_once('-') {
@@ -102,18 +107,27 @@ fn parse_field(text: &str, f: &Field) -> Result<u64, CronError> {
         } else {
             let v = atom(range, f)?;
             // `5/10` means "from 5, every 10", up to the end of the field.
-            (v, if step.is_some() { f.max } else { v })
+            (v, if step.is_some() { top.max(v) } else { v })
         };
-        let top = if weekday { 7 } else { f.max };
-        if lo < f.min || hi > top || lo > hi {
+        if lo < f.min || hi > top || lo > top || hi < f.min {
             return err(format!("the {} range {lo}-{hi} is outside {}-{}", f.name, f.min, top));
         }
         let step = step.unwrap_or(1);
-        let mut v = lo;
-        while v <= hi {
+        // A range like `fri-mon` or `nov-feb` wraps past the end of the field.
+        let wraps = lo > hi;
+        if wraps && !(weekday || f.name == "month") {
+            return err(format!("the {} range {lo}-{hi} runs backwards", f.name));
+        }
+        let span = if wraps { (top - lo) + (hi - f.min) + 1 } else { hi - lo };
+        let mut k = 0;
+        while k <= span {
+            let mut v = lo + k;
+            if v > top {
+                v = v - top - 1 + f.min;
+            }
             // Sunday is both 0 and 7.
             bits |= 1u64 << if weekday && v == 7 { 0 } else { v };
-            v += step;
+            k += step;
         }
     }
     Ok(bits)
@@ -228,7 +242,7 @@ impl CronExpr {
 
 /// The instant a wall-clock time stands for in `tz`; see the module notes for
 /// the skipped and repeated hour.
-fn resolve(tz: Tz, naive: NaiveDateTime) -> Option<DateTime<Utc>> {
+pub(crate) fn resolve(tz: Tz, naive: NaiveDateTime) -> Option<DateTime<Utc>> {
     match tz.from_local_datetime(&naive) {
         LocalResult::Single(t) => Some(t.with_timezone(&Utc)),
         LocalResult::Ambiguous(first, _) => Some(first.with_timezone(&Utc)),
@@ -276,6 +290,28 @@ mod tests {
         for m in ["@hourly", "@daily", "@weekly", "@monthly", "@yearly"] {
             assert!(CronExpr::parse(m).is_ok(), "{m}");
         }
+    }
+
+    #[test]
+    fn weekday_and_month_ranges_wrap_and_plus_is_refused() {
+        // Fri, Sat, Sun, Mon at 09:00 Berlin; 2026-01-09 is a Friday.
+        let c = CronExpr::parse("0 9 * * fri-mon").unwrap();
+        let tz: Tz = "Europe/Berlin".parse().unwrap();
+        let f = c.next_fires(tz, utc("2026-01-08T12:00:00Z"), 5);
+        assert_eq!(
+            f,
+            vec![
+                utc("2026-01-09T08:00:00Z"),
+                utc("2026-01-10T08:00:00Z"),
+                utc("2026-01-11T08:00:00Z"),
+                utc("2026-01-12T08:00:00Z"),
+                utc("2026-01-16T08:00:00Z"),
+            ]
+        );
+        assert!(CronExpr::parse("0 0 1 nov-feb *").is_ok());
+        assert!(CronExpr::parse("0 0 * * 7/2").is_ok());
+        assert!(CronExpr::parse("+5 * * * *").is_err());
+        assert!(CronExpr::parse("0 23-1 * * *").is_err(), "hour ranges still may not wrap");
     }
 
     #[test]

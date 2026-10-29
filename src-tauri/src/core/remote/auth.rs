@@ -557,6 +557,12 @@ impl PairingBook {
         result
     }
 
+    /// Whether any pairing (in any stage) is still live. A poll that comes in
+    /// when nothing is live is a late poll after expiry, not a probe.
+    pub fn any_live(&mut self, now: Instant) -> bool {
+        self.live(now).is_some()
+    }
+
     /// Whether a code is currently shown and unused, for the status view.
     pub fn is_waiting(&mut self, now: Instant) -> bool {
         self.live(now)

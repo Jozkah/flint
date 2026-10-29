@@ -1,8 +1,8 @@
 [package]
 name = "Jan"
 version = "1.0.1"
-description = "Use offline LLMs with your own data. Run open source models like Llama2 or Falcon on your internal computers/servers."
-authors = ["Jan <service@jan.ai>"]
+description = "Flint: a local-first desktop app for running and chatting with open models."
+authors = ["Flint contributors"]
 license = "Apache-2.0"
 repository = "https://github.com/Jozkah/flint"
 edition = "2021"
@@ -22,6 +22,7 @@ autobins = false
 # (there are none today, so this only keeps it that way). `unwrap_used`,
 # `expect_used` and `panic` are the next ratchet: about 340 production sites
 # still use them (audit STD-002), so they stay off until those are burned down;
+# scripts/unwrap-ratchet.mjs (CI) fails any file that gains one meanwhile;
 # clippy.toml already exempts tests.
 [lints.clippy]
 todo = "deny"

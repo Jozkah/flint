@@ -34,6 +34,35 @@ pub async fn list_threads<R: Runtime>(
         .map_err(|e| e.to_string())?
 }
 
+/// The thread list for a sidebar: like `list_threads`, but each assistant is
+/// cut to `{id, name, model}`, so instructions, tool lists and other heavy
+/// fields stay on disk (PERF-012). Fetch the full assistant with
+/// `get_thread_assistant` when a thread is opened. `list_threads` is unchanged.
+#[tauri::command]
+pub async fn list_thread_summaries<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let threads = list_threads(app_handle).await?;
+    Ok(threads.into_iter().map(thread_summary).collect())
+}
+
+fn thread_summary(mut thread: serde_json::Value) -> serde_json::Value {
+    if let Some(list) = thread.get_mut("assistants").and_then(|a| a.as_array_mut()) {
+        for a in list.iter_mut() {
+            if let Some(obj) = a.as_object() {
+                let mut slim = serde_json::Map::new();
+                for key in ["id", "name", "model"] {
+                    if let Some(v) = obj.get(key) {
+                        slim.insert(key.to_string(), v.clone());
+                    }
+                }
+                *a = serde_json::Value::Object(slim);
+            }
+        }
+    }
+    thread
+}
+
 fn list_threads_in(data_folder: &std::path::Path) -> Result<Vec<serde_json::Value>, String> {
     ensure_data_dirs(data_folder)?;
     let data_dir = get_data_dir(data_folder);
@@ -116,6 +145,19 @@ fn thread_file_cache(
 #[cfg(test)]
 mod list_threads_cache_tests {
     use super::*;
+
+    #[test]
+    fn a_summary_keeps_thread_fields_and_cuts_assistants_to_id_name_model() {
+        let t = serde_json::json!({
+            "id": "t1", "title": "one", "updated": 5,
+            "metadata": {"is_favorite": true, "project": {"id": "p"}},
+            "assistants": [{"id": "a", "name": "A", "model": {"id": "m"}, "instructions": "long", "tools": [1, 2]}]
+        });
+        let s = thread_summary(t.clone());
+        assert_eq!(s["title"], "one");
+        assert_eq!(s["metadata"], t["metadata"]);
+        assert_eq!(s["assistants"], serde_json::json!([{"id": "a", "name": "A", "model": {"id": "m"}}]));
+    }
 
     #[test]
     fn an_unchanged_thread_file_is_served_from_the_cache_and_a_changed_one_is_reread() {

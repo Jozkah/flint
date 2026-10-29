@@ -9,6 +9,7 @@ wait on a request's answer, and a request never waits on a turn.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -31,6 +32,7 @@ except ImportError:  # pragma: no cover - Python < 3.8 has no importlib.metadata
     CLIENT_VERSION = "0.0.0+source"
 
 CLIENT_NAME = "jan-agent-sdk"
+_LOG = logging.getLogger("jan_agent_sdk")
 
 
 class _Pending:
@@ -202,7 +204,8 @@ class JanRuntime:
         for a session this runtime does not know.
 
         Listeners run on the dispatch thread, not the caller's. One that raises
-        fails the runtime and stops the process, as in the JavaScript client."""
+        is logged as a warning (logger ``jan_agent_sdk``) and the runtime keeps
+        running, as in the JavaScript client."""
         self._listeners.setdefault(kind, []).append(listener)
 
         def off() -> None:
@@ -499,13 +502,10 @@ class JanRuntime:
             listener, payload = job
             try:
                 listener(payload)
-            except Exception as error:  # noqa: BLE001 - a listener chose to raise
-                self._fail(JanRuntimeError(f"an event listener raised: {error}", stderr=self.stderr))
-                # Mirrors the JavaScript client: a failed runtime is stopped, not
-                # left running against a listener that may have been the one
-                # answering a permission request.
-                self._kill()
-                return
+            except Exception:  # noqa: BLE001 - a listener chose to raise
+                # Log and continue, as the JavaScript client does: one buggy
+                # observer must not kill the turns and the other listeners.
+                _LOG.warning("an event listener raised; the runtime keeps running", exc_info=True)
 
     def _fail(self, error: JanRuntimeError, *, notify_exit: bool = False) -> None:
         with self._state_lock:

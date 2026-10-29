@@ -22,6 +22,8 @@ pub const CHUNK_SIZE: usize = 1024 * 1024;
 pub const MAX_PENDING_PER_DEVICE: usize = 20;
 /// How long an upload stays claimable after its last chunk.
 pub const UPLOAD_TTL: Duration = Duration::from_secs(6 * 3600);
+/// Bytes all devices together may have announced and not yet sent or removed.
+pub const MAX_PENDING_BYTES: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Upload {
@@ -281,6 +283,10 @@ impl UploadBook {
         if self.uploads.values().filter(|u| u.device_id == device_id).count() >= MAX_PENDING_PER_DEVICE {
             return Err(UploadError::TooMany);
         }
+        let pending: u64 = self.uploads.values().map(|u| u.size).sum();
+        if pending.saturating_add(size) > MAX_PENDING_BYTES {
+            return Err(UploadError::TooMany);
+        }
         let id = uuid::Uuid::new_v4().simple().to_string();
         let name = clean_name(name);
         let up = Upload {
@@ -384,6 +390,21 @@ impl UploadBook {
             }
         }
         true
+    }
+
+    /// Forgets every upload of `device_id` and deletes their files, for an
+    /// unpaired phone.
+    pub fn remove_device(&mut self, device_id: &str) -> usize {
+        let ids: Vec<String> = self
+            .uploads
+            .values()
+            .filter(|u| u.device_id == device_id)
+            .map(|u| u.id.clone())
+            .collect();
+        for id in &ids {
+            self.remove(device_id, id);
+        }
+        ids.len()
     }
 
     /// Finished uploads of `device_id` among `ids`, for the window.
