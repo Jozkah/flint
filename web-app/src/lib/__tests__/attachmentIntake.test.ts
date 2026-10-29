@@ -7,7 +7,7 @@ import {
   prepareImageFiles,
   prepareVideoFiles,
   readAsDataUrl,
-  splitNewByName,
+  splitNewByContent,
   splitNewImages,
   withoutAttachment,
 } from '../attachmentIntake'
@@ -105,7 +105,8 @@ describe('prepareAudioFiles', () => {
       ['a.wav', 'wav', 'audio/wav', 12],
       ['b.mp3', 'mp3', 'audio/mpeg', 12],
     ])
-    expect(batch.prepared[0].base64).toBe('QUJD')
+    expect(batch.prepared[0].base64).toBeUndefined()
+    expect(batch.prepared[0].dataUrl).toBe(DATA)
   })
 
   it('reports an invalid type and an oversized file without reading them', async () => {
@@ -167,17 +168,55 @@ describe('mediaBatchErrors', () => {
   })
 })
 
-describe('splitNewByName', () => {
-  const att = (name: string, type: Attachment['type']) => ({ name, type }) as Attachment
+describe('splitNewByContent', () => {
+  const hash = async (b64: string) => `h:${b64}`
+  const att = (name: string, type: Attachment['type'], base64?: string) =>
+    ({ name, type, base64 }) as Attachment
 
-  it('drops names already attached as the same kind only', () => {
-    const { fresh, duplicates } = splitNewByName(
-      [att('a.wav', 'audio'), att('b.wav', 'audio')],
-      [att('a.wav', 'audio'), att('b.wav', 'video')],
-      'audio'
+  it('drops audio whose content is already attached, whatever its name', async () => {
+    const { fresh, duplicates } = await splitNewByContent(
+      [att('renamed.wav', 'audio', 'AAA'), att('a.wav', 'audio', 'BBB')],
+      [att('a.wav', 'audio', 'AAA')],
+      'audio',
+      hash
+    )
+    expect(duplicates).toEqual(['renamed.wav'])
+    expect(fresh.map((a) => a.name)).toEqual(['a.wav'])
+  })
+
+  it('compares only the same kind, and catches copies inside one batch', async () => {
+    const { fresh, duplicates } = await splitNewByContent(
+      [att('v1.mp4', 'video', 'X'), att('v2.mp4', 'video', 'X')],
+      [att('same.wav', 'audio', 'X')],
+      'video',
+      hash
+    )
+    expect(fresh.map((a) => a.name)).toEqual(['v1.mp4'])
+    expect(duplicates).toEqual(['v2.mp4'])
+  })
+
+  it('falls back to the name when a held file has no content', async () => {
+    const { duplicates } = await splitNewByContent(
+      [att('a.wav', 'audio', 'NEW')],
+      [att('a.wav', 'audio')],
+      'audio',
+      hash
     )
     expect(duplicates).toEqual(['a.wav'])
-    expect(fresh.map((a) => a.name)).toEqual(['b.wav'])
+  })
+})
+
+describe('media content hash', () => {
+  it('audio and video attachments carry a hash of their content', async () => {
+    const hash = async (b64: string) => `h:${b64}`
+    const audio = await prepareAudioFiles([fileOf('a.wav', 'audio/wav')], {
+      read: okRead,
+      duration: async () => 1,
+      hash,
+    })
+    const video = await prepareVideoFiles([fileOf('a.mp4')], { read: okRead, hash })
+    expect(audio.prepared[0].contentHash).toBe('h:QUJD')
+    expect(video.prepared[0].contentHash).toBe('h:QUJD')
   })
 })
 

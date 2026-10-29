@@ -41,15 +41,27 @@ fn quoted(name: &str) -> String {
 }
 
 impl Mailbox {
-    fn subs_path(&self) -> PathBuf {
+    pub(super) fn subs_path(&self) -> PathBuf {
         self.root.join("subscriptions.json")
     }
 
+    /// Missing reads as none. A file that does not parse is set aside as
+    /// `subscriptions.json.corrupt` (and said so) before anything is written
+    /// over it, so the next save does not silently drop what it held.
     fn read_subs(&self) -> Vec<IdleSub> {
-        std::fs::read(self.subs_path())
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+        let path = self.subs_path();
+        let Ok(bytes) = std::fs::read(&path) else {
+            return Vec::new();
+        };
+        match serde_json::from_slice(&bytes) {
+            Ok(subs) => subs,
+            Err(e) => {
+                let aside = path.with_extension("json.corrupt");
+                eprintln!("[mailbox] {} is unreadable ({e}); kept as {}", path.display(), aside.display());
+                let _ = std::fs::rename(&path, &aside);
+                Vec::new()
+            }
+        }
     }
 
     fn write_subs(&self, subs: &[IdleSub]) -> Result<()> {

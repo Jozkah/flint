@@ -262,6 +262,7 @@
     "filterImages": "Obrazy",
     "attachFailed": "Nie udało się dołączyć dokumentów",
     "removeFailed": "Nie udało się usunąć załącznika",
+    "attachmentRemoved": "Usunięto {{name}}",
     "ingestFailed": "Nie udało się przetworzyć {{name}}",
     "readAudioFailed": "Nie udało się odczytać pliku audio",
     "readVideoFailed": "Nie udało się odczytać pliku wideo",

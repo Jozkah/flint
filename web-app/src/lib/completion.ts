@@ -6,7 +6,7 @@ import {
   MessageStatus,
 } from '@janhq/core'
 import { ulid } from 'ulidx'
-import { Attachment } from '@/types/attachment'
+import { Attachment, attachmentBase64 } from '@/types/attachment'
 import { injectFilesIntoPrompt } from './fileMetadata'
 import { splitMentionBlocks } from './chatMentions'
 
@@ -61,11 +61,12 @@ export const newUserThreadContent = (
 
   // Add image attachments to content array
   images.forEach((img) => {
-    if (img.base64 && img.mimeType) {
+    const imgData = attachmentBase64(img)
+    if (imgData && img.mimeType) {
       contentParts.push({
         type: ContentType.Image,
         image_url: {
-          url: `data:${img.mimeType};base64,${img.base64}`,
+          url: `data:${img.mimeType};base64,${imgData}`,
           detail: 'auto',
         },
       } as any)
@@ -73,11 +74,12 @@ export const newUserThreadContent = (
   })
 
   audios.forEach((aud) => {
-    if (aud.base64 && aud.audioFormat) {
+    const audData = attachmentBase64(aud)
+    if (audData && aud.audioFormat) {
       contentParts.push({
         type: ContentType.InputAudio,
         input_audio: {
-          data: aud.base64,
+          data: audData,
           format: aud.audioFormat,
         },
       } as any)
@@ -85,11 +87,12 @@ export const newUserThreadContent = (
   })
 
   videos.forEach((vid) => {
-    if (vid.base64 && vid.mimeType) {
+    const vidData = attachmentBase64(vid)
+    if (vidData && vid.mimeType) {
       contentParts.push({
         type: ContentType.InputVideo,
         input_video: {
-          data: vid.base64,
+          data: vidData,
           format: vid.mimeType,
         },
       } as any)

@@ -527,15 +527,19 @@ pub struct TickLock {
     _lock: LockFile,
 }
 
-/// A lock file removed on drop.
+/// A lock file removed on drop, but only while it still holds our token: a
+/// lock someone else took over after ours went stale is theirs to remove.
 #[derive(Debug)]
 struct LockFile {
     path: PathBuf,
+    token: String,
 }
 
 impl Drop for LockFile {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        if fs::read_to_string(&self.path).is_ok_and(|t| t == self.token) {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -565,43 +569,59 @@ fn lock_age_exceeds(path: &Path, secs: u64) -> bool {
         .is_some_and(|age| age > Duration::from_secs(secs))
 }
 
-/// Create `path` exclusively. A stale one is taken over by renaming it to a
-/// name unique to this caller (only one racer's rename can succeed) rather
-/// than check-then-delete, which let two callers each delete the other's new
-/// lock. If the renamed file turns out fresh, it is put back.
+/// Create `path` exclusively, writing a token unique to this caller.
+///
+/// A stale lock is taken over only by the one caller holding the exclusive
+/// `<lock>.takeover` claim, which re-checks staleness *under* the claim before
+/// removing it. A racer that saw the old lock stale but arrives after the
+/// takeover finds the claim taken (or the new lock fresh) and backs off, so it
+/// can never remove or replace the lock a faster racer just made.
 fn acquire_lock_file(path: &Path, stale_secs: u64) -> Option<LockFile> {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    for _ in 0..3 {
-        match fs::OpenOptions::new().write(true).create_new(true).open(path) {
-            Ok(mut f) => {
-                use std::io::Write;
-                let _ = write!(f, "{} {}", std::process::id(), now_ms());
-                return Some(LockFile { path: path.to_path_buf() });
-            }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                if !lock_age_exceeds(path, stale_secs) {
-                    return None;
-                }
-                let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let mut n = path.file_name()?.to_os_string();
-                n.push(format!(".stale-{}-{seq}", std::process::id()));
-                let grave = path.with_file_name(n);
-                if fs::rename(path, &grave).is_err() {
-                    continue; // someone else took it over first
-                }
-                if lock_age_exceeds(&grave, stale_secs) {
-                    let _ = fs::remove_file(&grave);
-                } else {
-                    // We moved a lock a faster racer had just made: give it back.
-                    let _ = fs::hard_link(&grave, path);
-                    let _ = fs::remove_file(&grave);
-                    return None;
-                }
-            }
-            Err(_) => return None,
-        }
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let token = format!("{} {} {seq}", std::process::id(), now_ms());
+    match create_lock(path, &token) {
+        Ok(lock) => return Some(lock),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(_) => return None,
     }
-    None
+    if !lock_age_exceeds(path, stale_secs) {
+        return None;
+    }
+    let mut n = path.file_name()?.to_os_string();
+    n.push(".takeover");
+    let claim_path = path.with_file_name(n);
+    let claim = match create_lock(&claim_path, &token) {
+        Ok(claim) => claim,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            // A claim left by a takeover that crashed midway (it takes ms).
+            // Cleared here; this caller still backs off and retries next time.
+            if lock_age_exceeds(&claim_path, stale_secs) {
+                let _ = fs::remove_file(&claim_path);
+            }
+            return None;
+        }
+        Err(_) => return None,
+    };
+    // Under the claim: only now is it safe to judge and remove the old lock.
+    if !lock_age_exceeds(path, stale_secs) {
+        return None;
+    }
+    let _ = fs::remove_file(path);
+    let lock = create_lock(path, &token).ok();
+    drop(claim);
+    lock
+}
+
+fn create_lock(path: &Path, token: &str) -> io::Result<LockFile> {
+    use std::io::Write;
+    let mut f = fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    if let Err(e) = f.write_all(token.as_bytes()).and_then(|()| f.sync_all()) {
+        drop(f);
+        let _ = fs::remove_file(path);
+        return Err(e);
+    }
+    Ok(LockFile { path: path.to_path_buf(), token: token.to_string() })
 }
 
 enum ParseFail {

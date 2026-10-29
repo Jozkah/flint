@@ -42,7 +42,6 @@ const pageImages = (n: number) =>
   Array.from({ length: n }, (_, i) =>
     createImageAttachment({
       name: `scan-page-${i + 1}.png`,
-      base64: 'QUJD',
       dataUrl: 'data:image/png;base64,QUJD',
       mimeType: 'image/png',
       size: 3,

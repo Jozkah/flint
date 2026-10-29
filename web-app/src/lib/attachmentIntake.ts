@@ -1,4 +1,5 @@
 import {
+  attachmentBase64,
   createAudioAttachment,
   createImageAttachment,
   createVideoAttachment,
@@ -134,10 +135,12 @@ export async function prepareAudioFiles(
   deps: {
     read?: ReadFn
     duration?: (dataUrl: string) => Promise<number | undefined>
+    hash?: (base64: string) => Promise<string>
   } = {}
 ): Promise<MediaBatch> {
   const read = deps.read ?? readAsDataUrl
   const duration = deps.duration ?? decodeAudioDuration
+  const hash = deps.hash ?? hashBase64
   const batch: MediaBatch = { prepared: [], invalid: [], oversized: [] }
   for (const file of Array.from(files)) {
     const ext = file.name.toLowerCase().split('.').pop()
@@ -156,17 +159,17 @@ export async function prepareAudioFiles(
     const fmt: 'wav' | 'mp3' = isWav ? 'wav' : 'mp3'
     const mimeType = fmt === 'wav' ? 'audio/wav' : 'audio/mpeg'
     const dataUrl = await read(file)
-    batch.prepared.push(
-      createAudioAttachment({
-        name: file.name,
-        base64: dataUrl.split(',')[1] ?? '',
-        dataUrl,
-        mimeType,
-        audioFormat: fmt,
-        size: file.size,
-        durationSec: await duration(dataUrl),
-      })
-    )
+    const base64 = attachmentBase64({ dataUrl })
+    const att = createAudioAttachment({
+      name: file.name,
+      dataUrl,
+      mimeType,
+      audioFormat: fmt,
+      size: file.size,
+      durationSec: await duration(dataUrl),
+    })
+    if (base64) att.contentHash = await hash(base64)
+    batch.prepared.push(att)
   }
   return batch
 }
@@ -174,9 +177,10 @@ export async function prepareAudioFiles(
 /** Video files under 100MB become video attachments. */
 export async function prepareVideoFiles(
   files: File[],
-  deps: { read?: ReadFn } = {}
+  deps: { read?: ReadFn; hash?: (base64: string) => Promise<string> } = {}
 ): Promise<MediaBatch> {
   const read = deps.read ?? readAsDataUrl
+  const hash = deps.hash ?? hashBase64
   const batch: MediaBatch = { prepared: [], invalid: [], oversized: [] }
   for (const file of Array.from(files)) {
     const ext = file.name.toLowerCase().split('.').pop()
@@ -194,35 +198,17 @@ export async function prepareVideoFiles(
       ? file.type
       : videoMimeForExt(ext)
     const dataUrl = await read(file)
-    batch.prepared.push(
-      createVideoAttachment({
-        name: file.name,
-        base64: dataUrl.split(',')[1] ?? '',
-        dataUrl,
-        mimeType,
-        size: file.size,
-      })
-    )
+    const base64 = attachmentBase64({ dataUrl })
+    const att = createVideoAttachment({
+      name: file.name,
+      dataUrl,
+      mimeType,
+      size: file.size,
+    })
+    if (base64) att.contentHash = await hash(base64)
+    batch.prepared.push(att)
   }
   return batch
-}
-
-/** Splits freshly prepared media from what the draft already holds, by file name. */
-export function splitNewByName(
-  prepared: Attachment[],
-  current: Attachment[],
-  type: 'audio' | 'video'
-): { fresh: Attachment[]; duplicates: string[] } {
-  const existing = new Set(
-    current.filter((a) => a.type === type).map((a) => a.name)
-  )
-  const fresh: Attachment[] = []
-  const duplicates: string[] = []
-  for (const att of prepared) {
-    if (existing.has(att.name)) duplicates.push(att.name)
-    else fresh.push(att)
-  }
-  return { fresh, duplicates }
 }
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -294,41 +280,47 @@ export async function prepareImageFiles(
         name: file.name,
         size: file.size,
         mimeType: actualType,
-        base64: result.split(',')[1],
         dataUrl: result,
       })
     )
   }
   // Hashes let two different pictures share a file name.
   for (const att of prepared) {
-    if (att.base64) att.contentHash = await hash(att.base64)
+    const base64 = attachmentBase64(att)
+    if (base64) att.contentHash = await hash(base64)
   }
   return { prepared, unreadable }
 }
 
 /**
- * Splits prepared images from what the draft already holds. An image is a
- * duplicate by content, or by name when the held one has no content to hash;
- * two copies inside one batch count too.
+ * Splits prepared media from what the draft already holds, among attachments
+ * of the same `type`. A file is a duplicate by content, or by name when the
+ * held one has no content to hash; two copies inside one batch count too, and
+ * two different files may share a name.
  */
-export async function splitNewImages(
+export async function splitNewByContent(
   prepared: Attachment[],
   current: Attachment[],
+  type: 'image' | 'audio' | 'video',
   hash: (base64: string) => Promise<string> = hashBase64
 ): Promise<{ fresh: Attachment[]; duplicates: string[] }> {
   const existingHashes = new Set<string>()
   const existingNames = new Set<string>()
   for (const a of current) {
-    if (a.type !== 'image') continue
+    if (a.type !== type) continue
     if (a.contentHash) existingHashes.add(a.contentHash)
-    else if (a.base64) existingHashes.add(await hash(a.base64))
-    else existingNames.add(a.name)
+    else {
+      const base64 = attachmentBase64(a)
+      if (base64) existingHashes.add(await hash(base64))
+      else existingNames.add(a.name)
+    }
   }
   const seenInBatch = new Set<string>()
   const fresh: Attachment[] = []
   const duplicates: string[] = []
   for (const att of prepared) {
-    const h = att.contentHash
+    const base64 = att.contentHash ? undefined : attachmentBase64(att)
+    const h = att.contentHash ?? (base64 ? await hash(base64) : undefined)
     const dup =
       (h && (existingHashes.has(h) || seenInBatch.has(h))) ||
       existingNames.has(att.name)
@@ -341,6 +333,13 @@ export async function splitNewImages(
   }
   return { fresh, duplicates }
 }
+
+/** `splitNewByContent` for images. */
+export const splitNewImages = (
+  prepared: Attachment[],
+  current: Attachment[],
+  hash: (base64: string) => Promise<string> = hashBase64
+) => splitNewByContent(prepared, current, 'image', hash)
 
 /**
  * `list` without `target`. Removal waits on the backend (a document is

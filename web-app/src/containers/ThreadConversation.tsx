@@ -1980,7 +1980,6 @@ export function ThreadConversation({
             name: `audio-${Date.now()}`,
             mimeType: file.mediaType,
             dataUrl: file.url,
-            base64,
             audioFormat: file.mediaType === 'audio/mpeg' ? 'mp3' : 'wav',
             size,
           })
@@ -1990,7 +1989,6 @@ export function ThreadConversation({
             name: `video-${Date.now()}`,
             mimeType: file.mediaType,
             dataUrl: file.url,
-            base64,
             size,
           })
         }
@@ -1998,7 +1996,6 @@ export function ThreadConversation({
           name: `image-${Date.now()}`,
           mimeType: file.mediaType,
           dataUrl: file.url,
-          base64,
           size,
         })
       })
@@ -3387,21 +3384,27 @@ export function ThreadConversation({
                       message={message}
                       isFirstMessage={isFirstMessage}
                       isLastMessage={isLastMessage}
-                      switchedFrom={switchedFromOf(chatMessages, index)}
                       status={effectiveStatus}
-                      reasoningContainerRef={reasoningContainerRef}
-                      isReasoningAtBottom={isReasoningAtBottom}
-                      onReasoningScroll={handleReasoningScroll}
-                      onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                      onRegenerate={handleRegenerate}
-                      onFork={handleFork}
-                      onContinue={handleContinue}
-                      onEdit={handleEditMessage}
-                      onDelete={handleDeleteMessage}
                       versionInfo={versionInfoById[message.id]}
-                      onSwitchVersion={handleSwitchVersion}
-                      isAnimating={!pendingContinueMessage}
-                      hideActions={!!pendingContinueMessage}
+                      view={{
+                        switchedFrom: switchedFromOf(chatMessages, index),
+                        isAnimating: !pendingContinueMessage,
+                        hideActions: !!pendingContinueMessage,
+                      }}
+                      reasoning={{
+                        containerRef: reasoningContainerRef,
+                        isAtBottom: isReasoningAtBottom,
+                        onScroll: handleReasoningScroll,
+                        onScrollToBottom: forceScrollReasoningToBottom,
+                      }}
+                      actions={{
+                        onRegenerate: handleRegenerate,
+                        onFork: handleFork,
+                        onContinue: handleContinue,
+                        onEdit: handleEditMessage,
+                        onDelete: handleDeleteMessage,
+                        onSwitchVersion: handleSwitchVersion,
+                      }}
                     />
                   </Fragment>
                 )
@@ -3414,15 +3417,21 @@ export function ThreadConversation({
                   isFirstMessage={false}
                   isLastMessage={true}
                   status={effectiveStatus}
-                  reasoningContainerRef={reasoningContainerRef}
-                  isReasoningAtBottom={isReasoningAtBottom}
-                  onReasoningScroll={handleReasoningScroll}
-                  onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                  onRegenerate={handleRegenerate}
-                  onEdit={handleEditMessage}
-                  onDelete={handleDeleteMessage}
-                  hideActions
-                  isAnimating={false}
+                  view={{
+                    hideActions: true,
+                    isAnimating: false,
+                  }}
+                  reasoning={{
+                    containerRef: reasoningContainerRef,
+                    isAtBottom: isReasoningAtBottom,
+                    onScroll: handleReasoningScroll,
+                    onScrollToBottom: forceScrollReasoningToBottom,
+                  }}
+                  actions={{
+                    onRegenerate: handleRegenerate,
+                    onEdit: handleEditMessage,
+                    onDelete: handleDeleteMessage,
+                  }}
                 />
               )}
               {memoryLocation && (

@@ -323,8 +323,10 @@ describe('MessageItem', () => {
         }
         isFirstMessage
         isLastMessage={false}
-        midReply
         status={'ready' as any}
+        view={{
+          midReply: true,
+        }}
       />
     )
     expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
@@ -334,10 +336,12 @@ describe('MessageItem', () => {
     const { rerender } = render(
       <MessageItem
         message={makeMsg({ parts: [] }) as any}
-        runParts={[{ type: 'text', text: 'Done, here is the answer.' }] as any}
         isFirstMessage
         isLastMessage
         status={'ready' as any}
+        view={{
+          runParts: [{ type: 'text', text: 'Done, here is the answer.' }] as any,
+        }}
       />
     )
     expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
@@ -421,7 +425,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onRegenerate={onRegenerate}
+        actions={{
+          onRegenerate,
+        }}
       />
     )
     const regenBtn = screen.getByLabelText('chat:actions.regenerate')
@@ -439,7 +445,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onRegenerate={onRegenerate}
+        actions={{
+          onRegenerate,
+        }}
       />
     )
     fireEvent.click(screen.getByLabelText('chat:actions.regenerate'))
@@ -454,7 +462,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage={false}
         status={'ready' as any}
-        onRegenerate={onRegenerate}
+        actions={{
+          onRegenerate,
+        }}
       />
     )
     expect(screen.queryByLabelText('chat:actions.regenerate')).not.toBeInTheDocument()
@@ -470,7 +480,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onContinue={onContinue}
+        actions={{
+          onContinue,
+        }}
       />
     )
     const btn = screen.getByLabelText('chat:actions.continue')
@@ -490,7 +502,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onContinue={onContinue}
+        actions={{
+          onContinue,
+        }}
       />
     )
     const note = screen.getByTestId('reply-cut-off')
@@ -511,7 +525,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onContinue={vi.fn()}
+        actions={{
+          onContinue: vi.fn(),
+        }}
       />
     )
     expect(screen.queryByLabelText('chat:actions.continue')).not.toBeInTheDocument()
@@ -526,7 +542,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage={false}
         status={'ready' as any}
-        onContinue={vi.fn()}
+        actions={{
+          onContinue: vi.fn(),
+        }}
       />
     )
     expect(screen.queryByLabelText('chat:actions.continue')).not.toBeInTheDocument()
@@ -542,7 +560,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onEdit={onEdit}
+        actions={{
+          onEdit,
+        }}
       />
     )
     fireEvent.click(screen.getByTestId('edit-btn'))
@@ -559,7 +579,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onDelete={onDelete}
+        actions={{
+          onDelete,
+        }}
       />
     )
     fireEvent.click(screen.getByTestId('delete-btn'))
@@ -575,9 +597,13 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-        hideActions
+        view={{
+          hideActions: true,
+        }}
+        actions={{
+          onEdit: vi.fn(),
+          onDelete: vi.fn(),
+        }}
       />
     )
     expect(screen.queryByTestId('edit-btn')).not.toBeInTheDocument()
@@ -591,8 +617,10 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'streaming' as any}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
+        actions={{
+          onEdit: vi.fn(),
+          onDelete: vi.fn(),
+        }}
       />
     )
     expect(screen.queryByTestId('edit-btn')).not.toBeInTheDocument()
@@ -961,7 +989,9 @@ describe('MessageItem', () => {
         isFirstMessage
         isLastMessage
         status={'ready' as any}
-        onRegenerate={onRegenerate}
+        actions={{
+          onRegenerate,
+        }}
       />
     )
     expect(screen.queryByLabelText('chat:actions.regenerate')).not.toBeInTheDocument()
