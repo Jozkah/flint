@@ -29,6 +29,16 @@
   "wrapperPositional": { "timeout": 1, "chroot": 1 },
   "inlineShells": ["bash", "sh", "zsh", "dash", "ksh", "fish", "busybox"],
   "powershells": ["powershell", "pwsh"],
+  "inlineInterpreters": {
+    "python": ["-c"],
+    "python2": ["-c"],
+    "python3": ["-c"],
+    "pythonw": ["-c"],
+    "py": ["-c"],
+    "node": ["-e", "--eval", "-p", "--print"],
+    "nodejs": ["-e", "--eval", "-p", "--print"],
+    "perl": ["-e", "-E"]
+  },
   "uncertainCommands": {
     "eval": "`eval` runs text built at run time, which cannot be checked in advance",
     "iex": "`Invoke-Expression` runs text built at run time, which cannot be checked in advance",
@@ -465,6 +475,14 @@
     { "command": "rm -rf aé", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "rm -rf 中", "workspace": "/home/me/project", "expect": "allow" },
     { "command": "Remove-Item -Recurse 中", "workspace": "/home/me/project", "expect": "allow" },
-    { "command": "rm notes.txt src/a.txt", "workspace": "/home/me/project", "expect": "allow" }
+    { "command": "rm notes.txt src/a.txt", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "python -c \"import shutil; shutil.rmtree('/tmp/x')\"", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "python3 -c 'print(1)'", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "node -e \"require('fs').rmSync('x',{recursive:true})\"", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "node --eval=1", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "perl -e 'unlink glob q(*)'", "workspace": "/home/me/project", "expect": "ask" },
+    { "command": "python script.py -c config.toml", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "node build.js", "workspace": "/home/me/project", "expect": "allow" },
+    { "command": "perl -v", "workspace": "/home/me/project", "expect": "allow" }
   ]
 }
