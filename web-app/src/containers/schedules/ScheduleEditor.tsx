@@ -69,7 +69,7 @@ function modelRef(value: string, providers: { provider: string }[]) {
 }
 
 export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const uid = useId()
   const providers = useModelProvider((s) => s.providers)
