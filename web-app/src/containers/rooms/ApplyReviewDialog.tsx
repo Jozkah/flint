@@ -153,36 +153,14 @@ export function ApplyReviewDialog({
         }}
         className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl sm:pb-0 lg:max-w-4xl xl:max-w-4xl"
       >
-        {/* Header: what, where, how much. */}
-        <div className="flex flex-col gap-3 border-b border-border px-5 pt-5 pb-4 sm:px-6">
-          <DialogTitle className="text-base leading-snug font-semibold">
-            {t('rooms:apply.title', { count: preview ? pick.fileCount : total.fileCount })}
-          </DialogTitle>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {preview && (
-              <button
-                type="button"
-                title={preview.target}
-                onClick={() => void copy(preview.target, t('rooms:apply.pathCopied'))}
-                className="inline-flex h-[22px] min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-xs text-secondary-foreground hover:text-foreground hover:shadow-lift"
-                aria-label={t('rooms:apply.copyPath', { path: preview.target })}
-              >
-                <FolderOpen aria-hidden className="size-3.5 shrink-0" />
-                <span className="truncate">{truncateMiddle(preview.target, 56)}</span>
-              </button>
-            )}
-            {preview && (
-              <ApplyChip data-testid="apply-summary" className="gap-1.5">
-                <span>{t('rooms:apply.files', { count: total.fileCount })}</span>
-                <span className="font-mono tabular-nums">
-                  <span className="text-diff-add">+{total.additions}</span>{' '}
-                  <span className="text-diff-del">−{total.deletions}</span>
-                </span>
-              </ApplyChip>
-            )}
-            {source && <ApplyChip>{t('rooms:apply.source', { name: source.name, round: source.round })}</ApplyChip>}
-          </div>
-        </div>
+        <ApplyHeader
+          preview={preview}
+          count={preview ? pick.fileCount : total.fileCount}
+          total={total}
+          source={source}
+          onCopy={(text, done) => void copy(text, done)}
+          t={t}
+        />
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4 sm:px-6">
           <PreflightPanel
@@ -266,5 +244,54 @@ export function ApplyReviewDialog({
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** The dialog's header: what is applied, to which folder, how much, by whom. */
+function ApplyHeader({
+  preview,
+  count,
+  total,
+  source,
+  onCopy,
+  t,
+}: {
+  preview: ApplyPreview | null
+  count: number
+  total: ReturnType<typeof summarize>
+  source?: { name: string; round: number }
+  onCopy: (text: string, done: string) => void
+  t: T
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-border px-5 pt-5 pb-4 sm:px-6">
+      <DialogTitle className="text-base leading-snug font-semibold">
+        {t('rooms:apply.title', { count })}
+      </DialogTitle>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {preview && (
+          <button
+            type="button"
+            title={preview.target}
+            onClick={() => onCopy(preview.target, t('rooms:apply.pathCopied'))}
+            className="inline-flex h-[22px] min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-xs text-secondary-foreground hover:text-foreground hover:shadow-lift"
+            aria-label={t('rooms:apply.copyPath', { path: preview.target })}
+          >
+            <FolderOpen aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate">{truncateMiddle(preview.target, 56)}</span>
+          </button>
+        )}
+        {preview && (
+          <ApplyChip data-testid="apply-summary" className="gap-1.5">
+            <span>{t('rooms:apply.files', { count: total.fileCount })}</span>
+            <span className="font-mono tabular-nums">
+              <span className="text-diff-add">+{total.additions}</span>{' '}
+              <span className="text-diff-del">−{total.deletions}</span>
+            </span>
+          </ApplyChip>
+        )}
+        {source && <ApplyChip>{t('rooms:apply.source', { name: source.name, round: source.round })}</ApplyChip>}
+      </div>
+    </div>
   )
 }

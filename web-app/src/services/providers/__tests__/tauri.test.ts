@@ -195,6 +195,34 @@ describe('TauriProvidersService', () => {
       errSpy.mockRestore()
     })
 
+    it('lists engines side by side and keeps their order (HKS-034)', async () => {
+      let releaseSlow: () => void = () => {}
+      const slow = {
+        list: vi.fn(() => new Promise((r) => (releaseSlow = () => r([])))),
+        getSettings: vi.fn().mockResolvedValue([]),
+        isToolSupported: vi.fn().mockResolvedValue(false),
+      }
+      const fast = {
+        list: vi.fn().mockResolvedValue([]),
+        getSettings: vi.fn().mockResolvedValue([]),
+        isToolSupported: vi.fn().mockResolvedValue(false),
+      }
+      vi.mocked(EngineManager.instance).mockReturnValue({
+        engines: new Map([
+          ['slow-engine', slow],
+          ['fast-engine', fast],
+        ]),
+      } as any)
+      const pending = svc.getProviders()
+      await Promise.resolve()
+      // The second engine is asked before the first has answered.
+      expect(fast.list).toHaveBeenCalled()
+      releaseSlow()
+      const names = (await pending).map((p: any) => p.provider)
+      expect(names.indexOf('slow-engine')).toBeLessThan(names.indexOf('fast-engine'))
+      expect(names.indexOf('slow-engine')).toBe(0)
+    })
+
     it('returns empty array on top-level error', async () => {
       vi.mocked(EngineManager.instance).mockImplementation(() => {
         throw new Error('boom')

@@ -297,7 +297,7 @@ impl ToolPermissions {
     pub fn is_denied(&self, name: &str, subject: &crate::subject::Subject) -> bool {
         self.deny
             .iter()
-            .any(|r| r.matches_name(name) && r.covers_subject(subject))
+            .any(|r| r.matches_name(name) && r.restricts_subject(subject))
     }
 
     /// Explicit allow-list membership (allow OR allow_write); does NOT consider deny or default.
@@ -638,6 +638,22 @@ mod subject_rules {
         let r = rule("agent:reviewer/write");
         assert!(r.matches_deny("write", &no_resources(), &reviewer()));
         assert!(!r.matches_deny("write", &no_resources(), &Subject::MainAgent));
+    }
+
+    /// O05-020: a deny or ask about the main agent binds the subagents it
+    /// dispatches; an allow about it does not widen them.
+    #[test]
+    fn a_main_agent_deny_binds_its_subagents_but_its_allow_does_not() {
+        let child = Subject::NamedAgent("child".to_string());
+        assert!(rule("agent/write").matches_deny("write", &no_resources(), &child));
+        assert!(rule("agent/write").matches_ask("write", &no_resources(), &child));
+        let perms =
+            ToolPermissions::new(PermissionDefault::Allow, &[], &["agent/bash".to_string()], &[]);
+        assert!(perms.is_denied("bash", &child));
+        assert!(!perms.is_denied("bash", &Subject::User));
+        let inside = vec![Resource::Path(std::path::PathBuf::from("/proj/src/main.rs"))];
+        assert!(!rule("agent/read").matches_allow("read", &inside, &child));
+        assert!(!rule("agent:child/write").matches_deny("write", &no_resources(), &Subject::MainAgent));
     }
 
     #[test]

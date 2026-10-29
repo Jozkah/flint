@@ -17,6 +17,10 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
 import { archiveEnabled, trackArchiveWork } from '@/lib/archive'
+import {
+  cancelPendingMessageWrites,
+  flushPendingMessageWrites,
+} from '@/lib/messageWriteQueue'
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -66,6 +70,8 @@ type ThreadState = {
 // so none of them outlives it (a tool grant for a gone thread would otherwise
 // sit in the persisted record forever).
 const forgetThreadState = (threadId: string) => {
+  // A message update still waiting to be written must not recreate the file.
+  cancelPendingMessageWrites(threadId)
   useAgentMode.getState().removeThread(threadId)
   useChatSessions.getState().removeSession(threadId)
   useAppState.getState().clearThreadState(threadId)
@@ -391,7 +397,11 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     return get().threads[threadId]
   },
   setCurrentThreadId: (threadId) => {
-    if (threadId !== get().currentThreadId) set({ currentThreadId: threadId })
+    const previous = get().currentThreadId
+    if (threadId === previous) return
+    // The thread being left gets its pending message writes now.
+    if (previous) void flushPendingMessageWrites(previous)
+    set({ currentThreadId: threadId })
   },
   createThread: async (
     model,

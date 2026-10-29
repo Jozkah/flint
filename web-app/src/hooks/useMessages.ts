@@ -3,6 +3,10 @@ import { ThreadMessage } from '@janhq/core'
 import { toast } from 'sonner'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { i18n } from '@/i18n/react-i18next-compat'
+import {
+  cancelPendingMessageWrites,
+  schedulePersist,
+} from '@/lib/messageWriteQueue'
 
 type MessageState = {
   messages: Record<string, ThreadMessage[]>
@@ -78,17 +82,16 @@ export const useMessages = create<MessageState>()((set, get) => ({
       },
     }))
 
-    // Persist to storage asynchronously using modifyMessage instead of createMessage
-    // to prevent duplicates when updating existing messages
-    getServiceHub().messages().modifyMessage(updatedMessage).catch((error) => {
-      console.error('Failed to persist message update:', error)
-      toast.error(i18n.t('common:messageSaveFailed'))
-    })
+    // Persist with modifyMessage (not createMessage, which would duplicate),
+    // debounced per message: a burst of updates costs one write.
+    schedulePersist(updatedMessage)
   },
   deleteMessage: (threadId, messageId) => {
     const before = get().messages[threadId] ?? []
     const index = before.findIndex((message) => message.id === messageId)
     const removed = index >= 0 ? before[index] : undefined
+    // A pending update written after the delete would bring the message back.
+    cancelPendingMessageWrites(threadId, messageId)
     // Optimistic removal, as addMessage/updateMessage do.
     set((state) => ({
       messages: {
