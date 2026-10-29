@@ -170,7 +170,7 @@ export class TauriMCPService extends DefaultMCPService {
     return invoke('mcp_server_fingerprints')
   }
 
-  async trustServer(serverName: string, fingerprint?: string): Promise<void> {
+  async trustServer(serverName: string, fingerprint: string): Promise<void> {
     await invoke('mcp_trust_server', { serverName, fingerprint })
   }
 
@@ -188,7 +188,7 @@ export class TauriMCPService extends DefaultMCPService {
   async allowOnceForServer(
     serverName: string,
     toolName: string,
-    fingerprint?: string
+    fingerprint: string
   ): Promise<string> {
     return invoke('mcp_allow_once', { serverName, toolName, fingerprint })
   }

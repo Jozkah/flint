@@ -152,10 +152,10 @@ export interface MCPService {
   serverFingerprints(): Promise<Record<string, string>>
   /**
    * Record that the user trusts a server in every conversation. AH-041.
-   * `fingerprint` is the definition the user was shown; the backend refuses
-   * when the server's configuration no longer matches it.
+   * `fingerprint` (required) is the definition the user was shown; the
+   * backend refuses when the server's configuration no longer matches it.
    */
-  trustServer(serverName: string, fingerprint?: string): Promise<void>
+  trustServer(serverName: string, fingerprint: string): Promise<void>
   /** Withdraw trust from a server. AH-041. */
   revokeServer(serverName: string): Promise<void>
   /**
@@ -165,12 +165,12 @@ export interface MCPService {
   forgetServer(serverName: string, reason: MCPForgetReason): Promise<void>
   /**
    * Authorize one call to one tool on one server, returning the ticket the
-   * backend will consume. AH-041. Bound to `fingerprint` when given.
+   * backend will consume. AH-041. Bound to `fingerprint` (required).
    */
   allowOnceForServer(
     serverName: string,
     toolName: string,
-    fingerprint?: string
+    fingerprint: string
   ): Promise<string>
   callToolWithCancellation(args: {
     toolName: string

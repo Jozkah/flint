@@ -458,10 +458,10 @@ pub fn trust_report() -> Value {
     json!({ "trusted": trusted, "invalidated": invalidated })
 }
 
-pub fn trust(name: &str, expected: Option<&str>) -> Result<(), String> {
+pub fn trust(name: &str, expected: &str) -> Result<(), String> {
     let current = fingerprint_of(name)
         .ok_or_else(|| format!("MCP server '{name}' is not configured, so it cannot be trusted"))?;
-    if expected.is_some_and(|expected| expected != current) {
+    if expected != current {
         return Err(tauri_plugin_agent_tools::mcp_trust::Refusal::ConfigurationChanged {
             server: name.to_string(),
         }
@@ -489,14 +489,14 @@ pub fn forget(name: &str, reason: &str) -> Result<(), String> {
     crate::core::mcp::oauth::clear(&folder, name).map(|_| ())
 }
 
-pub fn allow_once(name: &str, tool: &str, expected: Option<&str>) -> Result<String, String> {
+pub fn allow_once(name: &str, tool: &str, expected: &str) -> Result<String, String> {
     if name.trim().is_empty() {
         return Err("a server name is required to authorize a call".into());
     }
     let current = fingerprint_of(name).ok_or_else(|| {
         format!("MCP server '{name}' is not configured, so no call to it can be authorized")
     })?;
-    tauri_plugin_agent_tools::mcp_trust::allow_once(&data_folder(), name, tool, &current, expected)
+    tauri_plugin_agent_tools::mcp_trust::allow_once(&data_folder(), name, tool, &current, Some(expected))
 }
 
 pub fn clear_auth(name: &str) -> Result<bool, String> {
