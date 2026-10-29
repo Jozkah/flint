@@ -109,6 +109,29 @@ async fn composer_draft_and_scroll_survive_a_repaint() {
     assert_eq!(terminal.backend().buffer(), &before);
 }
 
+/// P2C-010: a session longer than 65,535 wrapped rows still scrolls all the
+/// way back to its first message; a `u16` height count saturated there.
+#[test]
+fn a_transcript_past_u16_rows_scrolls_back_to_its_first_message() {
+    let mut app = test_app();
+    app.submit_user("the very first message".to_string());
+    for i in 0..70_000 {
+        app.submit_user(format!("message {i}"));
+    }
+    app.scrollback = usize::MAX;
+    let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+    terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+    assert!(app.scrollback > usize::from(u16::MAX), "{}", app.scrollback);
+    let screen: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(screen.contains("the very first message"), "{screen}");
+}
+
 /// The repaint never asks where the cursor is, and still repairs the frame.
 #[test]
 fn repaint_never_blocks_on_a_cursor_query() {

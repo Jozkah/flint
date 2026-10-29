@@ -1215,6 +1215,10 @@ pub(super) struct SettingsPrompt {
     pub(super) key: &'static str,
     pub(super) input: String,
     pub(super) error: Option<String>,
+    /// The value on disk when the prompt opened, read once: the dock is
+    /// redrawn every frame, and re-reading the settings file each time is
+    /// disk IO in the render path (F2x1-008).
+    pub(super) current: Option<String>,
 }
 
 impl SettingsPrompt {
@@ -1223,6 +1227,7 @@ impl SettingsPrompt {
             key: def.key,
             input: current.unwrap_or_default().to_string(),
             error: None,
+            current: current.map(str::to_string),
         }
     }
 
@@ -1772,6 +1777,12 @@ pub(super) fn settings_command(app: &mut App, arg: &str) {
             "unknown setting '/settings {other}' (bare /settings opens the menu)"
         )),
     }
+}
+
+/// The value a settings row's hint carries (`= 400` reads `400`), the
+/// inverse of what `build_agent_settings_items` writes. `None` when unset.
+pub(super) fn setting_hint_value(hint: Option<&str>) -> Option<&str> {
+    hint.and_then(|h| h.strip_prefix("= "))
 }
 
 /// One picker row per setting def, whatever file its scope names, plus a

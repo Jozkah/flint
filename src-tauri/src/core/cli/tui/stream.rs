@@ -752,8 +752,30 @@ pub(super) enum ThreadSaveJob {
     Flush(std::sync::mpsc::Sender<()>),
 }
 
+/// Collapse a batch of queued jobs: only the newest snapshot of each thread is
+/// worth writing, since every snapshot is the whole thread and a later one
+/// supersedes an earlier one (P2C-018). Flush acknowledgements are returned
+/// apart, to be answered once the kept snapshots are on disk.
+pub(super) fn coalesce_saves(
+    batch: Vec<ThreadSaveJob>,
+) -> (Vec<ThreadSave>, Vec<std::sync::mpsc::Sender<()>>) {
+    let mut saves: Vec<ThreadSave> = Vec::new();
+    let mut flushes = Vec::new();
+    for job in batch {
+        match job {
+            ThreadSaveJob::Save(s) => {
+                saves.retain(|kept| kept.base != s.base || kept.id != s.id);
+                saves.push(s);
+            }
+            ThreadSaveJob::Flush(done) => flushes.push(done),
+        }
+    }
+    (saves, flushes)
+}
+
 /// Writes thread snapshots on a dedicated thread, in the order queued, so the
-/// newest snapshot is always the last one written.
+/// newest snapshot is always the last one written. Snapshots that queue up
+/// behind a slow write are coalesced to the newest per thread.
 pub(super) struct ThreadSaver {
     pub(super) tx: Option<std::sync::mpsc::Sender<ThreadSaveJob>>,
     pub(super) handle: Option<std::thread::JoinHandle<()>>,
@@ -766,24 +788,32 @@ impl ThreadSaver {
         let error = std::sync::Arc::new(std::sync::Mutex::new(None));
         let sink = error.clone();
         let handle = std::thread::spawn(move || {
-            for job in rx {
-                match job {
-                    ThreadSaveJob::Save(s) => {
-                        if let Err(e) = super::super::cli_save_thread(
-                            &s.base,
-                            Some(&s.id),
-                            &s.model,
-                            &s.history,
-                            s.metadata,
-                        ) {
-                            if let Ok(mut slot) = sink.lock() {
-                                *slot = Some(e);
-                            }
+            let mut logged = false;
+            while let Ok(job) = rx.recv() {
+                let mut batch = vec![job];
+                batch.extend(rx.try_iter());
+                let (saves, flushes) = coalesce_saves(batch);
+                for s in saves {
+                    if let Err(e) = super::super::cli_save_thread(
+                        &s.base,
+                        Some(&s.id),
+                        &s.model,
+                        &s.history,
+                        s.metadata,
+                    ) {
+                        // Once per saver: a failing disk fails every save, and
+                        // the status line already carries the latest error.
+                        if !logged {
+                            log::warn!("thread save failed: {e}");
+                            logged = true;
+                        }
+                        if let Ok(mut slot) = sink.lock() {
+                            *slot = Some(e);
                         }
                     }
-                    ThreadSaveJob::Flush(done) => {
-                        let _ = done.send(());
-                    }
+                }
+                for done in flushes {
+                    let _ = done.send(());
                 }
             }
         });
@@ -795,8 +825,16 @@ impl ThreadSaver {
     }
 
     pub(super) fn save(&self, save: ThreadSave) {
-        if let Some(tx) = self.tx.as_ref() {
-            let _ = tx.send(ThreadSaveJob::Save(save));
+        let sent = self
+            .tx
+            .as_ref()
+            .is_some_and(|tx| tx.send(ThreadSaveJob::Save(save)).is_ok());
+        // A saver thread that died (it panicked) would drop every later save
+        // without a word: say so where save errors are already reported.
+        if !sent {
+            if let Ok(mut slot) = self.error.lock() {
+                *slot = Some("the background thread saver stopped; snapshots are not being written".to_string());
+            }
         }
     }
 
