@@ -1,6 +1,10 @@
 import { type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select } from '@/components/ui/select'
+import { selectClassName } from '@/containers/rooms/RoomModelSelect'
+import type { CatchUp, OnBlock, ScheduleTool } from '@/lib/schedules'
 import { Segmented } from '@/components/ui/segmented'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -259,5 +263,79 @@ export function ScheduleBudgets({ uid, form, errors, err, patch }: EditorSection
       </div>
       <p className="text-xs text-muted-foreground">{t('schedules:editor.maxCostUsdHint')}</p>
     </section>
+  )
+}
+
+/** Which tools the task may use; write and exec ones are marked. */
+export function ScheduleToolsField({
+  form,
+  err,
+  patch,
+  tools,
+}: EditorSectionProps & { tools: ScheduleTool[] }) {
+  const { t } = useTranslation()
+  const toggleTool = (name: string) =>
+    patch({
+      allowTools: form.allowTools.includes(name)
+        ? form.allowTools.filter((x) => x !== name)
+        : [...form.allowTools, name],
+    })
+  return (
+    <Field label={t('schedules:editor.tools')} hint={t('schedules:editor.toolsHint')} error={err('tools')}>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5" role="group" aria-label={t('schedules:editor.tools')}>
+        {tools.map((tool) => (
+          <label
+            key={tool.name}
+            className="inline-flex cursor-pointer items-center gap-1.5 font-mono text-xs"
+            title={
+              tool.capability === 'write' || tool.capability === 'exec'
+                ? t('schedules:editor.toolNeedsApproval')
+                : undefined
+            }
+          >
+            <Checkbox
+              checked={form.allowTools.includes(tool.name)}
+              onChange={() => toggleTool(tool.name)}
+            />
+            {tool.name}
+            {(tool.capability === 'write' || tool.capability === 'exec') && (
+              <span className="text-[length:calc(var(--ui-font-base)*0.625)] text-warning">{tool.capability}</span>
+            )}
+          </label>
+        ))}
+      </div>
+    </Field>
+  )
+}
+
+/** What a run does when blocked, and how missed runs catch up. */
+export function ScheduleRunPolicy({ uid, form, patch }: EditorSectionProps) {
+  const { t } = useTranslation()
+  return (
+    <div className="grid gap-3 @min-[32rem]:grid-cols-2 sm:grid-cols-2">
+      <Field label={t('schedules:editor.onBlock')} htmlFor={`${uid}-onblock`}>
+        <Select
+          id={`${uid}-onblock`}
+          className={selectClassName}
+          value={form.onBlock}
+          onChange={(e) => patch({ onBlock: e.target.value as OnBlock })}
+        >
+          <option value="continue">{t('schedules:editor.onBlockContinue')}</option>
+          <option value="end">{t('schedules:editor.onBlockEnd')}</option>
+        </Select>
+      </Field>
+      <Field label={t('schedules:editor.catchUp')} htmlFor={`${uid}-catchup`}>
+        <Select
+          id={`${uid}-catchup`}
+          className={selectClassName}
+          value={form.catchUp}
+          onChange={(e) => patch({ catchUp: e.target.value as CatchUp })}
+        >
+          <option value="skip">{t('schedules:editor.catchUpSkip')}</option>
+          <option value="once">{t('schedules:editor.catchUpOnce')}</option>
+          <option value="all_capped">{t('schedules:editor.catchUpAllCapped')}</option>
+        </Select>
+      </Field>
+    </div>
   )
 }
