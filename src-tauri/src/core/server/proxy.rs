@@ -4411,10 +4411,10 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let code = |kind| {
             let e = map_bind_error(addr, std::io::Error::new(kind, "x"), None);
-            e.downcast_ref::<StartError>().map(|s| s.code)
+            e.downcast_ref::<super::StartError>().map(|s| s.code)
         };
-        assert_eq!(code(std::io::ErrorKind::AddrInUse), Some(START_ERR_PORT_IN_USE));
-        assert_eq!(code(std::io::ErrorKind::PermissionDenied), Some(START_ERR_PORT_FORBIDDEN));
+        assert_eq!(code(std::io::ErrorKind::AddrInUse), Some(super::START_ERR_PORT_IN_USE));
+        assert_eq!(code(std::io::ErrorKind::PermissionDenied), Some(super::START_ERR_PORT_FORBIDDEN));
         assert_eq!(code(std::io::ErrorKind::Other), None);
     }
 
