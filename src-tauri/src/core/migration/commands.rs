@@ -180,6 +180,14 @@ fn apply_data_folder<R: tauri::Runtime>(
     if mode == Mode::Fresh && running == target {
         return Ok(false);
     }
+    // DAT-021: after a fallback to defaults ordinary saves stay refused, but
+    // the migration must still record its data folder. Change only that key
+    // in the file on disk; never write the in-memory defaults.
+    if app_commands::config_fell_back() {
+        let path = app_commands::get_configuration_file_path(app.clone());
+        app_commands::write_data_folder_key(&path, &target.to_string_lossy())?;
+        return Ok(running != target);
+    }
     let mut configuration = app_commands::get_app_configurations(app.clone());
     if Path::new(&configuration.data_folder) != target {
         configuration.data_folder = target.to_string_lossy().into_owned();

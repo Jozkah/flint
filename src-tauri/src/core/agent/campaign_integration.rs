@@ -263,14 +263,37 @@ fn scripts_tampered(root: &Path, checkout: &Path, command: &str) -> Option<Strin
     if !matches!(runner.as_str(), "npm" | "yarn" | "pnpm" | "bun") {
         return None;
     }
-    if package_scripts(root) == package_scripts(checkout) {
+    let (theirs, ours) = (package_scripts(root), package_scripts(checkout));
+    if theirs == ours {
         return None;
     }
+    let keys = match changed_script_keys(&theirs, &ours) {
+        k if k.is_empty() => "the whole `scripts` entry".to_string(),
+        k => k.join(", "),
+    };
     Some(format!(
-        "the gate `{command}` was not run: the package.json scripts in the agent-written tree differ from \
-         your checkout, and the gate runs on this machine without a sandbox. Review the script change, \
-         apply it to your checkout, then run the gate again"
+        "the gate `{command}` was not run: the agent-written tree changed these package.json scripts \
+         compared with your checkout: {keys}. The gate runs on this machine without a sandbox, so it \
+         only runs scripts you have in your checkout. Review those script changes, copy the ones you \
+         trust into package.json in your checkout (or revert them in the agent's tree), then run the \
+         gate again"
     ))
+}
+
+/// Script names added, removed or changed between two `scripts` objects,
+/// sorted. A non-object side counts as having no scripts.
+fn changed_script_keys(a: &Value, b: &Value) -> Vec<String> {
+    let empty = serde_json::Map::new();
+    let (a, b) = (a.as_object().unwrap_or(&empty), b.as_object().unwrap_or(&empty));
+    let mut keys: Vec<String> = a
+        .keys()
+        .chain(b.keys())
+        .filter(|k| a.get(*k) != b.get(*k))
+        .cloned()
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys
 }
 
 fn package_manager(root: &Path) -> &'static str {
@@ -2490,7 +2513,8 @@ mod tests {
         assert!(g.blocked.is_some());
         // Neutering with `exit 0`, or adding a pretest hook, is blocked too.
         std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"vitest","pretest":"x"}}"#).unwrap();
-        assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_some());
+        let why = gate_command_with_checkout(&tree, Some(&checkout)).blocked.unwrap();
+        assert!(why.contains(": pretest.") && why.contains("into package.json in your checkout"), "{why}");
         // A configured `npm test` gate is held to the same rule.
         std::fs::write(checkout.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"npm test\"\n").unwrap();
         assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_some());

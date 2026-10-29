@@ -19,7 +19,16 @@ use std::time::SystemTime;
 pub type ConfirmFn =
     Arc<dyn Fn(PathBuf) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
-type Fingerprint = (PathBuf, u64, Option<SystemTime>);
+/// On Linux the native dialog needs an XDG portal, zenity or kdialog; without
+/// one it cannot be shown and reads as a refusal, so say how to fix that.
+const NO_DIALOG_HINT: &str = if cfg!(target_os = "linux") {
+    ". If no confirmation dialog appeared, install zenity or kdialog so Flint \
+     can ask you to approve this custom llama-server path, then try again"
+} else {
+    ""
+};
+
+type Fingerprint =(PathBuf, u64, Option<SystemTime>);
 
 #[derive(Default)]
 pub struct CustomExeGate {
@@ -55,8 +64,9 @@ impl CustomExeGate {
         };
         if !confirm(canon.clone()).await {
             return Err(format!(
-                "Running the custom llama-server {} was not allowed",
-                canon.display()
+                "Running the custom llama-server {} was not allowed{}",
+                canon.display(),
+                NO_DIALOG_HINT
             ));
         }
         self.approved

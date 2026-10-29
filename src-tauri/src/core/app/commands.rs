@@ -477,6 +477,38 @@ pub(crate) fn write_configuration_atomic(
     configuration: &AppConfiguration,
 ) -> Result<(), String> {
     let body = serde_json::to_string(configuration).map_err(|e| e.to_string())?;
+    write_body_atomic(path, &body)
+}
+
+/// Point the configuration at `folder`, the one write allowed at the end of a
+/// migration even when this run fell back to defaults (DAT-021). After a
+/// fallback the in-memory configuration is the default, so it is never written:
+/// the raw `settings.json` on disk is read, only its `data_folder` key is
+/// changed, and every other key is kept. A file that does not parse as a JSON
+/// object is replaced by a fresh one holding just the data folder.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn write_data_folder_key(path: &Path, folder: &str) -> Result<(), String> {
+    let mut root = fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .filter(|v| v.is_object())
+        .unwrap_or_else(|| serde_json::json!({}));
+    let obj = root.as_object_mut().expect("object checked above");
+    obj.insert("data_folder".into(), serde_json::Value::String(folder.into()));
+    obj.remove("unavailable_data_folder");
+    let body = serde_json::to_string(&root).map_err(|e| e.to_string())?;
+    write_body_atomic(path, &body)
+}
+
+/// Whether this run is working from default settings because `settings.json`
+/// could not be read at startup.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn config_fell_back() -> bool {
+    CONFIG_FELL_BACK.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg_attr(feature = "cli", allow(dead_code))]
+fn write_body_atomic(path: &Path, body: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -690,6 +722,33 @@ mod tests {
         assert!(read_configuration_file(&path).unwrap_err().contains("parse"));
         fs::write(&path, "{\"data_folder\":\"D:/x\"}").unwrap();
         assert_eq!(read_configuration_file(&path).unwrap().data_folder, "D:/x");
+    }
+
+    /// DAT-021: the end-of-migration write changes only the data folder key
+    /// of the file on disk, and writes a fresh file when it does not parse.
+    #[test]
+    fn the_data_folder_write_keeps_the_rest_of_the_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            "{\"data_folder\":\"D:/old\",\"unavailable_data_folder\":\"X\",\"extra\":7}",
+        )
+        .unwrap();
+        write_data_folder_key(&path, "E:/new").unwrap();
+        let back: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back["data_folder"], "E:/new");
+        assert_eq!(back["extra"], 7);
+        assert!(back.get("unavailable_data_folder").is_none());
+
+        fs::write(&path, "{ broken").unwrap();
+        write_data_folder_key(&path, "E:/new").unwrap();
+        let back: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back, serde_json::json!({ "data_folder": "E:/new" }));
+
+        let missing = dir.path().join("none").join("settings.json");
+        write_data_folder_key(&missing, "E:/new").unwrap();
+        assert!(fs::read_to_string(&missing).unwrap().contains("E:/new"));
     }
 
     /// DAT-021: after a fallback, a still-good file is never replaced; a
