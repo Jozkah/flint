@@ -12,6 +12,7 @@ import { useCoworkLayout } from '@/hooks/cowork/useCoworkLayout'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { drainIdleSession } from '@/lib/mailboxDelivery'
+import { sendQueuedViaComposer } from '@/lib/remote/queuedSend'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { useCoworkView, type CoworkRail } from '@/hooks/useCoworkView'
 import { recordEvents } from '@/lib/eventLog'
@@ -107,7 +108,18 @@ export function useCoworkViewState({
     idleDrainRef.current = true
     // The message is sent only into the session it was drained from; see
     // drainIdleSession.
-    void drainIdleSession(session.id, (text, from) => {
+    const sid = session.id
+    void drainIdleSession(sid, (text, from, attachments) => {
+      // A phone's message queued with attachments goes through the
+      // session's composer entry, as a phone's send to an idle session does.
+      if (attachments) {
+        void sendQueuedViaComposer('cowork', sid, text, attachments).then(
+          (sent) => {
+            if (!sent) void runRequestRef.current(text, from)
+          }
+        )
+        return
+      }
       void runRequestRef.current(text, from)
     })
       .then(() => {
