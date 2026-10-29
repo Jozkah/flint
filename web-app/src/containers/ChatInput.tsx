@@ -1,23 +1,7 @@
-import { stripInvisible } from '@/lib/invisibleText'
 import { canModelSummarize } from '@/lib/continueFromSummary'
-import { refusedDraftToRestore, unescapeComposerMarkdown } from '@/lib/composerText'
 import { pendingComposerTokens } from '@/lib/context-manager'
 import { isSendableAttachment } from '@/lib/attachmentChip'
-import { offerToEnableMentionedServers } from '@/lib/mcpMention'
-import { toAssetUrl } from '@/lib/assetPath'
-import {
-  dropFilePaths,
-  pasteFilePaths,
-  pastedPath,
-  transferText,
-  withoutPastedPath,
-} from '@/lib/fileDrop'
-import { readDroppedPaths } from '@/lib/droppedPaths'
-import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
-import { modelKey, unavailableModels } from '@/lib/modelReplace'
-import { currentDescriber } from '@/lib/imageDescription'
 import { ImageViewer } from '@/components/ImageViewer'
-import { needsWeb } from '@/lib/needsWeb'
 import { RichComposerEditor, type RichComposerHandle } from '@/containers/RichComposerEditor'
 import { cn, getModelDisplayName } from '@/lib/utils'
 import { useElementWidth } from '@/hooks/useElementWidth'
@@ -34,47 +18,24 @@ import {
   memo,
 } from 'react'
 import type { ReactNode } from 'react'
-import { generateId } from 'ai'
-import {
-  holdQueueThenStop,
-  withdrawApprovalsForSteering,
-} from '@/lib/chatSteering'
+import { holdQueueThenStop } from '@/lib/chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
+import { ComposerQueue } from '@/containers/ComposerQueue'
 import { SamplerPopover } from '@/containers/SamplerPopover'
-import { useDraftSampling } from '@/hooks/useDraftSampling'
-import { useLargePaste } from '@/hooks/useLargePaste'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
-import { getLastUsedModel } from '@/utils/getModelToStart'
-import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
 import { DropRim } from '@/components/ui/drop-rim'
 import { ComposerAttachmentChips } from '@/containers/ComposerAttachmentChips'
-import { dragFileCount } from '@/lib/attachmentChip'
 import {
   useConversationModel,
   type ModelSelection,
 } from '@/hooks/useConversationPane'
 import { useTokensCount } from '@/hooks/useTokensCount'
-import { ComposerEffort } from '@/containers/ComposerEffort'
-import {
-  EFFORT_SETTING_KEY,
-  effortOf,
-  effortProfile,
-  isThinkingOff,
-  type EffortChoice,
-} from '@/lib/modelEffort'
-import {
-  isOverridden,
-  resolveModel,
-  withSettings,
-  type SettingWrite,
-} from '@/lib/modelOverrides'
+import { isOverridden } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
-import { withReasoningDefault } from '@/lib/reasoningDefault'
 import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import { useReconcileVideoCapability } from '@/hooks/useReconcileVideoCapability'
 
@@ -82,78 +43,33 @@ import { useAppState } from '@/hooks/useAppState'
 import type { ChatStatus } from 'ai'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import {
-  DOCUMENT_ATTACHMENT_EXTENSIONS,
-  isDocumentAttachmentName,
-} from '@/constants/attachments'
-import {
-  TEMPORARY_CHAT_ID,
-  TEMPORARY_CHAT_QUERY_ID,
-  SESSION_STORAGE_PREFIX,
-} from '@/constants/chat'
-import { resolveThreadModelId } from '@/lib/models'
+import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useAssistant } from '@/hooks/useAssistant'
 import { AssistantSwitcher } from '@/containers/AssistantSwitcher'
 import { ComposerOptionsMenu } from '@/containers/ComposerOptionsMenu'
-import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { TokenCounter } from '@/components/TokenCounter'
 import type { TokenUsageSource } from '@/hooks/useTokensCount'
 import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useShallow } from 'zustand/react/shallow'
-import {
-  ExtensionTypeEnum,
-  fs,
-  VectorDBExtension,
-} from '@janhq/core'
-import { ExtensionManager } from '@/lib/extension'
 import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
-import {
-  requestChatCompaction,
-  requestChatSideQuestion,
-} from '@/lib/chatCompaction'
-import { isPlatformTauri } from '@/lib/platform/utils'
-import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
+import { requestChatCompaction } from '@/lib/chatCompaction'
 import {
   NEW_THREAD_ATTACHMENT_KEY,
   useChatAttachments,
 } from '@/hooks/useChatAttachments'
 import { VisionDisabledDialog } from '@/containers/dialogs/VisionDisabledDialog'
 import { EnableModelCapabilityDialog } from '@/containers/dialogs/EnableModelCapabilityDialog'
-import {
-  enableModelCapabilities,
-  type EnableableCapability,
-} from '@/lib/modelCapabilityEnable'
 
 import { acceptAttribute } from '@/lib/attachmentSupport'
-import { safeSessionSet } from '@/lib/safeStorage'
-import {
-  clipboardImageFiles,
-  clipboardMayHoldImage,
-  missingMediaCapabilities,
-  pastedImageFiles,
-  pastedMediaFiles,
-  splitDroppedFiles,
-} from '@/lib/composerIntake'
-import {
-  withoutAttachment,
-  withoutSent,
-} from '@/lib/attachmentIntake'
-import {
-  Attachment,
-  createDocumentAttachment,
-} from '@/types/attachment'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useComposerFocus } from '@/hooks/useComposerFocus'
-import { useLatestCallback } from '@/hooks/useLatestCallback'
 import { useMediaAttachments } from '@/hooks/useMediaAttachments'
 import { ComposerAttachMenu } from '@/containers/ComposerAttachMenu'
 import { ComposerToolControls } from '@/containers/ComposerToolControls'
-import {
-  ComposerReasoningMenu,
-  REASONING_MENU_PROVIDERS,
-} from '@/containers/ComposerReasoningMenu'
+import { ComposerReasoningMenu } from '@/containers/ComposerReasoningMenu'
+import { REASONING_MENU_PROVIDERS } from '@/lib/reasoningMenu'
 import { ComposerSendButton } from '@/containers/ComposerSendButton'
 import {
   ComposerErrorLine,
@@ -161,48 +77,29 @@ import {
   WebSearchOffPrompt,
 } from '@/containers/ComposerBanners'
 import { useImageAttachments } from '@/hooks/useImageAttachments'
+import { useDocumentAttachments } from '@/hooks/useDocumentAttachments'
+import { usePathOffer } from '@/hooks/usePathOffer'
+import { useComposerSend, type ModelCheck } from '@/hooks/useComposerSend'
+import { useComposerEffort } from '@/hooks/useComposerEffort'
+import { useComposerDropPaste } from '@/hooks/useComposerDropPaste'
+import { useModelCapabilityPrompt } from '@/hooks/useModelCapabilityPrompt'
+import { useComposerSlashCommands } from '@/hooks/useComposerSlashCommands'
+import { useReferencePicker } from '@/hooks/useReferencePicker'
 import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import { useChatShell } from '@/hooks/useChatShell'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getSandboxStatus } from '@/lib/agentTools'
-import {
-  formatPathReferenceText,
-  parsePromptForReferences,
-  stripPromptReferences,
-  typedReference,
-} from '@/lib/path-references'
-import {
-  resolveReference,
-  searchReferences,
-  unresolvedReferenceNote,
-} from '@/lib/safeReferences'
-import {
-  optionId,
-  rankReferences,
-  type NamedSource,
-  type ReferenceEntry,
-} from '@/lib/referenceMenu'
-import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
-import { TRIGGER_TAIL, mentionTrigger } from '@/lib/chatMentions'
-import { listConversations, listConversationsAsync } from '@/lib/chatMentionSources'
-import { resolvePromptMentions, withMentionBlocks } from '@/lib/chatMentionSend'
+import { optionId, type NamedSource } from '@/lib/referenceMenu'
+import { mentionTrigger } from '@/lib/chatMentions'
+import { listConversations } from '@/lib/chatMentionSources'
 import { MentionChips } from '@/containers/MentionChips'
 import { useMentionPreview } from '@/hooks/useMentionPreview'
 import { knownContextWindow } from '@/lib/knownContextWindow'
-import { modelSummarizer } from '@/lib/compactionSummarizer'
-import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { PromptFillDialog } from '@/containers/PromptFillDialog'
-import {
-  fillPrompt,
-  parseVars,
-  promptSlug,
-  usePromptLibrary,
-  type LibraryPrompt,
-} from '@/lib/promptLibrary'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
-import { useSlashCommands, type SlashSurface } from '@/hooks/useSlashCommands'
+import type { SlashSurface } from '@/hooks/useSlashCommands'
 import type { SlashBuiltin } from '@/lib/slashCommands'
 
 type ChatInputProps = {
@@ -452,7 +349,6 @@ const ChatInput = memo(function ChatInput({
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
-  const serviceHub = useServiceHub()
   const abortControllers = useAppState((state) => state.abortControllers)
   const cancelToolCall = useAppState((state) => state.cancelToolCall)
   // The main draft, or this composer's own when it has a scope (the second
@@ -529,8 +425,6 @@ const ChatInput = memo(function ChatInput({
   const chatOverrides = overrideScope
     ? overridesByThread[overrideScope]
     : undefined
-  const setThreadOverride = useModelOverrides((state) => state.setForThread)
-  const clearThreadOverride = useModelOverrides((state) => state.clearForThread)
   const currentThread = useThreads((state) =>
     threadIdProp ? state.threads?.[threadIdProp] : state.getCurrentThread()
   )
@@ -550,7 +444,6 @@ const ChatInput = memo(function ChatInput({
   )
   useTools()
   const router = useRouter()
-  const createThread = useThreads((state) => state.createThread)
   const { loading, currentAssistant, setCurrentAssistant, assistants } =
     useAssistant()
 
@@ -578,432 +471,56 @@ const ChatInput = memo(function ChatInput({
     [ensureWebSearchScope, resolvedWebSearchScope]
   )
 
-  const [filePickerOpen, setFilePickerOpen] = useState(false)
   // The image viewer over the composer's attachments: which image is open.
   const [viewerAt, setViewerAt] = useState<number | null>(null)
-  const [filePickerQuery, setFilePickerQuery] = useState('')
-  const [filePickerEntries, setFilePickerEntries] = useState<ReferenceEntry[]>(
-    []
-  )
-  // The `@` menu's active row, moved from the composer with the arrow keys.
-  const [referenceActive, setReferenceActive] = useState(0)
-  // A file or folder being named as an alias (AH-205), and why a name failed.
-  const [aliasDraft, setAliasDraft] = useState<ReferenceEntry | null>(null)
-  const [aliasError, setAliasError] = useState<string | null>(null)
-  // Announced: how many references match, or what happened to an alias.
-  const [referenceStatus, setReferenceStatus] = useState('')
-  // Which character opened the menu: `#` lists conversations only.
-  const [menuTrigger, setMenuTrigger] = useState<'@' | '#'>('@')
-  // Re-ranks the open menu once the conversation counts have loaded.
-  const rerankMenuRef = useRef<(() => void) | null>(null)
-  // Whether the menu is open now, for work that finishes after it closed.
-  const filePickerOpenRef = useRef(false)
-  filePickerOpenRef.current = filePickerOpen
-  const referenceListId = useId()
   const slashListId = useId()
-  const defaultSlashBuiltins = useMemo<SlashBuiltin[]>(
-    () =>
-      slashSurface === 'home'
-        ? [
-            {
-              name: 'new',
-              description: t('slash:builtin.new'),
-              run: () => void router.navigate({ to: route.home }),
-            },
-            // Only in an open conversation, which registers how to compact
-            // itself (`lib/chatCompaction.ts`).
-            ...(currentThreadId
-              ? [
-                  {
-                    name: 'compact',
-                    description: t('slash:builtin.compact'),
-                    argumentHint: '[focus]',
-                    run: (args: string) => {
-                      if (
-                        !requestChatCompaction(
-                          currentThreadId,
-                          args.trim() || undefined
-                        )
-                      ) {
-                        toast.info(t('common:budget.compactFailed'))
-                      }
-                    },
-                  },
-                  {
-                    name: 'btw',
-                    description: t('slash:builtin.btw'),
-                    argumentHint: '<question>',
-                    run: (args: string) => {
-                      const question = args.trim()
-                      if (
-                        !question ||
-                        !requestChatSideQuestion(currentThreadId, question)
-                      ) {
-                        toast.info(t('common:budget.btwFailed'))
-                      }
-                    },
-                  },
-                ]
-              : []),
-          ]
-        : [],
-    [slashSurface, t, router, currentThreadId]
-  )
-  // Prompt library (AH-prompts): one state for the fill-in dialog, whichever
-  // menu started the insert.
-  const libraryPrompts = usePromptLibrary((s) => s.prompts)
-  const [promptFill, setPromptFill] = useState<{
-    prompt: LibraryPrompt
-    apply: (text: string) => void
-    /** Undoes what started the insert (the typed `@query`). */
-    cancel?: () => void
-  } | null>(null)
-  /** Insert now when the prompt has no variables, else ask for them first. */
-  const beginPromptInsert = useCallback(
-    (
-      prompt: LibraryPrompt,
-      apply: (text: string) => void,
-      cancel?: () => void
-    ) => {
-      if (parseVars(prompt.body).length === 0) {
-        apply(fillPrompt(prompt.body, {}))
-        return
-      }
-      setPromptFill({ prompt, apply, cancel })
-    },
-    []
-  )
-  const promptBuiltins = useMemo<SlashBuiltin[]>(() => {
-    const used = new Set<string>()
-    return libraryPrompts.map((p) => {
-      let slug = promptSlug(p.name)
-      for (let n = 2; used.has(slug); n++) slug = `${promptSlug(p.name)}-${n}`
-      used.add(slug)
-      return {
-        name: `prompt:${slug}`,
-        description: p.name,
-        promptId: p.id,
-        // Typed in full and sent: the draft is cleared by the send, so the
-        // insert lands after it.
-        run: () => {
-          setTimeout(() => beginPromptInsert(p, (text) => setPrompt(text)), 0)
-        },
-      }
-    })
-  }, [libraryPrompts, beginPromptInsert, setPrompt])
-  const slashCommands = useSlashCommands({
-    surface: slashSurface,
-    project: slashProject,
-    builtins: [...(slashBuiltins ?? defaultSlashBuiltins), ...promptBuiltins],
-    helpDescription: t('slash:builtin.help'),
+  const {
+    slashCommands,
+    libraryPrompts,
+    promptFill,
+    setPromptFill,
+    beginPromptInsert,
+  } = useComposerSlashCommands({
+    slashSurface,
+    slashProject,
+    slashBuiltins,
+    currentThreadId,
+    setPrompt,
   })
-  const referenceSkills = referenceSources?.skills
-  const referenceAgents = referenceSources?.agents
-  const [workingDir, setWorkingDir] = useState<string | undefined>(undefined)
-  // Textarea cursor position snapshot at the time @ was typed
-  const filePickerCursorPos = useRef<number | null>(null)
-
-  // The folder references may name, and the data folder the confined reader
-  // needs. No folder means no references at all -- not the home directory.
-  const [referenceDataFolder, setReferenceDataFolder] = useState<
-    string | undefined
-  >(undefined)
-  // Whatever the mode: a surface that attached a folder (Cowork) names it
-  // here, and one that did not gets no references at all.
-  useEffect(() => {
-    setWorkingDir(referenceRoot ?? undefined)
-    if (!referenceRoot) return
-    let alive = true
-    void getServiceHub()
-      .app()
-      .getJanDataFolder()
-      .then((folder) => {
-        if (alive) setReferenceDataFolder(folder ?? undefined)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [referenceRoot])
-
-  // Detect `@` in the prompt text and open the file picker
-  const handlePromptChange = useCallback(
-    (value: string) => {
-      setPrompt(value)
-
-      const cursorIdx = filePickerCursorPos.current ?? value.length
-
-      // Look backwards from current cursor to find the last word starting with
-      // @ (the @ must not be glued to a preceding word char, so `user@host`
-      // never opens the picker), or a `#` that begins a word and is followed
-      // by a letter, which lists conversations only. Files need a folder
-      // (AH-204); conversations, skills and prompts do not.
-      const beforeCursor = value.slice(0, cursorIdx)
-      const atMatch = mentionTrigger(beforeCursor)
-
-      if (atMatch) {
-        const query = atMatch.query
-        setFilePickerQuery(query)
-        setMenuTrigger(atMatch.char)
-
-        // One ranked list. The file index is searched through the backend's
-        // confined listing; if it cannot be read the rest are still offered,
-        // and typing is never waited on.
-        const rank = (files: Awaited<ReturnType<typeof searchReferences>>) => {
-          const ranked = rankReferences(query, {
-            files,
-            skills: referenceSkills ?? [],
-            agents: referenceAgents ?? [],
-            aliases: useReferenceAliases.getState().list(workingDir),
-            prompts: libraryPrompts.map((p) => ({
-              id: p.id,
-              name: p.name,
-              detail: p.folder ?? p.body.slice(0, 80),
-            })),
-            conversations: listConversations(),
-            currentConversationId: scopeKey ?? currentThreadId,
-          }, 50, atMatch.char)
-          setFilePickerEntries(ranked)
-          setReferenceActive(0)
-          setReferenceStatus(
-            ranked.length === 0
-              ? t('chat:composer.referencesNone')
-              : t('chat:composer.references', { count: ranked.length })
-          )
-          rerankMenuRef.current = () => rank(files)
-        }
-        // Counts and previews of the chats load once per menu opening, then
-        // the open menu is ranked again with them.
-        if (!filePickerOpen) {
-          void listConversationsAsync().then(() => {
-            // The menu may have closed while this loaded; ranking it again
-            // would announce a status for a menu nobody sees.
-            if (filePickerOpenRef.current) rerankMenuRef.current?.()
-          })
-        }
-        const fileQuery =
-          atMatch.char === '#' ||
-          /^(skill|agent|alias|prompt|chat|session|room):/.test(query)
-            ? null
-            : query
-        if (workingDir && referenceDataFolder && fileQuery !== null) {
-          searchReferences(referenceDataFolder, workingDir, fileQuery)
-            .then(rank)
-            .catch(() => rank([]))
-        } else {
-          rank([])
-        }
-        setFilePickerOpen(true)
-      } else {
-        setFilePickerOpen(false)
-      }
-    },
-    [
-      t,
-      workingDir,
-      referenceDataFolder,
-      setPrompt,
-      referenceSkills,
-      referenceAgents,
-      libraryPrompts,
-      scopeKey,
-      currentThreadId,
-      filePickerOpen,
-    ]
-  )
-
-  // Insert the selected reference into the prompt
-  const handleFilePickerSelect = useCallback(
-    (entry: ReferenceEntry) => {
-      if (filePickerCursorPos.current == null) return
-
-      const beforeCursor = prompt.slice(0, filePickerCursorPos.current)
-      const afterCursor = prompt.slice(filePickerCursorPos.current)
-
-      // Replace the `@query` with the entry's token
-      const textBefore = beforeCursor.replace(TRIGGER_TAIL, '$1')
-      // The identifier, not the label: a folder-relative path, or a typed
-      // reference. It means the same thing however it is displayed, and a
-      // path cannot name anything outside the folder.
-      // A library prompt is pasted as text, not left as a reference.
-      if (entry.kind === 'prompt') {
-        const found = libraryPrompts.find(
-          (p) => `prompt:${p.id}` === entry.token
-        )
-        setFilePickerOpen(false)
-        filePickerCursorPos.current = null
-        if (found) {
-          beginPromptInsert(
-            found,
-            (text) => setPrompt(textBefore + text + afterCursor),
-            // Cancelling leaves no dangling `@query` behind.
-            () => setPrompt(textBefore + afterCursor)
-          )
-        }
-        setTimeout(() => focusComposer(), 0)
-        return
-      }
-      const refText = formatPathReferenceText(entry.token) + ' '
-      const newPrompt = textBefore + refText + afterCursor
-
-      setPrompt(newPrompt)
-      setFilePickerOpen(false)
-      filePickerCursorPos.current = null
-
-      // Focus back on textarea
-      setTimeout(() => focusComposer(), 0)
-    },
-    [prompt, setPrompt, libraryPrompts, beginPromptInsert, focusComposer]
-  )
-
-  const handleFilePickerClose = useCallback(() => {
-    setFilePickerOpen(false)
-    setAliasDraft(null)
-    setAliasError(null)
-    filePickerCursorPos.current = null
-  }, [])
-
-  // Name the file or folder being drafted as an alias (AH-205). Focus goes
-  // back to the composer either way, where it was when the draft began.
-  const handleAliasSave = useCallback(
-    (name: string, lines = '') => {
-      if (!aliasDraft) return
-      const out = useReferenceAliases
-        .getState()
-        .add(workingDir, name, aliasDraft.token, lines)
-      if (!out.ok) {
-        setAliasError(out.message)
-        setReferenceStatus(
-          t('chat:composer.aliasNotSaved', { message: out.message })
-        )
-        return
-      }
-      setAliasDraft(null)
-      setAliasError(null)
-      setReferenceStatus(
-        t('chat:composer.aliasSaved', {
-          name: out.alias.name,
-          target: out.alias.target,
-        })
-      )
-      setFilePickerEntries((entries) =>
-        rankReferences(filePickerQuery, {
-          files: entries
-            .filter((e) => e.kind === 'file' || e.kind === 'directory')
-            .map((e) => ({
-              path: e.token,
-              name: e.name,
-              kind: e.kind as 'file' | 'directory',
-              extension: e.extension,
-            })),
-          skills: referenceSkills ?? [],
-          agents: referenceAgents ?? [],
-          aliases: useReferenceAliases.getState().list(workingDir),
-        })
-      )
-      setTimeout(() => focusComposer(), 0)
-    },
-    [
-      aliasDraft,
-      workingDir,
-      filePickerQuery,
-      referenceSkills,
-      referenceAgents,
-      focusComposer,
-      t,
-    ]
-  )
-
-  const handleAliasCancel = useCallback(() => {
-    setAliasDraft(null)
-    setAliasError(null)
-    setTimeout(() => focusComposer(), 0)
-  }, [focusComposer])
-
-  // Resolve @path references in the prompt text, returning the resolved content
-  const resolvePromptReferences = useCallback(
-    async (
-      text: string
-    ): Promise<{
-      text: string
-      resolvedContents: string
-    }> => {
-      const refs = parsePromptForReferences(text)
-      // No folder, no references: an `@name` in an ordinary chat is left as
-      // typed. It used to be read as a path -- relative to nothing, or
-      // absolute -- so `@C:\Users\me\.ssh\id_rsa` put that file in the prompt.
-      if (refs.length === 0 || !workingDir)
-        return { text, resolvedContents: '' }
-
-      const parts: string[] = []
-      const unresolved = new Set<string>()
-      for (const ref of refs) {
-        const typed = typedReference(ref)
-        // A skill reference is acted on by the skill machinery, which reads
-        // it from the text; it stays there and needs nothing inlined.
-        if (typed?.kind === 'skill') continue
-        // A conversation mention is resolved separately, with or without a
-        // folder (chatMentionSend.ts).
-        if (
-          typed?.kind === 'chat' ||
-          typed?.kind === 'session' ||
-          typed?.kind === 'room'
-        )
-          continue
-        if (typed?.kind === 'agent') {
-          const agent = referenceAgents?.find((one) => one.name === typed.name)
-          parts.push(
-            agent
-              ? `[Agent @agent:${agent.name}${agent.description ? `: ${agent.description}` : ''}. To hand work to it, call the task tool with agent "${agent.name}".]`
-              : `[Reference @${ref} was not included: there is no saved agent named ${typed.name}]`
-          )
-          continue
-        }
-        if (typed?.kind === 'alias') {
-          const alias = await resolveAlias(
-            referenceDataFolder ?? '',
-            workingDir,
-            typed.name
-          )
-          parts.push(
-            alias.ok
-              ? alias.content
-              : `[Reference @${ref} was not included: ${alias.message}]`
-          )
-          continue
-        }
-        const resolved = await resolveReference(
-          referenceDataFolder ?? '',
-          workingDir,
-          ref
-        )
-        if (resolved.ok) {
-          parts.push(resolved.content)
-        } else {
-          unresolved.add(ref)
-          // Said in the message, not dropped: the model should know a
-          // reference was refused, and why, rather than miss it silently.
-          // A name that matched no file stays silent (pasted code, emails).
-          const note = unresolvedReferenceNote(ref, resolved)
-          if (note) parts.push(note)
-        }
-      }
-
-      const resolvedContents = parts.join('\n\n')
-
-      // Remove @ references from the prompt text (they'll be replaced by the
-      // resolved contents above so the model sees the content directly)
-      const cleanText = stripPromptReferences(text, unresolved)
-
-      return { text: cleanText, resolvedContents }
-    },
-    [workingDir, referenceDataFolder, referenceAgents]
-  )
+  const {
+    filePickerOpen,
+    filePickerQuery,
+    filePickerEntries,
+    referenceActive,
+    aliasDraft,
+    aliasError,
+    referenceStatus,
+    menuTrigger,
+    referenceListId,
+    workingDir,
+    filePickerCursorPos,
+    handlePromptChange,
+    handleFilePickerSelect,
+    handleFilePickerClose,
+    handleAliasSave,
+    handleAliasCancel,
+    setReferenceActive,
+    handleReferenceKeyDown,
+    resolvePromptReferences,
+  } = useReferencePicker({
+    referenceRoot,
+    referenceSources,
+    prompt,
+    setPrompt,
+    scopeKey,
+    currentThreadId,
+    libraryPrompts,
+    beginPromptInsert,
+    focusComposer,
+  })
 
   // Get current thread messages for token counting
   const threadMessages = useActiveMessages(currentThreadId)
-
-  const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
   // This conversation's model: a split pane's own thread model, otherwise the
   // global picker.
@@ -1042,7 +559,6 @@ const ChatInput = memo(function ChatInput({
   const selectModelProvider = useModelProvider(
     (state) => state.selectModelProvider
   )
-  const updateProvider = useModelProvider((state) => state.updateProvider)
   // The counter measures this conversation's model, not the global picker's
   // (a Cowork session on a remote model was read against a local window, C-006).
   const counterSource = useMemo<TokenUsageSource>(
@@ -1062,8 +578,6 @@ const ChatInput = memo(function ChatInput({
   const [message, setMessage] = useState('')
   // A send held back because it needs the web and web search is off.
   const [webOffPrompt, setWebOffPrompt] = useState<string | null>(null)
-  const [isDragOver, setIsDragOver] = useState(false)
-  const [dragCount, setDragCount] = useState(0)
   const activeModels = useAppState(useShallow((state) => state.activeModels))
   // Check if selected model is currently loaded/active
   const isModelActive = selectedModel?.id
@@ -1119,7 +633,6 @@ const ChatInput = memo(function ChatInput({
   }, [loading, projectAssistantId])
 
   const attachmentsEnabled = useAttachments((s) => s.enabled)
-  const parsePreference = useAttachments((s) => s.parseMode)
   const maxFileSizeMB = useAttachments((s) => s.maxFileSizeMB)
 
   // Derived: any document currently processing (ingestion in progress)
@@ -1177,13 +690,6 @@ const ChatInput = memo(function ChatInput({
     )
   )
 
-  const removeQueuedMessage = useCallback(
-    (id: string) => {
-      useMessageQueue.getState().removeMessage(queueId, id)
-    },
-    [queueId]
-  )
-
   const lastTransferredThreadId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -1200,479 +706,6 @@ const ChatInput = memo(function ChatInput({
       lastTransferredThreadId.current = currentThreadId
     }
   }, [scopeKey, draftScope, currentThreadId, transferAttachments])
-
-  // A send waiting for the replacement model to show; see handleSendMessage.
-  const pendingSendRef = useRef<{
-    typed: string
-    modelId: string
-    at: number
-    /** The composer text when the send parked; editing it cancels the send. */
-    draft: string
-    options: { steer: boolean; allowNoWeb: boolean; capabilityAsked: boolean }
-  } | null>(null)
-  const updateThreadModelFor = useThreads((state) => state.updateThreadModel)
-  const confirmThreadModel = (): ModelCheck | Promise<ModelCheck> => {
-    // A composer whose host owns the model has its own check (`confirmModel`).
-    const saved = modelSelection ? undefined : currentThread?.model
-    const gone = unavailableModels([saved])
-    // Nothing to ask: stay synchronous, so an ordinary send is no slower.
-    if (!currentThread || gone.length === 0) return { status: 'ok' }
-    return promptReplaceModels(t('common:modelReplace.thisChat'), gone).then(
-      (choices): ModelCheck => {
-        const pick = choices?.[modelKey(gone[0])]
-        if (!pick) return { status: 'stop' }
-        updateThreadModelFor(currentThread.id, pick)
-        selectModelProvider(pick.provider, pick.id)
-        return { status: 'retry', modelId: pick.id }
-      }
-    )
-  }
-
-  // One send at a time: a mention summary can take minutes before the draft
-  // is cleared, and Enter or Send pressed again meanwhile would send twice.
-  const sendInFlightRef = useRef(false)
-  const [sending, setSending] = useState(false)
-  const handleSendMessage = async (
-    typedRaw: string,
-    options: {
-      steer?: boolean
-      allowNoWeb?: boolean
-      capabilityAsked?: boolean
-    } = {}
-  ) => {
-    // A send the user just confirmed (a capability prompt) is the same send.
-    if (sendInFlightRef.current && !options.capabilityAsked) return
-    sendInFlightRef.current = true
-    setSending(true)
-    try {
-      await sendMessage(typedRaw, options)
-    } finally {
-      sendInFlightRef.current = false
-      setSending(false)
-    }
-  }
-
-  const sendMessage = async (
-    typedRaw: string,
-    {
-      steer = false,
-      allowNoWeb = false,
-      capabilityAsked = false,
-    }: { steer?: boolean; allowNoWeb?: boolean; capabilityAsked?: boolean } = {}
-  ) => {
-    // The composer's Markdown escapes `*`, `_` and friends; the message is
-    // sent and shown as typed.
-    // Tag characters and bidi controls pasted along with text are hidden
-    // instructions the sender cannot see; they never reach the model.
-    const typed = stripInvisible(unescapeComposerMarkdown(typedRaw)).text
-    // What the composer held when this send began; typing after that is not
-    // part of the message and must survive the clear.
-    const draftAtStart = latestPromptRef.current
-    setWebOffPrompt(null)
-    if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
-      setWebOffPrompt(typed)
-      return
-    }
-    // A model that has gone away is replaced with the user's say before the
-    // message goes, not silently swapped for whatever the picker holds.
-    if (!slashCommands.isBuiltin(typed)) {
-      const check = (confirmModel ?? confirmThreadModel)()
-      const checked = check instanceof Promise ? await check : check
-      if (checked.status === 'stop') return
-      if (checked.status === 'retry') {
-        // The replacement is already the selected model: no switch is coming
-        // for the effect below to see, so send now rather than park forever.
-        if (selectedModel?.id !== checked.modelId) {
-          pendingSendRef.current = {
-            typed,
-            modelId: checked.modelId,
-            at: Date.now(),
-            draft: draftAtStart,
-            options: { steer, allowNoWeb, capabilityAsked },
-          }
-          return
-        }
-      }
-    }
-    if (!selectedModel && !slashCommands.isBuiltin(typed)) {
-      // Nothing is selected yet: pick the model that should answer and send
-      // once it shows, rather than stopping at a message. A model that went
-      // away is the user's to replace, so that case keeps its own message.
-      if (!unavailableModel) {
-        const pick = resolveReplyModel({
-          providers: allProviders,
-          preferred: preferredModel,
-          lastUsed: getLastUsedModel(),
-        })
-        if (pick) {
-          pendingSendRef.current = {
-            typed,
-            modelId: pick.model,
-            at: Date.now(),
-            draft: draftAtStart,
-            options: { steer, allowNoWeb, capabilityAsked },
-          }
-          selectModelProvider(pick.provider, pick.model)
-          return
-        }
-      }
-      setMessage(
-        unavailableModel
-          ? t('chat:composer.modelUnavailable', { model: unavailableModel })
-          : t('chat:composer.selectModel')
-      )
-      return
-    }
-    if (selectedModel && !capabilityAsked) {
-      const missing: EnableableCapability[] = []
-      for (const [attachmentType, capability] of [
-        ['image', 'vision'],
-        ['audio', 'audio'],
-        ['video', 'video'],
-      ] as const) {
-        if (
-          attachments.some(
-            (attachment) => attachment.type === attachmentType
-          ) &&
-          !selectedModel.capabilities?.includes(capability)
-        ) {
-          missing.push(capability)
-        }
-      }
-      // A model that cannot see still gets its images, described by one that
-      // can, so a missing vision capability is no reason to hold the message.
-      // A local model that might see with its mmproj is still offered that.
-      const describer = missing.includes('vision') ? currentDescriber() : null
-      if (describer) {
-        let mightSee = false
-        if (selectedProvider === 'llamacpp') {
-          try {
-            mightSee = await serviceHub.models().checkMmprojExists(selectedModel.id)
-          } catch {
-            mightSee = false
-          }
-        }
-        if (!mightSee) {
-          missing.splice(missing.indexOf('vision'), 1)
-          toast.info(
-            t('chat:composer.describeFirst', {
-              model: selectedModel.name ?? selectedModel.id,
-              describer: describer.modelId,
-            })
-          )
-        }
-      }
-      if (missing.length > 0) {
-        if (missing.includes('vision') && selectedProvider === 'llamacpp') {
-          let canSeeImages = false
-          try {
-            canSeeImages = await serviceHub
-              .models()
-              .checkMmprojExists(selectedModel.id)
-          } catch (error) {
-            console.error('Failed to check mmproj support:', error)
-          }
-          if (!canSeeImages) {
-            setMessage(t('common:attachFiles.visionDisabled.needsMmproj'))
-            return
-          }
-        }
-        requestCapabilities(missing, () =>
-          handleSendMessage(typed, { steer, allowNoWeb, capabilityAsked: true })
-        )
-        return
-      }
-    }
-    // A `/command` expands into what the model receives; a built-in runs here
-    // and sends nothing. Anything that names no known command is sent as typed.
-    const slash = await slashCommands.prepareSend(typed)
-    if (slash.kind === 'handled') {
-      setPrompt('')
-      return
-    }
-    if (slash.kind === 'error') {
-      toast.error(
-        t('slash:error', {
-          command: typed.trim().split(/\s/)[0],
-          error: slash.error,
-        })
-      )
-      return
-    }
-    const prompt = slash.kind === 'message' ? slash.text : typed
-
-    // Resolve @path references before sending
-    const { text: resolvedText, resolvedContents } =
-      await resolvePromptReferences(prompt)
-    const referencedPrompt = resolvedContents
-      ? `${resolvedText}\n\n---\nReferenced file contents:\n\n${resolvedContents}`
-      : resolvedText
-    // Mentioned conversations: bounded, redacted excerpts, fenced as data.
-    // A missing one becomes a note; nothing here blocks the send.
-    const mentions = await resolvePromptMentions(prompt, {
-      currentId: scopeKey ?? currentThreadId,
-      agentSurface: !ownsToolSet || effectiveAgentMode,
-      summarize:
-        canSummarize && selectedModel?.id
-          ? (transcript) =>
-              modelSummarizer({
-                provider: selectedProvider ?? '',
-                modelId: selectedModel.id,
-                session: scopeKey ?? currentThreadId ?? 'mention',
-              })(transcript)
-          : undefined,
-    })
-    const effectivePrompt = withMentionBlocks(referencedPrompt, mentions)
-
-    // Files can be attached, or finish ingesting, while @references and
-    // mentions resolve above; what is sent is what is attached now, not what
-    // the render that started the send saw.
-    const liveAttachments = useChatAttachments
-      .getState()
-      .getAttachments(attachmentsKey)
-    if (!effectivePrompt.trim() && !liveAttachments.some(isSendableAttachment)) {
-      return
-    }
-    if (liveAttachments.some((a) => a.processing)) {
-      toast.info(t('sweep:chat.waitAttachments'))
-      return
-    }
-
-    setMessage('')
-    addToHistory(slash.kind === 'message' ? typed : referencedPrompt)
-    // Names an MCP server that is off? Offer to turn it on. Never blocks the send.
-    void offerToEnableMentionedServers(prompt)
-
-    // Use onSubmit prop if available (AI SDK), otherwise create thread and navigate
-    if (onSubmit) {
-      // When the model is still streaming, or the previous turn's tools are
-      // still pending or running, queue the message for later
-      if ((isStreaming || threadBusy) && queueId) {
-        // Queued to go as its own turn after the run, unless the user asked
-        // (Ctrl+Enter) to hand it to the running turn at its next safe point.
-        useMessageQueue.getState().enqueue(queueId, {
-          id: generateId(),
-          text: effectivePrompt,
-          createdAt: Date.now(),
-          ...(steer ? { steer: true } : {}),
-        })
-        if (steer) withdrawApprovalsForSteering(queueId)
-        setPrompt('')
-        return
-      }
-
-      const imageFiles = liveAttachments
-        .filter((att) => att.type === 'image' && att.dataUrl)
-        .map((att) => ({
-          type: 'file',
-          mediaType: att.mimeType ?? 'image/jpeg',
-          url: att.dataUrl!,
-        }))
-      const audioFiles = liveAttachments
-        .filter((att) => att.type === 'audio' && att.dataUrl)
-        .map((att) => ({
-          type: 'file',
-          mediaType: att.audioFormat === 'mp3' ? 'audio/mpeg' : 'audio/wav',
-          url: att.dataUrl!,
-        }))
-      const videoFiles = liveAttachments
-        .filter((att) => att.type === 'video' && att.dataUrl)
-        .map((att) => ({
-          type: 'file',
-          mediaType: att.mimeType ?? 'video/mp4',
-          url: att.dataUrl!,
-        }))
-      const files = [...imageFiles, ...audioFiles, ...videoFiles]
-
-      const sentAttachments = liveAttachments
-      onSubmit(effectivePrompt, files.length > 0 ? files : undefined, () => {
-        // After the clear below, which a synchronous refusal would precede.
-        queueMicrotask(() => {
-          // Not over something typed since. The render that follows the clear
-          // may not have happened yet, so the sent text counts as empty too.
-          const restore = refusedDraftToRestore(
-            latestPromptRef.current,
-            typedRaw
-          )
-          if (restore !== null) {
-            restoredDraftRef.current = restore
-            setPrompt(restore)
-          }
-          if (sentAttachments.length > 0) {
-            setAttachmentsForThread(attachmentsKey, (prev) =>
-              prev.length > 0 ? prev : sentAttachments
-            )
-          }
-        })
-      })
-      // Not over something typed while the send was resolving.
-      if (latestPromptRef.current === draftAtStart) setPrompt('')
-      // Only what was sent: a file attached after the list was read stays.
-      setAttachmentsForThread(attachmentsKey, (prev) =>
-        withoutSent(prev, sentAttachments)
-      )
-    } else {
-      // No onSubmit provided - create a new thread and navigate to it.
-      // Media attachments (image/audio/video) are NOT serialized into
-      // sessionStorage — their base64 data URLs blow past the ~5MB quota
-      // (esp. video). They live in the in-memory attachments store and are
-      // transferred to the new thread's key on the detail page (see the
-      // transferAttachments effect); processAndSendMessage reads them there.
-      const isTemporaryChat = window.location.search.includes(
-        `${TEMPORARY_CHAT_QUERY_ID}=true`
-      )
-
-      const messagePayload = {
-        text: effectivePrompt,
-        files: [] as Array<{ type: string; mediaType: string; url: string }>,
-      }
-
-      if (isTemporaryChat) {
-        // For temporary chat, flag the navigation to the temporary thread
-        safeSessionSet('temp-chat-nav', 'true')
-        // Not taken by a temporary chat: forget it so it cannot leak into a later one.
-        useDraftSampling.getState().clearAll()
-        // Transfer agent mode from home screen to temporary thread
-        if (isAgentMode && agentModeKey !== TEMPORARY_CHAT_ID) {
-          useAgentMode.getState().setAgentMode(TEMPORARY_CHAT_ID, true)
-          useAgentMode.getState().removeThread(agentModeKey)
-        }
-        router.navigate({
-          to: route.threadsDetail,
-          params: { threadId: TEMPORARY_CHAT_ID },
-        })
-      } else {
-        // Get project metadata and assistant if projectId is provided
-        let projectMetadata:
-          | { id: string; name: string; updated_at: number }
-          | undefined
-        let projectAssistantId: string | undefined
-        let projectModel: { id: string; provider: string } | undefined
-
-        if (projectId) {
-          try {
-            const project = await serviceHub
-              .projects()
-              .getProjectById(projectId)
-            if (project) {
-              projectMetadata = {
-                id: project.id,
-                name: project.name,
-                updated_at: project.updated_at,
-              }
-              projectAssistantId = project.assistantId
-              projectModel = project.model
-            }
-          } catch (e) {
-            console.warn('Failed to fetch project metadata:', e)
-          }
-        }
-
-        // Only use assistant when chatting via project with an assigned assistant
-        // When no projectId, use the selected assistant from dropdown (if any)
-        const assistant = projectAssistantId
-          ? assistants.find((a) => a.id === projectAssistantId)
-          : assistants.find((a) => a.id === selectedAssistantId)
-
-        // Not saved as "last used": the composer's assistant is a draft (see
-        // AssistantsMenu), and routing may have moved it without the user.
-        setCurrentAssistant(assistant, false)
-
-        // Never pin a thread to a model the provider cannot serve — a local
-        // engine has no cloud catalogue to borrow an id from (janhq/jan#8007).
-        // A model linked to the project wins for a chat started in it, as
-        // long as that model is still on its provider.
-        const linkedModelOk =
-          projectModel !== undefined &&
-          (getProviderByName(projectModel.provider)?.models ?? []).some(
-            (m) => m.id === projectModel!.id
-          )
-        const threadProvider = linkedModelOk
-          ? projectModel!.provider
-          : selectedProvider
-        if (linkedModelOk) {
-          selectModelProvider(projectModel!.provider, projectModel!.id)
-        }
-        const threadModelId = resolveThreadModelId(
-          threadProvider,
-          linkedModelOk ? projectModel!.id : selectedModel?.id,
-          (getProviderByName(threadProvider)?.models ?? []).map((m) => m.id)
-        )
-        if (!threadModelId) {
-          setMessage(t('chat:composer.selectModel'))
-          return
-        }
-
-        const newThread = await createThread(
-          {
-            id: threadModelId,
-            provider: threadProvider,
-          },
-          slash.kind === 'message' ? slash.display : prompt, // Use prompt as thread title
-          // Sampling picked in the composer belongs to this chat only; the
-          // assistant itself is never edited from there.
-          assistant
-            ? (() => {
-                const draft = useDraftSampling.getState().take(assistant.id)
-                return draft ? { ...assistant, parameters: draft } : assistant
-              })()
-            : assistant,
-          projectMetadata
-        )
-
-        // Transfer agent mode from home screen to the new thread
-        if (isAgentMode) {
-          useAgentMode.getState().setAgentMode(newThread.id, true)
-          useAgentMode.getState().removeThread(agentModeKey)
-        }
-        // And the web search choice made on the home screen, if any.
-        if (webSearchScope === undefined) {
-          useWebSearchChoice.getState().move(agentModeKey, newThread.id)
-        }
-
-        // Store the initial message for the new thread
-        safeSessionSet(
-          `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${newThread.id}`,
-          JSON.stringify(messagePayload)
-        )
-
-        router.navigate({
-          to: route.threadsDetail,
-          params: { threadId: newThread.id },
-        })
-      }
-
-      if (latestPromptRef.current === draftAtStart) setPrompt('')
-      // Don't clear attachments here — document attachments stored under
-      // NEW_THREAD_ATTACHMENT_KEY need to survive until the thread detail
-      // page transfers and processes them.  The thread detail page's
-      // processAndSendMessage already calls clearAttachmentsForThread after
-      // processing is complete.
-    }
-  }
-
-  const sendLatest = useLatestCallback(handleSendMessage)
-  // A parked send belongs to the thread and the text it was typed for: moving
-  // to another thread or editing the draft cancels it instead of sending later.
-  useEffect(() => {
-    pendingSendRef.current = null
-  }, [currentThreadId])
-  useEffect(() => {
-    const pending = pendingSendRef.current
-    if (pending && prompt !== pending.draft) pendingSendRef.current = null
-  }, [prompt])
-
-  // The replacement model has shown: send the message that was waiting for it.
-  useEffect(() => {
-    const pending = pendingSendRef.current
-    if (!pending || selectedModel?.id !== pending.modelId) return
-    pendingSendRef.current = null
-    // Only a send waiting for this switch; one that waited too long is dropped.
-    if (Date.now() - pending.at > 15_000) return
-    void sendLatest(pending.typed, pending.options)
-  }, [selectedModel?.id, sendLatest])
-
-
 
   const stopStreaming = useCallback(
     (threadId: string) => {
@@ -1703,346 +736,20 @@ const ChatInput = memo(function ChatInput({
   const openVideoPicker = media.video.openPicker
   const videoSupported = !!selectedModel?.capabilities?.includes('video')
 
-  const processNewDocumentAttachments = useCallback(
-    async (docs: Attachment[]) => {
-      if (!docs.length) return
+  const {
+    attachDroppedDocuments,
+    handleAttachDocsIngest,
+    handleRemoveAttachment,
+    removeAttachmentWithUndo,
+  } = useDocumentAttachments({ attachmentsKey, currentThreadId, attachments })
 
-      // Only collect the user's inline-vs-embeddings preference via the
-      // dialog.  Actual ingestion is always deferred to send time
-      // (processAttachmentsForSend inside processAndSendMessage).
-      const docsNeedingPrompt = docs.filter((doc) => {
-        if (doc.processed || doc.injectionMode) return false
-        const preference = doc.parseMode ?? parsePreference
-        return preference === 'prompt' || preference === 'auto'
-      })
-
-      if (docsNeedingPrompt.length > 0) {
-        const choices = new Map<string, 'inline' | 'embeddings'>()
-        for (let i = 0; i < docsNeedingPrompt.length; i++) {
-          const doc = docsNeedingPrompt[i]
-          const choice = await useAttachmentIngestionPrompt
-            .getState()
-            .showPrompt(
-              doc,
-              ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES,
-              i,
-              docsNeedingPrompt.length
-            )
-
-          if (!choice) {
-            // User cancelled — remove all pending docs
-            setAttachmentsForThread(attachmentsKey, (prev) =>
-              prev.filter(
-                (att) =>
-                  !docsNeedingPrompt.some(
-                    (d) => d.path && att.path && d.path === att.path
-                  )
-              )
-            )
-            return
-          }
-
-          if (doc.path) {
-            choices.set(doc.path, choice)
-          }
-        }
-
-        // Persist each document's chosen mode so processAttachmentsForSend
-        // can pick it up at send time.
-        if (choices.size > 0) {
-          setAttachmentsForThread(attachmentsKey, (prev) =>
-            prev.map((att) => {
-              const mode = att.path ? choices.get(att.path) : undefined
-              return mode ? { ...att, parseMode: mode } : att
-            })
-          )
-        }
-      }
-    },
-    [
-      ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES,
-      attachmentsKey,
-      parsePreference,
-      setAttachmentsForThread,
-    ]
-  )
-
-  /** Attach files on disk as documents; shared by the picker and drag-and-drop. */
-  const attachDocumentPaths = async (paths: string[]) => {
-    // Prepare attachments with file sizes
-    const preparedAttachments: Attachment[] = []
-    for (const p of paths) {
-      const name = p.split(/[\\/]/).pop() || p
-      const fileType = name.split('.').pop()?.toLowerCase()
-      let size: number | undefined = undefined
-      try {
-        const stat = await fs.fileStat(p)
-        size = stat?.size ? Number(stat.size) : undefined
-      } catch (e) {
-        console.warn('Failed to read file size for', p, e)
-      }
-      preparedAttachments.push(
-        createDocumentAttachment({
-          name,
-          path: p,
-          fileType,
-          size,
-          parseMode: parsePreference,
-        })
-      )
-    }
-
-    const maxFileSizeBytes =
-      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
-        ? maxFileSizeMB * 1024 * 1024
-        : undefined
-
-    if (maxFileSizeBytes !== undefined) {
-      const hasOversized = preparedAttachments.some(
-        (att) => typeof att.size === 'number' && att.size > maxFileSizeBytes
-      )
-      if (hasOversized) {
-        toast.error(t('sweep:chat.fileTooLarge'), {
-          description: t('sweep:chat.fileTooLargeDesc', { size: maxFileSizeMB }),
-        })
-        return
-      }
-    }
-
-    let duplicates: string[] = []
-    let newDocAttachments: Attachment[] = []
-
-    setAttachmentsForThread(attachmentsKey, (currentAttachments) => {
-      const existingPaths = new Set(
-        currentAttachments
-          .filter((a) => a.type === 'document' && a.path)
-          .map((a) => a.path)
-      )
-
-      duplicates = []
-      newDocAttachments = []
-
-      for (const att of preparedAttachments) {
-        if (existingPaths.has(att.path)) {
-          duplicates.push(att.name)
-          continue
-        }
-        newDocAttachments.push(att)
-      }
-
-      return newDocAttachments.length > 0
-        ? [...currentAttachments, ...newDocAttachments]
-        : currentAttachments
-    })
-
-    if (duplicates.length > 0) {
-      toast.warning(t('sweep:chat.filesAlreadyAttached'), {
-        description: t('sweep:chat.alreadyInList', { names: duplicates.join(', '), count: duplicates.length }),
-      })
-    }
-
-    if (newDocAttachments.length > 0) {
-      await processNewDocumentAttachments(newDocAttachments)
-    }
-  }
-
-  /** Save dropped documents to disk, then attach them like picked files. */
-  const attachDroppedDocuments = async (files: File[]) => {
-    if (!attachmentsEnabled) {
-      toast.info(t('sweep:chat.attachmentsDisabled'))
-      return
-    }
-    const limitBytes =
-      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
-        ? maxFileSizeMB * 1024 * 1024
-        : undefined
-    const withinLimit = files.filter(
-      (f) => limitBytes === undefined || f.size <= limitBytes
-    )
-    if (withinLimit.length < files.length) {
-      toast.error(t('sweep:chat.fileTooLarge'), {
-        description: t('sweep:chat.fileTooLargeDesc', { size: maxFileSizeMB }),
-      })
-    }
-    if (withinLimit.length === 0) return
-    try {
-      const paths = await Promise.all(
-        withinLimit.map((f) =>
-          serviceHub.uploads().saveDroppedFile(f, currentThreadId)
-        )
-      )
-      await attachDocumentPaths(paths)
-    } catch (e) {
-      console.error('Failed to attach dropped documents:', e)
-      toast.error(t('common:dropAttachFailed'), {
-        description: e instanceof Error ? e.message : JSON.stringify(e),
-      })
-    }
-  }
-
-  const handleAttachDocsIngest = async () => {
-    try {
-      if (!attachmentsEnabled) {
-        toast.info(t('sweep:chat.attachmentsDisabled'))
-        return
-      }
-      const selection = await serviceHub.dialog().open({
-        multiple: true,
-        filters: [
-          {
-            name: t('chat:composer.filterDocuments'),
-            extensions: [...DOCUMENT_ATTACHMENT_EXTENSIONS],
-          },
-          {
-            name: t('chat:composer.filterAll'),
-            extensions: ['*'],
-          },
-        ],
-      })
-      if (!selection) return
-      const paths = Array.isArray(selection) ? selection : [selection]
-      if (!paths.length) return
-      await attachDocumentPaths(paths)
-    } catch (e) {
-      console.error('Failed to attach documents:', e)
-      const desc = e instanceof Error ? e.message : JSON.stringify(e)
-      toast.error(t('chat:composer.attachFailed'), { description: desc })
-    }
-  }
-
-  /**
-   * Deletes an ingested document from the vector store. False (after a toast)
-   * when the backend refused, so the chip has to stay.
-   */
-  const deleteAttachmentFromBackend = async (
-    attachment: Attachment,
-    threadId: string | undefined
-  ): Promise<boolean> => {
-    if (!attachment.id || !threadId || attachment.type !== 'document') {
-      return true
-    }
-    try {
-      const vectorDBExtension = ExtensionManager.getInstance().get(
-        ExtensionTypeEnum.VectorDB
-      ) as VectorDBExtension | undefined
-      if (vectorDBExtension?.deleteFile) {
-        await vectorDBExtension.deleteFile(threadId, attachment.id)
-      }
-      return true
-    } catch (error) {
-      console.error('Failed to delete attachment from backend:', error)
-      toast.error(t('chat:composer.removeFailed'), {
-        description: error instanceof Error ? error.message : String(error),
-      })
-      return false
-    }
-  }
-
-  const handleRemoveAttachment = async (indexToRemove: number) => {
-    const attachmentToRemove = attachments[indexToRemove]
-    if (!attachmentToRemove) return
-    // If attachment was ingested (has an ID), delete it from the backend
-    if (
-      attachmentToRemove.id &&
-      !(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId))
-    )
-      return
-    setAttachmentsForThread(attachmentsKey, (prev) =>
-      withoutAttachment(prev, attachmentToRemove)
-    )
-  }
-
-  /**
-   * Backspace in an empty box: the chip goes at once and a toast offers to
-   * put it back. An ingested document is only deleted from the backend once
-   * the toast closes without an undo; if that delete fails the chip returns.
-   */
-  const removeAttachmentWithUndo = (index: number) => {
-    const target = attachments[index]
-    if (!target) return
-    const key = attachmentsKey
-    const threadId = currentThreadId
-    const restore = () =>
-      setAttachmentsForThread(key, (prev) =>
-        prev.includes(target)
-          ? prev
-          : [...prev.slice(0, index), target, ...prev.slice(index)]
-      )
-    setAttachmentsForThread(key, (prev) => withoutAttachment(prev, target))
-    let settled = false
-    const finalize = () => {
-      if (settled) return
-      settled = true
-      void deleteAttachmentFromBackend(target, threadId).then((ok) => {
-        if (!ok) restore()
-      })
-    }
-    toast.info(t('chat:composer.attachmentRemoved', { name: target.name }), {
-      action: {
-        label: t('common:undo'),
-        onClick: () => {
-          if (settled) return
-          settled = true
-          restore()
-        },
-      },
-      onAutoClose: finalize,
-      onDismiss: finalize,
-    })
-  }
-
-  /** Update the same model metadata as the edit dialog. */
-  const enableCapabilitiesOnSelectedModel = useCallback(
-    (capabilities: readonly EnableableCapability[]) => {
-      if (!selectedModel?.id || !selectedProvider) return false
-      const provider = getProviderByName(selectedProvider)
-      if (!provider) return false
-      const models = enableModelCapabilities(
-        provider.models,
-        selectedModel.id,
-        capabilities
-      )
-      updateProvider(selectedProvider, { ...provider, models })
-      return true
-    },
-    [getProviderByName, selectedModel?.id, selectedProvider, updateProvider]
-  )
-
-  const [capabilityPrompt, setCapabilityPrompt] = useState<{
-    capabilities: EnableableCapability[]
-    onEnabled: () => void | Promise<void>
-  } | null>(null)
-
-  const requestCapabilities = useCallback(
-    (
-      capabilities: EnableableCapability[],
-      onEnabled: () => void | Promise<void>
-    ) => {
-      if (!selectedModel) return
-      setCapabilityPrompt({ capabilities, onEnabled })
-    },
-    [selectedModel]
-  )
-
-  const handleEnableCapabilities = useCallback(() => {
-    const pending = capabilityPrompt
-    if (!pending) return
-    if (!enableCapabilitiesOnSelectedModel(pending.capabilities)) {
-      toast.error(t('sweep:chat.modelUnavailable'))
-      return
-    }
-    setCapabilityPrompt(null)
-    try {
-      const continued = pending.onEnabled()
-      if (continued) void Promise.resolve(continued).catch((error) => {
-        console.error('Failed to continue after enabling model capability:', error)
-        toast.error(t('sweep:chat.actionFailed'))
-      })
-    } catch (error) {
-      console.error('Failed to continue after enabling model capability:', error)
-      toast.error(t('sweep:chat.actionFailed'))
-    }
-  }, [capabilityPrompt, enableCapabilitiesOnSelectedModel, t])
+  const {
+    enableCapabilitiesOnSelectedModel,
+    capabilityPrompt,
+    setCapabilityPrompt,
+    requestCapabilities,
+    handleEnableCapabilities,
+  } = useModelCapabilityPrompt({ selectedModel, selectedProvider })
 
   const {
     fileInputRef,
@@ -2063,455 +770,122 @@ const ChatInput = memo(function ChatInput({
     enableCapabilities: enableCapabilitiesOnSelectedModel,
   })
 
-  // The drop zone is always live. Gating it on the model's media capabilities
-  // meant a text-only model refused every drop, a plain `.txt` included, and
-  // an image now opens a question rather than being turned away at the door.
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragCount(dragFileCount(e.dataTransfer))
-    setIsDragOver(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    // Only set dragOver to false if we're leaving the drop zone entirely
-    // In Tauri, relatedTarget can be null, so we need to handle that case
-    const relatedTarget = e.relatedTarget as Node | null
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setIsDragOver(false)
-      setDragCount(0)
-    }
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(true)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(false)
-    setDragCount(0)
-
-    if (!e.dataTransfer) {
-      console.warn('No dataTransfer available in drop event')
-      return
-    }
-
-    const dropped = Array.from(e.dataTransfer.files ?? [])
-    if (dropped.length === 0) return
-
-    const {
-      audio: audioOnes,
-      video: videoOnes,
-      // Documents take the same path as the + button once saved to disk;
-      // anything else keeps going to the image path.
-      documents: documentOnes,
-      images: imageOnes,
-    } = splitDroppedFiles(dropped, isDocumentAttachmentName)
-    const missing = missingMediaCapabilities(
-      { audio: audioOnes.length, video: videoOnes.length },
-      { audio: audioSupported, video: videoSupported }
-    )
-    const attachMedia = () => {
-      if (documentOnes.length > 0) void attachDroppedDocuments(documentOnes)
-      if (imageOnes.length > 0) attachFiles(imageOnes)
-      if (audioOnes.length > 0) void processAudioFiles(audioOnes)
-      if (videoOnes.length > 0) void processVideoFiles(videoOnes)
-    }
-    if (missing.length > 0) requestCapabilities(missing, attachMedia)
-    else attachMedia()
-  }
-
-  // Dragged or copied files can arrive as `file://` URIs with no File objects
-  // (Linux file managers), which would land in the editor as raw text. Read
-  // them from disk and attach them like any other file.
-  const attachFileUris = async (paths: string[]) => {
-    const { files, folders, failed } = await readDroppedPaths(paths)
-    for (const { error } of failed) {
-      toast.error(t('common:pastedPath.failed'), { description: error })
-    }
-    // A folder is offered as the project, never read in. Only one offer fits
-    // above the editor; any folder it cannot cover is named, not dropped.
-    const offered = pastedFolder ? folders.slice(0, 1) : []
-    if (offered.length > 0) setPathOffer({ path: offered[0], kind: 'folder' })
-    for (const folder of folders.slice(offered.length)) {
-      toast.error(t('common:pastedPath.failed'), { description: folder })
-    }
-    const documents = files.filter((f) => isDocumentAttachmentName(f.name))
-    const others = files.filter((f) => !documents.includes(f))
-    if (documents.length > 0) void attachDroppedDocuments(documents)
-    if (others.length > 0) attachFiles(others)
-    focusComposer()
-  }
-
-  // Runs in the capture phase, before the editor's own drop handler, which
-  // inserts text/uri-list or text/plain as text and runs before any bubbling
-  // React handler. The editor leaves an already-cancelled event alone.
-  const handleUriDrop = (e: React.DragEvent) => {
-    const dt = e.dataTransfer
-    if (!dt) return
-    if ((dt.files?.length ?? 0) > 0) {
-      // Real File objects: handleDrop attaches them. Only stop the editor
-      // also inserting the URI text WebKitGTK sends alongside them.
-      e.preventDefault()
-      return
-    }
-    if (!isPlatformTauri()) return
-    // Any web page can put a local path in the text a dragged link or image
-    // carries, so only GNOME's own drag type attaches by itself; the rest is
-    // asked about first, as a paste is.
-    const named = dropFilePaths(dt)
-    if (!named) return
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragOver(false)
-    setDragCount(0)
-    if (named.trusted) void attachFileUris(named.paths)
-    else
-      setPathOffer({
-        path: named.paths[0],
-        kind: 'file',
-        paths: named.paths,
-        raw: transferText(dt),
-      })
-  }
-
-  // A pasted path is still pasted as text; this only notices it and offers,
-  // above the editor, to attach what it points at.
-  const [pathOffer, setPathOffer] = useState<{
-    path: string
-    kind: 'file' | 'folder'
-    /** Every file a pasted URI list named, when there was more than a path. */
-    paths?: string[]
-    /** The text that was held back, put in the composer if the offer is declined. */
-    raw?: string
-    /** The path was pasted into the composer as text; accepting removes it. */
-    inComposer?: boolean
-  } | null>(null)
-  const pathOfferRef = useRef(pathOffer)
-  pathOfferRef.current = pathOffer
-  // The offer, like the draft, belongs to the chat it was pasted in.
-  useEffect(() => {
-    setPathOffer(null)
-  }, [attachmentsKey])
-
-  /** Decline the offer; the text it held back goes into the composer instead. */
-  const declinePathOffer = () => {
-    const offer = pathOfferRef.current
-    setPathOffer(null)
-    if (offer?.raw) {
-      if (typeof richComposerRef.current?.insertText === 'function')
-        richComposerRef.current.insertText(offer.raw)
-      else setPrompt(latestPromptRef.current + offer.raw)
-    }
-  }
-
-  const offerPastedPath = async (candidate: string) => {
-    if (!isPlatformTauri()) return
-    // A UNC path would make the OS connect to that host on stat.
-    if (/^[\\/]{2}/.test(candidate)) return
-    try {
-      const { fs } = await import('@janhq/core')
-      const stat = await fs.fileStat(candidate)
-      if (!stat) return
-      if (stat.isDirectory) {
-        if (!pastedFolder) return
-        const same = (a: string) =>
-          a.replace(/[\\/]+$/, '').toLowerCase() ===
-          candidate.replace(/[\\/]+$/, '').toLowerCase()
-        if (pastedFolder.attached.some(same)) return
-        setPathOffer({ path: candidate, kind: 'folder', inComposer: true })
-      } else {
-        setPathOffer({ path: candidate, kind: 'file', inComposer: true })
-      }
-    } catch {
-      // Not a path that exists: it was only text.
-    }
-  }
-
-  const acceptPathOffer = async () => {
-    const offer = pathOffer
-    setPathOffer(null)
-    if (!offer) return
-    // The path was pasted as text too; once it is attached it is not part of
-    // the message (C021).
-    if (offer.inComposer) {
-      const draft = latestPromptRef.current
-      const cleaned = withoutPastedPath(draft, offer.path)
-      if (cleaned !== draft) setPrompt(cleaned)
-    }
-    if (offer.kind === 'folder') {
-      pastedFolder?.onAttach(offer.path)
-      return
-    }
-    if (offer.paths) {
-      await attachFileUris(offer.paths)
-      return
-    }
-    try {
-      const response = await fetch(await toAssetUrl(offer.path))
-      if (!response.ok) throw new Error(response.statusText)
-      const blob = await response.blob()
-      const name = offer.path.split(/[\\/]/).filter(Boolean).pop() || 'file'
-      const file = new File([blob], name, { type: blob.type })
-      attachFiles([file])
-    } catch (error) {
-      toast.error(t('common:pastedPath.failed'), {
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-    focusComposer()
-  }
-
-  const largePaste = useLargePaste({
-    enabled: attachmentsEnabled,
-    attachedNames: attachments.map((a) => a.name),
-    attach: (file) => processImageFiles([file]),
-    insertText: (text) => {
-      if (richComposerRef.current) richComposerRef.current.insertText(text)
-      else setPrompt(latestPromptRef.current + text)
-    },
-    detach: (name) =>
-      setAttachmentsForThread(attachmentsKey, (prev) =>
-        prev.filter((a) => a.name !== name)
-      ),
-    t,
+  const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
+  const {
+    pathOffer,
+    setPathOffer,
+    attachFileUris,
+    declinePathOffer,
+    offerPastedPath,
+    acceptPathOffer,
+  } = usePathOffer({
+    attachmentsKey,
+    isStreaming,
+    pastedFolder,
+    richComposerRef,
+    latestPromptRef,
+    setPrompt,
+    attachFiles,
+    attachDroppedDocuments,
+    focusComposer,
   })
 
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    // Files copied in a Linux file manager arrive as URIs (text/uri-list,
-    // x-special/gnome-copied-files or a text/plain block), not File objects.
-    // Checked first so a long list never becomes a .txt via largePaste.
-    // Real File objects (macOS Finder) win; only GNOME's own clipboard type
-    // attaches by itself, since a web page can forge the other two.
-    const named = isPlatformTauri() ? pasteFilePaths(e.clipboardData) : null
-    if (named) {
-      e.preventDefault()
-      if (named.trusted) void attachFileUris(named.paths)
-      else
-        setPathOffer({
-          path: named.paths[0],
-          kind: 'file',
-          paths: named.paths,
-          raw: transferText(e.clipboardData),
-        })
-      return
-    }
-    // A large text paste becomes a .txt attachment; default is prevented
-    // before anything below can await.
-    if (largePaste.handlePaste(e)) return
-    const pasted = pastedPath(e.clipboardData?.getData('text/plain') ?? '')
-    if (pasted) void offerPastedPath(pasted)
-    const mediaItems = e.clipboardData?.items
-    if (mediaItems && mediaItems.length > 0) {
-      const { audio: audioFiles, video: videoFiles } =
-        pastedMediaFiles(mediaItems)
-      if (audioFiles.length > 0 || videoFiles.length > 0) {
-        e.preventDefault()
-        const missing = missingMediaCapabilities(
-          { audio: audioFiles.length, video: videoFiles.length },
-          { audio: audioSupported, video: videoSupported }
-        )
-        const attachMedia = async () => {
-          if (audioFiles.length > 0) await processAudioFiles(audioFiles)
-          if (videoFiles.length > 0) await processVideoFiles(videoFiles)
-        }
-        if (missing.length > 0) requestCapabilities(missing, attachMedia)
-        else await attachMedia()
-          return
-      }
-    }
+  const { handleSendMessage, sending } = useComposerSend({
+    modelSelection,
+    currentThread,
+    selectModelProvider,
+    latestPromptRef,
+    setWebOffPrompt,
+    webSearchEnabled,
+    slashCommands,
+    confirmModel,
+    selectedModel,
+    unavailableModel,
+    allProviders,
+    preferredModel,
+    setMessage,
+    attachments,
+    selectedProvider,
+    requestCapabilities,
+    setPrompt,
+    resolvePromptReferences,
+    scopeKey,
+    currentThreadId,
+    ownsToolSet,
+    effectiveAgentMode,
+    canSummarize,
+    attachmentsKey,
+    addToHistory,
+    onSubmit,
+    isStreaming,
+    threadBusy,
+    queueId,
+    restoredDraftRef,
+    isAgentMode,
+    agentModeKey,
+    projectId,
+    assistants,
+    selectedAssistantId,
+    setCurrentAssistant,
+    webSearchScope,
+    prompt,
+  })
 
-    // Pasted images are handled whatever the model can read: one it
-    // cannot see opens the question below rather than being dropped on
-    // the floor, which is what gating this on vision amounted to.
-    const clipboardItems = e.clipboardData?.items
-
-    // Try clipboardData.items first (traditional method). Image items that
-    // give no file fall through to the async clipboard below.
-    if (clipboardItems && clipboardItems.length > 0) {
-      const images = pastedImageFiles(clipboardItems)
-      if (images.found) {
-        e.preventDefault()
-        if (images.files.length > 0) {
-          attachFiles(images.files)
-          return
-        }
-      }
-    }
-
-    // Modern Clipboard API fallback (for Linux, images copied from web, etc.)
-    // Never for plain text: reading the clipboard this way makes WebView2 ask
-    // the user for permission ("wants to see text and images copied...").
-    const mayHoldImage = clipboardMayHoldImage(
-      Array.from(e.clipboardData?.types ?? [])
-    )
-    if (mayHoldImage && navigator.clipboard && 'read' in navigator.clipboard) {
-      try {
-        const files = await clipboardImageFiles(await navigator.clipboard.read())
-
-        if (files.length > 0) {
-          e.preventDefault()
-          attachFiles(files)
-          return
-        }
-      } catch (error) {
-        console.error('Clipboard API access failed:', error)
-      }
-    }
-
-    // If we reach here, no image was found - allow normal text pasting to continue
-    console.log('No image data found in clipboard, allowing normal text paste')
-  }
+  const {
+    isDragOver,
+    dragCount,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handleUriDrop,
+    handlePaste,
+    largePaste,
+  } = useComposerDropPaste({
+    attachmentsKey,
+    attachmentsEnabled,
+    attachments,
+    audioSupported,
+    videoSupported,
+    richComposerRef,
+    latestPromptRef,
+    setPrompt,
+    attachFiles,
+    processImageFiles,
+    processAudioFiles,
+    processVideoFiles,
+    attachDroppedDocuments,
+    requestCapabilities,
+    attachFileUris,
+    setPathOffer,
+    offerPastedPath,
+  })
 
   const composerImages = attachments
     .filter((a) => a.type === 'image' && a.dataUrl)
     .map((a) => ({ url: a.dataUrl as string, name: a.name }))
 
-  const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
   // A tool call in flight (the reply has finished streaming but the tool is
   // still running) can be cancelled from here.
   const toolInFlight = useAppState((state) =>
     currentThreadId ? Boolean(state.cancelToolCalls?.[currentThreadId]) : false
   )
-  const declineLatest = useLatestCallback(declinePathOffer)
-  // The offer belongs to the draft it was pasted into; sending ends it.
-  useEffect(() => {
-    // Not dropped silently: what was pasted still lands in the composer.
-    if (isStreaming && pathOfferRef.current) declineLatest()
-  }, [isStreaming, declineLatest])
-
-  /**
-   * Write one or more settings into the model's own configuration, in one
-   * update. Built from the provider's current copy of the model, not the
-   * `selectedModel` snapshot, which is stale by the time a second write runs.
-   */
-  const updateModelSettings = (writes: SettingWrite[]) => {
-    if (!selectedProvider || !selectedModel) return
-    const providerObj = getProviderByName(selectedProvider)
-    if (!providerObj) return
-    const modelIndex = providerObj.models.findIndex(
-      (m) => m.id === selectedModel.id
-    )
-    if (modelIndex === -1) return
-    const updatedModel = withSettings(providerObj.models[modelIndex], writes)
-    const updatedModels = [...providerObj.models]
-    updatedModels[modelIndex] = updatedModel
-    updateProvider(selectedProvider, {
-      models: updatedModels,
-    })
-    // selectedModel is a snapshot, not a live derivation — re-select to
-    // refresh it so the dropdown UI and the chat transport both observe the
-    // new value. A surface that supplies its own model (Cowork) re-derives it
-    // from the providers, and must not move the global picker.
-    if (!modelSelection) {
-      selectModelProvider(selectedProvider, selectedModel.id)
-    }
-  }
-  const updateModelSetting = (
-    settingKey: string,
-    title: string,
-    controllerType: string,
-    value: unknown
-  ) =>
-    updateModelSettings([
-      {
-        key: settingKey,
-        title,
-        controllerType,
-        value: value as SettingWrite['value'],
-      },
-    ])
-
-  // Which discrete effort levels this provider will act on. Empty for
-  // providers that size their own thinking, in which case the control is not
-  // shown at all — see `supportedEffortLevels`.
   const {
-    levels: effortLevels,
-    recommended: effortRecommended,
-    canDisable: effortCanDisable,
-  } = effortProfile(selectedProvider, selectedModel)
-  // What this chat will actually send: its own override where it has one, the
-  // global model setting otherwise.
-  const resolvedForEffort = resolveModel(
+    updateModelSetting,
+    effortLevels,
+    localModelWithoutReasoning,
+    currentEffort,
+    effortOverridden,
+    effortControl,
+  } = useComposerEffort({
+    selectedProvider,
     selectedModel,
-    withReasoningDefault(
-      chatOverrides,
-      selectedProvider,
-      selectedModel,
-      reasoningDefault
-    )
-  )
-  // A llama.cpp model is offered an effort only when it reasons (C052).
-  const localModelWithoutReasoning =
-    selectedProvider === 'llamacpp' && effortLevels.length === 0
-  const currentEffort: EffortChoice | null =
-    effortCanDisable && isThinkingOff(resolvedForEffort)
-      ? 'off'
-      : effortOf(resolvedForEffort)
-  const effortOverridden =
-    isOverridden(chatOverrides, EFFORT_SETTING_KEY) ||
-    isOverridden(chatOverrides, 'reasoning')
-  /**
-   * Store a setting.
-   *
-   * Per chat once a chat exists. On the new-chat screen there is no thread
-   * yet, and the control still has to work — so it writes the global model
-   * setting there.
-   */
-  const setChatSettings = (
-    writes: Array<{ key: string; title: string; value: string }>
-  ) => {
-    if (overrideScope) {
-      for (const { key, value } of writes) {
-        setThreadOverride(overrideScope, key, value)
-      }
-      return
-    }
-    // One update for all of them: see `updateModelSettings`.
-    updateModelSettings(
-      writes.map((w) => ({ ...w, controllerType: 'dropdown' }))
-    )
-  }
-  /** Choose a stop: a level, or Off where the model can be told not to think. */
-  const setEffort = (choice: EffortChoice) => {
-    if (choice === 'off') {
-      setChatSettings([{ key: 'reasoning', title: 'Reasoning', value: 'off' }])
-      return
-    }
-    // Picking a level ends Off; the effort says how hard from there.
-    setChatSettings([
-      ...(currentEffort === 'off'
-        ? [{ key: 'reasoning', title: 'Reasoning', value: 'auto' }]
-        : []),
-      { key: EFFORT_SETTING_KEY, title: 'Reasoning Effort', value: choice },
-    ])
-  }
+    ownsModelChoice: !modelSelection,
+    chatOverrides,
+    overrideScope,
+    reasoningDefault,
+  })
 
-  const effortControl =
-    effortLevels.length > 0 ? (
-              <ComposerEffort
-                levels={effortLevels}
-                value={currentEffort}
-                recommended={effortRecommended}
-                canDisable={effortCanDisable}
-                overridden={effortOverridden}
-                onChange={setEffort}
-                onReset={
-                  overrideScope && effortOverridden
-                    ? () => {
-                        clearThreadOverride(overrideScope, EFFORT_SETTING_KEY)
-                        clearThreadOverride(overrideScope, 'reasoning')
-                      }
-                    : undefined
-                }
-              />
-    ) : null
   return (
     <div className="relative" data-composer>
       <div className="relative">
@@ -2567,54 +941,16 @@ const ChatInput = memo(function ChatInput({
               }
             />
             {queuedMessages.length > 0 && (
-              <div className="flex flex-col gap-1 px-3 pt-2 pb-0">
-                <QueuedMessageList
-                  messages={queuedMessages}
-                  onReorder={(id, overId) =>
-                    useMessageQueue.getState().reorder(queueId, id, overId)
-                  }
-                  chipProps={(msg, index) => ({
-                    onEdit: (queued) => {
-                      // Put the text back in the input for editing, remove from queue
-                      setPrompt(queued.text)
-                      removeQueuedMessage(queued.id)
-                      focusComposer()
-                    },
-                    onRemove: removeQueuedMessage,
-                    // A held message (its run failed or was stopped) waits
-                    // for the user: Send lets it go as the next turn.
-                    onRelease: msg.held
-                      ? (id) => useMessageQueue.getState().release(queueId, id)
-                      : undefined,
-                    // Steering only means something while a run works; a
-                    // held message waits for the user and is sent, not steered.
-                    onSteer:
-                      (isStreaming || threadBusy) && !msg.held && !msg.from
-                        ? (id) => {
-                            useMessageQueue.getState().steerNow(queueId, id)
-                            withdrawApprovalsForSteering(queueId)
-                          }
-                        : undefined,
-                    // Already steering and the run still works: stop the
-                    // run (steering stays queued, not held) and the end-of-run
-                    // sender hands it over first, as the immediate next turn.
-                    onSteerNow:
-                      (isStreaming || threadBusy) && msg.steer && !msg.held
-                        ? () => stopStreaming(currentThreadId ?? '')
-                        : undefined,
-                    onMoveUp:
-                      index > 0
-                        ? (id) =>
-                            useMessageQueue.getState().move(queueId, id, -1)
-                        : undefined,
-                    onMoveDown:
-                      index < queuedMessages.length - 1
-                        ? (id) =>
-                            useMessageQueue.getState().move(queueId, id, 1)
-                        : undefined,
-                  })}
-                />
-              </div>
+              <ComposerQueue
+                queueId={queueId}
+                messages={queuedMessages}
+                busy={isStreaming || threadBusy}
+                onEdit={(text) => {
+                  setPrompt(text)
+                  focusComposer()
+                }}
+                onStopForSteer={() => stopStreaming(currentThreadId ?? '')}
+              />
             )}
             {slashCommands.open && (
               <div className="relative">
@@ -2769,32 +1105,7 @@ const ChatInput = memo(function ChatInput({
                     return
                   }
                 }
-                if (filePickerOpen && !aliasDraft) {
-                  const count = filePickerEntries.length
-                  const active = filePickerEntries[Math.min(referenceActive, count - 1)]
-                  if (count > 0 && event.key === 'ArrowDown') {
-                    event.preventDefault()
-                    setReferenceActive((index) => (index + 1) % count)
-                  } else if (count > 0 && event.key === 'ArrowUp') {
-                    event.preventDefault()
-                    setReferenceActive((index) => (index - 1 + count) % count)
-                  } else if (active && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
-                    event.preventDefault()
-                    handleFilePickerSelect(active)
-                  } else if (event.key === 'Escape') {
-                    event.preventDefault()
-                    handleFilePickerClose()
-                  } else if (event.altKey && event.key.toLowerCase() === 'a' && active) {
-                    event.preventDefault()
-                    if (active.kind === 'file' || active.kind === 'directory') {
-                      setAliasDraft(active)
-                      setAliasError(null)
-                      setReferenceStatus(`Name ${active.token} as an alias`)
-                    } else {
-                      setReferenceStatus('Only a file or folder can be named')
-                    }
-                  }
-                }
+                handleReferenceKeyDown(event)
               }}
               placeholder={t('common:placeholder.chatInput')}
               className={className}
@@ -3196,7 +1507,5 @@ const ChatInput = memo(function ChatInput({
     </div>
   )
 })
-
-type ModelCheck = { status: 'ok' | 'stop' } | { status: 'retry'; modelId: string }
 
 export default ChatInput
