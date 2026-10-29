@@ -262,6 +262,18 @@ pub(super) async fn read(
             return (note, Some(vec![image]));
         }
     }
+    if offset.is_none() && limit.is_none() && bytes.len() > MAX_IMAGE_BYTES {
+        if let Some(mime) = crate::tools::image::detect_bytes(&target, &bytes) {
+            return (
+                format!(
+                    "ERROR: {path} is a {mime} image of {total_bytes} bytes, over the {} KB limit for \
+                     images sent to the model. Ask the user for a smaller copy.",
+                    MAX_IMAGE_BYTES / 1024
+                ),
+                None,
+            );
+        }
+    }
 
     let content = match String::from_utf8(bytes) {
         Ok(c) => c,

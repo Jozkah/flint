@@ -208,39 +208,10 @@ pub(crate) struct ParsedSkill {
     pub requires: Vec<tauri_plugin_agent_tools::skills::SkillRequirement>,
 }
 
-/// Split leading `---\n...\n---` YAML frontmatter from a markdown body.
-/// Tolerant: no opening fence or an unterminated fence yields `(None, whole
-/// input)`. Shared by skill, plugin-command, and plugin-agent parsing so the
-/// fence rules never drift between the three.
-pub(crate) fn split_frontmatter(content: &str) -> (Option<String>, String) {
-    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
-    let mut lines = content.lines();
-    if lines.next().map(str::trim_end) != Some("---") {
-        return (None, content.to_string());
-    }
-    let mut yaml = String::new();
-    let mut body: Vec<&str> = Vec::new();
-    let mut closed = false;
-    for line in lines {
-        if !closed {
-            if line.trim_end() == "---" {
-                closed = true;
-                continue;
-            }
-            yaml.push_str(line);
-            yaml.push('\n');
-        } else {
-            body.push(line);
-        }
-    }
-    if !closed {
-        return (None, content.to_string());
-    }
-    (
-        Some(yaml),
-        body.join("\n").trim_start_matches('\n').to_string(),
-    )
-}
+// Split leading `---\n...\n---` YAML frontmatter from a markdown body. The
+// plugin crate's splitter, so skill, plugin-command and plugin-agent parsing
+// in both crates share one set of fence rules (Q1-042).
+pub(crate) use tauri_plugin_agent_tools::skills::split_frontmatter;
 
 pub(crate) fn parse(content: &str) -> ParsedSkill {
     // Version and dependencies come from the plugin's parser rather than being
