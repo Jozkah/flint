@@ -1,4 +1,5 @@
 
+import { copyToClipboard } from '@/lib/clipboard'
 import {
   ArrowLeft,
   Copy,
@@ -202,12 +203,11 @@ function HuggingFaceModelDetail() {
               variant="outline"
               size="sm"
               onClick={() => {
-                navigator.clipboard
-                  .writeText(model.id)
-                  .then(() => toast.success(t('hub:detail.repoCopied')))
-                  .catch((error: unknown) => {
-                    console.error('Failed to copy to clipboard:', error)
-                  })
+                void copyToClipboard(model.id).then((copied) =>
+                  copied
+                    ? toast.success(t('hub:detail.repoCopied'))
+                    : toast.error(t('hub:detail.repoCopyFailed'))
+                )
               }}
             >
               <Copy className="size-3.5" /> {t('hub:detail.copyRepo')}

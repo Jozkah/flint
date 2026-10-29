@@ -20,6 +20,7 @@
     "errorNotFound": "Hugging Face पर मॉडल रिपॉजिटरी नहीं मिली।",
     "errorNoRepo": "Hugging Face ने यह रिपॉजिटरी नहीं लौटाई।",
     "repoCopied": "रिपॉजिटरी आईडी कॉपी हो गई",
+    "repoCopyFailed": "रिपॉज़िटरी आईडी कॉपी नहीं हो सकी",
     "copyRepo": "रिपॉजिटरी कॉपी करें",
     "openOnHf": "Hugging Face पर खोलें",
     "gatedBadge": "प्रतिबंधित",

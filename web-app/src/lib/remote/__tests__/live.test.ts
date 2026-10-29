@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { UIMessage } from 'ai'
 import { chatLiveReply, coworkLiveReply, diffLiveReply, type LiveReply } from '../live'
+import { spliceAt } from '@/mobile/state/live'
 import { reportLiveReply, resetStreams, setStreamSink, streamSnapshot } from '../streams'
 import { createIdempotencyCache } from '../idempotency'
 import { registerComposer, resetComposers, waitForComposer } from '../composer'
@@ -84,6 +85,16 @@ describe('diffLiveReply', () => {
       reasoningOffset: 1,
       reasoning: 'b',
     })
+  })
+
+  it('sends a shrink to empty text or reasoning, and the phone applies it', () => {
+    const textGone = diffLiveReply('chat', 't', reply({ text: 'Hello' }), reply({ text: '' }))
+    expect(textGone).toEqual([
+      { type: 'stream.delta', kind: 'chat', id: 't', messageId: 'm1', offset: 0, text: '' },
+    ])
+    expect(spliceAt('Hello', 0, '')).toBe('')
+    const reasonGone = diffLiveReply('chat', 't', reply({ reasoning: 'think' }), reply({ reasoning: '' }))
+    expect(reasonGone[0]).toMatchObject({ reasoningOffset: 0, reasoning: '' })
   })
 
   it('sends a removal for a tool step that vanished from the same message', () => {

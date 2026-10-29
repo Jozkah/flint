@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "Desa una habilitat",
+      "memoryWrite": "Desa a la memòria",
       "default": "Change this computer"
     },
     "computer": {

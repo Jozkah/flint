@@ -870,8 +870,12 @@ export class JanRuntime {
     } catch {
       why = 'a thrown value that cannot be converted to text'
     }
-    this.#fail(new JanRuntimeError(`an event listener raised: ${why}`, { stderr: this.#stderr, cause: error }))
-    this.close({ force: true }).catch(() => {})
+    // Log and continue: one buggy observer must not kill the turns and the
+    // other listeners with it. The warning is printed, so the bug is visible.
+    process.emitWarning(`an event listener raised: ${why}; the runtime keeps running`, {
+      type: 'JanListenerWarning',
+      code: 'JAN_LISTENER_RAISED',
+    })
   }
 
   #fail(error) {

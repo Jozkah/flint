@@ -20,6 +20,7 @@
     "errorNotFound": "Repositório do modelo não encontrado no Hugging Face.",
     "errorNoRepo": "O Hugging Face não retornou este repositório.",
     "repoCopied": "Id do repositório copiado",
+    "repoCopyFailed": "Não foi possível copiar o id do repositório",
     "copyRepo": "Copiar repositório",
     "openOnHf": "Abrir no Hugging Face",
     "gatedBadge": "Restrito",

@@ -22,6 +22,7 @@ autobins = false
 # (there are none today, so this only keeps it that way). `unwrap_used`,
 # `expect_used` and `panic` are the next ratchet: about 340 production sites
 # still use them (audit STD-002), so they stay off until those are burned down;
+# scripts/unwrap-ratchet.mjs (CI) fails any file that gains one meanwhile;
 # clippy.toml already exempts tests.
 [lints.clippy]
 todo = "deny"

@@ -20,6 +20,7 @@
     "errorNotFound": "Репозиторий модели не найден на Hugging Face.",
     "errorNoRepo": "Hugging Face не вернул этот репозиторий.",
     "repoCopied": "Идентификатор репозитория скопирован",
+    "repoCopyFailed": "Не удалось скопировать идентификатор репозитория",
     "copyRepo": "Копировать репозиторий",
     "openOnHf": "Открыть на Hugging Face",
     "gatedBadge": "С ограниченным доступом",

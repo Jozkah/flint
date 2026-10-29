@@ -2979,6 +2979,12 @@ impl CompositeToolInvoker {
                                     host_powershell::display(&p)
                                 )
                             }),
+                            "skill_write" | "memory_write" => {
+                                let what = if name == "skill_write" { "Save skill" } else { "Save memory" };
+                                let field = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                Some(format!("{what} '{}':
+{}", field("name"), field("content")))
+                            }
                             _ => None,
                         }
                     } else {
