@@ -1123,8 +1123,15 @@ async fn read_image_over_cap_falls_back_to_text_error() {
         images.is_none(),
         "an over-cap image must not yield image parts"
     );
-    assert!(content.starts_with("ERROR"), "got: {content}");
+    assert!(content.starts_with("ERROR") && content.contains("image/png image"), "got: {content}");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_image_cap_bounds_the_encoded_payload() {
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(vec![0u8; MAX_IMAGE_BYTES]);
+    assert!(encoded.len() <= MAX_IMAGE_ENCODED_BYTES, "{}", encoded.len());
 }
 
 #[tokio::test]

@@ -988,13 +988,23 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
     }
 }
 
+/// Temporary profile folder prefix. Test builds add the pid so the tests count only
+/// their own browsers, not a Flint browser the user has open.
+pub(crate) fn profile_prefix() -> String {
+    if cfg!(test) {
+        format!("flint-browser-t{}-", std::process::id())
+    } else {
+        "flint-browser-".to_string()
+    }
+}
+
 async fn start(
     caller: &Caller,
     browser_path: &str,
     browser_name: String,
     policy: OriginPolicy,
 ) -> Result<Arc<Session>, String> {
-    let launch::Spawned { mut child, profile } = launch::spawn(browser_path, "flint-browser-", &policy)?;
+    let launch::Spawned { mut child, profile } = launch::spawn(browser_path, &profile_prefix(), &policy)?;
     let pid = child.id().ok_or("the browser exited at once")?;
     // The session's token lives under the run's scope: stopping the run kills the browser.
     let token = Token::new(caller.scope());

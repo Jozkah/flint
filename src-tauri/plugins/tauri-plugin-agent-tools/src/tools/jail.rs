@@ -320,16 +320,18 @@ pub fn can_confine_write_roots(backend: Backend, _roots: &[PathBuf], _owned: Opt
 
 pub fn backend() -> Backend {
     static BACKEND: std::sync::Mutex<Option<Backend>> = std::sync::Mutex::new(None);
-    let mut slot = BACKEND.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(cached) = *slot {
+    if let Some(cached) = *BACKEND.lock().unwrap_or_else(|e| e.into_inner()) {
         return cached;
     }
+    // Probed without the lock held (F07-008): a slow first probe must not
+    // stall every other caller behind it. Concurrent first callers may each
+    // probe; the first answer written is the one everyone keeps.
     let (found, cacheable) = detect_cacheable();
     // A probe that timed out says nothing about whether bubblewrap works (a
     // loaded machine, a cold disk), so it is retried on the next call instead
     // of withholding the sandbox for the whole session.
     if cacheable {
-        *slot = Some(found);
+        return *BACKEND.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert(found);
     }
     found
 }
@@ -541,10 +543,10 @@ fn pick_bwrap(
 #[cfg(target_os = "linux")]
 fn select_bwrap() -> (Option<PathBuf>, bool) {
     static SLOT: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
-    let mut slot = SLOT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(cached) = slot.as_ref() {
+    if let Some(cached) = SLOT.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
         return (cached.clone(), true);
     }
+    // Probed without the lock held; the first answer written wins.
     let candidates = bwrap_candidates(
         &BWRAP_FIXED,
         |p| p.is_file(),
@@ -552,7 +554,8 @@ fn select_bwrap() -> (Option<PathBuf>, bool) {
     );
     let (found, cacheable) = pick_bwrap(&candidates, bwrap_probe);
     if cacheable {
-        *slot = Some(found.clone());
+        let mut slot = SLOT.lock().unwrap_or_else(|e| e.into_inner());
+        return (slot.get_or_insert(found).clone(), true);
     }
     (found, cacheable)
 }
@@ -657,19 +660,31 @@ pub fn pasta_wrap_args(bwrap: &Path, bwrap_argv: &[String]) -> Vec<String> {
 #[cfg(target_os = "linux")]
 fn pasta_path() -> Option<PathBuf> {
     static SLOT: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
-    let mut slot = SLOT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(cached) = slot.as_ref() {
+    if let Some(cached) = SLOT.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
         return cached.clone();
     }
-    let bwrap = bwrap_path()?;
+    // Probed without the lock held; the first answer written wins.
+    let (found, cacheable) = probe_pasta();
+    if cacheable {
+        return SLOT.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert(found).clone();
+    }
+    found
+}
+
+/// The usable `pasta`, and whether that answer may be remembered (a probe that
+/// timed out, or no bubblewrap yet, is asked again next time).
+#[cfg(target_os = "linux")]
+fn probe_pasta() -> (Option<PathBuf>, bool) {
+    let Some(bwrap) = bwrap_path() else {
+        return (None, false);
+    };
     let Some(pasta) = ["/usr/bin/pasta", "/bin/pasta", "/usr/local/bin/pasta"]
         .into_iter()
         .map(PathBuf::from)
         .find(|p| p.is_file())
         .or_else(|| super::proc::which("pasta"))
     else {
-        *slot = Some(None);
-        return None;
+        return (None, true);
     };
     let shell = if Path::new("/bin/sh").exists() {
         PathBuf::from("/bin/sh")
@@ -692,15 +707,9 @@ fn pasta_path() -> Option<PathBuf> {
     let mut cmd = std::process::Command::new(&pasta);
     cmd.args(pasta_wrap_args(&bwrap, &inner));
     match run_probe(cmd) {
-        Probe::Usable => {
-            *slot = Some(Some(pasta.clone()));
-            Some(pasta)
-        }
-        Probe::Unusable => {
-            *slot = Some(None);
-            None
-        }
-        Probe::TimedOut => None,
+        Probe::Usable => (Some(pasta), true),
+        Probe::Unusable => (None, true),
+        Probe::TimedOut => (None, false),
     }
 }
 
