@@ -5,7 +5,7 @@ use tauri_plugin_llamacpp::cleanup_llama_processes;
 
 use crate::core::app::commands::{
     default_data_folder_path, get_configuration_file_path, get_jan_data_folder_path,
-    update_app_configuration,
+    write_configuration_atomic,
 };
 use crate::core::app::constants::{
     JAN_DATA_DIRS_COMMON, JAN_DATA_DIRS_CONVERSATIONS, JAN_DATA_DIRS_MODELS,
@@ -657,7 +657,11 @@ pub async fn factory_reset<R: Runtime>(
             data_folder: default_data_folder_path(app_handle.clone()),
             unavailable_data_folder: None,
         };
-        let _ = update_app_configuration(app_handle.clone(), default_config);
+        // A reset is meant to replace the file even when it could not be read.
+        let _ = write_configuration_atomic(
+            &get_configuration_file_path(app_handle.clone()),
+            &default_config,
+        );
     }
 
     // Persisted UI state (model-provider, setup flag) lives in webview

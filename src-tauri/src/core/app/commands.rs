@@ -357,52 +357,98 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
 
         app_default_configuration.data_folder = default_data_folder;
 
-        if let Err(err) = fs::write(
-            &configuration_file,
-            serde_json::to_string(&app_default_configuration).unwrap(),
-        ) {
+        if let Err(err) =
+            write_configuration_atomic(&configuration_file, &app_default_configuration)
+        {
             log::error!("Failed to create default config: {err}");
         }
 
         return app_default_configuration;
     }
 
-    match fs::read_to_string(&configuration_file) {
-        Ok(content) => {
-            match serde_json::from_str::<AppConfiguration>(&content) {
-                Ok(mut app_configurations) => {
-                    let (folder, unavailable) = choose_data_folder(
-                        app_configurations.data_folder,
-                        default_data_folder,
-                        &UNAVAILABLE_DATA_FOLDER,
-                    );
-                    // Not JAN's folder unless the user has asked for it.
-                    app_configurations.data_folder =
-                        crate::core::migration::legacy_guard::effective_data_folder(
-                            Path::new(&folder),
-                            &crate::core::migration::paths::Roots::discover(),
-                        )
-                        .to_string_lossy()
-                        .into_owned();
-                    app_configurations.unavailable_data_folder = unavailable;
-                    app_configurations
-                }
-                Err(err) => {
-                    log::error!("Failed to parse app config, returning default config instead. Error: {err}");
-                    // Use the proper default data folder path, not the relative "./data"
-                    app_default_configuration.data_folder = default_data_folder;
-                    app_default_configuration
-                }
-            }
+    match read_configuration_file(&configuration_file) {
+        Ok(mut app_configurations) => {
+            let (folder, unavailable) = choose_data_folder(
+                app_configurations.data_folder,
+                default_data_folder,
+                &UNAVAILABLE_DATA_FOLDER,
+            );
+            // Not JAN's folder unless the user has asked for it.
+            app_configurations.data_folder =
+                crate::core::migration::legacy_guard::effective_data_folder(
+                    Path::new(&folder),
+                    &crate::core::migration::paths::Roots::discover(),
+                )
+                .to_string_lossy()
+                .into_owned();
+            app_configurations.unavailable_data_folder = unavailable;
+            app_configurations
         }
         Err(err) => {
-            log::error!(
-                "Failed to read app config, returning default config instead. Error: {err}"
-            );
-            // Use the proper default data folder path, not the relative "./data"
+            log::error!("App config unusable, running on the default config for now: {err}");
+            // Keep the bad file aside and tell the user once; never let a later
+            // save quietly replace a file that may only have been locked.
+            CONFIG_FELL_BACK.store(true, std::sync::atomic::Ordering::SeqCst);
+            super::settings_store::backup_unreadable(&configuration_file);
             app_default_configuration.data_folder = default_data_folder;
             app_default_configuration
         }
+    }
+}
+
+/// Set when this run fell back to the default configuration because
+/// `settings.json` could not be read or parsed.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+static CONFIG_FELL_BACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Read and parse the app configuration, retrying reads a few times so a
+/// transient lock (an antivirus scan, a sharing violation) is not taken for a
+/// missing configuration.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+fn read_configuration_file(path: &Path) -> Result<AppConfiguration, String> {
+    let mut last = String::new();
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        }
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                return serde_json::from_str::<AppConfiguration>(&content)
+                    .map_err(|e| format!("parse error: {e}"))
+            }
+            Err(e) => last = format!("read error: {e}"),
+        }
+    }
+    Err(last)
+}
+
+/// Refuse to overwrite the configuration file when this run is working from
+/// defaults because the file could not be read, unless the file is genuinely
+/// corrupt and a copy of it has been kept. Otherwise a file that was only
+/// briefly locked at startup, and still points at the real data folder, would
+/// be replaced by the default.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+fn guard_overwrite_after_fallback(path: &Path, fell_back: bool) -> Result<(), String> {
+    if !fell_back || !path.exists() {
+        return Ok(());
+    }
+    match fs::read_to_string(path) {
+        Ok(content) if serde_json::from_str::<AppConfiguration>(&content).is_err() => {
+            let aside = path.with_extension(format!("json.corrupt-{}", std::process::id()));
+            if aside.exists() || fs::copy(path, &aside).is_ok() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{} is unreadable and could not be backed up; not overwriting it",
+                    path.display()
+                ))
+            }
+        }
+        _ => Err(format!(
+            "{} could not be read when Flint started, so Flint is running on default settings; \
+             restart Flint to load it before changing this setting",
+            path.display()
+        )),
     }
 }
 
@@ -414,7 +460,10 @@ pub fn update_app_configuration<R: Runtime>(
 ) -> Result<(), String> {
     let configuration_file = get_configuration_file_path(app_handle);
     log::info!("update_app_configuration, configuration_file: {configuration_file:?}");
-
+    guard_overwrite_after_fallback(
+        &configuration_file,
+        CONFIG_FELL_BACK.load(std::sync::atomic::Ordering::SeqCst),
+    )?;
     write_configuration_atomic(&configuration_file, &configuration)
 }
 
@@ -432,7 +481,13 @@ pub(crate) fn write_configuration_atomic(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    if let Err(e) = fs::write(&tmp, body) {
+    let written = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(body.as_bytes())?;
+        f.sync_all()
+    })();
+    if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
         return Err(e.to_string());
     }
@@ -624,6 +679,32 @@ mod tests {
             .filter(|e| e.file_name() != "settings.json")
             .collect();
         assert!(leftovers.is_empty(), "staging file left behind");
+    }
+
+    /// DAT-021: a corrupt file is reported as an error, not silently defaults.
+    #[test]
+    fn a_corrupt_configuration_is_an_error() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "{ not json").unwrap();
+        assert!(read_configuration_file(&path).unwrap_err().contains("parse"));
+        fs::write(&path, "{\"data_folder\":\"D:/x\"}").unwrap();
+        assert_eq!(read_configuration_file(&path).unwrap().data_folder, "D:/x");
+    }
+
+    /// DAT-021: after a fallback, a still-good file is never replaced; a
+    /// corrupt one is only replaced once a copy is kept.
+    #[test]
+    fn a_fallback_run_does_not_overwrite_a_good_configuration() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "{\"data_folder\":\"D:/real\"}").unwrap();
+        assert!(guard_overwrite_after_fallback(&path, false).is_ok());
+        assert!(guard_overwrite_after_fallback(&path, true).is_err());
+        fs::write(&path, "{ broken").unwrap();
+        assert!(guard_overwrite_after_fallback(&path, true).is_ok());
+        let kept = path.with_extension(format!("json.corrupt-{}", std::process::id()));
+        assert_eq!(fs::read_to_string(kept).unwrap(), "{ broken");
     }
 
     fn fresh_memo() -> std::sync::Mutex<Option<String>> {
