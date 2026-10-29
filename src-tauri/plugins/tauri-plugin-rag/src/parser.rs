@@ -32,9 +32,9 @@ fn guard<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
 /// content stream it cannot interpret; this walks the pages with lopdf
 /// directly and keeps whatever text each page yields. Encrypted documents are
 /// opened with the empty user password.
-fn extract_pdf_text_lenient(bytes: &[u8]) -> Result<String, String> {
-    guard(|| {
-        let mut doc = lopdf::Document::load_mem(bytes).map_err(|e| e.to_string())?;
+fn extract_pdf_text_lenient(loaded: Result<lopdf::Document, String>) -> Result<String, String> {
+    guard(move || {
+        let mut doc = loaded?;
         if doc.is_encrypted() {
             doc.decrypt("").map_err(|e| match e {
                 lopdf::Error::Decryption(lopdf::encryption::DecryptionError::IncorrectPassword) => {
@@ -72,29 +72,149 @@ const MAX_PDF_DECODED_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Refuse a PDF whose streams decode to more than `limit` bytes, measured with
 /// a bounded inflate so the check itself cannot be bombed.
+#[cfg(test)]
 fn check_pdf_decoded_size(bytes: &[u8], limit: u64) -> Result<(), String> {
-    let doc = match lopdf::Document::load_mem(bytes) {
-        Ok(doc) => doc,
+    match lopdf::Document::load_mem(bytes) {
+        Ok(doc) => check_doc_decoded_size(&doc, limit),
         // The extractors report a document that will not load.
-        Err(_) => return Ok(()),
+        Err(_) => Ok(()),
+    }
+}
+
+/// A stream's `/Filter` as a list of names, references followed. An entry
+/// that is not a name (or a reference to one) is kept as an empty name so
+/// the chain stops there.
+fn filter_chain(doc: &lopdf::Document, dict: &lopdf::Dictionary) -> Vec<Vec<u8>> {
+    let deref = |o: &lopdf::Object| -> Option<lopdf::Object> {
+        match o {
+            lopdf::Object::Reference(id) => doc.get_object(*id).ok().cloned(),
+            other => Some(other.clone()),
+        }
     };
+    let Some(filter) = dict.get(b"Filter").ok().and_then(deref) else {
+        return Vec::new();
+    };
+    let name = |o: &lopdf::Object| match deref(o) {
+        Some(lopdf::Object::Name(n)) => n,
+        _ => Vec::new(),
+    };
+    match filter {
+        lopdf::Object::Array(items) => items.iter().map(name).collect(),
+        other => vec![name(&other)],
+    }
+}
+
+/// `data` decoded by one filter, at most `room` bytes of it. `None` for a
+/// filter the text extractors do not expand (image codecs) or do not know:
+/// the chain stops and the bytes so far are what is counted.
+fn decode_step(filter: &[u8], data: &[u8], room: u64) -> Option<Vec<u8>> {
+    let cap = usize::try_from(room).unwrap_or(usize::MAX);
+    match filter {
+        b"FlateDecode" | b"Fl" => {
+            let mut out = Vec::new();
+            let _ = flate2::read::ZlibDecoder::new(data).take(room).read_to_end(&mut out);
+            Some(out)
+        }
+        b"LZWDecode" | b"LZW" => {
+            let mut decoder =
+                weezl::decode::Decoder::with_tiff_size_switch(weezl::BitOrder::Msb, 8);
+            let mut out = Vec::new();
+            let mut buf = vec![0u8; 64 * 1024];
+            let mut input = data;
+            while out.len() < cap {
+                let r = decoder.decode_bytes(input, &mut buf);
+                input = &input[r.consumed_in..];
+                out.extend_from_slice(&buf[..r.consumed_out]);
+                match r.status {
+                    Ok(weezl::LzwStatus::Ok) if r.consumed_in + r.consumed_out > 0 => {}
+                    _ => break,
+                }
+            }
+            out.truncate(cap);
+            Some(out)
+        }
+        b"RunLengthDecode" | b"RL" => {
+            let mut out = Vec::new();
+            let mut i = 0;
+            while i < data.len() && out.len() < cap {
+                let n = data[i] as usize;
+                if n == 128 {
+                    break;
+                } else if n < 128 {
+                    let end = (i + 1 + n + 1).min(data.len());
+                    out.extend_from_slice(&data[(i + 1).min(end)..end]);
+                    i = end;
+                } else {
+                    let Some(&b) = data.get(i + 1) else { break };
+                    out.extend(std::iter::repeat(b).take(257 - n));
+                    i += 2;
+                }
+            }
+            out.truncate(cap);
+            Some(out)
+        }
+        b"ASCIIHexDecode" | b"AHx" => {
+            let digits: Vec<u8> = data
+                .iter()
+                .take_while(|&&c| c != b'>')
+                .filter_map(|&c| (c as char).to_digit(16).map(|d| d as u8))
+                .collect();
+            Some(digits.chunks(2).map(|p| p[0] << 4 | p.get(1).copied().unwrap_or(0)).collect())
+        }
+        b"ASCII85Decode" | b"A85" => {
+            let mut out = Vec::new();
+            let mut group: Vec<u32> = Vec::with_capacity(5);
+            for &c in data {
+                match c {
+                    b'~' => break,
+                    b'z' if group.is_empty() => out.extend_from_slice(&[0; 4]),
+                    b'!'..=b'u' => {
+                        group.push(u32::from(c - b'!'));
+                        if group.len() == 5 {
+                            let v = group.iter().fold(0u32, |a, d| a.wrapping_mul(85).wrapping_add(*d));
+                            out.extend_from_slice(&v.to_be_bytes());
+                            group.clear();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if group.len() > 1 {
+                let n = group.len();
+                group.resize(5, 84);
+                let v = group.iter().fold(0u32, |a, d| a.wrapping_mul(85).wrapping_add(*d));
+                out.extend_from_slice(&v.to_be_bytes()[..n - 1]);
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// What one stream decodes to, measured through its whole filter chain and
+/// never past `room` bytes, so a chain that hides a bomb behind an outer
+/// filter (`[/ASCIIHexDecode /FlateDecode]`) or an indirect `/Filter` is
+/// counted at its real size.
+fn stream_decoded_size(doc: &lopdf::Document, stream: &lopdf::Stream, room: u64) -> u64 {
+    let mut data: Cow<[u8]> = Cow::Borrowed(stream.content.as_slice());
+    for filter in filter_chain(doc, &stream.dict) {
+        match decode_step(&filter, &data, room) {
+            Some(next) => data = Cow::Owned(next),
+            None => break,
+        }
+        if data.len() as u64 >= room {
+            break;
+        }
+    }
+    data.len() as u64
+}
+
+fn check_doc_decoded_size(doc: &lopdf::Document, limit: u64) -> Result<(), String> {
     let mut total: u64 = 0;
     for object in doc.objects.values() {
         let lopdf::Object::Stream(stream) = object else { continue };
-        let flate = match stream.dict.get(b"Filter") {
-            Ok(lopdf::Object::Name(n)) => n.as_slice() == b"FlateDecode",
-            Ok(lopdf::Object::Array(a)) => a
-                .iter()
-                .any(|f| matches!(f, lopdf::Object::Name(n) if n.as_slice() == b"FlateDecode")),
-            _ => false,
-        };
-        let size = if flate {
-            let room = limit.saturating_sub(total) + 1;
-            let mut reader = flate2::read::ZlibDecoder::new(stream.content.as_slice()).take(room);
-            std::io::copy(&mut reader, &mut std::io::sink()).unwrap_or(0)
-        } else {
-            stream.content.len() as u64
-        };
+        let room = limit.saturating_sub(total) + 1;
+        let size = stream_decoded_size(doc, stream, room);
         total = total.saturating_add(size);
         if total > limit {
             return Err(format!(
@@ -108,17 +228,22 @@ fn check_pdf_decoded_size(bytes: &[u8], limit: u64) -> Result<(), String> {
 
 /// Strict extractor first, lenient lopdf walk second, clear error if both fail.
 fn extract_pdf_text(bytes: &[u8]) -> Result<String, RagError> {
-    guard(|| check_pdf_decoded_size(bytes, MAX_PDF_DECODED_BYTES)).map_err(RagError::ParseError)?;
+    // Loaded once: the size check and the lenient fallback share the parse
+    // (only `pdf_extract` loads its own copy).
+    let loaded = guard(|| lopdf::Document::load_mem(bytes).map_err(|e| e.to_string()));
+    if let Ok(doc) = &loaded {
+        guard(|| check_doc_decoded_size(doc, MAX_PDF_DECODED_BYTES)).map_err(RagError::ParseError)?;
+    }
     let primary = guard(|| pdf_extract::extract_text_from_mem(bytes).map_err(|e| e.to_string()));
     let primary_err = match primary {
         Ok(t) if t.chars().any(|c| !c.is_whitespace()) => return Ok(t),
         // Parsed but empty: let the fallback try before calling it a scan.
         Ok(t) => {
-            return Ok(extract_pdf_text_lenient(bytes).unwrap_or(t));
+            return Ok(extract_pdf_text_lenient(loaded).unwrap_or(t));
         }
         Err(e) => e,
     };
-    match extract_pdf_text_lenient(bytes) {
+    match extract_pdf_text_lenient(loaded) {
         Ok(t) => Ok(t),
         Err(fallback_err) => Err(RagError::ParseError(format!(
             "Could not read this PDF. It may be corrupted, password protected or use unsupported encryption. (primary parser: {primary_err}; fallback parser: {fallback_err})"
@@ -1067,6 +1192,57 @@ endstream", body.len(), body)
         doc.save_to(&mut bytes).unwrap();
         assert!(check_pdf_decoded_size(&bytes, 1024 * 1024).is_err());
         assert!(check_pdf_decoded_size(&bytes, 8 * 1024 * 1024).is_ok());
+    }
+
+    /// The bomb hidden behind an indirect `/Filter`, an outer hex filter, or
+    /// LZW is still measured at its real size.
+    #[test]
+    fn a_bomb_behind_an_indirect_or_chained_filter_is_refused() {
+        use std::io::Write;
+        let plain = vec![b' '; 4 * 1024 * 1024];
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        z.write_all(&plain).unwrap();
+        let packed = z.finish().unwrap();
+        let (mb, eight) = (1024 * 1024, 8 * 1024 * 1024);
+
+        let mut doc = lopdf::Document::with_version("1.5");
+        let name = doc.add_object(lopdf::Object::Name(b"FlateDecode".to_vec()));
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Filter", lopdf::Object::Reference(name));
+        doc.add_object(lopdf::Stream::new(dict, packed.clone()));
+        assert!(check_doc_decoded_size(&doc, mb).is_err());
+        assert!(check_doc_decoded_size(&doc, eight).is_ok());
+
+        let mut doc = lopdf::Document::with_version("1.5");
+        let hex: String = packed.iter().map(|b| format!("{b:02x}")).collect::<String>() + ">";
+        let mut dict = lopdf::Dictionary::new();
+        dict.set(
+            "Filter",
+            lopdf::Object::Array(vec![
+                lopdf::Object::Name(b"ASCIIHexDecode".to_vec()),
+                lopdf::Object::Name(b"FlateDecode".to_vec()),
+            ]),
+        );
+        doc.add_object(lopdf::Stream::new(dict, hex.into_bytes()));
+        assert!(check_doc_decoded_size(&doc, mb).is_err());
+        assert!(check_doc_decoded_size(&doc, eight).is_ok());
+
+        let mut doc = lopdf::Document::with_version("1.5");
+        let lzw = weezl::encode::Encoder::with_tiff_size_switch(weezl::BitOrder::Msb, 8)
+            .encode(&plain)
+            .unwrap();
+        assert!(lzw.len() < mb as usize);
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Filter", lopdf::Object::Name(b"LZWDecode".to_vec()));
+        doc.add_object(lopdf::Stream::new(dict, lzw));
+        assert!(check_doc_decoded_size(&doc, mb).is_err());
+        assert!(check_doc_decoded_size(&doc, eight).is_ok());
+    }
+
+    #[test]
+    fn run_length_and_ascii85_decode() {
+        assert_eq!(decode_step(b"RunLengthDecode", &[1, b'a', b'b', 254, b'c', 128], 100).unwrap(), b"abccc");
+        assert_eq!(decode_step(b"ASCII85Decode", b"87cURDZ~>", 100).unwrap(), b"Hello");
     }
 
     #[test]

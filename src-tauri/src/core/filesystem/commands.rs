@@ -235,7 +235,10 @@ pub async fn decompress<R: Runtime>(
     path: String,
     output_dir: String,
 ) -> Result<(), String> {
-    let path_buf = std::path::PathBuf::from(&path);
+    // The archive must be one the webview may read: in the data folder (a
+    // downloaded backend) or picked by the user. A raw path would let the
+    // webview unpack any archive on disk into the data folder.
+    let path_buf = resolve_app_read_path(app.clone(), &path)?;
     let (_jan_data_folder, output_dir_buf) =
         resolve_app_path_within_jan_data_folder(app, &output_dir)?;
 
@@ -244,19 +247,91 @@ pub async fn decompress<R: Runtime>(
         .map_err(|e| format!("Decompression task failed: {}", e))?
 }
 
+/// Most entries one archive may unpack to.
+const MAX_UNPACK_ENTRIES: u64 = 200_000;
+/// Most bytes one archive may unpack to (a backend is a few GB at most).
+const MAX_UNPACK_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+
+/// Unpack into a staging folder beside `output_dir_buf`, then move the result
+/// into place: a failed or refused unpack (a bomb past the caps, a broken
+/// entry) leaves no half-written output behind.
 pub(crate) fn unpack_archive(
     path_buf: &std::path::Path,
     output_dir_buf: &std::path::Path,
 ) -> Result<(), String> {
-    // Ensure output directory exists
-    fs::create_dir_all(output_dir_buf).map_err(|e| {
-        format!(
-            "Failed to create output directory {}: {}",
-            output_dir_buf.to_string_lossy(),
-            e
-        )
-    })?;
+    unpack_archive_capped(path_buf, output_dir_buf, MAX_UNPACK_ENTRIES, MAX_UNPACK_BYTES)
+}
 
+pub(crate) fn unpack_archive_capped(
+    path_buf: &std::path::Path,
+    output_dir_buf: &std::path::Path,
+    max_entries: u64,
+    max_bytes: u64,
+) -> Result<(), String> {
+    let parent = output_dir_buf
+        .parent()
+        .ok_or_else(|| "the output directory has no parent".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| {
+        format!("Failed to create output directory {}: {e}", parent.to_string_lossy())
+    })?;
+    let leaf = output_dir_buf
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "out".into());
+    let staging = parent.join(format!(".{leaf}.unpack-{}", uuid::Uuid::new_v4().simple()));
+    fs::create_dir_all(&staging).map_err(|e| {
+        format!("Failed to create output directory {}: {e}", staging.to_string_lossy())
+    })?;
+    let result = unpack_into(path_buf, &staging, max_entries, max_bytes)
+        .and_then(|()| move_unpacked(&staging, output_dir_buf));
+    let _ = fs::remove_dir_all(&staging);
+    result
+}
+
+/// Move the staged tree into `dst`: a rename when `dst` does not exist yet,
+/// otherwise merged in the way unpacking in place did (files overwrite files
+/// of the same name, folders merge, nothing else in `dst` is touched).
+fn move_unpacked(staging: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    let moved = |e: std::io::Error, to: &std::path::Path| {
+        format!("Failed to move the unpacked files to {}: {e}", to.display())
+    };
+    if fs::symlink_metadata(dst).is_err() {
+        return fs::rename(staging, dst).map_err(|e| moved(e, dst));
+    }
+    for entry in fs::read_dir(staging).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let to_meta = fs::symlink_metadata(&to).ok();
+        let from_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        match to_meta {
+            Some(m) if from_dir && m.is_dir() => move_unpacked(&from, &to)?,
+            Some(m) => {
+                if m.is_dir() {
+                    fs::remove_dir_all(&to).map_err(|e| moved(e, &to))?;
+                } else {
+                    fs::remove_file(&to).map_err(|e| moved(e, &to))?;
+                }
+                fs::rename(&from, &to).map_err(|e| moved(e, &to))?;
+            }
+            None => fs::rename(&from, &to).map_err(|e| moved(e, &to))?,
+        }
+    }
+    Ok(())
+}
+
+fn unpack_into(
+    path_buf: &std::path::Path,
+    output_dir_buf: &std::path::Path,
+    max_entries: u64,
+    max_bytes: u64,
+) -> Result<(), String> {
+    let too_big = || {
+        format!(
+            "the archive unpacks to more than {max_entries} entries or {} MB, so it was not unpacked",
+            max_bytes / (1024 * 1024)
+        )
+    };
     // Use short path on Windows to handle paths with spaces
     #[cfg(windows)]
     let file = {
@@ -269,13 +344,30 @@ pub(crate) fn unpack_archive(
 
     #[cfg(not(windows))]
     let file = fs::File::open(path_buf).map_err(|e| e.to_string())?;
-    let name = path_buf.to_string_lossy();
+    let name = path_buf.to_string_lossy().to_lowercase();
     if name.ends_with(".tar.gz") {
         let tar = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(tar);
-        archive.unpack(output_dir_buf).map_err(|e| e.to_string())?;
+        // Modes from the archive are not applied as given (no setuid, no
+        // world-writable files); the umask decides.
+        archive.set_preserve_permissions(false);
+        let (mut entries, mut bytes) = (0u64, 0u64);
+        for entry in archive.entries().map_err(|e| e.to_string())? {
+            let mut entry = entry.map_err(|e| e.to_string())?;
+            entries += 1;
+            bytes = bytes.saturating_add(entry.header().size().unwrap_or(0));
+            if entries > max_entries || bytes > max_bytes {
+                return Err(too_big());
+            }
+            // `unpack_in` refuses an entry whose path leaves the folder.
+            entry.unpack_in(output_dir_buf).map_err(|e| e.to_string())?;
+        }
     } else if name.ends_with(".zip") {
         let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+        if zip.len() as u64 > max_entries {
+            return Err(too_big());
+        }
+        let mut bytes = 0u64;
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
             let outpath = output_dir_buf.join(
@@ -291,7 +383,14 @@ pub(crate) fn unpack_archive(
                     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                 }
                 let mut outfile = std::fs::File::create(&outpath).map_err(|e| e.to_string())?;
-                std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+                // The declared size can lie: count what is really written.
+                let room = max_bytes.saturating_sub(bytes) + 1;
+                let written = std::io::copy(&mut std::io::Read::take(&mut entry, room), &mut outfile)
+                    .map_err(|e| e.to_string())?;
+                bytes = bytes.saturating_add(written);
+                if bytes > max_bytes {
+                    return Err(too_big());
+                }
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
