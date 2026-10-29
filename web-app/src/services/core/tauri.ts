@@ -2,16 +2,17 @@
  * Tauri Core Service - Desktop implementation
  */
 
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import type { ExtensionManifest } from '@/lib/extension'
 import type { InvokeArgs } from './types'
 import { DefaultCoreService } from './default'
 import { getBundledExtensions } from './bundled-extensions'
 
 export class TauriCoreService extends DefaultCoreService {
-  async invoke<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
+  async invokeCommand<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
     try {
-      return await invoke<T>(command, args)
+      return await invokeCommand<T>(command, args)
     } catch (error) {
       console.error(`Error invoking Tauri command '${command}' in Tauri:`, error)
       throw error
@@ -45,7 +46,7 @@ export class TauriCoreService extends DefaultCoreService {
   // App token
   async getAppToken(): Promise<string | null> {
     try {
-      const result = await this.invoke<string | null>('app_token')
+      const result = await this.invokeCommand<string | null>('app_token')
       return result
     } catch (error) {
       console.error('Error getting app token in Tauri:', error)

@@ -6,8 +6,8 @@
  * serde(rename_all = "camelCase") structs in
  * src-tauri/plugins/tauri-plugin-agent-tools/src/shared_folder/view.rs.
  */
-import { invoke } from '@/lib/previewInvoke'
 import { dataFolder } from '@/lib/sessionMailbox'
+import { invokeCommand } from '@/lib/backend'
 
 /** Emitted after a session joins or leaves a folder, a claim or hold changes, or a branch moves. */
 export const SHARED_FOLDER_UPDATED_EVENT = 'agent-shared-folder-updated'
@@ -94,7 +94,7 @@ async function call<T>(
   command: string,
   args: Record<string, unknown>
 ): Promise<T> {
-  return invoke<T>(`${PLUGIN}${command}`, {
+  return invokeCommand<T>(`${PLUGIN}${command}`, {
     dataFolder: await dataFolder(),
     ...args,
   })

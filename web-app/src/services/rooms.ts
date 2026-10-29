@@ -5,8 +5,8 @@
  * Every wrapper rejects with a `RoomError` (`{ code, message }`), whatever
  * shape the underlying invoke rejection had.
  */
-import { invoke } from '@tauri-apps/api/core'
 import { trackArchiveWork } from '@/lib/archive'
+import { invokeCommand } from '@/lib/backend'
 import type { ApplyPreview } from '@/lib/rooms/applyReview'
 import type {
   Room,
@@ -79,7 +79,7 @@ async function call<T>(
   args: Record<string, unknown>
 ): Promise<T> {
   try {
-    return await invoke<T>(command, args)
+    return await invokeCommand<T>(command, args)
   } catch (error) {
     throw toRoomError(error)
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -54,7 +54,7 @@ export function SubscriptionConnect({ providerName }: Props) {
   const refresh = useCallback(async () => {
     try {
       setStatus(
-        await invoke<BridgeStatus>('cli_bridge_status', {
+        await invokeCommand<BridgeStatus>('cli_bridge_status', {
           provider: providerName,
         })
       )
@@ -73,7 +73,7 @@ export function SubscriptionConnect({ providerName }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const link = await invoke<BridgeConnection>('cli_bridge_connect', {
+      const link = await invokeCommand<BridgeConnection>('cli_bridge_connect', {
         provider: providerName,
       })
       const models = link.models.map((id) => ({

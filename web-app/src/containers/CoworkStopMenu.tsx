@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -60,7 +60,7 @@ export function CoworkStopMenu({
     (args: { session?: string; run?: string; call?: string }) =>
       onStop
         ? onStop(args)
-        : invoke<StopReport>('agent_emergency_stop', args),
+        : invokeCommand<StopReport>('agent_emergency_stop', args),
     [onStop]
   )
   const { t } = useTranslation()

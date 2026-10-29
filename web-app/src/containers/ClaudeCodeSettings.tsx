@@ -1,4 +1,5 @@
 import { Card, CardItem } from '@/containers/Card'
+import { invokeCommand } from '@/lib/backend'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
@@ -14,7 +15,6 @@ import { cn } from '@/lib/utils'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { getModelToStart } from '@/utils/getModelToStart'
-import { invoke } from '@tauri-apps/api/core'
 import {
   Popover,
   PopoverTrigger,
@@ -75,7 +75,7 @@ export function ClaudeCodeSettings() {
   // Settings in the user's own Claude Code config that win over what is
   // exported here (janhq/jan issue 8107). Read-only.
   useEffect(() => {
-    invoke<ClaudeCodeOverride[]>('detect_claude_code_overrides')
+    invokeCommand<ClaudeCodeOverride[]>('detect_claude_code_overrides')
       .then((found) => setOverrides(Array.isArray(found) ? found : []))
       .catch(() => setOverrides([]))
   }, [])
@@ -312,7 +312,7 @@ export function ClaudeCodeSettings() {
           return
         }
       }
-      await invoke('launch_claude_code_with_config', {
+      await invokeCommand('launch_claude_code_with_config', {
         apiUrl: claudeCodeApiUrl(serverHost, boundPort),
         apiKey: apiKey || undefined,
         bigModel: modelBig || undefined,
@@ -419,7 +419,7 @@ export function ClaudeCodeSettings() {
               onClick={async () => {
                 clearModels()
                 try {
-                  await invoke('clear_claude_code_env')
+                  await invokeCommand('clear_claude_code_env')
                   toast.success(t('integrations:claudeCode.cleared'))
                 } catch (e) {
                   toast.error(

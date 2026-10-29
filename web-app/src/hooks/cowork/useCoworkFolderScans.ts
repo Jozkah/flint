@@ -1,6 +1,6 @@
 import { errorText } from '@/lib/errorText'
+import { invokeCommand } from '@/lib/backend'
 import { useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import { projectReadFile } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   COMPATIBILITY_INSTRUCTION_FILES,
@@ -67,7 +67,7 @@ export function useCoworkFolderScans({
     // Like the tooling effect below: a slow answer for a folder no longer
     // attached must not name the branch of the one that is.
     let alive = true
-    invoke<string | null>('agent_git_branch', { project: folder })
+    invokeCommand<string | null>('agent_git_branch', { project: folder })
       .then((branch) => {
         if (alive) setGitBranch(branch)
       })

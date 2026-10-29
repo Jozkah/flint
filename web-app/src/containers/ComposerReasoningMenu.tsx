@@ -24,18 +24,10 @@ import {
   type ThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
 import { cn } from '@/lib/utils'
+import { REASONING_MENU_PROVIDERS } from '@/lib/reasoningMenu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
 type ReasoningMode = 'auto' | 'on' | 'off'
-
-/** Providers that wire the `reasoning` setting into a request. */
-export const REASONING_MENU_PROVIDERS = [
-  'llamacpp',
-  'google',
-  'gemini',
-  'anthropic',
-  'openai',
-] as const
 
 /**
  * The reasoning menu for a model that sizes its own thinking and so has no

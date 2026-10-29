@@ -3,6 +3,7 @@
 // permitted and shown exactly as the user's own would be.
 
 import { useThreads } from '@/hooks/useThreads'
+import { invokeCommand } from '@/lib/backend'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useAppState } from '@/hooks/useAppState'
@@ -81,8 +82,7 @@ function setModelSetting(model: ModelRef, key: string, title: string, value: unk
 /** Emergency stop in the backend (CoworkStopMenu's `agent_emergency_stop`). */
 async function backendStop(args: { session?: string; run?: string }): Promise<{ stopped?: number } | null> {
   if (!IS_TAURI) return null
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<{ stopped?: number }>('agent_emergency_stop', args).catch((e) => {
+  return invokeCommand<{ stopped?: number }>('agent_emergency_stop', args).catch((e) => {
     console.warn('remote: emergency stop failed', e)
     return null
   })
