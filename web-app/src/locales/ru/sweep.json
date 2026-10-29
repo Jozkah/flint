@@ -31,7 +31,35 @@
     "sessionEvents": "События сеанса",
     "stopExport": "Остановить экспорт",
     "stopImport": "Остановить импорт",
-    "unavailableCount": "Недоступно: {{total}}"
+    "unavailableCount": "Недоступно: {{total}}",
+    "review": "Проверить",
+    "hideReview": "Скрыть проверку",
+    "teamReviews": {
+      "stateRunning": "Выполняется",
+      "stateInterrupted": "Прервано при остановке Flint",
+      "stateCompleted": "Завершено",
+      "stateFailed": "Ошибка",
+      "stateCancelled": "Отменено",
+      "proposalPending": "Ожидает проверки",
+      "proposalPartial": "Применено частично",
+      "proposalApplied": "Применено",
+      "proposalRejected": "Отклонено",
+      "fromBase": "от {{sha}}",
+      "override": "Выполнялось параллельно с {{tasks}} по вашему решению, несмотря на пересечение в {{paths}}.",
+      "acknowledge": "Всё равно проверить, понимая это",
+      "changesFromTask": "Изменения из задачи {{task}}",
+      "label": "Работа командных задач",
+      "intro": "Командные задачи, работавшие в собственных копиях. В вашу папку ничего не попадёт, пока вы это не примените."
+    },
+    "bundle": {
+      "from": "Откуда",
+      "branch": "Ветка",
+      "base": "База",
+      "bundle": "Пакет",
+      "state": "Состояние",
+      "schema": "(схема {{schema}})",
+      "abandon": "Отказаться"
+    }
   },
   "editModel": {
     "updateFailed": "Не удалось обновить модель. Попробуйте ещё раз.",

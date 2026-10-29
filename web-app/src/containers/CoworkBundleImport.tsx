@@ -56,17 +56,18 @@ function ImportRow({
         className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5"
         data-testid="bundle-import-origin"
       >
-        <dt className="text-muted-foreground">From</dt>
+        <dt className="text-muted-foreground">{t('sweep:cowork.bundle.from')}</dt>
         <dd className="min-w-0 truncate">{view.originRepository || '—'}</dd>
-        <dt className="text-muted-foreground">Branch</dt>
+        <dt className="text-muted-foreground">{t('sweep:cowork.bundle.branch')}</dt>
         <dd className="min-w-0 truncate font-mono">{view.branch || '—'}</dd>
-        <dt className="text-muted-foreground">Base</dt>
+        <dt className="text-muted-foreground">{t('sweep:cowork.bundle.base')}</dt>
         <dd className="font-mono">{short(view.baseSha)}</dd>
-        <dt className="text-muted-foreground">Bundle</dt>
+        <dt className="text-muted-foreground">{t('sweep:cowork.bundle.bundle')}</dt>
         <dd className="font-mono">
-          {short(view.bundleSha256, 12)} (schema {view.bundleSchema})
+          {short(view.bundleSha256, 12)}{' '}
+          {t('sweep:cowork.bundle.schema', { schema: view.bundleSchema })}
         </dd>
-        <dt className="text-muted-foreground">State</dt>
+        <dt className="text-muted-foreground">{t('sweep:cowork.bundle.state')}</dt>
         <dd>{view.state}</dd>
       </dl>
       {pending ? (
@@ -77,7 +78,7 @@ function ImportRow({
             onClick={() => setOpen((o) => !o)}
             data-testid="bundle-import-review"
           >
-            {open ? 'Hide review' : 'Review'}
+            {open ? t('sweep:cowork.hideReview') : t('sweep:cowork.review')}
           </Button>
           <Button
             size="sm"
@@ -88,7 +89,7 @@ function ImportRow({
             }}
             data-testid="bundle-import-abandon"
           >
-            Abandon
+            {t('sweep:cowork.bundle.abandon')}
           </Button>
         </div>
       ) : null}

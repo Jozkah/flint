@@ -46,6 +46,10 @@ const lookup = (loc: Flat, key: string) => loc[key] ?? loc[`${key}_one`]
 const SAME_AS_ENGLISH: Record<string, string[]> = {
   // "file" is Italian too.
   'rooms:apply.files_one': ['it'],
+  // Cowork bundle labels: git terms these locales use as-is.
+  'sweep:cowork.bundle.base': ['ca', 'es', 'fr', 'it', 'pt-BR'],
+  'sweep:cowork.bundle.branch': ['de-DE', 'pt-BR'],
+  'sweep:cowork.bundle.schema': ['it'],
   // uiLeftovers: loanwords and units shared with English.
   'uiLeftovers:hubTasks.embeddings': ['ca', 'de-DE', 'es', 'fr', 'pt-BR'],
   'uiLeftovers:tokenSpeed.tokens': ['ca', 'de-DE', 'es', 'pt-BR'],

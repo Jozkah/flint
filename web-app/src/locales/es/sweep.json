@@ -30,7 +30,35 @@
     "sessionEvents": "Eventos de la sesión",
     "stopExport": "Detener exportación",
     "stopImport": "Detener importación",
-    "unavailableCount": "{{total}} no disponibles"
+    "unavailableCount": "{{total}} no disponibles",
+    "review": "Revisar",
+    "hideReview": "Ocultar revisión",
+    "teamReviews": {
+      "stateRunning": "En ejecución",
+      "stateInterrupted": "Interrumpida al cerrarse Flint",
+      "stateCompleted": "Completada",
+      "stateFailed": "Falló",
+      "stateCancelled": "Cancelada",
+      "proposalPending": "Esperando revisión",
+      "proposalPartial": "Aplicada en parte",
+      "proposalApplied": "Aplicada",
+      "proposalRejected": "Rechazada",
+      "fromBase": "desde {{sha}}",
+      "override": "Se ejecutó junto a {{tasks}} por decisión tuya, a pesar de coincidir en {{paths}}.",
+      "acknowledge": "Revisarla de todos modos, sabiendo esto",
+      "changesFromTask": "Cambios de la tarea {{task}}",
+      "label": "Trabajo de las tareas del equipo",
+      "intro": "Tareas del equipo que trabajaron en copias propias. Nada llega a tu carpeta hasta que lo apliques."
+    },
+    "bundle": {
+      "from": "Origen",
+      "branch": "Rama",
+      "base": "Base",
+      "bundle": "Paquete",
+      "state": "Estado",
+      "schema": "(esquema {{schema}})",
+      "abandon": "Descartar"
+    }
   },
   "editModel": {
     "updateFailed": "No se pudo actualizar el modelo. Inténtalo de nuevo.",

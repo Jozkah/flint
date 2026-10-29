@@ -29,7 +29,35 @@
     "sessionEvents": "Sitzungsereignisse",
     "stopExport": "Export stoppen",
     "stopImport": "Import stoppen",
-    "unavailableCount": "{{total}} nicht verfügbar"
+    "unavailableCount": "{{total}} nicht verfügbar",
+    "review": "Prüfen",
+    "hideReview": "Prüfung ausblenden",
+    "teamReviews": {
+      "stateRunning": "Läuft",
+      "stateInterrupted": "Unterbrochen, als Flint beendet wurde",
+      "stateCompleted": "Abgeschlossen",
+      "stateFailed": "Fehlgeschlagen",
+      "stateCancelled": "Abgebrochen",
+      "proposalPending": "Wartet auf Prüfung",
+      "proposalPartial": "Teilweise übernommen",
+      "proposalApplied": "Übernommen",
+      "proposalRejected": "Abgelehnt",
+      "fromBase": "von {{sha}}",
+      "override": "Lief auf deine Entscheidung neben {{tasks}}, obwohl es sich bei {{paths}} überschneidet.",
+      "acknowledge": "Trotzdem prüfen, im Wissen darum",
+      "changesFromTask": "Änderungen aus Aufgabe {{task}}",
+      "label": "Arbeit aus Teamaufgaben",
+      "intro": "Teamaufgaben, die in eigenen Arbeitskopien gearbeitet haben. Nichts gelangt in deinen Ordner, bevor du es übernimmst."
+    },
+    "bundle": {
+      "from": "Von",
+      "branch": "Branch",
+      "base": "Basis",
+      "bundle": "Paket",
+      "state": "Status",
+      "schema": "(Schema {{schema}})",
+      "abandon": "Verwerfen"
+    }
   },
   "editModel": {
     "updateFailed": "Modell konnte nicht aktualisiert werden. Bitte versuche es erneut.",

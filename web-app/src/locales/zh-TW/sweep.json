@@ -28,7 +28,35 @@
     "sessionEvents": "工作階段事件",
     "stopExport": "停止匯出",
     "stopImport": "停止匯入",
-    "unavailableCount": "{{total}} 項無法使用"
+    "unavailableCount": "{{total}} 項無法使用",
+    "review": "審查",
+    "hideReview": "隱藏審查",
+    "teamReviews": {
+      "stateRunning": "執行中",
+      "stateInterrupted": "Flint 停止時中斷",
+      "stateCompleted": "已完成",
+      "stateFailed": "失敗",
+      "stateCancelled": "已取消",
+      "proposalPending": "等待審查",
+      "proposalPartial": "部分套用",
+      "proposalApplied": "已套用",
+      "proposalRejected": "已拒絕",
+      "fromBase": "基於 {{sha}}",
+      "override": "儘管在 {{paths}} 上有重疊,仍依你的決定與 {{tasks}} 並行執行。",
+      "acknowledge": "知悉此情況仍要審查",
+      "changesFromTask": "來自任務 {{task}} 的變更",
+      "label": "團隊任務的成果",
+      "intro": "在各自簽出副本中工作的團隊任務。在你套用之前,不會有任何內容進入你的資料夾。"
+    },
+    "bundle": {
+      "from": "來源",
+      "branch": "分支",
+      "base": "基準",
+      "bundle": "套件",
+      "state": "狀態",
+      "schema": "(結構描述 {{schema}})",
+      "abandon": "放棄"
+    }
   },
   "editModel": {
     "updateFailed": "更新模型失敗，請再試一次。",

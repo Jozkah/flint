@@ -31,7 +31,35 @@
     "sessionEvents": "Zdarzenia sesji",
     "stopExport": "Zatrzymaj eksport",
     "stopImport": "Zatrzymaj import",
-    "unavailableCount": "Niedostępne: {{total}}"
+    "unavailableCount": "Niedostępne: {{total}}",
+    "review": "Przejrzyj",
+    "hideReview": "Ukryj przegląd",
+    "teamReviews": {
+      "stateRunning": "Działa",
+      "stateInterrupted": "Przerwane po zamknięciu Flinta",
+      "stateCompleted": "Ukończone",
+      "stateFailed": "Niepowodzenie",
+      "stateCancelled": "Anulowane",
+      "proposalPending": "Czeka na przegląd",
+      "proposalPartial": "Zastosowane częściowo",
+      "proposalApplied": "Zastosowane",
+      "proposalRejected": "Odrzucone",
+      "fromBase": "z {{sha}}",
+      "override": "Działało równolegle z {{tasks}} z Twojej decyzji, mimo nakładania się na {{paths}}.",
+      "acknowledge": "Przejrzyj mimo to, wiedząc o tym",
+      "changesFromTask": "Zmiany z zadania {{task}}",
+      "label": "Praca z zadań zespołu",
+      "intro": "Zadania zespołu, które pracowały we własnych kopiach. Nic nie trafi do Twojego folderu, dopóki tego nie zastosujesz."
+    },
+    "bundle": {
+      "from": "Źródło",
+      "branch": "Gałąź",
+      "base": "Baza",
+      "bundle": "Pakiet",
+      "state": "Stan",
+      "schema": "(schemat {{schema}})",
+      "abandon": "Porzuć"
+    }
   },
   "editModel": {
     "updateFailed": "Nie udało się zaktualizować modelu. Spróbuj ponownie.",

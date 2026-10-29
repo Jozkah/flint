@@ -30,7 +30,35 @@
     "sessionEvents": "Sự kiện của phiên",
     "stopExport": "Dừng xuất",
     "stopImport": "Dừng nhập",
-    "unavailableCount": "{{total}} không khả dụng"
+    "unavailableCount": "{{total}} không khả dụng",
+    "review": "Xem xét",
+    "hideReview": "Ẩn xem xét",
+    "teamReviews": {
+      "stateRunning": "Đang chạy",
+      "stateInterrupted": "Bị gián đoạn khi Flint dừng",
+      "stateCompleted": "Đã hoàn tất",
+      "stateFailed": "Thất bại",
+      "stateCancelled": "Đã hủy",
+      "proposalPending": "Đang chờ xem xét",
+      "proposalPartial": "Đã áp dụng một phần",
+      "proposalApplied": "Đã áp dụng",
+      "proposalRejected": "Đã từ chối",
+      "fromBase": "từ {{sha}}",
+      "override": "Đã chạy song song với {{tasks}} theo quyết định của bạn, dù trùng lặp ở {{paths}}.",
+      "acknowledge": "Vẫn xem xét, khi đã biết điều này",
+      "changesFromTask": "Thay đổi từ tác vụ {{task}}",
+      "label": "Kết quả từ các tác vụ nhóm",
+      "intro": "Các tác vụ nhóm đã làm việc trong bản sao riêng. Không có gì vào thư mục của bạn cho đến khi bạn áp dụng."
+    },
+    "bundle": {
+      "from": "Từ",
+      "branch": "Nhánh",
+      "base": "Gốc",
+      "bundle": "Gói",
+      "state": "Trạng thái",
+      "schema": "(lược đồ {{schema}})",
+      "abandon": "Bỏ"
+    }
   },
   "editModel": {
     "updateFailed": "Không thể cập nhật mô hình. Vui lòng thử lại.",
