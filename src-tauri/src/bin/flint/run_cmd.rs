@@ -104,8 +104,12 @@ pub(crate) async fn run_subagent(spec: String) -> Result<(), HarnessError> {
 }
 
 /// `flint agent serve`.
-pub(crate) async fn serve() -> Result<(), HarnessError> {
-    app_lib::core::cli::json_api::serve_stdio().await;
+pub(crate) async fn serve(max_runs: usize, retention_days: u64) -> Result<(), HarnessError> {
+    app_lib::core::cli::json_api::serve_stdio(app_lib::core::cli::json_api::ServeLimits {
+        max_runs,
+        retention: std::time::Duration::from_secs(retention_days.saturating_mul(24 * 60 * 60)),
+    })
+    .await;
     Ok(())
 }
 

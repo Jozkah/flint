@@ -34,6 +34,10 @@ struct Session {
     /// `false` restricts every turn to the host tools, through the same
     /// per-request `allowed_tools` allowlist an API caller uses.
     builtins: bool,
+    /// `turn/steer` messages that arrived too late for the turn they were
+    /// sent to (it ended before reading them). They open the next turn, in
+    /// order, ahead of its own input, so a steer is never silently dropped.
+    carried_steer: Vec<Value>,
 }
 
 struct ActiveTurn {
@@ -267,6 +271,7 @@ fn start_turn(
     let terminal = mpsc::Sender::clone(out)
         .try_reserve_owned()
         .map_err(|_| "RPC output queue is full; retry after draining notifications".to_owned())?;
+    session.history.append(&mut session.carried_steer);
     let body = begin_turn(&session.agent, &mut session.history, input, session.builtins);
     let task = spawn_turn(session.agent.args.clone(), body);
     Ok(ActiveTurn {
@@ -377,12 +382,17 @@ fn finish_turn(
         steerer,
         updated_history,
         terminal,
+        pending,
         ..
     } = turn;
     steerer.abort();
     let session = sessions
         .get_mut(&session_id)
         .ok_or("active session missing")?;
+    // Steers the turn never read are carried into the next one.
+    if let Ok(mut unread) = pending.try_lock() {
+        session.carried_steer.append(&mut unread);
+    }
     let persist = if session.ephemeral {
         None
     } else {
@@ -446,7 +456,7 @@ async fn start_session(
     // are the client's handle on the session, and an id nothing else can name is
     // not a handle.
     agent.args.session_id = Some(sid.clone());
-    let session = Session { agent, history: Vec::new(), id: sid.clone(), turns: 0, ephemeral, builtins };
+    let session = Session { agent, history: Vec::new(), id: sid.clone(), turns: 0, ephemeral, builtins, carried_steer: Vec::new() };
     let mut result = tools_view(&session).await;
     result["sessionId"] = json!(sid);
     result["model"] = json!(session.agent.model);
@@ -693,7 +703,7 @@ pub async fn serve() -> Result<(), String> {
                                     let history = source.history.clone();
                                     let ephemeral = source.ephemeral;
                                     let builtins = source.builtins;
-                                    sessions.insert(fork.clone(), Session { agent, history, id: fork.clone(), turns: 0, ephemeral, builtins });
+                                    sessions.insert(fork.clone(), Session { agent, history, id: fork.clone(), turns: 0, ephemeral, builtins, carried_steer: Vec::new() });
                                     response(&id, json!({"sessionId":fork}))
                                 }
                                 Err(message) => error(&id, -32602, &message),
