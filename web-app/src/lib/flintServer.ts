@@ -17,7 +17,8 @@ const KEY = 'flint.server'
 const SKIP_KEY = 'flint.server.skipped'
 
 export type FlintServerConfig = {
-  /** The server's origin, e.g. `https://studio.tail1234.ts.net`. */
+  /** The server's base address, e.g. `https://studio.tail1234.ts.net` or
+   * `https://host/flint` behind a reverse proxy. */
   url: string
   /** Open the server when the app starts, after a short chance to cancel. */
   autoConnect: boolean
@@ -30,10 +31,13 @@ export type UrlCheck =
 const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i
 
 /**
- * An address typed by a person, reduced to the server's origin. A bare host
- * gets `https://`. A path, query or fragment is dropped: the server owns its
- * routes. Credentials in the address are refused, so a token can never end up
- * in a bookmark, a log or the history.
+ * An address typed by a person, reduced to the server's base address: the
+ * origin plus any path (a server published under a prefix behind a reverse
+ * proxy, e.g. `https://host/flint`), without a trailing slash. A bare host
+ * gets `https://`. A query or fragment is dropped. Credentials in the address
+ * are refused, so a token can never end up in a bookmark, a log or the
+ * history. Addresses stored before paths were kept are plain origins and
+ * read back unchanged.
  */
 export function normalizeServerUrl(input: string): UrlCheck {
   const text = input.trim()
@@ -50,9 +54,10 @@ export function normalizeServerUrl(input: string): UrlCheck {
   }
   if (parsed.username || parsed.password) return { ok: false, reason: 'credentials' }
   if (!parsed.hostname) return { ok: false, reason: 'invalid' }
+  const path = parsed.pathname.replace(/\/+$/, '')
   return {
     ok: true,
-    url: parsed.origin,
+    url: parsed.origin + path,
     // Plain HTTP sends the session in the clear. Android blocks it for
     // non-localhost addresses in a release build, so say so up front.
     insecure: parsed.protocol === 'http:' && !LOCAL_HOST.test(parsed.hostname),

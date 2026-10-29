@@ -5,7 +5,12 @@
 import { create } from 'zustand'
 import type { EngineUpdate } from './engine'
 import { getRoomPersistence, normaliseRoomError } from './persistence'
-import { messagesFromJournal } from './recovery'
+import {
+  appendToTranscript,
+  indexJournal,
+  messagesFromJournal,
+  type TranscriptIndex,
+} from './recovery'
 import type {
   LiveTurn,
   Room,
@@ -70,11 +75,9 @@ function upsertSummary(list: RoomSummary[], summary: RoomSummary): RoomSummary[]
   return [summary, ...rest].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-function sameRecord(a: RoomJournalRecord, b: RoomJournalRecord): boolean {
-  if (a.type === 'message' && b.type === 'message') return a.message.id === b.message.id
-  if (a.type === 'turn-start' && b.type === 'turn-start') return a.turnId === b.turnId
-  return false
-}
+/** The open room's journal index, so a live record appends in O(1) lookups
+ * instead of rebuilding the transcript (see `appendToTranscript`). */
+let transcript: { roomId: string; journal: RoomJournalRecord[]; index: TranscriptIndex } | null = null
 
 export const useRoomsStore = create<RoomsState>()((set, get) => ({
   summaries: [],
@@ -153,9 +156,16 @@ export const useRoomsStore = create<RoomsState>()((set, get) => ({
       }
       case 'record': {
         if (state.currentRoomId !== update.roomId) return
-        if (state.journal.some((r) => sameRecord(r, update.record))) return
+        // The index follows the journal it was built from; any other journal
+        // (a room opened or reloaded) gets a fresh one.
+        if (!transcript || transcript.journal !== state.journal || transcript.roomId !== update.roomId) {
+          transcript = { roomId: update.roomId, journal: state.journal, index: indexJournal(state.journal) }
+        }
+        const messages = appendToTranscript(transcript.index, update.roomId, state.messages, update.record)
+        if (!messages) return
         const journal = [...state.journal, update.record]
-        set({ journal, messages: messagesFromJournal(update.roomId, journal) })
+        transcript.journal = journal
+        set({ journal, messages })
         return
       }
       case 'live': {

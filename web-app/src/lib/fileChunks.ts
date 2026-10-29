@@ -26,17 +26,71 @@ export function stringSource(text: string): ChunkSource {
   }
 }
 
+/** An open whole-file stream, read on from where the last chunk stopped. */
+type SequentialStream = {
+  reader: ReadableStreamDefaultReader<Uint8Array>
+  /** Bytes handed out (or skipped) so far. */
+  pos: number
+  /** Bytes read from the stream past the last chunk. */
+  rest: Uint8Array | null
+}
+
+/** Collect at most `length` bytes from an open stream, keeping any excess. */
+async function readOn(seq: SequentialStream, length: number): Promise<Uint8Array> {
+  const out = new Uint8Array(length)
+  let o = 0
+  while (o < length) {
+    let v = seq.rest
+    seq.rest = null
+    if (!v) {
+      const r = await seq.reader.read()
+      if (r.done) break
+      v = r.value
+    }
+    const n = Math.min(v.length, length - o)
+    out.set(v.subarray(0, n), o)
+    o += n
+    if (n < v.length) seq.rest = v.subarray(n)
+  }
+  seq.pos += o
+  return out.subarray(0, o)
+}
+
 /**
- * A URL read by byte range. Servers that ignore Range get streamed and
- * skipped up to the offset, then cancelled, so memory stays at one chunk.
+ * A URL read by byte range. A server that ignores Range (answers 200 with
+ * the whole file) is remembered: its stream stays open and later chunks are
+ * read on from it, so the file is not downloaded again for every chunk.
  */
 export function urlSource(url: string, knownSize: number | null = null): ChunkSource {
+  let seq: SequentialStream | null = null
+  let ignoresRange = false
+  const dropStream = () => {
+    if (seq) void seq.reader.cancel().catch(() => {})
+    seq = null
+  }
+  const readSequential = async (offset: number, length: number) => {
+    const open = seq
+    if (!open) return new Uint8Array(0)
+    try {
+      // Skip to the offset (only the first read of a fresh stream skips).
+      while (open.pos < offset) {
+        const skipped = await readOn(open, Math.min(offset - open.pos, CHUNK_SIZE))
+        if (skipped.length === 0) return new Uint8Array(0)
+      }
+      return await readOn(open, length)
+    } catch (e) {
+      dropStream()
+      throw e
+    }
+  }
   const src: ChunkSource = {
     size: knownSize,
     async read(offset, length, signal) {
+      if (ignoresRange && seq && seq.pos === offset) return readSequential(offset, length)
+      dropStream()
       const res = await fetch(url, {
         signal,
-        headers: { Range: `bytes=${offset}-${offset + length - 1}` },
+        ...(ignoresRange ? {} : { headers: { Range: `bytes=${offset}-${offset + length - 1}` } }),
       })
       if (!res.ok || !res.body) return new Uint8Array(0)
       const total = /\/(\d+)$/.exec(res.headers.get('content-range') ?? '')?.[1]
@@ -45,8 +99,10 @@ export function urlSource(url: string, knownSize: number | null = null): ChunkSo
         const len = Number(res.headers.get('content-length'))
         if (len > 0) src.size = len
       }
-      const skip = res.status === 206 ? 0 : offset
-      return takeRange(res.body.getReader(), skip, length)
+      if (res.status === 206) return takeRange(res.body.getReader(), 0, length)
+      ignoresRange = true
+      seq = { reader: res.body.getReader(), pos: 0, rest: null }
+      return readSequential(offset, length)
     },
   }
   return src
@@ -170,10 +226,11 @@ export function createChunkReader(src: ChunkSource, chunk = CHUNK_SIZE): ChunkRe
       loaded += part.length
       // A known size decides the end: servers may answer a range with less
       // than asked (Tauri's asset protocol caps one response near 1 MB), and
-      // a short read there is not the end of the file.
+      // a short read there is not the end of the file. Without a size only an
+      // empty read is the end. In-memory text never comes back short.
       done =
         part.length === 0 ||
-        (src.size !== null ? loaded >= src.size : part.length < chunk)
+        (src.size !== null ? loaded >= src.size : typeof part === 'string' && part.length < chunk)
       const text =
         typeof part === 'string' ? part : decoder.decode(part, { stream: !done })
       pushText(state, text, done)

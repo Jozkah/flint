@@ -32,6 +32,8 @@ struct Rules {
     wrapper_positional: HashMap<String, usize>,
     inline_shells: Vec<String>,
     powershells: Vec<String>,
+    /// Interpreters and the options that run code given on the command line.
+    inline_interpreters: HashMap<String, Vec<String>>,
     uncertain_commands: HashMap<String, String>,
     always_ask_commands: HashMap<String, String>,
     delete_commands: Vec<String>,
@@ -202,6 +204,25 @@ fn command_name(word: &str) -> String {
     base.strip_suffix(".exe").unwrap_or(base).to_string()
 }
 
+const INLINE_CODE: &str = "runs code given on the command line, which cannot be checked";
+
+/// Whether an interpreter's options (those before the script name) include
+/// one that runs code from the command line, as `-c` or `--eval=...`.
+fn runs_inline_code(args: &[String], flags: &[String]) -> bool {
+    for arg in args {
+        if !arg.starts_with('-') {
+            return false;
+        }
+        if flags
+            .iter()
+            .any(|f| arg == f || arg.starts_with(&format!("{f}=")))
+        {
+            return true;
+        }
+    }
+    false
+}
+
 const READS_INPUT: &str = "runs a script read from input, which cannot be checked";
 const PS_UNCHECKABLE: &str = "runs a PowerShell command that cannot be checked";
 const PS_VALUE_OPTIONS: &[&str] = &[
@@ -252,6 +273,11 @@ fn check_segment(
     }
     if let Some(reason) = rules.always_ask_commands.get(&cmd) {
         return Some(reason.clone());
+    }
+    if let Some(flags) = rules.inline_interpreters.get(&cmd) {
+        if runs_inline_code(args, flags) {
+            return Some(INLINE_CODE.into());
+        }
     }
     if rules.inline_shells.contains(&cmd) {
         // `bash -c "script"`, `sh -lc '...'`: check the script itself.
