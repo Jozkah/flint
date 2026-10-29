@@ -50,6 +50,7 @@ import {
   addCallUsage,
   checkLimits,
   clampLimits,
+  breachNote,
   describeBreach,
   measureCall,
   pricingForModel,
@@ -97,6 +98,7 @@ import {
   type RoomJournalRecord,
   type RoomMessage,
   type RoomModelRef,
+  type RoomNote,
   type RoomStatus,
   type StopReason,
   type ToolAccess,
@@ -437,10 +439,17 @@ class RoomRun {
     return stored.type === 'message' ? stored.message : m
   }
 
-  async system(text: string) {
+  async system(text: string, note?: RoomNote) {
     const last = this.messages[this.messages.length - 1]
     if (last && last.kind === 'system' && last.text === text) return
-    await this.appendMessage(this.message({ author: { kind: 'system' }, kind: 'system', text }))
+    await this.appendMessage(
+      this.message({ author: { kind: 'system' }, kind: 'system', text, ...(note ? { note } : {}) })
+    )
+  }
+
+  /** A system note from `rooms:notes.*`, stored as its key so it is drawn in the current language. */
+  async note(key: string, values?: Record<string, string | number>) {
+    await this.system(rt(key, values), values ? { key, values } : { key })
   }
 
   checkAbort() {
@@ -531,7 +540,8 @@ class RoomRun {
   }
 
   async stopForLimit(limit: LimitBreach) {
-    await this.system(describeBreach(limit))
+    const note = breachNote(limit)
+    await this.note(note.key, note.values)
     await this.save({ status: 'stopped', stopReason: { kind: 'limit', limit } })
   }
 
@@ -547,12 +557,10 @@ class RoomRun {
   async handleAbort() {
     const intent = this.opts.intent?.() ?? 'pause'
     if (intent === 'stop') {
-      await this.system(rt('stoppedByUser'))
+      await this.note('stoppedByUser')
       await this.save({ status: 'stopped', stopReason: { kind: 'user' } })
     } else {
-      await this.system(
-        intent === 'cancel-turn' ? rt('turnCancelled') : rt('pausedByUser')
-      )
+      await this.note(intent === 'cancel-turn' ? 'turnCancelled' : 'pausedByUser')
       await this.save({ status: 'paused', stopReason: { kind: 'user' } })
     }
   }
@@ -571,9 +579,9 @@ class RoomRun {
     this.room = room
     for (const c of changes) {
       if (c.to.state === 'unavailable') {
-        await this.system(rt('unavailableNote', { name: c.participant.name, message: c.to.message }))
+        await this.note('unavailableNote', { name: c.participant.name, message: c.to.message })
       } else if (c.from.state === 'unavailable') {
-        await this.system(rt('availableAgain', { name: c.participant.name }))
+        await this.note('availableAgain', { name: c.participant.name })
       }
     }
     return this.ensureEnough(minimum)
@@ -1422,7 +1430,7 @@ class RoomRun {
         return
       }
       if (converged) {
-        await this.system(rt('converged'))
+        await this.note('converged')
         return this.close({ kind: 'converged', by: 'repetition' })
       }
       // A whole round of participants all waiting on the user (e.g. every model
@@ -1433,9 +1441,7 @@ class RoomRun {
         this.consecutiveUserWaits >= activeParticipants(this.room).length
       ) {
         this.consecutiveUserWaits = 0
-        await this.system(
-          rt('allWaiting')
-        )
+        await this.note('allWaiting')
         await this.save({ status: 'awaiting-user', nextSpeakerId: null })
         return
       }
@@ -1629,7 +1635,7 @@ class RoomRun {
     const grid = compareGrid(this.messages)
     const latest = grid.questions.at(-1)
     if (!latest) {
-      await this.system(rt('askFirst'))
+      await this.note('askFirst')
       return
     }
     const chosen = activeParticipants(this.room).filter((p) =>
@@ -1716,7 +1722,7 @@ class RoomRun {
     if (outcome.kind === 'complete') {
       await this.save({ status: 'completed', stopReason, nextSpeakerId: null })
     } else {
-      await this.system(rt('synthesisFailed'))
+      await this.note('synthesisFailed')
       await this.save({ status: 'paused', stopReason: { kind: 'error', code: 'synthesis-failed', message: rt('synthesisCallFailed') } })
     }
   }
