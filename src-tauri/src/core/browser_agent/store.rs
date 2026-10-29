@@ -417,18 +417,23 @@ impl Store {
     pub fn take_action(&self, run: &str, cap: u32) -> Result<u32, u32> {
         let cap = cap.clamp(1, MAX_ACTIONS_CEILING);
         let mut g = lock(&self.inner);
-        if g.actions.len() >= MAX_RUN_COUNTERS {
+        if !g.actions.contains_key(run) && g.actions.len() >= MAX_RUN_COUNTERS {
             g.actions.retain(|_, (_, at)| at.elapsed() < Duration::from_secs(3600));
+            // Still full: evict only the least recently used run, never the
+            // whole map, so an in-flight run keeps its count (P3A-038).
             if g.actions.len() >= MAX_RUN_COUNTERS {
-                g.actions.clear();
+                let oldest = g.actions.iter().min_by_key(|(_, (_, at))| *at).map(|(k, _)| k.clone());
+                if let Some(k) = oldest {
+                    g.actions.remove(&k);
+                }
             }
         }
         let entry = g.actions.entry(run.to_string()).or_insert((0, Instant::now()));
+        entry.1 = Instant::now();
         if entry.0 >= cap {
             return Err(entry.0);
         }
         entry.0 += 1;
-        entry.1 = Instant::now();
         Ok(entry.0)
     }
 
@@ -728,6 +733,21 @@ mod tests {
             s.take_action("run-c", u32::MAX).unwrap();
         }
         assert_eq!(s.take_action("run-c", u32::MAX), Err(MAX_ACTIONS_CEILING));
+    }
+
+    #[test]
+    fn many_runs_do_not_reset_an_in_flight_count() {
+        let s = Store::default();
+        assert_eq!(s.take_action("busy", 3), Ok(1));
+        assert_eq!(s.take_action("busy", 3), Ok(2));
+        for i in 0..MAX_RUN_COUNTERS * 2 {
+            s.take_action(&format!("other-{i}"), 3).unwrap();
+            // Keep "busy" the most recently used run.
+            if i % 50 == 0 {
+                let _ = s.take_action("busy", 3);
+            }
+        }
+        assert_eq!(s.take_action("busy", 3), Err(3), "the busy run kept its count");
     }
 
     #[test]
