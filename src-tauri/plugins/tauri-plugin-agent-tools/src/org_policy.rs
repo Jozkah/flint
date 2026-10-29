@@ -268,8 +268,12 @@ fn program_data() -> PathBuf {
     while unsafe { *raw.add(len) } != 0 {
         len += 1;
     }
+    // SAFETY: the `len` wide chars before the terminator were just counted,
+    // all inside the string the shell allocated, which is freed only below.
     let wide = unsafe { std::slice::from_raw_parts(raw, len) };
     let path = std::ffi::OsString::from_wide(wide);
+    // SAFETY: `raw` came from SHGetKnownFolderPath, which asks the caller to
+    // free it with CoTaskMemFree; `wide` is not used after this.
     unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(raw as *mut _) };
     PathBuf::from(path)
 }

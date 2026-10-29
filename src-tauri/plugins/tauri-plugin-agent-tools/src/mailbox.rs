@@ -165,7 +165,9 @@ fn process_alive(pid: u32) -> bool {
             return std::io::Error::last_os_error().raw_os_error() == Some(5);
         }
         let mut code = 0u32;
+        // SAFETY: `handle` is non-null (checked above) and `code` is a local out-pointer.
         let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        // SAFETY: `handle` was opened above and is not used after this close.
         unsafe { CloseHandle(handle) };
         ok && code == 259
     }

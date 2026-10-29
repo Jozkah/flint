@@ -1125,6 +1125,7 @@ mod win {
         };
         const READ_CONTROL: u32 = 0x0002_0000;
         let name = wide(OsStr::new(r"\\.\NUL"));
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; null security attributes and template are allowed; the handle is checked below.
         let handle = unsafe {
             CreateFileW(
                 name.as_ptr(),
@@ -1140,6 +1141,7 @@ mod win {
             return None;
         }
         let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `handle` is valid (checked above); only the descriptor out-pointer is requested, and it is freed below.
         let status = unsafe {
             GetSecurityInfo(
                 handle,
@@ -1152,11 +1154,13 @@ mod win {
                 &mut sd,
             )
         };
+        // SAFETY: `handle` was opened above and is not used after this close.
         unsafe { CloseHandle(handle) };
         if status != ERROR_SUCCESS || sd.is_null() {
             return None;
         }
         let mut text: PWSTR = std::ptr::null_mut();
+        // SAFETY: `sd` is a non-null descriptor from GetSecurityInfo; `text` is a local out-pointer freed below.
         let ok = unsafe {
             ConvertSecurityDescriptorToStringSecurityDescriptorW(
                 sd,
@@ -1166,12 +1170,16 @@ mod win {
                 std::ptr::null_mut(),
             )
         };
+        // SAFETY: `sd` was allocated by GetSecurityInfo and is not used after this free.
         unsafe { LocalFree(sd as _) };
         if ok == 0 || text.is_null() {
             return None;
         }
+        // SAFETY: `text` is a non-null NUL-terminated string from the conversion; the scan stops at its terminator.
         let len = (0..).take_while(|&i| unsafe { *text.add(i) } != 0).count();
+        // SAFETY: `len` wide chars before the terminator were just counted, all inside `text`'s allocation.
         let sddl = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(text, len) });
+        // SAFETY: `text` was allocated by the conversion and is not used after this free.
         unsafe { LocalFree(text as _) };
         Some(sddl)
     }
@@ -1182,6 +1190,7 @@ mod win {
     impl Drop for ContainerSid {
         fn drop(&mut self) {
             if !self.0.is_null() {
+                // SAFETY: `self.0` is a non-null SID from the isolation APIs, owned by this value and freed only here.
                 unsafe { FreeSid(self.0) };
             }
         }
@@ -1190,6 +1199,7 @@ mod win {
     pub fn derive_sid(moniker: &str) -> Result<ContainerSid, String> {
         let name = wide(OsStr::new(moniker));
         let mut sid: PSID = std::ptr::null_mut();
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call; `sid` is a local out-pointer whose result ContainerSid owns.
         let hr = unsafe { DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut sid) };
         if hr < 0 || sid.is_null() {
             return Err(format!(
@@ -1207,6 +1217,7 @@ mod win {
         let display = wide(OsStr::new("Jan agent tools"));
         let description = wide(OsStr::new("Sandbox for the Jan agent's shell tool"));
         let mut sid: PSID = std::ptr::null_mut();
+        // SAFETY: the three strings are NUL-terminated and alive for the call; no capabilities are passed (null, 0); `sid` is a local out-pointer.
         let hr = unsafe {
             CreateAppContainerProfile(
                 name.as_ptr(),
@@ -1238,6 +1249,7 @@ mod win {
         let object = wide(path.as_os_str());
         let mut acl: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1251,7 +1263,9 @@ mod win {
             )
         };
         assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
+        // SAFETY: ACL_SIZE_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: `acl` points into `descriptor`, alive until the free below; pointer and size describe the local `info`.
         let ok = unsafe {
             GetAclInformation(
                 acl,
@@ -1264,16 +1278,20 @@ mod win {
         let mut found = false;
         for i in 0..info.AceCount {
             let mut ace: *mut c_void = std::ptr::null_mut();
+            // SAFETY: `i` is below AceCount and `ace` is a local out-pointer.
             if unsafe { GetAce(acl, i, &mut ace) } == 0 {
                 continue;
             }
             // Allowed and denied ACEs share this layout: header, mask, SID.
             let entry = ace as *const ACCESS_ALLOWED_ACE;
+            // SAFETY: test-only: GetAce succeeded, and the folders these tests make hold only basic allow/deny ACEs, which have this layout; addr_of! takes the field address without reading.
             let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
+            // SAFETY: `ace_sid` points at the SID inside the ACE and `sid` is a valid SID from the caller.
             if unsafe { EqualSid(ace_sid, sid) } != 0 {
                 found = true;
             }
         }
+        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `acl` points into it and is not used after this free.
         unsafe { LocalFree(descriptor) };
         found
     }
@@ -1290,6 +1308,7 @@ mod win {
         let object = wide(path.as_os_str());
         let mut acl: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1303,7 +1322,9 @@ mod win {
             )
         };
         assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
+        // SAFETY: ACL_SIZE_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: `acl` points into `descriptor`, alive until the free below; pointer and size describe the local `info`.
         let ok = unsafe {
             GetAclInformation(
                 acl,
@@ -1316,16 +1337,21 @@ mod win {
         let mut out = Vec::new();
         for i in 0..info.AceCount {
             let mut ace: *mut c_void = std::ptr::null_mut();
+            // SAFETY: `i` is below AceCount and `ace` is a local out-pointer.
             if unsafe { GetAce(acl, i, &mut ace) } == 0 {
                 continue;
             }
             let entry = ace as *const ACCESS_ALLOWED_ACE;
+            // SAFETY: test-only: GetAce succeeded, and the folders these tests make hold only basic allow/deny ACEs, which have this layout; addr_of! takes the field address without reading.
             let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
+            // SAFETY: `ace_sid` points at the SID inside the ACE and `sid` is a valid SID from the caller.
             if unsafe { EqualSid(ace_sid, sid) } != 0 {
+                // SAFETY: `entry` points at a basic ACE inside `acl`, alive until the free below.
                 let e = unsafe { &*entry };
                 out.push((e.Header.AceType, e.Header.AceFlags, e.Mask));
             }
         }
+        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `acl` points into it and is not used after this free.
         unsafe { LocalFree(descriptor) };
         out
     }
@@ -1338,6 +1364,7 @@ mod win {
         let object = wide(path.as_os_str());
         let mut acl: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1359,7 +1386,9 @@ mod win {
             ptstrName: sid as PWSTR,
         };
         let mut mask: u32 = 0;
+        // SAFETY: `acl` points into `descriptor`, still alive; `trustee` names the caller's valid SID; `mask` is a local out-pointer.
         let status = unsafe { GetEffectiveRightsFromAclW(acl, &trustee, &mut mask) };
+        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `acl` points into it and is not used after this free.
         unsafe { LocalFree(descriptor) };
         assert_eq!(status, ERROR_SUCCESS, "GetEffectiveRightsFromAclW");
         mask
@@ -1387,6 +1416,7 @@ mod win {
 
     pub fn delete_profile(moniker: &str) {
         let name = wide(OsStr::new(moniker));
+        // SAFETY: `name` is a NUL-terminated wide string alive for the call.
         unsafe { DeleteAppContainerProfile(name.as_ptr()) };
     }
 
@@ -1487,13 +1517,16 @@ mod win {
                 "Local\\JanAgentRoots.{:016x}",
                 super::fnv1a(key.as_bytes())
             )));
+            // SAFETY: null security attributes are allowed and `name` is a NUL-terminated wide string alive for the call; the handle is checked for null below.
             let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
             if handle.is_null() {
                 return Err(format!("could not open the grant lock: {}", last_error()));
             }
             // WAIT_ABANDONED (a holder died holding it) still grants ownership.
+            // SAFETY: `handle` is a valid mutex handle created above.
             let waited = unsafe { WaitForSingleObject(handle, 30_000) };
             if waited == WAIT_FAILED || waited == 0x102 {
+                // SAFETY: `handle` was created above and is not used after this close.
                 unsafe { CloseHandle(handle) };
                 return Err("timed out waiting for the grant lock".to_string());
             }
@@ -1504,6 +1537,7 @@ mod win {
     impl Drop for RecordLock {
         fn drop(&mut self) {
             use windows_sys::Win32::System::Threading::ReleaseMutex;
+            // SAFETY: `self.0` is the mutex this lock acquired (owned by this thread) and is closed only here.
             unsafe {
                 ReleaseMutex(self.0);
                 CloseHandle(self.0);
@@ -1542,6 +1576,7 @@ mod win {
             GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         };
         const STILL_ACTIVE: u32 = 259;
+        // SAFETY: the handle is checked for null before use, the out-pointers are locals, and the handle is closed once before returning.
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if handle.is_null() {
@@ -1714,6 +1749,7 @@ mod win {
         let mut object = wide(path.as_os_str());
         let mut existing: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1737,7 +1773,9 @@ mod win {
             if existing.is_null() {
                 return Err(format!("{} has no DACL to protect", path.display()));
             }
+            // SAFETY: ACL_SIZE_INFORMATION is a plain C struct of integers; all-zero is valid.
             let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
+            // SAFETY: `existing` is non-null (checked above) and points into `descriptor`; pointer and size describe the local `info`.
             if unsafe {
                 GetAclInformation(
                     existing,
@@ -1753,30 +1791,45 @@ mod win {
             let size = info.AclBytesInUse.max(std::mem::size_of::<ACL>() as u32);
             let mut buffer = vec![0u64; (size as usize).div_ceil(8)];
             let acl = buffer.as_mut_ptr() as *mut ACL;
+            // SAFETY: `buffer` is at least `size` bytes, 8-byte aligned (u64 elements), and outlives every use of `acl`.
             if unsafe { InitializeAcl(acl, size, ACL_REVISION) } == 0 {
                 return Err(format!("could not build the ACL: {}", last_error()));
             }
             for i in 0..info.AceCount {
                 let mut ace: *mut c_void = std::ptr::null_mut();
+                // SAFETY: `i` is below AceCount and `ace` is a local out-pointer.
                 if unsafe { GetAce(existing, i, &mut ace) } == 0 {
                     continue;
                 }
                 let header = ace as *mut ACE_HEADER;
-                // Allowed and denied ACEs share this layout: header, mask, SID.
-                let entry = ace as *const ACCESS_ALLOWED_ACE;
-                let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
-                if unsafe { EqualSid(ace_sid, sid) } != 0 {
-                    continue;
+                let (kind, flags, len) =
+                    // SAFETY: GetAce succeeded, so `ace` points at an ACE inside `existing`, which starts with an ACE_HEADER.
+                    unsafe { ((*header).AceType, (*header).AceFlags, (*header).AceSize) };
+                // Allowed, denied, audit and alarm ACEs (types 0-3) share this
+                // layout: header, mask, SID. Object ACEs keep their SID further
+                // in, and never name the container (only basic ACEs are added
+                // for it), so they are copied without a SID read.
+                if kind <= 3 {
+                    let entry = ace as *const ACCESS_ALLOWED_ACE;
+                    // SAFETY: `kind <= 3` limits this to basic ACEs, which have ACCESS_ALLOWED_ACE's layout; addr_of! takes the field address without reading.
+                    let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
+                    // SAFETY: `ace_sid` points at the SID inside a basic ACE and `sid` is a valid SID from the caller.
+                    if unsafe { EqualSid(ace_sid, sid) } != 0 {
+                        continue;
+                    }
                 }
-                let (flags, len) = unsafe { ((*header).AceFlags, (*header).AceSize) };
                 // Inherited ACEs become explicit: the DACL is protected now.
+                // SAFETY: `header` points into `descriptor`'s LocalAlloc'd memory, which this function owns and may write; the flag is restored below.
                 unsafe { (*header).AceFlags = flags & !(INHERITED_ACE as u8) };
+                // SAFETY: `acl` was initialised above with room for every kept ACE (they came from an ACL of at most this size); `ace` is `len` bytes long.
                 let added = unsafe { AddAce(acl, ACL_REVISION, u32::MAX, ace, len as u32) };
+                // SAFETY: same header as above, still inside the live descriptor; this restores its original flags.
                 unsafe { (*header).AceFlags = flags };
                 if added == 0 {
                     return Err(format!("could not copy an ACE: {}", last_error()));
                 }
             }
+            // SAFETY: `object` is a NUL-terminated wide string alive for the call and `acl` is the initialised ACL in `buffer`.
             let status = unsafe {
                 SetNamedSecurityInfoW(
                     object.as_mut_ptr(),
@@ -1797,6 +1850,7 @@ mod win {
             }
             Ok(())
         })();
+        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above; `existing` points into it and is not used after this free.
         unsafe { LocalFree(descriptor) };
         result
     }
@@ -1911,6 +1965,7 @@ mod win {
         const SE_DACL_PROTECTED: u16 = 0x1000;
         let object = wide(path.as_os_str());
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; only the descriptor is requested, and it is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1928,7 +1983,9 @@ mod win {
         }
         let mut control: u16 = 0;
         let mut revision: u32 = 0;
+        // SAFETY: `descriptor` is valid (the call above succeeded); `control` and `revision` are local out-pointers.
         let ok = unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) };
+        // SAFETY: `descriptor` came from GetNamedSecurityInfoW above and is not used after this free.
         unsafe { LocalFree(descriptor) };
         ok != 0 && control & SE_DACL_PROTECTED != 0
     }
@@ -1937,6 +1994,7 @@ mod win {
         let mut object = wide(path.as_os_str());
         let mut existing: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call; the out-pointers are locals and `descriptor` is freed below.
         let status = unsafe {
             GetNamedSecurityInfoW(
                 object.as_ptr(),
@@ -1979,8 +2037,10 @@ mod win {
         let mut merged: *mut ACL = std::ptr::null_mut();
         // GRANT_ACCESS merges into the existing DACL rather than replacing it, so
         // the user keeps their own access to the workspace.
+        // SAFETY: `access` is fully initialised and names the caller's valid SID; `existing` (possibly null, which is allowed) points into `descriptor`; `merged` is a local out-pointer.
         let status = unsafe { SetEntriesInAclW(1, &access, existing, &mut merged) };
         if status != ERROR_SUCCESS {
+            // SAFETY: `descriptor` came from GetNamedSecurityInfoW above and is not used after this free.
             unsafe { LocalFree(descriptor) };
             return Err(format!(
                 "could not build the workspace ACL: {}",
@@ -1988,6 +2048,7 @@ mod win {
             ));
         }
 
+        // SAFETY: `object` is a NUL-terminated wide string alive for the call and `merged` is the ACL SetEntriesInAclW built.
         let status = unsafe {
             SetNamedSecurityInfoW(
                 object.as_mut_ptr(),
@@ -1999,6 +2060,7 @@ mod win {
                 std::ptr::null_mut(),
             )
         };
+        // SAFETY: `merged` came from SetEntriesInAclW and `descriptor` from GetNamedSecurityInfoW; neither is used after this.
         unsafe {
             LocalFree(merged as *mut c_void);
             LocalFree(descriptor);
@@ -2037,6 +2099,7 @@ mod win {
     ) -> Result<SID_AND_ATTRIBUTES, String> {
         buffer.resize(SECURITY_MAX_SID_SIZE as usize, 0);
         let mut len = buffer.len() as u32;
+        // SAFETY: `buffer` was resized to SECURITY_MAX_SID_SIZE and `len` holds that size; a null domain SID is allowed for capability SIDs.
         let ok = unsafe {
             CreateWellKnownSid(
                 kind,
@@ -2071,8 +2134,10 @@ mod win {
                 .iter_mut()
                 .zip([STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE])
         {
+            // SAFETY: GetStdHandle takes a constant and returns this process's handle (or null/invalid, filtered below).
             let handle = unsafe { GetStdHandle(id) };
             if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                // SAFETY: `handle` is this process's own valid standard handle; only its inherit flag changes.
                 unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
                 *slot = handle;
             }
@@ -2100,12 +2165,15 @@ mod win {
     /// Best effort: a host that already confines us to a job it forbids nesting
     /// under should lose the reaping guarantee, not the tool.
     fn reap_children_with_this_process() {
+        // SAFETY: null security attributes and name are allowed; the handle is checked for null below.
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job.is_null() {
             return;
         }
+        // SAFETY: JOBOBJECT_EXTENDED_LIMIT_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: `job` is a live job handle; pointer and size describe `limits`, a local that outlives the call.
         let sized = unsafe {
             SetInformationJobObject(
                 job,
@@ -2115,11 +2183,13 @@ mod win {
             )
         };
         if sized == 0 {
+            // SAFETY: `job` was created above and is not used after this close.
             unsafe { CloseHandle(job) };
             return;
         }
         // The handle is deliberately leaked: the job must outlive this function
         // and close only when the process exits, which is what triggers the kill.
+        // SAFETY: `job` is a live job handle and GetCurrentProcess returns a pseudo-handle that needs no closing.
         unsafe { AssignProcessToJobObject(job, GetCurrentProcess()) };
     }
 
@@ -2247,6 +2317,7 @@ mod win {
         let mut buf = vec![0u16; 1024];
         loop {
             let len = buf.len() as u32;
+            // SAFETY: `short` is NUL-terminated and alive; `buf` holds `len` wide chars, the size passed, so the call cannot write past it.
             let n = unsafe { GetLongPathNameW(short.as_ptr(), buf.as_mut_ptr(), len) } as usize;
             if n == 0 {
                 return path.to_path_buf();
@@ -2419,11 +2490,15 @@ mod win {
         // Two calls: the first only reports the size, the second initializes the
         // buffer we just allocated for it.
         let mut size: usize = 0;
+        // SAFETY: a null list with a size out-pointer only asks for the needed size, written to the local `size`.
         unsafe {
             InitializeProcThreadAttributeList(std::ptr::null_mut(), attribute_count, 0, &mut size);
         }
-        let mut attribute_buffer = vec![0u8; size];
+        // usize elements: the list is pointer-aligned, which a u8 buffer is not
+        // guaranteed to be.
+        let mut attribute_buffer = vec![0usize; size.div_ceil(std::mem::size_of::<usize>())];
         let attributes = attribute_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+        // SAFETY: `attributes` points at a pointer-aligned buffer of at least `size` bytes that outlives the list (deleted below).
         if unsafe { InitializeProcThreadAttributeList(attributes, attribute_count, 0, &mut size) }
             == 0
         {
@@ -2437,6 +2512,7 @@ mod win {
             )
             .with_code(last_error_code()));
         }
+        // SAFETY: `attributes` is initialised; `security` and the capability SIDs it points into outlive the spawn, as the attribute list only borrows them.
         let applied = unsafe {
             UpdateProcThreadAttribute(
                 attributes,
@@ -2451,6 +2527,7 @@ mod win {
         if applied == 0 {
             let message = last_error();
             let code = last_error_code();
+            // SAFETY: `attributes` was initialised above and is not used after this delete.
             unsafe { DeleteProcThreadAttributeList(attributes) };
             return Err(LaunchFailure::new(
                 Stage::SandboxPolicy,
@@ -2461,6 +2538,7 @@ mod win {
         }
 
         if !inherited.is_empty() {
+            // SAFETY: `attributes` is initialised; `inherited` holds valid, distinct handles and outlives the spawn; the size covers exactly its elements.
             let listed = unsafe {
                 UpdateProcThreadAttribute(
                     attributes,
@@ -2475,6 +2553,7 @@ mod win {
             if listed == 0 {
                 let message = last_error();
                 let code = last_error_code();
+                // SAFETY: `attributes` was initialised above and is not used after this delete.
                 unsafe { DeleteProcThreadAttributeList(attributes) };
                 return Err(LaunchFailure::new(
                     Stage::SandboxPolicy,
@@ -2485,6 +2564,7 @@ mod win {
             }
         }
 
+        // SAFETY: STARTUPINFOEXW is a plain C struct of integers and pointers; all-zero is valid and the fields that matter are set next.
         let mut startup: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
         startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
         startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
@@ -2497,12 +2577,14 @@ mod win {
         // The workspace, or the managed worktree the run writes to. Either way
         // a directory the ACEs above were just granted on.
         let cwd = wide(req.start_dir.as_os_str());
+        // SAFETY: PROCESS_INFORMATION is a plain C struct; all-zero is valid as an out-parameter.
         let mut process: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
         // The environment is passed explicitly. A null pointer here means "give
         // the child the parent's environment", and the parent's is deliberately
         // stripped of the very names an AppContainer spawn resolves the
         // container's storage through -- which is what returned
         // ERROR_ENVVAR_NOT_FOUND (203) and no process at all.
+        // SAFETY: `line` is a mutable NUL-terminated command line, `env_block` a double-NUL-terminated UTF-16 block, `cwd` NUL-terminated; all, plus `startup` and its attribute list, outlive the call.
         let spawned = unsafe {
             CreateProcessW(
                 std::ptr::null(),
@@ -2522,6 +2604,7 @@ mod win {
                 &mut process,
             )
         };
+        // SAFETY: `attributes` was initialised above and is not used after this delete.
         unsafe { DeleteProcThreadAttributeList(attributes) };
         if spawned == 0 {
             let code = last_error_code();
@@ -2547,6 +2630,7 @@ mod win {
         }
 
         let code = wait_for(process.hProcess);
+        // SAFETY: CreateProcessW succeeded, so both handles are valid and owned here; neither is used after this close.
         unsafe {
             CloseHandle(process.hThread);
             CloseHandle(process.hProcess);
@@ -2571,6 +2655,7 @@ mod win {
     }
 
     fn wait_for(process: HANDLE) -> Result<i32, LaunchFailure> {
+        // SAFETY: `process` is the live process handle from CreateProcessW, closed only by the caller after this returns.
         if unsafe { WaitForSingleObject(process, INFINITE) } == WAIT_FAILED {
             return Err(LaunchFailure::new(
                 Stage::RuntimeStartup,
@@ -2580,6 +2665,7 @@ mod win {
             .with_code(last_error_code()));
         }
         let mut code: u32 = 0;
+        // SAFETY: `process` is the live process handle from CreateProcessW; `code` is a local out-pointer.
         if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
             return Err(LaunchFailure::new(
                 Stage::RuntimeStartup,
