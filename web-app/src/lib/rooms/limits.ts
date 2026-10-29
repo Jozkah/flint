@@ -12,6 +12,7 @@ import {
   ROOM_LIMIT_CEILINGS,
   type Participant,
   type Room,
+  type RoomNote,
   type RoomLimits,
   type RoomModelRef,
   type RoomUsage,
@@ -239,22 +240,28 @@ export function addCallUsage(
   }
 }
 
-/** Human text for a breach, used in the `system` message. */
-export function describeBreach(limit: LimitBreach): string {
+/** The note for a breach, as a `rooms:notes.*` key. */
+export function breachNote(limit: LimitBreach): RoomNote {
   switch (limit) {
     case 'ceiling':
-      return rt('breachCeiling')
+      return { key: 'breachCeiling' }
     case 'maxTurns':
-      return rt('breachTurns')
+      return { key: 'breachTurns' }
     case 'maxRounds':
-      return rt('breachRounds')
+      return { key: 'breachRounds' }
     case 'maxTotalTokens':
-      return rt('breachTokens')
+      return { key: 'breachTokens' }
     case 'maxDurationMs':
-      return rt('breachTime')
+      return { key: 'breachTime' }
     case 'maxCostUsd':
-      return rt('breachCost')
+      return { key: 'breachCost' }
     default:
-      return rt('breachOther', { limit })
+      return { key: 'breachOther', values: { limit: String(limit) } }
   }
+}
+
+/** Human text for a breach, used in the `system` message. */
+export function describeBreach(limit: LimitBreach): string {
+  const note = breachNote(limit)
+  return rt(note.key, note.values)
 }
