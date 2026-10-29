@@ -43,8 +43,9 @@ const BUILTIN_SCHEMAS_JSON: &str = include_str!("schemas/builtin.json");
 
 /// OpenAI function schemas for the built-in tools, in `BUILTIN_TOOLS` order.
 pub fn builtin_tool_schemas() -> Vec<Value> {
-    let mut schemas: Vec<Value> =
-        serde_json::from_str(BUILTIN_SCHEMAS_JSON).expect("schemas/builtin.json is valid JSON");
+    // Compile-time constant; the tests below parse it, so the empty fallback
+    // never triggers in a shipped build.
+    let mut schemas: Vec<Value> = serde_json::from_str(BUILTIN_SCHEMAS_JSON).unwrap_or_default();
     for schema in &mut schemas {
         let function = &mut schema["function"];
         let description = match function["name"].as_str() {

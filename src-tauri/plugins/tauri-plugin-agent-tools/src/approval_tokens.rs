@@ -125,10 +125,10 @@ pub fn verify(
     args: &serde_json::Value,
     approval: Option<ApprovalSource>,
 ) -> Result<Option<ApprovalSource>, String> {
-    if !needs_token(approval) {
-        return Ok(approval);
-    }
-    let approval_kind = approval.expect("needs_token implies Some");
+    let approval_kind = match approval {
+        Some(kind) if needs_token(approval) => kind,
+        _ => return Ok(approval),
+    };
     let binding = Binding::new(session, call_id, name, args, approval_kind);
     match token {
         Some(t) if tokens().redeem(t, &binding) => Ok(approval),
