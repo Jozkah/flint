@@ -475,6 +475,7 @@ const CARD_FILES: Record<string, string[]> = {
   data: ['containers/SettingsBackupCard.tsx'],
   'model-providers': ['containers/ModelDefaultsCard.tsx'],
   integrations: ['containers/ClaudeCodeSettings.tsx'],
+  'mcp-servers': ['containers/McpRuntimeSettings.tsx'],
 }
 
 /** Where each page's source lives, relative to `web-app/src`. */

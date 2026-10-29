@@ -464,3 +464,58 @@ describe('max tool output characters control', () => {
     expect(updateSettings).toHaveBeenCalledWith({ toolCallTimeoutSeconds: 45 })
   })
 })
+
+// Characterization of both server views, pinned before the card and row were
+// split out of the route (W01).
+describe('server card and list row', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getConnectedServers.mockResolvedValue([])
+    localStorage.removeItem('flint-mcp-servers-view')
+  })
+
+  it('card expands to show the stdio transport, command and args', async () => {
+    const Component = McpServersRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    const card = screen.getByTestId('mcp-server-NotesMCP')
+    expect(card).toHaveTextContent('NotesMCP')
+    expect(card).not.toHaveTextContent('Transport:')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'engine:mcp.moreActions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /mcp-servers:expandServer/ }))
+    expect(card).toHaveTextContent('Transport:')
+    expect(card).toHaveTextContent('mcp-servers:command: npx')
+    expect(card).toHaveTextContent('mcp-servers:args: notes')
+    expect(
+      screen.getByRole('button', { name: 'mcp-servers:editServer: NotesMCP' })
+    ).toBeInTheDocument()
+  })
+
+  it('list view renders one dense row with log, JSON and delete in its menu', async () => {
+    localStorage.setItem('flint-mcp-servers-view', 'list')
+    const Component = McpServersRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    const row = screen.getByTestId('mcp-server-NotesMCP')
+    expect(row.tagName).toBe('DIV')
+    expect(row).toHaveTextContent('stdio')
+    expect(
+      screen.getByRole('button', { name: 'mcp-servers:editServer: NotesMCP' })
+    ).toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'engine:mcp.moreActions' }))
+    expect(
+      await screen.findByRole('menuitem', { name: /mcp-servers:serverLog.title/ })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /mcp-servers:editJson.title/ })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /mcp-servers:deleteServer.title/ })
+    ).toBeInTheDocument()
+    localStorage.removeItem('flint-mcp-servers-view')
+  })
+})
