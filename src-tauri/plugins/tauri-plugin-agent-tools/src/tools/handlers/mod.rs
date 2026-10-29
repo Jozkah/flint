@@ -358,8 +358,8 @@ pub(crate) async fn execute_text(
                 edit(args, project_root, scratch, ctx.confine_writes, ctx.write_roots).await
             };
             if !out.starts_with("ERROR") {
-                if let Some((path, hash)) = record_seen(args, ctx).await {
-                    crate::shared_folder::tools::record_write(ctx, &path, &hash);
+                if let Some((path, _)) = record_seen(args, ctx).await {
+                    crate::shared_folder::tools::record_write(ctx, &path);
                 }
             }
             out

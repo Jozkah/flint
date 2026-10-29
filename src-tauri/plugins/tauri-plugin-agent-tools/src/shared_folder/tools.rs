@@ -20,10 +20,6 @@ fn identity(ctx: &ToolContext<'_>) -> Option<(Mailbox, String)> {
     Some((Mailbox::open(data), me.to_string()))
 }
 
-fn hex(hash: &[u8; 32]) -> String {
-    hash.iter().map(|b| format!("{b:02x}")).collect()
-}
-
 
 // -- file claims ------------------------------------------------------------
 
@@ -68,12 +64,11 @@ pub fn decide_record(
     table: &mut ClaimTable,
     me: &str,
     file: &str,
-    hash: &str,
     now: i64,
 ) {
     let Some(record) = mailbox.session(me) else { return };
     let claim = !record.shared.isolated && record.shared.folder_key.is_some();
-    table.record_write(me, file, hash, claim, now);
+    table.record_write(me, file, claim, now);
     super::announce(record.shared.folder_key, me, "claim");
 }
 
@@ -92,9 +87,9 @@ pub fn write_gate(ctx: &ToolContext<'_>, file: &Path, shown: &str) -> Option<Str
     held
 }
 
-pub fn record_write(ctx: &ToolContext<'_>, file: &Path, hash: &[u8; 32]) {
+pub fn record_write(ctx: &ToolContext<'_>, file: &Path) {
     let Some((mailbox, me)) = identity(ctx) else { return };
-    decide_record(&mailbox, &mut table(), &me, &path_key::file_key(file), &hex(hash), now_ms());
+    decide_record(&mailbox, &mut table(), &me, &path_key::file_key(file), now_ms());
 }
 
 pub fn note_read(ctx: &ToolContext<'_>, file: &Path) {
@@ -311,7 +306,7 @@ mod tests {
             let now = self.now();
             let held = decide_write(&self.mailbox, &mut self.table, me, &key, rel, now);
             if held.is_none() {
-                decide_record(&self.mailbox, &mut self.table, me, &key, "h", now);
+                decide_record(&self.mailbox, &mut self.table, me, &key, now);
             }
             held
         }
