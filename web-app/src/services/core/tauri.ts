@@ -10,7 +10,7 @@ import { DefaultCoreService } from './default'
 import { getBundledExtensions } from './bundled-extensions'
 
 export class TauriCoreService extends DefaultCoreService {
-  async invokeCommand<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
+  async invoke<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
     try {
       return await invokeCommand<T>(command, args)
     } catch (error) {
@@ -46,7 +46,7 @@ export class TauriCoreService extends DefaultCoreService {
   // App token
   async getAppToken(): Promise<string | null> {
     try {
-      const result = await this.invokeCommand<string | null>('app_token')
+      const result = await this.invoke<string | null>('app_token')
       return result
     } catch (error) {
       console.error('Error getting app token in Tauri:', error)
