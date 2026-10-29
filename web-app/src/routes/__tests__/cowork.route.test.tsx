@@ -1800,6 +1800,34 @@ describe('runRequest, characterized', () => {
     expect(useCoworkRun.getState().runs[SESSION]).toBeUndefined()
   })
 
+  it('refusal: a model that cannot call tools is refused before the run is claimed', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    const model = (useModelProvider as any).getState().selectedModel
+    const caps = model.capabilities
+    model.capabilities = []
+    try {
+      await renderRoute()
+      await send()
+      await waitFor(() => expect(h.toast.error).toHaveBeenCalled())
+      expect(trace).toEqual([])
+      expect(h.runTurn).not.toHaveBeenCalled()
+      expect(useCoworkRun.getState().runs[SESSION]).toBeUndefined()
+    } finally {
+      model.capabilities = caps
+    }
+  })
+
+  it('remote: a server session is sent there and never claims a local run', async () => {
+    seedSession({ turns: PRIOR_TURNS, remote: true })
+    await renderRoute()
+    await send()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(trace).toEqual([])
+    expect(h.runTurn).not.toHaveBeenCalled()
+  })
+
   it('tool call: dispatches through the real gate between budget and commit', async () => {
     seedSession({ turns: PRIOR_TURNS })
     h.runTurn.mockImplementation(async ({ deps }: any) => {
