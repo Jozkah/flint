@@ -82,6 +82,8 @@ const GREP_MAX_RESULTS: usize = 300;
 /// How long a `bash` call waits for the command before backgrounding it, when
 /// the caller doesn't specify `timeout`.
 const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
+/// Longest a foreground `bash` call may wait (the schema maximum).
+const MAX_FOREGROUND_BASH_TIMEOUT_SECS: u64 = 120;
 
 /// Counter for unique temp-file names for truncated bash output.
 static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
