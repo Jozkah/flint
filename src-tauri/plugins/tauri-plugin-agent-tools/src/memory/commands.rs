@@ -444,7 +444,16 @@ pub async fn memory_record_propose_inferred(
                 // every prompt while it waits, and `memory_proposals_list` is what
                 // the approval card reads.
                 let pending = inferred::as_pending(&proposal, reason);
-                super::store::upsert(&store_root, &pending).map_err(AgentToolsError::from)?;
+                let waiting = super::store::insert_pending(
+                    &store_root,
+                    &pending,
+                    super::create::MAX_RECORDS_PER_SCOPE,
+                )
+                .map_err(AgentToolsError::from)?;
+                // The same question already waiting: show that one, not a copy.
+                if let Some(id) = waiting {
+                    proposal.record.id = id;
+                }
                 return Ok(InferredOutcome::NeedsApproval {
                     proposal: Box::new(ProposalView::from(&proposal)),
                     reason,

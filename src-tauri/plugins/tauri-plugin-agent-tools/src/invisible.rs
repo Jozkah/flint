@@ -7,8 +7,10 @@
 //!
 //! The same set and the same rule live in `web-app/src/lib/invisibleText.ts`;
 //! both are tested against `tests/fixtures/invisible-unicode.json`, so they
-//! cannot drift apart. A zero-width joiner is in the set, so emoji sequences
-//! joined with one lose the joiner and show as separate emoji. Variation
+//! cannot drift apart. A single zero-width joiner or non-joiner between two
+//! visible non-ASCII characters is kept: Persian, Arabic and Indic text need
+//! it to spell words, and emoji sequences need it to join. Anywhere else (next
+//! to ASCII, or in a run of joiners) it is stripped. Variation
 //! selectors are stripped too, except FE0E/FE0F (text/emoji presentation), so
 //! an emoji keeps its look while a hidden payload in selectors is removed.
 
@@ -41,16 +43,26 @@ pub fn strip(text: &str) -> (String, usize) {
     if !text.chars().any(|c| is_invisible(c)) {
         return (text.to_string(), 0);
     }
+    let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     let mut removed = 0;
-    for (i, c) in text.char_indices() {
-        if is_invisible(c) && !(i == 0 && c == '\u{FEFF}') {
+    for (i, &c) in chars.iter().enumerate() {
+        let joiner_kept = matches!(c, '\u{200C}' | '\u{200D}')
+            && i > 0
+            && chars.get(i + 1).is_some_and(|&n| joinable(n))
+            && joinable(chars[i - 1]);
+        if is_invisible(c) && !(i == 0 && c == '\u{FEFF}') && !joiner_kept {
             removed += 1;
         } else {
             out.push(c);
         }
     }
     (out, removed)
+}
+
+/// A visible non-ASCII character a joiner may sit beside.
+fn joinable(c: char) -> bool {
+    !c.is_ascii() && !c.is_whitespace() && !is_invisible(c)
 }
 
 /// [`strip`] for call sites that only want the text.

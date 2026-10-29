@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -102,7 +102,7 @@ function ContextDiffSection({
     try {
       const list = await (onList
         ? onList(sessionId)
-        : invoke<PromptSnapshot[]>('agent_prompt_snapshots', { session: sessionId }))
+        : invokeCommand<PromptSnapshot[]>('agent_prompt_snapshots', { session: sessionId }))
       const previous = previousSnapshot(
         list.filter((s) => s.session === sessionId),
         snapshot.id
@@ -423,7 +423,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
       const fetcher =
         props.onFetch ??
         ((args: { snapshotId: string; session?: string; run?: string }) =>
-          invoke<PromptSnapshot[]>('agent_prompt_snapshots', {
+          invokeCommand<PromptSnapshot[]>('agent_prompt_snapshots', {
             snapshotId: args.snapshotId,
             session: args.session,
             run: args.run,

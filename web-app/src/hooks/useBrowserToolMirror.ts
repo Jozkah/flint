@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
 import { BROWSER_TOOL_EVENT } from '@/lib/browserTool'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 
@@ -117,7 +117,7 @@ type MirrorState = {
 }
 
 const defaultWatch = (watching: boolean) =>
-  invoke('browser_tool_watch', { watching })
+  invokeCommand('browser_tool_watch', { watching })
 
 /** Panels currently showing the agent's browser. */
 let watchers = 0

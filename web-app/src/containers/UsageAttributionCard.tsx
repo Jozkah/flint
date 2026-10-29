@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { toast } from 'sonner'
 import { Card } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -80,7 +80,7 @@ export function UsageAttributionCard() {
 
   useEffect(() => {
     if (served) return
-    invoke<Attribution>('get_usage_attribution', { since: WINDOW })
+    invokeCommand<Attribution>('get_usage_attribution', { since: WINDOW })
       .then(setData)
       .catch((e) => toast.error(errorText(e)))
   }, [served])

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import type { UIMessage } from '@ai-sdk/react'
 import { useNavigate } from '@tanstack/react-router'
-import { invoke } from '@tauri-apps/api/core'
 import { ExtensionTypeEnum, type VectorDBExtension } from '@janhq/core'
 import {
   memoryRecordGet,
@@ -484,7 +484,7 @@ export function WhatJanIsUsingPanel({
     setEvidence({ status: 'loading' })
     ;(async () => {
       try {
-        const found = await invoke<SnapshotRecord[]>('agent_prompt_snapshots', {
+        const found = await invokeCommand<SnapshotRecord[]>('agent_prompt_snapshots', {
           snapshotId,
           session: threadId,
         })

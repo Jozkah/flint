@@ -1,4 +1,4 @@
-import { invoke } from '@/lib/previewInvoke'
+import { invokeCommand } from '@/lib/backend'
 
 /**
  * Project plugins: packages under `<folder>/.jan/agent/plugins/<id>/` that add
@@ -136,7 +136,7 @@ export function pluginErrorText(t: Translate, error: unknown): string {
 
 async function call<T>(command: string, args: Record<string, unknown>): Promise<T> {
   try {
-    return await invoke<T>(command, args)
+    return await invokeCommand<T>(command, args)
   } catch (error) {
     throw toPluginError(error)
   }

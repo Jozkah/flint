@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { invokeCommand } from '@/lib/backend'
 import { Copy, Minus, Square, X } from 'lucide-react'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -26,7 +26,7 @@ export const WindowControls = () => {
   const setLayout = useTitlebarLayout((s) => s.setLayout)
 
   const refresh = useCallback(() => {
-    invoke<TitlebarLayout>('get_titlebar_layout')
+    invokeCommand<TitlebarLayout>('get_titlebar_layout')
       .then((l) => setLayout(sanitizeLayout(l)))
       .catch(() => setLayout(DEFAULT_TITLEBAR_LAYOUT))
   }, [setLayout])

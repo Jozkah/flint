@@ -2,8 +2,8 @@
  * Tauri Opener Service - Desktop implementation
  */
 
-import { invoke } from '@tauri-apps/api/core'
 import { openUrl as osOpenUrl } from '@tauri-apps/plugin-opener'
+import { invokeCommand } from '@/lib/backend'
 import { DefaultOpenerService } from './default'
 import { isExternalUrl } from './externalUrl'
 
@@ -29,7 +29,7 @@ export class TauriOpenerService extends DefaultOpenerService {
     mode: 'open' | 'reveal'
   ): Promise<void> {
     try {
-      await invoke('open_session_path', { roots: [...roots], path, mode })
+      await invokeCommand('open_session_path', { roots: [...roots], path, mode })
     } catch (error) {
       console.error(`Error trying to ${mode} a path in Tauri:`, error)
       throw error

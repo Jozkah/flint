@@ -8,8 +8,8 @@
  * DB), and loading them as well would put two owners on the same data.
  */
 
-import { invoke } from '@tauri-apps/api/core'
 import type { ExtensionManifest } from '@/lib/extension'
+import { invokeCommand } from '@/lib/backend'
 import type { InvokeArgs } from './types'
 import { DefaultCoreService } from './default'
 import { getBundledExtensions } from './bundled-extensions'
@@ -17,8 +17,8 @@ import { getBundledExtensions } from './bundled-extensions'
 const BROWSER_EXTENSIONS = ['@janhq/llamacpp-extension']
 
 export class BrowserCoreService extends DefaultCoreService {
-  async invoke<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
-    return invoke<T>(command, args)
+  async invokeCommand<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
+    return invokeCommand<T>(command, args)
   }
 
   async getActiveExtensions(): Promise<ExtensionManifest[]> {

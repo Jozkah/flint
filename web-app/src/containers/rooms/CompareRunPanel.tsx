@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from '@/lib/backend'
 import { Download, History, Play, RotateCcw, Rows3 } from 'lucide-react'
 import type { LiveTurn, Participant, Room, RoomJournalRecord } from '@/lib/rooms/types'
 import { compareRunOf } from '@/lib/rooms/types'
@@ -120,7 +120,7 @@ export function CompareRunPanel({
     const out = compareExport(room, messages)
     if (kind === 'save-md') {
       try {
-        const saved = await invoke<{ path: string } | null>('export_save_file', {
+        const saved = await invokeCommand<{ path: string } | null>('export_save_file', {
           ext: 'md',
           suggestedName: exportFileName(`${room.title} comparison`, 'md'),
           text: out.markdown,
