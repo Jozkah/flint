@@ -39,6 +39,19 @@ describe('newUserThreadContent — audio attachments', () => {
     expect(audioPart.input_audio).toEqual({ data: 'WlpaWg==', format: 'mp3' })
   })
 
+  it('derives the payload from the data URL when no base64 is stored', () => {
+    const media: Attachment[] = [
+      { name: 'a.wav', type: 'audio', audioFormat: 'wav', dataUrl: 'data:audio/wav;base64,QUFB' },
+      { name: 'p.png', type: 'image', mimeType: 'image/png', dataUrl: 'data:image/png;base64,UE5H' },
+      { name: 'v.mp4', type: 'video', mimeType: 'video/mp4', dataUrl: 'data:video/mp4;base64,VklE' },
+    ]
+    const msg = newUserThreadContent('t1', 'hi', media) as any
+    const by = (t: string) => msg.content.find((c: any) => c.type === t)
+    expect(by(ContentType.InputAudio).input_audio.data).toBe('QUFB')
+    expect(by(ContentType.Image).image_url.url).toBe('data:image/png;base64,UE5H')
+    expect(by(ContentType.InputVideo).input_video.data).toBe('VklE')
+  })
+
   it('skips audio attachments missing base64 or format', () => {
     const broken: Attachment = {
       name: 'broken.wav',

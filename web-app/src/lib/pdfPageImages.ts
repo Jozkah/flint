@@ -113,7 +113,6 @@ export async function renderPdfDocument(
     images.push(
       createImageAttachment({
         name: `${stem(name)}-page-${n}.png`,
-        base64,
         dataUrl,
         mimeType: 'image/png',
         size: Math.floor((base64.length * 3) / 4),
