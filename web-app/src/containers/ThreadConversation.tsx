@@ -1980,7 +1980,6 @@ export function ThreadConversation({
             name: `audio-${Date.now()}`,
             mimeType: file.mediaType,
             dataUrl: file.url,
-            base64,
             audioFormat: file.mediaType === 'audio/mpeg' ? 'mp3' : 'wav',
             size,
           })
@@ -1990,7 +1989,6 @@ export function ThreadConversation({
             name: `video-${Date.now()}`,
             mimeType: file.mediaType,
             dataUrl: file.url,
-            base64,
             size,
           })
         }
@@ -1998,7 +1996,6 @@ export function ThreadConversation({
           name: `image-${Date.now()}`,
           mimeType: file.mediaType,
           dataUrl: file.url,
-          base64,
           size,
         })
       })

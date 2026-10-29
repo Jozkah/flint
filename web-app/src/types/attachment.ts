@@ -17,7 +17,10 @@ export type Attachment = {
   processed?: boolean
   error?: string
 
-  // For images (before upload)
+  // Media content. New attachments hold only `dataUrl`; read the bytes with
+  // `attachmentBase64`, which also understands an attachment made before
+  // this change that holds a bare `base64` and no data URL.
+  /** @deprecated Kept only so older attachments still read; never written. */
   base64?: string
   dataUrl?: string
   mimeType?: string
@@ -37,11 +40,24 @@ export type Attachment = {
 }
 
 /**
+ * The base64 payload of a media attachment: derived from its data URL, or
+ * the `base64` an older attachment stored. Undefined when it has neither.
+ */
+export function attachmentBase64(
+  a: Pick<Attachment, 'base64' | 'dataUrl'>
+): string | undefined {
+  if (a.base64) return a.base64
+  const url = a.dataUrl
+  if (!url) return undefined
+  const comma = url.indexOf(',')
+  return comma === -1 ? undefined : url.slice(comma + 1) || undefined
+}
+
+/**
  * Helper to create image attachment
  */
 export function createImageAttachment(data: {
   name: string
-  base64: string
   dataUrl: string
   mimeType: string
   size: number
@@ -57,7 +73,6 @@ export function createImageAttachment(data: {
  */
 export function createAudioAttachment(data: {
   name: string
-  base64: string
   dataUrl: string
   mimeType: string
   audioFormat: 'wav' | 'mp3'
@@ -75,7 +90,6 @@ export function createAudioAttachment(data: {
  */
 export function createVideoAttachment(data: {
   name: string
-  base64: string
   dataUrl: string
   mimeType: string
   size: number

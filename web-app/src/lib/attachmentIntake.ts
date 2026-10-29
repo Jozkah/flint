@@ -1,4 +1,5 @@
 import {
+  attachmentBase64,
   createAudioAttachment,
   createImageAttachment,
   createVideoAttachment,
@@ -158,10 +159,9 @@ export async function prepareAudioFiles(
     const fmt: 'wav' | 'mp3' = isWav ? 'wav' : 'mp3'
     const mimeType = fmt === 'wav' ? 'audio/wav' : 'audio/mpeg'
     const dataUrl = await read(file)
-    const base64 = dataUrl.split(',')[1] ?? ''
+    const base64 = attachmentBase64({ dataUrl })
     const att = createAudioAttachment({
       name: file.name,
-      base64,
       dataUrl,
       mimeType,
       audioFormat: fmt,
@@ -198,10 +198,9 @@ export async function prepareVideoFiles(
       ? file.type
       : videoMimeForExt(ext)
     const dataUrl = await read(file)
-    const base64 = dataUrl.split(',')[1] ?? ''
+    const base64 = attachmentBase64({ dataUrl })
     const att = createVideoAttachment({
       name: file.name,
-      base64,
       dataUrl,
       mimeType,
       size: file.size,
@@ -281,14 +280,14 @@ export async function prepareImageFiles(
         name: file.name,
         size: file.size,
         mimeType: actualType,
-        base64: result.split(',')[1],
         dataUrl: result,
       })
     )
   }
   // Hashes let two different pictures share a file name.
   for (const att of prepared) {
-    if (att.base64) att.contentHash = await hash(att.base64)
+    const base64 = attachmentBase64(att)
+    if (base64) att.contentHash = await hash(base64)
   }
   return { prepared, unreadable }
 }
@@ -310,14 +309,18 @@ export async function splitNewByContent(
   for (const a of current) {
     if (a.type !== type) continue
     if (a.contentHash) existingHashes.add(a.contentHash)
-    else if (a.base64) existingHashes.add(await hash(a.base64))
-    else existingNames.add(a.name)
+    else {
+      const base64 = attachmentBase64(a)
+      if (base64) existingHashes.add(await hash(base64))
+      else existingNames.add(a.name)
+    }
   }
   const seenInBatch = new Set<string>()
   const fresh: Attachment[] = []
   const duplicates: string[] = []
   for (const att of prepared) {
-    const h = att.contentHash ?? (att.base64 ? await hash(att.base64) : undefined)
+    const base64 = att.contentHash ? undefined : attachmentBase64(att)
+    const h = att.contentHash ?? (base64 ? await hash(base64) : undefined)
     const dup =
       (h && (existingHashes.has(h) || seenInBatch.has(h))) ||
       existingNames.has(att.name)

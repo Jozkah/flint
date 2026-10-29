@@ -4,7 +4,34 @@ import {
   createDocumentAttachment,
   createAudioAttachment,
   attachmentsToIngestAsImages,
+  attachmentBase64,
 } from '../attachment'
+
+describe('attachmentBase64 (one stored format)', () => {
+  it('derives the payload from the data URL of a new attachment', () => {
+    const img = createImageAttachment({
+      name: 'a.png',
+      size: 3,
+      mimeType: 'image/png',
+      dataUrl: 'data:image/png;base64,QUJD',
+    })
+    expect('base64' in img).toBe(false)
+    expect(attachmentBase64(img)).toBe('QUJD')
+  })
+
+  it('still reads an older attachment that stored only base64', () => {
+    expect(attachmentBase64({ base64: 'T0xE' })).toBe('T0xE')
+    expect(
+      attachmentBase64({ base64: 'T0xE', dataUrl: 'data:image/png;base64,TkVX' })
+    ).toBe('T0xE')
+  })
+
+  it('is undefined with no content or a malformed URL', () => {
+    expect(attachmentBase64({})).toBeUndefined()
+    expect(attachmentBase64({ dataUrl: 'nocomma' })).toBeUndefined()
+    expect(attachmentBase64({ dataUrl: 'data:image/png;base64,' })).toBeUndefined()
+  })
+})
 
 // C025: a large paste becomes an inline text attachment; sending it to the
 // image ingest raised "attachment is not image" on every paste.
@@ -14,7 +41,6 @@ describe('attachmentsToIngestAsImages', () => {
       name: 'a.png',
       size: 1,
       mimeType: 'image/png',
-      base64: 'x',
       dataUrl: 'data:image/png;base64,x',
     })
     const doc = createDocumentAttachment({
@@ -29,14 +55,12 @@ describe('createImageAttachment', () => {
   it('returns an image-typed attachment with all provided fields', () => {
     const result = createImageAttachment({
       name: 'photo.png',
-      base64: 'AAA',
       dataUrl: 'data:image/png;base64,AAA',
       mimeType: 'image/png',
       size: 123,
     })
     expect(result).toEqual({
       name: 'photo.png',
-      base64: 'AAA',
       dataUrl: 'data:image/png;base64,AAA',
       mimeType: 'image/png',
       size: 123,
@@ -77,7 +101,6 @@ describe('createAudioAttachment', () => {
   it('returns an audio-typed attachment with wav format', () => {
     const result = createAudioAttachment({
       name: 'clip.wav',
-      base64: 'QkJC',
       dataUrl: 'data:audio/wav;base64,QkJC',
       mimeType: 'audio/wav',
       audioFormat: 'wav',
@@ -86,7 +109,6 @@ describe('createAudioAttachment', () => {
     })
     expect(result).toEqual({
       name: 'clip.wav',
-      base64: 'QkJC',
       dataUrl: 'data:audio/wav;base64,QkJC',
       mimeType: 'audio/wav',
       audioFormat: 'wav',
@@ -99,7 +121,6 @@ describe('createAudioAttachment', () => {
   it('supports mp3 format and omits durationSec when unknown', () => {
     const result = createAudioAttachment({
       name: 'song.mp3',
-      base64: 'YWFh',
       dataUrl: 'data:audio/mpeg;base64,YWFh',
       mimeType: 'audio/mpeg',
       audioFormat: 'mp3',
