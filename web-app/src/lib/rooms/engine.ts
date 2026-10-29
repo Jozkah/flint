@@ -305,6 +305,32 @@ function truncate(text: string): string {
     : text
 }
 
+/** A tool call that already ran in an earlier attempt of the turn. */
+type ToolRun = { name: string; args?: unknown }
+
+type ModelTurnArgs = {
+  author: RoomAuthor
+  speaker: SpeakerIdentity
+  model: RoomModelRef
+  kind: RoomMessage['kind']
+  instruction: string | null
+  participant?: Participant
+  finalize?: Finalize
+}
+
+/** The retry state of one model turn, carried across its attempts. */
+type TurnAttempts = {
+  shrink: boolean
+  priorTools: ToolRun[]
+  attempt: number
+  busyWaitedMs: number
+  busyTries: number
+  instruction: string | null
+  built: BuiltPrompt
+}
+
+type StreamReplyResult = Awaited<ReturnType<EngineDeps['streamReply']>>
+
 class RoomRun {
   room!: Room
   records: RoomJournalRecord[] = []
@@ -772,15 +798,7 @@ class RoomRun {
    * One model turn: turn-start record, streamed call with retries, then
    * exactly one message closing the turn.
    */
-  async modelTurn(args: {
-    author: RoomAuthor
-    speaker: SpeakerIdentity
-    model: RoomModelRef
-    kind: RoomMessage['kind']
-    instruction: string | null
-    participant?: Participant
-    finalize?: Finalize
-  }): Promise<TurnOutcome> {
+  async modelTurn(args: ModelTurnArgs): Promise<TurnOutcome> {
     const turnId = this.deps.newId()
     const round = this.room.round
     await this.append({ type: 'turn-start', turnId, speaker: args.author, round, at: this.deps.now() })
@@ -825,51 +843,22 @@ class RoomRun {
           // The card then shows everything since the workspace was made.
         }
       }
-      const toolContext =
-        args.participant &&
-        args.participant.toolAccess !== 'none' &&
-        // Guard against a model whose tools capability changed after the
-        // participant was saved: sending tools to a model that cannot use them
-        // is a provider error that would suspend the participant.
-        modelSupportsTools(args.participant.model, this.lookup)
-          ? {
-              roomId: this.roomId,
-              // An isolated writer works in its own copy, and only there: the
-              // shared extra folders would let two writers collide again.
-              folder: workspace ?? this.room.folder ?? null,
-              extraFolders: workspace ? [] : (this.room.extraFolders ?? []),
-              // Writers read only in compare mode unless isolated (see
-              // turnToolAccess).
-              access: turnToolAccess(this.room, args.participant.toolAccess, workspace !== null),
-              participantName: args.participant.name,
-              participantId: args.participant.id,
-              ...(this.room.toolBudget ? { budget: this.room.toolBudget } : {}),
-              ...(args.participant.disabledTools?.length
-                ? { disabledTools: args.participant.disabledTools }
-                : {}),
-              holdLabel: () => (this.signal.aborted && (this.opts.intent?.() ?? 'pause') === 'pause' ? 'room paused' : null),
-              // What the room can still spend, for a subagent's budget.
-              tokenBudget: Math.max(
-                0,
-                clampLimits(this.room.limits).maxTotalTokens -
-                  (this.room.usage.inputTokens + this.room.usage.outputTokens)
-              ),
-            }
-          : undefined
-
-      let shrink = false
-      // Tools that ran in earlier attempts of this turn (each attempt resets live.tools).
-      let priorTools: Array<{ name: string; args?: unknown }> = []
-      let attempt = 0
-      // Time spent waiting for a busy local model slot this turn.
-      let busyWaitedMs = 0
-      let busyTries = 0
+      const toolContext = this.buildToolContext(args.participant, workspace)
       const toolsInfo =
         toolContext && args.participant
           ? { id: args.participant.id, access: toolContext.access }
           : null
-      let instruction = args.instruction
-      let built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo, live)
+      const st: TurnAttempts = {
+        shrink: false,
+        // Tools that ran in earlier attempts of this turn (each attempt resets live.tools).
+        priorTools: [],
+        attempt: 0,
+        // Time spent waiting for a busy local model slot this turn.
+        busyWaitedMs: 0,
+        busyTries: 0,
+        instruction: args.instruction,
+        built: await this.prompt(args.speaker, args.model, args.instruction, false, toolsInfo, live),
+      }
       let completed: { raw: string; message: RoomMessage } | null = null
 
       while (!completed) {
@@ -889,58 +878,18 @@ class RoomRun {
           return { kind: 'failed', message }
         }
         this.calls++
-        attempt++
+        st.attempt++
         live.text = ''
-        priorTools = [...priorTools, ...(((live as LiveTurn).tools ?? []) as typeof priorTools)]
+        st.priorTools = [...st.priorTools, ...(((live as LiveTurn).tools ?? []) as ToolRun[])]
         live.tools = undefined
         live.activity = undefined
-        // Time spent actually writing: the gaps between streamed pieces of text,
-        // not the waits for a tool or an approval in between.
-        let lastDeltaAt = 0
-        let streamedMs = 0
-        const tick = () => {
-          const at = this.deps.now()
-          if (lastDeltaAt && at - lastDeltaAt < STREAM_GAP_MS) streamedMs += at - lastDeltaAt
-          lastDeltaAt = at
-        }
         try {
-          const res = await this.deps.streamReply({
-            model: args.model,
-            ...(args.participant?.reasoning
-              ? { reasoning: args.participant.reasoning }
-              : {}),
-            ...(args.participant && participantSampling(args.participant)
-              ? { sampling: participantSampling(args.participant) }
-              : {}),
-            system: built.system,
-            messages: built.messages,
-            maxOutputTokens: this.maxOutputTokens(),
-            ...(toolContext
-              ? { contextBudget: { window: this.contextWindow(args.model) } }
-              : {}),
-            signal: this.signal,
-            onStreamActivity: tick,
-            onText: (delta) => {
-              tick()
-              live.text += delta
-              this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
-            },
-            ...(toolContext ? { toolContext } : {}),
-            onToolActivity: (a) => {
-              if (a.running) {
-                live.activity = { name: a.name, args: a.args }
-              } else {
-                live.activity = undefined
-                live.tools = [...(live.tools ?? []), a]
-              }
-              this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
-            },
-          })
+          const { res, streamedMs } = await this.streamOnce(args, st.built, live, toolContext)
           if (this.signal.aborted) throw new RunAborted()
           const raw = cleanReply(typeof res.text === 'string' ? res.text : live.text)
           const usage = measureCall({
             providerUsage: res.usage,
-            promptText: built.promptText,
+            promptText: st.built.promptText,
             replyText: raw,
           })
           this.room = { ...this.room, usage: addCallUsage(this.room.usage, usage, pricing) }
@@ -948,7 +897,7 @@ class RoomRun {
           // What a tool turn grew past its prompt (definitions and results), as
           // the provider counted it, sizes the room left for the next one.
           if (args.participant && res.toolActivity?.length && !usage.estimated) {
-            const sample = Math.max(0, usage.inputTokens - estimateTokens(built.promptText))
+            const sample = Math.max(0, usage.inputTokens - estimateTokens(st.built.promptText))
             const samples = this.toolGrowth.get(args.participant.id) ?? []
             this.toolGrowth.set(args.participant.id, [...samples, sample].slice(-GROWTH_SAMPLES))
           }
@@ -975,155 +924,14 @@ class RoomRun {
           // too, and their finalize does not clean the text). Detection of it
           // stays with the speech turn, on the raw reply.
           message.text = stripConclusion(message.text).text
-          if (workspace && args.participant && this.deps.workspace) {
-            try {
-              const files = await this.deps.workspace.changes(this.roomId, args.participant.id, 'turn')
-              if (files.length) {
-                const all = await this.deps.workspace
-                  .changes(this.roomId, args.participant.id, 'all')
-                  .catch(() => files)
-                message.changes = {
-                  files,
-                  workspace,
-                  ...(sameFiles(all, files) ? {} : { cumulative: all }),
-                }
-              }
-            } catch {
-              // No change card; the turn itself stands.
-            }
-          } else if (res.toolActivity?.length) {
-            const files = changesFromToolCalls(res.toolActivity)
-            if (files.length) message.changes = { files }
-          }
+          await this.recordChanges(message, workspace, args.participant, res.toolActivity)
           // Stored after the provider `try`: a write failure is a persistence
           // error, never a provider error to classify or retry.
           completed = { raw, message }
         } catch (e) {
-          if (isRoomPersistenceError(e)) throw e
-          if (e instanceof RunAborted || isAbortLike(e, this.signal)) {
-            this.recordPartialUsage(built, live.text, pricing)
-            await this.appendMessage(
-              this.message({ ...base, text: live.text, status: 'interrupted' })
-            )
-            throw new RunAborted()
-          }
-          const err = toRoomCallError(e, this.signal)
-
-          if (err.kind === 'overflow' && !shrink) {
-            // The provider refused the request for length: compact harder and
-            // send it once more, planning against the window it named.
-            shrink = true
-            this.learnWindow(args.model, err.contextLimit)
-            // Tools that already ran lost their results with the request. Say
-            // so, so the retry does not repeat work that changed something.
-            const ranTools = [...priorTools, ...(((live as LiveTurn).tools ?? []) as typeof priorTools)]
-            if (ranTools.length) {
-              instruction = ranToolsInstruction(
-                instruction,
-                ranTools,
-                rt('ranToolsDropped')
-              )
-            }
-            built = await this.prompt(args.speaker, args.model, instruction, true, toolsInfo, live)
-            continue
-          }
-
-          if (err.kind === 'busy') {
-            // Every slot of the local engine is taken (another participant's
-            // model holds it). Wait and try again, up to a minute; the call never
-            // happened, so it does not count toward the ceiling.
-            this.calls--
-            const delay = Math.min(BUSY_BACKOFF_MAX_MS, BUSY_BACKOFF_START_MS * 2 ** busyTries++)
-            if (busyWaitedMs + delay <= BUSY_WAIT_MAX_MS) {
-              busyWaitedMs += delay
-              const sleep = this.deps.sleep ?? waitFor
-              const waited = await sleep(delay, this.signal)
-              if (!waited || this.signal.aborted) {
-                await this.appendMessage(this.message({ ...base, text: '', status: 'interrupted' }))
-                throw new RunAborted()
-              }
-              continue
-            }
-          }
-
-          if (
-            (err.kind === 'load-failed' || err.kind === 'unavailable' || err.kind === 'busy') &&
-            args.participant
-          ) {
-            const message = await this.appendMessage(
-              this.message({
-                ...base,
-                text: '',
-                status: 'failed',
-                error: { code: err.code, message: err.message },
-              })
-            )
-            this.room = markUnavailable(
-              this.room,
-              args.participant.id,
-              err.kind === 'load-failed' || err.kind === 'busy' ? err.kind : 'provider-missing',
-              err.message,
-              this.deps.now()
-            )
-            await this.system(`${args.participant.name} is unavailable: ${err.message}`)
-            return { kind: 'failed', message }
-          }
-
-          if (live.text) {
-            this.recordPartialUsage(built, live.text, pricing)
-            const message = await this.appendMessage(
-              this.message({
-                ...base,
-                text: live.text,
-                status: 'interrupted',
-                error: { code: err.code, message: err.message },
-              })
-            )
-            await this.noteError(args.participant)
-            return { kind: 'interrupted', message }
-          }
-
-          if (err.kind === 'provider') {
-            const decision = decideRetry({
-              facts: err.facts,
-              attempt,
-              maxAttempts: MAX_ATTEMPTS,
-              now: this.deps.now(),
-              random: this.deps.random,
-            })
-            if (decision.retry) {
-              // A step that already ran tools must not run them again unasked.
-              const ranTools = [...priorTools, ...(((live as LiveTurn).tools ?? []) as typeof priorTools)]
-              const sleep = this.deps.sleep ?? waitFor
-              const waited = await sleep(decision.delayMs, this.signal)
-              if (!waited || this.signal.aborted) {
-                await this.appendMessage(
-                  this.message({ ...base, text: '', status: 'interrupted' })
-                )
-                throw new RunAborted()
-              }
-              if (ranTools.length) {
-                instruction = ranToolsInstruction(
-                  instruction,
-                  ranTools,
-                  rt('ranToolsRetry')
-                )
-                built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo, live)
-              }
-              continue
-            }
-          }
-
-          const message = await this.appendMessage(
-            this.message({
-              ...base,
-              text: '',
-              status: 'failed',
-              error: { code: err.code, message: err.message },
-            })
-          )
-          await this.noteError(args.participant)
-          return { kind: 'failed', message }
+          const next = await this.handleTurnError(e, { args, base, live, pricing, toolsInfo, st })
+          if (next === 'retry') continue
+          return next
         }
       }
 
@@ -1152,6 +960,270 @@ class RoomRun {
     } finally {
       this.emit({ type: 'live', roomId: this.roomId, live: null, turnId })
     }
+  }
+
+  /**
+   * The turn's tool context, or undefined when the participant runs without
+   * tools. File tools need the room's folder; web tools do not, so a
+   * participant can research even with no folder attached.
+   */
+  buildToolContext(participant: Participant | undefined, workspace: string | null) {
+    return participant &&
+      participant.toolAccess !== 'none' &&
+      // Guard against a model whose tools capability changed after the
+      // participant was saved: sending tools to a model that cannot use them
+      // is a provider error that would suspend the participant.
+      modelSupportsTools(participant.model, this.lookup)
+      ? {
+          roomId: this.roomId,
+          // An isolated writer works in its own copy, and only there: the
+          // shared extra folders would let two writers collide again.
+          folder: workspace ?? this.room.folder ?? null,
+          extraFolders: workspace ? [] : (this.room.extraFolders ?? []),
+          // Writers read only in compare mode unless isolated (see
+          // turnToolAccess).
+          access: turnToolAccess(this.room, participant.toolAccess, workspace !== null),
+          participantName: participant.name,
+          participantId: participant.id,
+          ...(this.room.toolBudget ? { budget: this.room.toolBudget } : {}),
+          ...(participant.disabledTools?.length
+            ? { disabledTools: participant.disabledTools }
+            : {}),
+          holdLabel: () => (this.signal.aborted && (this.opts.intent?.() ?? 'pause') === 'pause' ? 'room paused' : null),
+          // What the room can still spend, for a subagent's budget.
+          tokenBudget: Math.max(
+            0,
+            clampLimits(this.room.limits).maxTotalTokens -
+              (this.room.usage.inputTokens + this.room.usage.outputTokens)
+          ),
+        }
+      : undefined
+  }
+
+  /**
+   * One streamed call for the turn. Returns the reply and the time spent
+   * actually writing: the gaps between streamed pieces of text, not the waits
+   * for a tool or an approval in between.
+   */
+  async streamOnce(
+    args: ModelTurnArgs,
+    built: BuiltPrompt,
+    live: LiveTurn,
+    toolContext: ReturnType<RoomRun['buildToolContext']>
+  ): Promise<{ res: StreamReplyResult; streamedMs: number }> {
+    let lastDeltaAt = 0
+    let streamedMs = 0
+    const tick = () => {
+      const at = this.deps.now()
+      if (lastDeltaAt && at - lastDeltaAt < STREAM_GAP_MS) streamedMs += at - lastDeltaAt
+      lastDeltaAt = at
+    }
+    const res = await this.deps.streamReply({
+      model: args.model,
+      ...(args.participant?.reasoning
+        ? { reasoning: args.participant.reasoning }
+        : {}),
+      ...(args.participant && participantSampling(args.participant)
+        ? { sampling: participantSampling(args.participant) }
+        : {}),
+      system: built.system,
+      messages: built.messages,
+      maxOutputTokens: this.maxOutputTokens(),
+      ...(toolContext
+        ? { contextBudget: { window: this.contextWindow(args.model) } }
+        : {}),
+      signal: this.signal,
+      onStreamActivity: tick,
+      onText: (delta) => {
+        tick()
+        live.text += delta
+        this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
+      },
+      ...(toolContext ? { toolContext } : {}),
+      onToolActivity: (a) => {
+        if (a.running) {
+          live.activity = { name: a.name, args: a.args }
+        } else {
+          live.activity = undefined
+          live.tools = [...(live.tools ?? []), a]
+        }
+        this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
+      },
+    })
+    return { res, streamedMs }
+  }
+
+  /** Attach the turn's change card: the isolated workspace's diff, or the files its tools wrote. */
+  async recordChanges(
+    message: RoomMessage,
+    workspace: string | null,
+    participant: Participant | undefined,
+    toolActivity: StreamReplyResult['toolActivity']
+  ) {
+    if (workspace && participant && this.deps.workspace) {
+      try {
+        const files = await this.deps.workspace.changes(this.roomId, participant.id, 'turn')
+        if (files.length) {
+          const all = await this.deps.workspace
+            .changes(this.roomId, participant.id, 'all')
+            .catch(() => files)
+          message.changes = {
+            files,
+            workspace,
+            ...(sameFiles(all, files) ? {} : { cumulative: all }),
+          }
+        }
+      } catch {
+        // No change card; the turn itself stands.
+      }
+    } else if (toolActivity?.length) {
+      const files = changesFromToolCalls(toolActivity)
+      if (files.length) message.changes = { files }
+    }
+  }
+
+  /**
+   * Decide what a failed call means for the turn: `'retry'` (after compacting
+   * harder, waiting for a busy slot, or a provider backoff) or the outcome that
+   * closes the turn. Throws on abort and on persistence errors.
+   */
+  async handleTurnError(
+    e: unknown,
+    t: {
+      args: ModelTurnArgs
+      base: Pick<RoomMessage, 'turnId' | 'author' | 'kind' | 'round'>
+      live: LiveTurn
+      pricing: Participant['pricing']
+      toolsInfo: { id: string; access: ToolAccess } | null
+      st: TurnAttempts
+    }
+  ): Promise<'retry' | TurnOutcome> {
+    const { args, base, live, pricing, toolsInfo, st } = t
+    if (isRoomPersistenceError(e)) throw e
+    if (e instanceof RunAborted || isAbortLike(e, this.signal)) {
+      this.recordPartialUsage(st.built, live.text, pricing)
+      await this.appendMessage(
+        this.message({ ...base, text: live.text, status: 'interrupted' })
+      )
+      throw new RunAborted()
+    }
+    const err = toRoomCallError(e, this.signal)
+
+    if (err.kind === 'overflow' && !st.shrink) {
+      // The provider refused the request for length: compact harder and
+      // send it once more, planning against the window it named.
+      st.shrink = true
+      this.learnWindow(args.model, err.contextLimit)
+      // Tools that already ran lost their results with the request. Say
+      // so, so the retry does not repeat work that changed something.
+      const ranTools = [...st.priorTools, ...(((live as LiveTurn).tools ?? []) as ToolRun[])]
+      if (ranTools.length) {
+        st.instruction = ranToolsInstruction(
+          st.instruction,
+          ranTools,
+          rt('ranToolsDropped')
+        )
+      }
+      st.built = await this.prompt(args.speaker, args.model, st.instruction, true, toolsInfo, live)
+      return 'retry'
+    }
+
+    if (err.kind === 'busy') {
+      // Every slot of the local engine is taken (another participant's
+      // model holds it). Wait and try again, up to a minute; the call never
+      // happened, so it does not count toward the ceiling.
+      this.calls--
+      const delay = Math.min(BUSY_BACKOFF_MAX_MS, BUSY_BACKOFF_START_MS * 2 ** st.busyTries++)
+      if (st.busyWaitedMs + delay <= BUSY_WAIT_MAX_MS) {
+        st.busyWaitedMs += delay
+        const sleep = this.deps.sleep ?? waitFor
+        const waited = await sleep(delay, this.signal)
+        if (!waited || this.signal.aborted) {
+          await this.appendMessage(this.message({ ...base, text: '', status: 'interrupted' }))
+          throw new RunAborted()
+        }
+        return 'retry'
+      }
+    }
+
+    if (
+      (err.kind === 'load-failed' || err.kind === 'unavailable' || err.kind === 'busy') &&
+      args.participant
+    ) {
+      const message = await this.appendMessage(
+        this.message({
+          ...base,
+          text: '',
+          status: 'failed',
+          error: { code: err.code, message: err.message },
+        })
+      )
+      this.room = markUnavailable(
+        this.room,
+        args.participant.id,
+        err.kind === 'load-failed' || err.kind === 'busy' ? err.kind : 'provider-missing',
+        err.message,
+        this.deps.now()
+      )
+      await this.system(`${args.participant.name} is unavailable: ${err.message}`)
+      return { kind: 'failed', message }
+    }
+
+    if (live.text) {
+      this.recordPartialUsage(st.built, live.text, pricing)
+      const message = await this.appendMessage(
+        this.message({
+          ...base,
+          text: live.text,
+          status: 'interrupted',
+          error: { code: err.code, message: err.message },
+        })
+      )
+      await this.noteError(args.participant)
+      return { kind: 'interrupted', message }
+    }
+
+    if (err.kind === 'provider') {
+      const decision = decideRetry({
+        facts: err.facts,
+        attempt: st.attempt,
+        maxAttempts: MAX_ATTEMPTS,
+        now: this.deps.now(),
+        random: this.deps.random,
+      })
+      if (decision.retry) {
+        // A step that already ran tools must not run them again unasked.
+        const ranTools = [...st.priorTools, ...(((live as LiveTurn).tools ?? []) as ToolRun[])]
+        const sleep = this.deps.sleep ?? waitFor
+        const waited = await sleep(decision.delayMs, this.signal)
+        if (!waited || this.signal.aborted) {
+          await this.appendMessage(
+            this.message({ ...base, text: '', status: 'interrupted' })
+          )
+          throw new RunAborted()
+        }
+        if (ranTools.length) {
+          st.instruction = ranToolsInstruction(
+            st.instruction,
+            ranTools,
+            rt('ranToolsRetry')
+          )
+          st.built = await this.prompt(args.speaker, args.model, st.instruction, st.shrink, toolsInfo, live)
+        }
+        return 'retry'
+      }
+    }
+
+    const message = await this.appendMessage(
+      this.message({
+        ...base,
+        text: '',
+        status: 'failed',
+        error: { code: err.code, message: err.message },
+      })
+    )
+    await this.noteError(args.participant)
+    return { kind: 'failed', message }
   }
 
   recordPartialUsage(built: BuiltPrompt, text: string, pricing: Participant['pricing']) {
