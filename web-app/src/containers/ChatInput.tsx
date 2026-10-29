@@ -2009,7 +2009,10 @@ const ChatInput = memo(function ChatInput({
     const attachmentToRemove = attachments[indexToRemove]
     if (!attachmentToRemove) return
     // If attachment was ingested (has an ID), delete it from the backend
-    if (!(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId)))
+    if (
+      attachmentToRemove.id &&
+      !(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId))
+    )
       return
     setAttachmentsForThread(attachmentsKey, (prev) =>
       withoutAttachment(prev, attachmentToRemove)
