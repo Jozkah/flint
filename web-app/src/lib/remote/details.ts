@@ -92,6 +92,9 @@ export const MAX_TOOL_TEXT = 1500
 /** A reply's reasoning, as much as a phone needs to follow it. */
 export const MAX_REASONING = 6000
 
+/** How much of a tool value is scanned for media before it is cut. */
+const SCAN_LIMIT = 16_384
+
 const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text)
 
 function clipped(value: unknown): string | undefined {
@@ -105,6 +108,8 @@ function clipped(value: unknown): string | undefined {
       return undefined
     }
   }
+  // Only the start is ever shown: scan a bounded prefix, not megabytes.
+  if (text.length > SCAN_LIMIT) text = text.slice(0, SCAN_LIMIT)
   // Inline media would be megabytes of base64 and nothing a phone can read.
   text = text.replace(/data:[a-z]+\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]{64,}/gi, '[media]')
   return text.trim() ? cut(text, MAX_TOOL_TEXT) : undefined

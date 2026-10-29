@@ -35,14 +35,28 @@ export function selectShortList(
   return out
 }
 
+/**
+ * A variant's quant family as a stable key (`full`, `compact`, `bit-4`,
+ * `other`); `quantFamilyLabel` words it. The keys sort in the order the
+ * headings are shown.
+ */
 export function quantFamily(quantization: string | null): string {
-  if (!quantization) return 'Other'
+  if (!quantization) return 'other'
   const q = quantization.toUpperCase()
-  if (/^(BF16|F16|F32|FP16)/.test(q)) return 'Full precision'
-  if (/^IQ/.test(q)) return 'Compact (IQ)'
+  if (/^(BF16|F16|F32|FP16)/.test(q)) return 'full'
+  if (/^IQ/.test(q)) return 'compact'
   const match = q.match(/^Q(\d)/)
-  if (match) return `${match[1]}-bit`
-  return 'Other'
+  if (match) return `bit-${match[1]}`
+  return 'other'
+}
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+/** The heading for a `quantFamily` key, in the person's language. */
+export function quantFamilyLabel(key: string, t: Translate): string {
+  const bits = /^bit-(\d)$/.exec(key)
+  if (bits) return t('hub:quant.family.bits', { bits: bits[1] })
+  return t(`hub:quant.family.${key === 'full' || key === 'compact' ? key : 'other'}`)
 }
 
 export type VariantSection = {

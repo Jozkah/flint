@@ -26,7 +26,8 @@ import { useChatRules } from '@/hooks/useChatRules'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { usePrStatusStore } from '@/stores/pr-status-store'
-import { backfillPrClaims } from '@/lib/prClaimBackfill'
+import { backfillPrClaims, pruneOrphanPrRecords } from '@/lib/prClaimBackfill'
+import { archiveApi } from '@/lib/archive'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
@@ -168,12 +169,19 @@ export async function hydrateBackendStores(): Promise<void> {
   // event log, so a session sharing a checkout stops showing another's PR.
   if (IS_TAURI) {
     const worktrees = useCoworkWorktrees.getState().bySession
-    void backfillPrClaims(
-      useCoworkSessions.getState().sessions.map((s) => ({
-        id: s.id,
-        folder: s.folder,
-        worktreePath: worktrees[s.id]?.path ?? null,
-      }))
+    const sessions = useCoworkSessions.getState().sessions
+    // Records of sessions deleted by older builds go first.
+    void pruneOrphanPrRecords(
+      sessions.map((s) => s.id),
+      async () => (await archiveApi.list()).filter((i) => i.kind === 'cowork').map((i) => i.id)
+    ).then(() =>
+      backfillPrClaims(
+        sessions.map((s) => ({
+          id: s.id,
+          folder: s.folder,
+          worktreePath: worktrees[s.id]?.path ?? null,
+        }))
+      )
     )
   }
 }

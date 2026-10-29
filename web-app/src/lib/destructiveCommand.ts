@@ -22,6 +22,8 @@ type Rules = {
   wrapperPositional: Record<string, number>
   inlineShells: string[]
   powershells: string[]
+  /** Interpreters and the options that run code given on the command line. */
+  inlineInterpreters: Record<string, string[]>
   uncertainCommands: Record<string, string>
   alwaysAskCommands: Record<string, string>
   deleteCommands: string[]
@@ -149,6 +151,20 @@ function stripPrefixes(words: string[]): string[] {
 }
 
 /** The command name a word invokes: no directory, no `.exe`, lowercase. */
+const INLINE_CODE = 'runs code given on the command line, which cannot be checked'
+
+/**
+ * Whether an interpreter's options (those before the script name) include one
+ * that runs code from the command line, as `-c` or `--eval=...`.
+ */
+function runsInlineCode(args: string[], flags: readonly string[]): boolean {
+  for (const arg of args) {
+    if (!arg.startsWith('-')) return false
+    if (flags.some((f) => arg === f || arg.startsWith(`${f}=`))) return true
+  }
+  return false
+}
+
 function commandName(word: string): string {
   const base = word.toLowerCase().split(/[/\\]/).pop() ?? ''
   return base.endsWith('.exe') ? base.slice(0, -4) : base
@@ -381,6 +397,9 @@ function checkSegment(
   }
   if (Object.prototype.hasOwnProperty.call(RULES.alwaysAskCommands, cmd)) {
     return RULES.alwaysAskCommands[cmd]
+  }
+  if (Object.prototype.hasOwnProperty.call(RULES.inlineInterpreters, cmd)) {
+    if (runsInlineCode(args, RULES.inlineInterpreters[cmd])) return INLINE_CODE
   }
   if (RULES.inlineShells.includes(cmd)) {
     const at = lower.findIndex(

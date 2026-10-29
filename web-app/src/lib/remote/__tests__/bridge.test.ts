@@ -143,6 +143,15 @@ describe('handlers', () => {
     expect((bogus as { sessions: unknown[] }).sessions).toHaveLength(1)
   })
 
+  it('sessions.list pages from a before cursor and reports the total', async () => {
+    const first = (await call('sessions.list', { limit: 2 })) as { sessions: { id: string; updatedAt: number }[]; total: number }
+    expect(first.sessions.map((s) => s.id)).toEqual(['c2', 'w1'])
+    expect(first.total).toBe(4)
+    const next = (await call('sessions.list', { limit: 2, before: first.sessions[1].updatedAt })) as typeof first
+    expect(next.sessions.map((s) => s.id)).toEqual(['r1', 'c1'])
+    expect(next.total).toBe(4)
+  })
+
   it('thread.messages pages from the end', async () => {
     const last = await call('thread.messages', { id: 'c1', kind: 'chat', limit: 2 })
     expect(last).toMatchObject({ start: 3, total: 5 })

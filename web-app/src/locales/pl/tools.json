@@ -113,5 +113,52 @@
     "noAgent": "This server does not run agents. Start `flint serve --agent-run --agent-root <folder>`.",
     "notYet": "This server does not run agents yet.{{why}}",
     "missing": " Missing: {{items}}."
+  },
+  "hostApproval": {
+    "line": "{{context}}: {{what}}",
+    "context": {
+      "build": "Build",
+      "powershell": "PowerShell on this computer",
+      "package": "Programs on this computer",
+      "wsl": "Command in WSL",
+      "ssh": "Command over SSH",
+      "clipboard": "Clipboard",
+      "computer": "Keyboard and mouse",
+      "openPath": "Open on screen",
+      "default": "Change this computer"
+    },
+    "computer": {
+      "target": "screen ({{x}}, {{y}})",
+      "screenshot": "Capture a screenshot of the primary display",
+      "screenshotLinux": "Capture a screenshot of the primary display (the X11 root)",
+      "type": "Click {{target}} and type this text:\n{{text}}",
+      "typeLinux": "Click {{target}} and type this text (on Wayland this also replaces the clipboard):\n{{text}}",
+      "replace": "Click {{target}} and replace the field with this text:\n{{text}}",
+      "replaceLinux": "Click {{target}} and replace the field with this text (on Wayland this also replaces the clipboard):\n{{text}}",
+      "key": "Click {{target}} and press {{keys}}",
+      "scroll": "Click {{target}} and scroll {{amount}} wheel steps (positive down)",
+      "move": "Move the pointer to {{target}}",
+      "click": "Click with the {{button}} button at {{target}}",
+      "doubleClick": "Double-click with the {{button}} button at {{target}}"
+    },
+    "clipboard": {
+      "write": "Replace the clipboard with {{count}} characters:\n{{text}}",
+      "read": "Read the current clipboard content"
+    },
+    "change": "Change",
+    "package": "{{verb}} {{id}} with winget",
+    "ssh": "Run this on {{host}} over SSH:\n{{command}}",
+    "sshPort": "Run this on {{host}} port {{port}} over SSH:\n{{command}}",
+    "wsl": "Run this in WSL ({{distro}}):\n{{command}}",
+    "defaultDistro": "the default distribution",
+    "powershell": "Run this script as you, outside the sandbox, in {{where}}:\n{{script}}",
+    "projectFolder": "the project folder",
+    "reveal": "Show {{path}} in Explorer",
+    "open": "Open {{path}} with its default app",
+    "build": "Run `{{command}}` in {{where}}, outside the sandbox (it runs the project's own build scripts)",
+    "noProcess": "no process with that number is running",
+    "kill": "End process {{pid}}: {{who}}",
+    "service": "{{verb}} service {{name}}",
+    "serviceDetail": "{{verb}} service {{name}} ({{display}}, now {{status}})"
   }
 }

@@ -233,15 +233,14 @@ async fn await_mcp_connect(mcp_task: Option<tokio::task::JoinHandle<mcp::Connect
 /// AH-181: how much this run says about itself. The flag outranks the
 /// project's declaration, and an unreadable declaration refuses the run
 /// rather than quietly printing a different amount than was asked for.
-fn resolve_density(asked: Option<Density>, project: &str) -> Result<Density, tauri_plugin_agent_tools::harness_error::HarnessError> {
+fn resolve_density(
+    asked: Option<Density>,
+    declared: Option<&str>,
+) -> Result<Density, tauri_plugin_agent_tools::harness_error::HarnessError> {
     match asked {
         Some(density) => Ok(density),
         None => {
-            let declared = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
-                .ok()
-                .and_then(|cfg| cfg.output.density)
-                .unwrap_or_default();
-            Density::parse(&declared).map_err(|e| {
+            Density::parse(declared.unwrap_or_default()).map_err(|e| {
                 tauri_plugin_agent_tools::harness_error::HarnessError::new(
                     tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
                     format!("[output].density: {e}"),
@@ -651,11 +650,24 @@ pub(super) async fn run_agent_loop(
     let pressure_reserve = limits.reserve_tokens;
     // AH-185/AH-184: who to tell, checked before the run rather than when it
     // ends and nobody is told. A project that declares nothing costs nothing.
-    let notify = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
-        .ok()
-        .map(|cfg| cfg.notify)
-        .unwrap_or_default();
-    let notify = crate::core::agent::notify::check(&notify)?;
+    // CLIA-006: read with the run's profile folded in, as the rest of the
+    // run's settings were, so a profile's `notify` / `[output].density` apply.
+    let run_cfg = crate::core::agent::project::load_agent_config_with_profile(
+        std::path::Path::new(project),
+        args.profile.as_deref(),
+    )
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::new(
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+            e,
+        )
+        .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
+    })?;
+    let notify = crate::core::agent::notify::check(&run_cfg.notify)?;
+    // Resolved with the other config refusals, before the init record, the
+    // stdin reader or the checkpoint exist, so a bad `[output].density` has
+    // nothing to unwind (P2C-022).
+    let density = resolve_density(asked_density, run_cfg.output.density.as_deref())?;
     let notify_root = std::path::PathBuf::from(project);
     let notify_session = args.session_id.clone().unwrap_or_default();
     // The session this run saves under, decided here rather than at save time
@@ -704,8 +716,17 @@ pub(super) async fn run_agent_loop(
 
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
-    let density = resolve_density(asked_density, project)?;
-    let checkpoint = begin_checkpoint(&persist, format, started)?;
+    let checkpoint = match begin_checkpoint(&persist, format, started) {
+        Ok(checkpoint) => checkpoint,
+        Err(e) => {
+            // The stdin reader is already running; it must not outlive the
+            // run it was reading for (P2C-022).
+            if let Some(reader) = reader {
+                reader.abort();
+            }
+            return Err(e);
+        }
+    };
     let printer = tokio::spawn(consume_events(
         rx,
         EventConsumer {
