@@ -4,9 +4,6 @@ import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
-import { useBrowserVerify } from '@/hooks/useBrowserVerify'
-import type { VerifyReport } from '@/lib/browserVerify'
-import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { type WidgetHost } from '@/lib/visualize/hostContext'
 import HeaderPage from '@/containers/HeaderPage'
@@ -28,58 +25,30 @@ import {
   useRef,
   useState,
 } from 'react'
-import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import {
-  ArrowLeft,
-  Info,
-  Loader2,
-  MessageSquare,
-  PanelRight,
-} from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Frame, FrameBody } from '@/components/ui/frame'
-import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
-import { type CoworkPhoneView } from '@/hooks/cowork/useCoworkLayout'
 import {
   CoworkInspectorFrame,
   CoworkInspectorProvider,
   CoworkSidePanel,
-  type InspectorLayout,
 } from '@/containers/CoworkSidePanel'
-import { useCoworkSessions, ensureCurrentSession } from '@/hooks/useCoworkSessions'
-import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { resolveCoworkModel } from '@/lib/coworkModelChoice'
-import { confirmBypass } from '@/lib/bypassConfirm'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
-import type { CoworkTurn, Usage } from '@/types/coworkSession'
-import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import type { CoworkTurn } from '@/types/coworkSession'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
-import { formatChangeSummary } from '@/lib/coworkChangeSummary'
-import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
-import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
-import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
-import {
-  CoworkRunSettings,
-  type RunSettingsException,
-} from '@/containers/CoworkRunSettings'
-import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
-import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useCoworkActiveWork, type WorkKind } from '@/hooks/useCoworkActiveWork'
 import { DirectEditConfirmDialog } from '@/containers/dialogs/DirectEditConfirmDialog'
 import { modeOf } from '@/lib/coworkMode'
-import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
-import {
-  CoworkPinnedProgress,
-  CoworkProgressButton,
-} from '@/containers/CoworkPinnedProgress'
+import { CoworkPinnedProgress } from '@/containers/CoworkPinnedProgress'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
-import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { type PromptSnapshotRef } from '@/lib/providerFetch'
 import { type SubmittedFile } from '@/lib/coworkAttachments'
@@ -91,12 +60,9 @@ import {
 } from '@/hooks/useCoworkView'
 import { awaitsModel } from '@/lib/agentActivity'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
-import { configuredContextTokens } from '@/lib/coworkContextWindow'
-import { useCoworkReadiness } from '@/hooks/useCoworkReadiness'
 import { CoworkTranscript } from '@/containers/CoworkTranscript'
 import { CoworkCodeRail } from '@/containers/CoworkCodeRail'
 import { CoworkComposerArea } from '@/containers/CoworkComposerArea'
-import { CoworkDetailsBody } from '@/containers/CoworkDetailsBody'
 import { CoworkDiffRail } from '@/containers/CoworkDiffRail'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkBackgroundTasksPanel } from '@/containers/CoworkBackgroundTasksPanel'
@@ -109,35 +75,23 @@ import {
   mainFolderReadOnlyOf,
   writableExtraFoldersOf,
 } from '@/lib/coworkFolders'
-import {
-  CoworkRailToolbar,
-  type RailMode,
-} from '@/containers/CoworkRailToolbar'
+import { type RailMode } from '@/containers/CoworkRailToolbar'
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
-import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import { useShallow } from 'zustand/react/shallow'
 import {
   recoveryHidden,
   } from '@/lib/coworkWorktrees'
-import { useClaudeCompat } from '@/hooks/useClaudeCompat'
-import { useCompatManifest } from '@/hooks/useCompatManifest'
-import { useImportedMcp } from '@/hooks/useImportedMcp'
-import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
+import { useSkills } from '@/hooks/useSkills'
 import {
   accessOf,
-  accessShortLabelKey,
   effectiveAccess,
   type AccessMode,
 } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
-import {
-  resolveSkills,
-  type ContextAccounting,
-  type InstructionFile,
-} from '@/lib/coworkReadiness'
+import { type ContextAccounting, type InstructionFile } from '@/lib/coworkReadiness'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { runCoworkRequest, type RunRequestArgs } from '@/lib/cowork/run/runRequest'
 import {
@@ -145,34 +99,22 @@ import {
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
-import { useCoworkParallel } from '@/hooks/useCoworkParallel'
-import { coworkWebSearchScope, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import { type RunOutcome } from '@/lib/coworkRunner'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import {
   allowedRemoteModes,
-  isRemoteSession,
   serverPageMode,
-  setRemoteMode,
   useRemoteCowork,
   useRunnerInfo,
 } from '@/lib/remoteCowork'
-import { setRunModel } from '@/lib/remoteRunner'
 import { isServerTransport } from '@/lib/serverTransportFlag'
-import { type SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { type LoadedTooling } from '@/lib/projectTooling'
-import { useMCPServers } from '@/hooks/useMCPServers'
-import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { runStatus } from '@/lib/runStatus'
-import { useWorkProfiles } from '@/hooks/useWorkProfiles'
-import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import {
   EMPTY_SUMMARY,
   attentionCount,
   type NarrowBarsSummary,
 } from '@/containers/NarrowStatusStrip'
-import { CoworkRunChip } from '@/containers/CoworkRunChip'
-import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { useCoworkFolderActions } from '@/hooks/cowork/useCoworkFolderActions'
 import { useCoworkFolderScans } from '@/hooks/cowork/useCoworkFolderScans'
@@ -182,6 +124,8 @@ import { useCoworkRunActions } from '@/hooks/cowork/useCoworkRunActions'
 import { useCoworkActivityPanel } from '@/hooks/cowork/useCoworkActivityPanel'
 import { useCoworkEditAuthority } from '@/hooks/cowork/useCoworkEditAuthority'
 import { useCoworkTranscript } from '@/hooks/cowork/useCoworkTranscript'
+import { useCoworkChrome } from '@/hooks/cowork/useCoworkChrome'
+import { useCoworkSessionContext } from '@/hooks/cowork/useCoworkSessionContext'
 
 
 export const Route = createFileRoute(route.cowork)({
@@ -204,12 +148,9 @@ function CoworkRoute() {
 /** Stable empty lane, so a session with no run does not re-render per write. */
 const NO_LIVE_TURNS: CoworkTurn[] = []
 
-/** Below 768px Cowork shows one of these at a time. */
-const PHONE_VIEWS: readonly CoworkPhoneView[] = ['content', 'output', 'details']
 
 
 
-const NO_BROWSER_REPORTS: VerifyReport[] = []
 
 // Exported for split view, which shows a session in a pane of its own.
 export function CoworkPage() {
@@ -541,259 +482,52 @@ export function CoworkPage() {
     busy: running,
     currentBinding: () => bindingRef.current,
   })
-
-  useEffect(() => {
-    let cancelled = false
-    if (!folder) {
-      setFoundWorktrees([])
-      return
-    }
-    void (async () => {
-      const dataFolder = await serviceHub
-        .app()
-        .getJanDataFolder()
-        .catch(() => '')
-      if (!dataFolder) return
-      const found = await useCoworkWorktrees.getState().list(folder, dataFolder)
-      // The folder may have changed during the round trip; a list from the
-      // previous repository would offer the wrong work to recover.
-      if (!cancelled) setFoundWorktrees(found)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [folder, serviceHub])
-
-  /**
-   * This session's origin ledger, if a run has produced one.
-   *
-   * Keyed by session, so switching sessions shows that session's record and
-   * never the last run's. Withdrawing access does not touch it: a grant handed
-   * back changes what Flint may do next, not what already happened.
-   */
-  const runOrigins = useCoworkOrigins((s) =>
-    session?.id ? (s.bySession[session.id] ?? null) : null
-  )
-
-  /**
-   * This folder's Claude configuration, resolved for the binding on screen.
-   *
-   * Readiness shows it and the run freezes it; nothing scans for itself. Three
-   * scans at three moments is three different answers to "what is in force",
-   * and the user is shown one of them while another is used.
-   */
-  const skillRoots = useClaudeCompat((s) => s.skillRoots)
-  /**
-   * The subagents saved in Flint.
-   *
-   * Declared before the compatibility scan because the scan needs them: an
-   * imported agent that reuses one of these names is a duplicate, and it is
-   * reported as one rather than quietly losing.
-   */
-  const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
-  // What `@` can name besides files (AH-204): this folder's skills and the
-  // saved agents, offered in the composer's one ranked list.
-  const referenceSources = useMemo(
-    () => ({
-      skills: availableSkills.map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-      })),
-      agents: subagentDefs.map((agent) => ({
-        name: agent.name,
-        description: agent.description,
-      })),
-    }),
-    [availableSkills, subagentDefs]
-  )
-
   const {
-    manifest: compat,
+    workspacePath,
+    setSubagentDefs,
+    sessionIdRef,
+    runOrigins,
+    liveUsage,
+    compat,
+    runSkillsRef,
+    subagentDefs,
+    readiness,
+    settingsMcpServers,
+    rendererReports,
     mcpProbes,
-    rescan: rescanCompat,
-  } = useCompatManifest({
-    binding: { sessionId: session?.id ?? null, folder },
-    enabledSkills: new Set(
-      effectiveEnabled(
-        enabledSkills,
-        availableSkills.map((s) => s.name)
-      )
-    ),
-    availableTools: advertisedToolNames,
-    // So an imported agent reusing a saved name is reported as a duplicate
-    // rather than quietly losing to it.
-    savedAgentNames: subagentDefs.map((one) => one.name),
-    // Only what the user approved through the picker. Never anything a
-    // repository named.
-    approvedUserSkillRoots: skillRoots,
-  })
-
-  const settingsMcpServers = useMCPServers(
-    (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
-  )
-  // The servers a run would be offered right now: switched on and listing tools.
-  const mcpToolList = useAppState((s) => s.tools)
-  const mcpServerConfigs = useMCPServers((s) => s.mcpServers)
-  const connectedMcpServers = useMemo(
-    () =>
-      [
-        ...new Set(
-          mcpToolList
-            .map((tool) => tool.server)
-            .filter((server) => mcpServerConfigs[server]?.active)
-        ),
-      ].sort(),
-    [mcpToolList, mcpServerConfigs]
-  )
-  const doctorResults = useModelDoctor((s) => s.results)
-  const browserReports =
-    useBrowserVerify((s) => (session?.id ? s.reports[session.id] : undefined)) ?? NO_BROWSER_REPORTS
-  // Model, context, MCP and local runtime are facts only this page holds; the
-  // backend leaves them "checking" until they are reported.
-  const rendererReports = useMemo(
-    () =>
-      rendererReadinessReports({
-        model: selectedModel?.id
-          ? {
-              id: selectedModel.id,
-              provider: selectedProvider ?? '',
-              supportsTools: selectedModel.capabilities
-                ? selectedModel.capabilities.includes('tools')
-                : null,
-              observedTools: observedToolsFact(
-                currentDoctorResult(
-                  doctorResults,
-                  selectedProvider ? getProviderByName(selectedProvider) : undefined,
-                  selectedModel ?? undefined
-                )
-              ),
-            }
-          : null,
-        contextTokens: configuredContextTokens(modelCapabilities),
-        settingsMcpServers,
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers, doctorResults]
-  )
-  const workspacePath = useSessionWorkspacePath(session?.id)
-  // Settings decide the default; the session's own switch, once flipped, wins.
-  const webSearchEnabled = useWebSearchOn(
-    session?.id ? coworkWebSearchScope(session.id) : null
-  )
-  const hasTurns = (session?.turns?.length ?? 0) > 0
-  // A Settings toggle applies at the next run, like a mode change: the run's
-  // advertised set is frozen for its lifetime, so the toggle is pushed to the
-  // transport in place (web tools added or removed) rather than letting the
-  // next step rebuild the set and discard the prompt prefix.
-  useEffect(() => {
-    transportRef.current?.setWebSearch(webSearchEnabled)
-  }, [webSearchEnabled])
-  /**
-   * What a run started now would send, before one has.
-   *
-   * Pure construction only: the system prompt with the project instructions
-   * the run would carry, and the tool set from schemas already in hand. The
-   * backend's tool schemas are never fetched for this -- that probes
-   * readiness -- so when none are cached the card says that part is measured
-   * at first run. Retrieved memory and the toolchain probe are left out for
-   * the same reason; the run's own measurement replaces this once it exists.
-   */
-  const { readiness } = useCoworkReadiness({
-    sessionId: session?.id,
-    messages: session?.messages,
+    setMcpConsent,
+    skillRoots,
+    janDataFolder,
+    rescanCompat,
+    sessionDetailsSummary,
+    browserReports,
+    referenceSources,
+  } = useCoworkSessionContext({
+    folder,
+    setFoundWorktrees,
+    serviceHub,
+    session,
+    availableSkills,
+    enabledSkills,
+    advertisedToolNames,
+    selectedModel,
+    selectedProvider,
+    getProviderByName,
+    modelCapabilities,
+    transportRef,
     runContext,
     mode,
-    subagentDefs,
-    workspacePath,
-    folder,
     extraFolders,
-    destination: effective.destination,
+    effective,
     worktree,
     gitBranch,
     projectInstructions,
-    compat,
     tooling,
-    webSearchEnabled,
-    hasTurns,
-    modelCapabilities,
     instructionFiles,
-    baseline: runOrigins?.context.baseline,
     advertisedToolCount,
-    connectedMcpServers,
-    availableSkills,
-    enabledSkills,
     composerPrompt,
-    selectedModel,
+    viewedId,
   })
-
-  // Read inside the instruction effect without making the session a dependency:
-  // the effect keys on the folder, and the ref is only used to notice that the
-  // session changed underneath a read that was already in flight.
-  /** The last run's resolved skills, so a retake does not lose them. */
-  /**
-   * A few words for the session-details trigger: the repository and branch,
-   * which is what someone glances at to confirm they are in the right place.
-   * The rest lives inside the dialog.
-   */
-  const sessionDetailsSummary = useMemo(
-    () => sessionDetailsLabel(readiness.folder, readiness.branch),
-    [readiness.folder, readiness.branch]
-  )
-
-  // A retake re-uses the skills of the turn it takes again -- that session's
-  // turn, not whichever session ran last.
-  const runSkillsRef = useRef<Record<string, ReturnType<typeof resolveSkills>>>(
-    {}
-  )
-  const sessionIdRef = useRef<string | null>(null)
-  sessionIdRef.current = session?.id ?? null
-
-  /**
-   * Flint's own data folder, so an imported MCP server can be kept out of it.
-   *
-   * Read once: it does not change while the app is running, and an imported
-   * server has no business in the app's storage whatever the repository that
-   * named it would like.
-   */
-  const [janDataFolder, setJanDataFolder] = useState<string | null>(null)
-  useEffect(() => {
-    void serviceHub
-      .app()
-      .getJanDataFolder()
-      .then((path) => setJanDataFolder(path ?? null))
-      .catch(() => setJanDataFolder(null))
-  }, [serviceHub])
-
-  const { setConsent: setMcpConsent, revalidate: revalidateMcp } =
-    useImportedMcp({
-      folder,
-      workspacePath,
-      dataFolder: janDataFolder,
-      // A write root only where the session actually holds one: an imported
-      // server never gets authority the run itself does not have.
-      writableRepository:
-        effective.access === 'edit-folder' ? effective.writeRoot : null,
-      // The session's extra folders, readable to a confined server as they
-      // are to the run's own tools.
-      readRoots: extraFolders,
-    })
-
-  /**
-   * A definition edited after it was allowed is a different program.
-   *
-   * Checked whenever the scan produces new definitions: the consent is
-   * withdrawn and the running server stopped, rather than left up under a
-   * permission that was given for something else.
-   */
-  useEffect(() => {
-    void revalidateMcp(mcpProbes)
-  }, [mcpProbes, revalidateMcp])
-
-  // The step just finished, so the counter tracks a run instead of jumping once
-  // at the end. Falls back to the committed usage between runs.
-  const liveUsage: Usage | null = useCoworkRun(
-    (s) => (viewedId ? s.usage[viewedId] : undefined) ?? null
-  )
   // The rail holds one panel at a time: preview, diff and code all want the
   // width, so showing two together starves the transcript (C7).
   // Held in a store rather than in this component: stepping into Settings
@@ -1252,417 +986,82 @@ export function CoworkPage() {
     openToolPath,
     rail,
   })
-  const selectRailInView = useCallback(
-    (next: RailMode) => {
-      selectRail(next)
-      revealOutput()
-    },
-    [selectRail, revealOutput]
-  )
-  // Code and Timeline describe a session, so neither renders without one.
-  const panelShown =
-    rail != null &&
-    (rail.kind === 'preview' ||
-      rail.kind === 'diff' ||
-      rail.kind === 'tasks' ||
-      rail.kind === 'background' ||
-      Boolean(session?.id))
-  const inspectorLayout: InspectorLayout = phone
-    ? 'full'
-    : narrow
-      ? 'drawer'
-      : 'docked'
-  const inspectorVisible = phone ? view === 'output' : panelShown
-  // The output panel's buttons in the composer row are a setting, off by
-  // default for a quieter composer; without them one header button opens and
-  // closes the panel on the tab last used.
-  const showComposerRailButtons = useInterfaceSettings(
-    (st) => st.showComposerRailButtons
-  )
-  const lastRail = useRef<RailMode>('changes')
-  if (activeRail) lastRail.current = activeRail
-  const outputToggle = (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-[30px] shrink-0 pointer-coarse:h-11"
-      aria-pressed={panelShown}
-      aria-label={t('common:coworkLayout.output')}
-      data-testid="cowork-output-toggle"
-      onClick={() =>
-        panelShown ? closeRail() : selectRailInView(lastRail.current)
-      }
-    >
-      <PanelRight className="size-4" aria-hidden />
-      <span className="max-lg:sr-only">{t('common:coworkLayout.output')}</span>
-    </Button>
-  )
-  // The rail buttons stay in the composer row whether or not the output panel
-  // is open, so opening it never takes controls away from where they were;
-  // the panel header carries the same buttons as its tabs. Both sets share
-  // names and `aria-pressed`, so the smoke harness's first match is right.
-  const railToolbar = (presentation: 'toolbar' | 'tabs') => (
-    <CoworkRailToolbar
-      presentation={presentation}
-      active={activeRail}
-      onSelect={selectRailInView}
-      agentBrowser={agentBrowserOpen}
-      changeCount={changeCounts.fileCount}
-      additions={changeCounts.additions}
-      deletions={changeCounts.deletions}
-      changeSummary={formatChangeSummary(changeCounts)}
-      activity={taskCounts}
-      background={{
-        running: backgroundTasks.running.length,
-        total: backgroundTasks.running.length + backgroundTasks.finished.length,
-      }}
-    />
-  )
-
-  // The session's own model (janhq/jan#8905): keyed by session so switching
-  // re-reads it, and a choice is written to the session in view only.
-  const quietModelSelector = (
-    <DropdownModelProvider
-      variant="quiet"
-      key={session?.id ?? 'none'}
-      model={session?.model}
-      useLastUsedModel={!session?.model}
-      onModelChange={(model) => {
-        const sid = ensureCurrentSession(paneSessionIdRef.current)
-        useCoworkSessions.getState().setModel(sid, {
-          provider: model.provider,
-          id: model.id,
-        })
-        if (!isServerTransport()) return
-        // On a server page the choice is also the browser's stored selection,
-        // the model server sessions default to, and a server session in view
-        // switches to it on the server.
-        useModelProvider.getState().selectModelProvider(model.provider, model.id)
-        if (isRemoteSession(sid)) {
-          void setRunModel(sid, model.id)
-            .then(() =>
-              useCoworkSessions.setState((st) => ({
-                sessions: st.sessions.map((x) =>
-                  x.id === sid ? { ...x, remoteModel: model.id } : x
-                ),
-              }))
-            )
-            .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
-        }
-      }}
-    />
-  )
-
-  // A server session runs with the server's model, which may differ from the
-  // picker's: the header names the one it runs with.
-  const serverModelChip = session?.remote ? (
-    <span
-      data-testid="cowork-server-model"
-      className={cn(
-        'min-w-0 shrink truncate rounded-full border px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground',
-        // On a phone it shares the row with the view switch, which keeps its room.
-        phone ? 'max-w-24' : 'max-w-56'
-      )}
-      title={session.remoteModel ?? undefined}
-    >
-      {t('integrations:serverSession.runsWith', {
-        model: session.remoteModel || t('integrations:remoteRunner.serverDefault'),
-      })}
-    </span>
-  ) : null
-
-  // Mode, access and workspace: in the context bar on wide screens, in the
-  // composer row on phones where the bar holds the view switch.
-  const workProfilesOn = useWorkProfiles((st) => st.enabled)
-  const workProfileChoice = useWorkProfiles((st) =>
-    session?.id ? st.sessions[session.id] : undefined
-  )
-  // AH-209: a folder with no FLINT.md is offered a starting one, from the
-  // folder menu. Offered only when FLINT.md is known to be absent; one that
-  // could not be read is still there, and is not overwritten.
-  const projectInitRoot = treeRoot ?? null
-  const projectInitOffered =
-    Boolean(projectInitRoot) &&
-    instructionFiles.some(
-      (file) => file.role === 'native' && file.state.kind === 'missing'
-    )
-  const hasProjectInitDraft = useProjectInitDrafts((st) =>
-    projectInitRoot ? st.draftFor(projectInitRoot) !== null : false
-  )
-  // The project folder: in the header on wide screens, in the composer row
-  // on phones, and quiet in the row under a pane's composer.
-  const workspacePillOf = (variant: 'pill' | 'quiet') => (
-    <>
-      <CoworkWorkspacePill
-        variant={variant}
-        describeProject={
-          projectInitOffered
-            ? {
-                label: projectInitLabel(hasProjectInitDraft),
-                onOpen: () => setProjectInitOpen(true),
-              }
-            : undefined
-        }
-        folder={folder}
-        workspacePath={workspacePath}
-        gitBranch={gitBranch}
-        onAttach={() => void attachFolder()}
-        onDetach={detachFolder}
-        // With no folder, describe what attaching will give: direct editing,
-        // unless automatic worktrees are on (useCoworkSessions' attach default).
-        access={
-          folder
-            ? effective.access
-            : useCoworkParallel.getState().autoWorktree
-              ? 'review-only'
-              : 'edit-folder'
-        }
-        extraFolders={extraFolders}
-        extraFoldersWritable={
-          capabilityState.known && capabilityState.directEdit
-        }
-        readOnlyExtraFolders={session?.readOnlyExtraFolders}
-        onToggleExtraWritable={(extra, writable) =>
-          void setFolderWritable(extra, writable)
-        }
-        mainFolderReadOnly={mainFolderReadOnly}
-        onToggleMainWritable={(writable) =>
-          void setFolderWritable(null, writable)
-        }
-        onAddExtra={() => void addExtraFolder()}
-        onRemoveExtra={(extra) => void removeExtraFolder(extra)}
-      />
-    </>
-  )
-  const workspacePill = workspacePillOf('pill')
-
-  // What the run may do and how it works: under the composer, as quiet
-  // one-word buttons (Claude's layout), in a split pane as well.
-  const runControls = (variant: 'pill' | 'quiet') => {
-    const modeSelector = (
-      <CoworkModeSelector
-        variant={variant}
-        mode={mode}
-        options={modeOptions}
-        // A choice made before the first message still needs a session to
-        // live on; dropping it left the session in its default mode while the
-        // user believed they had picked another.
-        onChange={async (next) => {
-          // Bypass runs everything without asking, host commands included:
-          // say so before the first switch of the app run.
-          if (
-            next === 'bypass' &&
-            !(await confirmBypass(t('permissions:settings.bypassConfirm')))
-          ) {
-            return
-          }
-          const sid = ensureCurrentSession(paneSessionIdRef.current)
-          useCoworkSessions.getState().setMode(sid, next)
-          // The calls already waiting on a card are the ones this switch is for.
-          if (next === 'bypass') {
-            useToolApprovalRequests.getState().allowPendingForThread(sid)
-          }
-          // A server session runs with the server's access: the choice is
-          // sent there, and the picker shows what the server answered. One
-          // that does not land is sent again before the next message.
-          if (isRemoteSession(sid)) {
-            void setRemoteMode(sid, next).catch((e) =>
-              toast.error(e instanceof Error ? e.message : String(e))
-            )
-          }
-        }}
-      />
-    )
-    const profilePicker =
-      workProfilesOn && session?.id ? (
-        <CoworkWorkProfilePicker
-          variant="pill"
-          choice={workProfileChoice}
-          onChoose={(id) => useWorkProfiles.getState().choose(session.id, id, true)}
-          onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
-        />
-      ) : null
-    // The mode and the effort sit in the row itself, one click away; only
-    // the work profile stays behind the group, named beside it when set.
-    const exceptions: RunSettingsException[] = []
-    if (workProfileChoice?.manual)
-      exceptions.push({ id: 'profile', label: workProfile(workProfileChoice.id).label })
-    return (
-    <>
-      {/* Folder access stays in the row: it says what can be written. */}
-      <CoworkAccessSelector
-        variant={variant}
-        effective={effective}
-        capability={capabilityState}
-        hasFolder={Boolean(folder)}
-        // Authority must not move under work already running. A background
-        // shell job outlives its run and can still write, so it holds
-        // authority in place just as a live turn does.
-        busyReason={null}
-        onRequestDirectEdit={() => setConfirmDirectEdit(true)}
-        onRequestWorktree={() => {
-          if (!session?.id) return
-          if (running || blockingKind)
-            setPendingAccess((pending) => ({ ...pending, [session.id]: 'managed-worktree' }))
-          else void authorizeManagedWorktree()
-        }}
-        onReviewOnly={() => {
-          if (!session?.id) return
-          if (running || blockingKind)
-            setPendingAccess((pending) => ({ ...pending, [session.id]: 'review-only' }))
-          else void returnToReviewOnly()
-        }}
-      />
-      {modeSelector}
-      {profilePicker && (
-        <CoworkRunSettings exceptions={exceptions}>{profilePicker}</CoworkRunSettings>
-      )}
-    </>
-    )
-  }
-
-  // A pane or a phone has no header row for its folder, so the folder joins
-  // the quiet row under the composer, before what the run may do; the row
-  // inside the box keeps only attach, options and skills.
-  const belowComposerControls = compactRun ? (
-    // Up to 900px: one Run chip, its folder, access and mode behind it, so
-    // the row under the composer holds the chip, the effort and the model.
-    <CoworkRunChip
-      accessLabel={t(accessShortLabelKey(effective.access))}
-      access={effective.access}
-    >
-      {workspacePillOf('quiet')}
-      {runControls('quiet')}
-    </CoworkRunChip>
-  ) : paneChrome || phone ? (
-    <>
-      {workspacePillOf('quiet')}
-      {runControls('quiet')}
-    </>
-  ) : (
-    runControls('quiet')
-  )
-
-  // Everything about the session that is reference material rather than
-  // conversation: behind a dialog on wide screens, a view of its own on phones.
-  const detailsBody = (
-    <CoworkDetailsBody
-  readiness={readiness}
-  settingsMcpServers={settingsMcpServers}
-  selectedProvider={selectedProvider}
-  getProviderByName={getProviderByName}
-  selectedModel={selectedModel}
-  session={session}
-  serviceHub={serviceHub}
-  folder={folder}
-  rendererReports={rendererReports}
-  runContext={runContext}
-  compat={compat}
-  mcpProbes={mcpProbes}
-  setMcpConsent={setMcpConsent}
-  skillRoots={skillRoots}
-  janDataFolder={janDataFolder}
-  rescanCompat={rescanCompat}
-/>
-  )
-
-  const runningChip = running ? (
-    <Chip className="shrink-0 border-transparent bg-transparent text-secondary-foreground">
-      <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />
-      {/* Icon only on a phone, in a pane, or when the header's context bar is
-          too narrow for the word: the state stays visible and the folder
-          chip beside it is the one that gives way. */}
-      <span
-        className={
-          paneChrome ? 'sr-only' : 'max-md:sr-only @max-[7.5rem]/ctx:sr-only'
-        }
-      >
-        {t('common:coworkLayout.running')}
-      </span>
-    </Chip>
-  ) : null
-
-  // An unpinned plan stays one click away in the header.
-  const progressButton =
-    session?.progressUi?.unpinned ? (
-      <CoworkProgressButton
-        todos={session.todos}
-        compact={Boolean(paneChrome)}
-        onPin={() =>
-          useCoworkSessions
-            .getState()
-            .setProgressUi(session.id, { unpinned: false })
-        }
-      />
-    ) : null
-
-  // One view at a time on a phone (or a phone-width pane), chosen here rather
-  // than by swiping, so every view is reachable from the keyboard too. In a
-  // pane it is a compact segmented control in the pane's header, icons only
-  // when the pane is narrow.
-  const viewIcon = {
-    content: MessageSquare,
-    output: PanelRight,
-    details: Info,
-  } as const
-  const viewSwitch = (compact: boolean) => (
-    <div
-      role="group"
-      aria-label={t('common:coworkLayout.views')}
-      data-testid="cowork-view-switch"
-      className={cn(
-        'flex min-w-0 items-stretch overflow-hidden bg-muted shadow-[inset_0_0_0_0.8px_var(--border)]',
-        paneChrome
-          ? 'h-7 shrink-0 gap-0.5 rounded-lg p-0.5 pointer-coarse:h-11'
-          : 'h-9 flex-1 gap-1 rounded-[10px] p-1 pointer-coarse:h-11'
-      )}
-    >
-      {PHONE_VIEWS.map((option) => {
-        const label = t(`common:coworkLayout.${option}`)
-        const ViewIcon = viewIcon[option]
-        return (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={view === option}
-            aria-label={compact ? label : undefined}
-            title={compact ? label : undefined}
-            data-testid={`cowork-view-${option}`}
-            onClick={() => showView(option)}
-            className={cn(
-              'flex min-w-0 items-center justify-center rounded-md font-medium outline-none transition-[background-color,color,box-shadow] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40',
-              paneChrome ? 'px-2 text-xs' : 'flex-1 px-2 text-[length:calc(var(--ui-font-base)*0.78125)]',
-              compact && 'w-7 px-0',
-              view === option
-                ? 'bg-card text-foreground shadow-lift'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {compact ? (
-              <ViewIcon className="size-3.5" aria-hidden />
-            ) : (
-              <span className="truncate">{label}</span>
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-
-  // The composer's stop control is out of sight in the other phone views, so
-  // a running session can still be stopped from the header.
-  const headerStop =
-    phone && running && view !== 'content' ? (
-      <Button
-        variant="destructive"
-        size="sm"
-        className={cn('shrink-0 pointer-coarse:h-11', paneChrome && 'h-7')}
-        onClick={handleStop}
-        data-testid="cowork-header-stop"
-      >
-        {t('common:stop')}
-      </Button>
-    ) : null
+  const {
+    runningChip,
+    serverModelChip,
+    progressButton,
+    headerStop,
+    showComposerRailButtons,
+    outputToggle,
+    viewSwitch,
+    detailsBody,
+    workspacePill,
+    inspectorLayout,
+    projectInitRoot,
+    projectInitOffered,
+    belowComposerControls,
+    quietModelSelector,
+    railToolbar,
+    inspectorVisible,
+    panelShown,
+  } = useCoworkChrome({
+    selectRail,
+    revealOutput,
+    rail,
+    session,
+    phone,
+    narrow,
+    view,
+    activeRail,
+    t,
+    closeRail,
+    agentBrowserOpen,
+    changeCounts,
+    taskCounts,
+    backgroundTasks,
+    paneSessionIdRef,
+    treeRoot,
+    instructionFiles,
+    setProjectInitOpen,
+    folder,
+    workspacePath,
+    gitBranch,
+    attachFolder,
+    detachFolder,
+    effective,
+    extraFolders,
+    capabilityState,
+    setFolderWritable,
+    mainFolderReadOnly,
+    addExtraFolder,
+    removeExtraFolder,
+    mode,
+    modeOptions,
+    setConfirmDirectEdit,
+    running,
+    blockingKind,
+    setPendingAccess,
+    authorizeManagedWorktree,
+    returnToReviewOnly,
+    compactRun,
+    paneChrome,
+    readiness,
+    settingsMcpServers,
+    selectedProvider,
+    getProviderByName,
+    selectedModel,
+    serviceHub,
+    rendererReports,
+    runContext,
+    compat,
+    mcpProbes,
+    setMcpConsent,
+    skillRoots,
+    janDataFolder,
+    rescanCompat,
+    showView,
+    handleStop,
+  })
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
