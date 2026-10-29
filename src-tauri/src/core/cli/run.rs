@@ -664,6 +664,10 @@ pub(super) async fn run_agent_loop(
         .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
     })?;
     let notify = crate::core::agent::notify::check(&run_cfg.notify)?;
+    // Resolved with the other config refusals, before the init record, the
+    // stdin reader or the checkpoint exist, so a bad `[output].density` has
+    // nothing to unwind (P2C-022).
+    let density = resolve_density(asked_density, run_cfg.output.density.as_deref())?;
     let notify_root = std::path::PathBuf::from(project);
     let notify_session = args.session_id.clone().unwrap_or_default();
     // The session this run saves under, decided here rather than at save time
@@ -712,8 +716,17 @@ pub(super) async fn run_agent_loop(
 
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
-    let density = resolve_density(asked_density, run_cfg.output.density.as_deref())?;
-    let checkpoint = begin_checkpoint(&persist, format, started)?;
+    let checkpoint = match begin_checkpoint(&persist, format, started) {
+        Ok(checkpoint) => checkpoint,
+        Err(e) => {
+            // The stdin reader is already running; it must not outlive the
+            // run it was reading for (P2C-022).
+            if let Some(reader) = reader {
+                reader.abort();
+            }
+            return Err(e);
+        }
+    };
     let printer = tokio::spawn(consume_events(
         rx,
         EventConsumer {
