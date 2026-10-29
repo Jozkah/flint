@@ -1544,100 +1544,16 @@ impl Mailbox {
             // Same scrubber as the run-to-run mailbox (AH-103): a credential
             // pasted into a message never reaches disk or another session.
             let text = crate::harness_error::scrub(text);
-            check_session_id(to_id)
-                .map_err(|_| MailboxError::new(code::UNKNOWN_SESSION, "no session has that id"))?;
-            if to_id == from_id {
-                return Err(MailboxError::new(
-                    code::SELF_TARGET,
-                    "a session cannot message itself",
-                ));
-            }
-            let target = registry.get(to_id).ok_or_else(|| {
-                MailboxError::new(code::UNKNOWN_SESSION, "no session has that id")
-            })?;
-            if target.deleted {
-                return Err(MailboxError::new(
-                    code::SESSION_DELETED,
-                    "that session was deleted",
-                ));
-            }
-            if target.archived {
-                return Err(MailboxError::new(
-                    code::SESSION_ARCHIVED,
-                    "that session is archived; it gets no messages until it is restored",
-                ));
-            }
-            let inbound = target.inbound_mode();
-            if inbound == Inbound::Refuse {
-                return Err(MailboxError::new(
-                    code::RECIPIENT_OPTED_OUT,
-                    "that session does not accept messages from other sessions",
-                ));
-            }
-
-            let mut parent_env: Option<MailEnvelope> = None;
-            let depth = match reply_to {
-                None => 0,
-                Some(parent_id) => {
-                    let unknown = || {
-                        MailboxError::new(
-                            code::UNKNOWN_REPLY_TARGET,
-                            "reply_to must name a message this session received from the target",
-                        )
-                    };
-                    if !valid_id(parent_id) {
-                        return Err(unknown());
-                    }
-                    let parent = read_jsonl::<MailEnvelope>(&self.inbox_path(from_id))
-                        .into_iter()
-                        .find(|e| e.id == parent_id && e.to.session_id == from_id)
-                        .ok_or_else(unknown)?;
-                    if parent.from.session_id != to_id {
-                        return Err(unknown());
-                    }
-                    let depth = parent.depth.saturating_add(1);
-                    parent_env = Some(parent);
-                    if depth > MAX_REPLY_DEPTH {
-                        return Err(MailboxError::new(
-                            code::REPLY_DEPTH_EXCEEDED,
-                            format!("reply chains stop at depth {MAX_REPLY_DEPTH}"),
-                        ));
-                    }
-                    depth
-                }
-            };
+            let (target, inbound) = Self::check_recipient(&registry, from_id, to_id)?;
+            let (depth, parent_env) = self.reply_depth(from_id, to_id, reply_to)?;
 
             let now = self.now();
-            let mut sent = read_jsonl::<OutboxEntry>(&self.outbox_path(from_id));
-            // Retention: entries past MAIL_RETENTION_MS are outside every rate
-            // window and too old to wait on, so the file is compacted here
-            // instead of growing forever.
-            if sent.iter().any(|e| e.at <= now - MAIL_RETENTION_MS) {
-                sent.retain(|e| e.at > now - MAIL_RETENTION_MS);
-                write_jsonl_atomically(&self.outbox_path(from_id), &sent)?;
-            }
             // A host notice is sent as the watched session but is not that
             // session's own send: it neither spends nor is refused by its
             // per-minute and per-pair budgets (one notice per subscription
             // already bounds them).
             let is_notice = origin == Origin::Notice;
-            let recent = sent.iter().filter(|e| e.at > now - RATE_WINDOW_MS).count();
-            if !is_notice && recent >= RATE_LIMIT {
-                return Err(MailboxError::new(
-                    code::RATE_LIMITED,
-                    format!("at most {RATE_LIMIT} messages per minute; wait before sending more"),
-                ));
-            }
-            let pair = sent
-                .iter()
-                .filter(|e| e.to == to_id && e.at > now - PAIR_WINDOW_MS)
-                .count();
-            if !is_notice && pair >= PAIR_LIMIT {
-                return Err(MailboxError::new(
-                    code::PAIR_LIMIT_EXCEEDED,
-                    format!("at most {PAIR_LIMIT} messages per hour to the same session"),
-                ));
-            }
+            self.check_send_budget(from_id, to_id, now, is_notice)?;
 
             // The chain, stamped here by the host. A user's message starts
             // one; an automatic reply continues the message it answers; an
@@ -1665,31 +1581,7 @@ impl Mailbox {
             let hold = if hops == 0 {
                 None
             } else {
-                let visits = chain_path.iter().filter(|s| s.as_str() == to_id).count();
-                let inbox = read_jsonl::<MailEnvelope>(&self.inbox_path(to_id));
-                let waking = |e: &&MailEnvelope| e.hold.is_none() && e.hops > 0;
-                let on_chain = |e: &&MailEnvelope| e.chain_key() == chain_id;
-                let same_chain_total = inbox.iter().filter(waking).filter(on_chain).count();
-                let same_chain = inbox
-                    .iter()
-                    .filter(waking)
-                    .filter(on_chain)
-                    .filter(|e| e.from.session_id == from_id)
-                    .count();
-                let recent = inbox
-                    .iter()
-                    .filter(waking)
-                    .filter(|e| e.created_at > now - WAKE_WINDOW_MS)
-                    .count();
-                if visits >= MAX_CHAIN_VISITS {
-                    Some(hold::CHAIN_CYCLE)
-                } else if same_chain >= WAKES_PER_CHAIN || same_chain_total >= WAKES_PER_CHAIN_TOTAL {
-                    Some(hold::CHAIN_WAKES)
-                } else if recent >= WAKES_PER_MINUTE {
-                    Some(hold::WAKE_RATE)
-                } else {
-                    None
-                }
+                self.wake_hold(from_id, to_id, &chain_id, &chain_path, now)
             };
             let mut chain_path = chain_path;
             chain_path.push(from_id.to_string());
@@ -1730,35 +1622,11 @@ impl Mailbox {
                 )?;
             }
             append_jsonl(&self.inbox_path(to_id), &envelope)?;
-            let mut overflow: Vec<MailEnvelope> = Vec::new();
-            if inbound == Inbound::Hold {
-                let (inbox, mut state) = self.inbox_with_state(to_id);
-                state.insert(
-                    envelope.id.clone(),
-                    DeliveryEntry {
-                        status: DeliveryStatus::Held,
-                        at: now,
-                    },
-                );
-                // At most MAX_HELD_PER_SESSION wait: the oldest give way.
-                let mut held: Vec<&MailEnvelope> = inbox
-                    .iter()
-                    .filter(|e| Self::status_in(&state, &e.id) == DeliveryStatus::Held)
-                    .collect();
-                held.sort_by_key(|e| e.created_at);
-                while held.len() > MAX_HELD_PER_SESSION {
-                    let oldest = held.remove(0);
-                    state.insert(
-                        oldest.id.clone(),
-                        DeliveryEntry {
-                            status: DeliveryStatus::Dropped,
-                            at: now,
-                        },
-                    );
-                    overflow.push(oldest.clone());
-                }
-                write_json_atomically(&self.state_path(to_id), &state)?;
-            }
+            let overflow = if inbound == Inbound::Hold {
+                self.record_held(to_id, &envelope.id, now)?
+            } else {
+                Vec::new()
+            };
             (
                 (
                     SendReceipt {
@@ -1781,6 +1649,185 @@ impl Mailbox {
             );
         }
         Ok(receipt)
+    }
+
+    /// The recipient `to_id`, checked: a registered session other than the
+    /// sender, not deleted or archived, that accepts messages. Returned with
+    /// its inbound mode.
+    fn check_recipient<'r>(
+        registry: &'r BTreeMap<String, SessionRecord>,
+        from_id: &str,
+        to_id: &str,
+    ) -> Result<(&'r SessionRecord, Inbound)> {
+        check_session_id(to_id)
+            .map_err(|_| MailboxError::new(code::UNKNOWN_SESSION, "no session has that id"))?;
+        if to_id == from_id {
+            return Err(MailboxError::new(
+                code::SELF_TARGET,
+                "a session cannot message itself",
+            ));
+        }
+        let target = registry.get(to_id).ok_or_else(|| {
+            MailboxError::new(code::UNKNOWN_SESSION, "no session has that id")
+        })?;
+        if target.deleted {
+            return Err(MailboxError::new(
+                code::SESSION_DELETED,
+                "that session was deleted",
+            ));
+        }
+        if target.archived {
+            return Err(MailboxError::new(
+                code::SESSION_ARCHIVED,
+                "that session is archived; it gets no messages until it is restored",
+            ));
+        }
+        let inbound = target.inbound_mode();
+        if inbound == Inbound::Refuse {
+            return Err(MailboxError::new(
+                code::RECIPIENT_OPTED_OUT,
+                "that session does not accept messages from other sessions",
+            ));
+        }
+        Ok((target, inbound))
+    }
+
+    /// The reply depth of a message answering `reply_to`, and the message it
+    /// answers. `reply_to` must name a message `from_id` received from `to_id`.
+    fn reply_depth(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        reply_to: Option<&str>,
+    ) -> Result<(u8, Option<MailEnvelope>)> {
+        let Some(parent_id) = reply_to else {
+            return Ok((0, None));
+        };
+        let unknown = || {
+            MailboxError::new(
+                code::UNKNOWN_REPLY_TARGET,
+                "reply_to must name a message this session received from the target",
+            )
+        };
+        if !valid_id(parent_id) {
+            return Err(unknown());
+        }
+        let parent = read_jsonl::<MailEnvelope>(&self.inbox_path(from_id))
+            .into_iter()
+            .find(|e| e.id == parent_id && e.to.session_id == from_id)
+            .ok_or_else(unknown)?;
+        if parent.from.session_id != to_id {
+            return Err(unknown());
+        }
+        let depth = parent.depth.saturating_add(1);
+        if depth > MAX_REPLY_DEPTH {
+            return Err(MailboxError::new(
+                code::REPLY_DEPTH_EXCEEDED,
+                format!("reply chains stop at depth {MAX_REPLY_DEPTH}"),
+            ));
+        }
+        Ok((depth, Some(parent)))
+    }
+
+    /// Compact `from_id`'s outbox, then refuse a send over the per-minute or
+    /// per-pair budget. A notice is compacted for but never refused.
+    fn check_send_budget(&self, from_id: &str, to_id: &str, now: i64, is_notice: bool) -> Result<()> {
+        let mut sent = read_jsonl::<OutboxEntry>(&self.outbox_path(from_id));
+        // Retention: entries past MAIL_RETENTION_MS are outside every rate
+        // window and too old to wait on, so the file is compacted here
+        // instead of growing forever.
+        if sent.iter().any(|e| e.at <= now - MAIL_RETENTION_MS) {
+            sent.retain(|e| e.at > now - MAIL_RETENTION_MS);
+            write_jsonl_atomically(&self.outbox_path(from_id), &sent)?;
+        }
+        let recent = sent.iter().filter(|e| e.at > now - RATE_WINDOW_MS).count();
+        if !is_notice && recent >= RATE_LIMIT {
+            return Err(MailboxError::new(
+                code::RATE_LIMITED,
+                format!("at most {RATE_LIMIT} messages per minute; wait before sending more"),
+            ));
+        }
+        let pair = sent
+            .iter()
+            .filter(|e| e.to == to_id && e.at > now - PAIR_WINDOW_MS)
+            .count();
+        if !is_notice && pair >= PAIR_LIMIT {
+            return Err(MailboxError::new(
+                code::PAIR_LIMIT_EXCEEDED,
+                format!("at most {PAIR_LIMIT} messages per hour to the same session"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Why a chained message to `to_id` should be held instead of waking it:
+    /// a cycle, too many wakes on one chain, or too many wakes a minute.
+    fn wake_hold(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        chain_id: &str,
+        chain_path: &[String],
+        now: i64,
+    ) -> Option<&'static str> {
+        let visits = chain_path.iter().filter(|s| s.as_str() == to_id).count();
+        let inbox = read_jsonl::<MailEnvelope>(&self.inbox_path(to_id));
+        let waking = |e: &&MailEnvelope| e.hold.is_none() && e.hops > 0;
+        let on_chain = |e: &&MailEnvelope| e.chain_key() == chain_id;
+        let same_chain_total = inbox.iter().filter(waking).filter(on_chain).count();
+        let same_chain = inbox
+            .iter()
+            .filter(waking)
+            .filter(on_chain)
+            .filter(|e| e.from.session_id == from_id)
+            .count();
+        let recent = inbox
+            .iter()
+            .filter(waking)
+            .filter(|e| e.created_at > now - WAKE_WINDOW_MS)
+            .count();
+        if visits >= MAX_CHAIN_VISITS {
+            Some(hold::CHAIN_CYCLE)
+        } else if same_chain >= WAKES_PER_CHAIN || same_chain_total >= WAKES_PER_CHAIN_TOTAL {
+            Some(hold::CHAIN_WAKES)
+        } else if recent >= WAKES_PER_MINUTE {
+            Some(hold::WAKE_RATE)
+        } else {
+            None
+        }
+    }
+
+    /// Mark message `id` held in `to_id`'s delivery state. At most
+    /// MAX_HELD_PER_SESSION wait: the oldest give way, and are returned so
+    /// their senders can be told.
+    fn record_held(&self, to_id: &str, id: &str, now: i64) -> Result<Vec<MailEnvelope>> {
+        let (inbox, mut state) = self.inbox_with_state(to_id);
+        state.insert(
+            id.to_string(),
+            DeliveryEntry {
+                status: DeliveryStatus::Held,
+                at: now,
+            },
+        );
+        let mut held: Vec<&MailEnvelope> = inbox
+            .iter()
+            .filter(|e| Self::status_in(&state, &e.id) == DeliveryStatus::Held)
+            .collect();
+        held.sort_by_key(|e| e.created_at);
+        let mut overflow = Vec::new();
+        while held.len() > MAX_HELD_PER_SESSION {
+            let oldest = held.remove(0);
+            state.insert(
+                oldest.id.clone(),
+                DeliveryEntry {
+                    status: DeliveryStatus::Dropped,
+                    at: now,
+                },
+            );
+            overflow.push(oldest.clone());
+        }
+        write_json_atomically(&self.state_path(to_id), &state)?;
+        Ok(overflow)
     }
 
     /// The UI Reply action: a person answering a message in `from_id`'s inbox.
