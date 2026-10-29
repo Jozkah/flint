@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+
 /** Maps a raw backend identifier to a human-readable display name. */
 export function getBackendDisplayName(backend: string): string {
   const b = backend.toLowerCase()
@@ -10,6 +12,10 @@ export function getBackendDisplayName(backend: string): string {
   if (b.includes('cpu') || b.includes('common_cpu') || b.includes('common-cpu')) return 'CPU Backend'
   return backend
 }
+
+/** Install advice in the person's language (`engine:dependencies.*`). */
+const t = (key: string, values?: Record<string, unknown>) =>
+  i18n.t(`engine:dependencies.${key}`, values)
 
 export type InstallRecommendation = {
   label: string
@@ -52,9 +58,8 @@ export function getInstallRecommendations(
   if (bundledLibs.length > 0) {
     bundledLibs.forEach((l) => coveredLibs.add(l))
     recommendations.push({
-      label: 'Re-download the backend',
-      description:
-        'Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Flint settings.',
+      label: t('redownload.label'),
+      description: t('redownload.description'),
       libs: bundledLibs,
     })
   }
@@ -83,8 +88,8 @@ export function getInstallRecommendations(
     recommendations.push({
       label: `NVIDIA CUDA Toolkit${versionSuffix}`,
       description: isWindows
-        ? `Install the CUDA Toolkit${versionSuffix} from NVIDIA. During installation, select "CUDA" components.`
-        : `Install the CUDA Toolkit${versionSuffix} from NVIDIA. On Debian/Ubuntu: sudo apt install cuda-toolkit-${cudaVersion ?? '12'}. On RHEL/Fedora: use the NVIDIA repo.`,
+        ? t('cuda.windows', { version: versionSuffix })
+        : t('cuda.linux', { version: versionSuffix, apt: cudaVersion ?? '12' }),
       url: 'https://developer.nvidia.com/cuda-downloads',
       libs: cudaLibs,
     })
@@ -99,9 +104,7 @@ export function getInstallRecommendations(
     ncclLibs.forEach((l) => coveredLibs.add(l))
     recommendations.push({
       label: 'NVIDIA NCCL',
-      description: isWindows
-        ? 'Install NCCL from the NVIDIA Developer site. NCCL is used for multi-GPU collective communications.'
-        : 'Install NCCL via the NVIDIA package repository. On Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. See the NVIDIA NCCL install guide for your distro.',
+      description: isWindows ? t('nccl.windows') : t('nccl.linux'),
       url: 'https://developer.nvidia.com/nccl/nccl-download',
       libs: ncclLibs,
     })
@@ -113,9 +116,7 @@ export function getInstallRecommendations(
     cudnnLibs.forEach((l) => coveredLibs.add(l))
     recommendations.push({
       label: 'NVIDIA cuDNN',
-      description: isWindows
-        ? 'Install cuDNN from the NVIDIA Developer site and place the DLLs alongside the application or in System32.'
-        : 'Install cuDNN via the NVIDIA package repository or download the tarball and copy libs to /usr/local/cuda/lib64.',
+      description: isWindows ? t('cudnn.windows') : t('cudnn.linux'),
       url: 'https://developer.nvidia.com/cudnn-downloads',
       libs: cudnnLibs,
     })
@@ -135,10 +136,8 @@ export function getInstallRecommendations(
         ? 'https://vulkan.lunarg.com/sdk/home#linux'
         : 'https://vulkan.lunarg.com/sdk/home'
     recommendations.push({
-      label: 'Vulkan Runtime',
-      description: isWindows
-        ? 'Install the Vulkan Runtime from LunarG. Your GPU driver may already include it — update your GPU driver first.'
-        : 'Install the Vulkan loader: on Ubuntu/Debian: sudo apt install libvulkan1. On Arch: sudo pacman -S vulkan-icd-loader. On RHEL/Fedora: sudo dnf install vulkan-loader.',
+      label: t('vulkan.label'),
+      description: isWindows ? t('vulkan.windows') : t('vulkan.linux'),
       url: vulkanUrl,
       libs: vulkanLibs,
     })

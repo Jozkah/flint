@@ -86,9 +86,35 @@
     "deviceCompatibility": "Device compatibility",
     "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
     "features": "Features",
-    "notAvailable": "N/A"
+    "notAvailable": "N/A",
+    "basis": {
+      "fromFile": "Context memory read from the model file.",
+      "fromSize": "Context memory estimated from the file size.",
+      "sizeEstimated": "File size estimated from parameters.",
+      "gpuOff": "A GPU you turned off is not counted."
+    }
   },
   "etaLeft": "{{eta}} left",
   "downloadInstalling": "Installing…",
-  "downloadVerifying": "Verifying…"
+  "downloadVerifying": "Verifying…",
+  "quant": {
+    "family": {
+      "full": "Full precision",
+      "compact": "Compact (IQ)",
+      "bits": "{{bits}}-bit",
+      "other": "Other"
+    },
+    "explain": {
+      "unknown": "Unknown quantization",
+      "full": "Highest fidelity, very large memory footprint",
+      "q8": "Near-original quality, large memory footprint",
+      "q6": "Very high quality with moderate compression",
+      "q5": "High quality and a strong quality/size trade-off",
+      "recommended": "Recommended balance of quality, speed, and memory for most systems",
+      "q4": "Balanced size and quality for everyday local inference",
+      "q3": "Smaller and faster, with a noticeable quality trade-off",
+      "q2": "Very small footprint with the largest quality trade-off",
+      "other": "Quantized GGUF model"
+    }
+  }
 }
