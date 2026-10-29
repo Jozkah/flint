@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useRef, useMemo, useCallback, memo } from 'react'
 import {
   Popover,
@@ -13,14 +12,21 @@ import {
   getModelDisplayName,
   isLocalProvider,
 } from '@/lib/utils'
+import { middleTruncate, modelNameTail } from '@/lib/modelDisplayName'
 import {
-  disambiguateModels,
-  middleTruncate,
-  modelNameTail,
-  type Disambiguation,
-} from '@/lib/modelDisplayName'
+  buildDisambiguation,
+  buildPickerGroups,
+  buildSearchableItems,
+  filterBySearch,
+  findAmbiguousModelIds,
+  isFavoriteItem,
+  locationKind,
+  remoteLabelFor,
+  type SearchableModel,
+} from '@/lib/modelPickerItems'
+import { useModelPickerKeyNav } from '@/hooks/useModelPickerKeyNav'
 import { MiddleText } from '@/components/ui/middle-text'
-import { contextLengthOf, effectiveContextLength } from '@/lib/engineModels'
+import { effectiveContextLength } from '@/lib/engineModels'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import Capabilities from './Capabilities'
 import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
@@ -40,7 +46,6 @@ import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
-import { isFavoriteEntry } from '@/lib/favoriteModel'
 import { useProviderReachability } from '@/hooks/useProviderReachability'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
@@ -49,7 +54,6 @@ import {
   modelAvailability,
   OFFLINE_DOT_CLASS,
   OFFLINE_ROW_CLASS,
-  providerIsUnreachable,
 } from '@/lib/modelAvailability'
 import { providerHasRemoteApiKeys as hasRemoteKeys } from '@/lib/provider-api-keys'
 import { useModelOrder } from '@/hooks/useModelOrder'
@@ -66,13 +70,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { offersModels } from '@/lib/providerOffers'
 import { modelsNeedingVisionProbe } from '@/lib/visionProbe'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { ChevronsUpDown } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 
 type DropdownModelProviderProps = {
   model?: ThreadModel
@@ -85,23 +87,6 @@ type DropdownModelProviderProps = {
   onModelChange?: (model: ThreadModel) => void
   /** `quiet` under a composer: the model's name as text, no box, no arrow. */
   variant?: 'pill' | 'quiet'
-}
-
-/** `api.example.com:8080` from a base URL, or `''` when there is none. */
-function hostOf(baseUrl?: string): string {
-  if (!baseUrl) return ''
-  try {
-    return new URL(baseUrl).host
-  } catch {
-    return ''
-  }
-}
-
-interface SearchableModel {
-  provider: ModelProvider
-  model: Model
-  searchStr: string
-  value: string
 }
 
 /** A section heading in the picker: Favorites, local, cloud. */
@@ -151,15 +136,6 @@ const ProcessingLocationLabel = ({ provider }: { provider: ModelProvider }) => {
     </span>
   )
 }
-
-/** Whether a provider's requests stay on this device or network. */
-const locationKind = (provider: ModelProvider): 'local' | 'remote' =>
-  classifyModelLocation({
-    baseUrl: provider.base_url,
-    builtInEngine: Boolean(isLocalProvider(provider.provider)),
-  }) === 'remote'
-    ? 'remote'
-    : 'local'
 
 // Helper functions for localStorage
 const setLastUsedModel = (provider: string, model: string) => {
@@ -313,7 +289,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               // Check if model has a custom capabilities config flag
 
               const hasUserConfiguredCapabilities =
-                (model as any)._userConfiguredCapabilities === true
+                model._userConfiguredCapabilities === true
 
               if (
                 !capabilities.includes('vision') &&
@@ -325,7 +301,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   capabilities: [...capabilities, 'vision'],
                   // Mark this as auto-detected, not user-configured
                   _autoDetectedVision: true,
-                } as any
+                }
 
                 updateProvider('llamacpp', { models: updatedModels })
               }
@@ -532,130 +508,43 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   }, [])
 
   // Create searchable items from all models
-  const searchableItems = useMemo(() => {
-    const items: SearchableModel[] = []
+  const searchableItems = useMemo(
+    () =>
+      buildSearchableItems(providers, {
+        hideProvider,
+        selectedProvider,
+        selectedModelId: selectedModel?.id,
+      }),
+    [providers, hideProvider, selectedProvider, selectedModel?.id]
+  )
 
-    providers.forEach((provider) => {
-      if (!provider.active) return
-      const filteredOut = hideProvider(provider)
+  const ambiguousModelIds = useMemo(
+    () => findAmbiguousModelIds(searchableItems),
+    [searchableItems]
+  )
 
-      provider.models.forEach((modelItem) => {
-        // The filter never hides the model in use, so the list still shows it.
-        if (
-          filteredOut &&
-          !(
-            provider.provider === selectedProvider &&
-            modelItem.id === selectedModel?.id
-          )
-        )
-          return
-        // Skip embedding models - they can't be used for chat
-        if (modelItem.embedding) return
-        // The dictation model transcribes speech; it is not for chatting.
-        if (modelItem.id === VOICE_MODEL_ID) return
+  const disambiguation = useMemo(
+    () => buildDisambiguation(searchableItems),
+    [searchableItems]
+  )
 
-        // Only an unconfigured built-in template is hidden. See `offersModels`.
-        if (!offersModels(provider)) return
-
-        const capabilities = modelItem.capabilities || []
-        const capabilitiesString = capabilities.join(' ')
-        const providerTitle = getProviderTitle(provider.provider)
-
-        // Create search string with model id, provider, and capabilities
-        const searchStr =
-          `${modelItem.id} ${providerTitle} ${provider.provider} ${capabilitiesString}`.toLowerCase()
-
-        items.push({
-          provider,
-          model: modelItem,
-          searchStr,
-          value: `${provider.provider}:${modelItem.id}`,
-        })
-      })
-    })
-
-    return items
-  }, [providers, hideProvider, selectedProvider, selectedModel?.id])
-
-  // Model ids offered by more than one provider (the same model behind two
-  // remotes). Their rows must say which remote they belong to, everywhere.
-  const ambiguousModelIds = useMemo(() => {
-    const seen = new Map<string, number>()
-    searchableItems.forEach((item) =>
-      seen.set(item.model.id, (seen.get(item.model.id) ?? 0) + 1)
-    )
-    return new Set([...seen].filter(([, n]) => n > 1).map(([id]) => id))
-  }, [searchableItems])
-
-  // Models of one provider that read alike in a list (two quants, two
-  // fine-tunes sharing a long prefix) get a short label from what differs.
-  const disambiguation = useMemo(() => {
-    const merged = new Map<string, Disambiguation>()
-    const byProvider = new Map<string, SearchableModel[]>()
-    searchableItems.forEach((item) =>
-      byProvider.set(item.provider.provider, [
-        ...(byProvider.get(item.provider.provider) ?? []),
-        item,
-      ])
-    )
-    byProvider.forEach((items) => {
-      disambiguateModels(
-        items.map((item) => ({
-          key: item.value,
-          name: getModelDisplayName(item.model),
-          fileName: item.model.id,
-          contextLength: contextLengthOf(item.model),
-        }))
-      ).forEach((v, k) => merged.set(k, v))
-    })
-    return merged
-  }, [searchableItems])
-
-  // What to call each remote: its title, plus its host when another provider
-  // has the same title (two endpoints of one vendor, two local proxies).
   const remoteLabel = useCallback(
-    (p: ModelProvider) => {
-      const title = getProviderTitle(p.provider)
-      const twins = searchableItems.filter(
-        (i) =>
-          i.provider.provider !== p.provider &&
-          getProviderTitle(i.provider.provider) === title
-      )
-      if (twins.length === 0) return title
-      const host = hostOf(p.base_url)
-      return host ? `${title} · ${host}` : `${title} · ${p.provider}`
-    },
+    (p: ModelProvider) => remoteLabelFor(searchableItems, p),
     [searchableItems]
   )
 
   // Get favorite models that are currently available
-  const favoriteItems = useMemo(() => {
-    return searchableItems.filter((item) =>
-      favoriteModels.some((fav) =>
-        isFavoriteEntry(fav, item.model.id, item.provider.provider)
-      )
-    )
-  }, [searchableItems, favoriteModels])
+  const favoriteItems = useMemo(
+    () =>
+      searchableItems.filter((item) => isFavoriteItem(favoriteModels, item)),
+    [searchableItems, favoriteModels]
+  )
 
   // Filter models based on search value
-  const filteredItems = useMemo(() => {
-    if (!searchValue) return searchableItems
-
-    // Each word must appear verbatim (case-insensitive) in the model's name or
-    // id, or in its remote: "gpt-4o work" is the copy of gpt-4o behind the
-    // remote called "work". Fuzzy subsequence matching let "gpt" find
-    // "gemini-pro-turbo". Order is the list order.
-    const words = searchValue.toLowerCase().split(/\s+/).filter(Boolean)
-    const modelText = (item: SearchableModel) =>
-      `${getModelDisplayName(item.model)} ${item.model.id}`.toLowerCase()
-    const remoteText = (item: SearchableModel) =>
-      `${getProviderTitle(item.provider.provider)} ${item.provider.provider} ${hostOf(item.provider.base_url)}`.toLowerCase()
-    return searchableItems.filter((item) => {
-      const name = modelText(item)
-      const remote = remoteText(item)
-      return words.every((w) => name.includes(w) || remote.includes(w))
-    })
-  }, [searchableItems, searchValue])
+  const filteredItems = useMemo(
+    () => filterBySearch(searchableItems, searchValue),
+    [searchableItems, searchValue]
+  )
 
   /**
    * Provider sections are one of the orders, and a search has an order of its
@@ -669,10 +558,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     if (!wantsFlatList) return []
     // Models from a provider that did not answer go last.
     return sortModels(filteredItems, sort, lastUsed, modelIsOffline).filter(
-      (item) =>
-        !favoriteModels.some((fav) =>
-          isFavoriteEntry(fav, item.model.id, item.provider.provider)
-        )
+      (item) => !isFavoriteItem(favoriteModels, item)
     )
   }, [filteredItems, wantsFlatList, sort, lastUsed, favoriteModels, modelIsOffline])
 
@@ -681,81 +567,27 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const isGrouped = !wantsFlatList || flatItems.length === 0
 
   // Group filtered items by provider, excluding favorites when not searching
-  const groupedItems = useMemo(() => {
-    const groups: Record<string, SearchableModel[]> = {}
-
-    if (!searchValue) {
-      // When not searching, show all active providers (even without models)
-      // Sort: local first, then providers with API keys or custom with models, then others, alphabetically
-      const activeProviders = providers
-        .filter(
-          (p) =>
-            p.active && (!hideProvider(p) || p.provider === selectedProvider)
-        )
-        .sort((a, b) => {
-          const aIsLocal = a.provider === 'llamacpp' || a.provider === 'mlx'
-          const bIsLocal = b.provider === 'llamacpp' || b.provider === 'mlx'
-          // Local (llamacpp) first
-          if (aIsLocal && !bIsLocal) return -1
-          if (!aIsLocal && bIsLocal) return 1
-
-          // A provider that did not answer its last request goes last.
-          const aDown = providerIsUnreachable(a, unreachableOrigins)
-          const bDown = providerIsUnreachable(b, unreachableOrigins)
-          if (aDown !== bDown) return aDown ? 1 : -1
-
-          // Configured providers sort above unconfigured templates. Same
-          // predicate as the visibility gate, so the two cannot disagree about
-          // what "configured" means.
-          const aHasApiKeyOrCustomModel = offersModels(a)
-          const bHasApiKeyOrCustomModel = offersModels(b)
-          // Providers with API keys or custom with models filled second
-          if (aHasApiKeyOrCustomModel && !bHasApiKeyOrCustomModel) return -1
-          if (!aHasApiKeyOrCustomModel && bHasApiKeyOrCustomModel) return 1
-
-          // Sort remaining by provider name
-          return a.provider.localeCompare(b.provider)
-        })
-
-      activeProviders.forEach((provider) => {
-        groups[provider.provider] = []
-      })
-    }
-
-    // Add the filtered items to their respective groups
-    filteredItems.forEach((item) => {
-      const providerKey = item.provider.provider
-      if (!groups[providerKey]) {
-        groups[providerKey] = []
-      }
-
-      // When not searching, exclude favorite models from regular provider sections
-      const isFavorite = favoriteModels.some((fav) =>
-        isFavoriteEntry(fav, item.model.id, item.provider.provider)
-      )
-      if (!searchValue && isFavorite) return // Skip adding this item to regular provider section
-
-      groups[providerKey].push(item)
-    })
-
-    // Within a section the order is alphabetical by the name on screen, except
-    // while searching, where the ranking is the quality of the match.
-    if (!searchValue) {
-      for (const key of Object.keys(groups)) {
-        groups[key] = sortModels(groups[key], 'name-asc')
-      }
-    }
-
-    return groups
-  }, [
-    filteredItems,
-    providers,
-    searchValue,
-    favoriteModels,
-    unreachableOrigins,
-    hideProvider,
-    selectedProvider,
-  ])
+  const groupedItems = useMemo(
+    () =>
+      buildPickerGroups({
+        filteredItems,
+        providers,
+        searchValue,
+        favoriteModels,
+        unreachableOrigins,
+        hideProvider,
+        selectedProvider,
+      }),
+    [
+      filteredItems,
+      providers,
+      searchValue,
+      favoriteModels,
+      unreachableOrigins,
+      hideProvider,
+      selectedProvider,
+    ]
+  )
 
   const handleSelect = useCallback(
     async (searchableModel: SearchableModel) => {
@@ -835,51 +667,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     ]
   )
 
-  /**
-   * Keyboard use of the open picker: arrows move between the search box and
-   * the model rows, Home/End jump to the first/last row, Enter in the search
-   * box picks the first match, and typing on a row goes back to the search box.
-   */
-  const onPickerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing) return
-    const rows = Array.from(
-      pickerRef.current?.querySelectorAll<HTMLElement>('[data-model-row]') ?? []
-    )
-    const input = searchInputRef.current
-    const onInput = event.target === input
-    const at = rows.indexOf(event.target as HTMLElement)
-    const focusRow = (i: number) => {
-      const row = rows[i]
-      if (!row) return
-      event.preventDefault()
-      row.focus()
-      row.scrollIntoView?.({ block: 'nearest' })
-    }
-    if (event.key === 'ArrowDown' && (onInput || at !== -1)) {
-      focusRow(onInput ? 0 : Math.min(at + 1, rows.length - 1))
-    } else if (event.key === 'ArrowUp' && at !== -1) {
-      if (at === 0) {
-        event.preventDefault()
-        input?.focus()
-      } else focusRow(at - 1)
-    } else if (event.key === 'Home' && at !== -1) {
-      focusRow(0)
-    } else if (event.key === 'End' && at !== -1) {
-      focusRow(rows.length - 1)
-    } else if (event.key === 'Enter' && onInput && rows.length > 0) {
-      event.preventDefault()
-      rows[0].click()
-    } else if (
-      at !== -1 &&
-      event.key.length === 1 &&
-      event.key !== ' ' &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
-      input?.focus()
-    }
-  }
+  const onPickerKeyDown = useModelPickerKeyNav(pickerRef, searchInputRef)
 
   /** Rows are selectable with Enter or Space, not only with a pointer. */
   const selectableRow = (item: SearchableModel, isSelected: boolean) => ({

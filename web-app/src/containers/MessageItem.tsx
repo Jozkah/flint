@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useSecondClock } from '@/lib/sharedClock'
-import { citationsForCopy } from '@/lib/webUrl'
 import { memo, useState, useCallback, useEffect, useMemo } from 'react'
 import { SlashInvocation } from '@/components/SlashInvocation'
 import { parseSlashMarker } from '@/lib/slashCommands'
@@ -18,29 +16,7 @@ import {
   type ActivityLabel,
 } from '@/lib/agentActivity'
 import type { SubagentRun } from '@/types/coworkSession'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  Copy,
-  GitFork,
-  Loader,
-  Paperclip,
-  Play,
-  RefreshCw,
-  Sparkles,
-  Trash2,
-  TriangleAlert,
-} from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { GitFork, Loader, Play, RefreshCw, TriangleAlert } from 'lucide-react'
 
 /**
  * Message actions appear on hover or keyboard focus, and stay visible on a
@@ -53,6 +29,20 @@ const REVEAL_ACTIONS =
 const ACTION_BUTTON =
   'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
+import { AssistantMessageHeader } from './message/AssistantMessageHeader'
+import { SkillsUsedPopover } from './message/SkillsUsedPopover'
+import { SentFileChips } from './message/SentFileChips'
+import { MessageContextMenu } from './message/MessageContextMenu'
+import {
+  assistantTextOf,
+  attachedFilesOf,
+  awaitsApproval,
+  collectToolCitations,
+  copyTextOf,
+  hasPendingToolPart,
+  imageUrlsOf,
+  userImagesOf,
+} from '@/lib/messageParts'
 import { VersionSwitcher } from './message/VersionSwitcher'
 import { shouldAnimateEntry } from '@/lib/messageEntry'
 import {
@@ -64,7 +54,6 @@ import {
 import { CopyButton } from './CopyButton'
 import { ReadAloudButton } from './ReadAloudButton'
 import { thoughtSecondsFromMetadata } from '@/lib/reasoningClock'
-import { ExportSubmenu } from '@/components/ExportMenu'
 import { docFromUIMessage } from '@/lib/exportDoc'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { calledUnavailableTool, emptyRunFallback } from '@/lib/emptyRunFallback'
@@ -87,32 +76,19 @@ import {
 import { unwrapForDisplay } from '@/lib/sessionMailbox'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
-import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
+import { extractFilesFromPrompt } from '@/lib/fileMetadata'
 import { nameMentions, splitMentionBlocks } from '@/lib/chatMentions'
 import { SentMentions } from '@/containers/SentMentions'
-import { displayNameOf } from '@/lib/displayName'
-import { formatChipSize } from '@/lib/attachmentChip'
-import {
-  FilePreviewPopover,
-  previewLoader,
-  sentAttachment,
-  viewerSpec,
-} from '@/containers/FilePreviewPopover'
 import { Button } from '@/components/ui/button'
 import { PromptProgress } from '@/components/PromptProgress'
 import { modelWaitStatus } from '@/lib/runStatus'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
-import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
-import type { RagCitation, WebCitation } from '@/components/Citations'
 import { useGroundingStore } from '@/stores/grounding-store'
 import { useWebCitationStore } from '@/stores/web-citation-store'
 import { WebSourcesRow } from '@/components/WebSourcesRow'
-import { fetchedUrlOf } from '@/lib/webSources'
 import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
-import { AvatarEmoji } from '@/containers/AvatarEmoji'
-import { FlintMark } from '@/components/shell/FlintMark'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { AttachedImages } from '@/components/AttachedImages'
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
@@ -275,59 +251,33 @@ export const MessageItem = memo(
     }, [onDelete, message.id])
 
     // Get image URLs from file parts for the edit dialog
-    const imageUrls = useMemo(() => {
-      return message.parts
-        .filter((part) => {
-          if (part.type !== 'file') return false
-          const filePart = part as {
-            type: 'file'
-            url?: string
-            mediaType?: string
-          }
-          return filePart.url && filePart.mediaType?.startsWith('image/')
-        })
-        .map((part) => (part as { url: string }).url)
-    }, [message.parts])
+    const imageUrls = useMemo(() => imageUrlsOf(message.parts), [message.parts])
 
     // The images a user attached, with their names, for the gallery and viewer.
-    const userImages = useMemo<ViewerImage[]>(() => {
-      if (message.role !== 'user') return []
-      const out: ViewerImage[] = []
-      for (const part of message.parts) {
-        const p = part as { type?: string; url?: string; mediaType?: string; filename?: string }
-        if (p.type === 'file' && p.url && p.mediaType?.startsWith('image/')) {
-          out.push({ url: p.url, name: p.filename ? displayNameOf(p.filename) : p.filename })
-        }
-      }
-      return out
-    }, [message.role, message.parts])
+    const userImages = useMemo(
+      () => userImagesOf(message.role, message.parts),
+      [message.role, message.parts]
+    )
 
     // A tool part is "pending" until it reaches a terminal state. While any
     // tool on the last assistant message is still pending the turn isn't
     // done — the model will resume once the tool result arrives, even if the
     // SDK briefly reports status as 'ready' between the tool-call stream and
     // the follow-up request.
-    const hasPendingToolCall = useMemo(() => {
-      if (!isLastMessage || message.role !== 'assistant') return false
-      return message.parts.some((part) => {
-        if (!part.type?.startsWith('tool-')) return false
-        const state = (part as { state?: string }).state
-        return (
-          state !== 'output-available' &&
-          state !== 'output-error' &&
-          state !== 'output-denied'
-        )
-      })
-    }, [isLastMessage, message.role, message.parts])
+    const hasPendingToolCall = useMemo(
+      () =>
+        isLastMessage &&
+        message.role === 'assistant' &&
+        hasPendingToolPart(message.parts),
+      [isLastMessage, message.role, message.parts]
+    )
 
     const pendingApprovals = useToolApprovalRequests((s) => s.pending)
-    const awaitingApproval = useMemo(() => {
-      if (!hasPendingToolCall) return false
-      return message.parts.some((part) => {
-        const toolCallId = (part as { toolCallId?: string }).toolCallId
-        return Boolean(toolCallId && pendingApprovals[toolCallId])
-      })
-    }, [hasPendingToolCall, message.parts, pendingApprovals])
+    const awaitingApproval = useMemo(
+      () =>
+        hasPendingToolCall && awaitsApproval(message.parts, pendingApprovals),
+      [hasPendingToolCall, message.parts, pendingApprovals]
+    )
 
     const usedSkills = useMemo(
       () => usedSkillNames(message.parts as never),
@@ -371,51 +321,19 @@ export const MessageItem = memo(
     // Aggregate RAG citations in part order and record each rag tool part's
     // base offset, so its card numbers/anchors continue the same global
     // sequence the inline superscript markers use.
-    const { ragCitations, citationOffsets, webCitations, webReads } =
-      useMemo(() => {
-      const out: RagCitation[] = []
-      const web: WebCitation[] = []
-      const reads: string[] = []
-      const offsets = new Map<number, number>()
-      if (message.role === 'assistant') {
-        const parts = message.parts as any[]
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i]
-          if (!part.type?.startsWith('tool-')) continue
-          if (part.state !== 'output-available') continue
-          if (part.type === 'tool-web_fetch') {
-            const url = fetchedUrlOf(part.output)
-            if (url) reads.push(url)
-            continue
-          }
-          const parsed = parseCitationsFromToolOutput(part.output)
-          if (parsed?.kind === 'rag') {
-            offsets.set(i, out.length)
-            out.push(...parsed.citations)
-          } else if (parsed?.kind === 'web') {
-            web.push(...parsed.citations)
-          }
-        }
-      }
-      return {
-        ragCitations: out,
-        citationOffsets: offsets,
-        webCitations: web,
-        webReads: reads,
-      }
-    }, [message.parts, message.role])
+    const { ragCitations, citationOffsets, webCitations, webReads } = useMemo(
+      () => collectToolCitations(message.role, message.parts),
+      [message.parts, message.role]
+    )
 
     const serviceHub = useServiceHub()
     const grounding = useGroundingStore((s) => s.byMessageId[message.id])
     const ensureGrounding = useGroundingStore((s) => s.ensure)
 
-    const assistantText = useMemo(() => {
-      if (message.role !== 'assistant') return ''
-      return (message.parts as any[])
-        .filter((p) => p.type === CONTENT_TYPE.TEXT && p.text)
-        .map((p) => p.text)
-        .join('\n')
-    }, [message.parts, message.role])
+    const assistantText = useMemo(
+      () => assistantTextOf(message.role, message.parts),
+      [message.parts, message.role]
+    )
 
     useEffect(() => {
       if (isStreaming) return
@@ -444,32 +362,16 @@ export const MessageItem = memo(
     }, [webCitations, message.id, setWebCitations])
 
     // Extract file metadata from message text (for user messages with attachments)
-    const attachedFiles = useMemo(() => {
-      if (message.role !== 'user') return []
-
-      const textParts = message.parts.filter(
-        (part): part is { type: 'text'; text: string } =>
-          part.type === CONTENT_TYPE.TEXT
-      )
-
-      if (textParts.length === 0) return []
-
-      const { files } = extractFilesFromPrompt(textParts[0].text)
-      return files
-    }, [message.parts, message.role])
+    const attachedFiles = useMemo(
+      () => attachedFilesOf(message.role, message.parts),
+      [message.parts, message.role]
+    )
 
     // Get full text content for copy button
-    const getFullTextContent = useCallback(() => {
-      const text = message.parts
-        .filter(
-          (part): part is { type: 'text'; text: string } =>
-            part.type === CONTENT_TYPE.TEXT
-        )
-        .map((part) => part.text)
-        .join('\n')
-      // A reply's cite markers are chips on screen; copied, they are links.
-      return message.role === 'assistant' ? citationsForCopy(text) : text
-    }, [message.parts, message.role])
+    const getFullTextContent = useCallback(
+      () => copyTextOf(message.role, message.parts),
+      [message.parts, message.role]
+    )
 
     const renderTextPart = (
       part: { type: 'text'; text: string },
@@ -543,36 +445,7 @@ export const MessageItem = memo(
                 )}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {attachedFiles.map((file: FileMetadata, idx: number) => {
-                      const sent = sentAttachment(file, metadata)
-                      return (
-                      <div
-                        key={`file-${idx}-${file.id}`}
-                        data-testid="sent-file-chip"
-                        className="flex min-w-0 max-w-full items-center rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
-                      >
-                        <FilePreviewPopover
-                          name={file.name}
-                          meta={formatChipSize(file.size)}
-                          load={previewLoader(sent)}
-                          viewer={viewerSpec(sent)}
-                          className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-start focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-                        >
-                          <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 truncate font-medium">
-                            {displayNameOf(file.name)}
-                          </span>
-                          {file.injectionMode && (
-                            <span className="text-muted-foreground">
-                              ({file.injectionMode})
-                            </span>
-                          )}
-                        </FilePreviewPopover>
-                      </div>
-                      )
-                    })}
-                  </div>
+                  <SentFileChips files={attachedFiles} metadata={metadata} />
                 )}
                 {displayText &&
                   (slashInvocation ? (
@@ -848,48 +721,16 @@ export const MessageItem = memo(
         ) : null}
         {/* A small, quiet line naming who answered and when. */}
         {message.role === 'assistant' && !continuation && (
-          <div
-            data-testid="assistant-message-header"
-            className="mb-2 flex min-w-0 items-center gap-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 text-subtle-foreground"
-          >
-            {/* The model's avatar: the Flint mark on a quiet tile. */}
-            <span
-              aria-hidden
-              className="grid size-[22px] shrink-0 place-items-center rounded-md bg-accent p-[3px] shadow-[inset_0_0_0_0.8px_var(--border)]"
-            >
-              {typeof metadata?.assistantAvatar === 'string' && metadata.assistantAvatar ? (
-                <AvatarEmoji
-                  avatar={metadata.assistantAvatar}
-                  imageClassName="size-full object-contain"
-                  textClassName="text-xs leading-none"
-                />
-              ) : (
-                <FlintMark className="size-full" />
-              )}
-            </span>
-            <span className="shrink-0 font-semibold text-foreground">
-              {(metadata?.assistantName as string | undefined) || 'Flint'}
-            </span>
-            {answeredBy && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="min-w-0 truncate" title={answeredBy}>
-                  {answeredBy}
-                </span>
-              </>
-            )}
-            {!isStreaming && createdAt !== undefined && (
-              <>
-                <span aria-hidden>·</span>
-                <span
-                  className="shrink-0 tabular-nums"
-                  title={new Date(createdAt).toLocaleString()}
-                >
-                  {formatMessageTime(createdAt)}
-                </span>
-              </>
-            )}
-          </div>
+          <AssistantMessageHeader
+            avatar={
+              typeof metadata?.assistantAvatar === 'string'
+                ? metadata.assistantAvatar
+                : undefined
+            }
+            name={metadata?.assistantName as string | undefined}
+            answeredBy={answeredBy}
+            createdAt={isStreaming ? undefined : createdAt}
+          />
         )}
 
         {/* Render message parts */}
@@ -1147,105 +988,34 @@ export const MessageItem = memo(
               />
             )}
             {!isStreaming && usedSkills.length > 0 && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                data-testid="skills-used"
-                aria-label={t('common:skillsUsedLabel')}
-                className="ml-2 inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
-              >
-                <Sparkles className="size-3.5" aria-hidden />
-                {t('common:skillsUsedCount', { count: usedSkills.length })}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="w-72 max-w-[calc(100vw-2rem)] p-3 text-xs"
-              data-testid="skills-used-list"
-            >
-              <div className="mb-1.5 font-medium text-foreground">
-                {t('common:skillsUsedLabel')}
-              </div>
-              <ul className="flex flex-col gap-1">
-                {usedSkills.map((name) => {
-                  // A plugin's skill is named plugin:skill; the plugin reads
-                  // as context, the skill as the point.
-                  const at = name.indexOf(':')
-                  return (
-                    <li key={name} className="break-all text-foreground">
-                      {at > 0 && (
-                        <span className="text-muted-foreground">
-                          {name.slice(0, at + 1)}
-                        </span>
-                      )}
-                      {at > 0 ? name.slice(at + 1) : name}
-                    </li>
-                  )
-                })}
-              </ul>
-            </PopoverContent>
-          </Popover>
-        )}
+              <SkillsUsedPopover skills={usedSkills} />
+            )}
           </div>
         )}
 
         {/* Right-click context menu */}
-        <DropdownMenu open={ctxMenuOpen} onOpenChange={setCtxMenuOpen}>
-          <DropdownMenuTrigger asChild>
-            <span
-              aria-hidden
-              data-testid="message-menu-anchor"
-              className="pointer-events-none absolute size-0"
-              style={{ left: ctxPoint.x, top: ctxPoint.y }}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem
-              onClick={() =>
-                navigator.clipboard.writeText(getFullTextContent())
-              }
-            >
-              <Copy className="size-4" />
-              {t('chat:actions.copy')}
-            </DropdownMenuItem>
-
-            <ExportSubmenu
-              build={() => docFromUIMessage(message, undefined, new Date())}
-            />
-
-            {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
-              <DropdownMenuItem onClick={handleRegenerate}>
-                <RefreshCw className="size-4" />
-                {t('chat:actions.regenerate')}
-              </DropdownMenuItem>
-            )}
-
-            {selectedModel &&
-              onContinue &&
-              isLastMessage &&
-              canContinue &&
-              !isStreaming && (
-                <DropdownMenuItem onClick={handleContinue}>
-                  <Play className="size-4" />
-                  {t('chat:actions.continue')}
-                </DropdownMenuItem>
-              )}
-
-            {onDelete && !isStreaming && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={handleDelete}
-                >
-                  <Trash2 className="size-4" />
-                  {t('chat:actions.delete')}
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <MessageContextMenu
+          open={ctxMenuOpen}
+          onOpenChange={setCtxMenuOpen}
+          point={ctxPoint}
+          onCopy={() => navigator.clipboard.writeText(getFullTextContent())}
+          buildExport={() => docFromUIMessage(message, undefined, new Date())}
+          onRegenerate={
+            selectedModel && onRegenerate && !isStreaming && isLastMessage
+              ? handleRegenerate
+              : undefined
+          }
+          onContinue={
+            selectedModel &&
+            onContinue &&
+            isLastMessage &&
+            canContinue &&
+            !isStreaming
+              ? handleContinue
+              : undefined
+          }
+          onDelete={onDelete && !isStreaming ? handleDelete : undefined}
+        />
 
         {/* Image Preview Dialog */}
         {viewer && (

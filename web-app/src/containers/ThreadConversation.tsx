@@ -72,6 +72,7 @@ import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { useAppState } from '@/hooks/useAppState'
+import { useLatestCallback } from '@/hooks/useLatestCallback'
 import { SESSION_STORAGE_PREFIX, TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useChat } from '@/hooks/use-chat'
 import { notifyAnswerFinished } from '@/lib/completionSound'
@@ -2477,7 +2478,10 @@ export function ThreadConversation({
     [threadId, navigate, t]
   )
 
-  const handleRegenerate = useCallback(
+  // Stable identity, latest closure: MessageItem's memo ignores callback
+  // props, so a row that skipped a render must still see the current
+  // `contextLimitError` when its Regenerate is clicked.
+  const handleRegenerate = useLatestCallback(
     (messageId?: string) => {
       const hadBannerError =
         useAppState.getState().oomError != null ||
@@ -2498,14 +2502,7 @@ export function ThreadConversation({
       pendingAssistantParentId.current = resolveAssistantParent(messageId)
 
       regenerate(messageId ? { messageId } : undefined)
-    },
-    [
-      regenerate,
-      stripBannerMetadata,
-      contextLimitError,
-      ensureBranched,
-      resolveAssistantParent,
-    ]
+    }
   )
 
   // The handlers passed to every MessageItem read the transcript through a

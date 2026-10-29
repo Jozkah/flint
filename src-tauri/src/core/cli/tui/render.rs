@@ -3012,7 +3012,7 @@ pub(super) fn settings_prompt_lines(
         Span::styled(def.desc, dim),
         Span::styled("   current: ", dim),
         Span::styled(
-            current_agent_value(toml_path, def.key).unwrap_or_else(|| "unset".to_string()),
+            current_setting_value(def, toml_path).unwrap_or_else(|| "unset".to_string()),
             Style::new().cyan(),
         ),
     ]);
@@ -3619,7 +3619,7 @@ pub(super) fn draw_picker(
             .and_then(|it| AGENT_SETTINGS.iter().find(|d| d.key == it.value))
         {
             let current =
-                current_agent_value(toml_path, def.key).unwrap_or_else(|| "unset".to_string());
+                current_setting_value(def, toml_path).unwrap_or_else(|| "unset".to_string());
             let meta = match def.kind {
                 AgentSettingKind::Int { default, min } => {
                     let d = default

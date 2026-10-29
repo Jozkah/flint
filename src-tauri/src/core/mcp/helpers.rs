@@ -316,8 +316,11 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
         }
         {
             let app_state = app.state::<AppState>();
-            let mut pids = app_state.mcp_server_pids.lock().await;
-            pids.remove(&name);
+            let pid = app_state.mcp_server_pids.lock().await.remove(&name);
+            // The reconnect below grants the folder again on its spawn; the
+            // dead instance's grant must go first or each reconnect adds a
+            // holder that is never withdrawn.
+            super::launch::release_folder_grants(Some(&config), pid);
         }
 
         // Emit event so frontend shows accurate disconnected status
@@ -684,6 +687,9 @@ async fn connect_remote<R: Runtime>(
     // reqwest 0.13; apply13 keeps Flint's custom-CA TLS trust (AH-190) on it.
     // `[mcp] allow_hosts`: refuse a URL outside the list before connecting.
     super::netguard::enforce_url(url)?;
+    // A configured proxy resolves the host itself, past the guard's resolver:
+    // run the same DNS checks here first so a proxied server is not exempt.
+    super::netguard::preflight_url(url).await?;
     let base = crate::core::net::tls::apply13(
         super::netguard::guard13(reqwest13::Client::builder())
             .default_headers(header_map(name, &config_params.headers)?)
