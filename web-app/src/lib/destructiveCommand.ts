@@ -510,10 +510,51 @@ function checkSegment(
           .filter((a) => a.startsWith('-') && !a.startsWith('--'))
           .map((a) => a.replace(/^-+/, ''))
           .join('')
-        const force = short.includes('f') || has('--force')
-        if (force && (short.includes('d') || short.includes('x'))) {
+        if (short.includes('f') || has('--force')) {
           return '`git clean` deletes untracked files'
         }
+      }
+      // Original case: `-D`/`-S`/`-W` differ from their lowercase forms.
+      const raw = args.slice(sub + 1)
+      if (
+        name === 'checkout' &&
+        (has('--') ||
+          has('.') ||
+          has('--force') ||
+          rest.some(
+            (a) => /^-[a-z]*f[a-z]*$/.test(a) || a.startsWith('--pathspec-from-file')
+          ))
+      ) {
+        return '`git checkout` of paths discards uncommitted changes'
+      }
+      if (name === 'restore') {
+        const staged = raw.includes('--staged') || raw.includes('-S')
+        const worktree = raw.includes('--worktree') || raw.includes('-W')
+        if (!staged || worktree) {
+          return '`git restore` discards uncommitted changes'
+        }
+      }
+      if (
+        name === 'branch' &&
+        (raw.some((a) => /^-[a-zA-Z]*D[a-zA-Z]*$/.test(a)) ||
+          (has('--delete') &&
+            (has('--force') || rest.some((a) => /^-[a-z]*f[a-z]*$/.test(a)))))
+      ) {
+        return '`git branch -D` deletes a branch that may be unmerged'
+      }
+      if (name === 'stash' && (rest[0] === 'drop' || rest[0] === 'clear')) {
+        return '`git stash drop` discards stashed changes'
+      }
+      if (
+        name === 'rebase' &&
+        !has('--continue') &&
+        !has('--abort') &&
+        !has('--quit')
+      ) {
+        return '`git rebase` rewrites history'
+      }
+      if (name === 'filter-branch' || name === 'filter-repo') {
+        return `\`git ${name}\` rewrites history`
       }
       if (
         name === 'push' &&

@@ -616,6 +616,10 @@
     "web-app/src/containers/CoworkTeamReviews.tsx (via listTeamChildren)",
     "web-app/src/lib/teamChildren.ts"
   ],
+  "agent_worktree_branch_name": [
+    "web-app/src/lib/coworkDispatch.ts (via runSpawnSession)",
+    "web-app/src/lib/spawnSession.ts"
+  ],
   "agent_worktree_ensure": [
     "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
     "web-app/src/containers/CoworkComposerArea.tsx (via useCoworkWorktrees)",

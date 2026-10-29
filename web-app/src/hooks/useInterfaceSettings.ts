@@ -563,7 +563,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             state.renderUserMarkdown = false
           }
           if (typeof state.coloredUserBubble !== 'boolean') {
-            state.coloredUserBubble = true
+            state.coloredUserBubble = false
           }
 
           if (typeof state.renderHtmlArtifacts !== 'boolean') {
