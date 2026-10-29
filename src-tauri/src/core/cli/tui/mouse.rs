@@ -100,18 +100,41 @@ pub(super) fn autoscroll_selection(app: &mut App) {
 /// Lift the selected cells out of a rendered frame. Rows are joined with
 /// newlines and stripped of trailing padding, so a copied command pastes as the
 /// command and not as the width of the terminal.
-pub(super) fn selection_text(buf: &Buffer, sel: Selection, area: Rect) -> String {
-    sel.spans(area.width)
-        .into_iter()
-        .filter(|(row, _, _)| *row < area.height)
-        .filter_map(|(row, c0, c1)| {
-            // Wide glyphs park an empty symbol in their second cell, so plain
-            // concatenation already reconstructs them.
-            let cells = (c0..=c1).filter_map(|col| buf.cell((col, row))).collect();
-            copy_selection_line(cells)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+///
+/// `continued[row]` is `Some` for a screen row that is a soft-wrap
+/// continuation of the row above it, and a linear selection joins such a row
+/// onto the previous one instead of starting a new line. Nothing is inserted at
+/// the join beyond what the text had there: `Some(true)` says the wrapper broke
+/// at whitespace (which it drops from the screen), so that one space is kept;
+/// `Some(false)` is a mid-word split and rejoins as one word.
+pub(super) fn selection_text(buf: &Buffer, sel: Selection, area: Rect, continued: &[Option<bool>]) -> String {
+    let linear = sel.mode == SelectionMode::Linear;
+    let mut out = String::new();
+    let mut previous: Option<u16> = None;
+    for (row, c0, c1) in sel.spans(area.width) {
+        if row >= area.height {
+            continue;
+        }
+        // Wide glyphs park an empty symbol in their second cell, so plain
+        // concatenation already reconstructs them.
+        let cells = (c0..=c1).filter_map(|col| buf.cell((col, row))).collect();
+        let Some(line) = copy_selection_line(cells) else {
+            continue;
+        };
+        if let Some(prev) = previous {
+            match continued.get(usize::from(row)).copied().flatten() {
+                Some(space) if linear && prev + 1 == row => {
+                    if space {
+                        out.push(' ');
+                    }
+                }
+                _ => out.push('\n'),
+            }
+        }
+        out.push_str(&line);
+        previous = Some(row);
+    }
+    out
 }
 
 pub(super) fn copy_selection_line(cells: Vec<&ratatui::buffer::Cell>) -> Option<String> {

@@ -2060,6 +2060,7 @@ fn refresh_live_pickers(app: &mut App) {
 fn draw_picker_screen(f: &mut Frame, app: &mut App, chunks: [Rect; 4], prompt_owns: bool) -> bool {
     if let Some(picker) = app.picker.as_ref().filter(|_| !prompt_owns) {
         app.row_index.clear();
+        app.continued_rows.clear();
         draw_picker(
             f,
             chunks[1],
@@ -2320,6 +2321,47 @@ fn materialize_visible(
     (visible, row_index, first_start)
 }
 
+/// Per logical line, one entry per screen row it wraps to at `width` (the body
+/// `Paragraph`'s wrapping): `None` for its first row, `Some(space)` for each
+/// continuation, `space` saying the wrapper broke at whitespace it dropped.
+fn wrap_joins(lines: &[Line<'static>], width: u16) -> Vec<Vec<Option<bool>>> {
+    use ratatui::widgets::Widget;
+    let width = width.max(1);
+    lines
+        .iter()
+        .map(|line| {
+            let para = Paragraph::new(line.clone()).wrap(Wrap { trim: false });
+            let rows = para.line_count(width).max(1);
+            let mut out = vec![None];
+            if rows == 1 {
+                return out;
+            }
+            let area = Rect::new(0, 0, width, rows.min(usize::from(u16::MAX)) as u16);
+            let mut buf = ratatui::buffer::Buffer::empty(area);
+            para.render(area, &mut buf);
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            let mut rest = text.as_str();
+            for y in 0..area.height {
+                let row: String = (0..width).map(|x| buf[(x, y)].symbol()).collect();
+                let row = row.trim();
+                if let Some(at) = rest.find(row).filter(|_| !row.is_empty()) {
+                    rest = &rest[at + row.len()..];
+                }
+                if y + 1 < area.height {
+                    out.push(Some(rest.starts_with(char::is_whitespace)));
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// Per body screen row (after skipping `skip` scrolled-off rows, `rows` of
+/// them): the wrap join of that row, as [`wrap_joins`] gives it.
+pub(super) fn continuation_rows(joins: Vec<Vec<Option<bool>>>, skip: u16, rows: u16) -> Vec<Option<bool>> {
+    joins.into_iter().flatten().skip(usize::from(skip)).take(usize::from(rows)).collect()
+}
+
 /// The `/context` popup: a centered bordered readout over the body.
 fn draw_context_overlay(f: &mut Frame, view: &ContextView, body: Rect) {
         // The rect is sized before the content, because the readout's height
@@ -2470,7 +2512,7 @@ fn draw_selection_overlay(f: &mut Frame, app: &mut App) {
         let area = f.area();
         let buf = f.buffer_mut();
         if std::mem::take(&mut app.copy_armed) {
-            let text = selection_text(buf, sel, area);
+            let text = selection_text(buf, sel, area, &app.continued_rows);
             if !text.trim().is_empty() {
                 app.copied = Some((Instant::now(), text.lines().count()));
                 app.copy_request = Some(text);
@@ -2610,6 +2652,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
     // segment; everything before it was never materialized.
     // Inside one segment, whose height is itself a `u16`, so it always fits.
     let offset = scroll.saturating_sub(first_start.unwrap_or(scroll)).min(usize::from(u16::MAX)) as u16;
+    let visible_wraps = wrap_joins(&visible, width);
     let body = Paragraph::new(visible)
         .wrap(Wrap { trim: false })
         .block(Block::default().borders(Borders::TOP));
@@ -2623,6 +2666,15 @@ pub(super) fn draw(f: &mut Frame, app: &mut App) {
             sel.moved = true;
         }
     }
+    // Body rows start under the top border.
+    let mut continued = vec![None; usize::from(f.area().bottom())];
+    let body_top = usize::from(chunks[1].y) + 1;
+    for (i, wrap) in continuation_rows(visible_wraps, offset, inner_h).into_iter().enumerate() {
+        if let Some(slot) = continued.get_mut(body_top + i) {
+            *slot = wrap;
+        }
+    }
+    app.continued_rows = continued;
     app.transcript_rect = chunks[1];
     app.last_scroll = scroll;
     app.row_index = row_index;

@@ -945,8 +945,8 @@ pub(super) fn finish_compaction(
     let retrying = std::mem::take(&mut app.retry_after_compact);
     match result {
         Ok(mut compacted) if compacted.len() < base_len => {
-            compacted.extend(app.history.split_off(base_len.min(app.history.len())));
-            app.history = compacted;
+            compacted.extend_from_slice(&app.history[base_len.min(app.history.len())..]);
+            app.history = compacted.into();
             app.persist();
             // Estimate tokens from compacted message content (~4 chars ≈ 1 token).
             // The provider's last `usage` measured the pre-compaction history, so
@@ -3983,7 +3983,7 @@ pub(super) fn open_fork_picker(app: &mut App) {
 pub(super) fn open_turn_picker(app: &mut App, kind: PickerKind, empty: &str) {
     let mut items = Vec::new();
     let mut ui = 0usize;
-    for m in &app.history {
+    for m in app.history.iter() {
         if is_user_turn(m) {
             let text = user_content_parts(&m["content"]).0;
             items.push(PickerItem {
@@ -4076,7 +4076,7 @@ pub(super) fn rewind_to(app: &mut App, target: usize, restore_workspace: bool) {
     )
     .0;
 
-    app.history.truncate(cut);
+    std::sync::Arc::make_mut(&mut app.history).truncate(cut);
     // The rewound-away turns are exactly what the provider's last `prompt_tokens`
     // measured, so that count now overstates the window by the removed prefix.
     app.invalidate_token_provenance();
@@ -4207,7 +4207,7 @@ pub(super) fn rebuild_transcript(app: &mut App) {
         return replay_display_log(app, logged);
     }
     let history = app.history.clone();
-    for m in &history {
+    for m in history.iter() {
         let role = m.get("role").and_then(|v| v.as_str()).unwrap_or("");
         if role == "user" {
             let (text, images) =
@@ -4269,7 +4269,7 @@ pub(super) async fn load_thread(app: &mut App, thread: &serde_json::Value, verb:
         Err(e) => return app.note(&format!("failed to load messages: {e}")),
     };
 
-    app.history.clear();
+    std::sync::Arc::make_mut(&mut app.history).clear();
     app.thread_id = Some(full_id.to_string());
     app.transcript.clear();
     app.tool_group = None;
@@ -4321,7 +4321,7 @@ pub(super) async fn load_thread(app: &mut App, thread: &serde_json::Value, verb:
     // transcript, and fall back to replaying the messages for a thread saved
     // before journaling (or whose journal was lost).
     let logged = journal::read_journal(&journal::journal_path(&app.agent_dir, full_id));
-    app.history = super::super::rebuild_wire_history(&messages);
+    app.history = super::super::rebuild_wire_history(&messages).into();
     // A resumed thread was never measured by *this* session's provider calls, and
     // any count left over from the thread we were on describes a different
     // conversation entirely. Estimate until a fresh response lands.

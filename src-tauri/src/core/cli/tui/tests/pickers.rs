@@ -58,7 +58,7 @@ fn a_hidden_reminder_is_not_a_user_turn() {
     app.repo_root = Some(std::path::PathBuf::from("/tmp/repo"));
     app.base_requested = true;
     app.submit_user("first".into());
-    app.history
+    std::sync::Arc::make_mut(&mut app.history)
         .push(json!({ "role": "assistant", "content": "reply" }));
     app.submit_reminder("unfinished todos remain".into());
     assert_eq!(

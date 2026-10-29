@@ -1577,7 +1577,9 @@ pub(super) struct App {
     /// Project `.jan/agent` dir where this TUI's threads are saved/listed.
     pub(super) agent_dir: std::path::PathBuf,
     /// OpenAI-shaped conversation history sent with each run.
-    pub(super) history: Vec<serde_json::Value>,
+    /// Shared so a background save takes a refcount, not a copy; mutate it\r
+    /// through Arc::make_mut.
+    pub(super) history: std::sync::Arc<Vec<serde_json::Value>>,
     /// Thread this conversation persists to (set on first save or on resume).
     pub(super) thread_id: Option<String>,
     /// Display transcript (user turns, assistant text, workflow lines). Rows,
@@ -1918,6 +1920,9 @@ pub(super) struct App {
     /// One entry per visible row, in wrapped coordinates, so a click maps
     /// straight through even where a row wrapped.
     pub(super) row_index: Vec<Option<usize>>,
+    /// Frame screen row -> `Some(space_at_break)` when it is a soft-wrap
+    /// continuation of the row above, from the last draw. Copy joins such rows.
+    pub(super) continued_rows: Vec<Option<bool>>,
     /// When the current run started, so the header can show elapsed time.
     /// `None` while idle.
     pub(super) run_started: Option<Instant>,
@@ -2161,7 +2166,7 @@ impl App {
             last_esc: None,
             rewind_target: None,
             agent_dir,
-            history: Vec::new(),
+            history: Default::default(),
             thread_id: None,
             transcript: Vec::new(),
             display_log: Vec::new(),
@@ -2271,6 +2276,7 @@ impl App {
             transcript_rect: Rect::default(),
             last_scroll: 0,
             row_index: Vec::new(),
+            continued_rows: Vec::new(),
             run_started: None,
             selection: None,
             copy_armed: false,
@@ -2339,7 +2345,7 @@ impl App {
     /// the saved thread so the next message starts a fresh one. Backs `/clear` and
     /// `/new`; the model/MCP setup and picker state are untouched.
     pub(super) fn reset_session(&mut self) {
-        self.history.clear();
+        std::sync::Arc::make_mut(&mut self.history).clear();
         self.thread_id = None;
         // A fresh session drops any active goal along with the conversation.
         self.goal = None;
@@ -3922,7 +3928,7 @@ impl App {
     }
 
     pub(super) fn record_pending_message(&mut self, pending: PendingMessage) {
-        self.history.push(pending.message);
+        std::sync::Arc::make_mut(&mut self.history).push(pending.message);
         if pending.display {
             let text = if let Some((name, args, description)) = pending.invocation {
                 self.push_invocation_row(&format!("[skill:{name}]"), &args, &description);
@@ -3942,7 +3948,7 @@ impl App {
         if pending.fresh_context {
             // Execute-in-fresh-context: the plan text in this message is all the
             // model gets. The staged todos live outside the history and stay.
-            self.history.clear();
+            std::sync::Arc::make_mut(&mut self.history).clear();
             self.tokens = 0;
             self.note("◈ context cleared; implementing from the plan alone");
         }
@@ -4016,7 +4022,7 @@ impl App {
         }
         self.ensure_base_snapshot();
         let args = args.trim();
-        self.history
+        std::sync::Arc::make_mut(&mut self.history)
             .push(serde_json::json!({ "role": "user", "content": msg }));
         self.push_invocation_row(&format!("[skill:{name}]"), args, &description);
         self.begin_turn();
@@ -4053,7 +4059,7 @@ impl App {
         }
         self.ensure_base_snapshot();
         let args = args.trim();
-        self.history
+        std::sync::Arc::make_mut(&mut self.history)
             .push(serde_json::json!({ "role": "user", "content": msg }));
         self.push_invocation_row(&format!("[command:{name}]"), args, &description);
         self.begin_turn();
@@ -4072,7 +4078,7 @@ impl App {
     /// marked, so `is_user_turn` keeps it out of the rewind picker, recall and
     /// checkpoint keys.
     pub(super) fn submit_reminder(&mut self, text: String) {
-        crate::core::agent::reminder::attach(&mut self.history, &text);
+        crate::core::agent::reminder::attach(std::sync::Arc::make_mut(&mut self.history), &text);
         self.note("todo reminder — unfinished work, continuing");
         self.begin_turn();
         self.want_start = true;
@@ -4188,7 +4194,7 @@ impl App {
         }
         self.flush_assistant();
         self.finalize_tool_group();
-        self.history = request.messages;
+        self.history = request.messages.into();
         for _ in 0..count {
             let pending = self
                 .message_queue
