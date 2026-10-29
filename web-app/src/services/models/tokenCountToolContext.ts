@@ -130,3 +130,4 @@ export function extractToolContextFromContent(message: ThreadMessage): string {
     .filter((entry) => entry.length > 0)
     .join('\n\n')
 }
+

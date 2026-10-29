@@ -237,6 +237,15 @@ export const resolveDocumentMode = (input: {
   return input.preference === 'inline' ? 'inline' : 'embeddings'
 }
 
+/**
+ * Audio and video go as they are: nothing to ingest, only marked ready, in
+ * the order they were attached (audio first, then video).
+ */
+export const passThroughMedia = (attachments: Attachment[]): Attachment[] => [
+  ...attachments.filter((a) => a.type === 'audio'),
+  ...attachments.filter((a) => a.type === 'video'),
+].map((a) => ({ ...a, processed: true, processing: false }))
+
 export const processAttachmentsForSend = async (
   options: AttachmentProcessingOptions
 ): Promise<AttachmentProcessingResult> => {
@@ -369,23 +378,7 @@ export const processAttachmentsForSend = async (
     }
   }
 
-  const audios = attachments.filter((a) => a.type === 'audio')
-  for (const aud of audios) {
-    processedAttachments.push({
-      ...aud,
-      processed: true,
-      processing: false,
-    })
-  }
-
-  const videos = attachments.filter((a) => a.type === 'video')
-  for (const vid of videos) {
-    processedAttachments.push({
-      ...vid,
-      processed: true,
-      processing: false,
-    })
-  }
+  processedAttachments.push(...passThroughMedia(attachments))
 
   const documents = attachments.filter((a) => a.type === 'document')
   for (const doc of documents) {
