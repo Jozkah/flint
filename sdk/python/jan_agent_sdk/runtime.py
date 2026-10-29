@@ -33,6 +33,8 @@ except ImportError:  # pragma: no cover - Python < 3.8 has no importlib.metadata
 
 CLIENT_NAME = "jan-agent-sdk"
 _LOG = logging.getLogger("jan_agent_sdk")
+# Sentinel: `request()` was not given a timeout, so use `request_timeout`.
+_DEFAULT_TIMEOUT: Any = object()
 
 
 class _Pending:
@@ -79,6 +81,7 @@ class JanRuntime:
         env: Optional[Dict[str, str]] = None,
         client_info: Optional[Dict[str, str]] = None,
         handshake_timeout: float = 20.0,
+        request_timeout: Optional[float] = 60.0,
         shutdown_grace: float = 5.0,
         max_buffered_events: int = 100_000,
         on_stderr: Optional[Callable[[str], None]] = None,
@@ -88,6 +91,9 @@ class JanRuntime:
         self.max_buffered_events = max_buffered_events
         self._client_info = client_info or {"name": CLIENT_NAME, "version": CLIENT_VERSION}
         self._handshake_timeout = handshake_timeout
+        # Default wait for one request's answer (turns stream separately, so
+        # `turn/start` answers at once). None waits forever.
+        self._request_timeout = request_timeout
         self._shutdown_grace = shutdown_grace
         self._on_stderr = on_stderr
         self._stderr_tail: Deque[str] = deque(maxlen=256)
@@ -286,11 +292,15 @@ class JanRuntime:
             session.set_tools(tools)
         return session
 
-    def request(self, method: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None) -> Any:
+    def request(self, method: str, params: Optional[Dict[str, Any]] = None, timeout: Any = _DEFAULT_TIMEOUT) -> Any:
         """One JSON-RPC request, answered or refused.
 
-        The escape hatch for a verb this client has no wrapper for.
+        The escape hatch for a verb this client has no wrapper for. `timeout`
+        defaults to the runtime's `request_timeout` (60 s); pass None to wait
+        forever.
         """
+        if timeout is _DEFAULT_TIMEOUT:
+            timeout = self._request_timeout
         if self._failure is not None:
             raise self._failure
         if self._closing:

@@ -194,6 +194,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'agent_sandbox_apply_file',
       'agent_sandbox_apply_hunk',
       'agent_sandbox_apply_probe',
+      'agent_worktree_branch_name',
       'agent_worktree_ensure',
       'agent_worktree_export',
       'agent_worktree_optimize',

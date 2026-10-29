@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  TOOL_RUNTIME_SETTLED_CAP,
   findRunningToolCallId,
   useToolCallRuntime,
   withToolTiming,
@@ -232,5 +233,45 @@ describe('useToolCallRuntime', () => {
     // Otherwise it holds the running slot forever, and every later call reads
     // as queued behind a call that is already gone.
     expect(store().timings['a']?.endedAt).toBeDefined()
+  })
+})
+
+describe('ownerless calls and retention', () => {
+  beforeEach(() => useToolCallRuntime.getState().reset())
+
+  // P2F-010: withToolTiming enqueues without an owner; a second such call
+  // must not end the first one's timing as "stranded".
+  it('two ownerless calls keep independent timing', async () => {
+    let finishA: () => void = () => {}
+    const a = withToolTiming(
+      'own-a',
+      () => new Promise<void>((r) => (finishA = r))
+    )
+    await withToolTiming('own-b', async () => {})
+    expect(
+      useToolCallRuntime.getState().timings['own-a'].endedAt
+    ).toBeUndefined()
+    finishA()
+    await a
+    expect(useToolCallRuntime.getState().timings['own-a'].endedAt).toBeDefined()
+  })
+
+  // F9x1-009: settled entries are kept up to a cap, oldest dropped first;
+  // a running call is never dropped.
+  it('drops the oldest settled entries past the cap', () => {
+    const rt = () => useToolCallRuntime.getState()
+    rt().enqueue(['live'], 'conv')
+    rt().markRunning('live')
+    for (let i = 0; i < TOOL_RUNTIME_SETTLED_CAP + 5; i++) {
+      const id = `done-${i}`
+      rt().enqueue([id], 'other')
+      rt().markRunning(id)
+      rt().recordDiff(id, 'd')
+      rt().markSettled(id)
+    }
+    expect(rt().timings['done-0']).toBeUndefined()
+    expect(rt().diffs['done-0']).toBeUndefined()
+    expect(rt().timings[`done-${TOOL_RUNTIME_SETTLED_CAP + 4}`]).toBeDefined()
+    expect(rt().timings['live'].endedAt).toBeUndefined()
   })
 })

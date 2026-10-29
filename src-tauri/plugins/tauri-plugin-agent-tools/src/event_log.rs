@@ -275,6 +275,11 @@ fn announce(envelope: &Envelope) {
     }
 }
 
+/// Drop a session's cached state, so its next append re-reads the file.
+fn forget(key: &str) {
+    STATE.lock().unwrap_or_else(|p| p.into_inner()).remove(key);
+}
+
 /// Read a log, cutting off a torn final line first so the next append starts
 /// on a line of its own.
 fn load(path: &Path) -> Result<SessionState, LogError> {
@@ -501,21 +506,45 @@ pub fn append_within(
         return Err(LogError::TooLarge);
     }
     // An empty or missing log is a new one; known from the state, no stat.
-    let fresh = state.bytes == 0;
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(io)?;
-    if let Err(e) = file.write_all(line.as_bytes()).and_then(|()| file.flush()) {
-        // A partial write would leave a torn line mid-log, and the next append
-        // would make it a corrupt line that fails the whole session's read.
-        // Cut back to what was whole; if even that fails, forget the loaded
-        // state so the next append re-reads the file.
-        if file.set_len(state.bytes).is_err() {
-            states.remove(&key);
-        }
+    let before = state.bytes;
+    let fresh = before == 0;
+    // The write runs without the global lock (PERF-020): the session's file
+    // lock, still held, is what orders writers of this log, so other sessions'
+    // appends are not stalled behind this one's disk write.
+    drop(states);
+    let written = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut file| match file.write_all(line.as_bytes()).and_then(|()| file.flush()) {
+            Ok(()) => Ok(()),
+            // A partial write would leave a torn line mid-log, and the next
+            // append would make it a corrupt line that fails the whole
+            // session's read. Cut back to what was whole.
+            Err(e) => Err((e, file.set_len(before).is_ok())),
+        }.map_err(|(e, cut)| {
+            if !cut {
+                forget(&key);
+            }
+            e
+        }));
+    let mut states = STATE.lock().unwrap_or_else(|p| p.into_inner());
+    if let Err(e) = written {
         return Err(io(e));
     }
-    state.last_seq = envelope.seq;
-    state.ids.insert(envelope.id.clone());
-    state.bytes += line.len() as u64;
+    match states.get_mut(&key) {
+        // Still the state this append read: bring it up to date.
+        Some(state) if state.bytes == before => {
+            state.last_seq = envelope.seq;
+            state.ids.insert(envelope.id.clone());
+            state.bytes += line.len() as u64;
+        }
+        // Evicted or replaced meanwhile: the next append re-reads the file.
+        Some(_) => {
+            states.remove(&key);
+        }
+        None => {}
+    }
     drop(states);
     // Released before the watcher runs: it may record into this session.
     drop(unlock);
@@ -835,6 +864,26 @@ mod tests {
         });
         rx.recv_timeout(std::time::Duration::from_secs(20)).expect("deadlocked");
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 11);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// PERF-020: the write runs outside the global lock; four threads writing
+    /// one session still get 1..=100 with no gap or repeat, in file order.
+    #[test]
+    fn four_threads_keep_seq_order() {
+        let d = dir("fourthreads");
+        std::thread::scope(|scope| {
+            for t in 0..4 {
+                let d = &d;
+                scope.spawn(move || {
+                    for i in 0..25 {
+                        append(d, ev(&format!("t{t}-{i}"), "s4", "run.started", json!({}))).unwrap();
+                    }
+                });
+            }
+        });
+        let seqs: Vec<u64> = read_session(&d, "s4").unwrap().iter().map(|e| e.seq).collect();
+        assert_eq!(seqs, (1..=100).collect::<Vec<u64>>());
         let _ = std::fs::remove_dir_all(&d);
     }
 
