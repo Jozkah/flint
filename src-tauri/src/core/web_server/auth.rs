@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const SESSION_LIFETIME_SECS: u64 = 12 * 60 * 60;
+/// Live browser sessions kept at once; signing in past this drops the oldest.
+const MAX_SESSIONS: usize = 32;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct StoredAuth {
@@ -134,6 +136,17 @@ impl AuthStore {
         let session = token();
         let now = now_secs();
         self.state.sessions.retain(|entry| entry.expires_at > now);
+        while self.state.sessions.len() >= MAX_SESSIONS {
+            let oldest = self
+                .state
+                .sessions
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, entry)| entry.expires_at)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.state.sessions.remove(oldest);
+        }
         self.state.sessions.push(StoredSession {
             token_hash: hash(&session),
             expires_at: now + SESSION_LIFETIME_SECS,
@@ -253,5 +266,19 @@ mod tests {
         fs::write(&path, b"not json").unwrap();
         assert!(AuthStore::open(path.clone()).is_err());
         assert_eq!(fs::read(path).unwrap(), b"not json");
+    }
+    #[test]
+    fn sessions_are_capped_and_the_oldest_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut store, admin) = AuthStore::open(dir.path().join("auth.json")).unwrap();
+        let admin = admin.unwrap();
+        let first = store.sign_in(&admin).unwrap().unwrap();
+        // Same-second sign-ins share expires_at; age the first so it is oldest.
+        store.state.sessions[0].expires_at -= 10;
+        for _ in 0..MAX_SESSIONS {
+            store.sign_in(&admin).unwrap().unwrap();
+        }
+        assert_eq!(store.state.sessions.len(), MAX_SESSIONS);
+        assert!(!store.authorize(&first));
     }
 }

@@ -1267,7 +1267,7 @@ pub async fn cancel_tool_call(
     if let Some(cancel_tx) = cancellations.remove(&cancellation_token) {
         // Send cancellation signal - ignore if receiver is already dropped
         let _ = cancel_tx.send(());
-        println!("Tool call with token {cancellation_token} cancelled");
+        log::info!("Tool call with token {cancellation_token} cancelled");
         Ok(())
     } else {
         Err(format!("Cancellation token {cancellation_token} not found"))
@@ -1278,6 +1278,16 @@ fn parse_mcp_settings(value: Option<&Value>) -> McpSettings {
     value
         .and_then(|v| serde_json::from_value::<McpSettings>(v.clone()).ok())
         .unwrap_or_default()
+}
+
+/// Like `parse_mcp_settings`, but a present-yet-invalid `mcpSettings` is an
+/// error: saving must not write a block the runtime then silently ignores.
+fn parse_mcp_settings_strict(value: Option<&Value>) -> Result<McpSettings, String> {
+    match value {
+        None | Some(Value::Null) => Ok(McpSettings::default()),
+        Some(v) => serde_json::from_value::<McpSettings>(v.clone())
+            .map_err(|e| format!("Invalid mcpSettings: {e}")),
+    }
 }
 
 /// Read one configured server's entry out of `mcp_config.json`. Errors rather
@@ -1683,12 +1693,13 @@ pub async fn save_mcp_configs<R: Runtime>(
     }
 
     let config_object = config_value.as_object_mut().unwrap();
-    let settings = parse_mcp_settings(config_object.get("mcpSettings"));
+    let settings = parse_mcp_settings_strict(config_object.get("mcpSettings"))?;
 
     if !config_object.contains_key("mcpSettings") {
         config_object.insert(
             "mcpSettings".to_string(),
-            serde_json::to_value(&settings).expect("Failed to serialize MCP settings"),
+            serde_json::to_value(&settings)
+                .map_err(|e| format!("Failed to serialize MCP settings: {e}"))?,
         );
     }
 
@@ -1931,5 +1942,26 @@ mod cancellation_guard_tests {
         guard.finish().await;
         drop(guard);
         assert_eq!(map.lock().await.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod strict_settings_tests {
+    use super::parse_mcp_settings_strict;
+    use serde_json::json;
+
+    #[test]
+    fn invalid_mcp_settings_is_an_error_on_save() {
+        let bad = json!({ "toolCallTimeoutSeconds": "soon" });
+        let err = parse_mcp_settings_strict(Some(&bad)).unwrap_err();
+        assert!(err.contains("Invalid mcpSettings"), "{err}");
+    }
+
+    #[test]
+    fn missing_or_partial_settings_use_defaults() {
+        assert!(parse_mcp_settings_strict(None).is_ok());
+        let partial = json!({ "toolCallTimeoutSeconds": 45 });
+        let s = parse_mcp_settings_strict(Some(&partial)).unwrap();
+        assert_eq!(s.tool_call_timeout_seconds, 45);
     }
 }
