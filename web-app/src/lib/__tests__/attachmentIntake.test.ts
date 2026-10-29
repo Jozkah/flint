@@ -9,6 +9,7 @@ import {
   readAsDataUrl,
   splitNewByName,
   splitNewImages,
+  withoutAttachment,
 } from '../attachmentIntake'
 import type { Attachment } from '@/types/attachment'
 
@@ -252,5 +253,31 @@ describe('splitNewImages', () => {
     expect(byContent.duplicates).toEqual(['x.png'])
     const byName = await splitNewImages([img('same.png', 'h9')], [img('same.png')], hash)
     expect(byName.duplicates).toEqual(['same.png'])
+  })
+})
+
+describe('withoutAttachment', () => {
+  const a = { type: 'image', name: 'a.png', contentHash: 'h1' } as Attachment
+  const b = { type: 'image', name: 'a.png', contentHash: 'h2' } as Attachment
+  const c = { type: 'document', name: 'c.md', path: '/c.md' } as Attachment
+
+  it('removes by identity, not position, after the list changed', () => {
+    // An index taken before an await: `c` was at 2, then `a` was removed.
+    expect(withoutAttachment([b, c], c)).toEqual([b])
+  })
+
+  it('finds a replaced object by type, name and hash or path', () => {
+    const updated = { ...a, processed: true }
+    expect(withoutAttachment([updated, b], a)).toEqual([b])
+    expect(withoutAttachment([{ ...c, id: 'x' }], c)).toEqual([])
+  })
+
+  it('same name, different content, is a different chip', () => {
+    expect(withoutAttachment([b], a)).toEqual([b])
+  })
+
+  it('a chip already gone leaves the list as it is', () => {
+    const list = [b]
+    expect(withoutAttachment(list, c)).toBe(list)
   })
 })

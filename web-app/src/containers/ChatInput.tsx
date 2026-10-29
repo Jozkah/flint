@@ -187,13 +187,9 @@ import {
 import { safeSessionSet } from '@/lib/safeStorage'
 import {
   VIDEO_EXTS,
-  mediaBatchErrors,
-  prepareAudioFiles,
   prepareImageFiles,
-  prepareVideoFiles,
-  splitNewByName,
   splitNewImages,
-  videoMimeForExt,
+  withoutAttachment,
   withoutSent,
 } from '@/lib/attachmentIntake'
 import {
@@ -202,6 +198,9 @@ import {
   createDocumentAttachment,
 } from '@/types/attachment'
 import { useAgentMode } from '@/hooks/useAgentMode'
+import { useComposerFocus } from '@/hooks/useComposerFocus'
+import { useLatestCallback } from '@/hooks/useLatestCallback'
+import { useMediaAttachments } from '@/hooks/useMediaAttachments'
 import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import { useChatShell } from '@/hooks/useChatShell'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -462,23 +461,14 @@ const ChatInput = memo(function ChatInput({
   slashBuiltins,
 }: ChatInputProps) {
   const richComposerRef = useRef<RichComposerHandle>(null)
-  const isComposerElement = (el: Element | null) =>
-    !!el && !!richComposerRef.current?.element?.contains(el)
-  const focusComposer = useCallback(() => {
-    richComposerRef.current?.focus()
-  }, [])
-  // Taking focus on mount or a thread change must not pull it out of another
-  // field the person is already typing in (a parameter input, a dialog).
-  const focusComposerUnlessTyping = useCallback(() => {
-    const active = document.activeElement
-    const typing =
-      active instanceof HTMLInputElement ||
-      active instanceof HTMLTextAreaElement ||
-      (active instanceof HTMLElement && active.isContentEditable)
-    if (typing && !isComposerElement(active)) return
-    focusComposer()
-  }, [focusComposer])
-  const [isFocused, setIsFocused] = useState(false)
+  const routeThreadId = useThreads((state) => state.currentThreadId)
+  const currentThreadId = threadIdProp ?? routeThreadId
+  const { isFocused, focusComposer } = useComposerFocus({
+    composerRef: richComposerRef,
+    takeFocus,
+    threadId: currentThreadId,
+    chatStatus,
+  })
   // The control row is absolutely positioned at the bottom of the composer, so
   // the composer must reserve exactly as much space as the row occupies. The
   // row wraps when it runs out of width, so the reserve cannot be a constant:
@@ -537,8 +527,7 @@ const ChatInput = memo(function ChatInput({
         setPrompt('')
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scopeKey, draftScope]
+    [scopeKey, draftScope, setPrompt]
   )
   const navigateMainHistory = usePrompt((state) => state.navigateHistory)
   const navigateScopedHistory = usePrompt(
@@ -551,8 +540,6 @@ const ChatInput = memo(function ChatInput({
         : navigateMainHistory(direction),
     [draftScope, navigateScopedHistory, navigateMainHistory]
   )
-  const routeThreadId = useThreads((state) => state.currentThreadId)
-  const currentThreadId = threadIdProp ?? routeThreadId
   // The main composer's draft is per chat: leaving a chat keeps its unsent
   // text for it, and the chat shown gets back its own (or nothing).
   const draftKey =
@@ -908,7 +895,7 @@ const ChatInput = memo(function ChatInput({
       // Focus back on textarea
       setTimeout(() => focusComposer(), 0)
     },
-    [prompt, setPrompt, libraryPrompts, beginPromptInsert]
+    [prompt, setPrompt, libraryPrompts, beginPromptInsert, focusComposer]
   )
 
   const handleFilePickerClose = useCallback(() => {
@@ -958,14 +945,22 @@ const ChatInput = memo(function ChatInput({
       )
       setTimeout(() => focusComposer(), 0)
     },
-    [aliasDraft, workingDir, filePickerQuery, referenceSkills, referenceAgents]
+    [
+      aliasDraft,
+      workingDir,
+      filePickerQuery,
+      referenceSkills,
+      referenceAgents,
+      focusComposer,
+      t,
+    ]
   )
 
   const handleAliasCancel = useCallback(() => {
     setAliasDraft(null)
     setAliasError(null)
     setTimeout(() => focusComposer(), 0)
-  }, [])
+  }, [focusComposer])
 
   // Resolve @path references in the prompt text, returning the resolved content
   const resolvePromptReferences = useCallback(
@@ -1159,9 +1154,14 @@ const ChatInput = memo(function ChatInput({
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')
 
+  // Re-chosen when loading ends or the project's assistant changes, not when
+  // the current assistant does: that would undo the person's own pick.
+  const currentAssistantIdRef = useRef(currentAssistant?.id)
+  currentAssistantIdRef.current = currentAssistant?.id
   useEffect(() => {
-    setSelectedAssistantId(projectAssistantId || currentAssistant?.id || '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSelectedAssistantId(
+      projectAssistantId || currentAssistantIdRef.current || ''
+    )
   }, [loading, projectAssistantId])
 
   const attachmentsEnabled = useAttachments((s) => s.enabled)
@@ -1711,6 +1711,7 @@ const ChatInput = memo(function ChatInput({
     }
   }
 
+  const sendLatest = useLatestCallback(handleSendMessage)
   // A parked send belongs to the thread and the text it was typed for: moving
   // to another thread or editing the draft cancels it instead of sending later.
   useEffect(() => {
@@ -1728,39 +1729,9 @@ const ChatInput = memo(function ChatInput({
     pendingSendRef.current = null
     // Only a send waiting for this switch; one that waited too long is dropped.
     if (Date.now() - pending.at > 15_000) return
-    void handleSendMessage(pending.typed, pending.options)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedModel?.id])
+    void sendLatest(pending.typed, pending.options)
+  }, [selectedModel?.id, sendLatest])
 
-  useEffect(() => {
-    const handleFocusIn = () => {
-      if (isComposerElement(document.activeElement)) {
-        setIsFocused(true)
-      }
-    }
-
-    const handleFocusOut = () => {
-      if (!isComposerElement(document.activeElement)) {
-        setIsFocused(false)
-      }
-    }
-
-    document.addEventListener('focusin', handleFocusIn)
-    document.addEventListener('focusout', handleFocusOut)
-
-    return () => {
-      document.removeEventListener('focusin', handleFocusIn)
-      document.removeEventListener('focusout', handleFocusOut)
-    }
-  }, [])
-
-  // Focus when component mounts
-  useEffect(() => {
-    if (!takeFocus) return
-    const timer = setTimeout(focusComposerUnlessTyping, 0)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     if (tooltipShown && dropdownToolsAvailable) {
@@ -1768,27 +1739,6 @@ const ChatInput = memo(function ChatInput({
     }
   }, [dropdownToolsAvailable, tooltipShown])
 
-  // Focus when thread changes
-  useEffect(() => {
-    if (!takeFocus) return
-    const timer = setTimeout(focusComposerUnlessTyping, 0)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentThreadId])
-
-  // Focus when streaming content finishes
-  useEffect(() => {
-    if (!takeFocus || chatStatus !== 'ready') return
-    // A status update must not steal focus from a parameter input or menu.
-    // Radix dismisses the sampler when focus moves outside its content.
-    const timer = setTimeout(() => {
-      const active = document.activeElement
-      if (!active || active === document.body || isComposerElement(active)) {
-        focusComposer()
-      }
-    }, 10)
-    return () => clearTimeout(timer)
-  }, [chatStatus, takeFocus])
 
   const stopStreaming = useCallback(
     (threadId: string) => {
@@ -1807,10 +1757,17 @@ const ChatInput = memo(function ChatInput({
   )
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const audioInputRef = useRef<HTMLInputElement>(null)
   const visionSupported = !!selectedModel?.capabilities?.includes('vision')
   const audioSupported = !!selectedModel?.capabilities?.includes('audio')
-  const videoInputRef = useRef<HTMLInputElement>(null)
+  const media = useMediaAttachments({
+    attachmentsKey,
+    setMessage,
+    focusComposer,
+  })
+  const processAudioFiles = media.audio.process
+  const processVideoFiles = media.video.process
+  const openAudioPicker = media.audio.openPicker
+  const openVideoPicker = media.video.openPicker
   const videoSupported = !!selectedModel?.capabilities?.includes('video')
 
   const processNewDocumentAttachments = useCallback(
@@ -2047,8 +2004,9 @@ const ChatInput = memo(function ChatInput({
       }
     }
 
+    if (!attachmentToRemove) return
     setAttachmentsForThread(attachmentsKey, (prev) =>
-      prev.filter((_, index) => index !== indexToRemove)
+      withoutAttachment(prev, attachmentToRemove)
     )
   }
 
@@ -2426,177 +2384,6 @@ const ChatInput = memo(function ChatInput({
     focusComposer()
   }
 
-  const processAudioFiles = useCallback(
-    async (files: File[]) => {
-      const batch = await prepareAudioFiles(files)
-      const current = useChatAttachments
-        .getState()
-        .getAttachments(attachmentsKey)
-      const { fresh: newOnes, duplicates } = splitNewByName(
-        batch.prepared,
-        current,
-        'audio'
-      )
-
-      if (newOnes.length > 0) {
-        setAttachmentsForThread(attachmentsKey, (prev) => [...prev, ...newOnes])
-      }
-
-      if (duplicates.length > 0) {
-        toast.warning(t('chat:composer.dupAudio'), {
-          description: t('sweep:chat.alreadyInList', {
-            count: duplicates.length,
-            names: duplicates.join(', '),
-          }),
-        })
-      }
-      const errors = mediaBatchErrors('audio', batch, t)
-      if (errors.length > 0) {
-        setMessage(errors.join(' | '))
-        if (audioInputRef.current) audioInputRef.current.value = ''
-      }
-    },
-    [attachmentsKey, setAttachmentsForThread, t]
-  )
-
-  const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      void processAudioFiles(Array.from(files))
-      if (audioInputRef.current) audioInputRef.current.value = ''
-    }
-    focusComposer()
-  }
-
-  const openAudioPicker = useCallback(async () => {
-    if (isPlatformTauri()) {
-      try {
-        const selected = await serviceHub.dialog().open({
-          multiple: true,
-          filters: [
-            {
-              name: t('chat:composer.filterAudio'),
-              extensions: ['wav', 'mp3'],
-            },
-          ],
-        })
-        if (selected) {
-          const paths = Array.isArray(selected) ? selected : [selected]
-          const files: File[] = []
-          for (const path of paths) {
-            try {
-              const fileUrl = await toAssetUrl(path)
-              const response = await fetch(fileUrl)
-              if (!response.ok) throw new Error(response.statusText)
-              const blob = await response.blob()
-              const fileName =
-                path.split(/[\\/]/).filter(Boolean).pop() || 'audio'
-              const ext = fileName.toLowerCase().split('.').pop()
-              const mimeType = ext === 'mp3' ? 'audio/mpeg' : 'audio/wav'
-              files.push(new File([blob], fileName, { type: mimeType }))
-            } catch (error) {
-              console.error('Failed to read audio file:', error)
-              toast.error(t('chat:composer.readAudioFailed'), {
-                description:
-                  error instanceof Error ? error.message : String(error),
-              })
-            }
-          }
-          if (files.length > 0) await processAudioFiles(files)
-        }
-      } catch (error) {
-        console.error('Failed to open audio dialog:', error)
-      }
-      focusComposer()
-    } else {
-      audioInputRef.current?.click()
-    }
-  }, [serviceHub, processAudioFiles, t])
-
-  const processVideoFiles = useCallback(
-    async (files: File[]) => {
-      const batch = await prepareVideoFiles(files)
-      const current = useChatAttachments
-        .getState()
-        .getAttachments(attachmentsKey)
-      const { fresh: newOnes, duplicates } = splitNewByName(
-        batch.prepared,
-        current,
-        'video'
-      )
-
-      if (newOnes.length > 0) {
-        setAttachmentsForThread(attachmentsKey, (prev) => [...prev, ...newOnes])
-      }
-
-      if (duplicates.length > 0) {
-        toast.warning(t('chat:composer.dupVideo'), {
-          description: t('sweep:chat.alreadyInList', {
-            count: duplicates.length,
-            names: duplicates.join(', '),
-          }),
-        })
-      }
-      const errors = mediaBatchErrors('video', batch, t)
-      if (errors.length > 0) {
-        setMessage(errors.join(' | '))
-        if (videoInputRef.current) videoInputRef.current.value = ''
-      }
-    },
-    [attachmentsKey, setAttachmentsForThread, t]
-  )
-
-  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      void processVideoFiles(Array.from(files))
-      if (videoInputRef.current) videoInputRef.current.value = ''
-    }
-    focusComposer()
-  }
-
-  const openVideoPicker = useCallback(async () => {
-    if (isPlatformTauri()) {
-      try {
-        const selected = await serviceHub.dialog().open({
-          multiple: true,
-          filters: [
-            { name: t('chat:composer.filterVideo'), extensions: VIDEO_EXTS },
-          ],
-        })
-        if (selected) {
-          const paths = Array.isArray(selected) ? selected : [selected]
-          const files: File[] = []
-          for (const path of paths) {
-            try {
-              const fileUrl = await toAssetUrl(path)
-              const response = await fetch(fileUrl)
-              if (!response.ok) throw new Error(response.statusText)
-              const blob = await response.blob()
-              const fileName =
-                path.split(/[\\/]/).filter(Boolean).pop() || 'video'
-              const ext = fileName.toLowerCase().split('.').pop()
-              files.push(
-                new File([blob], fileName, { type: videoMimeForExt(ext) })
-              )
-            } catch (error) {
-              console.error('Failed to read video file:', error)
-              toast.error(t('chat:composer.readVideoFailed'), {
-                description:
-                  error instanceof Error ? error.message : String(error),
-              })
-            }
-          }
-          if (files.length > 0) await processVideoFiles(files)
-        }
-      } catch (error) {
-        console.error('Failed to open video dialog:', error)
-      }
-      focusComposer()
-    } else {
-      videoInputRef.current?.click()
-    }
-  }, [serviceHub, processVideoFiles, t])
 
   // Open the image picker dialog (extracted for reuse)
   const openImagePicker = useCallback(async () => {
@@ -2662,7 +2449,7 @@ const ChatInput = memo(function ChatInput({
       // Fallback to input click for web
       fileInputRef.current?.click()
     }
-  }, [serviceHub, processImageFiles, t])
+  }, [serviceHub, processImageFiles, t, focusComposer])
 
   // The drop zone is always live. Gating it on the model's media capabilities
   // meant a text-only model refused every drop, a plain `.txt` included, and
@@ -3093,12 +2880,12 @@ const ChatInput = memo(function ChatInput({
   const toolInFlight = useAppState((state) =>
     currentThreadId ? Boolean(state.cancelToolCalls?.[currentThreadId]) : false
   )
+  const declineLatest = useLatestCallback(declinePathOffer)
   // The offer belongs to the draft it was pasted into; sending ends it.
   useEffect(() => {
     // Not dropped silently: what was pasted still lands in the composer.
-    if (isStreaming && pathOfferRef.current) declinePathOffer()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isStreaming])
+    if (isStreaming && pathOfferRef.current) declineLatest()
+  }, [isStreaming, declineLatest])
 
   /**
    * Write one or more settings into the model's own configuration, in one
@@ -3458,6 +3245,8 @@ const ChatInput = memo(function ChatInput({
                 // Backspace in an empty box takes the last chip back off.
                 if (
                   event.key === 'Backspace' &&
+                  // A held key removes one chip, not the whole row.
+                  !event.repeat &&
                   !event.ctrlKey &&
                   !event.metaKey &&
                   !event.altKey &&
@@ -4280,19 +4069,19 @@ const ChatInput = memo(function ChatInput({
 
       <input
         type="file"
-        ref={audioInputRef}
+        ref={media.audio.inputRef}
         className="hidden"
         multiple
         accept="audio/wav,audio/mpeg,.wav,.mp3"
-        onChange={handleAudioFileChange}
+        onChange={media.audio.onInputChange}
       />
       <input
         type="file"
-        ref={videoInputRef}
+        ref={media.video.inputRef}
         className="hidden"
         multiple
         accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,.mp4,.mov,.webm,.mkv,.avi,.m4v"
-        onChange={handleVideoFileChange}
+        onChange={media.video.onInputChange}
       />
 
       <VisionDisabledDialog
