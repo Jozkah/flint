@@ -208,3 +208,30 @@ mod http {
         server.stop();
     }
 }
+
+#[test]
+fn pending_bytes_across_devices_are_capped() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = Instant::now();
+    let mut b = UploadBook::default();
+    let half = MAX_PENDING_BYTES / 2;
+    let mb = (half / (1024 * 1024)) as u32 + 1;
+    b.start(dir.path(), "a", "x.bin", half, "text/plain", mb, now).unwrap();
+    b.start(dir.path(), "b", "y.bin", half, "text/plain", mb, now).unwrap();
+    assert_eq!(b.start(dir.path(), "c", "z.txt", 1, "text/plain", 25, now), Err(UploadError::TooMany));
+}
+
+#[test]
+fn removing_a_device_forgets_its_uploads_and_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = Instant::now();
+    let mut b = UploadBook::default();
+    let mine = b.start(dir.path(), "d", "a.txt", 1, "text/plain", 25, now).unwrap();
+    let theirs = b.start(dir.path(), "e", "b.txt", 1, "text/plain", 25, now).unwrap();
+    std::fs::create_dir_all(mine.path.parent().unwrap()).unwrap();
+    std::fs::write(&mine.path, b"x").unwrap();
+    assert_eq!(b.remove_device("d"), 1);
+    assert!(b.get("d", &mine.id).is_none());
+    assert!(!mine.path.parent().unwrap().exists());
+    assert!(b.get("e", &theirs.id).is_some());
+}

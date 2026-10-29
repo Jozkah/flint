@@ -1071,3 +1071,22 @@ fn devices_json_survives_flush_roundtrip() {
     assert_eq!(loaded.get(&device.id).unwrap().last_seen, Some(seen));
     assert!(loaded.verify(&token).is_some());
 }
+
+#[test]
+fn late_polls_after_pairing_ends_do_not_ban_the_ip() {
+    let (hub, _) = hub();
+    for _ in 0..(crate::core::remote::hub::AUTH_FAIL_LIMIT * 3) {
+        assert_eq!(hub.poll_pairing(IP, "gone"), PollResult::Expired);
+    }
+    assert!(!hub.is_blocked(IP));
+}
+
+#[test]
+fn wrong_poll_ids_against_a_live_pairing_still_count() {
+    let (hub, _) = hub();
+    let _start = hub.start_pairing();
+    for _ in 0..(crate::core::remote::hub::AUTH_FAIL_LIMIT + 1) {
+        let _ = hub.poll_pairing(IP, "guess");
+    }
+    assert!(hub.is_blocked(IP));
+}

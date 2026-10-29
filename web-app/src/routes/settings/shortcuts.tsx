@@ -144,7 +144,6 @@ function Shortcuts() {
   // What a conflict message calls the command it collides with.
   const names: Record<ShortcutAction, string> = {
     [ShortcutAction.NEW_CHAT]: t('settings:shortcuts.newChat'),
-    [ShortcutAction.NEW_AGENT_CHAT]: t('settings:shortcuts.newChat'),
     [ShortcutAction.NEW_PROJECT]: t('settings:shortcuts.newProject'),
     [ShortcutAction.TOGGLE_SIDEBAR]: t('settings:shortcuts.toggleSidebar'),
     [ShortcutAction.GO_TO_SETTINGS]: t('settings:shortcuts.goToSettings'),
