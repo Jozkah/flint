@@ -612,11 +612,7 @@ fn append_legacy(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), St
     };
     event.seq = Some(next);
     let line = serde_json::to_string(&event).map_err(|e| e.to_string())?;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
+    let mut file = crate::retention::open_for_append(&path).map_err(|e| e.to_string())?;
     writeln!(file, "{line}").map_err(|e| e.to_string())?;
     // Per record: a crash costs the event that was mid-write, not the run.
     file.flush().map_err(|e| e.to_string())?;
