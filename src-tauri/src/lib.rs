@@ -78,6 +78,10 @@ macro_rules! invoke_commands_with_extras {
         core::filesystem::settings_backup::settings_backup_save,
         core::filesystem::settings_backup::settings_backup_load,
         core::filesystem::settings_backup::settings_backup_store_provider_keys,
+        core::filesystem::data_backup::data_backup_save,
+        core::filesystem::data_backup::data_backup_load,
+        core::filesystem::data_backup::data_backup_apply,
+        core::filesystem::data_backup::data_backup_discard,
         core::filesystem::group_folders::inspect_group_folders,
         core::filesystem::session_path::open_session_path,
         // App configuration commands
@@ -257,6 +261,7 @@ macro_rules! invoke_commands_with_extras {
         core::jev::commands::jev_suggest_model,
         core::jev::commands::jev_rerank,
         core::agent::commands::agent_worktree_ensure,
+        core::agent::commands::agent_worktree_branch_name,
         core::agent::commands::agent_worktree_state,
         core::agent::commands::agent_worktree_resume,
         core::agent::commands::agent_worktree_discard,
