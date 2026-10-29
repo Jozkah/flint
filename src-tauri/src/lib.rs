@@ -951,6 +951,24 @@ pub fn build_app() -> tauri::App {
             // instance with its own folder never touches the user's.
             if let Some(llama) = app.try_state::<std::sync::Arc<tauri_plugin_llamacpp::LlamacppState>>() {
                 let _ = llama.addon_root.set(data_folder.join("engine-addons"));
+                // A custom llama-server path named by the webview runs only
+                // after the user confirms it here, natively.
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                llama.custom_exe.set_confirm(std::sync::Arc::new(|exe: std::path::PathBuf| {
+                    Box::pin(async move {
+                        rfd::AsyncMessageDialog::new()
+                            .set_level(rfd::MessageLevel::Warning)
+                            .set_title("Run a custom llama-server?")
+                            .set_description(format!(
+                                "Flint was asked to start this program as its model server:\n\n{}\n\nOnly allow this if you chose this file yourself in Settings.",
+                                exe.display()
+                            ))
+                            .set_buttons(rfd::MessageButtons::YesNo)
+                            .show()
+                            .await
+                            == rfd::MessageDialogResult::Yes
+                    })
+                }));
             }
             // The RAG/memory databases live in the data folder, before any
             // frontend command can reach them.
