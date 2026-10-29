@@ -272,16 +272,13 @@ export function validateForm(form: TaskForm): FormErrors {
  * errors: the person may mean it (a task kept switched off), so they are shown
  * beside the form and never block saving.
  *
- * `previewError` is what the backend said when asked for the next runs of the
- * schedule as it stands now.
+ * `neverFires` is the backend's typed answer for the schedule as it stands
+ * now (`schedule_preview`).
  */
-export function neverRunsWarnings(
-  form: TaskForm,
-  previewError: string | null
-): string[] {
+export function neverRunsWarnings(form: TaskForm, neverFires: boolean): string[] {
   const out: string[] = []
   if (!form.enabled) out.push('schedules:warnings.disabled')
-  if (previewError && /never fires/i.test(previewError)) {
+  if (neverFires) {
     out.push('schedules:warnings.neverFires')
   }
   return out

@@ -3148,6 +3148,31 @@ async fn lookup_port_owner(port: u16) -> Option<jan_utils::network::ProcessUsing
     }
 }
 
+/// A start failure with a stable code the settings page can switch on, so it
+/// does not have to recognise English message text (RTE-005). `Display` is
+/// the message alone, so callers that only print it see no change.
+#[derive(Debug)]
+pub struct StartError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+pub const START_ERR_ALREADY_RUNNING: &str = "ALREADY_RUNNING";
+pub const START_ERR_PORT_IN_USE: &str = "PORT_IN_USE";
+pub const START_ERR_PORT_FORBIDDEN: &str = "PORT_FORBIDDEN";
+
+impl std::fmt::Display for StartError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for StartError {}
+
+fn start_error(code: &'static str, message: String) -> Box<dyn std::error::Error + Send + Sync> {
+    Box::new(StartError { code, message })
+}
+
 /// Convert a TCP bind failure into a user-facing message. Address-in-use
 /// (Windows error 10048 / WSAEADDRINUSE, Unix EADDRINUSE) almost always means
 /// a leftover Flint process or another service still owns the port after a
@@ -3183,18 +3208,17 @@ fn map_bind_error(
                  process and try again, or pick a different port in Settings > Local API Server."
             ),
         };
-        return msg.into();
+        return start_error(START_ERR_PORT_IN_USE, msg);
     }
     if err.kind() == std::io::ErrorKind::PermissionDenied {
         // Windows error 10013: the port sits in a range Windows reserves
         // (Hyper-V, WSL, Docker), not one another program holds.
-        return format!(
+        return start_error(START_ERR_PORT_FORBIDDEN, format!(
             "Port {port} ({addr}) cannot be used: the operating system refused access to it. \
              On Windows this usually means the port is in a reserved range (Hyper-V, WSL or \
              Docker); pick a different port in Settings > Local API Server. ({err})",
             port = addr.port()
-        )
-        .into();
+        ));
     }
     Box::new(err)
 }
@@ -3356,7 +3380,7 @@ async fn start_server_internal(
 ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
     let mut handle_guard = server_handle.lock().await;
     if handle_guard.is_some() {
-        return Err("Server is already running".into());
+        return Err(start_error(START_ERR_ALREADY_RUNNING, "Server is already running".into()));
     }
 
     let addr: SocketAddr = bind_addr(&host, port)?;
@@ -4380,6 +4404,18 @@ mod tests {
             msg.contains("denied"),
             "should keep the original error: {msg}"
         );
+    }
+
+    #[test]
+    fn bind_errors_carry_a_stable_code() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        let code = |kind| {
+            let e = map_bind_error(addr, std::io::Error::new(kind, "x"), None);
+            e.downcast_ref::<super::StartError>().map(|s| s.code)
+        };
+        assert_eq!(code(std::io::ErrorKind::AddrInUse), Some(super::START_ERR_PORT_IN_USE));
+        assert_eq!(code(std::io::ErrorKind::PermissionDenied), Some(super::START_ERR_PORT_FORBIDDEN));
+        assert_eq!(code(std::io::ErrorKind::Other), None);
     }
 
     #[test]

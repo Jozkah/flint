@@ -80,9 +80,14 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
   const [saving, setSaving] = useState(false)
   const [zones, setZones] = useState<string[]>([])
   const [tools, setTools] = useState<ScheduleTool[]>([])
-  const [preview, setPreview] = useState<{ fires: string[]; error: string | null }>({
+  const [preview, setPreview] = useState<{
+    fires: string[]
+    error: string | null
+    neverFires: boolean
+  }>({
     fires: [],
     error: null,
+    neverFires: false,
   })
 
   // A fresh form each time the dialog opens, for the task it is opened on.
@@ -108,14 +113,20 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
     if (!open) return
     const spec = formToSchedule(form.schedule)
     if (!spec || !form.timezone.trim()) {
-      setPreview({ fires: [], error: null })
+      setPreview({ fires: [], error: null, neverFires: false })
       return
     }
     let live = true
     const timer = setTimeout(() => {
       schedulePreview(spec, form.timezone.trim(), 5)
-        .then((fires) => live && setPreview({ fires, error: null }))
-        .catch((e) => live && setPreview({ fires: [], error: errorText(e) }))
+        .then(
+          (p) =>
+            live && setPreview({ fires: p.fires, error: null, neverFires: p.neverFires })
+        )
+        .catch(
+          (e) =>
+            live && setPreview({ fires: [], error: errorText(e), neverFires: false })
+        )
     }, 250)
     return () => {
       live = false
@@ -265,7 +276,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
 
           <ScheduleRunPolicy {...section} />
 
-          {neverRunsWarnings(form, preview.error).map((key) => (
+          {neverRunsWarnings(form, preview.neverFires).map((key) => (
             <p
               key={key}
               role="status"
