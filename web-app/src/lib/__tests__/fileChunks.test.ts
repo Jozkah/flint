@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
+  urlSource,
   createChunkReader,
   createLineState,
   pushText,
@@ -127,6 +128,45 @@ describe('windowing', () => {
     const long = 'x'.repeat(LINE_CAP + 5)
     expect(capLine(long, false)).toEqual({ text: 'x'.repeat(LINE_CAP), cut: true })
     expect(capLine(long, true).cut).toBe(false)
+  })
+})
+
+describe('urlSource', () => {
+  const body = (bytes: Uint8Array, piece = 700) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (let i = 0; i < bytes.length; i += piece) c.enqueue(bytes.slice(i, i + piece))
+        c.close()
+      },
+    })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads a server that ignores Range from one stream, not once per chunk', async () => {
+    const bytes = new TextEncoder().encode('line\n'.repeat(2000))
+    const fetchSpy = vi.fn(async () => new Response(body(bytes), { status: 200 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const r = createChunkReader(urlSource('asset://x'), 3000)
+    while (!r.done) await r.next()
+    expect(r.loaded).toBe(bytes.length)
+    expect(r.state.lines).toHaveLength(2000)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads a capped range server of unknown size to the end', async () => {
+    const bytes = new TextEncoder().encode('ab\n'.repeat(1000))
+    const fetchSpy = vi.fn(async (_url: string, init?: RequestInit) => {
+      const range = /bytes=(\d+)-(\d+)/.exec(String((init?.headers as Record<string, string>)?.Range))!
+      const from = Number(range[1])
+      // At most 500 bytes per answer and no total in Content-Range.
+      const slice = bytes.slice(from, Math.min(Number(range[2]) + 1, from + 500))
+      return new Response(slice, { status: 206 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const r = createChunkReader(urlSource('asset://y'), 2048)
+    while (!r.done) await r.next()
+    expect(r.loaded).toBe(bytes.length)
+    expect(r.state.lines).toHaveLength(1000)
   })
 })
 

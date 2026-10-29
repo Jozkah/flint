@@ -4,7 +4,7 @@
 // few presentation helpers, kept store-free so the review panel and its tests
 // can import it without pulling in a hook.
 
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { basenameOf } from '@/lib/coworkPreview'
 
 /** Which set of changes to inspect. Mirrors the Rust `DiffScope`. */

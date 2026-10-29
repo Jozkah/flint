@@ -10,6 +10,7 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
+import { usePrStatusStore } from '@/stores/pr-status-store'
 import {
   notifySessionArchived,
   notifySessionRemoved,
@@ -63,6 +64,9 @@ export function deleteCoworkSession(
   useSubagentQuestions.getState().forgetSession(id)
   // Other sessions can no longer reach it; mail to it becomes undeliverable.
   if (!opts?.keepRecords) notifySessionRemoved(id)
+  // Its recorded pull requests and claims; an archived session keeps them
+  // for a restore.
+  if (!opts?.keepRecords) usePrStatusStore.getState().forgetSession(id)
   useSessionMessaging.getState().forget(id)
 }
 

@@ -8,7 +8,7 @@
  * bound to that import: its bundle and manifest hashes and the destination,
  * all of which the backend checks again before anything is written.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { errorText } from '@/lib/errorText'
 import type {
   Approval,

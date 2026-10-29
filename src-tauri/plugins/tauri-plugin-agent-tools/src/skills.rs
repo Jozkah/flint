@@ -153,14 +153,17 @@ pub fn load_config(store: &Path) -> SkillConfig {
             eprintln!("agent.toml: could not read [skills], enabling none: {e}");
             SkillConfig {
                 enabled: vec![UNREADABLE_CONFIG.to_string()],
-                disabled_plugins: Vec::new(),
+                // The same for plugins: a disabled list that cannot be read
+                // disables every plugin rather than none.
+                disabled_plugins: vec![UNREADABLE_CONFIG.to_string()],
             }
         }
     }
 }
 
 /// The whitelist entry an unreadable `agent.toml` stands for: not a valid
-/// skill name, so it matches no skill.
+/// skill name, so it matches no skill. In the disabled-plugins list it stands
+/// for every plugin.
 const UNREADABLE_CONFIG: &str = "\0unreadable agent.toml";
 
 /// Frontmatter fields we recognize; everything else is ignored.
@@ -465,12 +468,16 @@ pub fn paths_match(root: &Path, patterns: &[String]) -> bool {
     }
     let opts = glob::MatchOptions { require_literal_separator: true, ..Default::default() };
     let mut budget = 20_000usize;
-    let mut stack = vec![(root.to_path_buf(), 0usize)];
-    while let Some((dir, depth)) = stack.pop() {
+    // Breadth first, so shallow project files are seen before deep trees use
+    // up the budget.
+    let mut queue = std::collections::VecDeque::from([(root.to_path_buf(), 0usize)]);
+    while let Some((dir, depth)) = queue.pop_front() {
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
         for e in rd.flatten() {
             if budget == 0 {
-                return false;
+                // Too big to search fully: show the skill rather than hide a
+                // match the walk did not reach.
+                return true;
             }
             budget -= 1;
             let path = e.path();
@@ -479,7 +486,7 @@ pub fn paths_match(root: &Path, patterns: &[String]) -> bool {
                 let n = e.file_name();
                 let n = n.to_string_lossy();
                 if depth < 8 && !matches!(n.as_ref(), ".git" | "node_modules" | "target" | ".jan") {
-                    stack.push((path, depth + 1));
+                    queue.push_back((path, depth + 1));
                 }
             } else if let Ok(rel) = path.strip_prefix(root) {
                 let rel = rel.to_string_lossy().replace('\\', "/");
@@ -870,7 +877,7 @@ pub fn discover_plugins(store: &Path, disabled: &[String]) -> Vec<SkillEntry> {
         .filter(|e| {
             !disabled
                 .iter()
-                .any(|d| Some(d.as_str()) == e.plugin.as_deref())
+                .any(|d| d == UNREADABLE_CONFIG || Some(d.as_str()) == e.plugin.as_deref())
         })
         .collect()
 }
@@ -932,7 +939,7 @@ pub fn resolve_in_plugin(
     if safe_stem(plugin).ok()? != plugin || safe_stem(plain).ok()? != plain {
         return None;
     }
-    if plugin.starts_with(".installing-") || disabled.iter().any(|d| d == plugin) {
+    if plugin.starts_with(".installing-") || disabled.iter().any(|d| d == plugin || d == UNREADABLE_CONFIG) {
         return None;
     }
     let base = plugins_dir(store).join(plugin);
@@ -1686,6 +1693,12 @@ pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
         std::fs::create_dir_all(&folder).map_err(|e| format!("ERROR: {e}"))?;
         folder_skill
     };
+    // A skill folder (or file) that is a link out of the skills folder would
+    // carry the write somewhere else.
+    let resolved = if target.exists() { target.clone() } else { target.parent().unwrap_or(&dir).to_path_buf() };
+    if !stays_under(&dir, &resolved) {
+        return Err(format!("ERROR: skill '{name}' resolves outside the skills folder; refusing to write it"));
+    }
     crate::workspace::write_atomic(&target, content.as_bytes()).map_err(|e| format!("ERROR: {e}"))
 }
 
@@ -1696,6 +1709,11 @@ pub fn delete(store: &Path, name: &str) -> Result<(), String> {
     let dir = skills_dir(store);
     let folder = dir.join(&stem);
     let flat = dir.join(format!("{stem}.md"));
+    for p in [&folder, &flat] {
+        if p.exists() && !stays_under(&dir, p) {
+            return Err(format!("ERROR: skill '{name}' resolves outside the skills folder; refusing to delete it"));
+        }
+    }
     if folder.is_dir() {
         std::fs::remove_dir_all(&folder).map_err(|e| format!("ERROR: {e}"))
     } else if flat.is_file() {
@@ -1836,6 +1854,12 @@ b");
         std::fs::write(store.join("agent.toml"), "[skills\nenabled = [").unwrap();
         let config = load_config(&store);
         assert_eq!(config.enabled, vec![UNREADABLE_CONFIG.to_string()]);
+        // Plugins fail closed too: none is discovered.
+        assert_eq!(config.disabled_plugins, vec![UNREADABLE_CONFIG.to_string()]);
+        let plugin = plugins_dir(&store).join("p").join("skills").join("s");
+        std::fs::create_dir_all(&plugin).unwrap();
+        std::fs::write(plugin.join("SKILL.md"), "---\nname: s\ndescription: d\n---\nbody").unwrap();
+        assert!(discover_plugins(&store, &config.disabled_plugins).is_empty());
     }
 
     fn located(store: &std::path::Path, name: &str) -> SkillEntry {

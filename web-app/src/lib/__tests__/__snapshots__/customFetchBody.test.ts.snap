@@ -1,0 +1,99 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`createCustomFetch request body > key rotation sets the header for each mode > authorization-bearer 1`] = `
+{
+  "authorization": "Bearer k1",
+}
+`;
+
+exports[`createCustomFetch request body > key rotation sets the header for each mode > authorization-bearer+api-key 1`] = `
+{
+  "api-key": "k1",
+  "authorization": "Bearer k1",
+}
+`;
+
+exports[`createCustomFetch request body > key rotation sets the header for each mode > x-api-key 1`] = `
+{
+  "x-api-key": "k1",
+}
+`;
+
+exports[`createCustomFetch request body > key rotation sets the header for each mode > x-goog-api-key 1`] = `
+{
+  "x-goog-api-key": "k1",
+}
+`;
+
+exports[`createCustomFetch request body > llamacpp: keeps llama-only keys and adds cache/progress flags 1`] = `
+{
+  "cache_prompt": true,
+  "dynatemp_exponent": 2,
+  "max_tokens": -1,
+  "messages": [
+    {
+      "content": "hi",
+      "role": "user",
+    },
+  ],
+  "model": "m",
+  "return_progress": true,
+  "samplers": [
+    "top_k",
+    "top_p",
+    "min_p",
+  ],
+  "seed": 42,
+  "stop": [
+    "END",
+    "STOP",
+  ],
+  "stream": true,
+  "temperature": 0.5,
+  "timings_per_token": true,
+  "tools": [
+    {
+      "function": {
+        "name": "ok",
+      },
+      "type": "function",
+    },
+  ],
+}
+`;
+
+exports[`createCustomFetch request body > remote provider: normalises params and drops client-side keys 1`] = `
+{
+  "messages": [
+    {
+      "content": "hi",
+      "role": "user",
+    },
+  ],
+  "model": "m",
+  "stop": [
+    "END",
+    "STOP",
+  ],
+  "stream": true,
+  "temperature": 0.5,
+  "tools": [
+    {
+      "function": {
+        "name": "ok",
+      },
+      "type": "function",
+    },
+  ],
+}
+`;
+
+exports[`createCustomFetch request body > remote provider: normalises params and drops client-side keys 2`] = `
+{
+  "x-jan-agent": "a1",
+  "x-jan-provider": "p1",
+  "x-jan-run": "r1",
+  "x-jan-session": "s1",
+  "x-jan-thread": "t1",
+}
+`;

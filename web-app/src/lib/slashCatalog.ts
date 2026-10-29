@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { SlashCatalogEntry } from '@/lib/slashCommands'
 
 /** Where a composer lives. Cowork passes its folder as `project`. */

@@ -226,20 +226,25 @@ impl Mailbox {
     }
 
     /// Consume the approval for exactly this call, target and reason.
-    fn take_approval(&self, session_id: &str, call_id: &str, target: &str, reason: &str) -> bool {
+    /// Whether the approval is held; with `consume`, it is also spent. Expired
+    /// approvals of this mailbox are dropped on every call (another root is
+    /// judged by its own clock when it is used).
+    fn take_approval(&self, session_id: &str, call_id: &str, target: &str, reason: &str, consume: bool) -> bool {
         let now = self.now();
         let mut held = approvals();
+        held.retain(|a| a.root != self.root || now - a.at < STOP_APPROVAL_TTL_MS);
         let found = held.iter().position(|a| {
             a.root == self.root
                 && a.session_id == session_id
                 && a.call_id == call_id
                 && a.target == target
                 && a.reason == reason
-                && now - a.at < STOP_APPROVAL_TTL_MS
         });
         match found {
             Some(i) => {
-                held.remove(i);
+                if consume {
+                    held.remove(i);
+                }
                 true
             }
             None => false,
@@ -315,7 +320,9 @@ impl Mailbox {
                 ));
             }
             // Last, so a refused call never spends the user's approval.
-            if !self.take_approval(from_id, call_id, to_id, reason) {
+            // Only looked at here: it is spent once the request is written,
+            // so a failed write leaves the user's approval usable.
+            if !self.take_approval(from_id, call_id, to_id, reason, false) {
                 return Err(MailboxError::new(
                     stop_code::APPROVAL_REQUIRED,
                     "stopping another session needs the user's approval for this call",
@@ -342,6 +349,7 @@ impl Mailbox {
             };
             stops.insert(request.id.clone(), request.clone());
             self.write_stops(&mut stops)?;
+            self.take_approval(from_id, call_id, to_id, reason, true);
             request
         };
         notify_stop(&request.to.session_id, &request.id);

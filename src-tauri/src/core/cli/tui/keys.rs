@@ -1442,6 +1442,17 @@ pub(super) fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
                     };
                     app.note(&format!("{what}; {when}"));
                     app.settings_prompt = None;
+                    // The menu's rows carry the value read when it was built;
+                    // rebuild them so the row and its footer show this write.
+                    if let Some(picker) = app
+                        .picker
+                        .as_mut()
+                        .filter(|p| p.kind == PickerKind::AgentSettings)
+                    {
+                        picker.items = build_agent_settings_items(&toml_path);
+                        picker.selected =
+                            picker.selected.min(picker.items.len().saturating_sub(1));
+                    }
                 }
                 Err(e) => {
                     let path = setting_path(prompt.def(), &toml_path);

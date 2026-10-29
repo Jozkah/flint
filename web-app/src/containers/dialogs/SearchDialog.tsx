@@ -1,5 +1,6 @@
 import { useConversationFind } from '@/hooks/useConversationFind'
-import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
+import { useListNavigation } from '@/hooks/useListNavigation'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
@@ -70,7 +71,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedIndex, setSelectedIndex] = useState(0)
   const [recentVersion, setRecentVersion] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -111,6 +111,9 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         inputRef.current?.focus()
       }, 0)
     }
+    // setSelectedIndex is a state setter (stable), declared below with the
+    // items it navigates; naming it here would read it before it exists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   // Load recent searches from localStorage
@@ -284,29 +287,29 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     return items
   }, [searchQuery, recentSearches, searchResults, messageHits, workHits, pageHits, settingHits])
 
-  // Reset selected index when items change
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [allItems.length])
-
   // Scroll selected item into view
-  useEffect(() => {
+  const scrollTo = useCallback((index: number) => {
     if (listRef.current) {
       const selectedElement = listRef.current.querySelector(
-        `[data-index="${selectedIndex}"]`
+        `[data-index="${index}"]`
       )
       selectedElement?.scrollIntoView({ block: 'nearest' })
     }
-  }, [selectedIndex])
+  }, [])
+  // Reset selected index when items change
+  const {
+    active: selectedIndex,
+    setActive: setSelectedIndex,
+    onNavKey,
+  } = useListNavigation({
+    count: allItems.length,
+    resetKey: allItems.length,
+    scrollTo,
+  })
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setSelectedIndex((prev) => Math.min(prev + 1, allItems.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setSelectedIndex((prev) => Math.max(prev - 1, 0))
-    } else if (e.key === 'Enter') {
+    if (onNavKey(e)) return
+    if (e.key === 'Enter') {
       e.preventDefault()
       const selectedItem = allItems[selectedIndex]
       if (selectedItem) {

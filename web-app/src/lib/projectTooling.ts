@@ -6,7 +6,7 @@
  * the desktop cannot describe a project differently from the CLI: the prompt
  * block it hands the model is the backend's own text, not a re-rendering.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { ToolingReadiness } from '@/lib/coworkReadiness'
 
 type Report = Extract<ToolingReadiness, { state: 'ready' }> extends infer R

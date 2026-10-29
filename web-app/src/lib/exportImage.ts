@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 import type { ToolImage } from '@/lib/toolOutputImages'

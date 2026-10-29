@@ -166,6 +166,9 @@ pub mod console_watch {
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsWindowVisible,
     };
@@ -260,17 +263,45 @@ pub mod console_watch {
         out
     }
 
+    /// When `pid` was created (FILETIME ticks), or `None` if it cannot be read.
+    fn created_at(pid: u32) -> Option<u64> {
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return None;
+            }
+            let (mut c, mut e, mut k, mut u) = std::mem::zeroed();
+            let ok = GetProcessTimes(h, &mut c, &mut e, &mut k, &mut u);
+            CloseHandle(h);
+            (ok != 0).then(|| (u64::from(c.dwHighDateTime) << 32) | u64::from(c.dwLowDateTime))
+        }
+    }
+
     /// The console windows that belong to `root`'s process tree. A console
     /// window is owned by `conhost.exe`, whose parent is the console program,
     /// so the tree is what makes the attribution work.
     pub fn windows_of_tree(root: u32) -> Vec<Seen> {
+        windows_of_tree_born_after(root, None)
+    }
+
+    /// [`windows_of_tree`], but a process created before `born` (the root's
+    /// own creation time) is never counted as a descendant. A parent pid in a
+    /// process snapshot can be a dead process's pid that was since reused by
+    /// one of the root's children, which once pulled the CI runner's own
+    /// long-running `WindowsTerminal.exe` into the tree. A real descendant is
+    /// always younger than the root.
+    pub fn windows_of_tree_born_after(root: u32, born: Option<u64>) -> Vec<Seen> {
         let procs = snapshot();
+        let older = |pid: u32| match (born, created_at(pid)) {
+            (Some(b), Some(c)) => c < b,
+            _ => false,
+        };
         let parent_of: Vec<(u32, u32)> = procs.iter().map(|(p, pp, _)| (*p, *pp)).collect();
         let mut tree = HashSet::from([root]);
         loop {
             let before = tree.len();
             for (pid, ppid) in &parent_of {
-                if tree.contains(ppid) {
+                if tree.contains(ppid) && !tree.contains(pid) && !older(*pid) {
                     tree.insert(*pid);
                 }
             }
@@ -312,6 +343,9 @@ pub mod console_watch {
         use std::os::windows::process::CommandExt;
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         let exe = std::env::current_exe().expect("this test binary has a path");
+        // Windows already on screen are not the case's doing: the runner's own
+        // terminal, an open editor console. A window the case opens is new.
+        let already: HashSet<isize> = visible_console_windows().iter().map(|w| w.hwnd).collect();
         let mut child = Command::new(exe)
             .args(["--exact", name, "--nocapture", "--test-threads=1"])
             .env(CASE_ENV, name)
@@ -322,10 +356,12 @@ pub mod console_watch {
             .spawn()
             .expect("the headless copy of this test binary starts");
         let pid = child.id();
+        let born = created_at(pid);
+        let fresh = |w: &Seen| !already.contains(&w.hwnd);
         let mut seen: Vec<Seen> = Vec::new();
         let started = Instant::now();
         let status = loop {
-            for w in windows_of_tree(pid) {
+            for w in windows_of_tree_born_after(pid, born).into_iter().filter(|w| fresh(w)) {
                 if !seen.contains(&w) {
                     seen.push(w);
                 }
@@ -340,7 +376,7 @@ pub mod console_watch {
             std::thread::sleep(Duration::from_millis(5));
         };
         // One last look: a window that outlived the case by a tick.
-        for w in windows_of_tree(pid) {
+        for w in windows_of_tree_born_after(pid, born).into_iter().filter(|w| fresh(w)) {
             if !seen.contains(&w) {
                 seen.push(w);
             }

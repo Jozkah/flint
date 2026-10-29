@@ -89,11 +89,22 @@ pub fn project_path_id(project_root: &Path) -> String {
     derived_project_id(project_root)
 }
 
-/// The id written into the project, when there is a non-empty one.
+/// The id written into the project, when there is a well-formed one. The file
+/// is repository content: an id shaped like another namespace's key
+/// (`jan-project:...`), a path or an over-long string is ignored and the
+/// derived id is used instead.
 fn read_written_id(project_root: &Path) -> Option<String> {
     let existing = std::fs::read_to_string(identity_path(project_root)).ok()?;
     let existing = existing.trim();
-    (!existing.is_empty()).then(|| existing.to_string())
+    is_valid_written_id(existing).then(|| existing.to_string())
+}
+
+/// 1..=64 ASCII letters, digits, `-`, `_` or `.`, which also keeps out the
+/// `jan-project:` workspace namespace (it needs a `:`).
+fn is_valid_written_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
 /// Derived from the canonical path rather than random, so a project whose id
@@ -279,6 +290,18 @@ mod tests {
         persist_for_store(&store, "jan-project:p1");
         assert!(!store.join("project-id").exists());
         let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_malformed_id_file_is_ignored_for_the_derived_id() {
+        for bad in ["jan-project:x", "../other", "a b", &"x".repeat(65)] {
+            let root = unique_project("malformed");
+            let path = identity_path(&root);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, bad).unwrap();
+            assert_eq!(project_id_read_only(&root), project_path_id(&root), "{bad}");
+            let _ = std::fs::remove_dir_all(&root);
+        }
     }
 
     #[test]

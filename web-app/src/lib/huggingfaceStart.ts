@@ -10,7 +10,7 @@ import { recordHuggingFaceInstall } from '@/lib/huggingfaceRegistry'
 import type { DownloadFinish } from '@/lib/interruptedDownloads'
 import { ExtensionManager } from '@/lib/extension'
 import type { ModelsService } from '@/services/models/types'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { join } from '@tauri-apps/api/path'
 
 export function draftKind(filename?: string): SpecDraftKind | undefined {

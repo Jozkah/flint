@@ -178,7 +178,6 @@ import {
   acceptAttribute,
   DEFAULT_ATTACHMENT_LIMITS,
   isTextual,
-  reasonMessageKey,
   validateAttachment,
   visionBlockedFiles,
   type ModelCapabilities,
@@ -186,7 +185,16 @@ import {
 } from '@/lib/attachmentSupport'
 import { safeSessionSet } from '@/lib/safeStorage'
 import {
-  VIDEO_EXTS,
+  clipboardImageFiles,
+  clipboardMayHoldImage,
+  missingMediaCapabilities,
+  pastedImageFiles,
+  pastedMediaFiles,
+  pickedImageMime,
+  rejectionLines,
+  splitDroppedFiles,
+} from '@/lib/composerIntake'
+import {
   prepareImageFiles,
   splitNewImages,
   withoutAttachment,
@@ -2009,7 +2017,10 @@ const ChatInput = memo(function ChatInput({
     const attachmentToRemove = attachments[indexToRemove]
     if (!attachmentToRemove) return
     // If attachment was ingested (has an ID), delete it from the backend
-    if (!(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId)))
+    if (
+      attachmentToRemove.id &&
+      !(await deleteAttachmentFromBackend(attachmentToRemove, currentThreadId))
+    )
       return
     setAttachmentsForThread(attachmentsKey, (prev) =>
       withoutAttachment(prev, attachmentToRemove)
@@ -2336,20 +2347,10 @@ const ChatInput = memo(function ChatInput({
       })
     }
 
-    const errors: string[] = []
     // One line per reason, naming the files it applies to. The old message
     // asserted an image-only rule that is no longer true, and never said
     // which of several problems a given file actually had.
-    const byReason = new Map<RejectionReason, string[]>()
-    for (const item of rejected) {
-      byReason.set(item.reason, [
-        ...(byReason.get(item.reason) ?? []),
-        item.name,
-      ])
-    }
-    for (const [reason, names] of byReason) {
-      errors.push(`${t(reasonMessageKey(reason))}: ${names.join(', ')}`)
-    }
+    const errors = rejectionLines(rejected, t)
 
     if (errors.length > 0) {
       setMessage(errors.join(' | '))
@@ -2462,15 +2463,9 @@ const ChatInput = memo(function ChatInput({
               const blob = await response.blob()
               const fileName =
                 path.split(/[\\/]/).filter(Boolean).pop() || 'image'
-              const ext = fileName.toLowerCase().split('.').pop()
-              const mimeType =
-                ext === 'png'
-                  ? 'image/png'
-                  : ext === 'jpg' || ext === 'jpeg'
-                    ? 'image/jpeg'
-                    : 'image/jpeg'
-
-              const file = new File([blob], fileName, { type: mimeType })
+              const file = new File([blob], fileName, {
+                type: pickedImageMime(fileName),
+              })
               files.push(file)
             } catch (error) {
               console.error('Failed to read file:', error)
@@ -2538,38 +2533,18 @@ const ChatInput = memo(function ChatInput({
     const dropped = Array.from(e.dataTransfer.files ?? [])
     if (dropped.length === 0) return
 
-    const isAudioFile = (f: File) => {
-      const ext = f.name.toLowerCase().split('.').pop()
-      return (
-        f.type === 'audio/wav' ||
-        f.type === 'audio/x-wav' ||
-        f.type === 'audio/mpeg' ||
-        f.type === 'audio/mp3' ||
-        ext === 'wav' ||
-        ext === 'mp3'
-      )
-    }
-
-    const isVideoFile = (f: File) => {
-      const ext = f.name.toLowerCase().split('.').pop()
-      return f.type.startsWith('video/') || VIDEO_EXTS.includes(ext ?? '')
-    }
-
-    const audioOnes = dropped.filter(isAudioFile)
-    const videoOnes = dropped.filter(
-      (file) => !audioOnes.includes(file) && isVideoFile(file)
+    const {
+      audio: audioOnes,
+      video: videoOnes,
+      // Documents take the same path as the + button once saved to disk;
+      // anything else keeps going to the image path.
+      documents: documentOnes,
+      images: imageOnes,
+    } = splitDroppedFiles(dropped, isDocumentAttachmentName)
+    const missing = missingMediaCapabilities(
+      { audio: audioOnes.length, video: videoOnes.length },
+      { audio: audioSupported, video: videoSupported }
     )
-    const otherOnes = dropped.filter(
-      (f) => !audioOnes.includes(f) && !videoOnes.includes(f)
-    )
-
-    const missing: EnableableCapability[] = []
-    if (audioOnes.length > 0 && !audioSupported) missing.push('audio')
-    if (videoOnes.length > 0 && !videoSupported) missing.push('video')
-    // Documents take the same path as the + button once saved to disk;
-    // anything else keeps going to the image path.
-    const documentOnes = otherOnes.filter((f) => isDocumentAttachmentName(f.name))
-    const imageOnes = otherOnes.filter((f) => !documentOnes.includes(f))
     const attachMedia = () => {
       if (documentOnes.length > 0) void attachDroppedDocuments(documentOnes)
       if (imageOnes.length > 0) {
@@ -2775,26 +2750,14 @@ const ChatInput = memo(function ChatInput({
     if (pasted) void offerPastedPath(pasted)
     const mediaItems = e.clipboardData?.items
     if (mediaItems && mediaItems.length > 0) {
-        const audioFiles: File[] = []
-      const videoFiles: File[] = []
-      for (const item of Array.from(mediaItems)) {
-        const file = item.getAsFile()
-        if (!file) continue
-          if (
-          ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3'].includes(
-            item.type
-          )
-          ) {
-          audioFiles.push(file)
-        } else if (item.type.startsWith('video/')) {
-          videoFiles.push(file)
-          }
-        }
+      const { audio: audioFiles, video: videoFiles } =
+        pastedMediaFiles(mediaItems)
       if (audioFiles.length > 0 || videoFiles.length > 0) {
-          e.preventDefault()
-        const missing: EnableableCapability[] = []
-        if (audioFiles.length > 0 && !audioSupported) missing.push('audio')
-        if (videoFiles.length > 0 && !videoSupported) missing.push('video')
+        e.preventDefault()
+        const missing = missingMediaCapabilities(
+          { audio: audioFiles.length, video: videoFiles.length },
+          { audio: audioSupported, video: videoSupported }
+        )
         const attachMedia = async () => {
           if (audioFiles.length > 0) await processAudioFiles(audioFiles)
           if (videoFiles.length > 0) await processVideoFiles(videoFiles)
@@ -2811,45 +2774,18 @@ const ChatInput = memo(function ChatInput({
     const clipboardItems = e.clipboardData?.items
     let hasProcessedImage = false
 
-    // Try clipboardData.items first (traditional method)
+    // Try clipboardData.items first (traditional method). Image items that
+    // give no file fall through to the async clipboard below.
     if (clipboardItems && clipboardItems.length > 0) {
-      const imageItems = Array.from(clipboardItems).filter((item) =>
-        item.type.startsWith('image/')
-      )
-
-      if (imageItems.length > 0) {
+      const images = pastedImageFiles(clipboardItems)
+      if (images.found) {
         e.preventDefault()
-
-        const files: File[] = []
-        let processedCount = 0
-
-        imageItems.forEach((item) => {
-          const file = item.getAsFile()
-          if (file) {
-            files.push(file)
-          }
-          processedCount++
-
-          // When all items are processed, handle the valid files
-          if (processedCount === imageItems.length) {
-            if (files.length > 0) {
-              const syntheticEvent = {
-                target: {
-                  files: files,
-                },
-              } as unknown as React.ChangeEvent<HTMLInputElement>
-
-              handleFileChange(syntheticEvent)
-              hasProcessedImage = true
-            }
-          }
-        })
-
-        // If we found image items but couldn't get files, fall through to modern API
-        if (processedCount === imageItems.length && !hasProcessedImage) {
-          // Continue to modern clipboard API fallback below
-        } else {
-          return // Successfully processed with traditional method
+        if (images.files.length > 0) {
+          handleFileChange({
+            target: { files: images.files },
+          } as unknown as React.ChangeEvent<HTMLInputElement>)
+          hasProcessedImage = true
+          return
         }
       }
     }
@@ -2857,12 +2793,9 @@ const ChatInput = memo(function ChatInput({
     // Modern Clipboard API fallback (for Linux, images copied from web, etc.)
     // Never for plain text: reading the clipboard this way makes WebView2 ask
     // the user for permission ("wants to see text and images copied...").
-    const pasteTypes = Array.from(e.clipboardData?.types ?? [])
-    const mayHoldImage =
-      pasteTypes.length === 0 ||
-      pasteTypes.includes('Files') ||
-      pasteTypes.some((type) => type.startsWith('image/')) ||
-      (pasteTypes.includes('text/html') && !pasteTypes.includes('text/plain'))
+    const mayHoldImage = clipboardMayHoldImage(
+      Array.from(e.clipboardData?.types ?? [])
+    )
     if (
       mayHoldImage &&
       navigator.clipboard &&
@@ -2870,30 +2803,7 @@ const ChatInput = memo(function ChatInput({
       !hasProcessedImage
     ) {
       try {
-        const clipboardContents = await navigator.clipboard.read()
-        const files: File[] = []
-
-        for (const item of clipboardContents) {
-          const imageTypes = item.types.filter((type) =>
-            type.startsWith('image/')
-          )
-
-          for (const type of imageTypes) {
-            try {
-              const blob = await item.getType(type)
-              // Convert blob to File with better naming
-              const extension = type.split('/')[1] || 'png'
-              const file = new File(
-                [blob],
-                `pasted-image-${Date.now()}.${extension}`,
-                { type }
-              )
-              files.push(file)
-            } catch (error) {
-              console.error('Error reading clipboard item:', error)
-            }
-          }
-        }
+        const files = await clipboardImageFiles(await navigator.clipboard.read())
 
         if (files.length > 0) {
           e.preventDefault()

@@ -5,10 +5,6 @@ import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, type RAGExtension, type IngestAttachmentsResult } from '@janhq/core'
 import { invoke } from '@tauri-apps/api/core'
 
-// Convert in slices: spreading a whole large file into String.fromCharCode
-// overflows the call stack.
-const BASE64_SLICE_BYTES = 0x8000
-
 // FileReader rather than File.arrayBuffer: available wherever attachments are
 // read, including the test DOM.
 function readFileBytes(file: File): Promise<ArrayBuffer> {
@@ -20,21 +16,17 @@ function readFileBytes(file: File): Promise<ArrayBuffer> {
   })
 }
 
-function toBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += BASE64_SLICE_BYTES) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_SLICE_BYTES))
-  }
-  return btoa(binary)
-}
-
 export class DefaultUploadsService implements UploadsService {
   async saveDroppedFile(file: File, threadId?: string): Promise<string> {
-    const dataBase64 = toBase64(new Uint8Array(await readFileBytes(file)))
-    return invoke<string>('save_attachment_file', {
-      fileName: file.name,
-      dataBase64,
-      ...(threadId ? { threadId } : {}),
+    const bytes = new Uint8Array(await readFileBytes(file))
+    // The bytes as the raw IPC body: no base64 copy a third larger than the
+    // file, no JSON round trip. Header values must be ASCII, so the name is
+    // percent-encoded. (`save_attachment_file` still takes base64.)
+    return invoke<string>('save_attachment_bytes', bytes, {
+      headers: {
+        'x-flint-file-name': encodeURIComponent(file.name),
+        ...(threadId ? { 'x-flint-thread-id': threadId } : {}),
+      },
     })
   }
 

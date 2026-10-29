@@ -74,6 +74,73 @@ export function messagesFromJournal(
   return out
 }
 
+/** What `appendToTranscript` needs to know about a journal, kept up to date. */
+export type TranscriptIndex = {
+  messageIds: Set<string>
+  turnStarts: Set<string>
+  /** Turn ids some message closes. */
+  closed: Set<string>
+  /** Turn-starts no message closes (shown as interrupted placeholders). */
+  orphans: Set<string>
+  lastSeq: number
+}
+
+export function indexJournal(journal: RoomJournalRecord[]): TranscriptIndex {
+  const idx: TranscriptIndex = {
+    messageIds: new Set(),
+    turnStarts: new Set(),
+    closed: new Set(),
+    orphans: new Set(),
+    lastSeq: 0,
+  }
+  for (const r of journal) {
+    if (r.type === 'message') {
+      idx.messageIds.add(r.message.id)
+      if (r.message.turnId) idx.closed.add(r.message.turnId)
+      idx.lastSeq = Math.max(idx.lastSeq, r.message.seq)
+    } else idx.turnStarts.add(r.turnId)
+  }
+  for (const id of idx.turnStarts) if (!idx.closed.has(id)) idx.orphans.add(id)
+  return idx
+}
+
+/**
+ * The transcript after `record` is appended to the journal: the same result as
+ * `messagesFromJournal` over the longer journal, without rebuilding it (a live
+ * room appends a record per message, which made every append O(n)). Updates
+ * `idx` in place. Null when the journal already holds the record.
+ */
+export function appendToTranscript(
+  idx: TranscriptIndex,
+  roomId: string,
+  messages: RoomMessage[],
+  record: RoomJournalRecord
+): RoomMessage[] | null {
+  if (record.type === 'turn-start') {
+    if (idx.turnStarts.has(record.turnId)) return null
+    idx.turnStarts.add(record.turnId)
+    if (idx.closed.has(record.turnId)) return messages
+    idx.orphans.add(record.turnId)
+    return [...messages, interruptedMessageFor(roomId, record, idx.lastSeq + 0.5)]
+  }
+  const m = record.message
+  if (idx.messageIds.has(m.id)) return null
+  idx.messageIds.add(m.id)
+  let next = messages
+  if (m.turnId) {
+    if (idx.orphans.delete(m.turnId)) {
+      // The turn is closed now: its placeholder goes (an orphan's only
+      // message with this id is the placeholder).
+      const placeholder = interruptedMessageId(m.turnId)
+      const at = next.findIndex((x) => x.id === placeholder && x.turnId === m.turnId)
+      if (at !== -1) next = [...next.slice(0, at), ...next.slice(at + 1)]
+    }
+    idx.closed.add(m.turnId)
+  }
+  idx.lastSeq = Math.max(idx.lastSeq, m.seq)
+  return [...next, m]
+}
+
 /** Append real interrupted messages for orphaned turn-starts (idempotent by id). */
 export async function repairJournal(
   roomId: string,

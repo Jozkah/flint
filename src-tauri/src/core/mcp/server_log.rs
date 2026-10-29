@@ -56,19 +56,44 @@ pub fn append(data_folder: &Path, server: &str, line: &str) {
     // so that the half left behind no longer looks like one.
     let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
     let path = path_for(data_folder, server);
-    if std::fs::create_dir_all(log_dir(data_folder)).is_err() {
+    // The file is opened per line on purpose: the desktop and the CLI may
+    // both write one server's log, and only a fresh size check on each line
+    // keeps the bound with two writers. Within this process the check, the
+    // rename and the write run under one lock, so two lines racing at the
+    // threshold cannot both rotate (the second rename would drop the
+    // generation the first one kept).
+    static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _held = WRITE.lock().unwrap_or_else(|p| p.into_inner());
+    if !rotate_if_full(&path) {
         return;
     }
-    if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) >= MAX_BYTES {
-        let _ = std::fs::rename(&path, previous(&path));
-    }
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
+    let open = || std::fs::OpenOptions::new().create(true).append(true).open(&path);
+    let file = match open() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if std::fs::create_dir_all(log_dir(data_folder)).is_err() {
+                return;
+            }
+            open()
+        }
+        other => other,
+    };
+    if let Ok(mut file) = file {
         let _ = writeln!(file, "{} {}", now(), scrubbed.replace('\n', " "));
     }
+}
+
+/// Rotate `path` into its previous generation once it reaches [`MAX_BYTES`].
+/// `false` when the line must be dropped: the rename failed (the file held
+/// open elsewhere on Windows, say) and the log is already at twice the bound.
+fn rotate_if_full(path: &Path) -> bool {
+    let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if len < MAX_BYTES {
+        return true;
+    }
+    if std::fs::rename(path, previous(path)).is_ok() {
+        return true;
+    }
+    len < MAX_BYTES * 2
 }
 
 /// The last `lines` lines a server printed, oldest first, across the rotation.
@@ -110,6 +135,50 @@ mod tests {
         let escaped = path_for(&data, "../../escape");
         assert_eq!(escaped.parent().unwrap(), log_dir(&data));
         assert!(tail(&data, "gamma", 10).is_empty());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn racing_writers_keep_the_bound_and_both_generations() {
+        let data = temp("race");
+        let line = "x".repeat(MAX_LINE - 40);
+        let per_thread = (MAX_BYTES as usize / line.len()) + 50;
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                let data = data.clone();
+                let line = line.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..per_thread {
+                        append(&data, "chatty", &line);
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let path = path_for(&data, "chatty");
+        let cur = std::fs::metadata(&path).unwrap().len();
+        let prev = std::fs::metadata(previous(&path)).unwrap().len();
+        let one = (line.len() + 30) as u64;
+        assert!(cur < MAX_BYTES + one, "current {cur}");
+        // The kept generation was full when it was rotated, never a fresh
+        // stub a second racing rename moved over it.
+        assert!(prev >= MAX_BYTES && prev < MAX_BYTES + one, "previous {prev}");
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_failed_rotation_past_twice_the_bound_drops_the_line() {
+        let data = temp("stuck");
+        let path = path_for(&data, "stuck");
+        std::fs::create_dir_all(log_dir(&data)).unwrap();
+        // A non-empty directory where the previous generation goes makes
+        // the rename fail.
+        std::fs::create_dir_all(previous(&path).join("block")).unwrap();
+        std::fs::write(&path, vec![b'a'; (MAX_BYTES * 2) as usize]).unwrap();
+        append(&data, "stuck", "one more");
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), MAX_BYTES * 2);
         let _ = std::fs::remove_dir_all(&data);
     }
 

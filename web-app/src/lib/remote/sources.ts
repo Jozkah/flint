@@ -31,12 +31,13 @@ import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { buildBootAppearance } from '@/lib/bootAppearance'
 import { i18n } from '@/i18n/react-i18next-compat'
-import { uiMessageText, type RemoteSources } from './handlers'
+import { pageOf, uiMessageText, type RemoteSources } from './handlers'
 import { approvalOf, coworkDetailOf, messageExtrasOf, roomDetailOf, toolStepsOf } from './details'
 import { convertThreadMessageToUIMessage } from '@/lib/messages'
 import { appAsks } from './appAsks'
 import { appPrompts } from './appPrompts'
 import { isInterrupted } from '@/lib/coworkInflight'
+import { toMs } from '@/lib/messageTime'
 import type { CoworkEndingKind } from './protocol'
 import { remoteApi } from './api'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -168,7 +169,40 @@ function coworkEndingOf(session: CoworkSession): { by: CoworkEndingKind; message
   return { by, ...(message ? { message: message.slice(0, 500) } : {}) }
 }
 
-export const appSources: RemoteSources = {
+/** A chat's conversation in force (not every edited or regenerated version)
+ * and how one of its messages reads on a phone; null for no such chat. */
+async function chatActivePath(id: string) {
+  if (!useThreads.getState().threads[id]) return null
+  const stored = await getServiceHub().messages().fetchMessages(id)
+  const messages = activePathOf(stored, useThreads.getState().threads[id]?.metadata)
+  const branched = hasBranching(stored)
+  const convert = (m: ThreadMessage): RemoteMessage => {
+    const info = branched ? getVersionInfo(stored, m) : undefined
+    // The message as the desktop draws it: its tool calls, its reasoning,
+    // the files sent with it.
+    const ui = convertThreadMessageToUIMessage(m)
+    const tools = m.role === 'assistant' ? toolStepsOf(ui) : []
+    const extras = messageExtrasOf(ui)
+    const failed = String(m.status) === 'error'
+    const notes = [...(extras.notes ?? []), ...(failed ? [{ kind: 'error' as const, text: chatErrorText(m) }] : [])]
+    return {
+      id: m.id,
+      role: m.role as RemoteMessage['role'],
+      text: threadMessageText(m),
+      createdAt: ms(m.created_at),
+      ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
+      ...(info && info.count > 1 ? { versions: info } : {}),
+      ...(tools.length ? { tools } : {}),
+      ...(extras.reasoning ? { reasoning: extras.reasoning } : {}),
+      ...(extras.attachments ? { attachments: extras.attachments } : {}),
+      ...(notes.length ? { notes } : {}),
+    }
+  }
+  return { messages, convert }
+}
+
+/** Sessions: lists, what is running, and their messages. */
+const sessionSources: Pick<RemoteSources, 'chats' | 'coworkSessions' | 'rooms' | 'running' | 'chatMessages' | 'chatMessagesPage' | 'coworkMessages' | 'roomMessages' | 'roomDetail' | 'coworkDetail' | 'streamSnapshot' | 'queue' | 'coworkChanges' | 'coworkActivity'> = {
   chats: () =>
     Object.values(useThreads.getState().threads).map((t) => {
       const project = t.metadata?.project as { name?: string } | undefined
@@ -180,7 +214,6 @@ export const appSources: RemoteSources = {
         pinned: Boolean(t.isFavorite),
       }
     }),
-
   coworkSessions: () =>
     useCoworkSessions.getState().sessions.map((s) => ({
       id: s.id,
@@ -188,7 +221,6 @@ export const appSources: RemoteSources = {
       updated: s.updated,
       folder: s.folder,
     })),
-
   rooms: async () => {
     const cached = useRoomsStore.getState().summaries
     const summaries = cached.length ? cached : await getRoomPersistence().listRooms()
@@ -199,7 +231,6 @@ export const appSources: RemoteSources = {
       updatedAt: r.updatedAt,
     }))
   },
-
   running: () => ({
     chat: new Set(
       Object.entries(useAppState.getState().busyThreads)
@@ -209,47 +240,17 @@ export const appSources: RemoteSources = {
     cowork: new Set(Object.keys(useCoworkRun.getState().runs)),
     room: new Set(useRoomsStore.getState().runningRoomIds),
   }),
-
-  approvals: () =>
-    allApprovalRequests(useToolApprovalRequests.getState()).map((a) => ({
-      requestId: a.requestId,
-      threadId: a.threadId,
-    })),
-
   chatMessages: async (id) => {
-    if (!useThreads.getState().threads[id]) return []
-    const stored = await getServiceHub().messages().fetchMessages(id)
-    // The phone gets the conversation in force, not every edited or
-    // regenerated version, and the version position where there is one.
-    const messages = activePathOf(
-      stored,
-      useThreads.getState().threads[id]?.metadata
-    )
-    const branched = hasBranching(stored)
-    return messages.map((m): RemoteMessage => {
-      const info = branched ? getVersionInfo(stored, m) : undefined
-      // The message as the desktop draws it: its tool calls, its reasoning,
-      // the files sent with it.
-      const ui = convertThreadMessageToUIMessage(m)
-      const tools = m.role === 'assistant' ? toolStepsOf(ui) : []
-      const extras = messageExtrasOf(ui)
-      const failed = String(m.status) === 'error'
-      const notes = [...(extras.notes ?? []), ...(failed ? [{ kind: 'error' as const, text: chatErrorText(m) }] : [])]
-      return {
-        id: m.id,
-        role: m.role as RemoteMessage['role'],
-        text: threadMessageText(m),
-        createdAt: ms(m.created_at),
-        ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
-        ...(info && info.count > 1 ? { versions: info } : {}),
-        ...(tools.length ? { tools } : {}),
-        ...(extras.reasoning ? { reasoning: extras.reasoning } : {}),
-        ...(extras.attachments ? { attachments: extras.attachments } : {}),
-        ...(notes.length ? { notes } : {}),
-      }
-    })
+    const path = await chatActivePath(id)
+    return path ? path.messages.map(path.convert) : []
   },
-
+  chatMessagesPage: async (id, before, limit) => {
+    const path = await chatActivePath(id)
+    if (!path) return { items: [], start: 0, total: 0 }
+    // Only the page is converted: a long chat's older messages stay untouched.
+    const { items, start, total } = pageOf(path.messages, before, limit)
+    return { items: items.map(path.convert), start, total }
+  },
   coworkMessages: (id) => {
     const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
     if (!session) return null
@@ -264,13 +265,14 @@ export const appSources: RemoteSources = {
         id: m.id,
         role: m.role as RemoteMessage['role'],
         text: uiMessageText(m),
-        createdAt: session.updated,
+        // Each message keeps its stored time; old rows without one fall back
+        // to the session's last change.
+        createdAt: toMs((m.metadata as { createdAt?: unknown } | undefined)?.createdAt) ?? session.updated,
         ...(tools.length ? { tools } : {}),
         ...messageExtrasOf(m),
       }
     })
   },
-
   roomMessages: async (id) => {
     const { room, journal } = await getRoomPersistence().getRoom(id)
     return journal.flatMap((r): RemoteMessage[] =>
@@ -291,7 +293,114 @@ export const appSources: RemoteSources = {
         : []
     )
   },
+  roomDetail: async (id) => {
+    try {
+      const { room } = await getRoomPersistence().getRoom(id)
+      return roomDetailOf(room)
+    } catch {
+      return null
+    }
+  },
+  coworkDetail: (id) => {
+    const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
+    if (!session) return null
+    const context = coworkContextOf(session)
+    const ending = coworkEndingOf(session)
+    return { ...coworkDetailOf(session), ...(context ? { context } : {}), ...(ending ? { ending } : {}) }
+  },
+  streamSnapshot: (kind, id) =>
+    kind === 'cowork'
+      ? snapshotOf(kind, id, coworkReplyOf(id))
+      : kind === 'room'
+        ? snapshotOf(kind, id, roomReplyOf(id))
+        : streamSnapshot(kind, id),
+  queue: (id) =>
+    useMessageQueue
+      .getState()
+      .getQueue(id)
+      .map((m) => ({
+        id: m.id,
+        text: m.text,
+        steer: Boolean(m.steer),
+        held: Boolean(m.held),
+        ...(m.from ? { from: m.from.displayName } : {}),
+      })),
+  coworkChanges: (id): CoworkChanges | null => {
+    const found = coworkTurnsOf(id)
+    if (!found) return null
+    const { session, turns, subagents, running } = found
+    const diffs = collectCodeFileDiffs(turns, subagents)
+    const counts = {
+      fileCount: diffs.length,
+      additions: diffs.reduce((n, d) => n + d.additions, 0),
+      deletions: diffs.reduce((n, d) => n + d.deletions, 0),
+    }
+    const tree = useCoworkWorktrees.getState().bySession[id]
+    const prs = usePrStatusStore.getState()
+    const pr = sessionPrStatuses(prs.sessionPrs[id] ?? [], prs.byUrl)[0]
+    return {
+      files: diffs.map((d) => ({
+        path: d.path,
+        additions: d.additions,
+        deletions: d.deletions,
+        source: [...new Set(d.operations.map((o) => o.sourceName ?? o.source))].join(', '),
+        hunks: d.operations.slice(-MAX_HUNKS).map((o) => o.diff.slice(0, MAX_HUNK_CHARS)),
+      })),
+      // As the desktop's What changed row: only once a run has finished.
+      summary: !running && diffs.length ? formatChangeSummary(counts) : null,
+      worktree: tree ? { branch: tree.kind === 'copy' ? null : tree.branch, path: tree.path } : null,
+      pr: pr
+        ? {
+            number: pr.number,
+            title: pr.title,
+            url: pr.url,
+            state: pr.state,
+            checks: pr.checks,
+            conflicts: pr.merge === 'conflicting',
+          }
+        : null,
+      applyOnDesktop: diffs.length > 0 && (session.access ?? 'review-only') === 'review-only',
+    }
+  },
+  coworkActivity: (id): CoworkActivity | null => {
+    const found = coworkTurnsOf(id)
+    if (!found) return null
+    const commands = found.turns.flatMap((t) => {
+      if (t.role !== 'tool' || (t.name !== 'bash' && t.name !== 'shell')) return []
+      const step = coworkToolStep(t, new Set())
+      return step ? [{ id: step.id, command: step.arg ?? step.name, status: step.status }] : []
+    })
+    return {
+      subagents: found.subagents.map((r) => ({
+        id: r.runId,
+        name: r.name,
+        status: r.status,
+        startedAt: r.startedAt,
+        ...(r.endedAt ? { endedAt: r.endedAt } : {}),
+        steps: r.turns.filter((t) => t.role === 'tool').length,
+      })),
+      commands: commands.slice(-50),
+    }
+  },
+}
 
+/** Waiting on the user: approvals, asks and prompts. */
+const attentionSources: Pick<RemoteSources, 'approvals' | 'approvalDetails' | 'asks' | 'prompts'> = {
+  approvals: () =>
+    allApprovalRequests(useToolApprovalRequests.getState()).map((a) => ({
+      requestId: a.requestId,
+      threadId: a.threadId,
+    })),
+  approvalDetails: () =>
+    allApprovalRequests(useToolApprovalRequests.getState()).map((a) =>
+      approvalOf(a, (key, values) => i18n.t(key, values))
+    ),
+  asks: () => appAsks(),
+  prompts: () => appPrompts(),
+}
+
+/** Models and providers. */
+const modelSources: Pick<RemoteSources, 'providers' | 'loadedModels' | 'favoriteModels'> = {
   providers: () =>
     useModelProvider
       .getState()
@@ -304,7 +413,6 @@ export const appSources: RemoteSources = {
           .filter((m) => !m.embedding)
           .map((m) => ({ id: m.id, name: m.displayName ?? m.name })),
       })),
-
   loadedModels: async () => {
     try {
       return (await getServiceHub().models().getActiveModels()) ?? []
@@ -312,34 +420,11 @@ export const appSources: RemoteSources = {
       return useAppState.getState().activeModels
     }
   },
-
   favoriteModels: () => useFavoriteModel.getState().favoriteModels.map((m) => m.id),
+}
 
-  roomDetail: async (id) => {
-    try {
-      const { room } = await getRoomPersistence().getRoom(id)
-      return roomDetailOf(room)
-    } catch {
-      return null
-    }
-  },
-
-  coworkDetail: (id) => {
-    const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
-    if (!session) return null
-    const context = coworkContextOf(session)
-    const ending = coworkEndingOf(session)
-    return { ...coworkDetailOf(session), ...(context ? { context } : {}), ...(ending ? { ending } : {}) }
-  },
-
-  approvalDetails: () =>
-    allApprovalRequests(useToolApprovalRequests.getState()).map((a) =>
-      approvalOf(a, (key, values) => i18n.t(key, values))
-    ),
-
-  asks: () => appAsks(),
-  prompts: () => appPrompts(),
-
+/** The computer: system, tools, settings, library, permissions and appearance. */
+const appSourcesMisc: Pick<RemoteSources, 'systemInfo' | 'mcpServers' | 'settings' | 'library' | 'permissions' | 'notificationPrefs' | 'appearance'> = {
   systemInfo: async () => {
     const { hardwareData: hw, systemUsage: use } = useHardware.getState()
     const api = useLocalApiServer.getState()
@@ -369,7 +454,6 @@ export const appSources: RemoteSources = {
       },
     }
   },
-
   mcpServers: () =>
     Object.entries(useMCPServers.getState().mcpServers).map(([name, cfg]) => ({
       name,
@@ -377,7 +461,6 @@ export const appSources: RemoteSources = {
       transport: cfg.type ?? 'stdio',
       ...(cfg.description ? { description: cfg.description } : {}),
     })),
-
   settings: async () => {
     const general = useGeneralSetting.getState()
     const api = useLocalApiServer.getState()
@@ -439,85 +522,6 @@ export const appSources: RemoteSources = {
         : null,
     }
   },
-
-  streamSnapshot: (kind, id) =>
-    kind === 'cowork'
-      ? snapshotOf(kind, id, coworkReplyOf(id))
-      : kind === 'room'
-        ? snapshotOf(kind, id, roomReplyOf(id))
-        : streamSnapshot(kind, id),
-
-  queue: (id) =>
-    useMessageQueue
-      .getState()
-      .getQueue(id)
-      .map((m) => ({
-        id: m.id,
-        text: m.text,
-        steer: Boolean(m.steer),
-        held: Boolean(m.held),
-        ...(m.from ? { from: m.from.displayName } : {}),
-      })),
-
-  coworkChanges: (id): CoworkChanges | null => {
-    const found = coworkTurnsOf(id)
-    if (!found) return null
-    const { session, turns, subagents, running } = found
-    const diffs = collectCodeFileDiffs(turns, subagents)
-    const counts = {
-      fileCount: diffs.length,
-      additions: diffs.reduce((n, d) => n + d.additions, 0),
-      deletions: diffs.reduce((n, d) => n + d.deletions, 0),
-    }
-    const tree = useCoworkWorktrees.getState().bySession[id]
-    const prs = usePrStatusStore.getState()
-    const pr = sessionPrStatuses(prs.sessionPrs[id] ?? [], prs.byUrl)[0]
-    return {
-      files: diffs.map((d) => ({
-        path: d.path,
-        additions: d.additions,
-        deletions: d.deletions,
-        source: [...new Set(d.operations.map((o) => o.sourceName ?? o.source))].join(', '),
-        hunks: d.operations.slice(-MAX_HUNKS).map((o) => o.diff.slice(0, MAX_HUNK_CHARS)),
-      })),
-      // As the desktop's What changed row: only once a run has finished.
-      summary: !running && diffs.length ? formatChangeSummary(counts) : null,
-      worktree: tree ? { branch: tree.kind === 'copy' ? null : tree.branch, path: tree.path } : null,
-      pr: pr
-        ? {
-            number: pr.number,
-            title: pr.title,
-            url: pr.url,
-            state: pr.state,
-            checks: pr.checks,
-            conflicts: pr.merge === 'conflicting',
-          }
-        : null,
-      applyOnDesktop: diffs.length > 0 && (session.access ?? 'review-only') === 'review-only',
-    }
-  },
-
-  coworkActivity: (id): CoworkActivity | null => {
-    const found = coworkTurnsOf(id)
-    if (!found) return null
-    const commands = found.turns.flatMap((t) => {
-      if (t.role !== 'tool' || (t.name !== 'bash' && t.name !== 'shell')) return []
-      const step = coworkToolStep(t, new Set())
-      return step ? [{ id: step.id, command: step.arg ?? step.name, status: step.status }] : []
-    })
-    return {
-      subagents: found.subagents.map((r) => ({
-        id: r.runId,
-        name: r.name,
-        status: r.status,
-        startedAt: r.startedAt,
-        ...(r.endedAt ? { endedAt: r.endedAt } : {}),
-        steps: r.turns.filter((t) => t.role === 'tool').length,
-      })),
-      commands: commands.slice(-50),
-    }
-  },
-
   library: async () => {
     const cowork = useCoworkSessions.getState().sessions.flatMap((session) =>
       artifactsFromTurns(session.turns, session.folder).map((a) => ({
@@ -536,16 +540,13 @@ export const appSources: RemoteSources = {
       .catch(() => [])
     return mergeStudioLibrary(cowork, studio)
   },
-
   permissions: async () => {
     const status = await remoteApi.getStatus().catch(() => null)
     return status
       ? { approvals: status.config.allowApprovals, alwaysAllow: status.config.allowAlwaysAllow }
       : null
   },
-
   notificationPrefs: (device) => readNotificationPrefs(device),
-
   appearance: () => {
     const ui = useInterfaceSettings.getState()
     const { vars } = buildBootAppearance({
@@ -558,6 +559,14 @@ export const appSources: RemoteSources = {
     return { vars }
   },
 }
+
+export const appSources: RemoteSources = Object.assign(
+  {},
+  sessionSources,
+  attentionSources,
+  modelSources,
+  appSourcesMisc
+)
 
 /** A room speaker's role and model, for the phone's message header. */
 function speakerOf(

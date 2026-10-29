@@ -689,14 +689,16 @@ async fn connect_remote<R: Runtime>(
     super::netguard::enforce_url(url)?;
     // A configured proxy resolves the host itself, past the guard's resolver:
     // run the same DNS checks here first so a proxied server is not exempt.
-    super::netguard::preflight_url(url).await?;
-    let base = crate::core::net::tls::apply13(
-        super::netguard::guard13(reqwest13::Client::builder())
+    // The checked answer is pinned, and a private host skips the proxy.
+    let pin = super::netguard::preflight_url(url).await?;
+    let base = super::netguard::mcp_client13(
+        reqwest13::Client::builder()
             .default_headers(header_map(name, &config_params.headers)?)
             .connect_timeout(config_params.timeout.unwrap_or(Duration::from_secs(15)))
             // Per-read inactivity, so a long-lived stream stays up as long
             // as the server keeps sending (keepalives) but a dead peer ends.
             .read_timeout(Duration::from_secs(300)),
+        &pin,
     )
     .build()
         .map_err(|e| format!("Failed to build HTTP client for {name}: {e}"))?;

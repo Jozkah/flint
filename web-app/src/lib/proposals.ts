@@ -8,7 +8,7 @@
  * (`tauri_plugin_agent_tools::proposal`), which is why nothing here can add a
  * line to what lands.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { errorText } from '@/lib/errorText'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 

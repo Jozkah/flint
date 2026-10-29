@@ -7,7 +7,7 @@
  * `exists`, and only a second call with `overwrite` -- made after the user
  * confirmed -- replaces it.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { relativeToRoot } from '@/lib/coworkCode'
 import { basenameOf } from '@/lib/coworkPreview'
 

@@ -710,7 +710,9 @@ function TranscriptMessage({
         )}
       >
         <span className="sr-only">{t('rooms:transcript.system')}: </span>
-        <span className="whitespace-pre-wrap break-words">{m.text}</span>
+        <span className="whitespace-pre-wrap break-words">
+          {m.note ? t(`rooms:notes.${m.note.key}`, m.note.values) : m.text}
+        </span>
       </div>
     )
   }

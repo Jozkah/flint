@@ -5,7 +5,7 @@
  * panes, worktrees, grants and the mailbox on a campaign's behalf, so
  * `campaignRunner` and `campaignTools` stay testable with fakes.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import {

@@ -56,6 +56,23 @@ describe('stream reducer', () => {
     expect(out.finished).toEqual({ kind: 'chat', id: 'c1' })
   })
 
+  it('removes a tool step on stream.toolRemoved and ignores unknown or stale ids', () => {
+    const step = (id: string) => ({ id, name: 'read', kind: 'read' as const, status: 'running' as const })
+    const tool = (id: string): RemoteEvent => ({ type: 'stream.tool', kind: 'chat', id: 'c1', messageId: 'a9', step: step(id) })
+    let s: Record<string, LiveStream> = {}
+    s = applyStreamEvent(s, tool('t1')).streams
+    s = applyStreamEvent(s, tool('t2')).streams
+    s = applyStreamEvent(s, { type: 'stream.toolRemoved', kind: 'chat', id: 'c1', messageId: 'a9', stepId: 't1' }).streams
+    expect(s.c1.tools.map((t) => t.id)).toEqual(['t2'])
+    // Another message's removal, or an unknown step, changes nothing.
+    const other = applyStreamEvent(s, { type: 'stream.toolRemoved', kind: 'chat', id: 'c1', messageId: 'old', stepId: 't2' })
+    expect(other.streams).toBe(s)
+    expect(applyStreamEvent(s, { type: 'stream.toolRemoved', kind: 'chat', id: 'c1', messageId: 'a9', stepId: 'zz' }).streams).toBe(s)
+    // An event type this phone does not know is ignored.
+    const unknown = { type: 'stream.future', id: 'c1' } as unknown as RemoteEvent
+    expect(applyStreamEvent(s, unknown).streams).toBe(s)
+  })
+
   it('asks for a snapshot after a gap, keeping what is shown', () => {
     const s = applyStreamEvent({}, delta(0, 'abc')).streams
     const out = applyStreamEvent(s, delta(10, 'xyz'))

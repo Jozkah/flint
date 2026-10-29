@@ -142,12 +142,7 @@ fn reported_rows(
     if rows.is_empty() {
         return Vec::new();
     }
-    let shown = if fold.shows_all() {
-        rows.len()
-    } else {
-        rows.len().min(TOP_REPORTED_ROWS)
-    };
-    let hidden = rows.len() - shown;
+    let (shown, hidden) = fold_split(fold, rows.len());
     let mut out = vec![String::new(), heading.to_string()];
     let label_w = rows[..shown]
         .iter()
@@ -167,10 +162,7 @@ fn reported_rows(
             reported_counts(row)
         ));
     }
-    out.extend(
-        fold.hint(hidden, noun)
-            .filter(|_| hidden > 0 || rows.len() > TOP_REPORTED_ROWS),
-    );
+    out.extend(fold_hint(fold, rows.len(), hidden, noun));
     out
 }
 
@@ -200,6 +192,182 @@ pub fn account_total_lines(
     crate::core::cli::tokamak::usage::parse_account_summary(payload).map(|s| total_rows(&s))
 }
 
+/// How many of `total` ranked rows a fold shows, and how many it hides.
+fn fold_split(fold: Fold, total: usize) -> (usize, usize) {
+    let shown = if fold.shows_all() {
+        total
+    } else {
+        total.min(TOP_REPORTED_ROWS)
+    };
+    (shown, total - shown)
+}
+
+/// The trailing fold line for a list of `total` rows, `hidden` of them folded.
+/// A list short enough never to fold gets no line at all.
+fn fold_hint(fold: Fold, total: usize, hidden: usize, noun: &str) -> Option<String> {
+    fold.hint(hidden, noun)
+        .filter(|_| hidden > 0 || total > TOP_REPORTED_ROWS)
+}
+
+/// The generic walk: every field the server sent, values verbatim. Used for a
+/// view with no typed layout and as the fallback when one fails to parse.
+fn raw_field_lines(payload: &crate::core::cli::tokamak::usage::Payload) -> Vec<String> {
+    let fields = payload.fields();
+    if fields.is_empty() {
+        return vec!["the provider reported no figures for this view".to_string()];
+    }
+    // Padded to the widest path so the values line up as a column; a usage
+    // readout is scanned down the numbers, not read across.
+    let width = fields.iter().map(|(p, _)| p.len()).max().unwrap_or(0);
+    fields
+        .iter()
+        .map(|(path, value)| format!("{path:width$}  {value}"))
+        .collect()
+}
+
+/// One execution (or a correlated set): each record's lines, blank-separated.
+fn generation_view(payload: &crate::core::cli::tokamak::usage::Payload) -> Vec<String> {
+    use crate::core::cli::tokamak::usage;
+    match usage::parse_generations_payload(payload) {
+        Ok(records) if records.is_empty() => vec!["no matching execution".to_string()],
+        Ok(records) => records
+            .iter()
+            .flat_map(|record| {
+                usage::generation_lines(record)
+                    .into_iter()
+                    .chain(std::iter::once(String::new()))
+            })
+            .collect(),
+        Err(e) => vec![e.to_string()],
+    }
+}
+
+/// The account view: the total, then the models ranked by spend.
+fn summary_view(summary: &crate::core::cli::tokamak::usage::AccountSummary, fold: Fold) -> Vec<String> {
+    let mut out = vec!["account total".to_string()];
+    out.extend(total_rows(summary));
+    // Costliest first: a folded list must keep the models that account for
+    // the spend, and the server already ranked nothing.
+    let mut models = summary.by_model.clone();
+    models.sort_by(|a, b| {
+        money_rank(b.cost.as_ref())
+            .partial_cmp(&money_rank(a.cost.as_ref()))
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.label.cmp(&b.label))
+    });
+    out.extend(reported_rows("top models", &models, fold, "model"));
+    out
+}
+
+/// The daily view: the newest day, then every day newest-first.
+fn daily_view(mut days: Vec<crate::core::cli::tokamak::usage::Aggregate>, fold: Fold) -> Vec<String> {
+    if days.is_empty() {
+        return vec!["no recorded days".to_string()];
+    }
+    // Sorted, not ranked: a daily view is read in date order rather than by
+    // size, so the order is the dates' own. The server already sends them
+    // newest-first, but "most recent day" below names a specific date and
+    // would state the wrong one if that ever changed -- and a descending sort
+    // on an ISO date string is a string sort, so it costs nothing to not
+    // depend on it.
+    days.sort_by(|a, b| b.label.cmp(&a.label));
+    let mut out = vec!["most recent day".to_string()];
+    out.push(format!(
+        "  {}  {}",
+        reported_money(days[0].cost.as_ref()),
+        reported_counts(&days[0])
+    ));
+    out.push(format!("  {}", short_date(&days[0].label)));
+    let dated: Vec<crate::core::cli::tokamak::usage::Aggregate> = days
+        .iter()
+        .map(|day| crate::core::cli::tokamak::usage::Aggregate {
+            label: short_date(&day.label),
+            ..day.clone()
+        })
+        .collect();
+    out.extend(reported_rows("by day", &dated, fold, "day"));
+    out
+}
+
+/// One recorded request: a head row (when, what it cost, which model, and
+/// anything unusual about it) and a counts row ending in the execution id.
+fn request_lines(record: &crate::core::cli::tokamak::usage::RequestRecord) -> [String; 2] {
+    use crate::core::cli::tokamak::usage;
+    let model = record
+        .model
+        .clone()
+        .unwrap_or_else(|| usage::UNAVAILABLE.to_string());
+    let mut head = format!(
+        "  {}  {}  {}",
+        short_date(record.created_at.as_deref().unwrap_or_default()),
+        reported_money(record.cost.as_ref()),
+        model
+    );
+    // Only worth the width when it changes how the row reads: an unsettled
+    // charge, or a request that failed.
+    if let Some(status) = &record.billing_status {
+        if !status.is_final() {
+            head.push_str(&format!("  ({status})"));
+        }
+    }
+    if record.status.is_some_and(|s| s >= 400) {
+        head.push_str(&format!("  [HTTP {}]", record.status.unwrap_or_default()));
+    }
+    let counts = format!(
+        "    {} in{} · {} out{}",
+        format_tokens(record.prompt_tokens),
+        if record.cache_read_tokens > 0 {
+            format!(" ({} cached)", format_tokens(record.cache_read_tokens))
+        } else {
+            String::new()
+        },
+        format_tokens(record.completion_tokens),
+        record
+            .execution_id
+            .as_deref()
+            .map(|id| format!(" · {id}"))
+            .unwrap_or_default()
+    );
+    [head, counts]
+}
+
+/// The requests view: a count, then each request, folded.
+fn requests_view(records: &[crate::core::cli::tokamak::usage::RequestRecord], fold: Fold) -> Vec<String> {
+    if records.is_empty() {
+        return vec!["no recorded requests".to_string()];
+    }
+    let (shown, hidden) = fold_split(fold, records.len());
+    let mut out = vec![format!(
+        "{} recorded request{}",
+        records.len(),
+        if records.len() == 1 { "" } else { "s" }
+    )];
+    out.extend(records[..shown].iter().flat_map(request_lines));
+    out.extend(fold_hint(fold, records.len(), hidden, "request"));
+    out
+}
+
+/// The limits view: yes or no, then the decisions behind it.
+fn limits_view(limits: &crate::core::cli::tokamak::usage::LimitStatus) -> Vec<String> {
+    let mut out = vec![if limits.allowed {
+        "spending is allowed".to_string()
+    } else {
+        "spending is blocked by a usage limit".to_string()
+    }];
+    if limits.decisions.is_empty() {
+        out.push("  no limit decisions recorded".to_string());
+    } else {
+        for decision in &limits.decisions {
+            out.push(format!("  {decision}"));
+        }
+    }
+    // Named because the two are separate checks upstream: an allowed limit
+    // says nothing about whether the wallet is funded.
+    out.push(String::new());
+    out.push("usage limits and wallet credit are separate checks".to_string());
+    out
+}
+
 /// Render a fetched account-usage payload.
 ///
 /// Each view leads with the figure that answers the question asked -- the
@@ -219,170 +387,16 @@ pub fn reported_usage_lines(
 ) -> Vec<String> {
     use crate::core::cli::tokamak::usage;
 
-    // The generic walk: every field the server sent, values verbatim. Used for
-    // a view with no typed layout and as the fallback when one fails to parse.
-    let raw_fields = || -> Vec<String> {
-        let fields = payload.fields();
-        if fields.is_empty() {
-            vec!["the provider reported no figures for this view".to_string()]
-        } else {
-            // Padded to the widest path so the values line up as a column;
-            // a usage readout is scanned down the numbers, not read across.
-            let width = fields.iter().map(|(p, _)| p.len()).max().unwrap_or(0);
-            fields
-                .iter()
-                .map(|(path, value)| format!("{path:width$}  {value}"))
-                .collect()
-        }
-    };
-
     let mut lines = match query {
-        usage::Query::Generation(_) | usage::Query::Correlated(_) => {
-            match usage::parse_generations_payload(payload) {
-                Ok(records) if records.is_empty() => vec!["no matching execution".to_string()],
-                Ok(records) => records
-                    .iter()
-                    .flat_map(|record| {
-                        usage::generation_lines(record)
-                            .into_iter()
-                            .chain(std::iter::once(String::new()))
-                    })
-                    .collect(),
-                Err(e) => vec![e.to_string()],
-            }
-        }
-        usage::Query::Summary => match usage::parse_account_summary(payload) {
-            Some(summary) => {
-                let mut out = vec!["account total".to_string()];
-                out.extend(total_rows(&summary));
-                // Costliest first: a folded list must keep the models that
-                // account for the spend, and the server already ranked nothing.
-                let mut models = summary.by_model.clone();
-                models.sort_by(|a, b| {
-                    money_rank(b.cost.as_ref())
-                        .partial_cmp(&money_rank(a.cost.as_ref()))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(|| a.label.cmp(&b.label))
-                });
-                out.extend(reported_rows("top models", &models, fold, "model"));
-                out
-            }
-            None => raw_fields(),
-        },
-        usage::Query::Daily => match usage::parse_daily(payload) {
-            Some(days) if days.is_empty() => {
-                vec!["no recorded days".to_string()]
-            }
-            // Sorted, not ranked: a daily view is read in date order rather
-            // than by size, so the order is the dates' own. The server already
-            // sends them newest-first, but "most recent day" below names a
-            // specific date and would state the wrong one if that ever
-            // changed -- and a descending sort on an ISO date string is a
-            // string sort, so it costs nothing to not depend on it.
-            Some(mut days) => {
-                days.sort_by(|a, b| b.label.cmp(&a.label));
-                let mut out = vec!["most recent day".to_string()];
-                out.push(format!(
-                    "  {}  {}",
-                    reported_money(days[0].cost.as_ref()),
-                    reported_counts(&days[0])
-                ));
-                out.push(format!("  {}", short_date(&days[0].label)));
-                let dated: Vec<usage::Aggregate> = days
-                    .iter()
-                    .map(|day| usage::Aggregate {
-                        label: short_date(&day.label),
-                        ..day.clone()
-                    })
-                    .collect();
-                out.extend(reported_rows("by day", &dated, fold, "day"));
-                out
-            }
-            None => raw_fields(),
-        },
-        usage::Query::Requests => match usage::parse_requests(payload) {
-            Some(records) if records.is_empty() => {
-                vec!["no recorded requests".to_string()]
-            }
-            Some(records) => {
-                let shown = if fold.shows_all() {
-                    records.len()
-                } else {
-                    records.len().min(TOP_REPORTED_ROWS)
-                };
-                let hidden = records.len() - shown;
-                let mut out = vec![format!(
-                    "{} recorded request{}",
-                    records.len(),
-                    if records.len() == 1 { "" } else { "s" }
-                )];
-                for record in &records[..shown] {
-                    let model = record.model.clone().unwrap_or_else(|| {
-                        usage::UNAVAILABLE.to_string()
-                    });
-                    let mut head = format!(
-                        "  {}  {}  {}",
-                        short_date(record.created_at.as_deref().unwrap_or_default()),
-                        reported_money(record.cost.as_ref()),
-                        model
-                    );
-                    // Only worth the width when it changes how the row reads:
-                    // an unsettled charge, or a request that failed.
-                    if let Some(status) = &record.billing_status {
-                        if !status.is_final() {
-                            head.push_str(&format!("  ({status})"));
-                        }
-                    }
-                    if record.status.is_some_and(|s| s >= 400) {
-                        head.push_str(&format!("  [HTTP {}]", record.status.unwrap_or_default()));
-                    }
-                    out.push(head);
-                    out.push(format!(
-                        "    {} in{} · {} out{}",
-                        format_tokens(record.prompt_tokens),
-                        if record.cache_read_tokens > 0 {
-                            format!(" ({} cached)", format_tokens(record.cache_read_tokens))
-                        } else {
-                            String::new()
-                        },
-                        format_tokens(record.completion_tokens),
-                        record
-                            .execution_id
-                            .as_deref()
-                            .map(|id| format!(" · {id}"))
-                            .unwrap_or_default()
-                    ));
-                }
-                out.extend(
-                    fold.hint(hidden, "request")
-                        .filter(|_| hidden > 0 || records.len() > TOP_REPORTED_ROWS),
-                );
-                out
-            }
-            None => raw_fields(),
-        },
-        usage::Query::Limits => match usage::parse_limits(payload) {
-            Some(limits) => {
-                let mut out = vec![if limits.allowed {
-                    "spending is allowed".to_string()
-                } else {
-                    "spending is blocked by a usage limit".to_string()
-                }];
-                if limits.decisions.is_empty() {
-                    out.push("  no limit decisions recorded".to_string());
-                } else {
-                    for decision in &limits.decisions {
-                        out.push(format!("  {decision}"));
-                    }
-                }
-                // Named because the two are separate checks upstream: an
-                // allowed limit says nothing about whether the wallet is funded.
-                out.push(String::new());
-                out.push("usage limits and wallet credit are separate checks".to_string());
-                out
-            }
-            None => raw_fields(),
-        },
+        usage::Query::Generation(_) | usage::Query::Correlated(_) => generation_view(payload),
+        usage::Query::Summary => usage::parse_account_summary(payload)
+            .map_or_else(|| raw_field_lines(payload), |summary| summary_view(&summary, fold)),
+        usage::Query::Daily => usage::parse_daily(payload)
+            .map_or_else(|| raw_field_lines(payload), |days| daily_view(days, fold)),
+        usage::Query::Requests => usage::parse_requests(payload)
+            .map_or_else(|| raw_field_lines(payload), |records| requests_view(&records, fold)),
+        usage::Query::Limits => usage::parse_limits(payload)
+            .map_or_else(|| raw_field_lines(payload), |limits| limits_view(&limits)),
     };
     while lines.last().is_some_and(String::is_empty) {
         lines.pop();
@@ -604,6 +618,57 @@ mod tests {
         assert!(text.contains("120.00"), "{text}");
     }
 
+    /// Byte-exact output of every view in every fold mode, pinned so a
+    /// restructuring of the renderer cannot change a single line.
+    #[test]
+    fn every_view_renders_byte_for_byte_as_pinned() {
+        use crate::core::cli::tokamak::usage::{parse_payload_for_test, Query};
+        use super::Fold;
+        let requests = r#"{"data":[{"execution_id":"4b1e70d6","billing_status":"not_billed",
+             "model":"anthropic/claude-opus-5","prompt_tokens":460,
+             "completion_tokens":371,"cache_read_tokens":41339,
+             "estimated_cost_usd":"0.0322445","status":200,
+             "created_at":"2026-09-22T08:57:20.751721Z"},
+             {"execution_id":"e2","billing_status":"billed","prompt_tokens":5,
+             "completion_tokens":1,"status":500,"created_at":"2026-09-21T00:00:00Z"},
+             {"execution_id":"e3","prompt_tokens":5,"completion_tokens":1},
+             {"execution_id":"e4","prompt_tokens":5,"completion_tokens":1},
+             {"execution_id":"e5","prompt_tokens":5,"completion_tokens":1},
+             {"execution_id":"e6","prompt_tokens":5,"completion_tokens":1}]}"#;
+        let days = r#"[{"date":"2026-09-22T00:00:00Z","total_prompt_tokens":2643716,
+             "total_completion_tokens":624644,"request_count":1095,
+             "estimated_cost_usd":"66.8881106"},
+            {"date":"2026-09-21T13:45:00Z","total_prompt_tokens":3475890,
+             "total_completion_tokens":939555,"request_count":915,
+             "estimated_cost_usd":"57.56311","cache_read_tokens":12}]"#;
+        let cases: Vec<(Query, &str)> = vec![
+            (Query::Summary, ACCOUNT_BODY),
+            (Query::Summary, r#"{"spend_usd":"1.25"}"#),
+            (Query::Summary, r#"{}"#),
+            (Query::Daily, days),
+            (Query::Daily, "[]"),
+            (Query::Requests, requests),
+            (Query::Requests, r#"{"data":[]}"#),
+            (Query::Limits, r#"{"allowed":true,"decisions":null}"#),
+            (Query::Limits, r#"{"allowed":false,"decisions":[{"limit":"monthly","used":"120.00"}]}"#),
+        ];
+        let mut out = String::new();
+        for (query, body) in &cases {
+            let payload = parse_payload_for_test(body);
+            for fold in [Fold::Folded, Fold::Unfolded, Fold::Fixed] {
+                out.push_str(&format!("== {query:?} {fold:?}\n"));
+                for line in super::reported_usage_lines(query, &payload, fold) {
+                    out.push_str(&line);
+                    out.push('\n');
+                }
+            }
+        }
+        let golden = include_str!("usage_view_golden.txt").replace("\r\n", "\n");
+        if out != golden {
+            std::fs::write(std::env::temp_dir().join("usage_view_actual.txt"), &out).ok();
+        }
+        assert_eq!(out, golden);
+    }
 
     /// A live account summary, trimmed to six models. Shaped exactly as
     /// `GET /v1/usage/me` answers, including the empty `provider` fields and
