@@ -213,6 +213,7 @@ Var LockedFile
   !insertmacro DeleteFreedBinary "$INSTDIR\resources\bin\flint.exe"
   !insertmacro DeleteFreedBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
   !insertmacro DeleteFreedPattern "$INSTDIR\resources\bin" "ggml*.dll"
+  !insertmacro DeleteFreedBinary "$INSTDIR\resources\bin\sqlite-vec.dll"
   !insertmacro DeleteFreedPattern "$INSTDIR\resources\bin" "cudart64_*.dll"
   !insertmacro DeleteFreedPattern "$INSTDIR\resources\bin" "cublas*.dll"
   !insertmacro DeleteFreedBinary "$INSTDIR\bun.exe"
@@ -231,6 +232,7 @@ Var LockedFile
   !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\flint.exe"
   !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
   !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "ggml*.dll"
+  !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\sqlite-vec.dll"
   !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "cudart64_*.dll"
   !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "cublas*.dll"
   !insertmacro UnlockBundledBinary "$INSTDIR\bun.exe"
@@ -241,6 +243,7 @@ Var LockedFile
     !insertmacro RestoreBundledBinary "$INSTDIR\resources\bin\flint.exe"
     !insertmacro RestoreBundledBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
     !insertmacro RestoreBundledPattern "$INSTDIR\resources\bin" "ggml*.dll"
+    !insertmacro RestoreBundledBinary "$INSTDIR\resources\bin\sqlite-vec.dll"
     !insertmacro RestoreBundledPattern "$INSTDIR\resources\bin" "cudart64_*.dll"
     !insertmacro RestoreBundledPattern "$INSTDIR\resources\bin" "cublas*.dll"
     !insertmacro RestoreBundledBinary "$INSTDIR\bun.exe"
@@ -920,6 +923,7 @@ Section Install
     ; here the way stage-engine.sh already does.
     File /a "/oname=flint-llama-worker.exe" "flint_workspace\src-tauri\resources\bin\flint-llama-worker.exe"
     File /a "flint_workspace\src-tauri\resources\bin\ggml*.dll"
+    File /a "flint_workspace\src-tauri\resources\bin\sqlite-vec.dll"
     File /nonfatal /a "flint_workspace\src-tauri\resources\bin\cudart64_*.dll"
     File /nonfatal /a "flint_workspace\src-tauri\resources\bin\cublas*.dll"
     SetOutPath $INSTDIR
