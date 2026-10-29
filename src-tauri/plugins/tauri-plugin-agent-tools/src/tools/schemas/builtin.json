@@ -1026,7 +1026,7 @@
     "type": "function",
     "function": {
       "name": "host_action",
-      "description": "Change one thing on this computer: end a process (kill_process, by its process number `pid` only, never by name; find it with host_query processes or ports) or start, stop or restart a Windows service (start_service, stop_service, restart_service, by the service's exact short name `name`; find it with host_query services). The user is asked to approve every call and sees exactly what it will do, so say why in your message first. Critical system processes and services, and Flint itself, are refused. It runs with Flint's own rights, so a service that needs an administrator fails with Windows' own refusal. To start a program, ask the user. Windows only.",
+      "description": "Change one thing on this computer: end a process (kill_process, by its process number `pid`, never by name alone; find it with host_query processes or ports, and pass the process name it showed as `name` so a number reused since then is refused) or start, stop or restart a Windows service (start_service, stop_service, restart_service, by the service's exact short name `name`; find it with host_query services). The user is asked to approve every call and sees exactly what it will do, so say why in your message first. Critical system processes and services, and Flint itself, are refused. It runs with Flint's own rights, so a service that needs an administrator fails with Windows' own refusal. To start a program, ask the user. Windows only.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -1040,7 +1040,7 @@
           },
           "name": {
             "type": "string",
-            "description": "The service actions only: the exact short service name, such as Spooler."
+            "description": "The service actions: the exact short service name, such as Spooler. kill_process: the process name host_query showed for that pid, such as node; the call is refused if the pid now belongs to another process."
           }
         },
         "required": [

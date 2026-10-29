@@ -745,6 +745,13 @@ impl ResourceRule {
         self.subject.matches(subject)
     }
 
+    /// Whether this rule, as a deny or ask rule, binds this subject: as
+    /// [`Self::covers_subject`], and a rule about the main agent also binds
+    /// its subagents (see [`crate::subject::SubjectPattern::restricts`]).
+    pub fn restricts_subject(&self, subject: &crate::subject::Subject) -> bool {
+        self.subject.restricts(subject)
+    }
+
     /// Whether an `ask` rule covers this call: as soon as *any* resource
     /// matches, like deny -- asking is the cautious side, so one command in a
     /// chain that the rule names is enough to ask about the whole line.
@@ -754,7 +761,7 @@ impl ResourceRule {
         resources: &[Resource],
         subject: &crate::subject::Subject,
     ) -> bool {
-        if !self.covers_subject(subject) || !self.tool.matches(tool_name) {
+        if !self.restricts_subject(subject) || !self.tool.matches(tool_name) {
             return false;
         }
         match &self.resource {
@@ -841,7 +848,7 @@ impl ResourceRule {
         resources: &[Resource],
         subject: &crate::subject::Subject,
     ) -> bool {
-        if !self.covers_subject(subject) || !self.tool.matches(tool_name) {
+        if !self.restricts_subject(subject) || !self.tool.matches(tool_name) {
             return false;
         }
         let Some(pattern) = &self.resource else {
