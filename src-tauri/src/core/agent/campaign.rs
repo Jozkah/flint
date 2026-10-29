@@ -1262,6 +1262,39 @@ pub fn list_with_skipped(data_folder: &Path) -> (Vec<Campaign>, Vec<SkippedRecor
     (out, skipped)
 }
 
+/// The campaigns whose record text holds `needle` (a session id), newest
+/// first: [`list`] without parsing and reconciling every record when only
+/// one session's link is wanted. A needle JSON would escape falls back to
+/// the full list.
+pub fn list_mentioning(data_folder: &Path, needle: &str) -> Vec<Campaign> {
+    if needle.is_empty() || needle.chars().any(|c| c == '"' || c == '\\' || c.is_control()) {
+        return list(data_folder);
+    }
+    let names: Vec<String> = {
+        let _held = lock(data_folder);
+        let Ok(entries) = std::fs::read_dir(root(data_folder)) else { return Vec::new() };
+        entries
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|name| valid_id(name))
+            .filter(|name| {
+                std::fs::read_to_string(root(data_folder).join(name).join("campaign.json"))
+                    .map(|text| text.contains(needle))
+                    .unwrap_or(false)
+            })
+            .collect()
+    };
+    let mut out: Vec<Campaign> = names
+        .iter()
+        .filter_map(|name| {
+            let _held = lock(data_folder);
+            load_reconciled(data_folder, name).ok()
+        })
+        .collect();
+    out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.id.cmp(&b.id)));
+    out
+}
+
 /// Every readable campaign, newest first. Reconciles each as it goes.
 pub fn list(data_folder: &Path) -> Vec<Campaign> {
     list_with_skipped(data_folder).0

@@ -163,7 +163,7 @@ async fn collect_mcp_tools<R: Runtime>(
                 if is_transport_error(&err_str) {
                     state.mcp_reconnect_notify.notify_waiters();
                 }
-                if remove_mcp_server_entry(&state.mcp_servers, &server_name).await {
+                if remove_mcp_server_entry(&state, &server_name).await {
                     removed_any = true;
                 }
                 None
@@ -453,15 +453,19 @@ pub async fn get_connected_servers(
 }
 
 /// Remove an MCP server entry and cancel its running service (used when list-tools fails).
-async fn remove_mcp_server_entry(mcp_servers: &SharedMcpServers, server_name: &str) -> bool {
-    let mut servers = mcp_servers.lock().await;
-    if let Some(service) = servers.remove(server_name) {
-        log::warn!("Removing MCP server {server_name} from connected servers");
-        let _ = service.cancel().await;
-        true
-    } else {
-        false
-    }
+async fn remove_mcp_server_entry(state: &AppState, server_name: &str) -> bool {
+    let service = state.mcp_servers.lock().await.remove(server_name);
+    let Some(service) = service else {
+        return false;
+    };
+    log::warn!("Removing MCP server {server_name} from connected servers");
+    let _ = service.cancel().await;
+    // Its pid and folder grant go with it: the health monitor's reconnect
+    // spawns (and grants) a fresh instance.
+    let pid = state.mcp_server_pids.lock().await.remove(server_name);
+    let config = state.mcp_active_servers.lock().await.get(server_name).cloned();
+    super::launch::release_folder_grants(config.as_ref(), pid);
+    true
 }
 
 /// Retrieves all available tools from all MCP servers with server information

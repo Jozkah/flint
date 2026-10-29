@@ -180,21 +180,108 @@ pub(crate) fn redirect_policy13() -> reqwest13::redirect::Policy {
     })
 }
 
-/// A resolver that fails a lookup whose answer [`mixed_answers_error`] refuses.
+/// A cloud instance-metadata address (`169.254.0.0/16` link-local, AWS's
+/// `fd00:ec2::254`). Credentials live there; no MCP server does.
+fn metadata(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.octets()[..2] == [169, 254],
+        IpAddr::V6(v6) => v6 == std::net::Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254),
+    }
+}
+
+/// Whether `host` is named outright (no wildcard) in the global
+/// `[mcp] allow_hosts`: the one way to reach a metadata address on purpose.
+fn named_in_allow_hosts(host: &str) -> bool {
+    let path = crate::core::agent::plugins::global_agent_toml_path();
+    let Ok(Some(raw)) = super::allowlist::read_agent_toml(&path) else {
+        return false;
+    };
+    allow_hosts_from_toml(&raw)
+        .map(|list| list.iter().any(|p| !p.trim().starts_with("*.") && host_matches(p, host)))
+        .unwrap_or(false)
+}
+
+/// Why `answers` for `host` are refused beyond [`mixed_answers_error`]: a
+/// metadata address the host is not explicitly allowed to reach, or a name
+/// that answered public before and now answers wholly private (DNS
+/// rebinding across lookups). `first_public` is what the first lookup of
+/// this host in this process saw.
+pub(crate) fn rebinding_error(
+    host: &str,
+    answers: &[IpAddr],
+    first_public: Option<bool>,
+    allowed: impl FnOnce() -> bool,
+) -> Option<String> {
+    if answers.iter().any(|ip| metadata(*ip)) && !allowed() {
+        return Some(format!(
+            "refused to connect to {host:?}: it resolves to a cloud metadata address; \
+             name it in agent.toml [mcp] allow_hosts if that is really meant"
+        ));
+    }
+    let now_private = !answers.is_empty() && answers.iter().all(|ip| internal(*ip));
+    if first_public == Some(true) && now_private {
+        return Some(format!(
+            "refused to connect to {host:?}: it resolved to public addresses before and now \
+             resolves only to private ones, which is how DNS rebinding reaches a local machine"
+        ));
+    }
+    None
+}
+
+/// Per host, whether its first lookup in this process was public. Bounded:
+/// cleared when it grows past a few thousand names.
+fn first_seen(host: &str, public: bool) -> Option<bool> {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> =
+        std::sync::OnceLock::new();
+    let mut seen = SEEN
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    if seen.len() > 4096 {
+        seen.clear();
+    }
+    Some(*seen.entry(norm(host)).or_insert(public))
+}
+
+/// The checks every lookup of an MCP host passes. Also run once up front when
+/// a proxy will do the real lookup (the guard's resolver is not consulted
+/// then), so a proxied connection is at least checked at connect time.
+pub(crate) async fn check_lookup(host: &str) -> Result<Vec<SocketAddr>, String> {
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, 0))
+        .await
+        .map_err(|e| format!("could not resolve {host:?}: {e}"))?
+        .collect();
+    let ips: Vec<IpAddr> = addrs.iter().map(|a| a.ip()).collect();
+    if let Some(why) = mixed_answers_error(host, &ips) {
+        return Err(why);
+    }
+    let public = !ips.is_empty() && ips.iter().all(|ip| !internal(*ip));
+    let first = first_seen(host, public);
+    let owned = host.to_string();
+    if let Some(why) = rebinding_error(host, &ips, first, move || named_in_allow_hosts(&owned)) {
+        return Err(why);
+    }
+    Ok(addrs)
+}
+
+/// [`check_lookup`] for the host of `url` when it is a name (a literal IP is
+/// checked by [`check_url`] and the redirect guard).
+pub(crate) async fn preflight_url(url: &str) -> Result<(), String> {
+    let Ok(parsed) = Url::parse(url) else { return Ok(()) };
+    if let Some(Host::Domain(host)) = parsed.host() {
+        check_lookup(host).await?;
+    }
+    Ok(())
+}
+
+/// A resolver that fails a lookup whose answer [`check_lookup`] refuses.
 pub(crate) struct GuardedResolver;
 
 impl reqwest13::dns::Resolve for GuardedResolver {
     fn resolve(&self, name: reqwest13::dns::Name) -> reqwest13::dns::Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
-                .await
-                .map_err(|e| format!("could not resolve {host:?}: {e}"))?
-                .collect();
-            let ips: Vec<IpAddr> = addrs.iter().map(|a| a.ip()).collect();
-            if let Some(why) = mixed_answers_error(&host, &ips) {
-                return Err(why.into());
-            }
+            let addrs = check_lookup(&host).await?;
             Ok(Box::new(addrs.into_iter()) as reqwest13::dns::Addrs)
         })
     }
@@ -330,6 +417,19 @@ mod tests {
         assert!(mixed_answers_error("h", &[ip("93.184.216.34"), ip("2606:2800:220:1::1")]).is_none());
         assert!(mixed_answers_error("h", &[ip("10.0.0.5"), ip("127.0.0.1")]).is_none());
         assert!(mixed_answers_error("h", &[]).is_none());
+    }
+
+    #[test]
+    fn a_metadata_address_is_refused_unless_named_and_a_flip_to_private_is_refused() {
+        let meta = [ip("169.254.169.254")];
+        assert!(rebinding_error("h", &meta, Some(false), || false).is_some());
+        assert!(rebinding_error("h", &meta, Some(false), || true).is_none());
+        assert!(rebinding_error("h", &[ip("fd00:ec2::254")], None, || false).is_some());
+        // Public first, wholly private now: rebinding.
+        assert!(rebinding_error("h", &[ip("127.0.0.1")], Some(true), || false).is_some());
+        // A LAN server that was always private is left alone.
+        assert!(rebinding_error("h", &[ip("192.168.1.5")], Some(false), || false).is_none());
+        assert!(rebinding_error("h", &[ip("1.1.1.1")], Some(true), || false).is_none());
     }
 
     #[test]
