@@ -6,6 +6,7 @@ import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markThreadHasDocuments } from '@/lib/threadDocuments'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteChatActions, useRemoteComposer } from '@/lib/remote/composer'
+import { sendQueuedViaComposer } from '@/lib/remote/queuedSend'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
 import { addSnapshotSink } from '@/lib/providerFetch'
@@ -2911,7 +2912,17 @@ export function ThreadConversation({
     if (!next) return
 
     processingQueueRef.current = true
-    sendQueuedMessage(next.text, next.steered)
+    // A phone's message queued with attachments goes through this chat's
+    // composer entry, as a phone's send to an idle chat does, so its media
+    // and documents go with it. This view registers that entry, so the
+    // text-only fallback is only for a send racing an unmount.
+    const { attachments } = next
+    const sending = attachments
+      ? sendQueuedViaComposer('chat', threadId, next.text, attachments).then(
+          (sent) => (sent ? undefined : sendQueuedMessage(next.text, false))
+        )
+      : sendQueuedMessage(next.text, next.steered)
+    sending
       .catch((err) => {
         console.error('Failed to send queued message:', err)
       })

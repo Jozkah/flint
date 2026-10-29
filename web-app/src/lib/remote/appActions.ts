@@ -39,6 +39,7 @@ import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useAttachments } from '@/hooks/useAttachments'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { planAttachments } from './attachments'
+import { stageComposerDocs, unstageComposerDocs } from './queuedSend'
 
 export type Navigate = (to: { to: string; params?: Record<string, string> }) => unknown
 
@@ -86,9 +87,6 @@ async function backendStop(args: { session?: string; run?: string }): Promise<{ 
     return null
   })
 }
-
-/** Documents a phone staged per conversation, until its send. */
-const phoneStaged = new Map<string, Set<string>>()
 
 export function appActions(navigate: Navigate): RemoteActions {
   const chatModelOf = (id: string): ModelRef | undefined => {
@@ -223,13 +221,7 @@ export function appActions(navigate: Navigate): RemoteActions {
       const entry = await waitForComposer(kind, id)
       if (!entry) return false
       await entry.send(text, files)
-      // Cowork's submit reads staged documents but does not clear them (its
-      // composer does); take back what the phone staged so it is not resent.
-      const staged = phoneStaged.get(id)
-      if (kind === 'cowork' && staged) {
-        useChatAttachments.getState().setAttachments(id, (prev) => prev.filter((a) => !a.path || !staged.has(a.path)))
-      }
-      phoneStaged.delete(id)
+      unstageComposerDocs(kind, id)
       return true
     },
 
@@ -255,20 +247,18 @@ export function appActions(navigate: Navigate): RemoteActions {
       )
     },
 
-    stageDocs: (id, docs) => {
-      phoneStaged.set(id, new Set(docs.map((d) => d.path ?? '')))
-      useChatAttachments.getState().setAttachments(id, (prev) => [
-        ...prev,
-        ...docs.filter((d) => !prev.some((x) => x.path === d.path)),
-      ])
-    },
+    stageDocs: stageComposerDocs,
 
-    enqueue: (queueId, text, steer) =>
+    enqueue: (queueId, text, steer, attachments) =>
       useMessageQueue.getState().enqueue(queueId, {
         id: crypto.randomUUID(),
         text,
         createdAt: Date.now(),
-        ...(steer ? { steer: true } : {}),
+        ...(attachments && attachments.files.length + attachments.docs.length > 0
+          ? { attachments }
+          : steer
+            ? { steer: true }
+            : {}),
       }),
 
     stop: async (kind, id) => {

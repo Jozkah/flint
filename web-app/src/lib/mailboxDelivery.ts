@@ -35,6 +35,7 @@ import {
 } from '@/lib/sessionMailbox'
 import {
   useMessageQueue,
+  type QueuedAttachments,
   type QueuedMessage,
   type QueuedMessageSender,
 } from '@/stores/message-queue-store'
@@ -208,7 +209,12 @@ export function isSessionInView(sid: string): boolean {
 
 export async function drainIdleSession(
   sid: string,
-  run: (text: string, from?: QueuedMessageSender) => void,
+  /** `attachments`: a phone's message queued with them, to send with it. */
+  run: (
+    text: string,
+    from?: QueuedMessageSender,
+    attachments?: QueuedAttachments
+  ) => void,
   mailbox: ClaimMailbox = sessionMailbox
 ): Promise<void> {
   const next = await dequeueClaimedReady(sid, mailbox)
@@ -220,7 +226,8 @@ export async function drainIdleSession(
     }))
     return
   }
-  run(next.text, next.from)
+  if (next.attachments) run(next.text, next.from, next.attachments)
+  else run(next.text, next.from)
 }
 
 /** The sender fields a transcript row carries, from a queued message's sender. */

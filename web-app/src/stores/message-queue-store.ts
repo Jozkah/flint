@@ -1,4 +1,16 @@
 import { create } from 'zustand'
+import type { SubmittedFile } from '@/lib/coworkAttachments'
+import type { Attachment } from '@/types/attachment'
+
+/**
+ * Attachments a phone sent with a message while its conversation was busy:
+ * media as the composer submits it, documents to stage at send time. Kept in
+ * memory only -- never written with the held input a restart restores.
+ */
+export type QueuedAttachments = {
+  files: SubmittedFile[]
+  docs: Attachment[]
+}
 
 export type QueuedMessage = {
   id: string
@@ -22,6 +34,8 @@ export type QueuedMessage = {
    * given; this records who sent it so the UI can attribute it and reply.
    */
   from?: QueuedMessageSender
+  /** Sent with the text, through the conversation's composer. Never steering. */
+  attachments?: QueuedAttachments
 }
 
 export type QueuedMessageSender = {
@@ -222,7 +236,13 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
   steerNow: (threadId, messageId) => {
     set((state) => {
       const queue = state.queues[threadId]
-      if (!queue?.some((m) => m.id === messageId && !m.held && !m.steer))
+      // A message with attachments goes as a turn of its own: steering hands
+      // the running turn text only.
+      if (
+        !queue?.some(
+          (m) => m.id === messageId && !m.held && !m.steer && !m.attachments
+        )
+      )
         return state
       return {
         queues: {
