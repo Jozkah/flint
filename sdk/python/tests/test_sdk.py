@@ -563,18 +563,24 @@ class RuntimeFailureTest(unittest.TestCase):
         self.assertTrue(killed)
         self.assertIn("not JSON", str(runtime._failure))
 
-    def test_a_raising_listener_fails_and_stops_the_runtime(self) -> None:
+    def test_a_raising_listener_is_logged_and_later_listeners_still_run(self) -> None:
         runtime = _bare_runtime(_Sink())
         killed = []
         runtime._process = SimpleNamespace(stdin=_Sink(), kill=lambda: killed.append(True))
+        seen = []
 
         def bad(_payload: object) -> None:
             raise ValueError("boom")
 
         runtime._dispatch_queue.put((bad, 1))
-        runtime._run_dispatch()
-        self.assertTrue(killed)
-        self.assertIn("listener raised", str(runtime._failure))
+        runtime._dispatch_queue.put((seen.append, 2))
+        runtime._dispatch_queue.put(None)
+        with self.assertLogs("jan_agent_sdk", level="WARNING") as logs:
+            runtime._run_dispatch()
+        self.assertFalse(killed)
+        self.assertIsNone(runtime._failure)
+        self.assertEqual(seen, [2])
+        self.assertIn("listener raised", logs.output[0])
 
     def test_session_call_flags_survive_concurrent_abort(self) -> None:
         from jan_agent_sdk.session import JanSession
