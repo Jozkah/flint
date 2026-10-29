@@ -738,10 +738,12 @@ async fn mcp_route(state: &State, method: &Method, rest: &str, req: Request<Inco
                 Ok(body) => body,
                 Err(response) => return response,
             };
-            result_response(
-                mcp::trust(name, str_field(&body, "fingerprint")),
-                StatusCode::CONFLICT,
-            )
+            // The definition the user was shown is required: trusting
+            // whatever the server is now is not what anybody approved.
+            let Some(fingerprint) = str_field(&body, "fingerprint") else {
+                return text(StatusCode::BAD_REQUEST, "fingerprint is required");
+            };
+            result_response(mcp::trust(name, fingerprint), StatusCode::CONFLICT)
         }
         (Method::DELETE, ["trust", name]) => {
             result_response(mcp::revoke(name), StatusCode::BAD_REQUEST)
@@ -761,12 +763,14 @@ async fn mcp_route(state: &State, method: &Method, rest: &str, req: Request<Inco
                 Ok(body) => body,
                 Err(response) => return response,
             };
-            let (Some(server), Some(tool)) =
-                (str_field(&body, "serverName"), str_field(&body, "toolName"))
-            else {
-                return text(StatusCode::BAD_REQUEST, "serverName and toolName are required");
+            let (Some(server), Some(tool), Some(fingerprint)) = (
+                str_field(&body, "serverName"),
+                str_field(&body, "toolName"),
+                str_field(&body, "fingerprint"),
+            ) else {
+                return text(StatusCode::BAD_REQUEST, "serverName, toolName and fingerprint are required");
             };
-            match mcp::allow_once(server, tool, str_field(&body, "fingerprint")) {
+            match mcp::allow_once(server, tool, fingerprint) {
                 Ok(ticket) => json(&serde_json::json!({ "ticket": ticket })),
                 Err(message) => result_response(Err(message), StatusCode::CONFLICT),
             }
