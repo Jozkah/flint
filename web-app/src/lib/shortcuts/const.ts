@@ -20,7 +20,6 @@ export const PlatformShortcuts: ShortcutMap = {
   [ShortcutAction.NEW_CHAT]: { key: 'n', usePlatformMetaKey: true },
 
   // New agent chat - opens home screen with agent mode pre-enabled
-  [ShortcutAction.NEW_AGENT_CHAT]: { key: 'm', usePlatformMetaKey: true },
 
   // New project - opens create project dialog
   [ShortcutAction.NEW_PROJECT]: { key: 'p', usePlatformMetaKey: true },
