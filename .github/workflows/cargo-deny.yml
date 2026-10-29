@@ -1,10 +1,18 @@
 name: Cargo Deny
-# Advisory scan only, never a PR gate: a new RustSec entry should not block an
-# unrelated change. Weekly plus manual, results land in the job summary.
+# Advisories: weekly plus manual, never a PR gate, so a new RustSec entry does
+# not block an unrelated change. Licenses, bans and sources: a PR gate, but only
+# when the dependency tree or the policy changes.
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * 1'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/Cargo.lock'
+      - '**/Cargo.toml'
+      - 'deny.toml'
+      - '.github/workflows/cargo-deny.yml'
 
 concurrency:
   group: cargo-deny-${{ github.ref }}
@@ -16,6 +24,7 @@ permissions:
 jobs:
   advisories:
     name: advisories
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -31,10 +40,23 @@ jobs:
             src-tauri/plugins/tauri-plugin-hardware/Cargo.toml \
             src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml; do
             echo "### $m" >> "$GITHUB_STEP_SUMMARY"
-            cargo deny --manifest-path "$m" --config deny.toml check advisories 2>&1 \
+            cargo deny --manifest-path "$m" check --config "$GITHUB_WORKSPACE/deny.toml" advisories 2>&1 \
               | tee -a "$GITHUB_STEP_SUMMARY"
             # The pipeline's own status is tee's; the scan's is in PIPESTATUS.
             [ "${PIPESTATUS[0]}" -eq 0 ] || status=1
           done
           # Fail the scheduled run so a new advisory shows up as a red run.
           exit "$status"
+
+  policy:
+    name: licenses, bans, sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.18.3
+
+      - name: cargo deny check licenses bans sources
+        run: cargo deny --manifest-path src-tauri/Cargo.toml check --config "$GITHUB_WORKSPACE/deny.toml" licenses bans sources

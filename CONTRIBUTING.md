@@ -6,10 +6,10 @@ Flint is a local-first AI workspace for the desktop: chat with local or cloud mo
 
 ## Quick Links to Component Guides
 
-- **[Web App](./web-app/CONTRIBUTING.md)** - React UI and logic
+- **[Web App](#web-app-web-app)** - React UI and logic (section below)
+- **[Tauri Backend](#tauri-backend-src-tauri)** - Rust native integration (section below)
 - **[Core SDK](./core/CONTRIBUTING.md)** - TypeScript SDK and extension system
 - **[Extensions](./extensions/CONTRIBUTING.md)** - Supportive modules for the frontend
-- **[Tauri Backend](./src-tauri/CONTRIBUTING.md)** - Rust native integration
 - **[Tauri Plugins](./src-tauri/plugins/CONTRIBUTING.md)** - Hardware and system plugins
 
 ## How Flint Works
@@ -235,6 +235,59 @@ Commits and PR titles follow [Conventional Commits](https://www.conventionalcomm
 - Include a screenshot or screen recording in your PR description showing the change in action
 - For bug fixes: show both the **before** (broken behavior) and **after** (fixed behavior)
 - For new features or enhancements: demonstrate the feature working as expected
+
+## Web App (`web-app/`)
+
+React frontend in TypeScript with TanStack Router, Radix UI and Tailwind CSS. State lives in React state and Zustand stores.
+
+- `src/components/ui` - UI primitives (buttons, dialogs, inputs)
+- `src/containers` - Feature components (ChatInput, ThreadContent)
+- `src/hooks` - React hooks and Zustand stores (useChat, useThreads, useAppState)
+- `src/routes` - TanStack Router pages (`createFileRoute('/settings/general')`)
+- `src/services` - API layer for backend calls
+- `src/types` - TypeScript definitions
+
+Commands, from `web-app/`: `yarn dev`, `yarn build`, `yarn test`. Typecheck with `yarn tsc -b` (the root tsconfig is a solution file, so `tsc -p` checks nothing).
+
+Keep components small, handle loading and error states, use semantic HTML with ARIA labels and working keyboard navigation, and put business logic in hooks. User-facing strings go through i18n (`web-app/src/locales`).
+
+### Phone app (remote access)
+
+`mobile.html` + `src/mobile/` is a separate Vite entry: the web app a paired phone opens at `https://<computer>:1340/m/`, served by the desktop's remote-access server (`src-tauri/src/core/remote`). It runs in the phone's browser, so it must not import Tauri or the desktop's stores (ESLint enforces this for `src/mobile/**`). It talks to the desktop only through `/remote/v1` (see `src/lib/remote/protocol.ts`); the desktop window answers RPCs in `src/lib/remote/handlers.ts`.
+
+```bash
+# Build it into src-tauri/resources/mobile (bundled as a Tauri resource;
+# `yarn build` does this too)
+yarn build:mobile
+
+# Develop against a running Flint with Settings > Remote access on:
+# http://localhost:1430/m/ proxies /remote/v1 (HTTP + WebSocket) to it.
+yarn dev:mobile
+FLINT_REMOTE_URL=https://100.64.0.2:1340 yarn dev:mobile   # another address
+
+# Pair the dev page: copy the pairing link from the desktop's QR dialog and
+# open it with the dev origin, e.g. http://localhost:1430/m/#pair=<code>
+```
+
+To try the built app end to end in `yarn dev`, run `yarn build:mobile` first: Tauri copies `src-tauri/resources/mobile` next to the binary when it builds, and the server shows a placeholder page while the folder is empty.
+
+## Tauri Backend (`src-tauri/`)
+
+Rust backend for native integration, file operations and process management.
+
+- `src/core/app` - App state and commands
+- `src/core/downloads` - Model downloads
+- `src/core/filesystem` - File system operations
+- `src/core/mcp` - Model Context Protocol
+- `src/core/server` - Local API server
+- `src/core/system` - System information and utilities
+- `src/core/threads` - Conversation storage
+- `utils/` - Shared utility crate used by the plugins and the main backend
+- `plugins/` - Native Tauri plugins ([plugins guide](./src-tauri/plugins/CONTRIBUTING.md))
+
+New commands are `#[tauri::command]` functions registered in `lib.rs` with `generate_handler!`, and need a permission entry in `capabilities/` before the webview can call them. Return `Result<T, E>`, validate every argument that comes from the webview, use async for I/O, and keep platform code behind `#[cfg(target_os = ...)]`.
+
+Commands, from `src-tauri/`: `cargo check` while iterating, `cargo test` for tests. Windows needs the Visual Studio Build Tools, macOS the Xcode command line tools. IPC errors usually mean the command name does not match the frontend call or the capability is missing.
 
 ## Troubleshooting
 

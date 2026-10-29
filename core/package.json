@@ -1,7 +1,7 @@
 {
   "name": "@janhq/core",
   "version": "0.1.10",
-  "description": "Core library for the Jan AI application framework",
+  "description": "Core library for the Flint application framework (forked from Jan)",
   "keywords": [
     "jan",
     "core"
@@ -14,7 +14,7 @@
     "dist",
     "types"
   ],
-  "author": "Jan <service@jan.ai>",
+  "author": "Flint contributors",
   "scripts": {
     "lint": "tslint --project tsconfig.json -t codeFrame 'src/**/*.ts' 'test/**/*.ts'",
     "test": "vitest run",

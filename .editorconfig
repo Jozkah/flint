@@ -1,0 +1,22 @@
+# Matches the Prettier and rustfmt defaults used in the repo. Line endings are
+# left to git (Windows checkouts are CRLF), like Prettier's endOfLine: auto.
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.rs]
+indent_size = 4
+
+[*.{py,swift}]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[{Makefile,*.mk}]
+indent_style = tab

@@ -69,6 +69,10 @@ pub fn load_pem(cert: &Path, key: &Path, hostname: Option<String>) -> Result<Loa
 /// The self-signed certificate for `ip` (and `host`, the custom host name,
 /// when set), made once and reused while both stay the same (so a phone that
 /// trusted it keeps trusting it).
+///
+/// Never rotated on a timer, on purpose: phones pin trust to this certificate,
+/// and a silent rotation would break every paired phone. Manual rotation is
+/// documented in docs/MOBILE.md ("Certificate").
 pub fn self_signed(dir: &Path, ip: &str, host: Option<&str>) -> Result<LoadedTls, String> {
     let cert_path = dir.join("lan-cert.pem");
     let key_path = dir.join("lan-key.pem");
