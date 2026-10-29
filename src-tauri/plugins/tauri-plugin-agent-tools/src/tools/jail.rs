@@ -2175,8 +2175,8 @@ mod tests {
         let p = Policy::new(&ws, false).with_write_roots(vec![wt.clone()]);
         let args = bwrap_args(&p, &cfg());
         let text = joined(&args);
-        let hooks = ws.join(".git/hooks").to_string_lossy().to_string();
-        let config = ws.join(".git/config").to_string_lossy().to_string();
+        let hooks = ws.join(".git").join("hooks").to_string_lossy().to_string();
+        let config = ws.join(".git").join("config").to_string_lossy().to_string();
         let ptr = wt.join(".git").to_string_lossy().to_string();
         let ws_s = ws.to_string_lossy().to_string();
         let wt_s = wt.to_string_lossy().to_string();
@@ -2189,8 +2189,8 @@ mod tests {
         }
         // Ordinary repository files are not bound read-only: commit and checkout
         // write the index, refs and objects.
-        let objects = ws.join(".git/objects").to_string_lossy().to_string();
-        assert!(!text.contains(&objects) && !text.contains(&format!("{ws_s}/.git {ws_s}/.git")));
+        let objects = ws.join(".git").join("objects").to_string_lossy().to_string();
+        assert!(!text.contains(&objects) && !text.contains(&format!("{g} {g}", g = ws.join(".git").to_string_lossy())));
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -2213,8 +2213,8 @@ mod tests {
         assert!(profile.contains("(deny file-write* (literal (param \"GIT_GUARD_FILE_0\")))"), "{profile}");
         assert!(profile.contains("GIT_GUARD_FILE_1"), "{profile}");
         let args = seatbelt_args(&p, &cfg());
-        assert!(args.contains(&format!("-DGIT_GUARD_DIR_0={}", ws.join(".git/hooks").display())), "{args:?}");
-        assert!(args.contains(&format!("-DGIT_GUARD_FILE_0={}", ws.join(".git/config").display())), "{args:?}");
+        assert!(args.contains(&format!("-DGIT_GUARD_DIR_0={}", ws.join(".git").join("hooks").display())), "{args:?}");
+        assert!(args.contains(&format!("-DGIT_GUARD_FILE_0={}", ws.join(".git").join("config").display())), "{args:?}");
         assert!(args.contains(&format!("-DGIT_GUARD_FILE_1={}", wt.join(".git").display())), "{args:?}");
         // The deny follows every allow, the network rules apart.
         let deny = profile.find("GIT_GUARD_DIR_0").unwrap();
