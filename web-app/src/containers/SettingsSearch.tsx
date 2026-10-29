@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useListNavigation } from '@/hooks/useListNavigation'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight, CornerDownLeft, Search, SearchX, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -83,7 +84,6 @@ export function SettingsSearch() {
   // the query still set, so the panel reopened over the page just opened.
   const dismissed = useSettingsSearch((s) => s.dismissed)
   const setDismissed = useSettingsSearch((s) => s.setDismissed)
-  const [active, setActive] = useState(0)
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const anchorRef = useRef<HTMLDivElement>(null)
@@ -129,13 +129,27 @@ export function SettingsSearch() {
   }, [results])
   const flatResults = grouped.flat
 
+  const open = !dismissed && query.trim().length > 0
+
+  // The highlighted row follows the arrow keys into view.
+  const scrollTo = useCallback(
+    (index: number) => {
+      if (!open) return
+      const entry = flatResults[index]
+      if (!entry) return
+      const el = document.getElementById(`settings-search-${entry.id}`)
+      el?.scrollIntoView?.({ block: 'nearest' })
+    },
+    [open, flatResults]
+  )
   // A new query restarts the selection at the top; `setQuery` re-opens the
   // panel by clearing the dismissal in the same update.
-  useEffect(() => {
-    setActive(0)
-  }, [query])
-
-  const open = !dismissed && query.trim().length > 0
+  const { active, setActive, onNavKey } = useListNavigation({
+    count: flatResults.length,
+    wrap: true,
+    resetKey: query,
+    scrollTo,
+  })
 
   // Where the panel goes: under the field, as wide as the field or wider,
   // never past the window's edge, and tall enough to scroll inside itself.
@@ -167,15 +181,6 @@ export function SettingsSearch() {
       window.removeEventListener('scroll', measure, true)
     }
   }, [open])
-
-  // The highlighted row follows the arrow keys into view.
-  useEffect(() => {
-    if (!open) return
-    const entry = flatResults[active]
-    if (!entry) return
-    const el = document.getElementById(`settings-search-${entry.id}`)
-    el?.scrollIntoView?.({ block: 'nearest' })
-  }, [active, open, flatResults])
 
   // A click anywhere else closes the panel; the field keeps its query.
   useEffect(() => {
@@ -236,13 +241,8 @@ export function SettingsSearch() {
       return
     }
     if (!open || flatResults.length === 0) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setActive((i) => (i + 1) % flatResults.length)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActive((i) => (i - 1 + flatResults.length) % flatResults.length)
-    } else if (e.key === 'Enter') {
+    if (onNavKey(e)) return
+    if (e.key === 'Enter') {
       e.preventDefault()
       const entry = flatResults[active]
       if (entry) select(entry)

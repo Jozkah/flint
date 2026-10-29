@@ -1,0 +1,81 @@
+[
+  {
+    "role": "system",
+    "content": "inline system\n\nd1\nd2"
+  },
+  {
+    "role": "user",
+    "content": "plain"
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "a1"
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "data:image/png;base64,AAAA"
+        }
+      }
+    ],
+    "tool_calls": [
+      {
+        "id": "u1",
+        "type": "function",
+        "function": {
+          "name": "read",
+          "arguments": "{\"p\":1}"
+        }
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": null,
+    "tool_calls": [
+      {
+        "id": "u3",
+        "type": "function",
+        "function": {
+          "name": "ls",
+          "arguments": "{}"
+        }
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": "only text"
+  },
+  {
+    "role": "assistant",
+    "content": ""
+  },
+  {
+    "role": "tool",
+    "tool_call_id": "u1",
+    "content": "fine"
+  },
+  {
+    "role": "tool",
+    "tool_call_id": "u3",
+    "content": "Error: boom"
+  },
+  {
+    "role": "tool",
+    "tool_call_id": "",
+    "content": "a\nb"
+  },
+  {
+    "role": "user",
+    "content": "and then"
+  },
+  {
+    "role": "tool",
+    "tool_call_id": "u2",
+    "content": ""
+  }
+]

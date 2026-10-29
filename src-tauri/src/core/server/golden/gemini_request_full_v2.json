@@ -1,0 +1,186 @@
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "look"
+        },
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "AAAA"
+          }
+        },
+        {
+          "fileData": {
+            "mimeType": "image/jpeg",
+            "fileUri": "https://x.test/a.jpg"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "BBBB"
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "calling"
+        },
+        {
+          "functionCall": {
+            "name": "read",
+            "args": {
+              "p": 1
+            }
+          }
+        },
+        {
+          "functionCall": {
+            "name": "shot",
+            "args": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "read",
+            "response": {
+              "ok": true
+            }
+          }
+        },
+        {
+          "functionResponse": {
+            "name": "shot",
+            "response": {
+              "result": "plain"
+            }
+          }
+        },
+        {
+          "functionResponse": {
+            "name": "unknown",
+            "response": {
+              "result": "orphan"
+            }
+          }
+        },
+        {
+          "inlineData": {
+            "mimeType": "image/jpeg",
+            "data": "CCCC"
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "functionCall": {
+            "name": "again",
+            "args": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "again",
+            "response": {
+              "result": "[1,2]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "thanks"
+        }
+      ]
+    }
+  ],
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "be brief"
+      },
+      {
+        "text": "dev rule"
+      },
+      {
+        "text": "late system"
+      }
+    ]
+  },
+  "generationConfig": {
+    "temperature": 0.3,
+    "topP": 0.9,
+    "maxOutputTokens": 100,
+    "stopSequences": [
+      "X",
+      "Y"
+    ],
+    "seed": 7,
+    "presencePenalty": 0.1,
+    "frequencyPenalty": 0.2,
+    "topK": 40,
+    "responseMimeType": "application/json",
+    "responseSchema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        }
+      }
+    },
+    "thinkingConfig": {
+      "thinkingBudget": -1,
+      "includeThoughts": true
+    }
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "read",
+          "description": "r",
+          "parameters": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "bare",
+          "description": null,
+          "parameters": {}
+        }
+      ]
+    }
+  ],
+  "toolConfig": {
+    "functionCallingConfig": {
+      "mode": "ANY"
+    }
+  }
+}
