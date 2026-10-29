@@ -1,7 +1,7 @@
-# cargo-deny policy. Advisories only for now: licenses, bans and sources are
-# not enforced, so this cannot block a build on policy that was never decided.
-# Run by .github/workflows/cargo-deny.yml (weekly + manual, non-blocking):
-#   cargo deny --manifest-path src-tauri/Cargo.toml check advisories
+# cargo-deny policy. Run by .github/workflows/cargo-deny.yml:
+#   advisories: weekly + manual, reported in the job summary.
+#   licenses, bans, sources: on pull requests that touch Cargo.lock or this file.
+#   cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources
 
 [advisories]
 version = 2
@@ -10,4 +10,46 @@ ignore = [
   # rsa Marvin Attack timing side channel. No patched release exists upstream;
   # revisit when rsa publishes a fix or the dependency is dropped.
   { id = "RUSTSEC-2023-0071", reason = "no patched rsa release available; track upstream" },
+]
+
+[licenses]
+version = 2
+# Built from the licenses of the current dependency tree (cargo metadata,
+# 2026-10). Everything here is permissive or file-level copyleft (MPL-2.0),
+# compatible with shipping Flint under Apache-2.0. Any license not listed,
+# such as GPL, AGPL or LGPL-only, fails the check and needs a deliberate entry.
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "CC0-1.0",
+  "Unlicense",
+  "Unicode-3.0",
+  "CDLA-Permissive-2.0",
+  "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+# The workspace crates are not published.
+ignore = true
+
+[bans]
+# Duplicate versions are common in a Tauri tree; report, do not fail.
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+  # fix-path-env is only published as a git dependency.
+  "https://github.com/tauri-apps/fix-path-env-rs",
 ]

@@ -13,6 +13,8 @@ How it works:
 - Events: a WebSocket (`/events`) carries approvals, run state and reply streams; Web Push covers a hidden page.
 - So the agent loop, safety checks, redaction and worktrees run on the computer, in the same Rust loop for a phone's session as for a desktop one. Anything a phone does is a desktop action with the phone as the remote control.
 
+- Certificate: on a home network without Tailscale or a user-supplied pair, the server makes a self-signed certificate (`remote/tls.rs::self_signed`) and keeps it until the address or custom host name changes. It is deliberately never rotated on a timer: a phone trusts it once (its fingerprint is shown in Settings > Remote access), and a silent rotation would break every paired phone with a certificate error and invite users to click through warnings. rcgen's default validity is effectively unlimited, so it does not expire either. To rotate it by hand (for example after the key may have leaked), turn remote access off, delete `lan-cert.pem`, `lan-key.pem` and `lan-cert.ip` from the `tls` folder of the remote-access state folder, turn it back on, and trust the new fingerprint on each phone. Tailscale certificates are renewed automatically after 30 days.
+
 The phone app has: Chat, Cowork sessions, Rooms, approvals, questions and prompts (cards and push actions), models and Hugging Face, Library, Studio, Archive, System, Tools, settings and pairing.
 
 ## The Android build (.apk)

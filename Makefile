@@ -161,6 +161,8 @@ test-prepare: lint
 	$(MAKE) stub-resources
 	# localOnly.test.ts scans web-app/dist and silently skips when it is absent.
 	yarn workspace @janhq/web-app build
+	# Bundle size budget (scripts/bundle-budget.json): fails on >10% gzip growth.
+	node scripts/check-bundle-size.mjs
 	yarn test
 	yarn copy:assets:tauri
 	yarn build:icon

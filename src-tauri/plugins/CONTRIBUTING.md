@@ -1,6 +1,6 @@
 # Contributing to Tauri Plugins
 
-[← Back to Main Contributing Guide](../../CONTRIBUTING.md) | [← Back to Tauri Guide](../CONTRIBUTING.md)
+[← Back to Main Contributing Guide](../../CONTRIBUTING.md) | [← Back to Tauri Guide](../../CONTRIBUTING.md#tauri-backend-src-tauri)
 
 Native Rust plugins for hardware access, process management, and system integration.
 
