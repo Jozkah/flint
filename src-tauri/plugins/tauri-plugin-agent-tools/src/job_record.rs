@@ -248,11 +248,14 @@ fn write(data_folder: &Path, record: &JobRecord, keep_ended: bool) -> Result<Opt
     let mut kept: Vec<JobRecord> = stored.into_iter().filter(|r| r.id != record.id).collect();
     kept.push(record.clone());
     kept.sort_by_key(|r| r.started_at_ms);
-    if kept.len() > MAX_RECORDS_PER_OWNER {
-        let excess = kept.len() - MAX_RECORDS_PER_OWNER;
-        kept.drain(..excess);
-    }
+    cap_records(&mut kept);
     let mut body = String::new();
+    // Lines this version cannot read -- damaged, or written by a newer one --
+    // are carried over verbatim rather than dropped by the rewrite (O03-036).
+    for line in unreadable_lines(&path) {
+        body.push_str(&line);
+        body.push('\n');
+    }
     for one in &kept {
         body.push_str(&serde_json::to_string(one).map_err(|e| e.to_string())?);
         body.push('\n');
@@ -262,6 +265,43 @@ fn write(data_folder: &Path, record: &JobRecord, keep_ended: bool) -> Result<Opt
     // stomp another's temp file.
     crate::atomic_file::write_atomic(&path, body.as_bytes())?;
     Ok(None)
+}
+
+/// Most unreadable lines a rewrite carries over, newest kept.
+const MAX_UNREADABLE_LINES: usize = 64;
+
+/// Trim `kept` (oldest first) to [`MAX_RECORDS_PER_OWNER`]: ended records go
+/// first, oldest first; a running job is never dropped to make room (O03-036).
+fn cap_records(kept: &mut Vec<JobRecord>) {
+    let mut excess = kept.len().saturating_sub(MAX_RECORDS_PER_OWNER);
+    kept.retain(|r| {
+        if excess > 0 && r.state.is_ended() {
+            excess -= 1;
+            false
+        } else {
+            true
+        }
+    });
+}
+
+/// The non-empty lines of `path` that [`read_owner`] cannot use because they
+/// do not parse or carry a newer version, newest [`MAX_UNREADABLE_LINES`].
+fn unreadable_lines(path: &Path) -> Vec<String> {
+    let Ok(body) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut lines: Vec<String> = body
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter(|line| match serde_json::from_str::<JobRecord>(line) {
+            Ok(r) => r.v > JOB_RECORD_VERSION,
+            Err(_) => true,
+        })
+        .map(str::to_string)
+        .collect();
+    let drop = lines.len().saturating_sub(MAX_UNREADABLE_LINES);
+    lines.drain(..drop);
+    lines
 }
 
 /// One owner's records, oldest first. A line that cannot be read is skipped:
@@ -656,6 +696,33 @@ mod tests {
         let after = read_owner(&d, "s");
         assert_eq!(after.len(), MAX_RECORDS_PER_OWNER, "a damaged line hid the rest");
         assert!(after.iter().all(|r| r.id != "future"), "a newer record was read anyway");
+
+        // O03-036: the next save rewrites the file and keeps both lines.
+        let mut more = JobRecord::started("job-next", "s", "echo", me());
+        more.state = JobState::Completed;
+        save(&d, &more).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("not a record\n"), "a damaged line was dropped");
+        assert!(body.contains("\"id\":\"future\""), "a newer record was dropped");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// O03-036: at the cap, ended records give way and a running one stays.
+    #[test]
+    fn the_cap_never_drops_a_running_job() {
+        let d = dir("cap_running");
+        let mut oldest = JobRecord::started("job-running", "s", "sleep", me());
+        oldest.started_at_ms = 1;
+        save(&d, &oldest).unwrap();
+        for i in 0..(MAX_RECORDS_PER_OWNER + 5) {
+            let mut record = JobRecord::started(format!("job-{i}"), "s", "echo", me());
+            record.started_at_ms = 10 + i as u64;
+            record.state = JobState::Completed;
+            save(&d, &record).unwrap();
+        }
+        let kept = read_owner(&d, "s");
+        assert_eq!(kept.len(), MAX_RECORDS_PER_OWNER);
+        assert!(kept.iter().any(|r| r.id == "job-running"), "the running job was dropped");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

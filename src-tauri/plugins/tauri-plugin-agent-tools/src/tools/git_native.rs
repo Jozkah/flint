@@ -303,12 +303,15 @@ fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> (bool, String) {
 /// were marked.
 pub fn skip_worktree_jan(worktree: &Path) -> Result<usize, String> {
     let git = discover_git().ok_or_else(|| "git not found".to_string())?;
-    let (ok, listed) = run_git(&git, worktree, &["ls-files", "--", crate::tools::sandbox::JAN_DIR]);
+    // `-z`: unquoted, NUL-separated names. Without it git C-quotes a path
+    // with a space, a quote or a non-ASCII character, and the quoted spelling
+    // passed back to update-index names no file (F5x2-016).
+    let (ok, listed) = run_git(&git, worktree, &["ls-files", "-z", "--", crate::tools::sandbox::JAN_DIR]);
     if !ok {
         // Not a repository (or git refused it): nothing is tracked to protect.
         return Ok(0);
     }
-    let files: Vec<&str> = listed.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let files: Vec<&str> = listed.split('\0').filter(|l| !l.is_empty()).collect();
     if files.is_empty() {
         return Ok(0);
     }
@@ -820,6 +823,15 @@ pub async fn git_clone(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> Str
     .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
+    // A clone that fails or times out leaves its half-written folder behind,
+    // and a retry into it is refused ("already exists"). Remove only a folder
+    // this call created (O06-022).
+    let existed = dest.exists();
+    let discard_partial = || {
+        if !existed {
+            let _ = std::fs::remove_dir_all(&dest);
+        }
+    };
     let out = match tokio::time::timeout(
         std::time::Duration::from_secs(CLONE_TIMEOUT_SECS),
         cmd.output(),
@@ -827,14 +839,16 @@ pub async fn git_clone(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> Str
     .await
     {
         Err(_) => {
+            discard_partial();
             return format!(
                 "ERROR: git_clone timed out after {CLONE_TIMEOUT_SECS}s cloning {canonical}"
-            )
+            );
         }
         Ok(Err(e)) => return format!("ERROR: git_clone failed to launch git: {e}"),
         Ok(Ok(out)) => out,
     };
     if !out.status.success() {
+        discard_partial();
         let err = String::from_utf8_lossy(&out.stderr);
         return json!({
             "status": "clone_failed",
@@ -954,6 +968,8 @@ mod tests {
         let wt = base.join("wt");
         std::fs::create_dir_all(repo.join(".jan/agent")).unwrap();
         std::fs::write(repo.join(".jan/agent/agent.toml"), b"[tools]\n").unwrap();
+        // A name git would C-quote without `-z` (F5x2-016).
+        std::fs::write(repo.join(".jan/agent/notes caf\u{e9}.md"), b"x\n").unwrap();
         std::fs::write(repo.join("main.rs"), b"fn main() {}\n").unwrap();
         let run = |dir: &Path, args: &[&str]| -> String {
             let mut c = Command::new(&git);
@@ -971,10 +987,11 @@ mod tests {
         run(&repo, &["commit", "-q", "-m", "init"]);
         run(&repo, &["worktree", "add", "-q", "-b", "s1", &wt.to_string_lossy()]);
 
-        assert_eq!(skip_worktree_jan(&wt).unwrap(), 1);
+        assert_eq!(skip_worktree_jan(&wt).unwrap(), 2);
         // Idempotent.
-        assert_eq!(skip_worktree_jan(&wt).unwrap(), 1);
-        assert!(run(&wt, &["ls-files", "-v", "--", ".jan"]).starts_with("S "));
+        assert_eq!(skip_worktree_jan(&wt).unwrap(), 2);
+        let listed = run(&wt, &["ls-files", "-v", "--", ".jan"]);
+        assert!(listed.lines().all(|l| l.starts_with("S ")), "{listed}");
 
         // What the sandbox shows git: the file is not there.
         std::fs::remove_dir_all(wt.join(".jan")).unwrap();
