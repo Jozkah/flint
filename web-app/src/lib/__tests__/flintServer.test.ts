@@ -24,17 +24,23 @@ function memory(): Storage {
 }
 
 describe('normalizeServerUrl', () => {
-  it('adds https and keeps only the origin', () => {
+  it('adds https and drops the query, fragment and trailing slash', () => {
     expect(normalizeServerUrl('flint.tail1.ts.net')).toEqual({
       ok: true,
       url: 'https://flint.tail1.ts.net',
       insecure: false,
     })
-    expect(normalizeServerUrl(' https://h.example:8443/login?x=1#y ')).toEqual({
+    expect(normalizeServerUrl('https://h.example/')).toMatchObject({ url: 'https://h.example' })
+    expect(normalizeServerUrl(' https://h.example:8443/?x=1#y ')).toEqual({
       ok: true,
       url: 'https://h.example:8443',
       insecure: false,
     })
+  })
+
+  it('keeps a path prefix for a server behind a reverse proxy', () => {
+    expect(normalizeServerUrl('https://host/flint/')).toMatchObject({ ok: true, url: 'https://host/flint' })
+    expect(normalizeServerUrl('host/a/b?q=1')).toMatchObject({ ok: true, url: 'https://host/a/b' })
   })
 
   it('flags plain http except for this machine', () => {
@@ -68,6 +74,25 @@ describe('server config storage', () => {
     saveServerConfig({ url: 'https://h.example', autoConnect: false }, storage)
     clearServerConfig(storage)
     expect(loadServerConfig(storage)).toBeNull()
+  })
+
+  it('reads addresses stored before paths were kept unchanged, and a stored prefix back', () => {
+    const storage = memory()
+    // What older builds saved: a bare origin.
+    storage.setItem('flint.server', JSON.stringify({ url: 'https://h.example:8443', autoConnect: true }))
+    expect(loadServerConfig(storage)).toEqual({ url: 'https://h.example:8443', autoConnect: true })
+    saveServerConfig({ url: 'https://host/flint', autoConnect: false }, storage)
+    expect(loadServerConfig(storage)).toEqual({ url: 'https://host/flint', autoConnect: false })
+  })
+
+  it('probes /healthz under the path prefix', async () => {
+    const calls: string[] = []
+    const fetchImpl = (async (u: string) => {
+      calls.push(u)
+      return new Response('ok')
+    }) as unknown as typeof fetch
+    expect(await probeServer('https://host/flint', { fetchImpl })).toEqual({ state: 'ok' })
+    expect(calls).toEqual(['https://host/flint/healthz'])
   })
 
   it('never stores anything but the address and the switch', () => {
