@@ -802,7 +802,10 @@ pub fn classify_tool(tool: &str, content: &str) -> Option<HarnessError> {
     if has(&["cancelled", "canceled", "stopped by the user", "stop requested"]) {
         return made(ErrorKind::Cancelled);
     }
-    if has(&["denied by user", "declined", "user said no", "approval"]) {
+    // No bare "approval": a tool error that merely mentions one ("needs
+    // approval to write", "approval file missing") is not a person refusing.
+    // Real refusals carry the `ERROR [approval_refused]:` tag.
+    if has(&["denied by user", "declined", "user said no"]) {
         return made(ErrorKind::ApprovalRefused);
     }
     if has(&[
@@ -869,16 +872,23 @@ fn mentions(text: &str, marker: &str) -> bool {
 /// refusal ("403 Forbidden (connection refused by policy)") cannot turn a
 /// refusal into an outage.
 pub fn classify_upstream(error: &str) -> HarnessError {
-    classify_upstream_at(error, Stage::Dispatch)
+    classify_upstream_at(error, Stage::Dispatch, false)
 }
 
-/// [`classify_upstream`], saying where the failure happened.
-pub fn classify_upstream_at(error: &str, stage: Stage) -> HarnessError {
+/// [`classify_upstream`], saying where the failure happened and whether the
+/// run's own cancel signal had fired.
+///
+/// A cancellation is read only from `stopped` -- the run's token -- never from
+/// the provider's words: Go-based local servers say "context canceled" when
+/// their upstream times out and gateways say "request aborted", and reading
+/// either as the user's stop would unwind quietly with no fallback and no
+/// error shown (O03-017). Those words are a transport fault.
+pub fn classify_upstream_at(error: &str, stage: Stage, stopped: bool) -> HarnessError {
     let text = error.to_ascii_lowercase();
     let has = |markers: &[&str]| markers.iter().any(|m| mentions(&text, m));
     let made = |kind: ErrorKind| HarnessError::new(kind, error).at(stage);
 
-    if has(&["cancelled", "canceled", "aborted", "stopped by the user"]) {
+    if stopped {
         return made(ErrorKind::Cancelled);
     }
     // A credential the provider rejected is the user's configuration, not the
@@ -932,6 +942,10 @@ pub fn classify_upstream_at(error: &str, stage: Stage) -> HarnessError {
         "failed to lookup",
         "no route to host",
         "network is unreachable",
+        // The provider's side gave up on the request; the run did not stop.
+        "cancelled",
+        "canceled",
+        "aborted",
     ]) {
         return made(ErrorKind::Transport);
     }
@@ -1112,7 +1126,6 @@ mod tests {
             "400 Bad Request: the gateway is unavailable for this model",
             "This model's maximum context length is 8192 tokens (connection reset)",
             "unsupported tool schema; error sending request was logged",
-            "the run was cancelled -- 503 Service Unavailable",
             "unexpected end of stream after 200 OK",
             "an unclassifiable disturbance",
         ] {
@@ -1124,6 +1137,8 @@ mod tests {
             "upstream returned 503 Service Unavailable",
             "the request timed out",
             "429 Too Many Requests, retry-after: 12",
+            // Provider-side cancel words are not the run's stop (O03-017).
+            "the run was cancelled -- 503 Service Unavailable",
         ] {
             assert!(may_try_another_provider(outage), "{outage:?} was stranded");
         }
@@ -1177,6 +1192,8 @@ mod tests {
             ("ERROR: tool 'bash' timed out after 30s and was stopped", ErrorKind::Timeout),
             ("ERROR: the run was cancelled", ErrorKind::Cancelled),
             ("ERROR: something nobody has classified", ErrorKind::ToolFailed),
+            ("ERROR: the approval file could not be parsed", ErrorKind::ToolFailed),
+            ("ERROR: write denied by user", ErrorKind::ApprovalRefused),
         ] {
             let classified = classify_tool("bash", content).expect("a failure");
             assert_eq!(classified.kind(), expected, "{content:?}");
@@ -1226,7 +1243,6 @@ mod tests {
             "401 Unauthorized: invalid api key",
             "403 Forbidden",
             "This model's maximum context length is 8192 tokens",
-            "the run was cancelled by the user",
             "400 Bad Request: unsupported tool schema",
             "403 Forbidden (connection refused by policy)",
             "something nobody has seen before",
@@ -1252,9 +1268,15 @@ mod tests {
         assert!(outage.retry().is_allowed());
         assert_eq!(outage.audience(), Audience::User);
 
-        let stopped = classify_upstream("the run was cancelled");
+        // A stop is the run's token, not the provider's words (O03-017).
+        let stopped = classify_upstream_at("the run was cancelled", Stage::Stream, true);
         assert!(stopped.is_cancellation());
         assert!(!stopped.retry().is_allowed());
+        for said in ["context canceled", "request aborted", "the run was cancelled by upstream"] {
+            let e = classify_upstream(said);
+            assert!(!e.is_cancellation(), "{said:?}");
+            assert_eq!(e.kind(), ErrorKind::Transport, "{said:?}");
+        }
 
         let too_big = classify_upstream("This model's maximum context length is 8192 tokens");
         assert_eq!(too_big.kind(), ErrorKind::ContextOverflow);

@@ -225,6 +225,17 @@ fn now() -> i64 {
         .unwrap_or(0)
 }
 
+/// Run a memory command's store work on the blocking pool: every one of them
+/// reads and rewrites files (and some take a cross-process lock), which must
+/// not stall an async runtime worker (O04-013).
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, AgentToolsError> + Send + 'static,
+) -> Result<T, AgentToolsError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| AgentToolsError::from(format!("memory command did not finish: {e}")))?
+}
+
 #[tauri::command]
 pub async fn memory_records_list(
     location: Where,
@@ -233,15 +244,18 @@ pub async fn memory_records_list(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<Page, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    service::list(
-        &location.access(),
-        scope,
-        query.as_deref(),
-        offset.unwrap_or(0),
-        limit.unwrap_or(50),
-    )
-    .map_err(Into::into)
+    blocking(move || -> Result<Page, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        service::list(
+            &location.access(),
+            scope,
+            query.as_deref(),
+            offset.unwrap_or(0),
+            limit.unwrap_or(50),
+        )
+        .map_err(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -250,8 +264,11 @@ pub async fn memory_record_get(
     scope: String,
     id: String,
 ) -> Result<MemoryView, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    service::get(&location.access(), scope, &MemoryId::new(id)).map_err(Into::into)
+    blocking(move || -> Result<MemoryView, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        service::get(&location.access(), scope, &MemoryId::new(id)).map_err(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -262,16 +279,19 @@ pub async fn memory_record_edit(
     content: String,
     expected_hash: Option<String>,
 ) -> Result<MemoryView, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    service::edit(
-        &location.access(),
-        scope,
-        &MemoryId::new(id),
-        &content,
-        expected_hash.as_deref(),
-        now(),
-    )
-    .map_err(Into::into)
+    blocking(move || -> Result<MemoryView, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        service::edit(
+            &location.access(),
+            scope,
+            &MemoryId::new(id),
+            &content,
+            expected_hash.as_deref(),
+            now(),
+        )
+        .map_err(Into::into)
+    })
+    .await
 }
 
 /// Propose a memory for review. Writes nothing.
@@ -283,39 +303,42 @@ pub async fn memory_record_propose(
     source_session_id: Option<String>,
     source_message_id: Option<String>,
 ) -> Result<ProposalView, AgentToolsError> {
-    use super::create;
-    use super::record::{Creator, Origin};
+    blocking(move || -> Result<ProposalView, AgentToolsError> {
+        use super::create;
+        use super::record::{Creator, Origin};
 
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
+        }
+        .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
 
-    let existing = super::store::load(&store_root, scope).records;
-    let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
+        let existing = super::store::load(&store_root, scope).records;
+        let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
 
-    let mut proposal = create::propose(
-        id,
-        &content,
-        scope,
-        access.project_id.as_deref(),
-        access.session_id.as_deref(),
-        // The user asked for this one. An agent's proposal comes through the
-        // typed proposal path, not through a command the UI can call.
-        Creator::User,
-        Origin::Explicit,
-        now(),
-        &existing,
-    )
-    .map_err(|r| AgentToolsError::from(r.message()))?;
+        let mut proposal = create::propose(
+            id,
+            &content,
+            scope,
+            access.project_id.as_deref(),
+            access.session_id.as_deref(),
+            // The user asked for this one. An agent's proposal comes through the
+            // typed proposal path, not through a command the UI can call.
+            Creator::User,
+            Origin::Explicit,
+            now(),
+            &existing,
+        )
+        .map_err(|r| AgentToolsError::from(r.message()))?;
 
-    proposal.record.provenance.session_id = source_session_id;
-    proposal.record.provenance.message_id = source_message_id;
+        proposal.record.provenance.session_id = source_session_id;
+        proposal.record.provenance.message_id = source_message_id;
 
-    Ok(ProposalView::from(&proposal))
+        Ok(ProposalView::from(&proposal))
+    })
+    .await
 }
 
 /// What happened to a proposal an agent made.
@@ -365,109 +388,112 @@ pub async fn memory_record_propose_inferred(
     source_message_id: Option<String>,
     temporary: Option<bool>,
 ) -> Result<InferredOutcome, AgentToolsError> {
-    use super::create;
-    use super::inferred;
+    blocking(move || -> Result<InferredOutcome, AgentToolsError> {
+        use super::create;
+        use super::inferred;
 
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
-
-    let existing = super::store::load(&store_root, scope).records;
-    let settings = location
-        .settings_root()
-        .map(|root| settings::load(&root))
-        .unwrap_or_default();
-
-    // The gate itself lives in `inferred`. The desktop path and the
-    // model-facing `memory_propose` tool both reach it through this one
-    // function, so the same content cannot be queued down one path and saved
-    // down the other -- including the order the reasons are checked in, which
-    // is what stops "automatically save" silently resolving a conflict.
-    let decision = inferred::decide(
-        MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content))),
-        &content,
-        &existing,
-        &inferred::Context {
-            scope,
-            project_id: access.project_id.as_deref(),
-            session_id: access.session_id.as_deref(),
-            // A temporary chat neither reads nor records. Answered before
-            // anything is written, so there is nothing to clean up.
-            temporary: temporary.unwrap_or(false),
-            now: now(),
-            automatically_save: settings.automatically_save,
-        },
-    );
-
-    let mut proposal = match decision {
-        // A credential, an empty body, something absurdly long, or a temporary
-        // chat. Refused whatever the setting says: automatic saving is
-        // permission to skip the question, never permission to store a secret.
-        inferred::Decision::Refused { reason } => {
-            return Ok(InferredOutcome::Refused { reason })
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
         }
-        inferred::Decision::Pending { proposal, reason } => {
-            let mut proposal = *proposal;
-            proposal.record.provenance.session_id = source_session_id;
-            proposal.record.provenance.message_id = source_message_id;
-            // Stored, not merely returned. A question that lives only in this
-            // response is asked once, in whichever surface happened to be open,
-            // and is gone by the next turn. `Status::Proposed` keeps it out of
-            // every prompt while it waits, and `memory_proposals_list` is what
-            // the approval card reads.
-            let pending = inferred::as_pending(&proposal, reason);
-            super::store::upsert(&store_root, &pending).map_err(AgentToolsError::from)?;
-            return Ok(InferredOutcome::NeedsApproval {
-                proposal: Box::new(ProposalView::from(&proposal)),
-                reason,
+        .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
+
+        let existing = super::store::load(&store_root, scope).records;
+        let settings = location
+            .settings_root()
+            .map(|root| settings::load(&root))
+            .unwrap_or_default();
+
+        // The gate itself lives in `inferred`. The desktop path and the
+        // model-facing `memory_propose` tool both reach it through this one
+        // function, so the same content cannot be queued down one path and saved
+        // down the other -- including the order the reasons are checked in, which
+        // is what stops "automatically save" silently resolving a conflict.
+        let decision = inferred::decide(
+            MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content))),
+            &content,
+            &existing,
+            &inferred::Context {
+                scope,
+                project_id: access.project_id.as_deref(),
+                session_id: access.session_id.as_deref(),
+                // A temporary chat neither reads nor records. Answered before
+                // anything is written, so there is nothing to clean up.
+                temporary: temporary.unwrap_or(false),
+                now: now(),
+                automatically_save: settings.automatically_save,
+            },
+        );
+
+        let mut proposal = match decision {
+            // A credential, an empty body, something absurdly long, or a temporary
+            // chat. Refused whatever the setting says: automatic saving is
+            // permission to skip the question, never permission to store a secret.
+            inferred::Decision::Refused { reason } => {
+                return Ok(InferredOutcome::Refused { reason })
+            }
+            inferred::Decision::Pending { proposal, reason } => {
+                let mut proposal = *proposal;
+                proposal.record.provenance.session_id = source_session_id;
+                proposal.record.provenance.message_id = source_message_id;
+                // Stored, not merely returned. A question that lives only in this
+                // response is asked once, in whichever surface happened to be open,
+                // and is gone by the next turn. `Status::Proposed` keeps it out of
+                // every prompt while it waits, and `memory_proposals_list` is what
+                // the approval card reads.
+                let pending = inferred::as_pending(&proposal, reason);
+                super::store::upsert(&store_root, &pending).map_err(AgentToolsError::from)?;
+                return Ok(InferredOutcome::NeedsApproval {
+                    proposal: Box::new(ProposalView::from(&proposal)),
+                    reason,
+                });
+            }
+            inferred::Decision::Save(proposal) => *proposal,
+        };
+        proposal.record.provenance.session_id = source_session_id;
+        proposal.record.provenance.message_id = source_message_id;
+
+        // A duplicate confirms what is already there rather than adding a second
+        // copy of it. The new record's id embeds the clock, so `commit` would not
+        // match the old row; touch the existing one instead (visible to this
+        // caller only, never another chat's or project's).
+        let now_ts = now();
+        let mut confirmed: Option<MemoryId> = None;
+        for dup in &proposal.duplicates {
+            let id = dup.clone();
+            let touched = super::store::update(&store_root, scope, |records| {
+                let Some(r) = records
+                    .iter_mut()
+                    .find(|r| r.id == id && matches!(r.status, super::record::Status::Active))
+                else {
+                    return Ok((false, false));
+                };
+                if !access.may_see(r) {
+                    return Ok((false, false));
+                }
+                r.last_confirmed_at = Some(now_ts);
+                r.updated_at = now_ts;
+                Ok((true, true))
+            })
+            .map_err(AgentToolsError::from)?;
+            if touched {
+                confirmed = Some(id);
+                break;
+            }
+        }
+        if let Some(id) = confirmed {
+            return Ok(InferredOutcome::Saved {
+                memory: Box::new(service::get(&access, scope, &id)?),
             });
         }
-        inferred::Decision::Save(proposal) => *proposal,
-    };
-    proposal.record.provenance.session_id = source_session_id;
-    proposal.record.provenance.message_id = source_message_id;
-
-    // A duplicate confirms what is already there rather than adding a second
-    // copy of it. The new record's id embeds the clock, so `commit` would not
-    // match the old row; touch the existing one instead (visible to this
-    // caller only, never another chat's or project's).
-    let now_ts = now();
-    let mut confirmed: Option<MemoryId> = None;
-    for dup in &proposal.duplicates {
-        let id = dup.clone();
-        let touched = super::store::update(&store_root, scope, |records| {
-            let Some(r) = records
-                .iter_mut()
-                .find(|r| r.id == id && matches!(r.status, super::record::Status::Active))
-            else {
-                return Ok((false, false));
-            };
-            if !access.may_see(r) {
-                return Ok((false, false));
-            }
-            r.last_confirmed_at = Some(now_ts);
-            r.updated_at = now_ts;
-            Ok((true, true))
+        create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
+        Ok(InferredOutcome::Saved {
+            memory: Box::new(service::get(&access, scope, &proposal.record.id)?),
         })
-        .map_err(AgentToolsError::from)?;
-        if touched {
-            confirmed = Some(id);
-            break;
-        }
-    }
-    if let Some(id) = confirmed {
-        return Ok(InferredOutcome::Saved {
-            memory: Box::new(service::get(&access, scope, &id)?),
-        });
-    }
-    create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
-    Ok(InferredOutcome::Saved {
-        memory: Box::new(service::get(&access, scope, &proposal.record.id)?),
     })
+    .await
 }
 
 /// A proposal a person has not answered yet.
@@ -498,43 +524,46 @@ pub struct PendingProposalView {
 pub async fn memory_proposals_list(
     location: Where,
 ) -> Result<Vec<PendingProposalView>, AgentToolsError> {
-    use super::inferred::{self, PendingReason};
+    blocking(move || -> Result<Vec<PendingProposalView>, AgentToolsError> {
+        use super::inferred::{self, PendingReason};
 
-    let access = location.access();
-    let mut out = Vec::new();
-    for (scope, root) in [
-        (Scope::Session, access.permanent_store.clone()),
-        (Scope::User, access.permanent_store.clone()),
-        (Scope::Project, access.project_store.clone()),
-    ] {
-        let Some(root) = root else { continue };
-        for record in super::store::load(&root, scope).records {
-            let Some(reason) = inferred::pending_reason(&record) else {
-                continue;
-            };
-            // Containment is enforced against the record's own scope, exactly
-            // as it is for reading a memory: naming another chat does not
-            // surface its questions.
-            if !record.applies_to(access.session_id.as_deref(), access.project_id.as_deref()) {
-                continue;
+        let access = location.access();
+        let mut out = Vec::new();
+        for (scope, root) in [
+            (Scope::Session, access.permanent_store.clone()),
+            (Scope::User, access.permanent_store.clone()),
+            (Scope::Project, access.project_store.clone()),
+        ] {
+            let Some(root) = root else { continue };
+            for record in super::store::load(&root, scope).records {
+                let Some(reason) = inferred::pending_reason(&record) else {
+                    continue;
+                };
+                // Containment is enforced against the record's own scope, exactly
+                // as it is for reading a memory: naming another chat does not
+                // surface its questions.
+                if !record.applies_to(access.session_id.as_deref(), access.project_id.as_deref()) {
+                    continue;
+                }
+                out.push(PendingProposalView {
+                    id: record.id.to_string(),
+                    content: record.content.clone(),
+                    scope: super::service::scope_word(scope).to_string(),
+                    reason: reason.as_str().to_string(),
+                    explanation: reason.explain().to_string(),
+                    // A conflict is answered by resolving the conflict, not by
+                    // approving one side blind.
+                    approvable: reason != PendingReason::ConflictsWithExisting,
+                    source_session_id: record.provenance.session_id.clone(),
+                    source_message_id: record.provenance.message_id.clone(),
+                    created_at: record.created_at,
+                });
             }
-            out.push(PendingProposalView {
-                id: record.id.to_string(),
-                content: record.content.clone(),
-                scope: super::service::scope_word(scope).to_string(),
-                reason: reason.as_str().to_string(),
-                explanation: reason.explain().to_string(),
-                // A conflict is answered by resolving the conflict, not by
-                // approving one side blind.
-                approvable: reason != PendingReason::ConflictsWithExisting,
-                source_session_id: record.provenance.session_id.clone(),
-                source_message_id: record.provenance.message_id.clone(),
-                created_at: record.created_at,
-            });
         }
-    }
-    out.sort_by_key(|p| std::cmp::Reverse(p.created_at));
-    Ok(out)
+        out.sort_by_key(|p| std::cmp::Reverse(p.created_at));
+        Ok(out)
+    })
+    .await
 }
 
 /// Answer a proposal.
@@ -550,68 +579,71 @@ pub async fn memory_proposal_resolve(
     id: String,
     approve: bool,
 ) -> Result<Option<MemoryView>, AgentToolsError> {
-    use super::inferred::{self, PendingReason};
-    use super::record::Status;
+    blocking(move || -> Result<Option<MemoryView>, AgentToolsError> {
+        use super::inferred::{self, PendingReason};
+        use super::record::Status;
 
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
+        }
+        .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
 
-    let id = MemoryId::new(id);
-    // Decided and written under the scope's lock, so a memory saved while the
-    // proposal was on screen is not dropped by this rewrite.
-    enum Outcome {
-        Dismissed,
-        Discarded(String),
-        Approved,
-    }
-    let outcome = super::store::update(&store_root, scope, |records| {
-        let Some(index) = records.iter().position(|r| r.id == id) else {
-            return Err("that proposal is no longer there".to_string());
-        };
-        // Another chat's or project's proposal is answered from that chat or
-        // project, not by guessing its id.
-        if !access.may_see(&records[index]) {
-            return Err("that proposal is no longer there".to_string());
+        let id = MemoryId::new(id);
+        // Decided and written under the scope's lock, so a memory saved while the
+        // proposal was on screen is not dropped by this rewrite.
+        enum Outcome {
+            Dismissed,
+            Discarded(String),
+            Approved,
         }
-        let Some(reason) = inferred::pending_reason(&records[index]) else {
-            return Err("that memory is not awaiting an answer".to_string());
-        };
-        if !approve {
-            records.remove(index);
-            return Ok((true, Outcome::Dismissed));
+        let outcome = super::store::update(&store_root, scope, |records| {
+            let Some(index) = records.iter().position(|r| r.id == id) else {
+                return Err("that proposal is no longer there".to_string());
+            };
+            // Another chat's or project's proposal is answered from that chat or
+            // project, not by guessing its id.
+            if !access.may_see(&records[index]) {
+                return Err("that proposal is no longer there".to_string());
+            }
+            let Some(reason) = inferred::pending_reason(&records[index]) else {
+                return Err("that memory is not awaiting an answer".to_string());
+            };
+            if !approve {
+                records.remove(index);
+                return Ok((true, Outcome::Dismissed));
+            }
+            if reason == PendingReason::ConflictsWithExisting {
+                return Err(
+                    "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
+                );
+            }
+            // Re-checked at the moment of the decision, not at the moment of the
+            // proposal: the refusals are what stop a credential being stored, and a
+            // proposal can sit on screen for a long time.
+            // Every content gate, not the credential scan alone: length and an
+            // instruction posing as a fact are refused here as at creation.
+            if let Err(refusal) = super::create::check_content(&records[index].content) {
+                records.remove(index);
+                return Ok((true, Outcome::Discarded(refusal.message())));
+            }
+            records[index].status = Status::Active;
+            records[index].updated_at = now();
+            Ok((true, Outcome::Approved))
+        })
+        .map_err(AgentToolsError::from)?;
+        match outcome {
+            Outcome::Dismissed => return Ok(None),
+            Outcome::Discarded(why) => {
+                return Err(AgentToolsError::from(format!("{why}; it was discarded rather than saved")))
+            }
+            Outcome::Approved => {}
         }
-        if reason == PendingReason::ConflictsWithExisting {
-            return Err(
-                "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
-            );
-        }
-        // Re-checked at the moment of the decision, not at the moment of the
-        // proposal: the refusals are what stop a credential being stored, and a
-        // proposal can sit on screen for a long time.
-        // Every content gate, not the credential scan alone: length and an
-        // instruction posing as a fact are refused here as at creation.
-        if let Err(refusal) = super::create::check_content(&records[index].content) {
-            records.remove(index);
-            return Ok((true, Outcome::Discarded(refusal.message())));
-        }
-        records[index].status = Status::Active;
-        records[index].updated_at = now();
-        Ok((true, Outcome::Approved))
+        Ok(Some(service::get(&access, scope, &id)?))
     })
-    .map_err(AgentToolsError::from)?;
-    match outcome {
-        Outcome::Dismissed => return Ok(None),
-        Outcome::Discarded(why) => {
-            return Err(AgentToolsError::from(format!("{why}; it was discarded rather than saved")))
-        }
-        Outcome::Approved => {}
-    }
-    Ok(Some(service::get(&access, scope, &id)?))
+    .await
 }
 
 /// Commit a proposal the user has reviewed.
@@ -629,48 +661,51 @@ pub async fn memory_record_commit(
     source_message_id: Option<String>,
     source_run_id: Option<String>,
 ) -> Result<MemoryView, AgentToolsError> {
-    use super::create;
-    use super::record::{content_hash, Creator, Origin};
+    blocking(move || -> Result<MemoryView, AgentToolsError> {
+        use super::create;
+        use super::record::{content_hash, Creator, Origin};
 
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
+        }
+        .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
 
-    // What was reviewed is what gets stored. A different body than the one the
-    // hash describes is a stale surface, not an edit.
-    if content_hash(&content) != expected_hash {
-        return Err(AgentToolsError::from(
-            "this memory changed while you were reviewing it; reopen and try again".to_string(),
-        ));
-    }
+        // What was reviewed is what gets stored. A different body than the one the
+        // hash describes is a stale surface, not an edit.
+        if content_hash(&content) != expected_hash {
+            return Err(AgentToolsError::from(
+                "this memory changed while you were reviewing it; reopen and try again".to_string(),
+            ));
+        }
 
-    let existing = super::store::load(&store_root, scope).records;
-    let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
-    let mut proposal = create::propose(
-        id,
-        &content,
-        scope,
-        access.project_id.as_deref(),
-        access.session_id.as_deref(),
-        Creator::User,
-        Origin::Explicit,
-        now(),
-        &existing,
-    )
-    .map_err(|r| AgentToolsError::from(r.message()))?;
-    proposal.record.provenance.session_id = source_session_id;
-    proposal.record.provenance.message_id = source_message_id;
-    proposal.record.provenance.run_id = source_run_id.filter(|r| !r.trim().is_empty());
-    // Derived from the folder, like every project identity here -- never an
-    // id the renderer names.
-    proposal.record.provenance.source_project_id = access.project_id.clone();
+        let existing = super::store::load(&store_root, scope).records;
+        let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
+        let mut proposal = create::propose(
+            id,
+            &content,
+            scope,
+            access.project_id.as_deref(),
+            access.session_id.as_deref(),
+            Creator::User,
+            Origin::Explicit,
+            now(),
+            &existing,
+        )
+        .map_err(|r| AgentToolsError::from(r.message()))?;
+        proposal.record.provenance.session_id = source_session_id;
+        proposal.record.provenance.message_id = source_message_id;
+        proposal.record.provenance.run_id = source_run_id.filter(|r| !r.trim().is_empty());
+        // Derived from the folder, like every project identity here -- never an
+        // id the renderer names.
+        proposal.record.provenance.source_project_id = access.project_id.clone();
 
-    create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
-    Ok(service::get(&access, scope, &proposal.record.id)?)
+        create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
+        Ok(service::get(&access, scope, &proposal.record.id)?)
+    })
+    .await
 }
 
 /// One memory a dispatch carried, as the renderer reports it after the fact.
@@ -695,45 +730,48 @@ pub async fn memory_record_uses(
     turn_id: Option<String>,
     snapshot_id: Option<String>,
 ) -> Result<usize, AgentToolsError> {
-    use super::record::{MemoryUse, Status};
-    let access = location.access();
-    let session = access
-        .session_id
-        .clone()
-        .ok_or_else(|| AgentToolsError::from("a use is recorded against a chat".to_string()))?;
-    let at = now();
-    let mut recorded = 0;
-    for scope in [Scope::Session, Scope::Project, Scope::User] {
-        let Some(root) = (match scope {
-            Scope::Project => access.project_store.clone(),
-            _ => access.permanent_store.clone(),
-        }) else {
-            continue;
-        };
-        let n = super::store::update(&root, scope, |records| {
-            let mut n = 0;
-            for record in records.iter_mut() {
-                let Some(report) = used.iter().find(|u| u.id == record.id.as_str()) else {
-                    continue;
-                };
-                if !access.may_see(record) || !matches!(record.status, Status::Active) {
-                    continue;
+    blocking(move || -> Result<usize, AgentToolsError> {
+        use super::record::{MemoryUse, Status};
+        let access = location.access();
+        let session = access
+            .session_id
+            .clone()
+            .ok_or_else(|| AgentToolsError::from("a use is recorded against a chat".to_string()))?;
+        let at = now();
+        let mut recorded = 0;
+        for scope in [Scope::Session, Scope::Project, Scope::User] {
+            let Some(root) = (match scope {
+                Scope::Project => access.project_store.clone(),
+                _ => access.permanent_store.clone(),
+            }) else {
+                continue;
+            };
+            let n = super::store::update(&root, scope, |records| {
+                let mut n = 0;
+                for record in records.iter_mut() {
+                    let Some(report) = used.iter().find(|u| u.id == record.id.as_str()) else {
+                        continue;
+                    };
+                    if !access.may_see(record) || !matches!(record.status, Status::Active) {
+                        continue;
+                    }
+                    record.record_use(MemoryUse {
+                        session_id: session.clone(),
+                        turn_id: turn_id.clone(),
+                        snapshot_id: snapshot_id.clone(),
+                        reason: report.reason.clone(),
+                        at,
+                    });
+                    n += 1;
                 }
-                record.record_use(MemoryUse {
-                    session_id: session.clone(),
-                    turn_id: turn_id.clone(),
-                    snapshot_id: snapshot_id.clone(),
-                    reason: report.reason.clone(),
-                    at,
-                });
-                n += 1;
-            }
-            Ok((n > 0, n))
-        })
-        .map_err(AgentToolsError::from)?;
-        recorded += n;
-    }
-    Ok(recorded)
+                Ok((n > 0, n))
+            })
+            .map_err(AgentToolsError::from)?;
+            recorded += n;
+        }
+        Ok(recorded)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -742,26 +780,29 @@ pub async fn memory_record_forget(
     scope: String,
     id: String,
 ) -> Result<bool, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    // Read it first, so forgetting something out of scope is refused rather
-    // than silently doing nothing.
-    service::get(&access, scope, &MemoryId::new(id.clone()))?;
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
-    let forgotten = super::create::forget_text(&store_root, scope, &MemoryId::new(id), now())
-        .map_err(AgentToolsError::from)?;
-    // AH-083: what was forgotten leaves the prompts it was already sent in
-    // too. A snapshot is the exact payload, so leaving it there would keep the
-    // words readable in the inspector, the CLI, the audit export and the
-    // session export for as long as the log lives.
-    if let Some(text) = forgotten.as_deref() {
-        redact_forgotten(&location, text);
-    }
-    Ok(forgotten.is_some())
+    blocking(move || -> Result<bool, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        // Read it first, so forgetting something out of scope is refused rather
+        // than silently doing nothing.
+        service::get(&access, scope, &MemoryId::new(id.clone()))?;
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
+        }
+        .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
+        let forgotten = super::create::forget_text(&store_root, scope, &MemoryId::new(id), now())
+            .map_err(AgentToolsError::from)?;
+        // AH-083: what was forgotten leaves the prompts it was already sent in
+        // too. A snapshot is the exact payload, so leaving it there would keep the
+        // words readable in the inspector, the CLI, the audit export and the
+        // session export for as long as the log lives.
+        if let Some(text) = forgotten.as_deref() {
+            redact_forgotten(&location, text);
+        }
+        Ok(forgotten.is_some())
+    })
+    .await
 }
 
 /// Take forgotten text out of every prompt snapshot that carries it.
@@ -791,16 +832,19 @@ pub async fn memory_record_restore(
     id: String,
     content: String,
 ) -> Result<bool, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    service::get(&access, scope, &MemoryId::new(id.clone()))?;
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
-    super::create::restore(&store_root, scope, &MemoryId::new(id), &content, now())
-        .map_err(AgentToolsError::from)
+    blocking(move || -> Result<bool, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        service::get(&access, scope, &MemoryId::new(id.clone()))?;
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
+        }
+        .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
+        super::create::restore(&store_root, scope, &MemoryId::new(id), &content, now())
+            .map_err(AgentToolsError::from)
+    })
+    .await
 }
 
 /// Forget every memory in one scope that this place may see. Returns how many.
@@ -810,29 +854,32 @@ pub async fn memory_record_restore(
 /// the text leaves the store, a tombstone stays.
 #[tauri::command]
 pub async fn memory_scope_clear(location: Where, scope: String) -> Result<usize, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    match scope {
-        Scope::Project if access.project_id.is_none() => {
-            return Err(AgentToolsError::from("no project is open to clear".to_string()))
+    blocking(move || -> Result<usize, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        match scope {
+            Scope::Project if access.project_id.is_none() => {
+                return Err(AgentToolsError::from("no project is open to clear".to_string()))
+            }
+            Scope::Session if access.session_id.is_none() => {
+                return Err(AgentToolsError::from("no chat is open to clear".to_string()))
+            }
+            _ => {}
         }
-        Scope::Session if access.session_id.is_none() => {
-            return Err(AgentToolsError::from("no chat is open to clear".to_string()))
+        let store_root = match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
         }
-        _ => {}
-    }
-    let store_root = match scope {
-        Scope::Project => access.project_store.clone(),
-        _ => access.permanent_store.clone(),
-    }
-    .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
-    let forgotten = super::create::forget_all_text(&store_root, scope, |r| access.may_see(r), now())
-        .map_err(AgentToolsError::from)?;
-    // Forgetting a whole scope reaches the prompts too (AH-083).
-    for text in &forgotten {
-        redact_forgotten(&location, text);
-    }
-    Ok(forgotten.len())
+        .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
+        let forgotten = super::create::forget_all_text(&store_root, scope, |r| access.may_see(r), now())
+            .map_err(AgentToolsError::from)?;
+        // Forgetting a whole scope reaches the prompts too (AH-083).
+        for text in &forgotten {
+            redact_forgotten(&location, text);
+        }
+        Ok(forgotten.len())
+    })
+    .await
 }
 
 /// What an export wrote.
@@ -867,35 +914,38 @@ pub async fn memory_export(
     scope: String,
     path: String,
 ) -> Result<ExportReport, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    let store_root = store_root_for(&access, scope)?;
-    let visible: Vec<_> = super::store::load(&store_root, scope)
-        .records
-        .into_iter()
-        .filter(|r| access.may_see(r))
-        .collect();
-    let at = now();
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let export_id = format!("exp-{at}-{:08x}", fnv(&format!("{nanos}{path}")) as u32);
-    let file = super::transfer::export(&visible, scope, &export_id, at);
-    let body = serde_json::to_vec_pretty(&file).map_err(|e| AgentToolsError::from(e.to_string()))?;
-    let target = PathBuf::from(&path);
-    let tmp = target.with_extension("json.partial");
-    std::fs::write(&tmp, &body)
-        .and_then(|_| std::fs::rename(&tmp, &target))
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&tmp);
-            AgentToolsError::from(format!("the export could not be written: {e}"))
-        })?;
-    Ok(ExportReport {
-        export_id,
-        path,
-        count: file.records.len(),
+    blocking(move || -> Result<ExportReport, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        let store_root = store_root_for(&access, scope)?;
+        let visible: Vec<_> = super::store::load(&store_root, scope)
+            .records
+            .into_iter()
+            .filter(|r| access.may_see(r))
+            .collect();
+        let at = now();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let export_id = format!("exp-{at}-{:08x}", fnv(&format!("{nanos}{path}")) as u32);
+        let file = super::transfer::export(&visible, scope, &export_id, at);
+        let body = serde_json::to_vec_pretty(&file).map_err(|e| AgentToolsError::from(e.to_string()))?;
+        let target = PathBuf::from(&path);
+        let tmp = target.with_extension("json.partial");
+        std::fs::write(&tmp, &body)
+            .and_then(|_| std::fs::rename(&tmp, &target))
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&tmp);
+                AgentToolsError::from(format!("the export could not be written: {e}"))
+            })?;
+        Ok(ExportReport {
+            export_id,
+            path,
+            count: file.records.len(),
+        })
     })
+    .await
 }
 
 /// Import a memory export into `scope` (AH-083). Every record passes the same
@@ -907,49 +957,52 @@ pub async fn memory_import(
     scope: String,
     path: String,
 ) -> Result<super::transfer::ImportReport, AgentToolsError> {
-    use super::transfer;
-    let scope = parse_scope(&scope)?;
-    let access = location.access();
-    let store_root = store_root_for(&access, scope)?;
-    let meta = std::fs::metadata(&path)
-        .map_err(|e| AgentToolsError::from(format!("the file could not be opened: {e}")))?;
-    if !meta.is_file() {
-        return Err(AgentToolsError::from("that is not a file".to_string()));
-    }
-    if meta.len() as usize > transfer::MAX_BYTES {
-        return Err(AgentToolsError::from(
-            transfer::ImportError::TooLarge { limit: transfer::MAX_BYTES }.message(),
-        ));
-    }
-    let bytes = std::fs::read(&path)
-        .map_err(|e| AgentToolsError::from(format!("the file could not be read: {e}")))?;
-    let file = transfer::parse(&bytes).map_err(|e| AgentToolsError::from(e.message()))?;
-    let existing = super::store::load(&store_root, scope).records;
-    let at = now();
-    let (accepted, mut report) = transfer::plan_import(
-        &file,
-        scope,
-        access.project_id.as_deref(),
-        access.session_id.as_deref(),
-        &existing,
-        at,
-        |i, m| MemoryId::new(format!("mem-{at}-{:016x}", fnv(&format!("{}#{i}#{}", file.export_id, m.id)))),
-    );
-    // Committed one by one through the same path as a reviewed memory, so the
-    // per-scope cap applies; a record the store refuses is reported as such.
-    let mut stored = Vec::new();
-    for ((index, proposal), id) in accepted.iter().zip(report.imported.clone()) {
-        match super::create::commit(&store_root, proposal) {
-            Ok(_) => stored.push(id),
-            Err(e) => report.refused.push(transfer::Skipped {
-                index: *index,
-                original_id: file.records[*index].id.clone(),
-                reason: e,
-            }),
+    blocking(move || -> Result<super::transfer::ImportReport, AgentToolsError> {
+        use super::transfer;
+        let scope = parse_scope(&scope)?;
+        let access = location.access();
+        let store_root = store_root_for(&access, scope)?;
+        let meta = std::fs::metadata(&path)
+            .map_err(|e| AgentToolsError::from(format!("the file could not be opened: {e}")))?;
+        if !meta.is_file() {
+            return Err(AgentToolsError::from("that is not a file".to_string()));
         }
-    }
-    report.imported = stored;
-    Ok(report)
+        if meta.len() as usize > transfer::MAX_BYTES {
+            return Err(AgentToolsError::from(
+                transfer::ImportError::TooLarge { limit: transfer::MAX_BYTES }.message(),
+            ));
+        }
+        let bytes = std::fs::read(&path)
+            .map_err(|e| AgentToolsError::from(format!("the file could not be read: {e}")))?;
+        let file = transfer::parse(&bytes).map_err(|e| AgentToolsError::from(e.message()))?;
+        let existing = super::store::load(&store_root, scope).records;
+        let at = now();
+        let (accepted, mut report) = transfer::plan_import(
+            &file,
+            scope,
+            access.project_id.as_deref(),
+            access.session_id.as_deref(),
+            &existing,
+            at,
+            |i, m| MemoryId::new(format!("mem-{at}-{:016x}", fnv(&format!("{}#{i}#{}", file.export_id, m.id)))),
+        );
+        // Committed one by one through the same path as a reviewed memory, so the
+        // per-scope cap applies; a record the store refuses is reported as such.
+        let mut stored = Vec::new();
+        for ((index, proposal), id) in accepted.iter().zip(report.imported.clone()) {
+            match super::create::commit(&store_root, proposal) {
+                Ok(_) => stored.push(id),
+                Err(e) => report.refused.push(transfer::Skipped {
+                    index: *index,
+                    original_id: file.records[*index].id.clone(),
+                    reason: e,
+                }),
+            }
+        }
+        report.imported = stored;
+        Ok(report)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -959,9 +1012,12 @@ pub async fn memory_record_pin(
     id: String,
     pinned: bool,
 ) -> Result<MemoryView, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    service::set_pinned(&location.access(), scope, &MemoryId::new(id), pinned, now())
-        .map_err(Into::into)
+    blocking(move || -> Result<MemoryView, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        service::set_pinned(&location.access(), scope, &MemoryId::new(id), pinned, now())
+            .map_err(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -971,15 +1027,18 @@ pub async fn memory_record_set_expiration(
     id: String,
     expires_at: Option<i64>,
 ) -> Result<MemoryView, AgentToolsError> {
-    let scope = parse_scope(&scope)?;
-    service::set_expiration(
-        &location.access(),
-        scope,
-        &MemoryId::new(id),
-        expires_at,
-        now(),
-    )
-    .map_err(Into::into)
+    blocking(move || -> Result<MemoryView, AgentToolsError> {
+        let scope = parse_scope(&scope)?;
+        service::set_expiration(
+            &location.access(),
+            scope,
+            &MemoryId::new(id),
+            expires_at,
+            now(),
+        )
+        .map_err(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -989,23 +1048,32 @@ pub async fn memory_record_move_scope(
     id: String,
     to_scope: String,
 ) -> Result<MemoryView, AgentToolsError> {
-    let from = parse_scope(&from_scope)?;
-    let to = parse_scope(&to_scope)?;
-    service::move_scope(&location.access(), from, &MemoryId::new(id), to, now()).map_err(Into::into)
+    blocking(move || -> Result<MemoryView, AgentToolsError> {
+        let from = parse_scope(&from_scope)?;
+        let to = parse_scope(&to_scope)?;
+        service::move_scope(&location.access(), from, &MemoryId::new(id), to, now()).map_err(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn memory_storage_summary(location: Where) -> Result<StorageSummary, AgentToolsError> {
-    Ok(service::storage_summary(&location.access()))
+    blocking(move || -> Result<StorageSummary, AgentToolsError> {
+        Ok(service::storage_summary(&location.access()))
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn memory_settings_get(location: Where) -> Result<SettingsView, AgentToolsError> {
-    let (settings, issue) = location
-        .settings_root()
-        .map(|root| settings::load_report(&root))
-        .unwrap_or_default();
-    Ok(SettingsView { settings, issue })
+    blocking(move || -> Result<SettingsView, AgentToolsError> {
+        let (settings, issue) = location
+            .settings_root()
+            .map(|root| settings::load_report(&root))
+            .unwrap_or_default();
+        Ok(SettingsView { settings, issue })
+    })
+    .await
 }
 
 /// The settings, and why they are not the stored ones when they are not.
@@ -1027,23 +1095,26 @@ pub async fn memory_settings_update(
     recall: Option<settings::Recall>,
     memory_enabled: Option<bool>,
 ) -> Result<SettingsView, AgentToolsError> {
-    let root = location
-        .settings_root()
-        .ok_or_else(|| AgentToolsError::from("no data folder to store settings in".to_string()))?;
-    // Each switch changes only itself: flipping one must not reset the other
-    // to whatever a caller that did not mention it happened to default to.
-    let (current, _) = settings::load_report(&root);
-    let next = Settings {
-        automatically_save: automatically_save.unwrap_or(current.automatically_save),
-        recall: recall.unwrap_or(current.recall),
-        memory_enabled: memory_enabled.unwrap_or(current.memory_enabled),
-        ..current
-    };
-    settings::save(&root, &next).map_err(AgentToolsError::from)?;
-    Ok(SettingsView {
-        settings: next,
-        issue: None,
+    blocking(move || -> Result<SettingsView, AgentToolsError> {
+        let root = location
+            .settings_root()
+            .ok_or_else(|| AgentToolsError::from("no data folder to store settings in".to_string()))?;
+        // Each switch changes only itself: flipping one must not reset the other
+        // to whatever a caller that did not mention it happened to default to.
+        let (current, _) = settings::load_report(&root);
+        let next = Settings {
+            automatically_save: automatically_save.unwrap_or(current.automatically_save),
+            recall: recall.unwrap_or(current.recall),
+            memory_enabled: memory_enabled.unwrap_or(current.memory_enabled),
+            ..current
+        };
+        settings::save(&root, &next).map_err(AgentToolsError::from)?;
+        Ok(SettingsView {
+            settings: next,
+            issue: None,
+        })
     })
+    .await
 }
 
 /// A proposal as the review surface sees it.
@@ -1234,9 +1305,12 @@ fn recalled_records(
     if let Some(store) = access.project_store.as_deref() {
         take(store, Scope::Project);
     }
-    let permanent = crate::workspace::permanent_store(Path::new(&location.data_folder));
-    take(&permanent, Scope::User);
-    take(&permanent, Scope::Session);
+    // The access's own permanent store: `None` for an empty data folder, which
+    // must not fall back to reading `./agent-workspace` (O04-011).
+    if let Some(permanent) = access.permanent_store.as_deref() {
+        take(permanent, Scope::User);
+        take(permanent, Scope::Session);
+    }
     (records, issues, recall)
 }
 
@@ -1262,27 +1336,30 @@ pub async fn memory_conflicts(
     location: Where,
     temporary: Option<bool>,
 ) -> Result<Vec<MemoryConflictPair>, AgentToolsError> {
-    if temporary.unwrap_or(false) {
-        return Ok(Vec::new());
-    }
-    let access = location.access();
-    let now = now();
-    let applicable: Vec<super::record::MemoryRecord> = entitled_records(&location, &access)
-        .into_iter()
-        .filter(|r| r.applies_to(access.session_id.as_deref(), access.project_id.as_deref()))
-        .filter(|r| r.is_usable(now))
-        .collect();
-    let find = |id: &MemoryId| applicable.iter().find(|r| &r.id == id);
-    Ok(super::record::detect_conflicts(&applicable)
-        .into_iter()
-        .filter_map(|c| {
-            Some(MemoryConflictPair {
-                subject: c.subject.clone(),
-                left: MemoryView::from_record(find(&c.left)?),
-                right: MemoryView::from_record(find(&c.right)?),
+    blocking(move || -> Result<Vec<MemoryConflictPair>, AgentToolsError> {
+        if temporary.unwrap_or(false) {
+            return Ok(Vec::new());
+        }
+        let access = location.access();
+        let now = now();
+        let applicable: Vec<super::record::MemoryRecord> = entitled_records(&location, &access)
+            .into_iter()
+            .filter(|r| r.applies_to(access.session_id.as_deref(), access.project_id.as_deref()))
+            .filter(|r| r.is_usable(now))
+            .collect();
+        let find = |id: &MemoryId| applicable.iter().find(|r| &r.id == id);
+        Ok(super::record::detect_conflicts(&applicable)
+            .into_iter()
+            .filter_map(|c| {
+                Some(MemoryConflictPair {
+                    subject: c.subject.clone(),
+                    left: MemoryView::from_record(find(&c.left)?),
+                    right: MemoryView::from_record(find(&c.right)?),
+                })
             })
-        })
-        .collect())
+            .collect())
+    })
+    .await
 }
 
 /// Select the memories one dispatch may use.
@@ -1297,106 +1374,109 @@ pub async fn memory_retrieve(
     budget_chars: Option<usize>,
     instructions: Option<Vec<super::precedence::Instruction>>,
 ) -> Result<Retrieved, AgentToolsError> {
-    if temporary.unwrap_or(false) {
-        return Ok(Retrieved::empty());
-    }
-    // Supplied by the renderer, and safe to take from it: instruction text is
-    // used here only to withhold memories, never to add or allow anything.
-    let instructions = instructions.unwrap_or_default();
+    blocking(move || -> Result<Retrieved, AgentToolsError> {
+        if temporary.unwrap_or(false) {
+            return Ok(Retrieved::empty());
+        }
+        // Supplied by the renderer, and safe to take from it: instruction text is
+        // used here only to withhold memories, never to add or allow anything.
+        let instructions = instructions.unwrap_or_default();
 
-    // Switched off in settings: answered before any record is opened, and
-    // said so, so the panel can tell "off" apart from "nothing applies".
-    let enabled = location
-        .settings_root()
-        .map(|root| settings::load(&root).memory_enabled)
-        .unwrap_or(true);
-    if !enabled {
-        return Ok(Retrieved {
-            disabled: true,
-            ..Retrieved::empty()
-        });
-    }
+        // Switched off in settings: answered before any record is opened, and
+        // said so, so the panel can tell "off" apart from "nothing applies".
+        let enabled = location
+            .settings_root()
+            .map(|root| settings::load(&root).memory_enabled)
+            .unwrap_or(true);
+        if !enabled {
+            return Ok(Retrieved {
+                disabled: true,
+                ..Retrieved::empty()
+            });
+        }
 
-    let access = location.access();
-    let now = now();
-    let (records, storage_issues, recall) = recalled_records(&location, &access);
+        let access = location.access();
+        let now = now();
+        let (records, storage_issues, recall) = recalled_records(&location, &access);
 
-    // The same two filters `select` starts with, so a candidate here is
-    // exactly a record `select` considered.
-    let candidate_ids: Vec<String> = records
-        .iter()
-        .filter(|r| r.applies_to(access.session_id.as_deref(), access.project_id.as_deref()))
-        .filter(|r| r.is_usable(now))
-        .map(|r| r.id.as_str().to_string())
-        .collect();
+        // The same two filters `select` starts with, so a candidate here is
+        // exactly a record `select` considered.
+        let candidate_ids: Vec<String> = records
+            .iter()
+            .filter(|r| r.applies_to(access.session_id.as_deref(), access.project_id.as_deref()))
+            .filter(|r| r.is_usable(now))
+            .map(|r| r.id.as_str().to_string())
+            .collect();
 
-    let selection = super::retrieve::select(
-        &records,
-        &super::retrieve::RetrievalContext {
-            session_id: access.session_id.as_deref(),
-            project_id: access.project_id.as_deref(),
-            now,
-            budget_chars: budget_chars.unwrap_or(super::retrieve::DEFAULT_BUDGET_CHARS),
-            temporary: false,
-            instructions: &instructions,
-            ranking: None,
-        },
-    );
+        let selection = super::retrieve::select(
+            &records,
+            &super::retrieve::RetrievalContext {
+                session_id: access.session_id.as_deref(),
+                project_id: access.project_id.as_deref(),
+                now,
+                budget_chars: budget_chars.unwrap_or(super::retrieve::DEFAULT_BUDGET_CHARS),
+                temporary: false,
+                instructions: &instructions,
+                ranking: None,
+            },
+        );
 
-    Ok(Retrieved {
-        block: selection.render(),
-        injected_ids: selection
-            .injected
-            .iter()
-            .map(|i| i.id.as_str().to_string())
-            .collect(),
-        injected_hashes: selection
-            .injected
-            .iter()
-            .map(|i| super::record::content_hash(&i.content))
-            .collect(),
-        conflict_ids: selection
-            .conflicts
-            .iter()
-            .flat_map(|c| [c.left.as_str().to_string(), c.right.as_str().to_string()])
-            .collect(),
-        dropped_ids: selection
-            .dropped_for_budget
-            .iter()
-            .map(|id| id.as_str().to_string())
-            .collect(),
-        chars_used: selection.chars_used,
-        candidate_ids,
-        project_id: access.project_id.clone(),
-        disabled: false,
-        storage_issues,
-        overridden: selection.overridden.clone(),
-        refused: selection.refused.clone(),
-        precedence: super::precedence::STATEMENT,
-        recall: selection
-            .injected
-            .iter()
-            .enumerate()
-            .map(|(rank, item)| {
-                let scope = service::scope_word(item.scope).to_string();
-                let applies = format!("applies to this {scope}");
-                RecallView {
-                    id: item.id.as_str().to_string(),
-                    reason: match &item.reason {
-                        Some(r) => format!("{applies}; preferred: {}", r.as_str()),
-                        None => applies,
-                    },
-                    scope,
-                    rank: rank + 1,
-                }
-            })
-            .collect(),
-        recall_off: [Scope::Session, Scope::Project, Scope::User]
-            .into_iter()
-            .filter(|s| !recall.allows(*s))
-            .map(|s| service::scope_word(s).to_string())
-            .collect(),
+        Ok(Retrieved {
+            block: selection.render(),
+            injected_ids: selection
+                .injected
+                .iter()
+                .map(|i| i.id.as_str().to_string())
+                .collect(),
+            injected_hashes: selection
+                .injected
+                .iter()
+                .map(|i| super::record::content_hash(&i.content))
+                .collect(),
+            conflict_ids: selection
+                .conflicts
+                .iter()
+                .flat_map(|c| [c.left.as_str().to_string(), c.right.as_str().to_string()])
+                .collect(),
+            dropped_ids: selection
+                .dropped_for_budget
+                .iter()
+                .map(|id| id.as_str().to_string())
+                .collect(),
+            chars_used: selection.chars_used,
+            candidate_ids,
+            project_id: access.project_id.clone(),
+            disabled: false,
+            storage_issues,
+            overridden: selection.overridden.clone(),
+            refused: selection.refused.clone(),
+            precedence: super::precedence::STATEMENT,
+            recall: selection
+                .injected
+                .iter()
+                .enumerate()
+                .map(|(rank, item)| {
+                    let scope = service::scope_word(item.scope).to_string();
+                    let applies = format!("applies to this {scope}");
+                    RecallView {
+                        id: item.id.as_str().to_string(),
+                        reason: match &item.reason {
+                            Some(r) => format!("{applies}; preferred: {}", r.as_str()),
+                            None => applies,
+                        },
+                        scope,
+                        rank: rank + 1,
+                    }
+                })
+                .collect(),
+            recall_off: [Scope::Session, Scope::Project, Scope::User]
+                .into_iter()
+                .filter(|s| !recall.allows(*s))
+                .map(|s| service::scope_word(s).to_string())
+                .collect(),
+        })
     })
+    .await
 }
 
 #[cfg(test)]

@@ -45,6 +45,15 @@ pub async fn shutdown_cleanup<R: Runtime>(app: &AppHandle<R>) {
         ),
     }
 
+    stop_engines(app).await;
+
+    log::info!("App cleanup completed");
+}
+
+/// Stop the image engine and the llama.cpp (and, on macOS, MLX) engines the
+/// app started. Also run by the force-quit path, which exits without
+/// `RunEvent::Exit` and would otherwise leave a loaded model's worker behind.
+pub async fn stop_engines<R: Runtime>(app: &AppHandle<R>) {
     // The image engine is a child process too; unloading it kills it, or it
     // would keep the GPU after the app is gone.
     #[cfg(not(feature = "cli"))]
@@ -69,8 +78,6 @@ pub async fn shutdown_cleanup<R: Runtime>(app: &AppHandle<R>) {
             log::info!("MLX processes cleaned up successfully");
         }
     }
-
-    log::info!("App cleanup completed");
 }
 
 /// Runs the exit-time teardown ahead of an in-app update.

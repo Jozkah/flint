@@ -1166,6 +1166,14 @@ mod tests {
     }
 
     #[test]
+    fn net_ipv4_spellings_are_canonical_and_bad_ports_unknown() {
+        for u in ["http://127.1/", "http://0x7f000001/", "http://127.0.0.1./", "http://2130706433/"] {
+            assert_eq!(host_of(u), "127.0.0.1", "{u:?}");
+        }
+        assert!(matches!(Resource::net("http://127.0.0.1:99999/"), Resource::Unknown { .. }));
+    }
+
+    #[test]
     fn net_plain_host_without_scheme_unchanged() {
         assert_eq!(host_of("Example.com/x"), "example.com");
     }

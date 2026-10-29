@@ -542,6 +542,18 @@ async fn confirm_exit<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) {
             std::time::Duration::from_secs(5),
         )
         .await;
+        // exit(0) skips RunEvent::Exit, which is where a loaded model's
+        // engine worker was stopped; bounded so a stuck engine cannot hold
+        // the quit.
+        if tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            core::system::shutdown::stop_engines(&app_handle),
+        )
+        .await
+        .is_err()
+        {
+            log::warn!("engines did not stop within 5 seconds of a force quit");
+        }
         core::app::settings_store::flush_settings();
         // #168: the migration reuse lock is otherwise only released in
         // RunEvent::Exit, which exit(0) skips; a force quit left the profile
@@ -1105,7 +1117,12 @@ pub fn build_app() -> tauri::App {
                     })
                     .targets([
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                        // Only the local API server's lines go to the webview:
+                        // the server-logs page is the one listener, and every
+                        // other line (tens a second while a model loads) was an
+                        // IPC event nobody read.
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview)
+                            .filter(|meta| meta.target() == "app_lib::core::server::proxy"),
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
                             path: get_jan_data_folder_path(app.handle().clone()).join("logs"),
                             file_name: Some("app".to_string()),

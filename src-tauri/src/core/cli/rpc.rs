@@ -761,8 +761,13 @@ pub async fn serve() -> Result<(), String> {
                         Err(_) => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
                         Ok(TurnSteerParams { session_id: sid, input: text }) => match active.as_ref() {
                             Some(turn) if turn.session_id == sid && !text.trim().is_empty() => {
-                                turn.pending.lock().await.push(json!({"role":"user","content":neutralize_user_content(json!(text))}));
-                                response(&id, json!({}))
+                                let mut pending = turn.pending.lock().await;
+                                if pending.len() >= super::stream_input::MAX_QUEUED {
+                                    error_data(&id, -32000, &super::stream_input::queue_full(), json!({"kind":"queue_full","retryable":true}))
+                                } else {
+                                    pending.push(json!({"role":"user","content":neutralize_user_content(json!(text))}));
+                                    response(&id, json!({}))
+                                }
                             }
                             _ => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
                         },

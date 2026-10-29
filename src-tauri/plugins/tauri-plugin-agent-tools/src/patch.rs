@@ -26,11 +26,22 @@ use similar::{DiffOp, TextDiff};
 /// A hash and a length rather than the content: the stamp is held for the
 /// length of an approval, which can be minutes, and a copy of every file an
 /// agent proposes to change is not something to keep in memory for that.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct BaseStamp {
     exists: bool,
     len: usize,
     hash: u64,
+    /// The file was there but could not be read. Such a stamp equals nothing,
+    /// not even another unreadable one: nobody knows what the file held.
+    unreadable: bool,
+}
+
+impl PartialEq for BaseStamp {
+    fn eq(&self, other: &Self) -> bool {
+        !self.unreadable
+            && !other.unreadable
+            && (self.exists, self.len, self.hash) == (other.exists, other.len, other.hash)
+    }
 }
 
 impl BaseStamp {
@@ -41,23 +52,36 @@ impl BaseStamp {
                 exists: true,
                 len: bytes.len(),
                 hash: fnv1a64(bytes),
+                unreadable: false,
             },
             None => Self {
                 exists: false,
                 len: 0,
                 hash: 0,
+                unreadable: false,
             },
         }
     }
 
-    /// Read `path` and stamp it. A missing file stamps as absent; any other
-    /// read failure stamps as absent too, which makes a later comparison against
-    /// a real stamp fail -- the safe direction.
-    pub async fn read(path: &std::path::Path) -> Self {
-        match tokio::fs::read(path).await {
+    /// The stamp of a read's result. Only a missing file is absent; any other
+    /// failure is an unreadable stamp, which matches nothing (O04-028): a file
+    /// that exists but cannot be read must not pass for one that does not.
+    pub fn of_read(read: std::io::Result<Vec<u8>>) -> Self {
+        match read {
             Ok(bytes) => Self::of(Some(&bytes)),
-            Err(_) => Self::of(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::of(None),
+            Err(_) => Self {
+                exists: true,
+                len: 0,
+                hash: 0,
+                unreadable: true,
+            },
         }
+    }
+
+    /// Read `path` and stamp it (see [`BaseStamp::of_read`]).
+    pub async fn read(path: &std::path::Path) -> Self {
+        Self::of_read(tokio::fs::read(path).await)
     }
 
     pub fn existed(&self) -> bool {
@@ -66,7 +90,9 @@ impl BaseStamp {
 
     /// Hex, for display and for the event a client receives.
     pub fn hex(&self) -> String {
-        if self.exists {
+        if self.unreadable {
+            "unreadable".to_string()
+        } else if self.exists {
             format!("fnv1a64:{:016x}", self.hash)
         } else {
             "absent".to_string()
@@ -108,7 +134,7 @@ pub struct PatchView {
 }
 
 /// Why a patch was not applied.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PatchError {
     /// A selection named a hunk this patch does not have.
     UnknownHunk(usize),
@@ -304,6 +330,22 @@ mod tests {
     use super::*;
 
     const BASE: &str = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
+
+    /// O04-028: a file that exists but cannot be read is not absent, and
+    /// matches nothing -- not even another unreadable read.
+    #[test]
+    fn an_unreadable_file_is_not_absent_and_fails_the_base_check() {
+        let denied = || Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        let missing = BaseStamp::of_read(Err(std::io::Error::from(std::io::ErrorKind::NotFound)));
+        assert_eq!(missing, BaseStamp::of(None));
+        let unreadable = BaseStamp::of_read(denied());
+        assert_ne!(unreadable, BaseStamp::of(None));
+        assert_ne!(unreadable, BaseStamp::of_read(denied()));
+        assert_eq!(unreadable.hex(), "unreadable");
+        let created = StagedPatch::stage(None, "new\n");
+        assert!(created.check_base(unreadable).is_err());
+        assert!(created.check_base(missing).is_ok());
+    }
 
     fn two_changes() -> StagedPatch {
         // A change near the top and one near the bottom, far enough apart that

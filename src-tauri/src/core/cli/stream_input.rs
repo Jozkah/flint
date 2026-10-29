@@ -389,18 +389,35 @@ pub(crate) struct StreamInput {
     gone: AtomicBool,
 }
 
+/// Most follow-ups (and steers) held for a run at once. A client that keeps
+/// writing while the run is busy is told to wait instead of growing the
+/// queue without bound; the message is not taken, so it can send it again.
+pub(crate) const MAX_QUEUED: usize = 32;
+
+/// The refusal for a full queue, worded as retryable.
+pub(crate) fn queue_full() -> String {
+    format!("the run already has {MAX_QUEUED} messages waiting; send this again once it has read them")
+}
+
 impl StreamInput {
-    pub(crate) fn queue_user(&self, text: String) {
-        self.lock()
-            .push_back(serde_json::json!({ "role": "user", "content": super::turn_host::neutralize_user_content(serde_json::Value::String(text)) }));
+    pub(crate) fn queue_user(&self, text: String) -> Result<(), String> {
+        self.push(serde_json::json!({ "role": "user", "content": super::turn_host::neutralize_user_content(serde_json::Value::String(text)) }))
+    }
+
+    fn push(&self, message: serde_json::Value) -> Result<(), String> {
+        let mut queue = self.lock();
+        if queue.len() >= MAX_QUEUED {
+            return Err(queue_full());
+        }
+        queue.push_back(message);
+        Ok(())
     }
 
     /// Queue a follow-up whose content is a content-part array, as the client
     /// wrote it: the `user` message the run appends is the client's own parts,
     /// not a re-encoding of them.
-    pub(crate) fn queue_user_parts(&self, parts: Vec<serde_json::Value>) {
-        self.lock()
-            .push_back(serde_json::json!({ "role": "user", "content": super::turn_host::neutralize_user_content(serde_json::Value::Array(parts)) }));
+    pub(crate) fn queue_user_parts(&self, parts: Vec<serde_json::Value>) -> Result<(), String> {
+        self.push(serde_json::json!({ "role": "user", "content": super::turn_host::neutralize_user_content(serde_json::Value::Array(parts)) }))
     }
 
     /// Hand the queue to a steering handshake. Empty is the normal answer: the
@@ -778,11 +795,24 @@ mod tests {
     }
 
     #[test]
+    fn a_full_queue_refuses_until_it_is_drained() {
+        let input = StreamInput::default();
+        for i in 0..MAX_QUEUED {
+            input.queue_user(format!("m{i}")).unwrap();
+        }
+        let err = input.queue_user("one more".to_string()).unwrap_err();
+        assert!(err.contains("send this again"), "{err}");
+        assert!(input.queue_user_parts(vec![serde_json::json!({"type":"text","text":"x"})]).is_err());
+        assert_eq!(input.take_queued().len(), MAX_QUEUED);
+        input.queue_user("after".to_string()).unwrap();
+    }
+
+    #[test]
     fn queued_turns_drain_once_and_in_order() {
         let input = StreamInput::default();
         assert!(input.take_queued().is_empty());
-        input.queue_user("first".to_string());
-        input.queue_user("second".to_string());
+        input.queue_user("first".to_string()).unwrap();
+        input.queue_user("second".to_string()).unwrap();
         let drained = input.take_queued();
         assert_eq!(drained.len(), 2);
         assert_eq!(drained[0]["role"], "user");
@@ -797,7 +827,7 @@ mod tests {
     fn a_parts_turn_queues_as_the_same_message_kind() {
         let input = StreamInput::default();
         let parts = vec![serde_json::json!({ "type": "text", "text": "hi" })];
-        input.queue_user_parts(parts.clone());
+        input.queue_user_parts(parts.clone()).unwrap();
         let drained = input.take_queued();
         assert_eq!(drained.len(), 1);
         assert_eq!(drained[0]["role"], "user");
