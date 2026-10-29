@@ -18,7 +18,8 @@ use super::stream_input::{parse_input_line, MAX_LINE_BYTES};
 use super::turn_host::{
     begin_turn, neutralize_user_content, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
 };
-use super::{agent_dir_for, prepare_agent_session, AgentSession, SessionFlags};
+use super::turn_host::TurnTask;
+use super::{agent_dir_for, prepare_agent_session, AgentSession, OrchestrationArgs, SessionFlags};
 use crate::core::agent::events::{StreamEvent, PROTOCOL_VERSION};
 use crate::core::agent::host_tools::{HostToolDecl, HostToolResult, HostToolSet};
 
@@ -263,6 +264,7 @@ fn start_turn(
     session: &mut Session,
     input: Value,
     out: &Arc<mpsc::Sender<Value>>,
+    hooks: &Hooks,
 ) -> Result<ActiveTurn, String> {
     // Before the turn is accepted, not after: a queue with no room for the
     // terminal record is a queue this turn cannot report on, and accepting it
@@ -273,7 +275,7 @@ fn start_turn(
         .map_err(|_| "RPC output queue is full; retry after draining notifications".to_owned())?;
     session.history.append(&mut session.carried_steer);
     let body = begin_turn(&session.agent, &mut session.history, input, session.builtins);
-    let task = spawn_turn(session.agent.args.clone(), body);
+    let task = (hooks.spawn)(session.agent.args.clone(), body);
     Ok(ActiveTurn {
         session_id: session.id.clone(),
         turn_id: uuid::Uuid::new_v4().to_string(),
@@ -434,16 +436,25 @@ struct Started {
 /// servers (bounded by `MCP_START_TIMEOUT`). Runs in its own task, so a slow
 /// server delays only this client request, not `session/list`, `turn/interrupt`
 /// or an active turn's events.
-async fn start_session(
+async fn start_session(request: StartRequest) -> Result<(Session, Value), String> {
+    let mut agent = prepare_agent_session(&request.cwd, request.model.clone(), ProviderOverrides::default(), SessionFlags { require_model: true, ..Default::default() }, None)?;
+    await_mcp(&mut agent).await;
+    Ok(open_session(agent, request).await)
+}
+
+/// What a `session/start` asks for, once its params and tools are checked.
+struct StartRequest {
     cwd: String,
     model: Option<String>,
-    host_tools: crate::core::agent::host_tools::HostToolSet,
+    host_tools: HostToolSet,
     host_owns_gate: bool,
     ephemeral: bool,
     builtins: bool,
-) -> Result<(Session, Value), String> {
-    let mut agent = prepare_agent_session(&cwd, model, ProviderOverrides::default(), SessionFlags { require_model: true, ..Default::default() }, None)?;
-    await_mcp(&mut agent).await;
+}
+
+/// A started session around a prepared agent, and its `session/start` reply.
+async fn open_session(mut agent: AgentSession, request: StartRequest) -> (Session, Value) {
+    let StartRequest { host_tools, host_owns_gate, ephemeral, builtins, .. } = request;
     agent.args.host_tools = host_tools;
     agent.args.host_owns_gate = host_owns_gate;
     let sid = uuid::Uuid::new_v4().to_string();
@@ -456,7 +467,25 @@ async fn start_session(
     let mut result = tools_view(&session).await;
     result["sessionId"] = json!(sid);
     result["model"] = json!(session.agent.model);
-    Ok((session, result))
+    (session, result)
+}
+
+type StartFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(Session, Value), String>> + Send>>;
+
+/// What the loop calls out to: building a session and running a turn. The
+/// real ones prepare an agent and spawn the engine; tests script them.
+struct Hooks {
+    start: Box<dyn Fn(StartRequest) -> StartFuture + Send + Sync>,
+    spawn: Box<dyn Fn(OrchestrationArgs, Value) -> TurnTask + Send + Sync>,
+}
+
+impl Hooks {
+    fn real() -> Self {
+        Hooks {
+            start: Box::new(|request| Box::pin(start_session(request))),
+            spawn: Box::new(spawn_turn),
+        }
+    }
 }
 
 /// Register a finished start and make its reply.
@@ -474,10 +503,19 @@ fn finish_start(sessions: &mut HashMap<String, Session>, done: Started) -> Optio
 
 /// One runtime owns many addressable sessions. All writes share one bounded output queue.
 pub async fn serve() -> Result<(), String> {
-    let mut input = input_lines();
+    let input = input_lines();
     let (out, writer) = mpsc::channel(OUTPUT_CAPACITY);
-    let out = Arc::new(out);
     let writer = output_lines(writer);
+    serve_loop(input, out, Arc::new(Hooks::real())).await?;
+    writer
+        .join()
+        .map_err(|_| "RPC output writer panicked".to_string())?;
+    Ok(())
+}
+
+/// The dispatch loop, until `input` closes. Every record goes out on `out`.
+async fn serve_loop(mut input: mpsc::Receiver<(Vec<u8>, bool)>, out: mpsc::Sender<Value>, hooks: Arc<Hooks>) -> Result<(), String> {
+    let out = Arc::new(out);
     let mut initialized = false;
     let mut negotiated = false;
     let mut sessions = HashMap::<String, Session>::new();
@@ -561,8 +599,9 @@ pub async fn serve() -> Result<(), String> {
                                     let tx = started_tx.clone();
                                     let reply_id = id.clone();
                                     let owns_gate = start.permissions == PermissionOwner::Host;
+                                    let pending_start = (hooks.start)(StartRequest { cwd: start.cwd, model: start.model, host_tools, host_owns_gate: owns_gate, ephemeral: start.ephemeral, builtins: start.builtins });
                                     tokio::spawn(async move {
-                                        let outcome = start_session(start.cwd, start.model, host_tools, owns_gate, start.ephemeral, start.builtins).await;
+                                        let outcome = pending_start.await;
                                         let _ = tx.send(Started { id: reply_id, has_id, outcome });
                                     });
                                     continue;
@@ -734,7 +773,7 @@ pub async fn serve() -> Result<(), String> {
                                     } else { Err("input must be text or content parts".to_string()) };
                                     match (sessions.get_mut(&session_id), content) {
                                         (Some(session), Ok(content)) => {
-                                            match start_turn(session, content, &out) {
+                                            match start_turn(session, content, &out, &hooks) {
                                                 Ok(turn) => {
                                                     let tid = turn.turn_id.clone();
                                                     active = Some(turn);
@@ -848,10 +887,6 @@ pub async fn serve() -> Result<(), String> {
         // writer below drains the queue before joining.
         finish_turn(&mut sessions, turn, Ok(Value::Null), true)?;
     }
-    drop(out);
-    writer
-        .join()
-        .map_err(|_| "RPC output writer panicked".to_string())?;
     Ok(())
 }
 
@@ -870,6 +905,255 @@ mod tests {
         assert_eq!(reply["error"]["message"], json!("boom"));
         assert!(sessions.is_empty());
         assert!(finish_start(&mut sessions, Started { id: Value::Null, has_id: false, outcome: Err("x".into()) }).is_none());
+    }
+
+    // ── the dispatch loop, driven end to end with scripted turns ──────────
+
+    type Turns = Arc<std::sync::Mutex<Vec<(Value, mpsc::Sender<TurnMessage>)>>>;
+
+    /// Hooks whose sessions are real agents for a temp project (no model, so
+    /// nothing can reach a provider) and whose turns are channels the test
+    /// plays the engine on.
+    fn scripted_hooks(turns: Turns) -> Hooks {
+        Hooks {
+            start: Box::new(|request: StartRequest| {
+                Box::pin(async move {
+                    let agent = prepare_agent_session(&request.cwd, None, ProviderOverrides::default(), SessionFlags::default(), None)?;
+                    Ok(open_session(agent, request).await)
+                })
+            }),
+            spawn: Box::new(move |_args, body| {
+                let (tx, events) = mpsc::channel(16);
+                turns.lock().unwrap().push((body, tx));
+                TurnTask {
+                    events,
+                    runner: tokio::spawn(std::future::pending()),
+                    steerer: tokio::spawn(std::future::pending()),
+                    pending: Default::default(),
+                }
+            }),
+        }
+    }
+
+    struct Rpc {
+        input: mpsc::Sender<(Vec<u8>, bool)>,
+        output: mpsc::Receiver<Value>,
+        turns: Turns,
+        task: JoinHandle<Result<(), String>>,
+        project: tempfile::TempDir,
+        next_id: u64,
+    }
+
+    impl Rpc {
+        fn start() -> Self {
+            let (input, in_rx) = mpsc::channel(16);
+            let (out_tx, output) = mpsc::channel(OUTPUT_CAPACITY);
+            let turns: Turns = Default::default();
+            let task = tokio::spawn(serve_loop(in_rx, out_tx, Arc::new(scripted_hooks(turns.clone()))));
+            Rpc { input, output, turns, task, project: tempfile::tempdir().unwrap(), next_id: 100 }
+        }
+
+        async fn send(&self, record: Value) {
+            self.input.send((record.to_string().into_bytes(), false)).await.unwrap();
+        }
+
+        async fn recv(&mut self) -> Value {
+            tokio::time::timeout(std::time::Duration::from_secs(10), self.output.recv()).await.expect("no record").expect("loop gone")
+        }
+
+        /// Send a request and return its reply, collecting notifications that
+        /// arrive first into `seen`.
+        async fn call_seen(&mut self, method: &str, params: Value, seen: &mut Vec<Value>) -> Value {
+            self.next_id += 1;
+            let id = self.next_id;
+            self.send(json!({"jsonrpc":"2.0","id":id,"method":method,"params":params})).await;
+            loop {
+                let record = self.recv().await;
+                if record["id"] == id {
+                    return record;
+                }
+                seen.push(record);
+            }
+        }
+
+        async fn call(&mut self, method: &str, params: Value) -> Value {
+            let mut seen = Vec::new();
+            let reply = self.call_seen(method, params, &mut seen).await;
+            assert!(seen.is_empty(), "unexpected records before the reply: {seen:?}");
+            reply
+        }
+
+        async fn handshake(&mut self) {
+            let reply = self.call("initialize", json!({"protocolVersion":PROTOCOL_VERSION,"clientInfo":{"name":"t","version":"1"}})).await;
+            assert_eq!(reply["result"]["protocolVersion"], PROTOCOL_VERSION, "{reply}");
+            self.send(json!({"jsonrpc":"2.0","method":"initialized"})).await;
+        }
+
+        async fn session(&mut self) -> String {
+            let cwd = self.project.path().to_string_lossy().into_owned();
+            let reply = self.call("session/start", json!({"cwd":cwd,"ephemeral":true})).await;
+            reply["result"]["sessionId"].as_str().unwrap_or_else(|| panic!("{reply}")).to_owned()
+        }
+
+        async fn turn(&self, n: usize) -> mpsc::Sender<TurnMessage> {
+            for _ in 0..500 {
+                if let Some((_, tx)) = self.turns.lock().unwrap().get(n) {
+                    return tx.clone();
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            panic!("turn {n} never started");
+        }
+
+        async fn stop(self) {
+            drop(self.input);
+            tokio::time::timeout(std::time::Duration::from_secs(10), self.task).await.expect("loop did not stop").unwrap().unwrap();
+        }
+    }
+
+    /// Runs `test` on its own runtime inside a temp home, so the session's
+    /// agent config never reads or writes the real one.
+    fn with_rpc<F, Fut>(test: F)
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        crate::core::agent::global_config::with_temp_home(|_| {
+            tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap().block_on(test());
+        });
+    }
+
+    fn token(text: &str) -> TurnMessage {
+        TurnMessage::Event(Box::new(StreamEvent::Token { text: text.into() }))
+    }
+
+    #[test]
+    fn methods_wait_for_the_handshake() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            let early = rpc.call("session/list", json!({})).await;
+            assert_eq!(early["error"]["code"], -32002);
+            rpc.send(json!({"jsonrpc":"2.0","method":"initialized"})).await;
+            let bad = rpc.call("initialize", json!({"protocolVersion":999,"clientInfo":{"name":"t","version":"1"}})).await;
+            assert_eq!(bad["error"]["code"], -32602);
+            rpc.handshake().await;
+            assert_eq!(rpc.call("session/list", json!({})).await["result"]["sessions"], json!([]));
+            assert_eq!(rpc.call("nope/nope", json!({})).await["error"]["code"], -32601);
+            rpc.stop().await;
+        });
+    }
+
+    #[test]
+    fn a_turn_streams_its_events_and_completes() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            let sid = rpc.session().await;
+            let listed = rpc.call("session/list", json!({})).await;
+            assert_eq!(listed["result"]["sessions"][0]["id"], sid.as_str());
+            let started = rpc.call("turn/start", json!({"sessionId":sid,"input":"hello"})).await;
+            let tid = started["result"]["turnId"].as_str().expect("turn id").to_owned();
+            let turn = rpc.turn(0).await;
+            let body = rpc.turns.lock().unwrap()[0].0.clone();
+            assert_eq!(body["messages"].as_array().unwrap().last().unwrap()["content"], "hello");
+            turn.send(token("hi")).await.unwrap();
+            let event = rpc.recv().await;
+            assert_eq!(event["method"], "item/token");
+            assert_eq!(event["params"]["sessionId"], sid.as_str());
+            assert_eq!(event["params"]["turnId"], tid.as_str());
+            turn.send(TurnMessage::Finished(Ok(json!({})))).await.unwrap();
+            let done = rpc.recv().await;
+            assert_eq!(done["method"], "turn/completed");
+            assert_eq!(done["params"]["turnId"], tid.as_str());
+            assert_eq!(done["params"]["stopReason"], "completed");
+            let resumed = rpc.call("session/resume", json!({"sessionId":sid})).await;
+            assert_eq!(resumed["result"]["turns"], 1);
+            rpc.stop().await;
+        });
+    }
+
+    #[test]
+    fn a_busy_session_refuses_changes_and_a_second_turn() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            let sid = rpc.session().await;
+            rpc.call("turn/start", json!({"sessionId":sid,"input":"one"})).await;
+            rpc.turn(0).await;
+            let again = rpc.call("turn/start", json!({"sessionId":sid,"input":"two"})).await;
+            assert_eq!(again["error"]["code"], -32001);
+            let reset = rpc.call("session/reset", json!({"sessionId":sid})).await;
+            assert_eq!(reset["error"]["data"]["kind"], "turn_active");
+            let tools = rpc.call("session/tools/set", json!({"sessionId":sid,"tools":[]})).await;
+            assert_eq!(tools["error"]["data"]["kind"], "turn_active");
+            assert_eq!(rpc.call("session/archive", json!({"sessionId":sid})).await["error"]["code"], -32001);
+            assert_eq!(rpc.call("session/fork", json!({"sessionId":sid})).await["error"]["code"], -32001);
+            assert_eq!(rpc.turns.lock().unwrap().len(), 1);
+            rpc.stop().await;
+        });
+    }
+
+    #[test]
+    fn steer_and_interrupt_reach_the_running_turn() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            let sid = rpc.session().await;
+            let tid = rpc.call("turn/start", json!({"sessionId":sid,"input":"one"})).await["result"]["turnId"].clone();
+            let turn = rpc.turn(0).await;
+            assert_eq!(rpc.call("turn/steer", json!({"sessionId":sid,"input":"also this"})).await["result"], json!({}));
+            assert_eq!(rpc.call("turn/steer", json!({"sessionId":"other","input":"x"})).await["error"]["code"], -32602);
+            assert_eq!(rpc.call("turn/interrupt", json!({"sessionId":"other"})).await["error"]["code"], -32602);
+            let mut seen = Vec::new();
+            let reply = rpc.call_seen("turn/interrupt", json!({"sessionId":sid}), &mut seen).await;
+            assert_eq!(reply["result"], json!({}));
+            // The terminal record precedes or follows the reply; either way it says interrupted.
+            let done = match seen.iter().find(|r| r["method"] == "turn/completed") {
+                Some(done) => done.clone(),
+                None => rpc.recv().await,
+            };
+            assert_eq!(done["params"]["turnId"], tid);
+            assert_eq!(done["params"]["stopReason"], "interrupted");
+            tokio::time::timeout(std::time::Duration::from_secs(5), turn.closed()).await.expect("turn kept alive");
+            // The unread steer opens the next turn.
+            rpc.call("turn/start", json!({"sessionId":sid,"input":"two"})).await;
+            rpc.turn(1).await;
+            let body = rpc.turns.lock().unwrap()[1].0.clone();
+            let contents: Vec<Value> = body["messages"].as_array().unwrap().iter().map(|m| m["content"].clone()).collect();
+            assert!(contents.iter().any(|c| c == "also this"), "{contents:?}");
+            rpc.stop().await;
+        });
+    }
+
+    #[test]
+    fn answers_without_a_running_turn_are_refused() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            rpc.session().await;
+            let permission = rpc.call("permission/respond", json!({"requestId":"perm-1","decision":"allow_once"})).await;
+            assert_eq!(permission["error"]["code"], -32602);
+            let tool = rpc.call("tool/respond", json!({"requestId":"host-1","content":"x"})).await;
+            assert_eq!(tool["error"]["data"]["kind"], "not_pending");
+            rpc.stop().await;
+        });
+    }
+
+    /// Characterizes the one-turn-per-process rule this loop had: a turn in
+    /// one session refuses a turn in another.
+    #[test]
+    fn a_turn_in_one_session_blocks_another_session() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            let a = rpc.session().await;
+            let b = rpc.session().await;
+            rpc.call("turn/start", json!({"sessionId":a,"input":"one"})).await;
+            rpc.turn(0).await;
+            let other = rpc.call("turn/start", json!({"sessionId":b,"input":"two"})).await;
+            assert_eq!(other["error"]["code"], -32001);
+            rpc.stop().await;
+        });
     }
 
     #[tokio::test]
