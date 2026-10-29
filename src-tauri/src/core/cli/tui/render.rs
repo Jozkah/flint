@@ -498,13 +498,14 @@ pub(super) fn context_lines(report: &ContextReport, width: usize) -> Vec<Line<'s
         .collect()
 }
 
-/// Truncate a styled row to `max` columns, counting characters so multi-byte
-/// block glyphs are never cut in the middle of their UTF-8 encoding.
+/// Truncate a styled row to `max` columns, measured in terminal cells and cut
+/// on character boundaries, so a wide glyph never overruns the limit and a
+/// multi-byte glyph is never cut in the middle of its UTF-8 encoding.
 pub(super) fn clip_spans(spans: Vec<Span<'static>>, max: usize) -> Vec<Span<'static>> {
     let mut out = Vec::with_capacity(spans.len());
     let mut used = 0usize;
     for span in spans {
-        let len = span.content.chars().count();
+        let len = super::str_width(&span.content);
         if used + len <= max {
             used += len;
             out.push(span);
@@ -512,8 +513,10 @@ pub(super) fn clip_spans(spans: Vec<Span<'static>>, max: usize) -> Vec<Span<'sta
         }
         let room = max.saturating_sub(used);
         if room > 0 {
-            let kept: String = span.content.chars().take(room).collect();
-            out.push(Span::styled(kept, span.style));
+            let (kept, _) = super::take_width(&span.content, room);
+            if !kept.is_empty() {
+                out.push(Span::styled(kept, span.style));
+            }
         }
         break;
     }
@@ -740,7 +743,7 @@ pub(super) fn split_diff_marker(line: &str) -> (&str, &str) {
 
 /// Total display width of a row's spans.
 pub(super) fn row_width(row: &Line<'_>) -> usize {
-    row.spans.iter().map(|s| s.content.chars().count()).sum()
+    row.spans.iter().map(|s| super::str_width(&s.content)).sum()
 }
 
 /// Content columns a panel of total `width` has left after its gutter and the
@@ -748,7 +751,7 @@ pub(super) fn row_width(row: &Line<'_>) -> usize {
 /// the closing border lands inside the terminal instead of wrapping onto a line
 /// of its own.
 pub(super) fn panel_inner(width: usize, gutter: &str) -> usize {
-    width.saturating_sub(gutter.chars().count() + 4).max(1)
+    width.saturating_sub(super::str_width(gutter) + 4).max(1)
 }
 
 /// Frame styled rows in a light box, right-padded to the widest row (clamped to
@@ -3382,7 +3385,7 @@ pub(super) fn count_label(label: &str, count: usize, width: u16) -> String {
     let count = count.to_string();
     let label_width = width.saturating_sub(count.chars().count() + 1).max(1);
     let label = truncate(label, label_width);
-    let used = label.chars().count() + count.chars().count();
+    let used = super::str_width(&label) + count.chars().count();
     if used >= width {
         return truncate(&format!("{label} {count}"), width);
     }
