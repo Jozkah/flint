@@ -86,6 +86,18 @@ describe('diffLiveReply', () => {
     })
   })
 
+  it('sends a removal for a tool step that vanished from the same message', () => {
+    const a = { id: 's1', name: 'bash', kind: 'bash' as const, status: 'running' as const }
+    const b = { ...a, id: 's2' }
+    expect(diffLiveReply('cowork', 'w', reply({ tools: [a, b] }), reply({ tools: [b] }))).toEqual([
+      { type: 'stream.toolRemoved', kind: 'cowork', id: 'w', messageId: 'm1', stepId: 's1' },
+    ])
+    // A new message is not a removal: the old one is done instead.
+    expect(
+      diffLiveReply('cowork', 'w', reply({ tools: [a] }), reply({ messageId: 'm2' })).map((e) => e.type)
+    ).not.toContain('stream.toolRemoved')
+  })
+
   it('sends new and changed tool steps, and done when the reply ends', () => {
     const step = { id: 's1', name: 'bash', kind: 'bash' as const, status: 'running' as const }
     const events = diffLiveReply('cowork', 'w', reply({ tools: [step] }), reply({ tools: [{ ...step, status: 'done' }] }))

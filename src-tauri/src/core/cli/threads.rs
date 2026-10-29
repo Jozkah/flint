@@ -200,6 +200,8 @@ pub fn cli_read_messages_lenient(
             Err(_) => skipped += 1,
         }
     }
+    // An updated message is a later line with the same id.
+    let (messages, _) = crate::core::threads::helpers::fold_revisions(messages);
     Ok((messages, skipped))
 }
 

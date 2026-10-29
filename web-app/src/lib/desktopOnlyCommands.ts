@@ -343,7 +343,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'install_jan_cli',
       'open_dialog',
       'open_session_path',
-      'save_attachment_file',
+      'save_attachment_bytes',
       'save_dialog',
       'set_keep_awake',
       'set_close_to_tray',

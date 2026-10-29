@@ -4,6 +4,7 @@ import type { HuggingFaceFileGroup } from '@/lib/huggingface'
 import {
   WINDOW_SIZE,
   groupVariants,
+  quantFamilyLabel,
   selectShortList,
 } from '@/lib/hubVariants'
 
@@ -67,7 +68,7 @@ export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
               <Fragment key={section.title ?? index}>
                 {section.title && (
                   <div className="px-3 pt-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground">
-                    {section.title}
+                    {quantFamilyLabel(section.title, t)}
                   </div>
                 )}
                 {items.map(renderRow)}

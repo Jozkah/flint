@@ -180,6 +180,76 @@ export type ChildRunner = (
   callerDepth?: number
 ) => Promise<ToolOutcome>
 
+/** Why a fork cannot start here, or null when it can. Pure. */
+export function forkRefusal(f: {
+  /** The surface offers forking at all. */
+  available: boolean
+  /** Asked to run in the background or under a team. */
+  background: boolean
+  callerDepth: number
+  resuming: boolean
+}): string | null {
+  if (!f.available) return 'fork is not available on this surface'
+  if (f.background) return 'a forked subagent runs in the foreground only'
+  if (f.callerDepth > 0) return 'a subagent cannot fork'
+  if (f.resuming) return 'a fork cannot be resumed'
+  return null
+}
+
+/**
+ * Which model, assistant and work profile a child runs with: the Subagents
+ * settings over the parent's (lib/subagentSettings.ts), and its own model
+ * instance when the call or the definition asks for a reasoning effort. A fork
+ * keeps the parent's model and effort. Tools and approvals are not part of it.
+ */
+export async function resolveChildConfig(
+  env: Pick<ChildRunnerEnv, 'providerId' | 'modelId' | 'parent'>,
+  resolved: Pick<ResolvedSubagent, 'name' | 'effort'>,
+  req: Pick<SubagentRequest, 'model'>,
+  forking: boolean
+) {
+  const choice = await prepareChildChoice({
+    role: resolved.name,
+    parentModel: { provider: env.providerId ?? '', id: env.modelId },
+    parent: env.parent?.(),
+    requestedModel: forking ? undefined : req.model,
+  })
+  let effortChoice: Awaited<ReturnType<typeof resolveChildEffort>> | undefined
+  if (!forking && resolved.effort && choice.providerId) {
+    effortChoice = await resolveChildEffort({
+      providerId: choice.providerId,
+      modelId: choice.modelId,
+      level: resolved.effort,
+    })
+    if ('note' in effortChoice && effortChoice.note) {
+      choice.note = [choice.note, effortChoice.note].filter(Boolean).join('; ')
+    }
+  }
+  return { choice, effortChoice }
+}
+
+/**
+ * An editing child, foreground, in a mode that would ask: one question first.
+ * True when it may start (no gate on this surface, or the user approved).
+ */
+export async function askEditingChildApproval(
+  env: Pick<ChildRunnerEnv, 'launchGate' | 'sessionId' | 'parentTools' | 'signal'>,
+  resolved: ResolvedSubagent,
+  launch: { spawn: SpawnLimits; model: string; foreground: boolean }
+): Promise<boolean> {
+  const gate = env.launchGate
+  if (!gate) return true
+  return checkLaunch({
+    sessionId: env.sessionId,
+    agent: resolved.name,
+    mode: gate.mode(resolved),
+    tools: Object.keys(subagentTools(env.parentTools(), resolved.allowedTools, launch.spawn)),
+    model: launch.model,
+    foreground: launch.foreground,
+    ask: (info) => gate.ask({ ...info, signal: env.signal }),
+  })
+}
+
 export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
   return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId, callerDepth = 0) => {
     const limits = currentSubagentSettings()
@@ -213,15 +283,12 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     }
     const forking = resolved.fork === true
     if (forking) {
-      const why = !env.fork
-        ? 'fork is not available on this surface'
-        : req.background || parentTaskId !== undefined
-          ? 'a forked subagent runs in the foreground only'
-          : callerDepth > 0
-            ? 'a subagent cannot fork'
-            : resumeId
-              ? 'a fork cannot be resumed'
-              : null
+      const why = forkRefusal({
+        available: Boolean(env.fork),
+        background: Boolean(req.background) || parentTaskId !== undefined,
+        callerDepth,
+        resuming: Boolean(resumeId),
+      })
       if (why) return { output: `ERROR: ${why}`, isError: true }
     }
     const model = env.model()
@@ -231,45 +298,16 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         isError: true,
       }
     }
-    // Which model, assistant and work profile this child runs with: the
-    // Subagents settings over the parent's (lib/subagentSettings.ts). Tools and
-    // approvals are not part of it.
-    const choice = await prepareChildChoice({
-      role: resolved.name,
-      parentModel: { provider: env.providerId ?? '', id: env.modelId },
-      parent: env.parent?.(),
-      requestedModel: forking ? undefined : req.model,
+    const { choice, effortChoice } = await resolveChildConfig(env, resolved, req, forking)
+    const approved = await askEditingChildApproval(env, resolved, {
+      spawn,
+      model: choice.modelId,
+      foreground: req.background !== true && parentTaskId === undefined,
     })
-    // A reasoning effort asked for by the call or the definition: a model
-    // instance of its own, built with that level, in place of the parent's.
-    let effortChoice: Awaited<ReturnType<typeof resolveChildEffort>> | undefined
-    if (!forking && resolved.effort && choice.providerId) {
-      effortChoice = await resolveChildEffort({
-        providerId: choice.providerId,
-        modelId: choice.modelId,
-        level: resolved.effort,
-      })
-      if ('note' in effortChoice && effortChoice.note) {
-        choice.note = [choice.note, effortChoice.note].filter(Boolean).join('; ')
-      }
-    }
-    // An editing child, foreground, in a mode that would ask: one question first.
-    if (env.launchGate) {
-      const gate = env.launchGate
-      const ok = await checkLaunch({
-        sessionId: env.sessionId,
-        agent: resolved.name,
-        mode: gate.mode(resolved),
-        tools: Object.keys(subagentTools(env.parentTools(), resolved.allowedTools, spawn)),
-        model: choice.modelId,
-        foreground: req.background !== true && parentTaskId === undefined,
-        ask: (info) => gate.ask({ ...info, signal: env.signal }),
-      })
-      if (!ok) {
-        return {
-          output: `Subagent '${resolved.name}' was not started: the user did not approve running it with editing tools.`,
-          isError: true,
-        }
+    if (!approved) {
+      return {
+        output: `Subagent '${resolved.name}' was not started: the user did not approve running it with editing tools.`,
+        isError: true,
       }
     }
     // Recorded before the child starts: the dispatch is the only moment the

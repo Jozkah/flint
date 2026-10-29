@@ -47,8 +47,16 @@ export type SessionSummary = {
   pinned?: boolean
 }
 
-export type SessionsListParams = { kind?: SessionKind; limit?: number }
-export type SessionsListResult = { sessions: SessionSummary[] }
+export type SessionsListParams = {
+  kind?: SessionKind
+  limit?: number
+  /** Only sessions updated strictly before this time (Unix ms): the
+   * `updatedAt` of the last session of the previous page. */
+  before?: number
+}
+/** `total` counts every session of the asked kind, before paging. Older
+ * desktops leave it out. */
+export type SessionsListResult = { sessions: SessionSummary[]; total?: number }
 
 /** A tool call's kind, for its colour (lib/toolKind.ts). */
 export type RemoteToolKind =
@@ -1068,6 +1076,10 @@ export type RemoteEvent =
     }
   /** A tool step began or changed. */
   | { type: 'stream.tool'; kind: SessionKind; id: string; messageId: string; step: RemoteToolStep }
+  /** A tool step shown earlier for `messageId` is gone (the turn was rewritten).
+   * Added later: phones that do not know it ignore it and catch up on
+   * `stream.done` / `stream.get`. */
+  | { type: 'stream.toolRemoved'; kind: SessionKind; id: string; messageId: string; stepId: string }
   /** The reply is complete (or stopped); read `thread.messages` for it. */
   | { type: 'stream.done'; kind: SessionKind; id: string; messageId: string }
   /** Messages, queue or details of a conversation changed. */

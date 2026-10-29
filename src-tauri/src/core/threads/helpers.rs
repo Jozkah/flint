@@ -103,16 +103,16 @@ pub fn append_message_line_if_new(
     // Taking the entry out means every error path below leaves the cache
     // without it, so a failed append is never trusted later.
     let cached = append_cache().remove(path);
-    let ids = match (id, cached) {
+    let (ids, revisions) = match (id, cached) {
         // Same length as when this process last wrote: nobody else touched it.
-        (_, Some(state)) if state.len == len => Some(state.ids),
-        (Some(_), _) => Some(scan_message_ids(path)?),
-        (None, _) => None,
+        (_, Some(state)) if state.len == len => (Some(state.ids), state.revisions),
+        (Some(_), _) => (Some(scan_message_ids(path)?), 0),
+        (None, _) => (None, 0),
     };
     if let (Some(id), Some(set)) = (id, ids.as_ref()) {
         if set.contains(id) {
             if let Some(ids) = ids {
-                cache_put(path, len, ids);
+                cache_put_state(path, TailState { len, ids, revisions });
             }
             return Ok(false);
         }
@@ -129,9 +129,78 @@ pub fn append_message_line_if_new(
     file.flush().map_err(|e| e.to_string())?;
     if let (Some(id), Some(mut set)) = (id, ids) {
         set.insert(id.to_owned());
-        cache_put(path, settled_len + line.len() as u64, set);
+        cache_put_state(path, TailState { len: settled_len + line.len() as u64, ids: set, revisions });
     }
     Ok(true)
+}
+
+/// Revision lines a messages file may carry before an update compacts it.
+pub const MAX_REVISIONS: usize = 16;
+
+/// Append `message` (whose `id` may already be in the file) as a revision
+/// line instead of rewriting the whole file: readers fold a later line with
+/// the same id onto the earlier one (see [`fold_revisions`]). Returns how many
+/// revision lines the file now carries as far as this process knows, `None`
+/// when that is unknown (the file changed under another writer), so the
+/// caller can compact once there are too many.
+pub fn append_message_revision(
+    path: &Path,
+    message: &serde_json::Value,
+    id: &str,
+) -> Result<Option<usize>, String> {
+    let len = match fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => return Err(e.to_string()),
+    };
+    let cached = append_cache().remove(path).filter(|state| state.len == len);
+    let settled_len = settle_tail_from_disk(path, len)?;
+    let mut line = serde_json::to_string(message).map_err(|e| e.to_string())?;
+    line.push('\n');
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    // An update is often the final form of a streamed reply: on disk before
+    // the UI calls it saved.
+    file.sync_data().map_err(|e| e.to_string())?;
+    let new_len = settled_len + line.len() as u64;
+    Ok(cached.map(|mut state| {
+        if !state.ids.insert(id.to_owned()) {
+            state.revisions += 1;
+        }
+        let revisions = state.revisions;
+        cache_put_state(path, TailState { len: new_len, ..state });
+        revisions
+    }))
+}
+
+/// Fold revision lines: a message whose `id` was already seen replaces the
+/// earlier one in place (the conversation order is where a message first
+/// appeared). Returns the folded list and how many lines were revisions.
+pub fn fold_revisions(messages: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, usize) {
+    let mut at: HashMap<String, usize> = HashMap::new();
+    let mut out: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+    let mut revisions = 0;
+    for message in messages {
+        let id = message.get("id").and_then(|v| v.as_str()).map(str::to_owned);
+        match id {
+            Some(id) => match at.get(&id) {
+                Some(&i) => {
+                    out[i] = message;
+                    revisions += 1;
+                }
+                None => {
+                    at.insert(id, out.len());
+                    out.push(message);
+                }
+            },
+            None => out.push(message),
+        }
+    }
+    (out, revisions)
 }
 
 /// How much of the file's end is read to settle a torn tail.
@@ -145,6 +214,9 @@ const APPEND_CACHE_FILES: usize = 64;
 struct TailState {
     len: u64,
     ids: std::collections::HashSet<String>,
+    /// Revision lines written since the file was last compacted, as far as
+    /// this process saw.
+    revisions: usize,
 }
 
 type TailMap = HashMap<std::path::PathBuf, TailState>;
@@ -158,11 +230,25 @@ fn append_cache() -> std::sync::MutexGuard<'static, TailMap> {
 }
 
 fn cache_put(path: &Path, len: u64, ids: std::collections::HashSet<String>) {
+    cache_put_state(path, TailState { len, ids, revisions: 0 });
+}
+
+fn cache_put_state(path: &Path, state: TailState) {
     let mut cache = append_cache();
     if cache.len() >= APPEND_CACHE_FILES {
         cache.clear();
     }
-    cache.insert(path.to_path_buf(), TailState { len, ids });
+    cache.insert(path.to_path_buf(), state);
+}
+
+/// Remember a just-compacted file as holding `messages` and no revisions.
+pub fn remember_compacted(path: &Path, messages: &[serde_json::Value]) {
+    let Ok(len) = fs::metadata(path).map(|m| m.len()) else { return };
+    let ids = messages
+        .iter()
+        .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(str::to_owned))
+        .collect();
+    cache_put(path, len, ids);
 }
 
 /// Forget what is remembered about a messages file. Call after anything that
@@ -277,26 +363,26 @@ pub fn read_messages_from_file(
         return Ok(vec![]);
     }
 
-    let file = File::open(&path).map_err(|e| {
+    let bytes = fs::read(&path).map_err(|e| {
         eprintln!("Error opening file {}: {}", path.display(), e);
         e.to_string()
     })?;
-    let reader = BufReader::new(file);
-    let lines = reader.lines().collect::<Result<Vec<_>, _>>().map_err(|e| {
+    // Whether the last line was terminated, from the one buffer already
+    // read. An interrupted append leaves an unterminated fragment, and that
+    // one shape is tolerated below.
+    let terminated = bytes.is_empty() || bytes.ends_with(NEWLINE_BYTES);
+    let text = String::from_utf8(bytes).map_err(|e| {
         eprintln!("Error reading line from file {}: {}", path.display(), e);
         e.to_string()
     })?;
-    // Whether the last line was terminated. An interrupted append leaves an
-    // unterminated fragment, and that one shape is tolerated below.
-    let terminated = fs::read(&path)
-        .map(|b| b.is_empty() || b.ends_with(NEWLINE_BYTES))
-        .unwrap_or(true);
+    let lines: Vec<&str> = text.lines().collect();
 
     let mut messages = Vec::new();
     let last = lines.len().saturating_sub(1);
     for (index, line) in lines.iter().enumerate() {
         match serde_json::from_str::<serde_json::Value>(line) {
             Ok(message) => messages.push(message),
+            Err(_) if line.trim().is_empty() => {}
             // A torn final line is what a crash mid-write leaves. Its content
             // was never complete, and refusing the whole thread over it made a
             // conversation unreadable for one lost fragment (janhq/jan#8019).
@@ -320,7 +406,7 @@ pub fn read_messages_from_file(
         }
     }
 
-    Ok(messages)
+    Ok(fold_revisions(messages).0)
 }
 
 /// What a tolerant read of `messages.jsonl` found.
@@ -330,6 +416,8 @@ pub struct LossyRead {
     /// Non-empty lines that did not parse, in file order. A torn final line
     /// (no newline) is not counted: a crash leaves that and it is dropped.
     pub bad_lines: Vec<String>,
+    /// Revision lines folded into earlier messages (see [`fold_revisions`]).
+    pub revisions: usize,
 }
 
 /// Like `read_messages_from_file`, but a line that does not parse at any
@@ -354,6 +442,9 @@ pub fn read_messages_lossy(data_folder: &Path, thread_id: &str) -> Result<LossyR
             Err(_) => out.bad_lines.push(String::from_utf8_lossy(trimmed).into_owned()),
         }
     }
+    let (messages, revisions) = fold_revisions(std::mem::take(&mut out.messages));
+    out.messages = messages;
+    out.revisions = revisions;
     if !out.bad_lines.is_empty() {
         log::warn!(
             "messages: skipped {} unreadable line(s) in {}",

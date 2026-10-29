@@ -77,15 +77,47 @@ fn save_writes_inside_the_attachments_folder() {
 }
 
 #[test]
-fn save_gives_each_file_its_own_folder() {
+fn the_same_bytes_are_stored_once_and_different_bytes_apart() {
     let app = mock_app();
-    let encoded = base64::engine::general_purpose::STANDARD.encode(b"x");
-    let a = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encoded.clone()).unwrap();
-    let b = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encoded).unwrap();
-    assert_ne!(a, b);
-    for p in [a, b] {
+    let encode = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let tag = uuid::Uuid::new_v4().to_string();
+    let a = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encode(tag.as_bytes())).unwrap();
+    let b = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encode(tag.as_bytes())).unwrap();
+    assert_eq!(a, b, "re-dropping the same file reuses the saved copy");
+    let c = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encode(b"other")).unwrap();
+    assert_ne!(a, c);
+    for p in [a, c] {
         let _ = fs::remove_dir_all(PathBuf::from(p).parent().unwrap());
     }
+}
+
+#[test]
+fn a_raw_ten_megabyte_file_round_trips_and_leaves_no_part_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let bytes: Vec<u8> = (0..10 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+    let saved = super::commands::store_attachment(dir.path(), "big.bin", &bytes, Some("thread-1")).unwrap();
+    let saved = PathBuf::from(saved);
+    assert_eq!(fs::read(&saved).unwrap(), bytes);
+    assert!(saved.starts_with(dir.path().join("thread-1")));
+    let names: Vec<String> = fs::read_dir(saved.parent().unwrap())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec!["big.bin".to_string()]);
+}
+
+#[test]
+fn a_crashed_part_file_is_never_the_saved_attachment() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = PathBuf::from(super::commands::store_attachment(dir.path(), "a.txt", b"hello", None).unwrap());
+    // A truncated leftover from a crash, and the real file removed: the next
+    // save writes a whole copy instead of trusting the leftover.
+    let folder = first.parent().unwrap().to_path_buf();
+    fs::write(folder.join("a.txt.deadbeef.part"), b"he").unwrap();
+    fs::remove_file(&first).unwrap();
+    let again = PathBuf::from(super::commands::store_attachment(dir.path(), "a.txt", b"hello", None).unwrap());
+    assert_eq!(again, first);
+    assert_eq!(fs::read(&again).unwrap(), b"hello");
 }
 
 #[test]

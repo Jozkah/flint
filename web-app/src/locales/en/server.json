@@ -2,7 +2,7 @@
   "title": "Flint server",
   "desc": "Use Flint on a server you run, from this device.",
   "address": "Server address",
-  "addressDesc": "The HTTPS address of your flint serve, for example the Tailscale name it is published on. You sign in on the server's own page; this app never stores the credential.",
+  "addressDesc": "The HTTPS address of your flint serve, for example the Tailscale name it is published on, with its path when it sits behind a reverse proxy (https://host/flint). You sign in on the server's own page; this app never stores the credential.",
   "test": "Test connection",
   "open": "Open server",
   "forget": "Forget server",

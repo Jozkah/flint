@@ -7,7 +7,8 @@
  * own routes, the settings registry and the conversation list, and are ranked
  * locally (`rankCommands`); nothing is looked up over the network.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useListNavigation } from '@/hooks/useListNavigation'
 import { create } from 'zustand'
 import { useNavigate } from '@tanstack/react-router'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
@@ -77,7 +78,6 @@ export function CommandPalette() {
   const threads = useThreads((s) => (open ? s.threads : NO_THREADS))
   const hiddenNavItems = useInterfaceSettings((s) => s.hiddenNavItems)
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
 
@@ -86,6 +86,9 @@ export function CommandPalette() {
     setQuery('')
     setActive(0)
     setTimeout(() => inputRef.current?.focus(), 0)
+    // setActive is a state setter (stable), declared below with the results
+    // it navigates; naming it here would read it before it exists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const commands = useMemo<PaletteCommand[]>(() => {
@@ -307,16 +310,20 @@ export function CommandPalette() {
     return out
   }, [results])
 
-  useEffect(() => {
-    setActive(0)
-  }, [query])
-
   // Keep the highlighted row visible while arrowing through a long list.
-  useEffect(() => {
-    const id = results[active]?.id
-    if (!id) return
-    document.getElementById(`palette-${id}`)?.scrollIntoView?.({ block: 'nearest' })
-  }, [active, results])
+  const scrollTo = useCallback(
+    (index: number) => {
+      const id = results[index]?.id
+      if (!id) return
+      document.getElementById(`palette-${id}`)?.scrollIntoView?.({ block: 'nearest' })
+    },
+    [results]
+  )
+  const { active, setActive, onNavKey } = useListNavigation({
+    count: results.length,
+    resetKey: query,
+    scrollTo,
+  })
 
   const runAt = (index: number) => {
     const command = results[index]
@@ -329,13 +336,8 @@ export function CommandPalette() {
     // An IME confirming a candidate (Enter) or moving through its candidate
     // list (arrows) is not a palette command.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setActive((i) => Math.min(i + 1, Math.max(results.length - 1, 0)))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActive((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Enter') {
+    if (onNavKey(e)) return
+    if (e.key === 'Enter') {
       e.preventDefault()
       runAt(active)
     }
