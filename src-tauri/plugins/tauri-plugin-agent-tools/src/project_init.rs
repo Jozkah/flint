@@ -130,14 +130,17 @@ fn readme_summary(text: &str) -> (Option<String>, Option<String>) {
     (title.filter(|t| !t.is_empty()), (!paragraph.is_empty()).then_some(paragraph))
 }
 
-/// Survey the folder at `root` (already validated by the caller).
-pub fn survey(root: &str) -> Result<Survey, String> {
-    let mut read = Vec::new();
-    let mut not_read = Vec::new();
+/// What the breadth-first listing found.
+struct Walk {
+    files: Vec<String>,
+    top_level: Vec<(String, bool)>,
+}
+
+/// List `root` breadth first, so a bound cuts off depth rather than a whole
+/// subtree. What was not listed goes to `not_read`.
+fn walk(root: &str, not_read: &mut Vec<String>) -> Result<Walk, String> {
     let mut files: Vec<String> = Vec::new();
     let mut top_level: Vec<(String, bool)> = Vec::new();
-
-    // Breadth first, so a bound cuts off depth rather than a whole subtree.
     let mut queue: VecDeque<(String, usize)> = VecDeque::from([(String::new(), 0)]);
     let mut listed = 0usize;
     let mut seen = 0usize;
@@ -189,147 +192,125 @@ pub fn survey(root: &str) -> Result<Survey, String> {
             "{deeper} folder(s) deeper than {MAX_DEPTH} levels were not listed"
         ));
     }
-    not_read.push(
-        "ignored by .gitignore, or dependency and build output (node_modules, target, dist, ...): skipped by design"
-            .to_string(),
-    );
+    Ok(Walk { files, top_level })
+}
 
-    let has = |name: &str| files.iter().any(|f| f.eq_ignore_ascii_case(name));
-    let mut name: Option<String> = None;
-    let mut description: Option<String> = None;
-    let mut build: Vec<String> = Vec::new();
+/// What one manifest says about the project.
+#[derive(Default)]
+struct Manifest {
+    name: Option<String>,
+    description: Option<String>,
+    build: Vec<String>,
+}
 
-    if has("package.json") {
-        if let Some(text) = read_text(root, "package.json", &mut read, &mut not_read) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                name = name.or(json["name"].as_str().map(str::to_string));
-                description = description.or(json["description"].as_str().map(str::to_string));
-                let runner = if has("yarn.lock") {
-                    "yarn"
-                } else if has("pnpm-lock.yaml") {
-                    "pnpm"
-                } else {
-                    "npm run"
-                };
-                if let Some(scripts) = json["scripts"].as_object() {
-                    let names: Vec<String> = scripts.keys().take(12).map(|k| format!("`{runner} {k}`")).collect();
-                    if !names.is_empty() {
-                        build.push(format!("Node scripts (package.json): {}", names.join(", ")));
-                    }
-                } else {
-                    build.push("Node package (package.json), no scripts declared".to_string());
-                }
-                if json.get("workspaces").is_some() {
-                    build.push("A Node workspace: package.json declares `workspaces`".to_string());
-                }
-            }
+/// package.json; `runner` is how its scripts are run (yarn, pnpm, npm run).
+fn node_manifest(text: &str, runner: &str) -> Manifest {
+    let mut m = Manifest::default();
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+        return m;
+    };
+    m.name = json["name"].as_str().map(str::to_string);
+    m.description = json["description"].as_str().map(str::to_string);
+    if let Some(scripts) = json["scripts"].as_object() {
+        let names: Vec<String> = scripts.keys().take(12).map(|k| format!("`{runner} {k}`")).collect();
+        if !names.is_empty() {
+            m.build.push(format!("Node scripts (package.json): {}", names.join(", ")));
         }
+    } else {
+        m.build.push("Node package (package.json), no scripts declared".to_string());
     }
-    if has("Cargo.toml") {
-        if let Some(text) = read_text(root, "Cargo.toml", &mut read, &mut not_read) {
-            if let Ok(value) = toml::from_str::<toml::Value>(&text) {
-                name = name.or(value
-                    .get("package")
-                    .and_then(|p| p.get("name"))
-                    .and_then(|n| n.as_str())
-                    .map(str::to_string));
-                description = description.or(value
-                    .get("package")
-                    .and_then(|p| p.get("description"))
-                    .and_then(|n| n.as_str())
-                    .map(str::to_string));
-                let members = value
-                    .get("workspace")
-                    .and_then(|w| w.get("members"))
-                    .and_then(|m| m.as_array())
-                    .map(|m| m.len())
-                    .unwrap_or(0);
-                build.push(if members > 0 {
-                    format!("Rust workspace of {members} member(s) (Cargo.toml): `cargo build`, `cargo test`")
-                } else {
-                    "Rust crate (Cargo.toml): `cargo build`, `cargo test`".to_string()
-                });
-            }
-        }
+    if json.get("workspaces").is_some() {
+        m.build.push("A Node workspace: package.json declares `workspaces`".to_string());
     }
-    if has("pyproject.toml") {
-        if let Some(text) = read_text(root, "pyproject.toml", &mut read, &mut not_read) {
-            if let Ok(value) = toml::from_str::<toml::Value>(&text) {
-                let project = value.get("project").or_else(|| {
-                    value.get("tool").and_then(|t| t.get("poetry"))
-                });
-                name = name.or(project
-                    .and_then(|p| p.get("name"))
-                    .and_then(|n| n.as_str())
-                    .map(str::to_string));
-                description = description.or(project
-                    .and_then(|p| p.get("description"))
-                    .and_then(|n| n.as_str())
-                    .map(str::to_string));
-            }
-            build.push("Python project (pyproject.toml)".to_string());
-        }
-    } else if has("requirements.txt") {
-        build.push("Python dependencies in requirements.txt".to_string());
-    }
-    if has("go.mod") {
-        if let Some(text) = read_text(root, "go.mod", &mut read, &mut not_read) {
-            if let Some(module) = text.lines().find_map(|l| l.trim().strip_prefix("module ")) {
-                name = name.or(Some(module.trim().to_string()));
-            }
-            build.push("Go module (go.mod): `go build ./...`, `go test ./...`".to_string());
-        }
-    }
-    if has("Makefile") {
-        if let Some(text) = read_text(root, "Makefile", &mut read, &mut not_read) {
-            let targets: Vec<String> = text
-                .lines()
-                .filter_map(|l| {
-                    let (head, _) = l.split_once(':')?;
-                    let head = head.trim();
-                    (!l.starts_with('\t')
-                        && !head.is_empty()
-                        && !head.starts_with('.')
-                        && !head.contains('=')
-                        && head.chars().all(|c| c.is_ascii_alphanumeric() || "_-./".contains(c)))
-                    .then(|| format!("`make {head}`"))
-                })
-                .take(10)
-                .collect();
-            if !targets.is_empty() {
-                build.push(format!("make targets: {}", targets.join(", ")));
-            }
-        }
-    }
-    for (file, what) in [
-        ("CMakeLists.txt", "CMake project (CMakeLists.txt)"),
-        ("Dockerfile", "A Dockerfile at the root"),
-        ("build.gradle", "Gradle build (build.gradle)"),
-        ("build.gradle.kts", "Gradle build (build.gradle.kts)"),
-        ("pom.xml", "Maven build (pom.xml)"),
-    ] {
-        if has(file) {
-            build.push(what.to_string());
-        }
-    }
-    if files.iter().any(|f| !f.contains('/') && f.to_lowercase().ends_with(".sln")) {
-        build.push(".NET solution (.sln) at the root".to_string());
-    }
+    m
+}
 
-    let readme = ["README.md", "README", "readme.md", "Readme.md", "README.txt"]
-        .into_iter()
-        .find(|f| files.iter().any(|g| g == f));
-    let mut readme_title = None;
-    if let Some(file) = readme {
-        if let Some(text) = read_text(root, file, &mut read, &mut not_read) {
-            let (title, paragraph) = readme_summary(&text);
-            readme_title = title;
-            description = description.or(paragraph);
-        }
-    }
+fn cargo_manifest(text: &str) -> Manifest {
+    let mut m = Manifest::default();
+    let Ok(value) = toml::from_str::<toml::Value>(text) else {
+        return m;
+    };
+    let package = |key: &str| {
+        value
+            .get("package")
+            .and_then(|p| p.get(key))
+            .and_then(|n| n.as_str())
+            .map(str::to_string)
+    };
+    m.name = package("name");
+    m.description = package("description");
+    let members = value
+        .get("workspace")
+        .and_then(|w| w.get("members"))
+        .and_then(|m| m.as_array())
+        .map(|m| m.len())
+        .unwrap_or(0);
+    m.build.push(if members > 0 {
+        format!("Rust workspace of {members} member(s) (Cargo.toml): `cargo build`, `cargo test`")
+    } else {
+        "Rust crate (Cargo.toml): `cargo build`, `cargo test`".to_string()
+    });
+    m
+}
 
+/// pyproject.toml: `[project]`, or Poetry's `[tool.poetry]`. Named a Python
+/// project even when it does not parse.
+fn python_manifest(text: &str) -> Manifest {
+    let mut m = Manifest::default();
+    if let Ok(value) = toml::from_str::<toml::Value>(text) {
+        let project = value
+            .get("project")
+            .or_else(|| value.get("tool").and_then(|t| t.get("poetry")));
+        let field = |key: &str| {
+            project
+                .and_then(|p| p.get(key))
+                .and_then(|n| n.as_str())
+                .map(str::to_string)
+        };
+        m.name = field("name");
+        m.description = field("description");
+    }
+    m.build.push("Python project (pyproject.toml)".to_string());
+    m
+}
+
+fn go_manifest(text: &str) -> Manifest {
+    Manifest {
+        name: text
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("module "))
+            .map(|module| module.trim().to_string()),
+        description: None,
+        build: vec!["Go module (go.mod): `go build ./...`, `go test ./...`".to_string()],
+    }
+}
+
+fn make_targets(text: &str) -> Manifest {
+    let targets: Vec<String> = text
+        .lines()
+        .filter_map(|l| {
+            let (head, _) = l.split_once(':')?;
+            let head = head.trim();
+            (!l.starts_with('\t')
+                && !head.is_empty()
+                && !head.starts_with('.')
+                && !head.contains('=')
+                && head.chars().all(|c| c.is_ascii_alphanumeric() || "_-./".contains(c)))
+            .then(|| format!("`make {head}`"))
+        })
+        .take(10)
+        .collect();
+    let mut m = Manifest::default();
+    if !targets.is_empty() {
+        m.build.push(format!("make targets: {}", targets.join(", ")));
+    }
+    m
+}
+
+/// Files per language, most first, ties by name.
+fn language_counts(files: &[String]) -> Vec<(&'static str, usize)> {
     let mut languages: BTreeMap<&'static str, usize> = BTreeMap::new();
-    for file in &files {
+    for file in files {
         if let Some(lang) = Path::new(file)
             .extension()
             .and_then(|e| e.to_str())
@@ -340,19 +321,19 @@ pub fn survey(root: &str) -> Result<Survey, String> {
     }
     let mut languages: Vec<(&str, usize)> = languages.into_iter().collect();
     languages.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    languages
+}
 
-    let folder_name = Path::new(root)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "This project".to_string());
-    let title = name.or(readme_title).unwrap_or(folder_name);
-
+/// The FLINT.md draft offered to the user.
+fn render_draft(
+    title: &str,
+    description: Option<&str>,
+    languages: &[(&str, usize)],
+    top_level: &[(String, bool)],
+    build: &[String],
+) -> String {
     let mut draft = format!("# {title}\n\n");
-    draft.push_str(
-        description
-            .as_deref()
-            .unwrap_or("Describe what this project is for, in a sentence or two."),
-    );
+    draft.push_str(description.unwrap_or("Describe what this project is for, in a sentence or two."));
     draft.push_str("\n\n## What is here\n\n");
     if !languages.is_empty() {
         let langs: Vec<String> = languages
@@ -379,12 +360,121 @@ pub fn survey(root: &str) -> Result<Survey, String> {
     if build.is_empty() {
         draft.push_str("- No build manifest was found. Say how to build and test it.\n");
     } else {
-        for line in &build {
+        for line in build {
             draft.push_str(&format!("- {line}\n"));
         }
     }
     draft.push_str(
         "\n## Notes for Jan\n\n- Conventions to follow, files not to touch, how to check a change.\n",
+    );
+    draft
+}
+
+/// Survey the folder at `root` (already validated by the caller).
+pub fn survey(root: &str) -> Result<Survey, String> {
+    let mut read = Vec::new();
+    let mut not_read = Vec::new();
+    let Walk { files, top_level } = walk(root, &mut not_read)?;
+    not_read.push(
+        "ignored by .gitignore, or dependency and build output (node_modules, target, dist, ...): skipped by design"
+            .to_string(),
+    );
+
+    let has = |name: &str| files.iter().any(|f| f.eq_ignore_ascii_case(name));
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    let mut build: Vec<String> = Vec::new();
+    let mut take = |m: Manifest| {
+        name = name.take().or(m.name);
+        description = description.take().or(m.description);
+        build.extend(m.build);
+    };
+
+    if has("package.json") {
+        if let Some(text) = read_text(root, "package.json", &mut read, &mut not_read) {
+            let runner = if has("yarn.lock") {
+                "yarn"
+            } else if has("pnpm-lock.yaml") {
+                "pnpm"
+            } else {
+                "npm run"
+            };
+            take(node_manifest(&text, runner));
+        }
+    }
+    if has("Cargo.toml") {
+        if let Some(text) = read_text(root, "Cargo.toml", &mut read, &mut not_read) {
+            take(cargo_manifest(&text));
+        }
+    }
+    if has("pyproject.toml") {
+        if let Some(text) = read_text(root, "pyproject.toml", &mut read, &mut not_read) {
+            take(python_manifest(&text));
+        }
+    } else if has("requirements.txt") {
+        take(Manifest {
+            build: vec!["Python dependencies in requirements.txt".to_string()],
+            ..Manifest::default()
+        });
+    }
+    if has("go.mod") {
+        if let Some(text) = read_text(root, "go.mod", &mut read, &mut not_read) {
+            take(go_manifest(&text));
+        }
+    }
+    if has("Makefile") {
+        if let Some(text) = read_text(root, "Makefile", &mut read, &mut not_read) {
+            take(make_targets(&text));
+        }
+    }
+    for (file, what) in [
+        ("CMakeLists.txt", "CMake project (CMakeLists.txt)"),
+        ("Dockerfile", "A Dockerfile at the root"),
+        ("build.gradle", "Gradle build (build.gradle)"),
+        ("build.gradle.kts", "Gradle build (build.gradle.kts)"),
+        ("pom.xml", "Maven build (pom.xml)"),
+    ] {
+        if has(file) {
+            take(Manifest {
+                build: vec![what.to_string()],
+                ..Manifest::default()
+            });
+        }
+    }
+    if files.iter().any(|f| !f.contains('/') && f.to_lowercase().ends_with(".sln")) {
+        take(Manifest {
+            build: vec![".NET solution (.sln) at the root".to_string()],
+            ..Manifest::default()
+        });
+    }
+
+    let readme = ["README.md", "README", "readme.md", "Readme.md", "README.txt"]
+        .into_iter()
+        .find(|f| files.iter().any(|g| g == f));
+    let mut readme_title = None;
+    if let Some(file) = readme {
+        if let Some(text) = read_text(root, file, &mut read, &mut not_read) {
+            let (title, paragraph) = readme_summary(&text);
+            readme_title = title;
+            take(Manifest {
+                description: paragraph,
+                ..Manifest::default()
+            });
+        }
+    }
+    drop(take);
+
+    let folder_name = Path::new(root)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "This project".to_string());
+    let title = name.or(readme_title).unwrap_or(folder_name);
+    let draft = render_draft(
+        &title,
+        description.as_deref(),
+        &language_counts(&files),
+        &top_level,
+        &build,
     );
 
     Ok(Survey {
@@ -497,6 +587,29 @@ mod tests {
         assert!(out.read.contains(&"package.json".to_string()));
         assert!(!out.has_instructions);
     }
+
+    /// Characterisation: every manifest kind at once, exact draft and lists.
+    #[test]
+    fn a_mixed_project_survey_is_unchanged() {
+        let root = dir("mixed");
+        put(&root, "package.json", r#"{"description":"from node","scripts":{"dev":"x"},"workspaces":[]}"#);
+        put(&root, "yarn.lock", "");
+        put(&root, "Cargo.toml", "[package]\nname = \"crate-name\"\ndescription = \"from cargo\"\n");
+        put(&root, "pyproject.toml", "not = [valid\n");
+        put(&root, "go.mod", "module example.com/m\n");
+        put(&root, "Makefile", "all: build\n\tcc x\n.PHONY: all\nbuild:\nX = 1\n");
+        put(&root, "Dockerfile", "FROM x\n");
+        put(&root, "app.sln", "");
+        put(&root, "README.md", "# Readme Title\n\nReadme words.\n");
+        put(&root, "src/a.rs", "");
+        put(&root, "src/b.py", "");
+        put(&root, "src/c.rs", "");
+        let out = survey(&s(&root)).unwrap();
+        let shape = format!("{}\n--read {:?}\n--not {:?}\n--files {}", out.draft, out.read, out.not_read, out.files_seen);
+        assert_eq!(shape, MIXED_EXPECTED, "\n{shape}");
+    }
+
+    const MIXED_EXPECTED: &str = "# crate-name\n\nfrom node\n\n## What is here\n\n- Languages: Rust (2 files), Python (1 file)\n- Top level: `src/`, `app.sln`, `Cargo.toml`, `Dockerfile`, `go.mod`, `Makefile`, `package.json`, `pyproject.toml`, `README.md`, `yarn.lock`\n\n## How it is built and tested\n\n- Node scripts (package.json): `yarn dev`\n- A Node workspace: package.json declares `workspaces`\n- Rust crate (Cargo.toml): `cargo build`, `cargo test`\n- Python project (pyproject.toml)\n- Go module (go.mod): `go build ./...`, `go test ./...`\n- make targets: `make all`, `make build`\n- A Dockerfile at the root\n- .NET solution (.sln) at the root\n\n## Notes for Jan\n\n- Conventions to follow, files not to touch, how to check a change.\n\n--read [\"package.json\", \"Cargo.toml\", \"pyproject.toml\", \"go.mod\", \"Makefile\", \"README.md\"]\n--not [\"ignored by .gitignore, or dependency and build output (node_modules, target, dist, ...): skipped by design\"]\n--files 12";
 
     #[test]
     fn a_rust_workspace_is_described_without_running_anything() {

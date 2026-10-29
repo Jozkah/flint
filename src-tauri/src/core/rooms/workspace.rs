@@ -252,7 +252,12 @@ fn write_record(
     record: &WorkspaceRecord,
 ) -> Result<(), RoomError> {
     let json = serde_json::to_string_pretty(record).map_err(|e| err(e.to_string()))?;
-    fs::write(dir.join(format!("{participant_id}.json")), json).map_err(|e| err(e.to_string()))
+    // Replaced whole: a crash mid-write must leave the old record readable.
+    crate::core::atomic_io::write_atomic_durable(
+        &dir.join(format!("{participant_id}.json")),
+        json.as_bytes(),
+    )
+    .map_err(err)
 }
 
 /// The workspace root, once git agrees it is the checkout it works on and its
@@ -834,18 +839,24 @@ pub fn apply(
         return Ok(0);
     }
     check(&record, &target, &diff).map_err(|e| err(format!("the change does not apply cleanly: {e}")))?;
-    git_target(
+    // The undo patch is saved before the folder changes: a crash between
+    // the two must not leave an applied change nobody can take back. A
+    // failed apply removes it again.
+    let next = applied_stack(&dir, participant_id)
+        .last()
+        .map_or(1, |(n, _)| n + 1);
+    let saved = dir.join(format!("{participant_id}.applied.{next}.patch"));
+    crate::core::atomic_io::write_atomic_durable(&saved, &diff)
+        .map_err(|e| err(format!("save applied patch: {e}")))?;
+    if let Err(e) = git_target(
         &record,
         &target,
         &["apply", "--whitespace=nowarn", "-"],
         Some(&diff),
-    )
-    .map_err(|e| err(format!("apply: {e}")))?;
-    let next = applied_stack(&dir, participant_id)
-        .last()
-        .map_or(1, |(n, _)| n + 1);
-    fs::write(dir.join(format!("{participant_id}.applied.{next}.patch")), &diff)
-        .map_err(|e| err(format!("save applied patch: {e}")))?;
+    ) {
+        let _ = fs::remove_file(&saved);
+        return Err(err(format!("apply: {e}")));
+    }
     let count = diff
         .split(|b| *b == b'\n')
         .filter(|l| l.starts_with(b"diff --git "))

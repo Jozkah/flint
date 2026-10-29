@@ -363,9 +363,13 @@ enum Commands {
         /// The server to use (default: the address saved in Flint's settings, else http://127.0.0.1:1337/v1)
         #[arg(long)]
         base_url: Option<String>,
-        /// The server's API key (default: $FLINT_API_KEY, else none)
+        /// The server's API key (default: $FLINT_API_KEY, else none). Visible in
+        /// the process list: prefer --api-key-file or $FLINT_API_KEY
         #[arg(long)]
         api_key: Option<String>,
+        /// Read the server's API key from a file (`-` for stdin)
+        #[arg(long, value_name = "PATH", conflicts_with = "api_key")]
+        api_key_file: Option<std::path::PathBuf>,
         /// Print the command and environment that would run, and run nothing
         #[arg(long)]
         dry_run: bool,
@@ -1221,7 +1225,15 @@ enum AgentCommands {
     },
     /// Serve a JSON-lines API on stdin/stdout: start runs, stream their events,
     /// answer their approvals, report status and cancel them (AH-182)
-    Serve,
+    Serve {
+        /// Most runs kept at once, running and finished; a new run evicts the
+        /// oldest finished one and is refused as busy when all are going
+        #[arg(long, default_value_t = 200)]
+        max_runs: usize,
+        /// Days a finished run stays visible to `status`
+        #[arg(long, default_value_t = 30)]
+        retention_days: u64,
+    },
     /// Run a single turn (debugging)
     Step {
         /// Project root containing .jan/agent/agent.toml
@@ -2645,7 +2657,20 @@ async fn run() {
         Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential } => handle_serve(listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential).await,
         Commands::Stop { data_dir } => handle_stop(data_dir).await,
         Commands::Cli { cmd } => handle_cli(cmd).await,
-        Commands::Launch { tool, model, base_url, api_key, dry_run, json, args } => {
+        Commands::Launch { tool, model, base_url, api_key, api_key_file, dry_run, json, args } => {
+            if api_key.is_some() {
+                eprintln!("warning: --api-key is visible in the process list; prefer --api-key-file or FLINT_API_KEY");
+            }
+            let api_key = match api_key_file {
+                Some(path) => match read_api_key_file(&path) {
+                    Ok(key) => Some(key),
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(2);
+                    }
+                },
+                None => api_key,
+            };
             if let Err(e) = app_lib::core::cli::launch_cmd::run(
                 &tool,
                 model.as_deref(),

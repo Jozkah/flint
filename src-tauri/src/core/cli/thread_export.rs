@@ -162,6 +162,32 @@ fn turn_from(message: &Value) -> Option<Turn> {
     })
 }
 
+/// A message as the default (non-verbose) JSON export carries it: tool
+/// messages, reasoning and tool-call parts left out, and absolute paths in
+/// text cut to file names, the same promise the Markdown export makes.
+fn plain_message(message: &Value) -> Option<Value> {
+    let role = message.get("role").and_then(Value::as_str)?;
+    if !matches!(role, "user" | "assistant" | "system") {
+        return None;
+    }
+    let mut message = message.clone();
+    if let Some(parts) = message.get_mut("content").and_then(Value::as_array_mut) {
+        parts.retain(|p| !matches!(p.get("type").and_then(Value::as_str), Some("reasoning" | "tool_call")));
+        for part in parts.iter_mut() {
+            if let Some(text) = part.pointer_mut("/text/value") {
+                if let Some(s) = text.as_str() {
+                    *text = Value::String(strip_absolute_paths(s));
+                }
+            }
+        }
+    } else if let Some(text) = message.get_mut("content") {
+        if let Some(s) = text.as_str() {
+            *text = Value::String(strip_absolute_paths(s));
+        }
+    }
+    Some(message)
+}
+
 fn label(role: &str) -> &'static str {
     match role {
         "user" => "User",
@@ -237,7 +263,7 @@ pub fn render(thread: &Value, messages: &[Value], format: Format, verbose: bool,
             "title": title,
             "exportedAt": exported_at,
             "model": model,
-            "messages": messages,
+            "messages": if verbose { messages.to_vec() } else { messages.iter().filter_map(plain_message).collect() },
         });
         return format!("{}\n", serde_json::to_string_pretty(&doc).unwrap_or_default());
     }
@@ -391,6 +417,25 @@ mod tests {
         assert_eq!(j["messages"].as_array().unwrap().len(), 1);
         let empty = render(&thread, &[], Format::Markdown, false, "2026-10-09T00:00:00Z");
         assert!(empty.contains("_This conversation is empty._"));
+    }
+
+    #[test]
+    fn json_default_drops_paths_reasoning_and_tools_and_verbose_keeps_them() {
+        let thread = json!({ "title": "T" });
+        let msgs = vec![
+            json!({"role":"assistant","content":[
+                {"type":"reasoning","text":{"value":"thinking hard"}},
+                {"type":"tool_call","tool_name":"read","input":{"p":"C:\\a\\b.txt"}},
+                {"type":"text","text":{"value":"see C:\\a\\b.txt"}}
+            ]}),
+            json!({"role":"tool","content":"secret output"}),
+        ];
+        let plain = render(&thread, &msgs, Format::Json, false, "x");
+        assert!(!plain.contains("thinking hard") && !plain.contains("secret output") && !plain.contains("tool_call"));
+        assert!(!plain.contains("C:\\\\a"), "{plain}");
+        assert!(plain.contains("b.txt"));
+        let full = render(&thread, &msgs, Format::Json, true, "x");
+        assert!(full.contains("thinking hard") && full.contains("secret output"));
     }
 
     #[test]

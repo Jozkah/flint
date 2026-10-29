@@ -1,0 +1,256 @@
+[]
+  => Err("no git subcommand given (e.g. [\"status\"])")
+["--no-pager"]
+  => Err("no git subcommand given (e.g. [\"status\"])")
+["--no-pager", "status"]
+  => Ok(GitPlan { program: Git, args: ["status"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["-C", "/x", "status"]
+  => Err("`git -C <dir>` is not supported: pass the folder in the tool's `cwd` parameter and leave -C out of `args`, e.g. {\"cwd\": \"/x\", \"args\": [\"status\"]}")
+["-C/x", "log"]
+  => Err("`git -C <dir>` is not supported: pass the folder in the tool's `cwd` parameter and leave -C out of `args`, e.g. {\"cwd\": \"/x\", \"args\": [\"log\"]}")
+["-c", "core.pager=less", "log"]
+  => Err("global options before the subcommand (`-c`) are not allowed; pass the folder as `cwd` instead of -C, and do not override configuration with -c")
+["status"]
+  => Ok(GitPlan { program: Git, args: ["status"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["log", "--oneline", "-5"]
+  => Ok(GitPlan { program: Git, args: ["log", "--oneline", "-5"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["diff"]
+  => Ok(GitPlan { program: Git, args: ["diff"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["diff", "--cached"]
+  => Ok(GitPlan { program: Git, args: ["diff", "--cached"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["diff", "--output=/tmp/x"]
+  => Err("the option `--output=/tmp/x` is not allowed: it can run other programs or reach outside the allowed folders")
+["diff", "--textconv"]
+  => Ok(GitPlan { program: Git, args: ["diff", "--textconv"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["diff-tree", "HEAD"]
+  => Ok(GitPlan { program: Git, args: ["diff-tree", "HEAD"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["range-diff", "a...b"]
+  => Ok(GitPlan { program: Git, args: ["range-diff", "a...b"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["show", "HEAD"]
+  => Ok(GitPlan { program: Git, args: ["show", "HEAD"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["blame", "src/a.rs"]
+  => Ok(GitPlan { program: Git, args: ["blame", "src/a.rs"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["grep", "foo"]
+  => Ok(GitPlan { program: Git, args: ["grep", "foo"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["merge-tree", "--write-tree", "a", "b"]
+  => Ok(GitPlan { program: Git, args: ["merge-tree", "--write-tree", "a", "b"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["merge-tree", "a", "b"]
+  => Err("`git merge-tree` requires [\"--write-tree\", \"<base>\", \"<head>\"]")
+["merge-tree", "--write-tree", "-x", "b"]
+  => Err("`git merge-tree` requires [\"--write-tree\", \"<base>\", \"<head>\"]")
+["ls-remote", "origin"]
+  => Ok(GitPlan { program: Git, args: ["ls-remote", "origin"], class: Read, destructive: None, reaches_remote: true, remote: Some("origin"), branch: None })
+["ls-remote", "--upload-pack", "x", "origin"]
+  => Err("the option `--upload-pack` is not allowed: it can run other programs or reach outside the allowed folders")
+["ls-remote", "ext::sh -c x"]
+  => Err("the transport in `ext::sh -c x` is not allowed")
+["branch"]
+  => Ok(GitPlan { program: Git, args: ["branch"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["branch", "-a"]
+  => Ok(GitPlan { program: Git, args: ["branch", "-a"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["branch", "feature"]
+  => Ok(GitPlan { program: Git, args: ["branch", "feature"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: Some("feature") })
+["branch", "-d", "feature"]
+  => Ok(GitPlan { program: Git, args: ["branch", "-d", "feature"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: Some("feature") })
+["branch", "-D", "feature"]
+  => Ok(GitPlan { program: Git, args: ["branch", "-D", "feature"], class: Local, destructive: Some("deletes or overwrites a branch even if its commits are not merged"), reaches_remote: false, remote: None, branch: Some("feature") })
+["branch", "-d", "-f", "feature"]
+  => Ok(GitPlan { program: Git, args: ["branch", "-d", "-f", "feature"], class: Local, destructive: Some("deletes or overwrites a branch even if its commits are not merged"), reaches_remote: false, remote: None, branch: Some("feature") })
+["branch", "-m", "old", "new"]
+  => Ok(GitPlan { program: Git, args: ["branch", "-m", "old", "new"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: Some("old") })
+["branch", "--contains", "abc"]
+  => Ok(GitPlan { program: Git, args: ["branch", "--contains", "abc"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["tag"]
+  => Ok(GitPlan { program: Git, args: ["tag"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["tag", "-l"]
+  => Ok(GitPlan { program: Git, args: ["tag", "-l"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["tag", "v1"]
+  => Ok(GitPlan { program: Git, args: ["tag", "v1"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["tag", "-a", "v1", "-m", "msg"]
+  => Ok(GitPlan { program: Git, args: ["tag", "-a", "v1", "-m", "msg"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["tag", "-f", "v1"]
+  => Ok(GitPlan { program: Git, args: ["tag", "-f", "v1"], class: Local, destructive: Some("moves an existing tag"), reaches_remote: false, remote: None, branch: None })
+["tag", "-d", "v1"]
+  => Ok(GitPlan { program: Git, args: ["tag", "-d", "v1"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["tag", "-F", "/etc/passwd", "v1"]
+  => Err("the message file `/etc/passwd` must be a relative path inside the folder")
+["remote"]
+  => Ok(GitPlan { program: Git, args: ["remote"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["remote", "-v"]
+  => Ok(GitPlan { program: Git, args: ["remote", "-v"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["remote", "show", "origin"]
+  => Ok(GitPlan { program: Git, args: ["remote", "show", "origin"], class: Read, destructive: None, reaches_remote: true, remote: Some("origin"), branch: None })
+["remote", "get-url", "origin"]
+  => Ok(GitPlan { program: Git, args: ["remote", "get-url", "origin"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["remote", "add", "up", "https://github.com/a/b.git"]
+  => Ok(GitPlan { program: Git, args: ["remote", "add", "up", "https://github.com/a/b.git"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["remote", "add", "up", "ext::sh -c x"]
+  => Err("the transport in `ext::sh -c x` is not allowed")
+["remote", "set-url", "origin", "file:///tmp/x"]
+  => Err("only https://, ssh:// and git@host: URLs can be cloned, not `file:///tmp/x`")
+["remote", "remove", "up"]
+  => Ok(GitPlan { program: Git, args: ["remote", "remove", "up"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["remote", "frobnicate"]
+  => Err("`git remote frobnicate` is not supported by this tool")
+["stash"]
+  => Ok(GitPlan { program: Git, args: ["stash"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["stash", "list"]
+  => Ok(GitPlan { program: Git, args: ["stash", "list"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["stash", "show"]
+  => Ok(GitPlan { program: Git, args: ["stash", "show"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["stash", "drop"]
+  => Ok(GitPlan { program: Git, args: ["stash", "drop"], class: Local, destructive: Some("discards stashed changes"), reaches_remote: false, remote: None, branch: None })
+["stash", "clear"]
+  => Ok(GitPlan { program: Git, args: ["stash", "clear"], class: Local, destructive: Some("discards stashed changes"), reaches_remote: false, remote: None, branch: None })
+["stash", "pop"]
+  => Ok(GitPlan { program: Git, args: ["stash", "pop"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["config", "--get", "user.name"]
+  => Ok(GitPlan { program: Git, args: ["config", "--get", "user.name"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["config", "user.name"]
+  => Ok(GitPlan { program: Git, args: ["config", "user.name"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["config", "get", "user.name"]
+  => Ok(GitPlan { program: Git, args: ["config", "get", "user.name"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["config", "--list"]
+  => Ok(GitPlan { program: Git, args: ["config", "--list"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["config", "user.name", "x"]
+  => Err("changing Git configuration is not allowed through this tool; ask the user to run it")
+["config", "--global", "user.name"]
+  => Err("`git config --global/--system/--file` is not allowed; ask the user to change their Git configuration")
+["worktree", "list"]
+  => Ok(GitPlan { program: Git, args: ["worktree", "list"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["worktree", "add", "../wt"]
+  => Ok(GitPlan { program: Git, args: ["worktree", "add", "../wt"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["worktree", "remove", "--force", "../wt"]
+  => Ok(GitPlan { program: Git, args: ["worktree", "remove", "--force", "../wt"], class: Local, destructive: Some("removes a worktree with uncommitted changes"), reaches_remote: false, remote: None, branch: None })
+["worktree", "remove", "../wt"]
+  => Ok(GitPlan { program: Git, args: ["worktree", "remove", "../wt"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["worktree", "frob"]
+  => Err("`git worktree` supports list, add, remove, move, prune, lock, unlock, repair")
+["worktree"]
+  => Err("`git worktree` supports list, add, remove, move, prune, lock, unlock, repair")
+["reflog"]
+  => Ok(GitPlan { program: Git, args: ["reflog"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["reflog", "expire"]
+  => Ok(GitPlan { program: Git, args: ["reflog", "expire"], class: Local, destructive: Some("deletes reflog entries, the record that recovers lost commits"), reaches_remote: false, remote: None, branch: None })
+["reflog", "delete", "HEAD@{1}"]
+  => Ok(GitPlan { program: Git, args: ["reflog", "delete", "HEAD@{1}"], class: Local, destructive: Some("deletes reflog entries, the record that recovers lost commits"), reaches_remote: false, remote: None, branch: None })
+["reset", "HEAD~1"]
+  => Ok(GitPlan { program: Git, args: ["reset", "HEAD~1"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["reset", "--hard", "HEAD~1"]
+  => Ok(GitPlan { program: Git, args: ["reset", "--hard", "HEAD~1"], class: Local, destructive: Some("discards uncommitted changes in the working tree"), reaches_remote: false, remote: None, branch: None })
+["reset", "--keep"]
+  => Ok(GitPlan { program: Git, args: ["reset", "--keep"], class: Local, destructive: Some("discards uncommitted changes in the working tree"), reaches_remote: false, remote: None, branch: None })
+["clean", "-n"]
+  => Ok(GitPlan { program: Git, args: ["clean", "-n"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["clean", "-fdn"]
+  => Ok(GitPlan { program: Git, args: ["clean", "-fdn"], class: Read, destructive: None, reaches_remote: false, remote: None, branch: None })
+["clean", "-fd"]
+  => Ok(GitPlan { program: Git, args: ["clean", "-fd"], class: Local, destructive: Some("permanently deletes untracked files"), reaches_remote: false, remote: None, branch: None })
+["checkout", "main"]
+  => Ok(GitPlan { program: Git, args: ["checkout", "main"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: Some("main") })
+["checkout", "-b", "feature"]
+  => Ok(GitPlan { program: Git, args: ["checkout", "-b", "feature"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["checkout", "-B", "feature"]
+  => Ok(GitPlan { program: Git, args: ["checkout", "-B", "feature"], class: Local, destructive: Some("resets an existing branch"), reaches_remote: false, remote: None, branch: None })
+["checkout", "--", "."]
+  => Ok(GitPlan { program: Git, args: ["checkout", "--", "."], class: Local, destructive: Some("overwrites uncommitted changes in the working tree"), reaches_remote: false, remote: None, branch: Some(".") })
+["checkout", "-f", "main"]
+  => Ok(GitPlan { program: Git, args: ["checkout", "-f", "main"], class: Local, destructive: Some("overwrites uncommitted changes in the working tree"), reaches_remote: false, remote: None, branch: Some("main") })
+["switch", "main"]
+  => Ok(GitPlan { program: Git, args: ["switch", "main"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: Some("main") })
+["switch", "-c", "feature"]
+  => Ok(GitPlan { program: Git, args: ["switch", "-c", "feature"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["switch", "-C", "feature"]
+  => Ok(GitPlan { program: Git, args: ["switch", "-C", "feature"], class: Local, destructive: Some("resets an existing branch"), reaches_remote: false, remote: None, branch: None })
+["switch", "--discard-changes", "main"]
+  => Ok(GitPlan { program: Git, args: ["switch", "--discard-changes", "main"], class: Local, destructive: Some("discards uncommitted changes"), reaches_remote: false, remote: None, branch: Some("main") })
+["restore", "a.txt"]
+  => Ok(GitPlan { program: Git, args: ["restore", "a.txt"], class: Local, destructive: Some("discards uncommitted changes in the working tree"), reaches_remote: false, remote: None, branch: None })
+["restore", "--staged", "a.txt"]
+  => Ok(GitPlan { program: Git, args: ["restore", "--staged", "a.txt"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["restore", "--staged", "--worktree", "a.txt"]
+  => Ok(GitPlan { program: Git, args: ["restore", "--staged", "--worktree", "a.txt"], class: Local, destructive: Some("discards uncommitted changes in the working tree"), reaches_remote: false, remote: None, branch: None })
+["rm", "a.txt"]
+  => Ok(GitPlan { program: Git, args: ["rm", "a.txt"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["rm", "-f", "a.txt"]
+  => Ok(GitPlan { program: Git, args: ["rm", "-f", "a.txt"], class: Local, destructive: Some("removes files with uncommitted changes"), reaches_remote: false, remote: None, branch: None })
+["commit", "-m", "msg"]
+  => Ok(GitPlan { program: Git, args: ["commit", "-m", "msg"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["commit", "-F", "msg.txt"]
+  => Ok(GitPlan { program: Git, args: ["commit", "-F", "msg.txt"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["commit", "-F", "../../etc/x"]
+  => Err("the message file `../../etc/x` must be a relative path inside the folder")
+["merge", "feature"]
+  => Ok(GitPlan { program: Git, args: ["merge", "feature"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["merge", "-Xours", "feature"]
+  => Ok(GitPlan { program: Git, args: ["merge", "-Xours", "feature"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["am", "patch.mbox"]
+  => Ok(GitPlan { program: Git, args: ["am", "patch.mbox"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["apply", "x.patch"]
+  => Ok(GitPlan { program: Git, args: ["apply", "x.patch"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["add", "."]
+  => Ok(GitPlan { program: Git, args: ["add", "."], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["mv", "a", "b"]
+  => Ok(GitPlan { program: Git, args: ["mv", "a", "b"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["rebase", "main"]
+  => Ok(GitPlan { program: Git, args: ["rebase", "main"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["cherry-pick", "abc"]
+  => Ok(GitPlan { program: Git, args: ["cherry-pick", "abc"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["revert", "abc"]
+  => Ok(GitPlan { program: Git, args: ["revert", "abc"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["init"]
+  => Ok(GitPlan { program: Git, args: ["init"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["init", "newrepo"]
+  => Ok(GitPlan { program: Git, args: ["init", "newrepo"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["sparse-checkout", "list"]
+  => Ok(GitPlan { program: Git, args: ["sparse-checkout", "list"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["update-index", "--skip-worktree", "a"]
+  => Ok(GitPlan { program: Git, args: ["update-index", "--skip-worktree", "a"], class: Local, destructive: None, reaches_remote: false, remote: None, branch: None })
+["clone", "https://github.com/a/b.git"]
+  => Ok(GitPlan { program: Git, args: ["clone", "https://github.com/a/b.git"], class: Local, destructive: None, reaches_remote: true, remote: Some("https://github.com/a/b.git"), branch: None })
+["clone", "-b", "dev", "https://github.com/a/b.git", "dest"]
+  => Ok(GitPlan { program: Git, args: ["clone", "-b", "dev", "https://github.com/a/b.git", "dest"], class: Local, destructive: None, reaches_remote: true, remote: Some("https://github.com/a/b.git"), branch: None })
+["clone"]
+  => Err("git clone needs a repository URL")
+["clone", "ext::sh -c x"]
+  => Err("the transport in `ext::sh -c x` is not allowed")
+["clone", "--upload-pack=x", "https://github.com/a/b.git"]
+  => Err("the option `--upload-pack=x` is not allowed: it can run other programs or reach outside the allowed folders")
+["fetch"]
+  => Ok(GitPlan { program: Git, args: ["fetch"], class: Local, destructive: None, reaches_remote: true, remote: None, branch: None })
+["fetch", "origin"]
+  => Ok(GitPlan { program: Git, args: ["fetch", "origin"], class: Local, destructive: None, reaches_remote: true, remote: Some("origin"), branch: None })
+["fetch", "origin", "main"]
+  => Ok(GitPlan { program: Git, args: ["fetch", "origin", "main"], class: Local, destructive: None, reaches_remote: true, remote: Some("origin"), branch: Some("main") })
+["fetch", "--all"]
+  => Ok(GitPlan { program: Git, args: ["fetch", "--all"], class: Local, destructive: None, reaches_remote: true, remote: None, branch: None })
+["pull", "origin", "main"]
+  => Ok(GitPlan { program: Git, args: ["pull", "origin", "main"], class: Local, destructive: None, reaches_remote: true, remote: Some("origin"), branch: Some("main") })
+["pull", "-s", "ours", "origin"]
+  => Ok(GitPlan { program: Git, args: ["pull", "-s", "ours", "origin"], class: Local, destructive: None, reaches_remote: true, remote: Some("origin"), branch: None })
+["push"]
+  => Ok(GitPlan { program: Git, args: ["push"], class: Remote, destructive: None, reaches_remote: true, remote: None, branch: None })
+["push", "origin", "main"]
+  => Ok(GitPlan { program: Git, args: ["push", "origin", "main"], class: Remote, destructive: None, reaches_remote: true, remote: Some("origin"), branch: Some("main") })
+["push", "--force", "origin", "main"]
+  => Ok(GitPlan { program: Git, args: ["push", "--force", "origin", "main"], class: Remote, destructive: Some("force push: rewrites history on the remote that others may have"), reaches_remote: true, remote: Some("origin"), branch: Some("main") })
+["push", "origin", "+main"]
+  => Ok(GitPlan { program: Git, args: ["push", "origin", "+main"], class: Remote, destructive: Some("force push: rewrites history on the remote that others may have"), reaches_remote: true, remote: Some("origin"), branch: Some("+main") })
+["push", "origin", ":old"]
+  => Ok(GitPlan { program: Git, args: ["push", "origin", ":old"], class: Remote, destructive: Some("deletes branches or tags on the remote"), reaches_remote: true, remote: Some("origin"), branch: Some(":old") })
+["push", "--delete", "origin", "old"]
+  => Ok(GitPlan { program: Git, args: ["push", "--delete", "origin", "old"], class: Remote, destructive: Some("deletes branches or tags on the remote"), reaches_remote: true, remote: Some("origin"), branch: Some("old") })
+["push", "--repo", "https://github.com/a/b.git"]
+  => Ok(GitPlan { program: Git, args: ["push", "--repo", "https://github.com/a/b.git"], class: Remote, destructive: None, reaches_remote: true, remote: Some("https://github.com/a/b.git"), branch: None })
+["push", "--repo=https://github.com/a/b.git", "main"]
+  => Ok(GitPlan { program: Git, args: ["push", "--repo=https://github.com/a/b.git", "main"], class: Remote, destructive: None, reaches_remote: true, remote: Some("https://github.com/a/b.git"), branch: None })
+["push", "--receive-pack=x", "origin"]
+  => Err("the option `--receive-pack=x` is not allowed: it can run other programs or reach outside the allowed folders")
+["push", "--mirror", "origin"]
+  => Ok(GitPlan { program: Git, args: ["push", "--mirror", "origin"], class: Remote, destructive: Some("force push: rewrites history on the remote that others may have"), reaches_remote: true, remote: Some("origin"), branch: None })
+["gc"]
+  => Err("`git gc` is not supported by this tool. Supported: status, log, diff, show, merge-tree, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)")
+["filter-branch"]
+  => Err("`git filter-branch` is not supported by this tool. Supported: status, log, diff, show, merge-tree, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)")
+["submodule", "update"]
+  => Err("`git submodule` is not supported by this tool. Supported: status, log, diff, show, merge-tree, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)")

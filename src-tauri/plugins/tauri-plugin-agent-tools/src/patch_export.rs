@@ -39,7 +39,11 @@ pub fn unified_patch(inputs: &[FileInput]) -> PatchText {
     sorted.sort_by(|a, b| a.path.cmp(&b.path));
     let mut out = PatchText::default();
     for input in sorted {
-        let (Some(base), Some(new)) = (as_text(input.base.as_deref()), as_text(input.proposed.as_deref()))
+        // A path with a control character (a newline above all) cannot be
+        // written into a text header faithfully, so it ships whole (O04-024).
+        let plain_path = !input.path.chars().any(char::is_control);
+        let (true, Some(base), Some(new)) =
+            (plain_path, as_text(input.base.as_deref()), as_text(input.proposed.as_deref()))
         else {
             out.whole.push(WholeFile {
                 path: input.path.clone(),
@@ -107,6 +111,24 @@ fn range(spec: &str) -> Option<(usize, usize)> {
     Some((start, len))
 }
 
+/// The two names of a `diff --git a/<a> b/<b>` header, `rest` being what
+/// follows `a/`. Split at the midpoint, since the two names are written equal:
+/// splitting at the first " b/" cut a path like `x b/y` in two (O04-024). A
+/// header whose halves are not equal falls back to that first split, so the
+/// caller still reports which names differ.
+fn split_names(rest: &str) -> Option<(&str, &str)> {
+    if rest.len() >= 3 && (rest.len() - 3) % 2 == 0 {
+        let half = (rest.len() - 3) / 2;
+        if rest.is_char_boundary(half) && rest.get(half..half + 3) == Some(" b/") {
+            let (a, b) = (&rest[..half], &rest[half + 3..]);
+            if a == b {
+                return Some((a, b));
+            }
+        }
+    }
+    rest.split_once(" b/")
+}
+
 /// Split a patch written by [`unified_patch`] into its files.
 ///
 /// Strict on purpose: the text comes from outside Jan. Anything this module
@@ -123,7 +145,7 @@ pub fn split_patch(text: &str) -> Result<Vec<FilePatch>, String> {
             return Err(format!("line {}: expected a `diff --git` header", i + 1));
         };
         let rest = rest.trim_end_matches('\n');
-        let Some((a, b)) = rest.split_once(" b/") else {
+        let Some((a, b)) = split_names(rest) else {
             return Err(format!("line {}: malformed `diff --git` header", i + 1));
         };
         if a != b || a.is_empty() {
@@ -334,6 +356,20 @@ mod tests {
         assert!(p.patch.contains("-two\n+TWO\n"));
         assert!(p.patch.contains("deleted file mode 100644\n--- a/gone.txt\n+++ /dev/null"));
         assert!(!p.patch.contains("same.txt"), "an unchanged file is not in the patch");
+    }
+
+    /// O04-024: a path holding " b/" round-trips; one holding a newline
+    /// ships whole instead of breaking the header.
+    #[test]
+    fn awkward_paths_round_trip_or_ship_whole() {
+        let p = unified_patch(&[input("x b/y.txt", Some("one\n"), Some("two\n"))]);
+        let files = split_patch(&p.patch).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "x b/y.txt");
+
+        let p = unified_patch(&[input("evil\n+++ b/x", Some("one\n"), Some("two\n"))]);
+        assert!(p.patch.is_empty(), "{}", p.patch);
+        assert_eq!(p.whole.len(), 1);
     }
 
     #[test]

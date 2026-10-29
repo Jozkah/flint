@@ -461,6 +461,13 @@ pub(super) fn dispatch_kind(body: &serde_json::Value) -> tauri_plugin_agent_tool
 }
 
 /// One line of a failure, short enough for the record to hold it.
+/// Whether this run's own cancel signal has fired. A failed stream is a
+/// cancellation only then, never because the provider's text said "canceled"
+/// (O03-017).
+fn run_stopped() -> bool {
+    tauri_plugin_agent_tools::lifecycle::current().is_some_and(|t| t.is_stopped())
+}
+
 pub(super) fn bound_detail(text: &str) -> String {
     text.chars().take(400).collect()
 }
@@ -517,7 +524,7 @@ impl HttpModelInvoker {
             )
             .await
             .map_err(|e| {
-                tauri_plugin_agent_tools::harness_error::classify_upstream_at(&e, Stage::Stream)
+                tauri_plugin_agent_tools::harness_error::classify_upstream_at(&e, Stage::Stream, run_stopped())
             })
         } else {
             stream_openai_chat_completions(
@@ -532,7 +539,7 @@ impl HttpModelInvoker {
             )
             .await
             .map_err(|e| {
-                tauri_plugin_agent_tools::harness_error::classify_upstream_at(&e, Stage::Stream)
+                tauri_plugin_agent_tools::harness_error::classify_upstream_at(&e, Stage::Stream, run_stopped())
             })
         }
     }

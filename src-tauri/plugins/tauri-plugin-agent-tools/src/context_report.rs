@@ -261,7 +261,6 @@ pub fn classify(
     provider_prompt_tokens: Option<u64>,
     deferred_tools: u64,
 ) -> Breakdown {
-    let mut system_bytes = 0usize;
     let mut message_bytes = 0usize;
     let mut compacted_bytes = 0usize;
     let mut attachment_bytes = 0usize;
@@ -278,7 +277,7 @@ pub fn classify(
                 .get("tool_calls")
                 .map_or(0, |c| serde_json::to_string(c).map_or(0, |s| s.len()));
             if role == "system" {
-                system_bytes += text;
+                // Counted from the text below, section by section.
                 continue;
             }
             let is_summary = message
@@ -329,7 +328,16 @@ pub fn classify(
         .map(|list| {
             list.iter()
                 .filter(|m| m.get("role").and_then(Value::as_str) == Some("system"))
-                .filter_map(|m| m.get("content").and_then(Value::as_str))
+                // A system message's content is a string or a list of
+                // text parts; both are the system prompt.
+                .flat_map(|m| match m.get("content") {
+                    Some(Value::String(text)) => vec![text.as_str()],
+                    Some(Value::Array(parts)) => parts
+                        .iter()
+                        .filter_map(|p| p.get("text").and_then(Value::as_str))
+                        .collect(),
+                    _ => Vec::new(),
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -343,7 +351,6 @@ pub fn classify(
         _ => {}
     }
     let system_text = system_parts.join("\n");
-    let _ = system_bytes;
     for (category, bytes) in split_system(&system_text) {
         push(category, tokens_of(bytes), 0);
     }
@@ -588,6 +595,23 @@ mod tests {
             assert!(b.slice(Category::Skills).unwrap().tokens > 0);
             assert!(b.used_tokens >= tokens_of(system.len()));
         }
+    }
+
+    /// A `role: "system"` message whose content is a list of text parts is
+    /// still the system prompt (O03-015).
+    #[test]
+    fn a_system_message_with_array_content_is_counted() {
+        let system = "You are helpful.\n\n# Project Context\n\nproject rules here";
+        let p = json!({
+            "model": "m",
+            "messages": [
+                { "role": "system", "content": [{ "type": "text", "text": system }] },
+                { "role": "user", "content": "hello there" }
+            ]
+        });
+        let b = classify(&p, Some(10_000), None, 0);
+        assert!(b.slice(Category::SystemPrompt).unwrap().tokens > 0);
+        assert!(b.slice(Category::ProjectContext).unwrap().tokens > 0);
     }
 
     /// A provider's own count wins, and says so; the categories stay estimates.

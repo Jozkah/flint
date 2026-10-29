@@ -125,9 +125,9 @@ pub struct Meter {
     job: windows_sys::Win32::Foundation::HANDLE,
 }
 
-// The job handle is only read and closed; Windows handles may be used from any
-// thread.
+// SAFETY: the job handle is only queried and closed; Windows kernel handles may be used from any thread.
 unsafe impl Send for Meter {}
+// SAFETY: `read` only queries the handle, which the kernel synchronises; nothing mutates `Meter` through `&self`.
 unsafe impl Sync for Meter {}
 
 #[cfg(windows)]
@@ -138,20 +138,29 @@ impl Meter {
         use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
         use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
+        // SAFETY: OpenProcess takes plain values; the returned handle is checked for null below.
         let process = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid) };
         if process.is_null() {
+            // SAFETY: GetLastError only reads the calling thread's last-error value.
             return Err(format!("the command's process could not be opened (error {})", unsafe { GetLastError() }));
         }
+        // SAFETY: null security attributes and name are allowed; the returned handle is checked for null below.
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job.is_null() {
+            // SAFETY: GetLastError only reads the calling thread's last-error value.
             let error = unsafe { GetLastError() };
+            // SAFETY: `process` was opened above and is not used after this close.
             unsafe { CloseHandle(process) };
             return Err(format!("no job object for the measurement (error {error})"));
         }
+        // SAFETY: `job` and `process` are both live handles opened above.
         let assigned = unsafe { AssignProcessToJobObject(job, process) };
+        // SAFETY: GetLastError only reads the calling thread's last-error value.
         let error = unsafe { GetLastError() };
+        // SAFETY: `process` was opened above and is not used after this close.
         unsafe { CloseHandle(process) };
         if assigned == 0 {
+            // SAFETY: `job` was created above, is owned here and is not used after this close.
             unsafe { CloseHandle(job) };
             return Err(format!("the command could not be placed in a job for measurement (error {error})"));
         }
@@ -164,8 +173,11 @@ impl Meter {
             JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation, QueryInformationJobObject,
             JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         };
+        // SAFETY: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut basic: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: JOBOBJECT_EXTENDED_LIMIT_INFORMATION is a plain C struct of integers; all-zero is valid.
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: `self.job` is live for `self`'s lifetime; pointer and size describe `basic`, a local that outlives the call.
         let got_basic = unsafe {
             QueryInformationJobObject(
                 self.job,
@@ -175,6 +187,7 @@ impl Meter {
                 std::ptr::null_mut(),
             )
         } != 0;
+        // SAFETY: `self.job` is live for `self`'s lifetime; pointer and size describe `limits`, a local that outlives the call.
         let got_limits = unsafe {
             QueryInformationJobObject(
                 self.job,
@@ -204,6 +217,7 @@ impl Drop for Meter {
     fn drop(&mut self) {
         // The job has no kill-on-close limit: closing the measurement never
         // touches the command it measured.
+        // SAFETY: `self.job` was created in `attach`, is owned by this `Meter` and closed only here.
         unsafe { windows_sys::Win32::Foundation::CloseHandle(self.job) };
     }
 }

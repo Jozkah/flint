@@ -32,6 +32,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -198,9 +199,47 @@ impl State {
     }
 }
 
+/// How much one server keeps. `max_runs` bounds the run table (running and
+/// finished together): a new run evicts the oldest finished one, and is
+/// refused as busy when every slot holds a run still going. A finished run
+/// is forgotten once it is older than `retention`.
+#[derive(Debug, Clone, Copy)]
+pub struct ServeLimits {
+    pub max_runs: usize,
+    pub retention: Duration,
+}
+
+impl Default for ServeLimits {
+    fn default() -> Self {
+        Self { max_runs: 200, retention: Duration::from_secs(30 * 24 * 60 * 60) }
+    }
+}
+
+/// Drop finished runs past retention, then make room for one more run.
+/// `false` when the table is full of runs still going.
+fn make_room(table: &mut BTreeMap<String, Entry>, limits: ServeLimits) -> bool {
+    table.retain(|_, e| e.finished_at.is_none_or(|at| at.elapsed() < limits.retention));
+    while table.len() >= limits.max_runs.max(1) {
+        let oldest = table
+            .iter()
+            .filter_map(|(run, e)| e.finished_at.map(|at| (at, run.clone())))
+            .min()
+            .map(|(_, run)| run);
+        match oldest {
+            Some(run) => {
+                table.remove(&run);
+            }
+            None => return false,
+        }
+    }
+    true
+}
+
 struct Entry {
     task: String,
     state: State,
+    /// When the run reported its result; `None` while it is going.
+    finished_at: Option<std::time::Instant>,
     cancel: Option<oneshot::Sender<()>>,
     approvals: ApprovalSlot,
     handle: Option<tokio::task::JoinHandle<()>>,
@@ -222,7 +261,7 @@ fn not_found(run: &str) -> HarnessError {
 
 /// Serve requests from `input` until it ends or `shutdown` is asked for, then
 /// cancel what is still running and wait for every run to report.
-pub(crate) async fn serve<R, W>(input: R, output: W, runner: Arc<dyn Runner>)
+pub(crate) async fn serve<R, W>(input: R, output: W, runner: Arc<dyn Runner>, limits: ServeLimits)
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -267,6 +306,16 @@ where
         };
         match command {
             Command::Run(spec) => {
+                let mut table = runs.lock().await;
+                if !make_room(&mut table, limits) {
+                    let busy = HarnessError::new(
+                        ErrorKind::RateLimited,
+                        format!("busy: {} runs are still going; retry when one ends", table.len()),
+                    )
+                    .at(Stage::Startup);
+                    let _ = emit.send(error_response(&id, &busy));
+                    continue;
+                }
                 next += 1;
                 let run = format!("r{next}");
                 let (cancel_tx, cancel_rx) = oneshot::channel();
@@ -274,10 +323,9 @@ where
                 let task = spec.task.clone();
                 // The entry exists before the run can report, so a run that
                 // ends at once still finds itself to mark.
-                let mut table = runs.lock().await;
                 table.insert(
                     run.clone(),
-                    Entry { task, state: State::Running, cancel: Some(cancel_tx), approvals: approvals.clone(), handle: None },
+                    Entry { task, state: State::Running, finished_at: None, cancel: Some(cancel_tx), approvals: approvals.clone(), handle: None },
                 );
                 let _ = emit.send(response(&id, json!({ "run": run })));
                 let future = runner.run(run.clone(), spec, emit.clone(), approvals, cancel_rx);
@@ -287,6 +335,7 @@ where
                     if let Some(entry) = runs_for_task.lock().await.get_mut(&run_for_task) {
                         entry.state = State::of(&result);
                         entry.cancel = None;
+                        entry.finished_at = Some(std::time::Instant::now());
                     }
                     let _ = emit_for_task.send(json!({ "type": "result", "run": run_for_task, "result": result }));
                 });
@@ -529,9 +578,9 @@ async fn run_agent(
 }
 
 /// `flint cli agent serve`: the API on this process's stdin and stdout.
-pub async fn serve_stdio() {
+pub async fn serve_stdio(limits: ServeLimits) {
     let input = tokio::io::BufReader::new(tokio::io::stdin());
-    serve(input, tokio::io::stdout(), Arc::new(AgentRunner)).await;
+    serve(input, tokio::io::stdout(), Arc::new(AgentRunner), limits).await;
 }
 
 #[cfg(test)]
@@ -617,10 +666,14 @@ mod tests {
 
     impl Client {
         fn start() -> Self {
+            Self::start_with(ServeLimits::default())
+        }
+
+        fn start_with(limits: ServeLimits) -> Self {
             let live = Arc::new(AtomicUsize::new(0));
             let (writer, server_in) = tokio::io::duplex(64 * 1024);
             let (server_out, reader) = tokio::io::duplex(64 * 1024);
-            let server = tokio::spawn(serve(BufReader::new(server_in), server_out, Arc::new(Stub { live: live.clone() })));
+            let server = tokio::spawn(serve(BufReader::new(server_in), server_out, Arc::new(Stub { live: live.clone() }), limits));
             Self { writer: Some(writer), lines: BufReader::new(reader).lines(), server, live }
         }
 
@@ -723,6 +776,37 @@ mod tests {
         c.send(r#"{"id":5,"method":"shutdown"}"#).await;
         assert_eq!(c.response(5).await["result"]["shuttingDown"], true);
         tokio::time::timeout(Duration::from_secs(5), c.server).await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_full_table_evicts_finished_runs_and_refuses_when_all_are_going() {
+        let mut c = Client::start_with(ServeLimits { max_runs: 1, retention: Duration::from_secs(3600) });
+        c.send(r#"{"id":1,"method":"run","params":{"task":"finish"}}"#).await;
+        c.until(|m| m["type"] == "result" && m["run"] == "r1").await;
+        c.send(r#"{"id":2,"method":"run","params":{"task":"wait"}}"#).await;
+        assert_eq!(c.response(2).await["result"]["run"], "r2", "the finished run made room");
+        c.send(r#"{"id":3,"method":"run","params":{"task":"wait"}}"#).await;
+        let busy = c.response(3).await;
+        assert_eq!(kind(&busy), "rate_limited");
+        assert!(busy["error"]["message"].as_str().unwrap().contains("busy"));
+        c.send(r#"{"id":4,"method":"status"}"#).await;
+        assert_eq!(c.response(4).await["result"]["runs"], json!([{ "run": "r2", "state": "running", "task": "wait" }]));
+        c.send(r#"{"id":5,"method":"shutdown"}"#).await;
+        c.response(5).await;
+    }
+
+    #[tokio::test]
+    async fn finished_runs_past_retention_are_forgotten() {
+        let mut c = Client::start_with(ServeLimits { max_runs: 10, retention: Duration::ZERO });
+        c.send(r#"{"id":1,"method":"run","params":{"task":"finish"}}"#).await;
+        c.until(|m| m["type"] == "result" && m["run"] == "r1").await;
+        c.send(r#"{"id":2,"method":"run","params":{"task":"finish"}}"#).await;
+        c.until(|m| m["type"] == "result" && m["run"] == "r2").await;
+        c.send(r#"{"id":3,"method":"status"}"#).await;
+        let runs = c.response(3).await["result"]["runs"].clone();
+        assert_eq!(runs[0]["run"], "r2", "r1 was dropped when r2 started: {runs}");
+        c.send(r#"{"id":4,"method":"shutdown"}"#).await;
+        c.response(4).await;
     }
 
     #[tokio::test]

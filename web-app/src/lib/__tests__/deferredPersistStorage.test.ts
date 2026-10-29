@@ -32,6 +32,19 @@ describe('deferredPersistStorage', () => {
     expect(inner.setItem).toHaveBeenCalledWith('k', value(3))
   })
 
+  it('dispose writes what is pending and removes its page listeners', async () => {
+    const add = vi.spyOn(document, 'addEventListener')
+    const remove = vi.spyOn(document, 'removeEventListener')
+    const s = deferredPersistStorage(inner, 100)
+    const added = add.mock.calls.find((c) => c[0] === 'visibilitychange')?.[1]
+    s.setItem('k', value(7))
+    await s.dispose()
+    expect(inner.setItem).toHaveBeenCalledWith('k', value(7))
+    expect(remove).toHaveBeenCalledWith('visibilitychange', added)
+    add.mockRestore()
+    remove.mockRestore()
+  })
+
   it('flush writes pending value at once', async () => {
     const s = deferredPersistStorage(inner, 100)
     s.setItem('k', value(5))

@@ -104,11 +104,17 @@ export async function redactPersistedSessions(raw: string): Promise<string> {
   const sessions = doc.state.sessions as unknown[]
 
   if (cache.size > CACHE_LIMIT) cache.clear()
+  // This call's own results: a concurrent call may clear the shared cache
+  // while these redactions are awaited, and a string missing from it would
+  // be written as UNREDACTABLE instead of its redacted form.
+  const local = new Map<string, string>()
   const wanted = new Set<string>()
   for (const session of sessions) {
     if (isRec(session)) {
       mapSessionStrings(session, (s) => {
-        if (!cache.has(s)) wanted.add(s)
+        const hit = cache.get(s)
+        if (hit === undefined) wanted.add(s)
+        else local.set(s, hit)
         return s
       })
     }
@@ -116,12 +122,19 @@ export async function redactPersistedSessions(raw: string): Promise<string> {
   if (wanted.size > 0) {
     await Promise.all(
       [...wanted].map(async (s) => {
-        cache.set(s, await redactText(s))
+        const redacted = await redactText(s)
+        local.set(s, redacted)
+        cache.set(s, redacted)
       })
     )
   }
   const next = sessions.map((session) =>
-    isRec(session) ? mapSessionStrings(session, (s) => cache.get(s) ?? UNREDACTABLE) : session
+    isRec(session)
+      ? mapSessionStrings(
+          session,
+          (s) => local.get(s) ?? cache.get(s) ?? UNREDACTABLE
+        )
+      : session
   )
   return JSON.stringify({ ...doc, state: { ...doc.state, sessions: next } })
 }

@@ -170,12 +170,17 @@ fn expand_tabs(s: &str) -> String {
         return s.to_string();
     }
     let mut out = String::with_capacity(s.len());
+    // The column in terminal cells, so a tab after CJK text still lands on a
+    // tab stop (CLIB-039).
+    let mut col = 0;
     for ch in s.chars() {
         if ch == '\t' {
-            let pad = TAB_WIDTH - (out.chars().count() % TAB_WIDTH);
+            let pad = TAB_WIDTH - (col % TAB_WIDTH);
             out.push_str(&" ".repeat(pad));
+            col += pad;
         } else {
             out.push(ch);
+            col += super::cell_width(ch);
         }
     }
     out

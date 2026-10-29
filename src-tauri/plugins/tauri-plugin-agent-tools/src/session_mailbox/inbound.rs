@@ -65,11 +65,43 @@ impl Mailbox {
 
     // -- held mail ---------------------------------------------------------
 
+    /// When the next sweep is due, kept on disk so every process sharing the
+    /// mailbox folder skips the sweep until then (AGTB-023).
+    fn sweep_due_path(&self) -> PathBuf {
+        self.root.join("sweep-due")
+    }
+
+    /// The stored due time, `None` when missing or unreadable (sweep now).
+    fn sweep_due(&self) -> Option<i64> {
+        std::fs::read_to_string(self.sweep_due_path())
+            .ok()
+            .and_then(|t| t.trim().parse().ok())
+    }
+
+    /// Forget the stored due time, so the next sweep runs.
+    pub(super) fn clear_sweep_due(&self) {
+        let _ = std::fs::remove_file(self.sweep_due_path());
+    }
+
+    /// Store when the next sweep is due: the earliest remaining deadline, but
+    /// never later than `now + HELD_TTL_MS`. That cap is what makes the stored
+    /// time safe across processes without anyone lowering it: every held
+    /// message and subscription added after this sweep read the state gets a
+    /// deadline at least [`HELD_TTL_MS`] after its own `now`, so it can never
+    /// fall due before the stored time. The one path that writes an earlier
+    /// deadline (rebuilding a corrupt delivery state) clears the file instead.
+    fn store_sweep_due(&self, now: i64, earliest: Option<i64>) {
+        let cap = now + HELD_TTL_MS;
+        let due = earliest.map_or(cap, |e| e.min(cap));
+        let _ = write_json_atomically(&self.sweep_due_path(), &due);
+    }
+
     /// Drop what `ids` held past [`HELD_TTL_MS`]. Under the lock; returns what
-    /// was dropped.
-    fn expire_held_locked(&self, ids: &[String]) -> Vec<(String, MailEnvelope)> {
+    /// was dropped and the earliest deadline of what is still held.
+    fn expire_held_locked(&self, ids: &[String]) -> (Vec<(String, MailEnvelope)>, Option<i64>) {
         let now = self.now();
         let mut out = Vec::new();
+        let mut earliest: Option<i64> = None;
         for id in ids {
             // Cheap precheck: most sessions hold nothing.
             let has_held = std::fs::read_to_string(self.state_path(id))
@@ -82,8 +114,13 @@ impl Mailbox {
             let mut dropped = Vec::new();
             for e in &inbox {
                 if let Some(entry) = state.get(&e.id) {
-                    if entry.status == DeliveryStatus::Held && entry.at + HELD_TTL_MS <= now {
-                        dropped.push(e.clone());
+                    if entry.status == DeliveryStatus::Held {
+                        let deadline = entry.at + HELD_TTL_MS;
+                        if deadline <= now {
+                            dropped.push(e.clone());
+                        } else {
+                            earliest = Some(earliest.map_or(deadline, |d| d.min(deadline)));
+                        }
                     }
                 }
             }
@@ -100,11 +137,13 @@ impl Mailbox {
                 );
             }
             if write_json_atomically(&self.state_path(id), &state).is_err() {
+                // Still due: the next sweep tries again.
+                earliest = Some(now);
                 continue;
             }
             out.extend(dropped.into_iter().map(|e| (id.clone(), e)));
         }
-        out
+        (out, earliest)
     }
 
     /// Tell the sender of a held message that it was dropped. A notice that is
@@ -148,7 +187,7 @@ impl Mailbox {
     pub(super) fn sweep_held(&self, session_id: &str) {
         let expired = {
             let _guard = lock();
-            self.expire_held_locked(&[session_id.to_string()])
+            self.expire_held_locked(&[session_id.to_string()]).0
         };
         self.report_expired(expired);
     }
@@ -156,8 +195,15 @@ impl Mailbox {
     /// Expire held mail and idle subscriptions everywhere. Called from the
     /// entry points the renderer and the tools poll, so a deadline passes even
     /// for a session nobody is looking at.
+    ///
+    /// Runs only when due: the earliest deadline is stored on disk, so a poll
+    /// before then (from any process) reads one small file instead of the
+    /// registry and every session's state (AGTB-023).
     pub(super) fn sweep_all(&self) {
         let now = self.now();
+        if self.sweep_due().is_some_and(|due| now < due) {
+            return;
+        }
         let (expired, lapsed) = {
             let _guard = lock();
             let ids: Vec<String> = self
@@ -169,14 +215,19 @@ impl Mailbox {
                         .collect()
                 })
                 .unwrap_or_default();
-            let expired = self.expire_held_locked(&ids);
+            let (expired, held_due) = self.expire_held_locked(&ids);
             let mut subs = self.read_subs();
             let (lapsed, kept): (Vec<IdleSub>, Vec<IdleSub>) = subs
                 .drain(..)
                 .partition(|s| s.created_at + IDLE_SUB_TTL_MS <= now);
-            if !lapsed.is_empty() {
-                let _ = self.write_subs(&kept);
+            let mut due = held_due;
+            if !lapsed.is_empty() && self.write_subs(&kept).is_err() {
+                due = Some(now);
             }
+            if let Some(sub_due) = kept.iter().map(|s| s.created_at + IDLE_SUB_TTL_MS).min() {
+                due = Some(due.map_or(sub_due, |d| d.min(sub_due)));
+            }
+            self.store_sweep_due(now, due);
             (expired, lapsed)
         };
         self.report_expired(expired);

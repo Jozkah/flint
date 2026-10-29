@@ -483,11 +483,38 @@ fn report_from_the_last_request(snapshot: &ContextSnapshot) -> Option<ContextRep
 
 /// Truncate to `max` chars with a trailing ellipsis (char-safe).
 fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max.max(1) {
+    if str_width(s) <= max.max(1) {
         return s.to_string();
     }
-    let head: String = s.chars().take(max.saturating_sub(1).max(1)).collect();
+    let (head, _) = take_width(s, max.saturating_sub(1).max(1));
     format!("{head}…")
+}
+
+/// Terminal cells `c` takes: 2 for CJK and most emoji, 0 for combining marks
+/// and controls, 1 otherwise (P2C-014, CLIB-039).
+fn cell_width(c: char) -> usize {
+    unicode_width::UnicodeWidthChar::width(c).unwrap_or(0)
+}
+
+/// Terminal cells `s` takes.
+fn str_width(s: &str) -> usize {
+    s.chars().map(cell_width).sum()
+}
+
+/// The longest prefix of `s` that fits in `max` cells, and its width. A wide
+/// glyph that would straddle the limit is left out rather than cut.
+fn take_width(s: &str, max: usize) -> (String, usize) {
+    let mut used = 0;
+    let mut out = String::new();
+    for c in s.chars() {
+        let w = cell_width(c);
+        if used + w > max {
+            break;
+        }
+        used += w;
+        out.push(c);
+    }
+    (out, used)
 }
 
 /// `s` on one line: every newline (and the whitespace around it) becomes a
