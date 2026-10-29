@@ -71,10 +71,10 @@ impl Schedule {
     /// The instant a `Once` schedule fires at in `tz`; `None` for other kinds
     /// or an unparsable time.
     pub fn once_instant_in(&self, tz: chrono_tz::Tz) -> Option<DateTime<Utc>> {
-        use chrono::TimeZone;
         let Schedule::Once { at } = self else { return None };
         let naive = Schedule::parse_once(at).ok()?;
-        tz.from_local_datetime(&naive).earliest().map(|d| d.with_timezone(&Utc))
+        // Same rule as cron fires: a time in a DST gap fires where the gap ends.
+        super::cron::resolve(tz, naive)
     }
 
     /// The cron expressions that express this schedule. A preset with times on
@@ -549,6 +549,15 @@ mod tests {
         assert_eq!(old, Schedule::Cron { expr: "0 9 * * *".into() });
         let once: Schedule = serde_json::from_str(r#"{"kind":"once","at":"2099-03-04T09:30"}"#).unwrap();
         assert!(once.is_once());
+    }
+
+    #[test]
+    fn a_one_time_task_in_the_dst_gap_fires_where_the_gap_ends() {
+        // Berlin springs forward 2099-03-29 02:00 -> 03:00 (last Sunday of March).
+        let s = Schedule::Once { at: "2099-03-29T02:30".into() };
+        let tz: chrono_tz::Tz = "Europe/Berlin".parse().unwrap();
+        let at = s.once_instant_in(tz).expect("a gap time still fires");
+        assert_eq!(at.to_rfc3339(), "2099-03-29T01:00:00+00:00");
     }
 
     #[test]
