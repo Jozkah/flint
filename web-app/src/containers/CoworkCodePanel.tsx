@@ -7,36 +7,18 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
+import { FolderTree } from 'lucide-react'
+import { projectReadFile } from '@janhq/tauri-plugin-agent-tools-api'
+import { toast } from 'sonner'
 import { toAssetUrl } from '@/lib/assetPath'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  CopyCheck,
-  FileSymlink,
-  Columns2,
-  File as FileIcon,
-  Folder,
-  FolderOpen,
-  FolderTree,
-  Pencil,
-  WrapText,
-  X,
-  XCircle,
-} from 'lucide-react'
-import {
-  projectListDir,
-  projectReadFile,
-  type ProjectEntry,
-} from '@janhq/tauri-plugin-agent-tools-api'
 import { Button } from '@/components/ui/button'
 import { CodeViewer } from '@/components/CodeViewer'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
-import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
+import { getServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { resolveInRoot } from '@/lib/coworkPreview'
-import { toast } from 'sonner'
 import {
   decideDrop,
   dragHasFiles,
@@ -52,60 +34,46 @@ import {
   closeTab,
   externalTab,
   emptyCodePanelState,
-  isSourcePath,
   isTabStale,
   openTab,
   tabBelongsToSession,
-  closeOtherTabs,
-  closeAllTabs,
-  focusTab,
-  neighbourTabId,
   activeTab,
   tabId,
-  projectKeyOf,
   projectTab,
   sandboxTab,
   toggleDir,
   writeCountsByPath,
+  detectLanguage,
   type CodePanelState,
   type CodeRef,
-  type CodeTab,
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
 import { readTextBounded } from '@/lib/boundedRead'
 import { errorText } from '@/lib/errorText'
-import { isNotFoundError } from '@/lib/fileErrors'
 import { detectEol, toLf, withEol } from '@/lib/lineEndings'
 import { isExecutablePath, toOsPath } from '@/lib/pathOpen'
 import { changedLines, collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { useTheme } from '@/hooks/useTheme'
 import {
-  checkDisk,
-  discardBuffer,
   dropBuffer,
   isDirty,
-  markSaved,
   planUserWrite,
   type Buffers,
   type EditAccess,
   type EditTarget,
-  type ReadOnlyReason,
 } from '@/lib/coworkCodeEdit'
 import { saveUserEdit, type SaveUserEdit } from '@/lib/coworkCodeSave'
+import type { FileState } from '@/lib/coworkCodeRead'
 import {
   NO_BUFFERS,
   NO_USER_EDITS,
   useCodeBuffers,
   useCoworkUserEdits,
 } from '@/hooks/useCoworkUserEdits'
-import { detectLanguage } from '@/lib/coworkCode'
-
-import {
-  BlameCard,
-  CodeOverlayMenu,
-  HunkPopover,
-} from '@/containers/CodeGitOverlays'
+import { useCodePanelFiles } from '@/hooks/useCodePanelFiles'
+import { useCodePanelSave } from '@/hooks/useCodePanelSave'
+import { BlameCard, HunkPopover } from '@/containers/CodeGitOverlays'
 import {
   useBlameHover,
   useBlameLabel,
@@ -117,35 +85,27 @@ import {
   sandboxHunks,
   type ChangeHunk,
 } from '@/lib/codeGutter'
-import { createPortal } from 'react-dom'
+import { CodeFileTree } from '@/containers/codePanel/CodeFileTree'
+import { CodeTabStrip } from '@/containers/codePanel/CodeTabStrip'
+import {
+  CodeFileNotice,
+  Notice,
+} from '@/containers/codePanel/CodeFileNotice'
+import {
+  ConflictBanner,
+  ExternalFileBanner,
+  SaveErrorBanner,
+  StaleFileBanner,
+  UnsavedCloseBanner,
+} from '@/containers/codePanel/CodePanelBanners'
+import { CodeEditToolbar } from '@/containers/codePanel/CodeEditToolbar'
+import {
+  SandboxPeekPopover,
+  type PeekNote,
+} from '@/containers/codePanel/SandboxPeekPopover'
 
 // The editor and its grammars load on first edit, not with the app.
 const CodeEditor = lazy(() => import('@/components/CodeEditor'))
-
-type DirState =
-  | { status: 'loading' }
-  | { status: 'ready'; entries: ProjectEntry[]; truncated: boolean }
-  /** The OS refused: a state of its own, not a failure to report raw. */
-  | { status: 'denied' }
-  | { status: 'error'; message: string }
-
-type FileState =
-  | { status: 'loading' }
-  /** The project this tab came from is no longer attached. */
-  | { status: 'detached' }
-  | { status: 'ready'; content: string }
-  | { status: 'oversized'; size: number; preview?: string }
-  | { status: 'binary' }
-  /** Not there (any more). `detail` is the technical message. */
-  | { status: 'missing'; detail?: string }
-  | { status: 'denied' }
-  | { status: 'sensitive' }
-  /**
-   * An external tab whose handle did not survive. Tab metadata persists;
-   * the capability to read the file does not.
-   */
-  | { status: 'external-gone' }
-  | { status: 'error'; message: string }
 
 type Props = {
   /** The attached project root; null shows the attach empty state. */
@@ -202,14 +162,6 @@ type Props = {
   ) => Promise<'applied' | 'changed'>
 }
 
-type Conflict = {
-  id: string
-  /** What the file holds on disk now. */
-  disk: string
-  /** Raised by a save attempt, which Overwrite then completes. */
-  fromSave: boolean
-}
-
 /**
  * The Code rail: project explorer, source tabs and the read-only viewer,
  * inside the same CoworkSidePanel chrome as preview and diff.
@@ -240,7 +192,6 @@ export function CoworkCodePanel({
   onApplySandboxHunk,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
-  const serviceHub = useServiceHub()
   const state = stateProp ?? emptyCodePanelState()
   const isDark = useTheme((s) => s.isDark)
 
@@ -256,13 +207,6 @@ export function CoworkCodePanel({
   const userEdits = useCoworkUserEdits((s) =>
     sessionKey ? (s.bySession[sessionKey]?.edits ?? NO_USER_EDITS) : NO_USER_EDITS
   )
-  const [conflict, setConflict] = useState<Conflict | null>(null)
-  const [pendingClose, setPendingClose] = useState<{
-    ids: string[]
-    next: CodePanelState
-  } | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const [selection, setSelection] = useState<CodeRef | null>(null)
 
   const [dragOver, setDragOver] = useState(false)
@@ -282,18 +226,6 @@ export function CoworkCodePanel({
   /** Latest selection number per external tab; see `openExternalFiles`. */
   const externalReadSeq = useRef(new Map<string, number>())
 
-  const [dataFolder, setDataFolder] = useState<string | null>(null)
-  const [dirs, setDirs] = useState<Map<string, DirState>>(new Map())
-  const [files, setFiles] = useState<Map<string, FileState>>(new Map())
-  // Write count per tab at the moment its content was read. A later write to
-  // the same path pushes the live count past this one, which is what makes the
-  // open copy stale.
-  const [loadedAt, setLoadedAt] = useState<Map<string, number>>(new Map())
-  // Read through a ref inside `loadFile`: the transcript changes on every
-  // streamed token, and depending on it directly would give `loadFile` a new
-  // identity each time, re-firing the effect that loads the active tab.
-  const turnsRef = useRef(turns)
-  turnsRef.current = turns
   const writeCounts = useMemo(() => writeCountsByPath(turns), [turns])
 
   /**
@@ -403,264 +335,30 @@ export function CoworkCodePanel({
     () => state.tabs.length === 0
   )
 
-  /**
-   * Which project the panel is currently showing, and a counter that moves
-   * whenever that changes.
-   *
-   * The backend reads are plain promises with no cancellation, so a read
-   * started against project A can resolve after A is detached or B attached.
-   * Every write below is gated on the generation captured when the read
-   * started, which is what stops A's bytes appearing under B's tree.
-   */
-  const projectKey = useMemo(() => projectKeyOf(folder), [folder])
-  /**
-   * Every root a read can be issued against. The project is one of them; the
-   * session and its workspace are the others, and a change to any of them
-   * invalidates work in flight. Keying only on the project let a sandbox read
-   * from session A land in session B.
-   */
-  const rootIdentity = `${projectKey ?? ''}\u0000${sessionKey ?? ''}\u0000${workspacePath ?? ''}`
-  const generation = useRef(0)
-  /** In-flight sandbox reads by tab id, aborted when superseded or on unmount. */
-  const readAborts = useRef(new Map<string, AbortController>())
-  useEffect(() => {
-    const aborts = readAborts.current
-    return () => {
-      for (const c of aborts.values()) c.abort()
-      aborts.clear()
-    }
-  }, [rootIdentity])
-  const currentGen = useRef(0)
-  const lastRootIdentity = useRef<string | undefined>(undefined)
-  if (lastRootIdentity.current !== rootIdentity) {
-    lastRootIdentity.current = rootIdentity
-    generation.current += 1
-  }
-  currentGen.current = generation.current
-
-  useEffect(() => {
-    let alive = true
-    void serviceHub
-      .app()
-      .getJanDataFolder()
-      .then((path) => {
-        if (alive) setDataFolder(path ?? null)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [serviceHub])
-
-  /** Apply a result only if the project it was read for is still attached. */
-  const setDir = useCallback((gen: number, rel: string, value: DirState) => {
-    if (gen !== currentGen.current) return
-    setDirs((current) => new Map(current).set(rel, value))
-  }, [])
-  const setFile = useCallback((gen: number, id: string, value: FileState) => {
-    if (gen !== currentGen.current) return
-    setFiles((current) => new Map(current).set(id, value))
-  }, [])
-
-  const loadDir = useCallback(
-    async (rel: string) => {
-      if (!folder || !dataFolder) return
-      const gen = currentGen.current
-      setDir(gen, rel, { status: 'loading' })
-      try {
-        const listing = await projectListDir(dataFolder, folder, rel)
-        setDir(gen, rel, {
-          status: 'ready',
-          entries: listing.entries,
-          truncated: listing.truncated,
-        })
-      } catch (e) {
-        const message = messageOf(e)
-        setDir(
-          gen,
-          rel,
-          message.startsWith(DENIED_PREFIX)
-            ? { status: 'denied' }
-            : { status: 'error', message }
-        )
-      }
-    },
-    [folder, dataFolder, setDir]
-  )
-
-  /**
-   * A project file the user saved in Review only lives on as the sandbox
-   * copy the save wrote; the tab shows that copy, not the untouched original.
-   */
-  const sandboxCopyOf = useCallback(
-    (tab: CodeTab): string | null => {
-      if (tab.origin.kind !== 'project') return null
-      if (editAccess?.destination !== 'sandbox') return null
-      return userEdits.some((e) => e.where === 'sandbox' && e.path === tab.path)
-        ? tab.path
-        : null
-    },
-    [editAccess?.destination, userEdits]
-  )
-
-  /**
-   * Read a tab's bytes, or say why not. Null when there is nothing to read
-   * yet (roots unresolved) or ever (an external tab without its handle).
-   */
-  const fetchContent = useCallback(
-    async (tab: CodeTab, allowSensitive = false): Promise<FileState | null> => {
-      // A tab whose project is gone is detached, not loading: say so rather
-      // than leaving a spinner nothing will resolve.
-      if (
-        tab.origin.kind === 'project' &&
-        (!folder || tab.origin.projectKey !== projectKey)
-      ) {
-        return { status: 'detached' }
-      }
-      // A sandbox tab belonging to another session is never read here: its
-      // path is relative to that session's directory, so reading it against
-      // this one would silently open a different file.
-      if (!tabBelongsToSession(tab, sessionKey)) return { status: 'detached' }
-      // An external file lives outside every root this panel can resolve
-      // against, and the handle that made it readable is held in memory only.
-      // Reaching here means that handle is gone — a restart, or a tab restored
-      // from persisted state — so there is nothing to read. Falling through
-      // would resolve its bare name against the session workspace and open a
-      // different file that happens to share the name.
-      if (tab.origin.kind === 'external') return null
-
-      const copy = sandboxCopyOf(tab)
-      // Sandbox and generated files stream off disk the way the preview pane
-      // reads them; the backend project commands only serve the attached
-      // project.
-      if (tab.origin.kind !== 'project' || copy) {
-        // The roots resolve asynchronously on mount. Record nothing until
-        // they are known, so the effect retries once they are.
-        if (!workspacePath) return null
-        const abs = resolveInRoot(workspacePath, copy ?? tab.path)
-        if (!abs) return { status: 'error', message: t('common:preview.outside') }
-        const id = tabId(tab)
-        // A newer read of the same tab supersedes this one.
-        readAborts.current.get(id)?.abort()
-        const controller = new AbortController()
-        readAborts.current.set(id, controller)
-        const read = await readTextBounded(await toAssetUrl(abs), {
-          signal: controller.signal,
-        })
-        if (readAborts.current.get(id) === controller) {
-          readAborts.current.delete(id)
-        }
-        switch (read.status) {
-          case 'ready':
-            return { status: 'ready', content: read.content }
-          case 'oversized':
-            return {
-              status: 'oversized',
-              size: read.size,
-              preview: read.preview,
-            }
-          case 'binary':
-            return { status: 'binary' }
-          case 'missing':
-            return { status: 'missing', detail: '404' }
-          default:
-            // An aborted read was replaced or the roots changed: record nothing.
-            if (read.message === 'aborted') return null
-            return isNotFoundError(read.message)
-              ? { status: 'missing', detail: read.message }
-              : { status: 'error', message: read.message }
-        }
-      }
-
-      if (!folder || !dataFolder) return null
-      try {
-        const file = await projectReadFile(
-          dataFolder,
-          folder,
-          tab.path,
-          allowSensitive
-        )
-        if (file.oversized) {
-          return {
-            status: 'oversized',
-            size: file.size,
-            preview: file.preview,
-          }
-        }
-        if (file.binary) return { status: 'binary' }
-        return { status: 'ready', content: file.content }
-      } catch (e) {
-        const message = messageOf(e)
-        return message.startsWith('SENSITIVE:')
-          ? { status: 'sensitive' }
-          : message.startsWith(DENIED_PREFIX)
-            ? { status: 'denied' }
-            : isNotFoundError(message)
-              ? { status: 'missing', detail: message }
-              : { status: 'error', message }
-      }
-    },
-    [folder, projectKey, sessionKey, workspacePath, dataFolder, sandboxCopyOf, t]
-  )
-
-  const loadFile = useCallback(
-    async (tab: CodeTab, allowSensitive = false) => {
-      const id = tabId(tab)
-      const gen = currentGen.current
-      const rootPending =
-        tab.origin.kind === 'project' && !sandboxCopyOf(tab)
-          ? !dataFolder
-          : !workspacePath
-      const quick =
-        tab.origin.kind === 'project' &&
-        (!folder || tab.origin.projectKey !== projectKey)
-      if (!quick && tabBelongsToSession(tab, sessionKey)) {
-        if (tab.origin.kind === 'external' || rootPending) return
-        setFile(gen, id, { status: 'loading' })
-        // Snapshot before reading, not after: a write landing during the read
-        // would otherwise be counted as already included and the tab would
-        // look fresh while showing the older bytes.
-        const seen = writeCountsByPath(turnsRef.current)[
-          tab.path.replace(/\\/g, '/')
-        ]
-        setLoadedAt((current) => new Map(current).set(id, seen ?? 0))
-      }
-      const result = await fetchContent(tab, allowSensitive)
-      if (result) setFile(gen, id, result)
-    },
-    [
-      folder,
-      projectKey,
-      sessionKey,
-      workspacePath,
-      dataFolder,
-      setFile,
-      fetchContent,
-      sandboxCopyOf,
-    ]
-  )
-
-  // Root listing, and re-listing whenever a root identity changes. Everything
-  // cached belonged to the previous roots, including the staleness snapshots.
-  useEffect(() => {
-    setDirs(new Map())
-    setFiles(new Map())
-    setLoadedAt(new Map())
-    if (folder && dataFolder) void loadDir('')
-  }, [rootIdentity, folder, dataFolder, loadDir])
-
-  // Lazily fetch expanded directories that have no cached listing yet
-  // (including ones restored from a persisted session).
-  useEffect(() => {
-    if (!folder || !dataFolder) return
-    for (const rel of state.expandedDirs) {
-      if (!dirs.has(rel)) void loadDir(rel)
-    }
-  }, [state.expandedDirs, dirs, folder, dataFolder, loadDir])
-
-  // Fetch the active tab's content once per open file.
   const active = activeTab(state)
   const activeId = active ? tabId(active) : null
+  const {
+    projectKey,
+    dataFolder,
+    dirs,
+    files,
+    loadedAt,
+    loadDir,
+    loadFile,
+    fetchContent,
+    sandboxCopyOf,
+  } = useCodePanelFiles({
+    folder,
+    sessionKey,
+    workspacePath,
+    editDestination: editAccess?.destination,
+    userEdits,
+    turns,
+    expandedDirs: state.expandedDirs,
+    active,
+    t,
+  })
+
   const fileChanges = useMemo(() => {
     if (!active || active.origin.kind === 'external') return undefined
     const root = active.origin.kind === 'project' ? folder : workspacePath
@@ -672,10 +370,6 @@ export function CoworkCodePanel({
     )
     return diff ? changedLines(diff) : undefined
   }, [active, folder, workspacePath, turns])
-  useEffect(() => {
-    if (!active || !activeId || files.has(activeId)) return
-    void loadFile(active)
-  }, [active, activeId, files, loadFile])
 
   // Handles are granted to a session, so they end with it. Keyed ids alone
   // would leave the previous session's bytes reachable from the next one's
@@ -760,38 +454,6 @@ export function CoworkCodePanel({
     activeFile?.status === 'ready' ? activeFile.content : ''
   )
 
-  // Seed the buffer from what was read, and keep it in step with the disk:
-  // new bytes replace a clean buffer, and raise a conflict under a dirty one
-  // rather than overwriting what the user typed.
-  useEffect(() => {
-    if (!activeId || readyContent === undefined || !editable) return
-    // Read the store, not this render's copy: text typed since the render
-    // that scheduled this effect must not be seeded over.
-    const buffer = sessionKey
-      ? useCodeBuffers.getState().bySession[sessionKey]?.[activeId]
-      : undefined
-    if (!buffer) {
-      setBuffers((current) => ({
-        ...current,
-        [activeId]: { base: readyContent, text: readyContent },
-      }))
-      return
-    }
-    const verdict = checkDisk(buffer, readyContent)
-    if (verdict === 'refresh') {
-      setBuffers((current) => ({
-        ...current,
-        [activeId]: { base: readyContent, text: readyContent },
-      }))
-    } else if (verdict === 'conflict') {
-      setConflict((c) =>
-        c?.id === activeId ? c : { id: activeId, disk: readyContent, fromSave: false }
-      )
-    }
-    // Only when the bytes read change, not on every keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, readyContent, editable])
-
   /** Re-read the active file and compare it with what the editor started from. */
   const recheckDisk = useCallback(async (): Promise<string | null> => {
     if (!active || !activeId) return null
@@ -799,175 +461,34 @@ export function CoworkCodePanel({
     return read?.status === 'ready' ? toLf(read.content) : null
   }, [active, activeId, fetchContent])
 
-  // Coming back to the window is when an editor elsewhere may have saved.
-  useEffect(() => {
-    if (!editable || !activeId) return
-    const onFocus = () => {
-      void recheckDisk().then((disk) => {
-        if (disk === null) return
-        const buffer = useCodeBuffers.getState().bySession[sessionKey ?? '']?.[
-          activeId
-        ]
-        const verdict = checkDisk(buffer, disk)
-        if (verdict === 'refresh') {
-          setBuffers((current) => ({
-            ...current,
-            [activeId]: { base: disk, text: disk },
-          }))
-        } else if (verdict === 'conflict') {
-          setConflict({ id: activeId, disk, fromSave: false })
-        }
-      })
-    }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [editable, activeId, recheckDisk, sessionKey, setBuffers])
-
-  const writeActive = useCallback(
-    async (text: string) => {
-      if (!active || !activeId || !sessionKey || !editTarget) return false
-      if (editTarget.kind === 'read-only') return false
-      setSaving(true)
-      setSaveError(null)
-      try {
-        const outcome = await saveFile({
-          sessionId: sessionKey,
-          target: editTarget,
-          content: withEol(text, diskEol),
-          readRoot: readRoot ?? null,
-          extraFolders,
-        })
-        if (!outcome.ok) {
-          setSaveError(outcome.error)
-          return false
-        }
-        setBuffers((current) => markSaved(current, activeId, text))
-        setConflict(null)
-        useCoworkUserEdits.getState().record(sessionKey, {
-          path: active.path,
-          writtenPath: editTarget.path,
-          where: editTarget.kind,
-          diff: outcome.diff,
-          at: Date.now(),
-        })
-        onSaved?.()
-        toast.success(
-          editTarget.kind === 'sandbox' && active.origin.kind === 'project'
-            ? t('common:codePanel.savedSandbox', { name: active.path })
-            : t('common:codePanel.saved', { name: active.path })
-        )
-        return true
-      } catch (e) {
-        setSaveError(messageOf(e))
-        return false
-      } finally {
-        setSaving(false)
-      }
-    },
-    [
-      active,
-      activeId,
-      sessionKey,
-      editTarget,
-      diskEol,
-      saveFile,
-      readRoot,
-      extraFolders,
-      setBuffers,
-      onSaved,
-      t,
-    ]
-  )
-
-  /**
-   * Save the active tab. The disk is read first: if it moved since the
-   * editor started from it, the user chooses before anything is overwritten.
-   */
-  const save = useCallback(async () => {
-    if (!activeId || !editable || saving) return false
-    const buffer = useCodeBuffers.getState().bySession[sessionKey ?? '']?.[
-      activeId
-    ]
-    if (!buffer || !isDirty(buffer)) return true
-    const disk = await recheckDisk()
-    if (disk !== null && disk !== buffer.base) {
-      setConflict({ id: activeId, disk, fromSave: true })
-      return false
-    }
-    return writeActive(buffer.text)
-  }, [activeId, editable, saving, sessionKey, recheckDisk, writeActive])
-
-  const discard = useCallback(() => {
-    if (!activeId) return
-    setBuffers((current) => discardBuffer(current, activeId))
-    setSaveError(null)
-  }, [activeId, setBuffers])
-
-  /** Close tabs, asking first when any of them holds unsaved edits. */
-  const requestClose = useCallback(
-    (ids: string[], next: CodePanelState) => {
-      const dirty = ids.filter((id) => isDirty(buffers[id]))
-      if (dirty.length > 0) {
-        setPendingClose({ ids: dirty, next })
-        return
-      }
-      setBuffers((current) =>
-        ids.reduce((acc, id) => dropBuffer(acc, id), current)
-      )
-      onStateChange(next)
-    },
-    [buffers, setBuffers, onStateChange]
-  )
-
-  const confirmClose = useCallback(
-    async (choice: 'save' | 'discard' | 'cancel') => {
-      const pending = pendingClose
-      if (!pending) return
-      if (choice === 'cancel') {
-        setPendingClose(null)
-        return
-      }
-      if (choice === 'save') {
-        // Only offered for the active tab, the one the editor can save.
-        const ok = await save()
-        if (!ok) return
-      }
-      setPendingClose(null)
-      setBuffers((current) =>
-        pending.ids.reduce((acc, id) => dropBuffer(acc, id), current)
-      )
-      onStateChange(pending.next)
-    },
-    [pendingClose, save, setBuffers, onStateChange]
-  )
-
-  const resolveConflict = useCallback(
-    async (choice: 'overwrite' | 'reload' | 'keep') => {
-      const c = conflict
-      if (!c) return
-      if (choice === 'keep') {
-        // Keep editing against the new disk: the next save overwrites it.
-        setBuffers((current) => ({
-          ...current,
-          [c.id]: { base: c.disk, text: current[c.id]?.text ?? c.disk },
-        }))
-        setConflict(null)
-        return
-      }
-      if (choice === 'reload') {
-        setBuffers((current) => ({
-          ...current,
-          [c.id]: { base: c.disk, text: c.disk },
-        }))
-        setConflict(null)
-        return
-      }
-      const text = buffers[c.id]?.text
-      if (text === undefined) return
-      await writeActive(text)
-    },
-    [conflict, buffers, setBuffers, writeActive]
-  )
+  const {
+    conflict,
+    pendingClose,
+    saving,
+    saveError,
+    save,
+    discard,
+    requestClose,
+    confirmClose,
+    resolveConflict,
+  } = useCodePanelSave({
+    active,
+    activeId,
+    sessionKey,
+    editTarget,
+    editable,
+    readyContent,
+    diskEol,
+    buffers,
+    setBuffers,
+    recheckDisk,
+    saveFile,
+    readRoot,
+    extraFolders,
+    onSaved,
+    onStateChange,
+    t,
+  })
 
   // ---- Git overlays: change markers against HEAD, and inline blame. ----
   const gitTab = editable && active?.origin.kind === 'project' ? active : null
@@ -1045,9 +566,7 @@ export function CoworkCodePanel({
   const showsAgentHunks = agentHunks !== null
   useEffect(() => setOpenHunk(null), [activeId, showsAgentHunks])
   /** What the sandbox peek says under its header, if anything. */
-  const [peekNote, setPeekNote] = useState<
-    null | 'confirm-whole' | 'conflict' | 'dirty' | 'applied' | { error: string }
-  >(null)
+  const [peekNote, setPeekNote] = useState<PeekNote>(null)
   useEffect(() => setPeekNote(null), [openHunk])
   /**
    * Apply the peeked change alone: re-read the real file, re-apply the change
@@ -1083,7 +602,7 @@ export function CoworkCodePanel({
       await loadFile(active)
       setOpenHunk(null)
     } catch (e) {
-      setPeekNote({ error: messageOf(e) })
+      setPeekNote({ error: errorText(e) })
     }
   }
   // The element a peeked change renders into, inline in the editor.
@@ -1133,147 +652,178 @@ export function CoworkCodePanel({
         path: toOsPath(abs),
         mode: isExecutablePath(abs) ? 'reveal' : 'open',
       })
-      .catch((e: unknown) => toast.error(messageOf(e)))
+      .catch((e: unknown) => toast.error(errorText(e)))
   }, [active, folder, workspacePath])
 
-  const readOnlyText = (reason: ReadOnlyReason): string =>
-    t(`common:codePanel.readOnlyReason.${reason}`)
-
-  const renderTree = (rel: string, depth: number): React.ReactNode => {
-    const dir = dirs.get(rel)
-    if (!dir || dir.status === 'loading') {
-      return (
-        <p
-          className="px-3 py-1 text-xs text-muted-foreground"
-          style={indent(depth)}
-        >
-          {t('common:codePanel.loading')}
-        </p>
-      )
-    }
-    if (dir.status === 'denied') {
-      return (
-        <p
-          className="px-3 py-1 text-xs text-muted-foreground"
-          style={indent(depth)}
-        >
-          {t('common:codePanel.denied')}
-        </p>
-      )
-    }
-    if (dir.status === 'error') {
-      return (
-        <div style={indent(depth)} className="px-3 py-1">
-          <p className="text-xs text-destructive">{dir.message}</p>
-          <button
-            type="button"
-            onClick={() => void loadDir(rel)}
-            className="mt-1 text-xs text-muted-foreground underline hover:text-foreground"
-          >
-            {t('common:codePanel.retry')}
-          </button>
-        </div>
-      )
-    }
-    if (dir.entries.length === 0) {
-      return (
-        <p
-          className="px-3 py-1 text-xs text-muted-foreground"
-          style={indent(depth)}
-        >
-          {t('common:codePanel.emptyDir')}
-        </p>
-      )
-    }
-    return (
-      <>
-        {dir.entries.map((entry) => {
-          if (entry.isDir) {
-            const expanded = state.expandedDirs.includes(entry.relPath)
-            return (
-              <div key={entry.relPath}>
-                <button
-                  type="button"
-                  onClick={() => onStateChange(toggleDir(state, entry.relPath))}
-                  aria-expanded={expanded}
-                  className="flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
-                  style={indent(depth)}
-                >
-                  {expanded ? (
-                    <ChevronDown
-                      size={12}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                  ) : (
-                    <ChevronRight
-                      size={12}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                  )}
-                  {expanded ? (
-                    <FolderOpen
-                      size={14}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                  ) : (
-                    <Folder
-                      size={14}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                </button>
-                {/* A guide line down the open folder's children, as the
-                    design's file trees draw them. */}
-                {expanded && (
-                  <div
-                    className="relative motion-safe:animate-tree-in before:pointer-events-none before:absolute before:inset-y-0 before:left-[var(--guide)] before:w-px before:bg-border"
-                    style={guide(depth)}
-                  >
-                    {renderTree(entry.relPath, depth + 1)}
-                  </div>
-                )}
-              </div>
-            )
-          }
-          const viewable = isSourcePath(entry.relPath)
-          return (
-            <button
-              key={entry.relPath}
-              type="button"
-              onClick={() => openPath(entry.relPath)}
-              aria-current={
-                state.activeTabId ===
-                tabId(projectTab(entry.relPath, projectKey ?? ''))
-                  ? true
-                  : undefined
-              }
-              className={cn(
-                'flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row',
-                !viewable && 'text-muted-foreground',
-                state.activeTabId ===
-                  tabId(projectTab(entry.relPath, projectKey ?? '')) &&
-                  'bg-accent font-medium text-foreground'
-              )}
-              style={indent(depth)}
-            >
-              <span className="w-3 shrink-0" />
-              <FileIcon size={14} className="shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-            </button>
-          )
-        })}
-        {dir.truncated && (
-          <p
-            className="px-3 py-1 text-xs text-muted-foreground"
-            style={indent(depth)}
-          >
-            {t('common:codePanel.truncated')}
-          </p>
-        )}
-      </>
-    )
+  const closeActive = () => {
+    if (activeId) onStateChange(closeTab(state, activeId))
   }
+  const reveal =
+    state.reveal && state.reveal.tabId === activeId ? state.reveal : null
+
+  const editorPane =
+    active && activeId && activeFile?.status === 'ready' && editable && writable ? (
+      <div className="flex h-full min-h-0 min-w-0 flex-col">
+        <CodeEditToolbar
+          path={active.path}
+          savesToSandbox={
+            writable.kind === 'sandbox' && active.origin.kind === 'project'
+          }
+          dirty={activeDirty}
+          saving={saving}
+          wordWrap={state.wordWrap}
+          onToggleWrap={() =>
+            onStateChange({ ...state, wordWrap: !state.wordWrap })
+          }
+          showAgentCopy={!!agentCopy}
+          onOpenAgentCopy={openAgentCopy}
+          onDiscard={discard}
+          onSave={() => void save()}
+        />
+        <div className="relative min-h-0 flex-1 border-t border-dashed border-border bg-code-bg">
+          <Suspense fallback={<Notice>{t('common:codePanel.loading')}</Notice>}>
+            <CodeEditor
+              docKey={activeId}
+              value={activeBuffer?.text ?? toLf(activeFile.content)}
+              lang={detectLanguage(active.path).lang}
+              wordWrap={state.wordWrap}
+              isDark={isDark}
+              ariaLabel={active.path}
+              onChange={(text) =>
+                setBuffers((current) => ({
+                  ...current,
+                  [activeId]: {
+                    base: current[activeId]?.base ?? toLf(activeFile.content),
+                    text,
+                  },
+                }))
+              }
+              onSave={() => void save()}
+              onSelection={(span) =>
+                setSelection(
+                  span
+                    ? { ...span, path: active.path, origin: active.origin }
+                    : null
+                )
+              }
+              reveal={reveal}
+              hunks={editorHunks}
+              blame={blameForEditor}
+              onHunk={toggleHunk}
+              onBlameHover={blameHover.onBlameHover}
+              peek={peek}
+              onPeekClose={() => setOpenHunk(null)}
+            />
+          </Suspense>
+          {openHunk &&
+            createPortal(
+              agentHunks ? (
+                <SandboxPeekPopover
+                  hunk={openHunk}
+                  path={active.path}
+                  note={peekNote}
+                  onApplyHunk={
+                    onApplySandboxHunk ? () => void applyPeekedHunk() : undefined
+                  }
+                  onOpenCopy={openAgentCopy}
+                  onApplyWhole={
+                    onApplySandboxCopy
+                      ? () => onApplySandboxCopy(active.path)
+                      : undefined
+                  }
+                  onNote={setPeekNote}
+                  onClose={() => setOpenHunk(null)}
+                />
+              ) : (
+                <HunkPopover
+                  hunk={openHunk}
+                  onRevert={revertOpenHunk}
+                  onClose={() => setOpenHunk(null)}
+                />
+              ),
+              peekDom
+            )}
+          {blameHover.hover && folder && (
+            <BlameCard
+              commit={blameHover.hover.commit}
+              anchor={blameHover.hover.anchor}
+              root={folder}
+              webUrl={overlays.webUrl}
+              onEnter={blameHover.keep}
+              onLeave={blameHover.leave}
+            />
+          )}
+          {selection && selection.path === active.path && (
+            <div className="absolute bottom-2 left-2 z-10 inline-flex">
+              <Button
+                size="sm"
+                variant="surface"
+                className="shadow-pop"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onAddToChat(selection)
+                  setSelection(null)
+                }}
+              >
+                {t('common:codePanel.addToChat', {
+                  range:
+                    selection.startLine === selection.endLine
+                      ? `L${selection.startLine}`
+                      : `L${selection.startLine}-${selection.endLine}`,
+                })}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    ) : null
+
+  const viewer =
+    active && activeId ? (
+      activeFile?.status === 'ready' ? (
+        <div className="flex h-full min-h-0 flex-col">
+          {active.origin.kind === 'external' && (
+            <ExternalFileBanner onChooseAgain={chooseExternalAgain} />
+          )}
+          {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
+            <StaleFileBanner onReload={() => void loadFile(active)} />
+          )}
+          {conflict && conflict.id === activeId && (
+            <ConflictBanner onResolve={(c) => void resolveConflict(c)} />
+          )}
+          {saveError && editable && <SaveErrorBanner error={saveError} />}
+          <div className="min-h-0 flex-1">
+            {editorPane ?? (
+              <CodeViewer
+                relPath={active.path}
+                content={activeFile.content}
+                wordWrap={state.wordWrap}
+                onToggleWrap={(wordWrap) => onStateChange({ ...state, wordWrap })}
+                origin={active.origin}
+                changedLines={fileChanges}
+                onAddToChat={onAddToChat}
+                readOnlyHint={
+                  editAccess && editTarget?.kind === 'read-only'
+                    ? t(`common:codePanel.readOnlyReason.${editTarget.reason}`)
+                    : undefined
+                }
+                revealLine={reveal}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        <CodeFileNotice
+          file={activeFile}
+          path={active.path}
+          onReload={(allowSensitive) => void loadFile(active, allowSensitive)}
+          onCloseTab={closeActive}
+          onAttach={onAttach}
+          onChooseAgain={chooseExternalAgain}
+          onOpenExternally={openActiveExternally}
+        />
+      )
+    ) : null
 
   const body = !folder && state.tabs.length === 0 ? (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center motion-safe:animate-rise-in">
@@ -1289,178 +839,31 @@ export function CoworkCodePanel({
     </div>
   ) : (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Tab strip */}
       {state.tabs.length > 0 && (
-        <div
-          role="tablist"
-          aria-label={t('common:codePanel.openFiles')}
-          className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1 border-b border-dashed border-border px-2 py-1.5"
-        >
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={t('common:codePanel.explorer')}
-            aria-pressed={explorerOpen}
-            onClick={() => setExplorerOpen((v) => !v)}
-            className={cn(
-              'shrink-0',
-              explorerOpen ? 'bg-accent text-foreground' : 'text-muted-foreground'
-            )}
-          >
-            <FolderTree className="size-3.5" />
-          </Button>
-          {state.tabs.map((tab) => {
-            const id = tabId(tab)
-            const name = tab.path.split('/').pop() || tab.path
-            const isActive = id === state.activeTabId
-            return (
-              <div
-                key={id}
-                role="tab"
-                aria-selected={isActive}
-                className={cn(
-                  'group flex h-[26px] shrink-0 cursor-pointer items-center gap-1 rounded-md border-[0.8px] pr-1 pl-2.5 font-mono text-xs outline-none transition-[background-color,border-color] duration-150 focus-visible:ring-[3px] focus-visible:ring-ring/40',
-                  isActive
-                    ? 'border-border bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,.06)]'
-                    : 'border-transparent text-muted-foreground hover:bg-hover-row'
-                )}
-                title={`${tab.path} — ${originTitle(tab, t)}`}
-                onClick={() => onStateChange(focusTab(state, id))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onStateChange(focusTab(state, id))
-                  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                    // Left/right move between tabs, as in a real tablist.
-                    e.preventDefault()
-                    const next = neighbourTabId(
-                      state,
-                      e.key === 'ArrowRight' ? 1 : -1
-                    )
-                    if (next) onStateChange(focusTab(state, next))
-                  } else if (e.key === 'Delete' || e.key === 'Backspace') {
-                    e.preventDefault()
-                    requestClose([id], closeTab(state, id))
-                  }
-                }}
-                tabIndex={isActive ? 0 : -1}
-              >
-                {tab.origin.kind !== 'project' && (
-                  // A sandbox or generated file is not the user's project;
-                  // say so rather than letting the name imply it.
-                  <span
-                    aria-hidden
-                    className="shrink-0 text-xs text-muted-foreground"
-                  >
-                    {tab.origin.kind === 'external' ? 'ext' : 'ws'}
-                  </span>
-                )}
-                <span className="max-w-40 truncate">{name}</span>
-                <button
-                  type="button"
-                  aria-label={
-                    isDirty(buffers[id])
-                      ? t('common:codePanel.closeTabUnsaved', { name })
-                      : t('common:codePanel.closeTab', { name })
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    requestClose([id], closeTab(state, id))
-                  }}
-                  className="group/close grid h-[22px] w-[18px] place-items-center rounded-sm text-muted-foreground opacity-50 transition-opacity hover:text-foreground hover:opacity-100"
-                >
-                  {isDirty(buffers[id]) ? (
-                    // Unsaved: a dot, which turns back into the close
-                    // cross under the pointer, as in VS Code.
-                    <>
-                      <span
-                        data-testid="tab-dirty"
-                        aria-hidden
-                        className="size-2 rounded-full bg-foreground opacity-100 group-hover/close:hidden"
-                      />
-                      <X size={11} className="hidden group-hover/close:block" />
-                    </>
-                  ) : (
-                    <X size={11} />
-                  )}
-                </button>
-              </div>
-            )
-          })}
-          {state.tabs.length > 1 && (
-            <span className="ml-auto flex shrink-0 items-center gap-0.5 pl-1">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t('common:codePanel.closeOthers')}
-                onClick={() => {
-                  const keep = state.activeTabId
-                  if (!keep) return
-                  requestClose(
-                    state.tabs.map(tabId).filter((id) => id !== keep),
-                    closeOtherTabs(state, keep)
-                  )
-                }}
-                className="text-muted-foreground"
-              >
-                <Columns2 className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t('common:codePanel.closeAll')}
-                onClick={() =>
-                  requestClose(state.tabs.map(tabId), closeAllTabs(state))
-                }
-                className="text-muted-foreground"
-              >
-                <XCircle className="size-3.5" />
-              </Button>
-            </span>
-          )}
-        </div>
+        <CodeTabStrip
+          state={state}
+          buffers={buffers}
+          explorerOpen={explorerOpen}
+          onToggleExplorer={() => setExplorerOpen((v) => !v)}
+          onStateChange={onStateChange}
+          requestClose={requestClose}
+        />
       )}
 
       {pendingClose && (
-        <div
-          role="alertdialog"
-          aria-label={t('common:codePanel.unsavedTitle')}
-          data-testid="code-unsaved-close"
-          className="mx-3 my-2 flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
-        >
-          <span className="min-w-0 flex-1">
-            {pendingClose.ids.length === 1
-              ? t('common:codePanel.unsavedOne', {
-                  name:
-                    findTabById(state, pendingClose.ids[0])?.path ??
-                    pendingClose.ids[0],
-                })
-              : t('common:codePanel.unsavedMany', {
-                  count: pendingClose.ids.length,
-                })}
-          </span>
-          {pendingClose.ids.length === 1 &&
+        <UnsavedCloseBanner
+          count={pendingClose.ids.length}
+          name={
+            state.tabs.find((tab) => tabId(tab) === pendingClose.ids[0])?.path ??
+            pendingClose.ids[0]
+          }
+          canSave={
+            pendingClose.ids.length === 1 &&
             pendingClose.ids[0] === activeId &&
-            editable && (
-              <Button size="xs" onClick={() => void confirmClose('save')}>
-                {t('common:codePanel.save')}
-              </Button>
-            )}
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={() => void confirmClose('discard')}
-          >
-            {t('common:codePanel.discardAndClose')}
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => void confirmClose('cancel')}
-          >
-            {t('common:codePanel.cancel')}
-          </Button>
-        </div>
+            editable
+          }
+          onChoose={(choice) => void confirmClose(choice)}
+        />
       )}
 
       {/* Explorer, shown when toggled or when nothing is open. Needs an
@@ -1473,521 +876,22 @@ export function CoworkCodePanel({
           )}
           data-testid="code-explorer"
         >
-          {renderTree('', 0)}
+          <CodeFileTree
+            rel=""
+            depth={0}
+            dirs={dirs}
+            expandedDirs={state.expandedDirs}
+            activeTabId={state.activeTabId}
+            projectKey={projectKey}
+            onToggleDir={(rel) => onStateChange(toggleDir(state, rel))}
+            onOpenFile={openPath}
+            onRetry={(rel) => void loadDir(rel)}
+          />
         </div>
       )}
 
       {/* Viewer */}
-      {active && activeId && (
-        <div className="min-h-0 flex-1">
-          {!activeFile || activeFile.status === 'loading' ? (
-            <Notice>{t('common:codePanel.loading')}</Notice>
-          ) : activeFile.status === 'ready' ? (
-            <div className="flex h-full min-h-0 flex-col">
-              {/* Announced, not swapped: replacing the bytes under someone
-                  mid-read is what the preview pane deliberately avoids. */}
-              {/* An external file has no path to watch, so staleness cannot
-                  be detected for it — and the handle cannot be re-read for
-                  newer bytes either. The honest offer is to choose the file
-                  again, which goes through the same gates as a fresh open. */}
-              {active.origin.kind === 'external' && (
-                <div
-                  role="status"
-                  className="mx-3 mb-2 flex shrink-0 items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
-                >
-                  <span className="min-w-0 flex-1">
-                    {t('common:codePanel.externalNote')}
-                  </span>
-                  <Button
-                    size="xs"
-                    variant="link"
-                    className="h-auto shrink-0 px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground"
-                    onClick={chooseExternalAgain}
-                  >
-                    {t('common:codePanel.chooseAgainAction')}
-                  </Button>
-                </div>
-              )}
-              {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
-                <div
-                  role="status"
-                  className="mx-3 mb-2 flex shrink-0 items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
-                >
-                  <span className="min-w-0 flex-1">
-                    {t('common:codePanel.stale')}
-                  </span>
-                  <Button
-                    size="xs"
-                    variant="link"
-                    className="h-auto shrink-0 px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground"
-                    onClick={() => void loadFile(active)}
-                  >
-                    {t('common:codePanel.reload')}
-                  </Button>
-                </div>
-              )}
-              {conflict && conflict.id === activeId && (
-                <div
-                  role="alert"
-                  data-testid="code-conflict"
-                  className="mx-3 mb-2 flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
-                >
-                  <span className="min-w-0 flex-1">
-                    {t('common:codePanel.conflict')}
-                  </span>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => void resolveConflict('reload')}
-                  >
-                    {t('common:codePanel.conflictReload')}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => void resolveConflict('overwrite')}
-                  >
-                    {t('common:codePanel.conflictOverwrite')}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => void resolveConflict('keep')}
-                  >
-                    {t('common:codePanel.conflictKeep')}
-                  </Button>
-                </div>
-              )}
-              {saveError && editable && (
-                <div
-                  role="alert"
-                  className="mx-3 mb-2 shrink-0 rounded-lg bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
-                >
-                  {t('common:codePanel.saveFailed', { error: saveError })}
-                </div>
-              )}
-              <div className="min-h-0 flex-1">
-                {editable && writable ? (
-                  <div className="flex h-full min-h-0 min-w-0 flex-col">
-                    <div className="flex h-10 shrink-0 items-center gap-1 px-3 pointer-coarse:h-11">
-                      <span
-                        data-testid="code-edit-badge"
-                        className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground"
-                        title={
-                          writable.kind === 'sandbox' &&
-                          active.origin.kind === 'project'
-                            ? t('common:codePanel.editingSandboxHint')
-                            : undefined
-                        }
-                      >
-                        <Pencil className="size-3" aria-hidden />
-                        {writable.kind === 'sandbox' &&
-                        active.origin.kind === 'project'
-                          ? t('common:codePanel.editingSandbox')
-                          : t('common:codePanel.editing')}
-                      </span>
-                      <span
-                        className="min-w-0 flex-1 truncate px-1 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
-                        title={active.path}
-                      >
-                        {active.path}
-                        {activeDirty && (
-                          <span className="ml-1 text-foreground">
-                            {t('common:codePanel.unsavedMark')}
-                          </span>
-                        )}
-                      </span>
-                      <span className="shrink-0 pr-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
-                        {detectLanguage(active.path).label}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={t('common:codePanel.toggleWrap')}
-                        aria-pressed={state.wordWrap}
-                        onClick={() =>
-                          onStateChange({ ...state, wordWrap: !state.wordWrap })
-                        }
-                        className={cn(
-                          'shrink-0 pointer-coarse:size-11',
-                          state.wordWrap
-                            ? 'bg-accent text-foreground'
-                            : 'text-muted-foreground'
-                        )}
-                      >
-                        <WrapText className="size-3.5" />
-                      </Button>
-                      <CodeOverlayMenu />
-                      {agentCopy ? (
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={openAgentCopy}
-                          title={t('common:codePanel.sandboxChangesHint')}
-                          data-testid="open-sandbox-copy"
-                        >
-                          {t('common:codePanel.openSandboxCopy')}
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        disabled={!activeDirty || saving}
-                        onClick={discard}
-                      >
-                        {t('common:codePanel.discard')}
-                      </Button>
-                      <Button
-                        size="xs"
-                        disabled={!activeDirty || saving}
-                        onClick={() => void save()}
-                        title={t('common:codePanel.saveHint')}
-                      >
-                        {saving
-                          ? t('common:codePanel.saving')
-                          : t('common:codePanel.save')}
-                      </Button>
-                    </div>
-                    <div className="relative min-h-0 flex-1 border-t border-dashed border-border bg-code-bg">
-                      <Suspense
-                        fallback={<Notice>{t('common:codePanel.loading')}</Notice>}
-                      >
-                        <CodeEditor
-                          docKey={activeId}
-                          value={activeBuffer?.text ?? toLf(activeFile.content)}
-                          lang={detectLanguage(active.path).lang}
-                          wordWrap={state.wordWrap}
-                          isDark={isDark}
-                          ariaLabel={active.path}
-                          onChange={(text) =>
-                            setBuffers((current) => ({
-                              ...current,
-                              [activeId]: {
-                                base:
-                                  current[activeId]?.base ??
-                                  toLf(activeFile.content),
-                                text,
-                              },
-                            }))
-                          }
-                          onSave={() => void save()}
-                          onSelection={(span) =>
-                            setSelection(
-                              span
-                                ? {
-                                    ...span,
-                                    path: active.path,
-                                    origin: active.origin,
-                                  }
-                                : null
-                            )
-                          }
-                          reveal={
-                            state.reveal && state.reveal.tabId === activeId
-                              ? state.reveal
-                              : null
-                          }
-                          hunks={editorHunks}
-                          blame={blameForEditor}
-                          onHunk={toggleHunk}
-                          onBlameHover={blameHover.onBlameHover}
-                          peek={peek}
-                          onPeekClose={() => setOpenHunk(null)}
-                        />
-                      </Suspense>
-                      {openHunk &&
-                        createPortal(
-                          agentHunks ? (
-                            <HunkPopover
-                              hunk={openHunk}
-                              title={t('common:codePanel.sandboxChange', {
-                                line: openHunk.start,
-                              })}
-                              onClose={() => setOpenHunk(null)}
-                              actions={[
-                                ...(onApplySandboxHunk
-                                  ? [
-                                      {
-                                        label: t('common:codePanel.applyHunk'),
-                                        icon: <Check className="size-3" />,
-                                        onSelect: () => void applyPeekedHunk(),
-                                        testId: 'peek-apply-hunk',
-                                      },
-                                    ]
-                                  : []),
-                                {
-                                  label: t('common:codePanel.openSandboxCopy'),
-                                  icon: <FileSymlink className="size-3" />,
-                                  onSelect: openAgentCopy,
-                                  testId: 'peek-open-sandbox-copy',
-                                },
-                                ...(onApplySandboxCopy
-                                  ? [
-                                      {
-                                        label: t('common:codePanel.applyWholeFile'),
-                                        icon: <CopyCheck className="size-3" />,
-                                        onSelect: () => setPeekNote('confirm-whole'),
-                                        testId: 'peek-apply-whole',
-                                      },
-                                    ]
-                                  : []),
-                              ]}
-                              note={
-                                peekNote === 'confirm-whole' && active ? (
-                                  <span className="flex flex-wrap items-center gap-2">
-                                    {t('common:codePanel.applyWholeConfirm', {
-                                      path: active.path,
-                                    })}
-                                    <Button
-                                      size="xs"
-                                      variant="outline"
-                                      data-testid="peek-apply-whole-confirm"
-                                      onClick={() => {
-                                        onApplySandboxCopy?.(active.path)
-                                        setOpenHunk(null)
-                                      }}
-                                    >
-                                      {t('common:changes.applyReplace')}
-                                    </Button>
-                                    <Button
-                                      size="xs"
-                                      variant="ghost"
-                                      onClick={() => setPeekNote(null)}
-                                    >
-                                      {t('common:cancel')}
-                                    </Button>
-                                  </span>
-                                ) : peekNote === 'conflict' ? (
-                                  t('common:codePanel.hunkConflict')
-                                ) : peekNote === 'dirty' ? (
-                                  t('common:codePanel.hunkDirty')
-                                ) : peekNote && typeof peekNote === 'object' ? (
-                                  t('common:changes.applyFailed', {
-                                    message: peekNote.error,
-                                  })
-                                ) : null
-                              }
-                            />
-                          ) : (
-                            <HunkPopover
-                              hunk={openHunk}
-                              onRevert={revertOpenHunk}
-                              onClose={() => setOpenHunk(null)}
-                            />
-                          ),
-                          peekDom
-                        )}
-                      {blameHover.hover && folder && (
-                        <BlameCard
-                          commit={blameHover.hover.commit}
-                          anchor={blameHover.hover.anchor}
-                          root={folder}
-                          webUrl={overlays.webUrl}
-                          onEnter={blameHover.keep}
-                          onLeave={blameHover.leave}
-                        />
-                      )}
-                      {selection && selection.path === active.path && (
-                        <div className="absolute bottom-2 left-2 z-10 inline-flex">
-                          <Button
-                            size="sm"
-                            variant="surface"
-                            className="shadow-pop"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              onAddToChat(selection)
-                              setSelection(null)
-                            }}
-                          >
-                            {t('common:codePanel.addToChat', {
-                              range:
-                                selection.startLine === selection.endLine
-                                  ? `L${selection.startLine}`
-                                  : `L${selection.startLine}-${selection.endLine}`,
-                            })}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <CodeViewer
-                    relPath={active.path}
-                    content={activeFile.content}
-                    wordWrap={state.wordWrap}
-                    onToggleWrap={(wordWrap) =>
-                      onStateChange({ ...state, wordWrap })
-                    }
-                    origin={active.origin}
-                    changedLines={fileChanges}
-                    onAddToChat={onAddToChat}
-                    readOnlyHint={
-                      editAccess && editTarget?.kind === 'read-only'
-                        ? readOnlyText(editTarget.reason)
-                        : undefined
-                    }
-                    revealLine={
-                      state.reveal && state.reveal.tabId === activeId
-                        ? state.reveal
-                        : null
-                    }
-                  />
-                )}
-              </div>
-            </div>
-          ) : activeFile.status === 'oversized' ? (
-            <Notice>
-              <span className="block">
-                {t('common:codePanel.tooLarge', {
-                  size: `${(activeFile.size / (1024 * 1024)).toFixed(1)} MB`,
-                })}
-              </span>
-              <span className="mt-1 block text-muted-foreground">
-                {activeFile.preview
-                  ? t('common:codePanel.openExternallyPreview')
-                  : t('common:codePanel.openExternally')}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2"
-                data-testid="code-open-external"
-                onClick={openActiveExternally}
-              >
-                {t('common:codePanel.openExternallyAction')}
-              </Button>
-              {activeFile.preview ? (
-                <pre
-                  data-testid="code-oversized-preview"
-                  className="mt-3 max-h-64 overflow-auto rounded-md bg-code-bg p-2 text-left font-mono text-xs"
-                >
-                  {activeFile.preview.slice(0, 16384)}
-                </pre>
-              ) : null}
-            </Notice>
-          ) : activeFile.status === 'binary' ? (
-            <Notice>
-              <span className="block" data-testid="code-binary-notice">
-                {t('common:codePanel.binary')}
-              </span>
-              <span className="mt-2 flex justify-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid="code-open-external"
-                  onClick={openActiveExternally}
-                >
-                  {t('common:codePanel.openExternallyAction')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onStateChange(closeTab(state, activeId))}
-                >
-                  {t('common:codePanel.closeMissing')}
-                </Button>
-              </span>
-            </Notice>
-          ) : activeFile.status === 'missing' ? (
-            <Notice>
-              <span
-                className="block"
-                data-testid="code-missing-notice"
-                title={activeFile.detail}
-              >
-                {t('common:codePanel.fileMissing', { name: active.path })}
-              </span>
-              <span className="mt-2 flex justify-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void loadFile(active)}
-                >
-                  {t('common:codePanel.retry')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onStateChange(closeTab(state, activeId))}
-                >
-                  {t('common:codePanel.closeMissing')}
-                </Button>
-              </span>
-            </Notice>
-          ) : activeFile.status === 'denied' ? (
-            <Notice>{t('common:codePanel.denied')}</Notice>
-          ) : activeFile.status === 'detached' ? (
-            // The project went away underneath this tab. Not an error and not
-            // a spinner that will never resolve — say what happened and let
-            // the tab be closed.
-            <Notice>
-              <span className="block">{t('common:codePanel.detached')}</span>
-              <span className="mt-2 flex justify-center gap-2">
-                <Button size="sm" onClick={onAttach}>
-                  {t('common:codePanel.attachProject')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onStateChange(closeTab(state, activeId))}
-                >
-                  {t('common:codePanel.closeMissing')}
-                </Button>
-              </span>
-            </Notice>
-          ) : activeFile.status === 'external-gone' ? (
-            // Nothing to reload from: say so, and offer the only thing that
-            // can actually produce the file again.
-            <Notice>
-              <span className="block">{t('common:codePanel.externalGone')}</span>
-              <span className="mt-2 flex justify-center gap-2">
-                <Button size="sm" onClick={chooseExternalAgain}>
-                  {t('common:codePanel.chooseAgainAction')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onStateChange(closeTab(state, activeId))}
-                >
-                  {t('common:codePanel.closeMissing')}
-                </Button>
-              </span>
-            </Notice>
-          ) : activeFile.status === 'sensitive' ? (
-            <Notice>
-              <span className="block">{t('common:codePanel.sensitive')}</span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2"
-                onClick={() => void loadFile(active, true)}
-              >
-                {t('common:codePanel.openAnyway')}
-              </Button>
-            </Notice>
-          ) : (
-            <Notice>
-              <span className="block">{activeFile.message}</span>
-              <span className="mt-2 flex justify-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void loadFile(active)}
-                >
-                  {t('common:codePanel.retry')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onStateChange(closeTab(state, activeId))}
-                >
-                  {t('common:codePanel.closeMissing')}
-                </Button>
-              </span>
-            </Notice>
-          )}
-        </div>
-      )}
+      {viewer && <div className="min-h-0 flex-1">{viewer}</div>}
     </div>
   )
 
@@ -2049,41 +953,3 @@ export function CoworkCodePanel({
     </CoworkSidePanel>
   )
 }
-
-function Notice({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
-      <div>{children}</div>
-    </div>
-  )
-}
-
-const findTabById = (state: CodePanelState, id: string) =>
-  state.tabs.find((tab) => tabId(tab) === id)
-
-const indent = (depth: number) => ({ paddingLeft: `${10 + depth * 14}px` })
-/** Where a folder's guide line sits: under its own chevron. */
-const guide = (depth: number) =>
-  ({ '--guide': `${16 + depth * 14}px` }) as React.CSSProperties
-
-/** Marker the Rust side puts on an error the OS refused for permissions. */
-/** A human phrase for where a tab's file lives, for its tooltip. */
-function originTitle(
-  tab: CodeTab,
-  t: (key: string) => string
-): string {
-  switch (tab.origin.kind) {
-    case 'project':
-      return t('common:codePanel.originProject')
-    case 'sandbox':
-    case 'artifact':
-      return t('common:codePanel.originWorkspace')
-    case 'external':
-      return t('common:codePanel.originExternal')
-  }
-}
-
-const DENIED_PREFIX = 'DENIED: '
-
-/** Shared so a rejected Tauri command never renders as `[object Object]`. */
-const messageOf = errorText
