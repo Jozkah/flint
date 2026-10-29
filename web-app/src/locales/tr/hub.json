@@ -20,6 +20,7 @@
     "errorNotFound": "Model deposu Hugging Face'te bulunamadı.",
     "errorNoRepo": "Hugging Face bu depoyu döndürmedi.",
     "repoCopied": "Depo kimliği kopyalandı",
+    "repoCopyFailed": "Depo kimliği kopyalanamadı",
     "copyRepo": "Depoyu kopyala",
     "openOnHf": "Hugging Face'te aç",
     "gatedBadge": "Erişime kısıtlı",

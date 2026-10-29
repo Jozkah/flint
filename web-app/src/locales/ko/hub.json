@@ -20,6 +20,7 @@
     "errorNotFound": "Hugging Face에서 모델 저장소를 찾을 수 없습니다.",
     "errorNoRepo": "Hugging Face가 이 저장소를 반환하지 않았습니다.",
     "repoCopied": "저장소 ID를 복사했습니다",
+    "repoCopyFailed": "저장소 ID를 복사할 수 없습니다",
     "copyRepo": "저장소 복사",
     "openOnHf": "Hugging Face에서 열기",
     "gatedBadge": "제한됨",

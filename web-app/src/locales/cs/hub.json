@@ -20,6 +20,7 @@
     "errorNotFound": "Repozitář modelu nebyl na Hugging Face nalezen.",
     "errorNoRepo": "Hugging Face tento repozitář nevrátil.",
     "repoCopied": "ID repozitáře zkopírováno",
+    "repoCopyFailed": "ID repozitáře se nepodařilo zkopírovat",
     "copyRepo": "Kopírovat repozitář",
     "openOnHf": "Otevřít na Hugging Face",
     "gatedBadge": "Omezený přístup",
