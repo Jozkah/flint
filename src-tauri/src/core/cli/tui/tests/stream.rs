@@ -12,7 +12,7 @@ fn queued_thread_snapshots_collapse_to_the_newest_per_thread() {
             base: std::path::PathBuf::from("agent"),
             id: id.to_string(),
             model: "m".to_string(),
-            history: vec![serde_json::json!(n); n],
+            history: vec![serde_json::json!(n); n].into(),
             metadata: None,
         })
     };
@@ -36,7 +36,7 @@ fn steering_failed_handoff_keeps_input_for_next_turn() {
     app.submit_user("start".into());
     app.want_start = false;
     app.submit_user("late follow-up".into());
-    let (request, receiver) = steering_request(app.history.clone());
+    let (request, receiver) = steering_request(app.history.to_vec());
     drop(receiver);
     app.steer_run(request);
     assert_eq!(app.message_queue.len(), 1);
@@ -4164,7 +4164,7 @@ async fn context_fill_is_estimated_after_a_compaction() {
 async fn context_fill_is_estimated_after_a_rewind() {
     let mut app = test_app();
     for i in 0..4 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": "x".repeat(4_000),
         }));
@@ -4814,7 +4814,7 @@ async fn execute_in_fresh_context_queues_the_plan_alone_and_clears_history_on_st
     let mut app = test_app();
     app.run_mode = RunMode::Plan;
     app.apply(StreamEvent::TodoUpdate { list: staged_todos() });
-    app.history.push(serde_json::json!({ "role": "user", "content": "long old talk" }));
+    std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({ "role": "user", "content": "long old talk" }));
     app.status = Status::Running;
     super::super::apply_plan_review(&mut app, EXECUTE_FRESH_LABEL, "ship it");
     assert_eq!(app.run_mode, RunMode::Normal);

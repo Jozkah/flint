@@ -37,7 +37,7 @@ fn steering_preserves_images_paths_order_and_transcript_once() {
     assert!(app.pending_images.is_empty());
     assert_eq!(app.history.len(), 1);
     std::fs::write(files.path().join("note.txt"), "changed later").unwrap();
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     let messages = receiver.try_recv().unwrap();
     assert_eq!(messages.len(), 2);
@@ -59,7 +59,7 @@ fn steering_preserves_images_paths_order_and_transcript_once() {
             .count(),
         3
     );
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     assert!(receiver.try_recv().unwrap().is_empty());
     assert_eq!(app.history.len(), 3);
@@ -72,7 +72,7 @@ fn steering_does_not_answer_or_bypass_a_permission_prompt() {
     app.want_start = false;
     app.submit_user("correction".into());
     app.pending_queue.push_back(pending(false));
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     assert!(receiver.try_recv().unwrap().is_empty());
     assert_eq!(app.pending_queue.len(), 1);
@@ -86,7 +86,7 @@ fn steering_plan_transition_waits_for_a_new_run() {
     app.want_start = false;
     app.run_mode = crate::core::agent::plan::RunMode::Plan;
     app.submit_user("plan only".into());
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     assert!(receiver.try_recv().unwrap().is_empty());
     assert_eq!(app.message_queue.len(), 1);
@@ -137,7 +137,7 @@ async fn steering_consumed_input_survives_resume_once() {
     app.submit_user("start".into());
     app.want_start = false;
     app.submit_user("correction".into());
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     assert_eq!(receiver.try_recv().unwrap().len(), 1);
     app.join_journal();
@@ -173,7 +173,7 @@ async fn steering_expands_skill_input_without_resetting_the_run() {
         data_url: "data:image/png;base64,AAAA".into(),
     });
     app.submit_user("please /skill:deploy carefully".into());
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     let messages = receiver.try_recv().unwrap();
     assert!(messages[0]["content"][0]["text"]
@@ -1430,7 +1430,7 @@ fn checkpoint_is_queued_only_after_base_armed() {
     let mut app = test_app();
     app.repo_root = Some(std::path::PathBuf::from("/tmp/repo"));
     app.thread_id = Some("t1".into());
-    app.history
+    std::sync::Arc::make_mut(&mut app.history)
         .push(json!({ "role": "user", "content": "do it" }));
     // No base armed yet -> no checkpoint.
     app.checkpoint_turn();
@@ -1476,7 +1476,7 @@ fn rewind_to_fills_input_with_target_user_message() {
         json!({ "role": "user", "content": "first" }),
         json!({ "role": "assistant", "content": "reply" }),
         json!({ "role": "user", "content": "second" }),
-    ];
+    ].into();
     // Rewind to message #1 (0-indexed target 0): history is cut right
     // before the first user message, and that message's text should be
     // left in the input area for re-submission.
@@ -1497,7 +1497,7 @@ fn rewind_trims_recall_to_the_surviving_messages() {
         json!({ "role": "user", "content": "second" }),
         json!({ "role": "assistant", "content": "reply two" }),
         json!({ "role": "user", "content": "third" }),
-    ];
+    ].into();
     for text in ["first", "second", "third"] {
         app.record_submitted(text);
     }
@@ -1534,7 +1534,7 @@ fn rewind_to_fills_input_with_target_user_message_with_text_parts() {
         }),
         json!({ "role": "assistant", "content": "ok" }),
         json!({ "role": "user", "content": "second" }),
-    ];
+    ].into();
     rewind_to(&mut app, 0, false);
     // An image-only user message has no text to put in the input area.
     assert_eq!(app.history.len(), 0);
@@ -2966,7 +2966,7 @@ async fn apply_resume_latest_restores_history_and_model() {
     apply_resume(&mut fresh, &ResumeRequest::resume(ResumeTarget::Latest)).await;
 
     assert_eq!(fresh.thread_id.as_deref(), Some(id.as_str()));
-    assert_eq!(fresh.history, history);
+    assert_eq!(*fresh.history, history);
     assert_eq!(fresh.model, "saved-model");
     let joined: String = fresh
         .transcript
@@ -3013,7 +3013,7 @@ async fn apply_resume_renders_invocation_messages_compactly() {
     apply_resume(&mut fresh, &ResumeRequest::resume(ResumeTarget::Latest)).await;
 
     // History keeps the full template (the model needs it on continuation)...
-    assert_eq!(fresh.history, history);
+    assert_eq!(*fresh.history, history);
     // ...but the transcript shows only the compact invocation row.
     let joined: String = fresh
         .transcript
@@ -3466,7 +3466,7 @@ fn selection_text_reads_cells_and_trims_row_padding() {
         moved: true,
     };
     assert_eq!(
-        selection_text(&buf, linear, area),
+        selection_text(&buf, linear, area, &[]),
         "alpha   one\nbeta    two"
     );
 
@@ -3477,7 +3477,7 @@ fn selection_text_reads_cells_and_trims_row_padding() {
         dragging: false,
         moved: true,
     };
-    assert_eq!(selection_text(&buf, block, area), "one\ntwo");
+    assert_eq!(selection_text(&buf, block, area, &[]), "one\ntwo");
 
     // A row selected past its text keeps no trailing padding.
     let padded = Selection {
@@ -3487,7 +3487,70 @@ fn selection_text_reads_cells_and_trims_row_padding() {
         dragging: false,
         moved: true,
     };
-    assert_eq!(selection_text(&buf, padded, area), "alpha   one");
+    assert_eq!(selection_text(&buf, padded, area, &[]), "alpha   one");
+}
+
+/// A soft-wrap continuation row joins the row above it: a wrap at whitespace
+/// keeps that one space, a mid-word split adds nothing, and a block selection
+/// still breaks per row.
+#[test]
+fn selection_text_joins_soft_wrapped_rows() {
+    let area = Rect::new(0, 0, 10, 4);
+    let mut buf = Buffer::empty(area);
+    buf.set_string(0, 0, "hello", Style::new());
+    buf.set_string(0, 1, "world", Style::new());
+    buf.set_string(0, 2, "abcdefghij", Style::new());
+    buf.set_string(0, 3, "klm", Style::new());
+    let continued = [None, Some(true), None, Some(false)];
+    let sel = |mode| Selection {
+        anchor: (0, 0),
+        head: (9, 3),
+        mode,
+        dragging: false,
+        moved: true,
+    };
+
+    assert_eq!(
+        selection_text(&buf, sel(SelectionMode::Linear), area, &continued),
+        "hello world\nabcdefghijklm"
+    );
+    assert_eq!(
+        selection_text(&buf, sel(SelectionMode::Block), area, &continued),
+        "hello\nworld\nabcdefghij\nklm"
+    );
+    // Without wrap info every row stays its own line.
+    assert_eq!(
+        selection_text(&buf, sel(SelectionMode::Linear), area, &[]),
+        "hello\nworld\nabcdefghij\nklm"
+    );
+}
+
+/// End to end: a prose line the body wraps copies back as the one line it is,
+/// while separate transcript rows still copy as separate lines.
+#[test]
+fn copy_rejoins_a_wrapped_transcript_line() {
+    let mut app = test_app();
+    let sentence = "the quick brown fox jumps over the lazy dog and keeps on running far away";
+    app.transcript.push(RowKind::Line(Line::raw(sentence)).into());
+    app.transcript.push(RowKind::Line(Line::raw("next row")).into());
+    render_rows(&mut app, 30, 16);
+    let rect = app.transcript_rect;
+    assert!(
+        app.continued_rows.iter().filter(|c| c.is_some()).count() >= 2,
+        "the sentence must wrap at width 30"
+    );
+    app.selection = Some(Selection {
+        anchor: (0, rect.y + 1),
+        head: (rect.right() - 1, rect.bottom() - 1),
+        mode: SelectionMode::Linear,
+        dragging: false,
+        moved: true,
+    });
+    app.copy_armed = true;
+    render_rows(&mut app, 30, 16);
+    let copied = app.copy_request.clone().expect("copy text");
+    let lines: Vec<&str> = copied.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines, vec![sentence, "next row"]);
 }
 
 /// Copying a boxed code block should return the code body, not the frame.
@@ -3508,7 +3571,7 @@ fn selection_text_strips_box_frame_from_copied_code() {
         moved: true,
     };
 
-    assert_eq!(selection_text(&buf, selection, area), "    echo");
+    assert_eq!(selection_text(&buf, selection, area, &[]), "    echo");
 }
 
 #[test]
@@ -3602,7 +3665,7 @@ fn finish_compaction_keeps_messages_added_while_it_ran() {
     app.compact_started = Some(Instant::now());
     app.history = (0..5)
         .map(|i| json!({ "role": "user", "content": format!("m{i}") }))
-        .collect();
+        .collect::<Vec<_>>().into();
     // A message submitted while the summary was being generated.
     let base_len = 4;
     finish_compaction(
@@ -3626,7 +3689,7 @@ fn finish_compaction_keeps_messages_added_while_it_ran() {
 fn finish_compaction_restores_idle_state_on_failure() {
     let mut app = test_app();
     app.compacting = Some(CompactKind::Auto);
-    app.history = vec![json!({ "role": "user", "content": "hi" })];
+    app.history = vec![json!({ "role": "user", "content": "hi" })].into();
     finish_compaction(&mut app, Err("upstream 500".into()), 1);
     assert_eq!(app.history.len(), 1, "history must be left alone");
     assert!(app.compacting.is_none(), "a failure must allow a retry");
@@ -4478,7 +4541,7 @@ fn idle_footer_never_shows_a_cheat_sheet() {
             }
         }),
         ("used", &|a: &mut App| {
-            a.history.push(json!({ "role": "user", "content": "hi" }));
+            std::sync::Arc::make_mut(&mut a.history).push(json!({ "role": "user", "content": "hi" }));
         }),
     ];
     for (label, setup) in states {
@@ -4552,7 +4615,7 @@ fn tilde_path_abbreviates_only_the_home_prefix() {
 #[test]
 fn running_footer_keeps_its_hints() {
     let mut app = test_app();
-    app.history.push(json!({ "role": "user", "content": "hi" }));
+    std::sync::Arc::make_mut(&mut app.history).push(json!({ "role": "user", "content": "hi" }));
     app.status = Status::Running;
     let rows = render_rows(&mut app, 80, 12);
     assert!(
@@ -5794,7 +5857,7 @@ fn should_auto_compact_when_above_threshold() {
     app.tokens = 120_000; // > 128K - 16K = 112K
                           // Need more than 4 history messages
     for i in 0..6 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": format!("msg{i}")
         }));
@@ -5854,7 +5917,7 @@ fn should_not_auto_compact_when_history_too_short() {
     app.tokens = 120_000;
     // Only 3 messages — below the minimum of 5
     for i in 0..3 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": format!("msg{i}")
         }));
@@ -5867,7 +5930,7 @@ fn should_not_auto_compact_with_zero_tokens() {
     let mut app = test_app();
     app.tokens = 0;
     for i in 0..6 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": format!("msg{i}")
         }));
@@ -5881,7 +5944,7 @@ fn should_not_auto_compact_with_context_window_unset() {
     app.tokens = 120_000;
     app.context_window = u64::MAX; // effectively unlimited
     for i in 0..6 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": format!("msg{i}")
         }));
@@ -5945,7 +6008,7 @@ fn a_no_op_compaction_after_an_overflow_does_not_retry() {
     let mut app = app_with_history(6);
     app.on_error("upstream_error".into(), overflow_error());
     app.compacting = app.compact_request.take();
-    let unchanged = app.history.clone();
+    let unchanged = app.history.to_vec();
     let base = unchanged.len();
     finish_compaction(&mut app, Ok(unchanged), base);
     assert!(!app.want_start);
@@ -6017,7 +6080,7 @@ fn set_model_reduces_window_and_queues_target_compaction() {
         crate::core::cli::model_capabilities::ContextWindowSource::Catalog;
     app.tokens = 500_000;
     for i in 0..6 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": if i % 2 == 0 { "user" } else { "assistant" },
             "content": format!("msg{i}")
         }));
@@ -6048,7 +6111,7 @@ fn configured_window_stays_authoritative_across_switch() {
     // Below the configured threshold, so no target compaction is queued.
     app.tokens = 50_000;
     for i in 0..6 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": "user",
             "content": format!("msg{i}")
         }));
@@ -6074,7 +6137,7 @@ fn moving_to_a_larger_window_does_not_compact() {
         crate::core::cli::model_capabilities::ContextWindowSource::Catalog;
     app.tokens = 500_000;
     for i in 0..6 {
-        app.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut app.history).push(serde_json::json!({
             "role": "user",
             "content": format!("msg{i}")
         }));
@@ -6113,7 +6176,7 @@ fn unknown_model_resolves_to_the_fallback_window() {
 fn a_target_compaction_that_overflows_blocks_the_gated_run() {
     let mut app = test_app();
     app.compacting = Some(CompactKind::Auto);
-    app.history = vec![serde_json::json!({ "role": "user", "content": "hi" })];
+    app.history = vec![serde_json::json!({ "role": "user", "content": "hi" })].into();
     app.want_start = true;
     let overflow = format!(
         "[{}] Upstream returned HTTP 400: prompt is too long",
@@ -6144,7 +6207,7 @@ fn model_switch_during_compaction_requeues_for_a_smaller_target() {
     app.tokens = 500_000;
     app.history = (0..10)
         .map(|i| serde_json::json!({ "role": "user", "content": format!("before-{i}") }))
-        .collect();
+        .collect::<Vec<_>>().into();
     app.compacting = Some(CompactKind::Auto);
 
     app.set_model("claude-sonnet-4-5".to_string());

@@ -41,7 +41,7 @@ fn steering_cancel_removes_only_pending_input() {
     app.submit_user("remove me".into());
     app.submit_user("keep me".into());
     cancel_command(&mut app, "1");
-    let (request, mut receiver) = steering_request(app.history.clone());
+    let (request, mut receiver) = steering_request(app.history.to_vec());
     app.steer_run(request);
     assert_eq!(
         receiver.try_recv().unwrap(),
@@ -443,7 +443,7 @@ fn parse_command_splits_name_and_arg() {
 #[tokio::test]
 async fn compact_command_notes_when_unavailable() {
     let mut app = test_app();
-    app.history.push(json!({ "role": "user", "content": "hi" }));
+    std::sync::Arc::make_mut(&mut app.history).push(json!({ "role": "user", "content": "hi" }));
     run_command(&mut app, "compact", &no_mcp()).await;
     let text: String = app.transcript.iter().map(row_text).collect();
     assert!(text.contains("compaction unavailable"), "got: {text}");
@@ -868,7 +868,7 @@ async fn todo_command_bare_opens_editor_overlay() {
 #[tokio::test]
 async fn new_command_resets_session() {
     let mut app = test_app();
-    app.history.push(json!({ "role": "user", "content": "hi" }));
+    std::sync::Arc::make_mut(&mut app.history).push(json!({ "role": "user", "content": "hi" }));
     app.thread_id = Some("t-123".into());
     app.tokens = 42;
     app.push(Line::raw("old content"));

@@ -743,7 +743,7 @@ pub(super) struct ThreadSave {
     pub(super) base: std::path::PathBuf,
     pub(super) id: String,
     pub(super) model: String,
-    pub(super) history: Vec<serde_json::Value>,
+    pub(super) history: std::sync::Arc<Vec<serde_json::Value>>,
     pub(super) metadata: Option<serde_json::Value>,
 }
 
@@ -989,7 +989,7 @@ impl App {
                 reason,
             } => self.on_retry(attempt, max_attempts, delay_ms, reason),
             StreamEvent::MessagesUpdated { messages } => {
-                self.history = messages;
+                self.history = messages.into();
                 self.persist_in_background();
             }
             StreamEvent::TodoUpdate { list } => {
@@ -1651,7 +1651,7 @@ impl App {
             if !reasoning.is_empty() {
                 msg["reasoning_content"] = serde_json::json!(reasoning);
             }
-            self.history.push(msg);
+            std::sync::Arc::make_mut(&mut self.history).push(msg);
         }
         // Some OpenAI-compatible servers send usage only with the terminal
         // event. Keep the same context accounting path for that case instead
@@ -1995,7 +1995,7 @@ impl App {
             if !reasoning.is_empty() {
                 msg["reasoning_content"] = serde_json::json!(reasoning);
             }
-            self.history.push(msg);
+            std::sync::Arc::make_mut(&mut self.history).push(msg);
         }
         self.status = Status::Idle;
         self.run_started = None;
@@ -2078,7 +2078,7 @@ impl App {
                 })
             })
             .collect();
-        self.history.push(serde_json::json!({
+        std::sync::Arc::make_mut(&mut self.history).push(serde_json::json!({
             "role": "assistant",
             "content": serde_json::Value::Null,
             "tool_calls": tool_calls,
@@ -2093,7 +2093,7 @@ impl App {
                 .find(|(rid, _)| rid == id)
                 .map(|(_, c)| c.clone())
                 .unwrap_or_else(|| super::super::MISSING_TOOL_RESULT.to_string());
-            self.history.push(serde_json::json!({
+            std::sync::Arc::make_mut(&mut self.history).push(serde_json::json!({
                 "role": "tool",
                 "tool_call_id": id,
                 "content": content,
