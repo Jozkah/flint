@@ -380,6 +380,36 @@ export function useReferencePicker({
     [workingDir, referenceDataFolder, referenceAgents]
   )
 
+  /** The menu's keys: move, pick, close, and Alt+A to name an alias. */
+  const handleReferenceKeyDown = (event: React.KeyboardEvent) => {
+    if (filePickerOpen && !aliasDraft) {
+      const count = filePickerEntries.length
+      const active = filePickerEntries[Math.min(referenceActive, count - 1)]
+      if (count > 0 && event.key === 'ArrowDown') {
+        event.preventDefault()
+        setReferenceActive((index) => (index + 1) % count)
+      } else if (count > 0 && event.key === 'ArrowUp') {
+        event.preventDefault()
+        setReferenceActive((index) => (index - 1 + count) % count)
+      } else if (active && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+        event.preventDefault()
+        handleFilePickerSelect(active)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        handleFilePickerClose()
+      } else if (event.altKey && event.key.toLowerCase() === 'a' && active) {
+        event.preventDefault()
+        if (active.kind === 'file' || active.kind === 'directory') {
+          setAliasDraft(active)
+          setAliasError(null)
+          setReferenceStatus(`Name ${active.token} as an alias`)
+        } else {
+          setReferenceStatus('Only a file or folder can be named')
+        }
+      }
+    }
+  }
+
   return {
     filePickerOpen,
     filePickerQuery,
@@ -401,6 +431,7 @@ export function useReferencePicker({
     handleFilePickerClose,
     handleAliasSave,
     handleAliasCancel,
+    handleReferenceKeyDown,
     resolvePromptReferences,
   }
 }
