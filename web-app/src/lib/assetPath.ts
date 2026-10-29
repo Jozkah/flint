@@ -7,7 +7,7 @@
  * Grants are requested once per path and remembered.
  */
 import { useCallback, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
 /** 1x1 transparent GIF shown while a grant is pending (allowed by img/media CSP). */

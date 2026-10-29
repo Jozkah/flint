@@ -2,7 +2,7 @@
  * The Tauri commands behind Campaigns (src-tauri/src/core/agent/campaign.rs).
  * Thin on purpose: the backend validates and records, this only calls.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import type {
   Campaign,

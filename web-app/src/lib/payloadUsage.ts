@@ -8,7 +8,7 @@
  * and a count shown beside the wrong payload looks authoritative while being
  * wrong.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { PromptSnapshotRef } from '@/lib/providerFetch'
 
 export type UsageSource = 'provider' | 'estimated'

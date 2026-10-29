@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { isServedByFlint } from '@/lib/platform/utils'
 
 /** Where a phrase was said, as the backend scan reports it. */
