@@ -62,6 +62,10 @@ type Model = {
   cachedInputCostPerMillion?: number
   /** USD per million cache-write input tokens. Unset = the input price. */
   cacheWriteCostPerMillion?: number
+  /** The user set this model's capabilities; probes must not add to them. */
+  _userConfiguredCapabilities?: boolean
+  /** 'vision' was added by the mmproj probe, not by the user. */
+  _autoDetectedVision?: boolean
 }
 
 /**
