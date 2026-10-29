@@ -95,26 +95,8 @@ import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import type { CompactionRecord } from '@/lib/compaction'
 import { ReplyCutOff } from '@/components/ReplyCutOff'
 
-export type MessageItemProps = {
-  message: UIMessage
-  isFirstMessage: boolean
-  isLastMessage: boolean
-  status: ChatStatus
-  reasoningContainerRef?: React.RefObject<HTMLDivElement | null>
-  isReasoningAtBottom?: boolean
-  onReasoningScroll?: () => void
-  onReasoningScrollToBottom?: () => void
-  onRegenerate?: (messageId: string) => void
-  /** Fork the conversation into a new chat that starts at this message. */
-  onFork?: (messageId: string) => void
-  onContinue?: (messageId: string) => void
-  onEdit?: (messageId: string, newText: string) => void
-  onDelete?: (messageId: string) => void
-  versionInfo?: { index: number; count: number }
-  onSwitchVersion?: (messageId: string, dir: -1 | 1) => void
-  // Cowork only: the session's background subagent runs. Omitted in regular
-  // chat threads, which never spawn subagents.
-  subagents?: SubagentRun[]
+/** How the row is drawn. */
+export type MessageItemView = {
   isAnimating?: boolean
   hideActions?: boolean
   /** Cowork only: keep completed tool calls in the conversation. AH-172. */
@@ -142,32 +124,76 @@ export type MessageItemProps = {
   runParts?: UIMessage['parts']
 }
 
+/** The shared reasoning pane's scroll state, owned by the transcript. */
+export type MessageItemReasoning = {
+  containerRef?: React.RefObject<HTMLDivElement | null>
+  isAtBottom?: boolean
+  onScroll?: () => void
+  onScrollToBottom?: () => void
+}
+
+/** What the row's action buttons do. */
+export type MessageItemActions = {
+  onRegenerate?: (messageId: string) => void
+  /** Fork the conversation into a new chat that starts at this message. */
+  onFork?: (messageId: string) => void
+  onContinue?: (messageId: string) => void
+  onEdit?: (messageId: string, newText: string) => void
+  onDelete?: (messageId: string) => void
+  onSwitchVersion?: (messageId: string, dir: -1 | 1) => void
+}
+
+/*
+ * The grouped objects are usually written inline by the caller, so they are
+ * new on every render. The memo comparator below reads the fields of `view`
+ * one by one and, as before the grouping, ignores `reasoning` and `actions`:
+ * a fresh object never re-renders a settled row.
+ */
+export type MessageItemProps = {
+  message: UIMessage
+  isFirstMessage: boolean
+  isLastMessage: boolean
+  status: ChatStatus
+  versionInfo?: { index: number; count: number }
+  // Cowork only: the session's background subagent runs. Omitted in regular
+  // chat threads, which never spawn subagents.
+  subagents?: SubagentRun[]
+  view?: MessageItemView
+  reasoning?: MessageItemReasoning
+  actions?: MessageItemActions
+}
+
+const NO_VIEW: MessageItemView = {}
+
 export const MessageItem = memo(
   ({
     message,
     isFirstMessage,
     isLastMessage,
     status,
-    isAnimating,
-    hideActions,
-    continuation,
-    switchedFrom,
-    runParts,
-    midReply,
-    keepToolActivity,
     subagents,
-    reasoningContainerRef,
-    isReasoningAtBottom,
-    onReasoningScroll,
-    onReasoningScrollToBottom,
-    onRegenerate,
-    onFork,
-    onContinue,
-    onEdit,
-    onDelete,
     versionInfo,
-    onSwitchVersion,
+    view = NO_VIEW,
+    reasoning,
+    actions,
   }: MessageItemProps) => {
+    const {
+      isAnimating,
+      hideActions,
+      continuation,
+      switchedFrom,
+      runParts,
+      midReply,
+      keepToolActivity,
+    } = view
+    const {
+      containerRef: reasoningContainerRef,
+      isAtBottom: isReasoningAtBottom,
+      onScroll: onReasoningScroll,
+      onScrollToBottom: onReasoningScrollToBottom,
+    } = reasoning ?? {}
+    const { onRegenerate, onFork, onContinue, onEdit, onDelete, onSwitchVersion } =
+      actions ?? {}
     const { t } = useTranslation()
     // This conversation's model, so a split pane gates on its own.
     const { selectedModel, selectedProvider } = useConversationModel()
@@ -1039,17 +1065,19 @@ export const MessageItem = memo(
       return false
     }
 
+    const prevView = prevProps.view ?? NO_VIEW
+    const nextView = nextProps.view ?? NO_VIEW
     return (
       prevProps.message === nextProps.message &&
       prevProps.isFirstMessage === nextProps.isFirstMessage &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.status === nextProps.status &&
-      prevProps.hideActions === nextProps.hideActions &&
-      prevProps.continuation === nextProps.continuation &&
-      prevProps.switchedFrom === nextProps.switchedFrom &&
-      prevProps.midReply === nextProps.midReply &&
-      prevProps.runParts === nextProps.runParts &&
-      prevProps.keepToolActivity === nextProps.keepToolActivity &&
+      prevView.hideActions === nextView.hideActions &&
+      prevView.continuation === nextView.continuation &&
+      prevView.switchedFrom === nextView.switchedFrom &&
+      prevView.midReply === nextView.midReply &&
+      prevView.runParts === nextView.runParts &&
+      prevView.keepToolActivity === nextView.keepToolActivity &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&
       prevProps.versionInfo?.count === nextProps.versionInfo?.count
     )

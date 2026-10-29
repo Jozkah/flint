@@ -57,7 +57,9 @@ const show = (message: UIMessage, onRegenerate = vi.fn()) => {
       isFirstMessage={false}
       isLastMessage={true}
       status="ready"
-      onRegenerate={onRegenerate}
+      actions={{
+        onRegenerate,
+      }}
     />
   )
   return onRegenerate
