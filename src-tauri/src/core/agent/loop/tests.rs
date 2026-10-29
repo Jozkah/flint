@@ -4417,13 +4417,37 @@ fn only_an_unreached_provider_is_worth_failing_over() {
         "401 Unauthorized: invalid api key",
         "403 Forbidden",
         "This model's maximum context length is 8192 tokens",
-        "the run was cancelled by the user",
         "400 Bad Request: unsupported tool schema",
         // An outage word inside an answered refusal must not flip it.
         "403 Forbidden (connection refused by policy)",
     ] {
         assert!(!is_failover_worthy(&answered.into()), "{answered:?}");
     }
+    // A cancel is the run's token, not the provider's words (O03-017):
+    // a classified stop never fails over ...
+    let stopped = tauri_plugin_agent_tools::harness_error::classify_upstream_at(
+        "the run was cancelled by the user",
+        tauri_plugin_agent_tools::harness_error::Stage::Stream,
+        true,
+    );
+    assert!(!is_failover_worthy(&stopped));
+    assert!(!is_failover_worthy(&HarnessError::cancelled("escape")));
+    // ... while provider text alone is a transport fault that may.
+    assert!(is_failover_worthy(&"context canceled".into()));
+}
+
+/// A user stop never fails over, even when the dispatch error was built
+/// without the run's token and reads as an outage.
+#[tokio::test]
+async fn a_stopped_run_never_fails_over() {
+    use tauri_plugin_agent_tools::lifecycle::{with_current, Scope, StopReason, Token};
+    let token = Token::new(Scope::new("s", "r", ""));
+    let outage: HarnessError = "connection refused".into();
+    let live = with_current(token.clone(), async { is_failover_worthy(&outage) }).await;
+    assert!(live, "a live run may fail over");
+    token.stop(StopReason::Cancelled);
+    let stopped = with_current(token, async { is_failover_worthy(&outage) }).await;
+    assert!(!stopped, "a cancelled run must not fail over");
 }
 
 /// A model that overflows once, then summarizes, then answers: the three
