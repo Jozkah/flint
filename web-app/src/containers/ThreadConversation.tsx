@@ -293,6 +293,7 @@ import {
   useConversationPane,
 } from '@/hooks/useConversationPane'
 import { ACTIVE_PANE_RING } from '@/hooks/useCoworkPane'
+import { fingerprintFor } from '@/lib/mcpFingerprint'
 import { effectiveContextLength } from '@/lib/engineModels'
 import {
   paneDraftScope,
@@ -1285,12 +1286,16 @@ export function ThreadConversation({
               const approvedFingerprint = useToolApprovalRequests
                 .getState()
                 .takeApprovedFingerprint?.(toolCall.toolCallId)
-              const approvalTicket = server
-                ? await serviceHub
-                    .mcp()
-                    .allowOnceForServer(server, toolName, approvedFingerprint)
-                    .catch(() => undefined)
+              const fingerprint = server
+                ? await fingerprintFor(serviceHub.mcp(), server, approvedFingerprint)
                 : undefined
+              const approvalTicket =
+                server && fingerprint
+                  ? await serviceHub
+                      .mcp()
+                      .allowOnceForServer(server, toolName, fingerprint)
+                      .catch(() => undefined)
+                  : undefined
               // The call carries a token so Stop can cancel it while it runs.
               const cancellationToken = `tool_call_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
               const appState = useAppState.getState()

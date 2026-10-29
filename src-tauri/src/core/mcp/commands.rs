@@ -722,14 +722,14 @@ pub async fn mcp_server_fingerprints(
 /// Record that the user trusts a server, as currently configured, for every
 /// conversation, until they withdraw it. AH-041.
 ///
-/// `fingerprint` is the definition the user was shown when they answered.
-/// When it is given and no longer matches, nothing is recorded: the user
+/// `fingerprint` is the definition the user was shown when they answered,
+/// and is required. When it no longer matches, nothing is recorded: the user
 /// approved something else.
 #[tauri::command]
 pub async fn mcp_trust_server(
     state: State<'_, AppState>,
     server_name: String,
-    fingerprint: Option<String>,
+    fingerprint: String,
 ) -> Result<(), String> {
     let folder = crate::core::app::commands::resolve_jan_data_folder();
     let current = current_server_fingerprint(&state, &folder, &server_name)
@@ -737,13 +737,11 @@ pub async fn mcp_trust_server(
         .ok_or_else(|| {
             format!("MCP server '{server_name}' is not configured, so it cannot be trusted")
         })?;
-    if let Some(expected) = fingerprint.as_deref() {
-        if expected != current {
-            return Err(tauri_plugin_agent_tools::mcp_trust::Refusal::ConfigurationChanged {
-                server: server_name,
-            }
-            .message());
+    if fingerprint != current {
+        return Err(tauri_plugin_agent_tools::mcp_trust::Refusal::ConfigurationChanged {
+            server: server_name,
         }
+        .message());
     }
     tauri_plugin_agent_tools::mcp_trust::trust(&folder, &server_name, &current)
 }
@@ -780,14 +778,14 @@ pub async fn mcp_forget_server(server_name: String, reason: String) -> Result<()
 /// return the ticket that `call_tool` will consume. AH-041.
 ///
 /// Single use and short lived: an "allow once" answer that outlived the call
-/// would be a standing permission nobody granted. `fingerprint`, when given,
-/// is the definition the user approved; a mismatch issues nothing.
+/// would be a standing permission nobody granted. `fingerprint` (required) is
+/// the definition the user approved; a mismatch issues nothing.
 #[tauri::command]
 pub async fn mcp_allow_once(
     state: State<'_, AppState>,
     server_name: String,
     tool_name: String,
-    fingerprint: Option<String>,
+    fingerprint: String,
 ) -> Result<String, String> {
     if server_name.trim().is_empty() {
         return Err("a server name is required to authorize a call".to_string());
@@ -803,7 +801,7 @@ pub async fn mcp_allow_once(
         &server_name,
         &tool_name,
         &current,
-        fingerprint.as_deref(),
+        Some(fingerprint.as_str()),
     )
 }
 
