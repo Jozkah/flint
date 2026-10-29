@@ -28,7 +28,12 @@ import { useMediaAttachments } from '../useMediaAttachments'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 
 const KEY = 'thread-1'
-const audio = (name: string) => ({ type: 'audio' as const, name, dataUrl: 'd', base64: 'b' })
+const audio = (name: string, base64 = name) => ({
+  type: 'audio' as const,
+  name,
+  dataUrl: 'd',
+  base64: btoa(base64),
+})
 
 describe('useMediaAttachments', () => {
   beforeEach(() => {
@@ -46,7 +51,7 @@ describe('useMediaAttachments', () => {
     return { result, setMessage, focusComposer }
   }
 
-  it('adds new audio, warns about duplicates by name', async () => {
+  it('adds new audio, warns about duplicates by content', async () => {
     useChatAttachments.getState().setAttachments(KEY, [audio('a.wav') as never])
     h.prepareAudioFiles.mockResolvedValue({
       prepared: [audio('a.wav'), audio('b.wav')],

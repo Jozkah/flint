@@ -251,6 +251,7 @@
     "filterImages": "Images",
     "attachFailed": "Failed to attach documents",
     "removeFailed": "Failed to remove attachment",
+    "attachmentRemoved": "Removed {{name}}",
     "ingestFailed": "Failed to ingest {{name}}",
     "readAudioFailed": "Failed to read audio file",
     "readVideoFailed": "Failed to read video file",

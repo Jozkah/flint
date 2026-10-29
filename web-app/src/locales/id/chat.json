@@ -232,6 +232,7 @@
     "filterImages": "Gambar",
     "attachFailed": "Gagal melampirkan dokumen",
     "removeFailed": "Gagal menghapus lampiran",
+    "attachmentRemoved": "{{name}} dihapus",
     "ingestFailed": "Gagal memproses {{name}}",
     "readAudioFailed": "Gagal membaca berkas audio",
     "readVideoFailed": "Gagal membaca berkas video",
