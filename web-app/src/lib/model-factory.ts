@@ -72,7 +72,7 @@ import {
   bedrockRegion,
   createBedrockSigningFetch,
 } from '@/lib/bedrock'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { findSessionByModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { SessionInfo } from '@janhq/core'
 import { providerFetch } from '@/lib/providerFetch'

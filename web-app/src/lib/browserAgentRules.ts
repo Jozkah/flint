@@ -1,5 +1,5 @@
 /** The assistant browser's saved site rules, kept by the backend. */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 export type BrowserRule = {
   /** `example.com` (that site) or `*.example.com` (its subdomains). */

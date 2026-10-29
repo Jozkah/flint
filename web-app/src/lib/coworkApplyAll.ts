@@ -7,7 +7,7 @@
  * under the same confinement, whether each destination is new, already
  * identical, or a different file that would be replaced.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type {
   SandboxApplyOutcome,
   SandboxApplyPlan,

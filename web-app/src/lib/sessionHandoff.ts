@@ -14,7 +14,7 @@
  * session is created either way; nothing is resumed into a state that cannot
  * work without the user being told.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { SessionBundle } from '@/lib/sessionBundle'
 import { errorText } from '@/lib/errorText'
 import { i18n } from '@/i18n/react-i18next-compat'

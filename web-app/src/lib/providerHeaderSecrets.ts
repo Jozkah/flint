@@ -9,7 +9,7 @@
  * One entry per provider holding every secret value, not one per header:
  * macOS asks once per keychain entry.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /** Kept apart from the provider's own key chain, which is keyed by its name. */
 export function headerSecretsKey(provider: string): string {

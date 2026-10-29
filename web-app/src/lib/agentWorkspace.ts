@@ -5,7 +5,7 @@ import {
   memoryWrite,
   memoryDelete,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import * as skillStore from '@/lib/skillStore'
 import type { SkillMeta } from '@/lib/skillStore'

@@ -9,7 +9,7 @@
  * builder the live panel uses, so a step shows exactly the state the record
  * held at that point, not a re-interpretation of it.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { EventEnvelope } from '@/lib/eventLog'
 import { buildTimeline, type TimelineRow } from '@/lib/executionTimeline'
 

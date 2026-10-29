@@ -15,7 +15,7 @@
  *   model, duration and token counts. Never its prompt or its output.
  */
 import { generateText, type LanguageModel, type ModelMessage } from 'ai'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 export type UtilityKind = 'title' | 'summary' | 'classify' | 'describe' | 'btw'
 

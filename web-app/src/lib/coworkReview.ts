@@ -6,7 +6,7 @@
 // the same utility-call path titles and summaries use) and sequences the
 // passes, mirroring `review_diff` in `src-tauri/src/core/agent/review.rs`.
 
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { ModelFactory } from '@/lib/model-factory'
 import { runUtilityAgent } from '@/lib/utilityAgents'

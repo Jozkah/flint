@@ -13,7 +13,7 @@
  * when it was exported comes back `stale`, because nothing is waiting for the
  * answer any more.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 import type { CoworkSession } from '@/hooks/useCoworkSessions'
 import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
 import type { FileActivityEvent } from '@/lib/fileActivity'

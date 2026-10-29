@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /** A GGUF model another app already keeps on this machine. */
 export interface ScannedModel {

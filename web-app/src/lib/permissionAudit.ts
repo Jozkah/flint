@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand as invoke } from '@/lib/backend'
 
 /** What the gate decided. Mirrors `audit::Outcome` in the agent-tools plugin. */
 export type PermissionAuditDecision =
