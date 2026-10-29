@@ -11,6 +11,19 @@ const api = vi.hoisted(() => ({
   projectInitAccept: vi.fn(),
 }))
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => api)
+// The real English copy, so the assertions read what the user reads.
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const en = (await import('@/locales/en/common.json')).default as Record<string, unknown>
+  const t = (key: string, opts?: Record<string, unknown>) => {
+    const raw = key
+      .replace(/^common:/, '')
+      .split('.')
+      .reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], en)
+    if (typeof raw !== 'string') return key
+    return raw.replace(/\{\{(\w+)\}\}/g, (_m, n) => String(opts?.[n] ?? ''))
+  }
+  return { useTranslation: () => ({ t }), i18n: { t } }
+})
 
 import { CoworkProjectInit } from '../CoworkProjectInit'
 import { useProjectInitDrafts } from '@/lib/projectInit'
