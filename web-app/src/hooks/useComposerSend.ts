@@ -48,7 +48,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 
 export type ModelCheck = { status: 'ok' | 'stop' } | { status: 'retry'; modelId: string }
 
-type Assistants = ReturnType<typeof useAssistant>
+type Assistants = ReturnType<typeof useAssistant.getState>
 
 export type ComposerSubmit = (
   text: string,
@@ -75,7 +75,7 @@ type ComposerSendDeps = {
   preferredModel: ReturnType<typeof useModelEvidence.getState>['preferredModel']
   setMessage: (message: string) => void
   attachments: Attachment[]
-  selectedProvider: string | undefined
+  selectedProvider: ModelSelection['selectedProvider']
   requestCapabilities: (
     capabilities: EnableableCapability[],
     onEnabled: () => void | Promise<void>
@@ -159,6 +159,9 @@ export function useComposerSend(deps: ComposerSendDeps) {
   const router = useRouter()
   const createThread = useThreads((state) => state.createThread)
   const getProviderByName = useModelProvider((state) => state.getProviderByName)
+  const setAttachmentsForThread = useChatAttachments(
+    (state) => state.setAttachments
+  )
   // A send waiting for the replacement model to show; see handleSendMessage.
   const pendingSendRef = useRef<{
     typed: string

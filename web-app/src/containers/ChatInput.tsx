@@ -47,7 +47,6 @@ import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useAssistant } from '@/hooks/useAssistant'
 import { AssistantSwitcher } from '@/containers/AssistantSwitcher'
 import { ComposerOptionsMenu } from '@/containers/ComposerOptionsMenu'
-import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { TokenCounter } from '@/components/TokenCounter'
 import type { TokenUsageSource } from '@/hooks/useTokensCount'
@@ -66,14 +65,11 @@ import { EnableModelCapabilityDialog } from '@/containers/dialogs/EnableModelCap
 import { acceptAttribute } from '@/lib/attachmentSupport'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useComposerFocus } from '@/hooks/useComposerFocus'
-import { useLatestCallback } from '@/hooks/useLatestCallback'
 import { useMediaAttachments } from '@/hooks/useMediaAttachments'
 import { ComposerAttachMenu } from '@/containers/ComposerAttachMenu'
 import { ComposerToolControls } from '@/containers/ComposerToolControls'
-import {
-  ComposerReasoningMenu,
-  REASONING_MENU_PROVIDERS,
-} from '@/containers/ComposerReasoningMenu'
+import { ComposerReasoningMenu } from '@/containers/ComposerReasoningMenu'
+import { REASONING_MENU_PROVIDERS } from '@/lib/reasoningMenu'
 import { ComposerSendButton } from '@/containers/ComposerSendButton'
 import {
   ComposerErrorLine,
@@ -353,7 +349,6 @@ const ChatInput = memo(function ChatInput({
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
-  const serviceHub = useServiceHub()
   const abortControllers = useAppState((state) => state.abortControllers)
   const cancelToolCall = useAppState((state) => state.cancelToolCall)
   // The main draft, or this composer's own when it has a scope (the second
@@ -742,7 +737,6 @@ const ChatInput = memo(function ChatInput({
   const videoSupported = !!selectedModel?.capabilities?.includes('video')
 
   const {
-    attachDocumentPaths,
     attachDroppedDocuments,
     handleAttachDocsIngest,
     handleRemoveAttachment,
