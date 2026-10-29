@@ -28,7 +28,35 @@
     "sessionEvents": "会话事件",
     "stopExport": "停止导出",
     "stopImport": "停止导入",
-    "unavailableCount": "{{total}} 项不可用"
+    "unavailableCount": "{{total}} 项不可用",
+    "review": "审查",
+    "hideReview": "隐藏审查",
+    "teamReviews": {
+      "stateRunning": "运行中",
+      "stateInterrupted": "Flint 停止时中断",
+      "stateCompleted": "已完成",
+      "stateFailed": "失败",
+      "stateCancelled": "已取消",
+      "proposalPending": "等待审查",
+      "proposalPartial": "部分应用",
+      "proposalApplied": "已应用",
+      "proposalRejected": "已拒绝",
+      "fromBase": "基于 {{sha}}",
+      "override": "尽管在 {{paths}} 上有重叠,仍按你的决定与 {{tasks}} 并行运行。",
+      "acknowledge": "知晓此情况仍要审查",
+      "changesFromTask": "来自任务 {{task}} 的更改",
+      "label": "团队任务的成果",
+      "intro": "在各自检出副本中工作的团队任务。在你应用之前,不会有任何内容进入你的文件夹。"
+    },
+    "bundle": {
+      "from": "来源",
+      "branch": "分支",
+      "base": "基准",
+      "bundle": "包",
+      "state": "状态",
+      "schema": "(架构 {{schema}})",
+      "abandon": "放弃"
+    }
   },
   "editModel": {
     "updateFailed": "更新模型失败，请重试。",

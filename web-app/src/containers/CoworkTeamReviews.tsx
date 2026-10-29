@@ -33,13 +33,15 @@ import {
   type ChildView,
 } from '@/lib/teamChildren'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
+/** The `sweep:cowork.teamReviews.*` key naming each child state. */
 const STATE: Record<ChildState, string> = {
-  running: 'Running',
-  interrupted: 'Interrupted when Flint stopped',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
+  running: 'stateRunning',
+  interrupted: 'stateInterrupted',
+  completed: 'stateCompleted',
+  failed: 'stateFailed',
+  cancelled: 'stateCancelled',
 }
 
 /** The shared work status each child state is shown with: icon and word. */
@@ -72,6 +74,9 @@ function ChildRow({
   /** Brought into view and marked: a task row led here. */
   focused?: boolean
 }) {
+  const { t } = useTranslation()
+  const tr = (key: string, params?: Record<string, unknown>) =>
+    t(`sweep:cowork.teamReviews.${key}`, params)
   const [open, setOpen] = useState(false)
   const rowRef = useRef<HTMLLIElement | null>(null)
   useEffect(() => {
@@ -108,7 +113,7 @@ function ChildRow({
           state={WORK_STATE[view.state]}
           data-testid="team-child-state"
         >
-          {STATE[view.state]}
+          {tr(STATE[view.state])}
         </WorkStatus>
         {proposal ? (
           <span
@@ -116,12 +121,12 @@ function ChildRow({
             data-testid="team-child-proposal"
           >
             {proposal.state === 'pending'
-              ? 'Waiting for review'
+              ? tr('proposalPending')
               : proposal.state === 'partially-applied'
-                ? 'Partly applied'
+                ? tr('proposalPartial')
                 : proposal.state === 'applied'
-                  ? 'Applied'
-                  : 'Rejected'}
+                  ? tr('proposalApplied')
+                  : tr('proposalRejected')}
           </span>
         ) : null}
         <span className="ml-auto font-mono font-medium text-diff-add">+{adds}</span>
@@ -137,7 +142,7 @@ function ChildRow({
         <GitBranch size={10} />
         <span data-testid="team-child-branch">{view.branch}</span>
         <span data-testid="team-child-base">
-          from {view.baseSha.slice(0, 10)}
+          {tr('fromBase', { sha: view.baseSha.slice(0, 10) })}
         </span>
         <span className="truncate" data-testid="team-child-worktree">
           {view.worktreePath}
@@ -148,13 +153,15 @@ function ChildRow({
           className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-warning"
           data-testid="team-child-override"
         >
-          Ran side by side with{' '}
-          {view.overrides
-            .flatMap((o) => o.tasks)
-            .filter((t) => t !== view.taskId)
-            .join(', ')}{' '}
-          at your decision, despite overlapping on{' '}
-          {[...new Set(view.overrides.flatMap((o) => o.paths))].join(', ')}.
+          {tr('override', {
+            tasks: view.overrides
+              .flatMap((o) => o.tasks)
+              .filter((task) => task !== view.taskId)
+              .join(', '),
+            paths: [...new Set(view.overrides.flatMap((o) => o.paths))].join(
+              ', '
+            ),
+          })}
         </p>
       ) : null}
       {view.files.length > 0 ? (
@@ -192,7 +199,7 @@ function ChildRow({
             onChange={(e) => setAcknowledged(e.target.checked)}
             data-testid="team-child-acknowledge"
           />
-          Review it anyway, knowing this
+          {tr('acknowledge')}
         </label>
       ) : null}
       <div className="mt-1">
@@ -204,14 +211,14 @@ function ChildRow({
           onClick={() => setOpen((v) => !v)}
           data-testid="team-child-review"
         >
-          {open ? 'Hide review' : 'Review'}
+          {open ? t('sweep:cowork.hideReview') : t('sweep:cowork.review')}
         </Button>
       </div>
       {open && canReview ? (
         <CoworkProposalReview
           worktree={{ path: view.worktreePath, sourceRoot: view.sourceRoot }}
           session={view.parentSession}
-          title={`Changes from task ${view.taskId}`}
+          title={tr('changesFromTask', { task: view.taskId })}
           propose={() =>
             proposeTeamChild(view.parentSession, view.taskId, acknowledged)
           }
@@ -234,6 +241,7 @@ export function CoworkTeamReviews({
   /** The team task a task row asked to see. */
   focusTaskId?: string | null
 }) {
+  const { t } = useTranslation()
   const [views, setViews] = useState<ChildView[]>([])
   const [proposals, setProposals] = useState<ProposalRecord[]>([])
   const version = useTeamChildrenVersion((s) => s.version)
@@ -262,14 +270,13 @@ export function CoworkTeamReviews({
   return (
     <section
       className="mx-3 mb-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] p-3 motion-safe:animate-rise-in"
-      aria-label="Work from team tasks"
+      aria-label={t('sweep:cowork.teamReviews.label')}
       data-testid="team-reviews"
     >
       <div className="flex items-center gap-2">
         <Users size={14} className="text-muted-foreground" />
         <p className="flex-1 text-[length:calc(var(--ui-font-base)*0.78125)] font-medium text-foreground">
-          Team tasks that worked in checkouts of their own. Nothing reaches
-          your folder until you apply it.
+          {t('sweep:cowork.teamReviews.intro')}
         </p>
       </div>
       <ul className="mt-2 flex flex-col gap-2">

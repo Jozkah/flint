@@ -30,7 +30,35 @@
     "sessionEvents": "Esdeveniments de la sessió",
     "stopExport": "Atura l’exportació",
     "stopImport": "Atura la importació",
-    "unavailableCount": "{{total}} no disponibles"
+    "unavailableCount": "{{total}} no disponibles",
+    "review": "Revisa",
+    "hideReview": "Amaga la revisió",
+    "teamReviews": {
+      "stateRunning": "En execució",
+      "stateInterrupted": "Interrompuda quan Flint s'ha aturat",
+      "stateCompleted": "Completada",
+      "stateFailed": "Ha fallat",
+      "stateCancelled": "Cancel·lada",
+      "proposalPending": "Pendent de revisió",
+      "proposalPartial": "Aplicada en part",
+      "proposalApplied": "Aplicada",
+      "proposalRejected": "Rebutjada",
+      "fromBase": "des de {{sha}}",
+      "override": "S'ha executat alhora que {{tasks}} per decisió teva, tot i coincidir en {{paths}}.",
+      "acknowledge": "Revisa-la igualment, sabent-ho",
+      "changesFromTask": "Canvis de la tasca {{task}}",
+      "label": "Feina de les tasques d'equip",
+      "intro": "Tasques d'equip que han treballat en còpies pròpies. Res no arriba a la teva carpeta fins que ho apliquis."
+    },
+    "bundle": {
+      "from": "Origen",
+      "branch": "Branca",
+      "base": "Base",
+      "bundle": "Paquet",
+      "state": "Estat",
+      "schema": "(esquema {{schema}})",
+      "abandon": "Abandona"
+    }
   },
   "editModel": {
     "updateFailed": "No s’ha pogut actualitzar el model. Torna-ho a provar.",

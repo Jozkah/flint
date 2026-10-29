@@ -14,6 +14,25 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...a: unknown[]) => invoke(...a),
 }))
 
+// The English copy, so the assertions read what a person sees.
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const sweep = (await import('@/locales/en/sweep.json')).default as Record<
+    string,
+    unknown
+  >
+  const t = (key: string, params?: Record<string, unknown>) => {
+    const [ns, path] = key.includes(':') ? key.split(':') : ['', key]
+    let node: unknown = ns === 'sweep' ? sweep : undefined
+    for (const part of path.split('.'))
+      node = (node as Record<string, unknown> | undefined)?.[part]
+    if (typeof node !== 'string') return key
+    return node.replace(/\{\{(\w+)\}\}/g, (m, v) =>
+      params?.[v] !== undefined ? String(params[v]) : m
+    )
+  }
+  return { useTranslation: () => ({ t }), i18n: { t } }
+})
+
 import { CoworkTeamReviews } from '../CoworkTeamReviews'
 import { useTeamChildrenVersion, type ChildView } from '@/lib/teamChildren'
 import { act } from '@testing-library/react'

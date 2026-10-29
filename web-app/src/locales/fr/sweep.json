@@ -30,7 +30,35 @@
     "sessionEvents": "Événements de session",
     "stopExport": "Arrêter l’export",
     "stopImport": "Arrêter l’import",
-    "unavailableCount": "{{total}} indisponible(s)"
+    "unavailableCount": "{{total}} indisponible(s)",
+    "review": "Examiner",
+    "hideReview": "Masquer l'examen",
+    "teamReviews": {
+      "stateRunning": "En cours",
+      "stateInterrupted": "Interrompue à l'arrêt de Flint",
+      "stateCompleted": "Terminée",
+      "stateFailed": "Échec",
+      "stateCancelled": "Annulée",
+      "proposalPending": "En attente d'examen",
+      "proposalPartial": "Appliquée en partie",
+      "proposalApplied": "Appliquée",
+      "proposalRejected": "Rejetée",
+      "fromBase": "depuis {{sha}}",
+      "override": "Exécutée en parallèle de {{tasks}} sur votre décision, malgré un chevauchement sur {{paths}}.",
+      "acknowledge": "L'examiner quand même, en connaissance de cause",
+      "changesFromTask": "Modifications de la tâche {{task}}",
+      "label": "Travail des tâches d'équipe",
+      "intro": "Tâches d'équipe qui ont travaillé dans leurs propres copies. Rien n'atteint votre dossier tant que vous ne l'appliquez pas."
+    },
+    "bundle": {
+      "from": "Origine",
+      "branch": "Branche",
+      "base": "Base",
+      "bundle": "Paquet",
+      "state": "État",
+      "schema": "(schéma {{schema}})",
+      "abandon": "Abandonner"
+    }
   },
   "editModel": {
     "updateFailed": "Échec de la mise à jour du modèle. Réessayez.",

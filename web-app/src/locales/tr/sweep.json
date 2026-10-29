@@ -29,7 +29,35 @@
     "sessionEvents": "Oturum olayları",
     "stopExport": "Dışa aktarmayı durdur",
     "stopImport": "İçe aktarmayı durdur",
-    "unavailableCount": "{{total}} kullanılamıyor"
+    "unavailableCount": "{{total}} kullanılamıyor",
+    "review": "İncele",
+    "hideReview": "İncelemeyi gizle",
+    "teamReviews": {
+      "stateRunning": "Çalışıyor",
+      "stateInterrupted": "Flint durduğunda kesildi",
+      "stateCompleted": "Tamamlandı",
+      "stateFailed": "Başarısız",
+      "stateCancelled": "İptal edildi",
+      "proposalPending": "İnceleme bekliyor",
+      "proposalPartial": "Kısmen uygulandı",
+      "proposalApplied": "Uygulandı",
+      "proposalRejected": "Reddedildi",
+      "fromBase": "{{sha}} tabanından",
+      "override": "{{paths}} üzerinde çakışmasına rağmen kararınızla {{tasks}} ile yan yana çalıştı.",
+      "acknowledge": "Bunu bilerek yine de incele",
+      "changesFromTask": "{{task}} görevinden değişiklikler",
+      "label": "Ekip görevlerinden gelen iş",
+      "intro": "Kendi çalışma kopyalarında çalışan ekip görevleri. Siz uygulayana kadar klasörünüze hiçbir şey ulaşmaz."
+    },
+    "bundle": {
+      "from": "Kaynak",
+      "branch": "Dal",
+      "base": "Taban",
+      "bundle": "Paket",
+      "state": "Durum",
+      "schema": "(şema {{schema}})",
+      "abandon": "Vazgeç"
+    }
   },
   "editModel": {
     "updateFailed": "Model güncellenemedi. Lütfen tekrar dene.",

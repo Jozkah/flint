@@ -31,7 +31,35 @@
     "sessionEvents": "Události relace",
     "stopExport": "Zastavit export",
     "stopImport": "Zastavit import",
-    "unavailableCount": "Nedostupné: {{total}}"
+    "unavailableCount": "Nedostupné: {{total}}",
+    "review": "Zkontrolovat",
+    "hideReview": "Skrýt kontrolu",
+    "teamReviews": {
+      "stateRunning": "Běží",
+      "stateInterrupted": "Přerušeno při ukončení Flintu",
+      "stateCompleted": "Dokončeno",
+      "stateFailed": "Selhalo",
+      "stateCancelled": "Zrušeno",
+      "proposalPending": "Čeká na kontrolu",
+      "proposalPartial": "Částečně použito",
+      "proposalApplied": "Použito",
+      "proposalRejected": "Zamítnuto",
+      "fromBase": "z {{sha}}",
+      "override": "Běželo souběžně s {{tasks}} na vaše rozhodnutí, přestože se překrývá v {{paths}}.",
+      "acknowledge": "Přesto zkontrolovat, s vědomím tohoto",
+      "changesFromTask": "Změny z úlohy {{task}}",
+      "label": "Práce z týmových úloh",
+      "intro": "Týmové úlohy, které pracovaly ve vlastních kopiích. Do vaší složky se nic nedostane, dokud to nepoužijete."
+    },
+    "bundle": {
+      "from": "Od",
+      "branch": "Větev",
+      "base": "Základ",
+      "bundle": "Balíček",
+      "state": "Stav",
+      "schema": "(schéma {{schema}})",
+      "abandon": "Zahodit"
+    }
   },
   "editModel": {
     "updateFailed": "Model se nepodařilo aktualizovat. Zkuste to znovu.",

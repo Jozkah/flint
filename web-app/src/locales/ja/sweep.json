@@ -28,7 +28,35 @@
     "sessionEvents": "セッションイベント",
     "stopExport": "エクスポートを停止",
     "stopImport": "インポートを停止",
-    "unavailableCount": "{{total}} 件が利用不可"
+    "unavailableCount": "{{total}} 件が利用不可",
+    "review": "レビュー",
+    "hideReview": "レビューを隠す",
+    "teamReviews": {
+      "stateRunning": "実行中",
+      "stateInterrupted": "Flint の停止時に中断",
+      "stateCompleted": "完了",
+      "stateFailed": "失敗",
+      "stateCancelled": "キャンセル済み",
+      "proposalPending": "レビュー待ち",
+      "proposalPartial": "一部適用済み",
+      "proposalApplied": "適用済み",
+      "proposalRejected": "却下",
+      "fromBase": "{{sha}} から",
+      "override": "{{paths}} で重なっていましたが、あなたの判断で {{tasks}} と並行して実行しました。",
+      "acknowledge": "承知のうえでレビューする",
+      "changesFromTask": "タスク {{task}} の変更",
+      "label": "チームタスクの作業",
+      "intro": "それぞれ専用のチェックアウトで作業したチームタスクです。適用するまでフォルダーには何も反映されません。"
+    },
+    "bundle": {
+      "from": "元",
+      "branch": "ブランチ",
+      "base": "ベース",
+      "bundle": "バンドル",
+      "state": "状態",
+      "schema": "(スキーマ {{schema}})",
+      "abandon": "破棄"
+    }
   },
   "editModel": {
     "updateFailed": "モデルを更新できませんでした。もう一度お試しください。",

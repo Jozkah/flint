@@ -29,7 +29,35 @@
     "sessionEvents": "Session events",
     "stopExport": "Stop export",
     "stopImport": "Stop import",
-    "unavailableCount": "{{total}} unavailable"
+    "unavailableCount": "{{total}} unavailable",
+    "review": "Review",
+    "hideReview": "Hide review",
+    "teamReviews": {
+      "stateRunning": "Running",
+      "stateInterrupted": "Interrupted when Flint stopped",
+      "stateCompleted": "Completed",
+      "stateFailed": "Failed",
+      "stateCancelled": "Cancelled",
+      "proposalPending": "Waiting for review",
+      "proposalPartial": "Partly applied",
+      "proposalApplied": "Applied",
+      "proposalRejected": "Rejected",
+      "fromBase": "from {{sha}}",
+      "override": "Ran side by side with {{tasks}} at your decision, despite overlapping on {{paths}}.",
+      "acknowledge": "Review it anyway, knowing this",
+      "changesFromTask": "Changes from task {{task}}",
+      "label": "Work from team tasks",
+      "intro": "Team tasks that worked in checkouts of their own. Nothing reaches your folder until you apply it."
+    },
+    "bundle": {
+      "from": "From",
+      "branch": "Branch",
+      "base": "Base",
+      "bundle": "Bundle",
+      "state": "State",
+      "schema": "(schema {{schema}})",
+      "abandon": "Abandon"
+    }
   },
   "editModel": {
     "updateFailed": "Failed to update model. Please try again.",

@@ -28,7 +28,35 @@
     "sessionEvents": "세션 이벤트",
     "stopExport": "내보내기 중지",
     "stopImport": "가져오기 중지",
-    "unavailableCount": "{{total}}개 사용 불가"
+    "unavailableCount": "{{total}}개 사용 불가",
+    "review": "검토",
+    "hideReview": "검토 숨기기",
+    "teamReviews": {
+      "stateRunning": "실행 중",
+      "stateInterrupted": "Flint 종료로 중단됨",
+      "stateCompleted": "완료",
+      "stateFailed": "실패",
+      "stateCancelled": "취소됨",
+      "proposalPending": "검토 대기 중",
+      "proposalPartial": "일부 적용됨",
+      "proposalApplied": "적용됨",
+      "proposalRejected": "거부됨",
+      "fromBase": "{{sha}}에서",
+      "override": "{{paths}}에서 겹치지만 사용자의 결정으로 {{tasks}}와(과) 나란히 실행했습니다.",
+      "acknowledge": "이를 알고도 검토",
+      "changesFromTask": "작업 {{task}}의 변경 사항",
+      "label": "팀 작업의 결과",
+      "intro": "각자의 체크아웃에서 작업한 팀 작업입니다. 적용하기 전에는 폴더에 아무것도 반영되지 않습니다."
+    },
+    "bundle": {
+      "from": "출처",
+      "branch": "브랜치",
+      "base": "기준",
+      "bundle": "번들",
+      "state": "상태",
+      "schema": "(스키마 {{schema}})",
+      "abandon": "버리기"
+    }
   },
   "editModel": {
     "updateFailed": "모델을 업데이트하지 못했습니다. 다시 시도해 주세요.",

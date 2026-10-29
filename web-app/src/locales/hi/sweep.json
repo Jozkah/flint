@@ -29,7 +29,35 @@
     "sessionEvents": "सत्र के इवेंट",
     "stopExport": "एक्सपोर्ट रोकें",
     "stopImport": "इम्पोर्ट रोकें",
-    "unavailableCount": "{{total}} अनुपलब्ध"
+    "unavailableCount": "{{total}} अनुपलब्ध",
+    "review": "समीक्षा करें",
+    "hideReview": "समीक्षा छिपाएँ",
+    "teamReviews": {
+      "stateRunning": "चल रहा है",
+      "stateInterrupted": "Flint बंद होने पर बाधित",
+      "stateCompleted": "पूरा हुआ",
+      "stateFailed": "विफल",
+      "stateCancelled": "रद्द किया गया",
+      "proposalPending": "समीक्षा की प्रतीक्षा में",
+      "proposalPartial": "आंशिक रूप से लागू",
+      "proposalApplied": "लागू किया गया",
+      "proposalRejected": "अस्वीकृत",
+      "fromBase": "{{sha}} से",
+      "override": "आपके निर्णय पर {{tasks}} के साथ-साथ चलाया गया, जबकि {{paths}} पर ओवरलैप था।",
+      "acknowledge": "यह जानते हुए भी समीक्षा करें",
+      "changesFromTask": "कार्य {{task}} के बदलाव",
+      "label": "टीम कार्यों का काम",
+      "intro": "टीम कार्य जिन्होंने अपनी अलग कॉपी में काम किया। जब तक आप लागू नहीं करते, आपके फ़ोल्डर में कुछ नहीं पहुँचता।"
+    },
+    "bundle": {
+      "from": "स्रोत",
+      "branch": "ब्रांच",
+      "base": "बेस",
+      "bundle": "बंडल",
+      "state": "स्थिति",
+      "schema": "(स्कीमा {{schema}})",
+      "abandon": "छोड़ें"
+    }
   },
   "editModel": {
     "updateFailed": "मॉडल अपडेट नहीं हो सका। कृपया फिर से कोशिश करें।",

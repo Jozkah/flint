@@ -28,7 +28,35 @@
     "sessionEvents": "Peristiwa sesi",
     "stopExport": "Hentikan ekspor",
     "stopImport": "Hentikan impor",
-    "unavailableCount": "{{total}} tidak tersedia"
+    "unavailableCount": "{{total}} tidak tersedia",
+    "review": "Tinjau",
+    "hideReview": "Sembunyikan tinjauan",
+    "teamReviews": {
+      "stateRunning": "Berjalan",
+      "stateInterrupted": "Terhenti saat Flint berhenti",
+      "stateCompleted": "Selesai",
+      "stateFailed": "Gagal",
+      "stateCancelled": "Dibatalkan",
+      "proposalPending": "Menunggu tinjauan",
+      "proposalPartial": "Diterapkan sebagian",
+      "proposalApplied": "Diterapkan",
+      "proposalRejected": "Ditolak",
+      "fromBase": "dari {{sha}}",
+      "override": "Berjalan berdampingan dengan {{tasks}} atas keputusan Anda, meskipun tumpang tindih pada {{paths}}.",
+      "acknowledge": "Tetap tinjau, dengan mengetahui hal ini",
+      "changesFromTask": "Perubahan dari tugas {{task}}",
+      "label": "Hasil kerja tugas tim",
+      "intro": "Tugas tim yang bekerja di salinan masing-masing. Tidak ada yang masuk ke folder Anda sampai Anda menerapkannya."
+    },
+    "bundle": {
+      "from": "Dari",
+      "branch": "Cabang",
+      "base": "Dasar",
+      "bundle": "Paket",
+      "state": "Status",
+      "schema": "(skema {{schema}})",
+      "abandon": "Tinggalkan"
+    }
   },
   "editModel": {
     "updateFailed": "Gagal memperbarui model. Silakan coba lagi.",
