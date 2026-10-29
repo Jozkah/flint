@@ -78,6 +78,10 @@ macro_rules! invoke_commands_with_extras {
         core::filesystem::settings_backup::settings_backup_save,
         core::filesystem::settings_backup::settings_backup_load,
         core::filesystem::settings_backup::settings_backup_store_provider_keys,
+        core::filesystem::data_backup::data_backup_save,
+        core::filesystem::data_backup::data_backup_load,
+        core::filesystem::data_backup::data_backup_apply,
+        core::filesystem::data_backup::data_backup_discard,
         core::filesystem::group_folders::inspect_group_folders,
         core::filesystem::session_path::open_session_path,
         // App configuration commands

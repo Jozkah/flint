@@ -1306,6 +1306,25 @@
     "apply": "匯入並重新載入",
     "cancel": "取消"
   },
+  "dataBackup": {
+    "title": "Data backup",
+    "exportTitle": "Back up my data",
+    "exportDesc": "Save conversations, assistants and settings to one JSON file. API keys and other secrets are never included.",
+    "exportButton": "Back up",
+    "exported": "Data backup saved",
+    "exportFailed": "Could not save the data backup",
+    "importTitle": "Restore from a data backup",
+    "importDesc": "Add conversations and assistants from a backup file. Items you already have are kept as they are.",
+    "chooseFile": "Choose file",
+    "previewCounts": "This backup has {{threads}} conversations ({{messages}} messages) and {{assistants}} assistants.",
+    "previewCreated": "Made on {{date}} with Flint {{version}}.",
+    "previewExisting": "{{threads}} conversations and {{assistants}} assistants already exist here and will be skipped.",
+    "restoreSettings": "Also restore settings (replaces your current settings; permissions and proxy are kept)",
+    "apply": "Restore",
+    "cancel": "Cancel",
+    "imported": "Restored {{threads}} conversations and {{assistants}} assistants. Restarting...",
+    "importFailed": "Could not restore the data backup"
+  },
   "startup": {
     "title": "隨電腦啟動",
     "on": "已開啟。登入時 Flint 會透過 {{platform}} 啟動。",
