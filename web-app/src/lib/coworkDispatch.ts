@@ -917,6 +917,276 @@ export async function routeDelegationTool(
   }
 }
 
+/** A tool the client answers itself, without the backend. */
+type ClientRoute = (
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+) => Promise<ToolOutcome>
+
+/** `team` and `workflow`: the parent's alone, holding its subagent slot while they run. */
+async function routeTeamTool(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  // A subagent's dispatcher has no team, so the call is refused by name
+  // rather than executed: a model can emit a call to a tool that was never
+  // advertised, and a child dispatching a team would be one level of
+  // nesting past what the depth limit allows.
+  if (!ctx.onTeam) {
+    return {
+      output:
+        'You cannot dispatch a team. Do this work yourself, or report ' +
+        'what you would need.',
+      isError: true,
+    }
+  }
+  // The team holds the parent's subagent slot for as long as it runs, the
+  // same way one `task` does: its children are this run's children.
+  let teamInput: unknown = call.input
+  if (toolName === WORKFLOW_TOOL_NAME) {
+    const op = (call.input as { control?: unknown } | null)?.control
+    if (op !== undefined) return runWorkflowControl(ctx.sessionId, op)
+    if ((call.input as { list_saved?: unknown } | null)?.list_saved === true) {
+      return { output: await describeSaved() }
+    }
+    const resumed = await resolveWorkflowInput(ctx.sessionId, call.input)
+    if ('error' in resumed) return { output: `ERROR: ${resumed.error}`, isError: true }
+    const converted = workflowToTeamInput(resumed.input)
+    if (typeof converted === 'string') {
+      return { output: `ERROR: ${converted}`, isError: true }
+    }
+    // The run record keeps the phases as written (placeholders intact) and
+    // the values they were filled from.
+    teamInput = { ...converted, run: { ...converted.run, ...resumed.template } }
+    // Gated on what will actually run: a resume names no phases itself.
+    const declined = await gateWorkflowLaunch({ ...call, input: resumed.input }, ctx, signal)
+    if (declined) return declined
+  }
+  const onTeam = ctx.onTeam
+  const inputOf = call.input as Record<string, unknown> | null
+  if (toolName === WORKFLOW_TOOL_NAME && inputOf?.background === true && ctx.tasks) {
+    return startBackgroundCall(call, ctx, {
+      kind: 'workflow',
+      name: 'workflow',
+      run: () => onTeam(call.toolCallId, teamInput),
+    })
+  }
+  const teamDone = ctx.trackSubagent?.()
+  try {
+    return await ctx.onTeam(call.toolCallId, teamInput)
+  } finally {
+    teamDone?.()
+  }
+}
+
+/** Entering or leaving the session worktree: the parent's alone. */
+async function routeWorktreeTool(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  // A subagent shares its parent's session id: it must not move the
+  // parent's write access.
+  if (!ctx.onTeam) {
+    return {
+      output: 'You cannot change the session worktree. Do this work yourself.',
+      isError: true,
+    }
+  }
+  const worktree = {
+    mode: ctx.mode,
+    toolCallId: call.toolCallId,
+    signal,
+    onApprove: ctx.onApprove,
+  }
+  return toolName === ENTER_WORKTREE_TOOL_NAME
+    ? await runEnterWorktree(ctx.sessionId, call.input, worktree)
+    : await runExitWorktree(ctx.sessionId, call.input, worktree)
+}
+
+/** The tools the client answers itself, by name. Checked after the approval gate. */
+export const CLIENT_ROUTES: Readonly<Record<string, ClientRoute>> = {
+  [TODO_TOOL_NAME]: async (call, ctx) => ctx.onTodo(call.input),
+  [ASK_TOOL_NAME]: async (call, ctx) => ctx.onAsk(call.toolCallId, call.input),
+  [SPAWN_SESSION_TOOL_NAME]: async (call, ctx, signal) => {
+    // A subagent's dispatcher has no team, and its session id is its parent's:
+    // letting it through would start nested chats on the parent's behalf.
+    if (!ctx.onTeam) {
+      return {
+        output: 'You cannot start a nested chat. Do this work yourself.',
+        isError: true,
+      }
+    }
+    return await runSpawnSession(ctx.sessionId, call.input, {
+      mode: ctx.mode,
+      toolCallId: call.toolCallId,
+      signal,
+      onApprove: ctx.onApprove,
+    })
+  },
+  [ENTER_WORKTREE_TOOL_NAME]: routeWorktreeTool,
+  [EXIT_WORKTREE_TOOL_NAME]: routeWorktreeTool,
+  [ENABLE_TOOLS_NAME]: async (call, ctx) => {
+    if (!ctx.onEnableTools) {
+      return { output: 'There is nothing to enable here.', isError: true }
+    }
+    return ctx.onEnableTools(call.input)
+  },
+  [ANSWER_SUBAGENT_TOOL_NAME]: async (call, ctx) => {
+    // The parent's side only: a child's dispatcher has no team.
+    if (!ctx.onTeam) {
+      return { output: 'You cannot answer subagent questions.', isError: true }
+    }
+    return answerSubagent(ctx.sessionId, call.input)
+  },
+  // `task` and the tools that manage its background children.
+  [TASK_TOOL_NAME]: routeDelegationTool,
+  ...Object.fromEntries([...BACKGROUND_TASK_TOOLS].map((name) => [name, routeDelegationTool])),
+  [TEAM_TOOL_NAME]: routeTeamTool,
+  [WORKFLOW_TOOL_NAME]: routeTeamTool,
+}
+
+function clientRouteFor(toolName: string): ClientRoute | undefined {
+  return Object.prototype.hasOwnProperty.call(CLIENT_ROUTES, toolName)
+    ? CLIENT_ROUTES[toolName]
+    : undefined
+}
+
+/** What the backend call carries for this tool: scope, grants, actor, and the hooks a tool asks through. */
+function backendOptionsFor(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Parameters<typeof executeAgentTool>[3] {
+  const { toolName } = call
+  return {
+    readOnlyProject: ctx.readOnlyFolder,
+    extraProjects: ctx.extraFolders,
+    scope: ctx.scope ?? 'session',
+    writeGrant: ctx.writeGrant,
+    // The run the change belongs to, so it can be undone from it (AH-202).
+    undoRun: ctx.activity?.run,
+    // And the call, so what its command uses is kept against both (AH-174).
+    callId: call.toolCallId,
+    ...(ctx.mode === 'bypass' ? { approvalSource: 'bypass' as const } : {}),
+    // And who is making it, so every change it journals names its agent
+    // (AH-110) -- the primary agent, a named subagent, or a role.
+    actor: actorFor(ctx.activity),
+    // A `request_access` prompt is withdrawn when the run stops, and says
+    // which task is asking.
+    ...(toolName === 'request_access'
+      ? { signal, taskLabel: 'Cowork session' }
+      : toolName === 'write' || toolName === 'edit'
+        ? // Stopping the run withdraws the question about a flagged line.
+          { signal }
+        : {}),
+    // Browser tools ask the user themselves (domain, action, submit).
+    // Auto mode has nobody to ask: they then run only on sites a saved
+    // rule or the project's allowed domains already cover.
+    ...(isBrowserTool(toolName) || toolName === BROWSER_TOOL_NAME
+      ? {
+          signal,
+          unattended: ctx.mode === 'auto',
+          // Through Cowork's own prompt, as for an edit: the session's
+          // grants apply, a subagent is named, and stopping the run
+          // withdraws the question.
+          approve: ({ context, url, alwaysAsk, input }) =>
+            ctx.mode === 'bypass'
+              ? Promise.resolve(true)
+              : ctx.onApprove
+              ? unlessStopped(
+                  ctx.onApprove(
+                    call.toolCallId,
+                    toolName,
+                    input ?? call.input,
+                    url ? `Page: ${url}` : undefined,
+                    signal,
+                    alwaysAsk ? { alwaysAsk: true, reason: context } : undefined
+                  ),
+                  signal
+                )
+              : Promise.resolve(false),
+        }
+      : {}),
+    // Live command output for the terminal card, as the chat surface
+    // does: raw, so it keeps the colours the model-facing result (which
+    // the backend strips) does not.
+    ...(toolName === 'bash'
+      ? {
+          onOutput: (text: string) =>
+            useToolCallRuntime
+              .getState()
+              .appendOutput(call.toolCallId, text),
+        }
+      : {}),
+  }
+}
+
+/** A backend refusal or failure, as the model should read it: offer a folder, guide a missing read, or explain a policy refusal. */
+async function mapBackendFailure(
+  error: string,
+  resources: ToolOutcome['resources'],
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal: AbortSignal | undefined,
+  readPath: string | null,
+  priorMisses: number
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  // The model reached for a path outside the sandbox and nothing is
+  // attached: that is the user's call, not a dead end to retry around.
+  if (
+    ctx.onNeedFolder &&
+    !ctx.readOnlyFolder &&
+    isOutsideWorkspaceError(error)
+  ) {
+    const attached = await unlessStopped(
+      ctx
+        .onNeedFolder({ toolName, detail: error, signal })
+        .then((answer) => answer === 'attached'),
+      signal
+    ).catch(() => false)
+    if (attached) {
+      return {
+        output:
+          `${error}\n\nThe user attached a project folder in response. ` +
+          'This run ends here and restarts with that folder, so repeat the ' +
+          'request once it does.',
+        isError: true,
+        endsTurn: true,
+        resources,
+      }
+    }
+    return {
+      output:
+        `${error}\n\nThe user chose not to attach a folder. Do not ` +
+        'retry this path; work from the sandbox, or say what you need.',
+      isError: true,
+      resources,
+    }
+  }
+  if (readPath && isMissingPathError(error)) {
+    ctx.readFailures?.set(readPath, priorMisses + 1)
+    return {
+      output: error + missingReadGuidance(readPath),
+      isError: true,
+      resources,
+    }
+  }
+  return {
+    output:
+      ctx.mode === 'bypass' && isPolicyRefusal(error)
+        ? bypassCannotOverride(error)
+        : error,
+    isError: true,
+    resources,
+  }
+}
+
 /**
  * Route one tool call. Always resolves: a rejection here would abort the run,
  * where the model can usually recover from being told what went wrong.
@@ -977,116 +1247,8 @@ async function routeCoworkTool(
   }
 
   try {
-    if (toolName === TODO_TOOL_NAME) return await ctx.onTodo(call.input)
-    if (toolName === ASK_TOOL_NAME) {
-      return await ctx.onAsk(call.toolCallId, call.input)
-    }
-    if (toolName === SPAWN_SESSION_TOOL_NAME) {
-      // A subagent's dispatcher has no team, and its session id is its parent's:
-      // letting it through would start nested chats on the parent's behalf.
-      if (!ctx.onTeam) {
-        return {
-          output: 'You cannot start a nested chat. Do this work yourself.',
-          isError: true,
-        }
-      }
-      return await runSpawnSession(ctx.sessionId, call.input, {
-        mode: ctx.mode,
-        toolCallId: call.toolCallId,
-        signal,
-        onApprove: ctx.onApprove,
-      })
-    }
-    if (
-      toolName === ENTER_WORKTREE_TOOL_NAME ||
-      toolName === EXIT_WORKTREE_TOOL_NAME
-    ) {
-      // A subagent shares its parent's session id: it must not move the
-      // parent's write access.
-      if (!ctx.onTeam) {
-        return {
-          output: 'You cannot change the session worktree. Do this work yourself.',
-          isError: true,
-        }
-      }
-      const worktree = {
-        mode: ctx.mode,
-        toolCallId: call.toolCallId,
-        signal,
-        onApprove: ctx.onApprove,
-      }
-      return toolName === ENTER_WORKTREE_TOOL_NAME
-        ? await runEnterWorktree(ctx.sessionId, call.input, worktree)
-        : await runExitWorktree(ctx.sessionId, call.input, worktree)
-    }
-    if (toolName === ENABLE_TOOLS_NAME) {
-      if (!ctx.onEnableTools) {
-        return { output: 'There is nothing to enable here.', isError: true }
-      }
-      return ctx.onEnableTools(call.input)
-    }
-    if (toolName === ANSWER_SUBAGENT_TOOL_NAME) {
-      // The parent's side only: a child's dispatcher has no team.
-      if (!ctx.onTeam) {
-        return { output: 'You cannot answer subagent questions.', isError: true }
-      }
-      return answerSubagent(ctx.sessionId, call.input)
-    }
-    // `task` and the tools that manage its background children.
-    if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {
-      return await routeDelegationTool(call, ctx, signal)
-    }
-    if (toolName === TEAM_TOOL_NAME || toolName === WORKFLOW_TOOL_NAME) {
-      // A subagent's dispatcher has no team, so the call is refused by name
-      // rather than executed: a model can emit a call to a tool that was never
-      // advertised, and a child dispatching a team would be one level of
-      // nesting past what the depth limit allows.
-      if (!ctx.onTeam) {
-        return {
-          output:
-            'You cannot dispatch a team. Do this work yourself, or report ' +
-            'what you would need.',
-          isError: true,
-        }
-      }
-      // The team holds the parent's subagent slot for as long as it runs, the
-      // same way one `task` does: its children are this run's children.
-      let teamInput: unknown = call.input
-      if (toolName === WORKFLOW_TOOL_NAME) {
-        const op = (call.input as { control?: unknown } | null)?.control
-        if (op !== undefined) return runWorkflowControl(ctx.sessionId, op)
-        if ((call.input as { list_saved?: unknown } | null)?.list_saved === true) {
-          return { output: await describeSaved() }
-        }
-        const resumed = await resolveWorkflowInput(ctx.sessionId, call.input)
-        if ('error' in resumed) return { output: `ERROR: ${resumed.error}`, isError: true }
-        const converted = workflowToTeamInput(resumed.input)
-        if (typeof converted === 'string') {
-          return { output: `ERROR: ${converted}`, isError: true }
-        }
-        // The run record keeps the phases as written (placeholders intact) and
-        // the values they were filled from.
-        teamInput = { ...converted, run: { ...converted.run, ...resumed.template } }
-        // Gated on what will actually run: a resume names no phases itself.
-        const declined = await gateWorkflowLaunch({ ...call, input: resumed.input }, ctx, signal)
-        if (declined) return declined
-      }
-      const onTeam = ctx.onTeam
-      const inputOf = call.input as Record<string, unknown> | null
-      if (toolName === WORKFLOW_TOOL_NAME && inputOf?.background === true && ctx.tasks) {
-        return startBackgroundCall(call, ctx, {
-          kind: 'workflow',
-          name: 'workflow',
-          run: () => onTeam(call.toolCallId, teamInput),
-        })
-      }
-      const teamDone = ctx.trackSubagent?.()
-      try {
-        return await ctx.onTeam(call.toolCallId, teamInput)
-      } finally {
-        teamDone?.()
-      }
-    }
+    const client = clientRouteFor(toolName)
+    if (client) return await client(call, ctx, signal)
 
     // Review mode changes nothing: a click or a keystroke can.
     if (isReviewDeniedTool(toolName) && isReadOnly(ctx.mode)) {
@@ -1193,67 +1355,12 @@ async function routeCoworkTool(
       // `'session'`, not the default `'thread'`: a Cowork session id lives in
       // its own namespace, and the thread sweep would otherwise delete this
       // sandbox because no chat thread claims it.
-      result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
-        readOnlyProject: ctx.readOnlyFolder,
-        extraProjects: ctx.extraFolders,
-        scope: ctx.scope ?? 'session',
-        writeGrant: ctx.writeGrant,
-        // The run the change belongs to, so it can be undone from it (AH-202).
-        undoRun: ctx.activity?.run,
-        // And the call, so what its command uses is kept against both (AH-174).
-        callId: call.toolCallId,
-        ...(ctx.mode === 'bypass' ? { approvalSource: 'bypass' as const } : {}),
-        // And who is making it, so every change it journals names its agent
-        // (AH-110) -- the primary agent, a named subagent, or a role.
-        actor: actorFor(ctx.activity),
-        // A `request_access` prompt is withdrawn when the run stops, and says
-        // which task is asking.
-        ...(toolName === 'request_access'
-          ? { signal, taskLabel: 'Cowork session' }
-          : toolName === 'write' || toolName === 'edit'
-            ? // Stopping the run withdraws the question about a flagged line.
-              { signal }
-            : {}),
-        // Browser tools ask the user themselves (domain, action, submit).
-        // Auto mode has nobody to ask: they then run only on sites a saved
-        // rule or the project's allowed domains already cover.
-        ...(isBrowserTool(toolName) || toolName === BROWSER_TOOL_NAME
-          ? {
-              signal,
-              unattended: ctx.mode === 'auto',
-              // Through Cowork's own prompt, as for an edit: the session's
-              // grants apply, a subagent is named, and stopping the run
-              // withdraws the question.
-              approve: ({ context, url, alwaysAsk, input }) =>
-                ctx.mode === 'bypass'
-                  ? Promise.resolve(true)
-                  : ctx.onApprove
-                  ? unlessStopped(
-                      ctx.onApprove(
-                        call.toolCallId,
-                        toolName,
-                        input ?? call.input,
-                        url ? `Page: ${url}` : undefined,
-                        signal,
-                        alwaysAsk ? { alwaysAsk: true, reason: context } : undefined
-                      ),
-                      signal
-                    )
-                  : Promise.resolve(false),
-            }
-          : {}),
-        // Live command output for the terminal card, as the chat surface
-        // does: raw, so it keeps the colours the model-facing result (which
-        // the backend strips) does not.
-        ...(toolName === 'bash'
-          ? {
-              onOutput: (text: string) =>
-                useToolCallRuntime
-                  .getState()
-                  .appendOutput(call.toolCallId, text),
-            }
-          : {}),
-      })
+      result = await executeAgentTool(
+        toolName,
+        call.input,
+        ctx.sessionId,
+        backendOptionsFor(call, ctx, signal)
+      )
     } finally {
       shellDone?.()
     }
@@ -1296,54 +1403,7 @@ async function routeCoworkTool(
       }
     }
     if (result.error) {
-      // The model reached for a path outside the sandbox and nothing is
-      // attached: that is the user's call, not a dead end to retry around.
-      if (
-        ctx.onNeedFolder &&
-        !ctx.readOnlyFolder &&
-        isOutsideWorkspaceError(result.error)
-      ) {
-        const attached = await unlessStopped(
-          ctx
-            .onNeedFolder({ toolName, detail: result.error, signal })
-            .then((answer) => answer === 'attached'),
-          signal
-        ).catch(() => false)
-        if (attached) {
-          return {
-            output:
-              `${result.error}\n\nThe user attached a project folder in response. ` +
-              'This run ends here and restarts with that folder, so repeat the ' +
-              'request once it does.',
-            isError: true,
-            endsTurn: true,
-            resources: result.resources,
-          }
-        }
-        return {
-          output:
-            `${result.error}\n\nThe user chose not to attach a folder. Do not ` +
-            'retry this path; work from the sandbox, or say what you need.',
-          isError: true,
-          resources: result.resources,
-        }
-      }
-      if (readPath && isMissingPathError(result.error)) {
-        ctx.readFailures?.set(readPath, priorMisses + 1)
-        return {
-          output: result.error + missingReadGuidance(readPath),
-          isError: true,
-          resources: result.resources,
-        }
-      }
-      return {
-        output:
-          ctx.mode === 'bypass' && isPolicyRefusal(result.error)
-            ? bypassCannotOverride(result.error)
-            : result.error,
-        isError: true,
-        resources: result.resources,
-      }
+      return await mapBackendFailure(result.error, result.resources, call, ctx, signal, readPath, priorMisses)
     }
     // A path that reads now is not missing any more.
     if (readPath) ctx.readFailures?.delete(readPath)
