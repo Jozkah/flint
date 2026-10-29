@@ -1710,23 +1710,23 @@
     "web-app/src/services/mcp/tauri.ts"
   ],
   "migration_detect": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationDetect)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationDetect)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_dismiss": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationDismiss)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationDismiss)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_execute": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationExecute)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationExecute)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_plan": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationPlan)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationPlan)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_rollback": [
-    "web-app/src/containers/MigrationAssistant.tsx (via migrationRollback)",
+    "web-app/src/hooks/useMigrationWizard.ts (via migrationRollback)",
     "web-app/src/lib/migration.ts"
   ],
   "migration_status": [
