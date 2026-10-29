@@ -144,12 +144,15 @@ mod tests {
     #[test]
     fn the_committed_schema_matches_the_types() {
         let generated = document();
-        if generated == COMMITTED {
+        // A Windows checkout can hand the file over with CRLF endings;
+        // the schema is the same document either way.
+        let committed = COMMITTED.replace("\r\n", "\n");
+        if generated == committed {
             return;
         }
         let first = generated
             .lines()
-            .zip(COMMITTED.lines())
+            .zip(committed.lines())
             .position(|(a, b)| a != b)
             .unwrap_or(0);
         panic!(
@@ -157,7 +160,7 @@ mod tests {
              `make protocol-schema` and commit the result.\n\
              first difference at line {}:\n  committed: {}\n  generated: {}",
             first + 1,
-            COMMITTED.lines().nth(first).unwrap_or("<end of file>"),
+            committed.lines().nth(first).unwrap_or("<end of file>"),
             generated.lines().nth(first).unwrap_or("<end of file>"),
         );
     }
