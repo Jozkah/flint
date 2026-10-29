@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "儲存技能",
+      "memoryWrite": "儲存到記憶",
       "default": "Change this computer"
     },
     "computer": {

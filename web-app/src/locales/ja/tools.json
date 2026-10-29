@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "スキルを保存",
+      "memoryWrite": "メモリに保存",
       "default": "Change this computer"
     },
     "computer": {

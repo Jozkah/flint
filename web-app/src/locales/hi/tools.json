@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "स्किल सहेजें",
+      "memoryWrite": "मेमोरी में सहेजें",
       "default": "Change this computer"
     },
     "computer": {

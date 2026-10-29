@@ -559,6 +559,8 @@ const HOST_CONTEXT: Record<string, string> = {
   clipboard: 'clipboard',
   computer: 'computer',
   open_path: 'openPath',
+  skill_write: 'skillWrite',
+  memory_write: 'memoryWrite',
 }
 
 /** A host approval line in the person's language (shown to them, not the model). */
@@ -641,6 +643,10 @@ export async function describeHostAction(
     const where =
       typeof a.cwd === 'string' && a.cwd ? a.cwd : hostText('projectFolder')
     return hostText('powershell', { where, script })
+  }
+  if (toolName === 'skill_write' || toolName === 'memory_write') {
+    return `${String(a.name ?? '')}
+${String(a.content ?? '')}`
   }
   if (toolName === 'open_path') {
     return hostText(a.reveal === true ? 'reveal' : 'open', { path: String(a.path) })

@@ -125,6 +125,8 @@
       "clipboard": "Clipboard",
       "computer": "Keyboard and mouse",
       "openPath": "Open on screen",
+      "skillWrite": "Beceriyi kaydet",
+      "memoryWrite": "Belleğe kaydet",
       "default": "Change this computer"
     },
     "computer": {
