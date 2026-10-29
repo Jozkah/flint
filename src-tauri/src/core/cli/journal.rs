@@ -130,8 +130,12 @@ impl Writer {
     pub fn new() -> Self {
         let (tx, rx) = std::sync::mpsc::channel::<(PathBuf, Vec<DisplayEntry>)>();
         let handle = std::thread::spawn(move || {
-            for (path, entries) in rx {
-                let _ = write_journal(&path, &entries);
+            while let Ok(job) = rx.recv() {
+                let mut batch = vec![job];
+                batch.extend(rx.try_iter());
+                for (path, entries) in newest_per_path(batch) {
+                    let _ = write_journal(&path, &entries);
+                }
             }
         });
         Self {
@@ -154,6 +158,18 @@ impl Writer {
             let _ = handle.join();
         }
     }
+}
+
+/// Keep only the newest dump of each journal in a queued batch, in the order
+/// the kept ones were queued: each dump is the whole log, so a later one makes
+/// an earlier one for the same file redundant (CLIA-014).
+fn newest_per_path(batch: Vec<(PathBuf, Vec<DisplayEntry>)>) -> Vec<(PathBuf, Vec<DisplayEntry>)> {
+    let mut kept: Vec<(PathBuf, Vec<DisplayEntry>)> = Vec::new();
+    for (path, entries) in batch {
+        kept.retain(|(p, _)| *p != path);
+        kept.push((path, entries));
+    }
+    kept
 }
 
 impl Default for Writer {
@@ -192,6 +208,23 @@ mod tests {
             text: text.into(),
             images: Vec::new(),
         }
+    }
+
+    /// CLIA-014: dumps that queue behind a slow write collapse to the newest
+    /// per journal; distinct journals are all kept.
+    #[test]
+    fn queued_dumps_collapse_to_the_newest_per_journal() {
+        let a = PathBuf::from("a.json");
+        let b = PathBuf::from("b.json");
+        let kept = newest_per_path(vec![
+            (a.clone(), vec![user("1")]),
+            (b.clone(), vec![user("b")]),
+            (a.clone(), vec![user("1"), user("2")]),
+        ]);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].0, b);
+        assert_eq!(kept[1].0, a);
+        assert_eq!(kept[1].1.len(), 2, "the newest dump of a.json");
     }
 
     fn sample() -> Vec<DisplayEntry> {
