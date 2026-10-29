@@ -515,384 +515,491 @@ pub async fn serve() -> Result<(), String> {
 
 /// The dispatch loop, until `input` closes. Every record goes out on `out`.
 async fn serve_loop(mut input: mpsc::Receiver<(Vec<u8>, bool)>, out: mpsc::Sender<Value>, hooks: Arc<Hooks>) -> Result<(), String> {
-    let out = Arc::new(out);
-    let mut initialized = false;
-    let mut negotiated = false;
-    let mut sessions = HashMap::<String, Session>::new();
-    let mut active: Option<ActiveTurn> = None;
     let (started_tx, mut started_rx) = mpsc::unbounded_channel::<Started>();
+    let mut server = RpcServer {
+        out: Arc::new(out),
+        hooks,
+        started_tx,
+        initialized: false,
+        negotiated: false,
+        sessions: HashMap::new(),
+        active: HashMap::new(),
+    };
     loop {
         tokio::select! {
             Some(done) = started_rx.recv() => {
-                if let Some(reply) = finish_start(&mut sessions, done) {
-                    send_reply(&out, reply).await?;
+                if let Some(reply) = finish_start(&mut server.sessions, done) {
+                    send_reply(&server.out, reply).await?;
                 }
             }
             message = input.recv() => {
                 let Some((line, too_long)) = message else { break; };
-                if too_long {
-                    send_reply(&out, error(&Value::Null, -32600, "Input line exceeds max_line_bytes")).await?;
-                    continue;
-                }
-                let request: Value = match serde_json::from_slice(&line) {
-                    Ok(value) => value,
-                    Err(_) => { send_reply(&out, error(&Value::Null, -32700, "Parse error")).await?; continue; }
-                };
-                let has_id = request.get("id").is_some();
-                let id = request.get("id").cloned().unwrap_or(Value::Null);
-                let method = request.get("method").and_then(Value::as_str).unwrap_or("");
-                let params = &request["params"];
-                if request["jsonrpc"] != "2.0" || method.is_empty() {
-                    send_reply(&out, error(&id, -32600, "Invalid Request")).await?;
-                    continue;
-                }
-                if method == "initialize" {
-                    // A new handshake replaces the previous one; a failed
-                    // negotiation cannot authorize `initialized` or methods.
-                    negotiated = false;
-                    initialized = false;
-                    let reply = match serde_json::from_value::<InitializeParams>(params.clone()) {
-                        Ok(init) if init.protocol_version == PROTOCOL_VERSION && !init.client_info.name.is_empty() && !init.client_info.version.is_empty() => {
-                            negotiated = true;
-                            // The caps a content-part array is held to -- a `turn/start`
-                            // input's and a `tool/respond` content's, the same limits
-                            // `init` advertises to a stream-json client. A client that
-                            // sends an image is sending bytes into a channel with no
-                            // backpressure, so it learns the limits from the handshake
-                            // rather than by having a message rejected.
-                            response(&id, json!({
-                                "protocolVersion": PROTOCOL_VERSION,
-                                "serverInfo": {"name":"jan","version":env!("CARGO_PKG_VERSION")},
-                                "capabilities": {"session":true,"turn":true},
-                                "input_content_parts": super::run_report::InputContentParts::current(),
-                            }))
-                        }
-                        _ => error(&id, -32602, "Unsupported protocol version or malformed clientInfo"),
-                    };
-                    send_reply(&out, reply).await?;
-                    continue;
-                }
-                if method == "initialized" && negotiated && !has_id {
-                    initialized = true;
-                    continue;
-                }
-                if !initialized {
-                    // A notification has no id to answer; replying would send the
-                    // client a response it never asked for.
-                    if has_id {
-                        send_reply(&out, error(&id, -32002, "Server not initialized")).await?;
-                    }
-                    continue;
-                }
-                let reply = match method {
-                    "session/start" => {
-                        match serde_json::from_value::<SessionStartParams>(params.clone()) {
-                            Err(_) => error(&id, -32602, "session/start requires cwd and supported options"),
-                            Ok(start) if !std::path::Path::new(&start.cwd).is_dir() => error(&id, -32602, "cwd is not a directory"),
-                            // Declared before the session is built: a tool set the
-                            // host got wrong is refused before anything is spent.
-                            Ok(start) => match declare_tools(start.tools) {
-                                Err(message) => invalid_tools(&id, &message),
-                                Ok(host_tools) => {
-                                    // Built in its own task; the reply comes back through
-                                    // `started_rx`, so the loop keeps serving meanwhile.
-                                    let tx = started_tx.clone();
-                                    let reply_id = id.clone();
-                                    let owns_gate = start.permissions == PermissionOwner::Host;
-                                    let pending_start = (hooks.start)(StartRequest { cwd: start.cwd, model: start.model, host_tools, host_owns_gate: owns_gate, ephemeral: start.ephemeral, builtins: start.builtins });
-                                    tokio::spawn(async move {
-                                        let outcome = pending_start.await;
-                                        let _ = tx.send(Started { id: reply_id, has_id, outcome });
-                                    });
-                                    continue;
-                                }
-                            },
-                        }
-                    }
-                    "session/tools/get" => match serde_json::from_value::<SessionIdParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "session/tools/get requires sessionId"),
-                        Ok(SessionIdParams { session_id: sid }) => match sessions.get(&sid) {
-                            Some(session) => response(&id, tools_view(session).await),
-                            None => error(&id, -32602, UNKNOWN_SESSION),
-                        },
-                    },
-                    "session/tools/set" => match serde_json::from_value::<SessionToolsSetParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "session/tools/set requires sessionId and tools"),
-                        Ok(set) if !sessions.contains_key(&set.session_id) => error(&id, -32602, UNKNOWN_SESSION),
-                        Ok(set) if active.as_ref().is_some_and(|t| t.session_id == set.session_id) => turn_active(&id),
-                        Ok(set) => match declare_tools(set.tools) {
-                            Err(message) => invalid_tools(&id, &message),
-                            Ok(host_tools) => {
-                                let session = sessions.get_mut(&set.session_id).expect("checked");
-                                session.agent.args.host_tools = host_tools;
-                                response(&id, tools_view(session).await)
-                            }
-                        },
-                    },
-                    "session/model/set" => match serde_json::from_value::<SessionModelSetParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "session/model/set requires sessionId and model"),
-                        Ok(set) if !sessions.contains_key(&set.session_id) => error(&id, -32602, UNKNOWN_SESSION),
-                        Ok(set) if active.as_ref().is_some_and(|t| t.session_id == set.session_id) => turn_active(&id),
-                        Ok(set) if set.model.trim().is_empty() => error(&id, -32602, "model must not be empty"),
-                        Ok(set) => {
-                            // Refuse a model no configured provider serves. The
-                            // turn would fail closed on it too -- nothing goes
-                            // out on the session's behalf -- but this is the
-                            // point at which a client can still be told, and the
-                            // session must not be left pinned to a model that
-                            // cannot serve it, which the next turn would report
-                            // as a failure of the client's own input.
-                            let provider_configs = sessions
-                                .get(&set.session_id)
-                                .expect("checked")
-                                .agent
-                                .args
-                                .provider_configs
-                                .clone();
-                            match crate::core::agent::upstream::resolve_upstream_for_model(
-                                &set.model,
-                                provider_configs,
-                            )
-                            .await
-                            {
-                                Err(message) => error(&id, -32602, &message),
-                                Ok(_) => {
-                                    let session = sessions.get_mut(&set.session_id).expect("checked");
-                                    match rebuild_agent(session, Some(set.model)).await {
-                                        Ok(agent) => {
-                                            // The same registry: nothing is pending between
-                                            // turns, and keeping it keeps one per session.
-                                            let registry = Arc::clone(&session.agent.args.host_tool_requests);
-                                            session.agent = agent;
-                                            session.agent.args.host_tool_requests = registry;
-                                            response(&id, json!({"model":session.agent.model}))
-                                        }
-                                        Err(message) => error(&id, -32602, &message),
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "session/reset" => match serde_json::from_value::<SessionIdParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "session/reset requires sessionId"),
-                        Ok(SessionIdParams { session_id: sid }) if !sessions.contains_key(&sid) => error(&id, -32602, UNKNOWN_SESSION),
-                        Ok(SessionIdParams { session_id: sid }) if active.as_ref().is_some_and(|t| t.session_id == sid) => turn_active(&id),
-                        Ok(SessionIdParams { session_id: sid }) => {
-                            let session = sessions.get_mut(&sid).expect("checked");
-                            session.history.clear();
-                            response(&id, tools_view(session).await)
-                        }
-                    },
-                    "tool/respond" => match serde_json::from_value::<ToolRespondParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "tool/respond requires requestId and content (a string or content parts)"),
-                        Ok(respond) => match host_result(respond) {
-                            Err(message) => error(&id, -32602, &message),
-                            Ok((request_id, result)) => {
-                                // Only the active turn can be waiting on a host: a
-                                // reply with no turn running is as late as one for a
-                                // request that was already answered.
-                                let registry = active
-                                    .as_ref()
-                                    .and_then(|turn| sessions.get(&turn.session_id))
-                                    .map(|session| Arc::clone(&session.agent.args.host_tool_requests));
-                                let answered = match registry {
-                                    Some(registry) => crate::core::agent::host_tools::respond(&registry, &request_id, Ok(result)).await,
-                                    None => Err(format!("no host tool request '{request_id}' is pending (answered, cancelled, or never issued)")),
-                                };
-                                match answered {
-                                    Ok(()) => response(&id, json!({})),
-                                    Err(message) => error_data(&id, -32602, &message, json!({"kind":"not_pending"})),
-                                }
-                            }
-                        },
-                    },
-                    // Takes no params, so the only shape it accepts is none: an
-                    // object, or the omitted-params `null` JSON-RPC allows.
-                    // As a list request it is also the one method where a
-                    // scalar in place of params is a client bug worth naming.
-                    "session/list" => match params {
-                        Value::Object(_) | Value::Null => response(&id, json!({"sessions":sessions.values().map(|s| json!({"id":s.id,"model":s.agent.model,"turns":s.turns,"hostTools":s.agent.args.host_tools.len()})).collect::<Vec<_>>()})),
-                        _ => error(&id, -32602, "session/list takes no params"),
-                    },
-                    "session/resume" => match serde_json::from_value::<SessionIdParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "session/resume requires sessionId"),
-                        Ok(SessionIdParams { session_id: sid }) => match sessions.get(&sid) {
-                            Some(session) => response(&id, json!({"sessionId":sid,"model":session.agent.model,"turns":session.turns})),
-                            None => error(&id, -32602, "unknown sessionId (RPC sessions belong to their process)"),
-                        },
-                    },
-                    "session/fork" => match serde_json::from_value::<SessionIdParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "unknown sessionId"),
-                        Ok(SessionIdParams { session_id: sid }) if active.as_ref().is_some_and(|t| t.session_id == sid) => {
-                            error(&id, -32001, "session busy")
-                        }
-                        Ok(SessionIdParams { session_id: sid }) if sessions.contains_key(&sid) => {
-                            let source = sessions.get(&sid).expect("checked");
-                            // A fresh registry (from the rebuild): the fork is its
-                            // own session, and a reply must never cross into it.
-                            match rebuild_agent(source, None).await {
-                                Ok(mut agent) => {
-                                    let fork = uuid::Uuid::new_v4().to_string();
-                                    // The fork is its own session, so it reports its own id.
-                                    agent.args.session_id = Some(fork.clone());
-                                    let history = source.history.clone();
-                                    let ephemeral = source.ephemeral;
-                                    let builtins = source.builtins;
-                                    sessions.insert(fork.clone(), Session { agent, history, id: fork.clone(), turns: 0, ephemeral, builtins, carried_steer: Vec::new() });
-                                    response(&id, json!({"sessionId":fork}))
-                                }
-                                Err(message) => error(&id, -32602, &message),
-                            }
-                        }
-                        Ok(_) => error(&id, -32602, "unknown sessionId"),
-                    },
-                    "session/archive" => match serde_json::from_value::<SessionIdParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "unknown sessionId"),
-                        Ok(SessionIdParams { session_id: sid }) if active.as_ref().is_some_and(|t| t.session_id == sid) => {
-                            error(&id, -32001, "session busy")
-                        }
-                        Ok(SessionIdParams { session_id: sid }) if sessions.contains_key(&sid) => {
-                            let session = sessions.remove(&sid).expect("checked");
-                            release_session(session, &sessions).await;
-                            response(&id, json!({}))
-                        }
-                        Ok(_) => error(&id, -32602, "unknown sessionId"),
-                    },
-                    "turn/start" => {
-                        if active.is_some() {
-                            error(&id, -32001, "another turn is active; retry after turn/completed")
-                        } else {
-                            match serde_json::from_value::<TurnStartParams>(params.clone()) {
-                                Err(_) => error(&id, -32602, "turn/start requires sessionId and input"),
-                                Ok(TurnStartParams { session_id, input }) => {
-                                    let parsed = json!({"type":"user","content":input});
-                                    let content = if let Some(text) = input.as_str() {
-                                        parse_input_line(&json!({"type":"user","text":text}).to_string()).map(|_| Value::String(text.to_owned()))
-                                    } else if input.is_array() {
-                                        parse_input_line(&parsed.to_string()).map(|_| input)
-                                    } else { Err("input must be text or content parts".to_string()) };
-                                    match (sessions.get_mut(&session_id), content) {
-                                        (Some(session), Ok(content)) => {
-                                            match start_turn(session, content, &out, &hooks) {
-                                                Ok(turn) => {
-                                                    let tid = turn.turn_id.clone();
-                                                    active = Some(turn);
-                                                    response(&id, json!({"turnId":tid}))
-                                                }
-                                                // The turn would have no room to report its
-                                                // outcome on, so it is refused while the
-                                                // client drains what is already queued.
-                                                Err(message) => error(&id, -32001, &message),
-                                            }
-                                        }
-                                        (None, _) => error(&id, -32602, "unknown sessionId"),
-                                        (_, Err(message)) => error(&id, -32602, &message),
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    "turn/steer" => match serde_json::from_value::<TurnSteerParams>(params.clone()) {
-                        Err(_) => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
-                        Ok(TurnSteerParams { session_id: sid, input: text }) => match active.as_ref() {
-                            Some(turn) if turn.session_id == sid && !text.trim().is_empty() => {
-                                let mut pending = turn.pending.lock().await;
-                                if pending.len() >= super::stream_input::MAX_QUEUED {
-                                    error_data(&id, -32000, &super::stream_input::queue_full(), json!({"kind":"queue_full","retryable":true}))
-                                } else {
-                                    pending.push(json!({"role":"user","content":neutralize_user_content(json!(text))}));
-                                    response(&id, json!({}))
-                                }
-                            }
-                            _ => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
-                        },
-                    },
-                    "turn/interrupt" => match (active.take(), serde_json::from_value::<SessionIdParams>(params.clone())) {
-                        (Some(turn), Ok(SessionIdParams { session_id: sid })) if turn.session_id == sid => {
-                            turn.runner.abort();
-                            if let Some(session) = sessions.get_mut(&sid) {
-                                session.agent.permission_requests.lock().await.clear();
-                            }
-                            release_host_requests(sessions.get(&sid), &turn, "interrupted", &out).await?;
-                            finish_turn(&mut sessions, turn, Err("interrupted".to_owned()), true)?;
-                            response(&id, json!({}))
-                        }
-                        (other, _) => {
-                            active = other;
-                            error(&id, -32602, "no active turn for sessionId")
-                        }
-                    },
-                    "permission/respond" => match (active.as_ref(), serde_json::from_value::<PermissionResponseParams>(params.clone())) {
-                        (Some(turn), Ok(PermissionResponseParams { request_id, decision })) => {
-                            let decision = parse_decision(decision.as_str());
-                            if let Some(decision) = decision {
-                                let session = sessions.get(&turn.session_id).expect("active session");
-                                match session.agent.permission_requests.lock().await.remove(&request_id) {
-                                    Some(sender) => { let _ = sender.send(decision); response(&id, json!({})) }
-                                    None => error(&id, -32602, "no permission request is pending"),
-                                }
-                            } else { error(&id, -32602, "invalid permission decision") }
-                        }
-                        _ => error(&id, -32602, "permission/respond requires an active turn and requestId"),
-                    },
-                    _ => error(&id, -32601, "Method not found"),
-                };
-                if has_id { send_reply(&out, reply).await?; }
+                server.handle_line(&line, too_long).await?;
             }
-            message = async { active.as_mut().expect("active").events.recv().await }, if active.is_some() => {
-                let Some(message) = message else {
-                    // The run's task is gone without an outcome: a panic in the
-                    // engine, or an abort this loop did not make. The turn still
-                    // owes the client a terminal record, and this arm would be
-                    // ready with `None` on every pass until it got one.
-                    let turn = active.take().expect("active");
-                    finish_turn(&mut sessions, turn, Err("the run ended without an outcome".to_owned()), false)?;
-                    continue;
-                };
-                let turn = active.as_mut().expect("active");
-                match message {
-                    TurnMessage::Event(event) => {
-                        let event = *event;
-                        if let StreamEvent::MessagesUpdated { messages } = &event { turn.updated_history = Some(messages.clone()); }
-                        let wire = serde_json::to_value(&event).map_err(|e| e.to_string())?;
-                        let method = format!("item/{}", wire["type"].as_str().ok_or("event has no tag")?);
-                        // The turn's terminal record has its own slot, so this
-                        // bound only covers the streamed events: when the client
-                        // is not reading them, the turn ends rather than
-                        // accumulating unbounded model deltas.
-                        if out.capacity() == 0 {
-                            let turn = active.take().expect("active");
-                            turn.runner.abort();
-                            finish_turn(&mut sessions, turn, Err("RPC output queue overloaded".to_owned()), false)?;
-                        } else {
-                            notify(&out, &method, json!({"sessionId":turn.session_id,"turnId":turn.turn_id,"event":wire}))?;
+            (session_id, message) = next_turn_message(&mut server.active), if !server.active.is_empty() => {
+                server.on_turn_message(session_id, message)?;
+            }
+        }
+    }
+    server.shutdown().await
+}
+
+/// The next record of any running turn, tagged with its session.
+async fn next_turn_message(active: &mut HashMap<String, ActiveTurn>) -> (String, Option<TurnMessage>) {
+    std::future::poll_fn(|cx| {
+        for (session_id, turn) in active.iter_mut() {
+            if let std::task::Poll::Ready(message) = turn.events.poll_recv(cx) {
+                return std::task::Poll::Ready((session_id.clone(), message));
+            }
+        }
+        std::task::Poll::Pending
+    })
+    .await
+}
+
+/// The state one RPC process serves: its sessions and the turn each one is
+/// running. Turns of different sessions run side by side; one session runs
+/// one turn at a time.
+struct RpcServer {
+    out: Arc<mpsc::Sender<Value>>,
+    hooks: Arc<Hooks>,
+    started_tx: mpsc::UnboundedSender<Started>,
+    initialized: bool,
+    negotiated: bool,
+    sessions: HashMap<String, Session>,
+    /// The running turn of each busy session, keyed by session id.
+    active: HashMap<String, ActiveTurn>,
+}
+
+/// What a method asks the loop to send: a reply, or nothing (a notification,
+/// or a reply that comes later, as a `session/start`'s does).
+type Reply = Option<Value>;
+
+impl RpcServer {
+    fn busy(&self, session_id: &str) -> bool {
+        self.active.contains_key(session_id)
+    }
+
+    async fn handle_line(&mut self, line: &[u8], too_long: bool) -> Result<(), String> {
+        if too_long {
+            return send_reply(&self.out, error(&Value::Null, -32600, "Input line exceeds max_line_bytes")).await;
+        }
+        let request: Value = match serde_json::from_slice(line) {
+            Ok(value) => value,
+            Err(_) => return send_reply(&self.out, error(&Value::Null, -32700, "Parse error")).await,
+        };
+        let has_id = request.get("id").is_some();
+        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        let method = request.get("method").and_then(Value::as_str).unwrap_or("");
+        let params = &request["params"];
+        if request["jsonrpc"] != "2.0" || method.is_empty() {
+            return send_reply(&self.out, error(&id, -32600, "Invalid Request")).await;
+        }
+        if method == "initialize" {
+            let reply = self.initialize(&id, params);
+            return send_reply(&self.out, reply).await;
+        }
+        if method == "initialized" && self.negotiated && !has_id {
+            self.initialized = true;
+            return Ok(());
+        }
+        if !self.initialized {
+            // A notification has no id to answer; replying would send the
+            // client a response it never asked for.
+            if has_id {
+                send_reply(&self.out, error(&id, -32002, "Server not initialized")).await?;
+            }
+            return Ok(());
+        }
+        let reply = self.handle_request(&id, has_id, method, params).await?;
+        match reply {
+            Some(reply) if has_id => send_reply(&self.out, reply).await,
+            _ => Ok(()),
+        }
+    }
+
+    /// A new handshake replaces the previous one; a failed negotiation cannot
+    /// authorize `initialized` or methods.
+    fn initialize(&mut self, id: &Value, params: &Value) -> Value {
+        self.negotiated = false;
+        self.initialized = false;
+        match serde_json::from_value::<InitializeParams>(params.clone()) {
+            Ok(init) if init.protocol_version == PROTOCOL_VERSION && !init.client_info.name.is_empty() && !init.client_info.version.is_empty() => {
+                self.negotiated = true;
+                // The caps a content-part array is held to -- a `turn/start`
+                // input's and a `tool/respond` content's, the same limits
+                // `init` advertises to a stream-json client. A client that
+                // sends an image is sending bytes into a channel with no
+                // backpressure, so it learns the limits from the handshake
+                // rather than by having a message rejected.
+                response(id, json!({
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "serverInfo": {"name":"jan","version":env!("CARGO_PKG_VERSION")},
+                    "capabilities": {"session":true,"turn":true},
+                    "input_content_parts": super::run_report::InputContentParts::current(),
+                }))
+            }
+            _ => error(id, -32602, "Unsupported protocol version or malformed clientInfo"),
+        }
+    }
+
+    async fn handle_request(&mut self, id: &Value, has_id: bool, method: &str, params: &Value) -> Result<Reply, String> {
+        Ok(match method {
+            "session/start" => self.session_start(id, has_id, params),
+            "session/tools/get" => Some(self.tools_get(id, params).await),
+            "session/tools/set" => Some(self.tools_set(id, params).await),
+            "session/model/set" => Some(self.model_set(id, params).await),
+            "session/reset" => Some(self.reset(id, params).await),
+            "tool/respond" => Some(self.tool_respond(id, params).await),
+            "session/list" => Some(self.list(id, params)),
+            "session/resume" => Some(self.resume(id, params)),
+            "session/fork" => Some(self.fork(id, params).await),
+            "session/archive" => Some(self.archive(id, params).await),
+            "turn/start" => Some(self.turn_start(id, params)),
+            "turn/steer" => Some(self.turn_steer(id, params).await),
+            "turn/interrupt" => Some(self.turn_interrupt(id, params).await?),
+            "permission/respond" => Some(self.permission_respond(id, params).await),
+            _ => Some(error(id, -32601, "Method not found")),
+        })
+    }
+
+    fn session_start(&mut self, id: &Value, has_id: bool, params: &Value) -> Reply {
+        match serde_json::from_value::<SessionStartParams>(params.clone()) {
+            Err(_) => Some(error(id, -32602, "session/start requires cwd and supported options")),
+            Ok(start) if !std::path::Path::new(&start.cwd).is_dir() => Some(error(id, -32602, "cwd is not a directory")),
+            // Declared before the session is built: a tool set the host got
+            // wrong is refused before anything is spent.
+            Ok(start) => match declare_tools(start.tools) {
+                Err(message) => Some(invalid_tools(id, &message)),
+                Ok(host_tools) => {
+                    // Built in its own task; the reply comes back through
+                    // `started_rx`, so the loop keeps serving meanwhile.
+                    let tx = self.started_tx.clone();
+                    let reply_id = id.clone();
+                    let owns_gate = start.permissions == PermissionOwner::Host;
+                    let pending_start = (self.hooks.start)(StartRequest { cwd: start.cwd, model: start.model, host_tools, host_owns_gate: owns_gate, ephemeral: start.ephemeral, builtins: start.builtins });
+                    tokio::spawn(async move {
+                        let outcome = pending_start.await;
+                        let _ = tx.send(Started { id: reply_id, has_id, outcome });
+                    });
+                    None
+                }
+            },
+        }
+    }
+
+    async fn tools_get(&self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionIdParams>(params.clone()) {
+            Err(_) => error(id, -32602, "session/tools/get requires sessionId"),
+            Ok(SessionIdParams { session_id: sid }) => match self.sessions.get(&sid) {
+                Some(session) => response(id, tools_view(session).await),
+                None => error(id, -32602, UNKNOWN_SESSION),
+            },
+        }
+    }
+
+    async fn tools_set(&mut self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionToolsSetParams>(params.clone()) {
+            Err(_) => error(id, -32602, "session/tools/set requires sessionId and tools"),
+            Ok(set) if !self.sessions.contains_key(&set.session_id) => error(id, -32602, UNKNOWN_SESSION),
+            Ok(set) if self.busy(&set.session_id) => turn_active(id),
+            Ok(set) => match declare_tools(set.tools) {
+                Err(message) => invalid_tools(id, &message),
+                Ok(host_tools) => {
+                    let session = self.sessions.get_mut(&set.session_id).expect("checked");
+                    session.agent.args.host_tools = host_tools;
+                    response(id, tools_view(session).await)
+                }
+            },
+        }
+    }
+
+    async fn model_set(&mut self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionModelSetParams>(params.clone()) {
+            Err(_) => error(id, -32602, "session/model/set requires sessionId and model"),
+            Ok(set) if !self.sessions.contains_key(&set.session_id) => error(id, -32602, UNKNOWN_SESSION),
+            Ok(set) if self.busy(&set.session_id) => turn_active(id),
+            Ok(set) if set.model.trim().is_empty() => error(id, -32602, "model must not be empty"),
+            Ok(set) => {
+                // Refuse a model no configured provider serves. The turn would
+                // fail closed on it too -- nothing goes out on the session's
+                // behalf -- but this is the point at which a client can still be
+                // told, and the session must not be left pinned to a model that
+                // cannot serve it, which the next turn would report as a failure
+                // of the client's own input.
+                let provider_configs = self.sessions.get(&set.session_id).expect("checked").agent.args.provider_configs.clone();
+                match crate::core::agent::upstream::resolve_upstream_for_model(&set.model, provider_configs).await {
+                    Err(message) => error(id, -32602, &message),
+                    Ok(_) => {
+                        let session = self.sessions.get_mut(&set.session_id).expect("checked");
+                        match rebuild_agent(session, Some(set.model)).await {
+                            Ok(agent) => {
+                                // The same registry: nothing is pending between
+                                // turns, and keeping it keeps one per session.
+                                let registry = Arc::clone(&session.agent.args.host_tool_requests);
+                                session.agent = agent;
+                                session.agent.args.host_tool_requests = registry;
+                                response(id, json!({"model":session.agent.model}))
+                            }
+                            Err(message) => error(id, -32602, &message),
                         }
-                    }
-                    TurnMessage::Finished(result) => {
-                        let turn = active.take().expect("active");
-                        finish_turn(&mut sessions, turn, result, false)?;
                     }
                 }
             }
         }
     }
-    if let Some(turn) = active {
-        turn.runner.abort();
-        release_host_requests(sessions.get(&turn.session_id), &turn, "client_gone", &out).await?;
-        // stdin closing is not stdout closing: a client that asked the process
-        // to end but keeps reading still gets the record that says its turn
-        // ended, which is the one thing it cannot infer from the channel
-        // closing. The turn was stopped by the client, so that is what the
-        // record reports, and it goes out on the slot the turn reserved - the
-        // writer below drains the queue before joining.
-        finish_turn(&mut sessions, turn, Ok(Value::Null), true)?;
+
+    async fn reset(&mut self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionIdParams>(params.clone()) {
+            Err(_) => error(id, -32602, "session/reset requires sessionId"),
+            Ok(SessionIdParams { session_id: sid }) if !self.sessions.contains_key(&sid) => error(id, -32602, UNKNOWN_SESSION),
+            Ok(SessionIdParams { session_id: sid }) if self.busy(&sid) => turn_active(id),
+            Ok(SessionIdParams { session_id: sid }) => {
+                let session = self.sessions.get_mut(&sid).expect("checked");
+                session.history.clear();
+                response(id, tools_view(session).await)
+            }
+        }
     }
-    Ok(())
+
+    /// A host tool answer. It names only its request, so it goes to whichever
+    /// running turn issued that request; only a running turn can be waiting on
+    /// a host, so with none a reply is as late as one already answered.
+    async fn tool_respond(&self, id: &Value, params: &Value) -> Value {
+        let respond = match serde_json::from_value::<ToolRespondParams>(params.clone()) {
+            Err(_) => return error(id, -32602, "tool/respond requires requestId and content (a string or content parts)"),
+            Ok(respond) => respond,
+        };
+        let (request_id, result) = match host_result(respond) {
+            Err(message) => return error(id, -32602, &message),
+            Ok(answer) => answer,
+        };
+        for session_id in self.active.keys() {
+            let Some(session) = self.sessions.get(session_id) else { continue };
+            let registry = Arc::clone(&session.agent.args.host_tool_requests);
+            if registry.lock().await.contains_key(&request_id) {
+                return match crate::core::agent::host_tools::respond(&registry, &request_id, Ok(result)).await {
+                    Ok(()) => response(id, json!({})),
+                    Err(message) => error_data(id, -32602, &message, json!({"kind":"not_pending"})),
+                };
+            }
+        }
+        error_data(
+            id,
+            -32602,
+            &format!("no host tool request '{request_id}' is pending (answered, cancelled, or never issued)"),
+            json!({"kind":"not_pending"}),
+        )
+    }
+
+    /// Takes no params, so the only shape it accepts is none: an object, or the
+    /// omitted-params `null` JSON-RPC allows. As a list request it is also the
+    /// one method where a scalar in place of params is a client bug worth naming.
+    fn list(&self, id: &Value, params: &Value) -> Value {
+        match params {
+            Value::Object(_) | Value::Null => response(id, json!({"sessions":self.sessions.values().map(|s| json!({"id":s.id,"model":s.agent.model,"turns":s.turns,"hostTools":s.agent.args.host_tools.len()})).collect::<Vec<_>>()})),
+            _ => error(id, -32602, "session/list takes no params"),
+        }
+    }
+
+    fn resume(&self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionIdParams>(params.clone()) {
+            Err(_) => error(id, -32602, "session/resume requires sessionId"),
+            Ok(SessionIdParams { session_id: sid }) => match self.sessions.get(&sid) {
+                Some(session) => response(id, json!({"sessionId":sid,"model":session.agent.model,"turns":session.turns})),
+                None => error(id, -32602, "unknown sessionId (RPC sessions belong to their process)"),
+            },
+        }
+    }
+
+    async fn fork(&mut self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionIdParams>(params.clone()) {
+            Err(_) => error(id, -32602, "unknown sessionId"),
+            Ok(SessionIdParams { session_id: sid }) if self.busy(&sid) => error(id, -32001, "session busy"),
+            Ok(SessionIdParams { session_id: sid }) if self.sessions.contains_key(&sid) => {
+                let source = self.sessions.get(&sid).expect("checked");
+                // A fresh registry (from the rebuild): the fork is its own
+                // session, and a reply must never cross into it.
+                match rebuild_agent(source, None).await {
+                    Ok(mut agent) => {
+                        let fork = uuid::Uuid::new_v4().to_string();
+                        // The fork is its own session, so it reports its own id.
+                        agent.args.session_id = Some(fork.clone());
+                        let history = source.history.clone();
+                        let ephemeral = source.ephemeral;
+                        let builtins = source.builtins;
+                        self.sessions.insert(fork.clone(), Session { agent, history, id: fork.clone(), turns: 0, ephemeral, builtins, carried_steer: Vec::new() });
+                        response(id, json!({"sessionId":fork}))
+                    }
+                    Err(message) => error(id, -32602, &message),
+                }
+            }
+            Ok(_) => error(id, -32602, "unknown sessionId"),
+        }
+    }
+
+    async fn archive(&mut self, id: &Value, params: &Value) -> Value {
+        match serde_json::from_value::<SessionIdParams>(params.clone()) {
+            Err(_) => error(id, -32602, "unknown sessionId"),
+            Ok(SessionIdParams { session_id: sid }) if self.busy(&sid) => error(id, -32001, "session busy"),
+            Ok(SessionIdParams { session_id: sid }) if self.sessions.contains_key(&sid) => {
+                let session = self.sessions.remove(&sid).expect("checked");
+                release_session(session, &self.sessions).await;
+                response(id, json!({}))
+            }
+            Ok(_) => error(id, -32602, "unknown sessionId"),
+        }
+    }
+
+    fn turn_start(&mut self, id: &Value, params: &Value) -> Value {
+        let TurnStartParams { session_id, input } = match serde_json::from_value::<TurnStartParams>(params.clone()) {
+            Err(_) => return error(id, -32602, "turn/start requires sessionId and input"),
+            Ok(start) => start,
+        };
+        if self.busy(&session_id) {
+            return error(id, -32001, "another turn is active; retry after turn/completed");
+        }
+        let parsed = json!({"type":"user","content":input});
+        let content = if let Some(text) = input.as_str() {
+            parse_input_line(&json!({"type":"user","text":text}).to_string()).map(|_| Value::String(text.to_owned()))
+        } else if input.is_array() {
+            parse_input_line(&parsed.to_string()).map(|_| input)
+        } else {
+            Err("input must be text or content parts".to_string())
+        };
+        match (self.sessions.get_mut(&session_id), content) {
+            (Some(session), Ok(content)) => match start_turn(session, content, &self.out, &self.hooks) {
+                Ok(turn) => {
+                    let tid = turn.turn_id.clone();
+                    self.active.insert(session_id, turn);
+                    response(id, json!({"turnId":tid}))
+                }
+                // The turn would have no room to report its outcome on, so it
+                // is refused while the client drains what is already queued.
+                Err(message) => error(id, -32001, &message),
+            },
+            (None, _) => error(id, -32602, "unknown sessionId"),
+            (_, Err(message)) => error(id, -32602, &message),
+        }
+    }
+
+    async fn turn_steer(&self, id: &Value, params: &Value) -> Value {
+        const REFUSED: &str = "turn/steer requires an active session and nonempty input";
+        match serde_json::from_value::<TurnSteerParams>(params.clone()) {
+            Err(_) => error(id, -32602, REFUSED),
+            Ok(TurnSteerParams { session_id: sid, input: text }) => match self.active.get(&sid) {
+                Some(turn) if !text.trim().is_empty() => {
+                    let mut pending = turn.pending.lock().await;
+                    if pending.len() >= super::stream_input::MAX_QUEUED {
+                        error_data(id, -32000, &super::stream_input::queue_full(), json!({"kind":"queue_full","retryable":true}))
+                    } else {
+                        pending.push(json!({"role":"user","content":neutralize_user_content(json!(text))}));
+                        response(id, json!({}))
+                    }
+                }
+                _ => error(id, -32602, REFUSED),
+            },
+        }
+    }
+
+    async fn turn_interrupt(&mut self, id: &Value, params: &Value) -> Result<Value, String> {
+        let turn = match serde_json::from_value::<SessionIdParams>(params.clone()) {
+            Ok(SessionIdParams { session_id: sid }) => self.active.remove(&sid),
+            Err(_) => None,
+        };
+        let Some(turn) = turn else {
+            return Ok(error(id, -32602, "no active turn for sessionId"));
+        };
+        let sid = turn.session_id.clone();
+        turn.runner.abort();
+        if let Some(session) = self.sessions.get_mut(&sid) {
+            session.agent.permission_requests.lock().await.clear();
+        }
+        release_host_requests(self.sessions.get(&sid), &turn, "interrupted", &self.out).await?;
+        finish_turn(&mut self.sessions, turn, Err("interrupted".to_owned()), true)?;
+        Ok(response(id, json!({})))
+    }
+
+    /// A permission answer names only its request, so it goes to whichever
+    /// running turn's gate is waiting on that id.
+    async fn permission_respond(&self, id: &Value, params: &Value) -> Value {
+        let (request_id, decision) = match (self.active.is_empty(), serde_json::from_value::<PermissionResponseParams>(params.clone())) {
+            (false, Ok(PermissionResponseParams { request_id, decision })) => (request_id, decision),
+            _ => return error(id, -32602, "permission/respond requires an active turn and requestId"),
+        };
+        let Some(decision) = parse_decision(decision.as_str()) else {
+            return error(id, -32602, "invalid permission decision");
+        };
+        for session_id in self.active.keys() {
+            let Some(session) = self.sessions.get(session_id) else { continue };
+            if let Some(sender) = session.agent.permission_requests.lock().await.remove(&request_id) {
+                let _ = sender.send(decision);
+                return response(id, json!({}));
+            }
+        }
+        error(id, -32602, "no permission request is pending")
+    }
+
+    fn on_turn_message(&mut self, session_id: String, message: Option<TurnMessage>) -> Result<(), String> {
+        let Some(message) = message else {
+            // The run's task is gone without an outcome: a panic in the engine,
+            // or an abort this loop did not make. The turn still owes the client
+            // a terminal record, and this arm would be ready with `None` on
+            // every pass until it got one.
+            let turn = self.active.remove(&session_id).expect("active");
+            return finish_turn(&mut self.sessions, turn, Err("the run ended without an outcome".to_owned()), false);
+        };
+        match message {
+            TurnMessage::Event(event) => {
+                let event = *event;
+                let turn = self.active.get_mut(&session_id).expect("active");
+                if let StreamEvent::MessagesUpdated { messages } = &event {
+                    turn.updated_history = Some(messages.clone());
+                }
+                let wire = serde_json::to_value(&event).map_err(|e| e.to_string())?;
+                let method = format!("item/{}", wire["type"].as_str().ok_or("event has no tag")?);
+                // Each turn's terminal record has its own slot, so this bound
+                // only covers the streamed events: when the client is not
+                // reading them, the turn ends rather than accumulating
+                // unbounded model deltas.
+                if self.out.capacity() == 0 {
+                    let turn = self.active.remove(&session_id).expect("active");
+                    turn.runner.abort();
+                    finish_turn(&mut self.sessions, turn, Err("RPC output queue overloaded".to_owned()), false)
+                } else {
+                    notify(&self.out, &method, json!({"sessionId":turn.session_id,"turnId":turn.turn_id,"event":wire}))
+                }
+            }
+            TurnMessage::Finished(result) => {
+                let turn = self.active.remove(&session_id).expect("active");
+                finish_turn(&mut self.sessions, turn, result, false)
+            }
+        }
+    }
+
+    /// stdin closed: stop every running turn.
+    async fn shutdown(mut self) -> Result<(), String> {
+        let running: Vec<String> = self.active.keys().cloned().collect();
+        for session_id in running {
+            let turn = self.active.remove(&session_id).expect("listed");
+            turn.runner.abort();
+            release_host_requests(self.sessions.get(&turn.session_id), &turn, "client_gone", &self.out).await?;
+            // stdin closing is not stdout closing: a client that asked the
+            // process to end but keeps reading still gets the record that says
+            // its turn ended, which is the one thing it cannot infer from the
+            // channel closing. The turn was stopped by the client, so that is
+            // what the record reports, and it goes out on the slot the turn
+            // reserved - the writer drains the queue before joining.
+            finish_turn(&mut self.sessions, turn, Ok(Value::Null), true)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::cli::PermissionRegistry;
     use crate::core::cli::stream_input::{MAX_IMAGES, MAX_IMAGE_BYTES};
     use crate::core::cli::turn_host::{forward_events, host_names, pump_turn};
 
@@ -909,7 +1016,7 @@ mod tests {
 
     // ── the dispatch loop, driven end to end with scripted turns ──────────
 
-    type Turns = Arc<std::sync::Mutex<Vec<(Value, mpsc::Sender<TurnMessage>)>>>;
+    type Turns = Arc<std::sync::Mutex<Vec<(Value, mpsc::Sender<TurnMessage>, PermissionRegistry)>>>;
 
     /// Hooks whose sessions are real agents for a temp project (no model, so
     /// nothing can reach a provider) and whose turns are channels the test
@@ -922,9 +1029,9 @@ mod tests {
                     Ok(open_session(agent, request).await)
                 })
             }),
-            spawn: Box::new(move |_args, body| {
+            spawn: Box::new(move |args: OrchestrationArgs, body| {
                 let (tx, events) = mpsc::channel(16);
-                turns.lock().unwrap().push((body, tx));
+                turns.lock().unwrap().push((body, tx, args.permission_requests.clone()));
                 TurnTask {
                     events,
                     runner: tokio::spawn(std::future::pending()),
@@ -997,7 +1104,7 @@ mod tests {
 
         async fn turn(&self, n: usize) -> mpsc::Sender<TurnMessage> {
             for _ in 0..500 {
-                if let Some((_, tx)) = self.turns.lock().unwrap().get(n) {
+                if let Some((_, tx, _)) = self.turns.lock().unwrap().get(n) {
                     return tx.clone();
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -1139,19 +1246,69 @@ mod tests {
         });
     }
 
-    /// Characterizes the one-turn-per-process rule this loop had: a turn in
-    /// one session refuses a turn in another.
+    /// Turns of different sessions run side by side: each streams under its
+    /// own ids and completes on its own, and an interrupt stops only its own.
     #[test]
-    fn a_turn_in_one_session_blocks_another_session() {
+    fn turns_in_two_sessions_run_concurrently() {
+        with_rpc(|| async {
+            let mut rpc = Rpc::start();
+            rpc.handshake().await;
+            let a = rpc.session().await;
+            let b = rpc.session().await;
+            let tid_a = rpc.call("turn/start", json!({"sessionId":a,"input":"one"})).await["result"]["turnId"].clone();
+            let turn_a = rpc.turn(0).await;
+            let started_b = rpc.call("turn/start", json!({"sessionId":b,"input":"two"})).await;
+            let tid_b = started_b["result"]["turnId"].clone();
+            assert!(tid_b.is_string(), "{started_b}");
+            let turn_b = rpc.turn(1).await;
+            // Still one turn per session.
+            assert_eq!(rpc.call("turn/start", json!({"sessionId":b,"input":"three"})).await["error"]["code"], -32001);
+            // A busy session does not block changes to an idle one.
+            turn_b.send(token("from b")).await.unwrap();
+            let event = rpc.recv().await;
+            assert_eq!(event["params"]["sessionId"], b.as_str());
+            assert_eq!(event["params"]["turnId"], tid_b);
+            turn_a.send(token("from a")).await.unwrap();
+            let event = rpc.recv().await;
+            assert_eq!(event["params"]["sessionId"], a.as_str());
+            turn_b.send(TurnMessage::Finished(Ok(json!({})))).await.unwrap();
+            let done = rpc.recv().await;
+            assert_eq!(done["method"], "turn/completed");
+            assert_eq!(done["params"]["turnId"], tid_b);
+            assert_eq!(rpc.call("session/reset", json!({"sessionId":b})).await["result"].is_object(), true);
+            let mut seen = Vec::new();
+            assert_eq!(rpc.call_seen("turn/interrupt", json!({"sessionId":a}), &mut seen).await["result"], json!({}));
+            let done = match seen.iter().find(|r| r["method"] == "turn/completed") {
+                Some(done) => done.clone(),
+                None => rpc.recv().await,
+            };
+            assert_eq!(done["params"]["turnId"], tid_a);
+            assert_eq!(done["params"]["stopReason"], "interrupted");
+            rpc.stop().await;
+        });
+    }
+
+    /// A permission answer names only its request; it reaches the gate of the
+    /// session that asked, whichever turns are running.
+    #[test]
+    fn a_permission_answer_reaches_the_session_that_asked() {
         with_rpc(|| async {
             let mut rpc = Rpc::start();
             rpc.handshake().await;
             let a = rpc.session().await;
             let b = rpc.session().await;
             rpc.call("turn/start", json!({"sessionId":a,"input":"one"})).await;
-            rpc.turn(0).await;
-            let other = rpc.call("turn/start", json!({"sessionId":b,"input":"two"})).await;
-            assert_eq!(other["error"]["code"], -32001);
+            rpc.call("turn/start", json!({"sessionId":b,"input":"two"})).await;
+            rpc.turn(1).await;
+            let (gate_tx, gate_rx) = tokio::sync::oneshot::channel();
+            {
+                let registry = rpc.turns.lock().unwrap()[1].2.clone();
+                registry.lock().await.insert("perm-b".into(), gate_tx);
+            }
+            let reply = rpc.call("permission/respond", json!({"requestId":"perm-b","decision":"allow_once"})).await;
+            assert_eq!(reply["result"], json!({}), "{reply}");
+            assert!(tokio::time::timeout(std::time::Duration::from_secs(5), gate_rx).await.expect("gate never answered").is_ok());
+            assert_eq!(rpc.call("permission/respond", json!({"requestId":"perm-b","decision":"allow_once"})).await["error"]["code"], -32602);
             rpc.stop().await;
         });
     }
