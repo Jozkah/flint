@@ -318,6 +318,22 @@ const clip = (text: string, max = 80): string => {
   return one.length > max ? `${one.slice(0, max - 1)}…` : one
 }
 
+/** What a bash call ran, without the verb: the command, or "a command". */
+function commandText(input: Record<string, unknown>): string {
+  const command = str(input.command)
+  return command ? clip(command) : 'a command'
+}
+
+/**
+ * The line for a failed bash call, shown after a translated "Failed to run":
+ * the model's description when it gave one, otherwise the command alone.
+ */
+export function failedCommandText(part: TraceSummaryPart): string {
+  const input = (part.input ?? {}) as Record<string, unknown>
+  const described = str(input.description)
+  return described ? clip(described, 100) : commandText(input)
+}
+
 /**
  * One past-tense line for a tool call in a folded run: "Read AUDIT.md",
  * "Ran git status". A model-written `description` on the call wins, since it
@@ -343,10 +359,8 @@ export function toolSentence(part: TraceSummaryPart): string {
       return pattern ? `Found files matching ${clip(pattern, 40)}` : 'Found files'
     case 'grep':
       return pattern ? `Searched for ${clip(pattern, 40)}` : 'Searched files'
-    case 'bash': {
-      const command = str(input.command)
-      return command ? `Ran ${clip(command)}` : 'Ran a command'
-    }
+    case 'bash':
+      return `Ran ${commandText(input)}`
     case 'web_search': {
       const query = str(input.query)
       return query ? `Searched the web for ${clip(query, 50)}` : 'Searched the web'

@@ -42,7 +42,7 @@ import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import { parseBrowserTarget } from '@/lib/browserOpen'
 import { browserCardUrl, isBrowserTool } from '@/lib/browserAgent'
 import { useBrowserShots } from '@/hooks/useBrowserShots'
-import { toolSentence } from '@/lib/traceSummary'
+import { failedCommandText, toolSentence } from '@/lib/traceSummary'
 import {
   lineOfToolInput,
   toolChangesFile,
@@ -445,7 +445,7 @@ export const ToolCallCard = memo(
                 <SentenceText
                   text={
                     failed && toolName === 'bash'
-                      ? toolSentence(part).replace(/^Ran /, '')
+                      ? failedCommandText(part)
                       : toolSentence(part)
                   }
                   tint={!failed}
@@ -508,8 +508,8 @@ export const ToolCallCard = memo(
                     <button
                       type="button"
                       data-testid="tool-image-save"
-                      aria-label={`Save ${img.name}`}
-                      title={`Save ${img.name}`}
+                      aria-label={t('tools:toolCall.saveImage', { name: img.name })}
+                      title={t('tools:toolCall.saveImage', { name: img.name })}
                       onClick={() => void saveToolImageWithToast(img)}
                       className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-md bg-background/80 text-foreground opacity-0 transition-opacity hover:bg-background focus-visible:opacity-100 group-hover:opacity-100"
                     >

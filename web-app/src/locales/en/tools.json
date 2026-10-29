@@ -39,6 +39,7 @@
     "working": "Working...",
     "failed": "{{tool}} failed",
     "used": "Used {{tool}}",
+    "saveImage": "Save {{name}}",
     "parameters": "Parameters",
     "result": "Result",
     "error": "Error",
