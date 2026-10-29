@@ -955,6 +955,9 @@ async function normalizeResult(result) {
   return response
 }
 
+// A plain string that is not a data URL is a LOCAL FILE PATH, read with this
+// process's permissions (kept for compatibility). Hosts must not forward an
+// untrusted string here; `{ path }` states the intent explicitly.
 async function toImagePart(image) {
   if (typeof image === 'string') {
     return { type: 'image_url', image_url: { url: image.startsWith('data:') ? image : await dataUrlFromFile(image) } }

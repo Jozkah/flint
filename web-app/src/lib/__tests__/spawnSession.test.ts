@@ -18,6 +18,13 @@ vi.mock('@/hooks/useCoworkWorktrees', () => ({
 vi.mock('@/hooks/useDirectEditGrants', () => ({
   useDirectEditGrants: { getState: () => ({ authorize }) },
 }))
+const { invokeCommand } = vi.hoisted(() => ({
+  invokeCommand: vi.fn(async () => 'flint/side-job-abc123'),
+}))
+vi.mock('@/lib/backend', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/backend')>()),
+  invokeCommand,
+}))
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({ app: () => ({ getJanDataFolder: async () => '/data' }) }),
 }))
@@ -215,21 +222,27 @@ describe('spawn_session', () => {
       expect(out.isError).toBe(true)
       expect(out.output).toContain('branch exists')
       expect(children()).toHaveLength(0)
-      expect(approve).not.toHaveBeenCalled()
+      // Approval comes first now; the failure happens after the user said yes.
+      expect(approve).toHaveBeenCalledTimes(1)
     })
 
-    it('asks naming folder and branch, and removes everything when declined', async () => {
+    it('asks naming folder and planned branch before creating anything', async () => {
       approve.mockResolvedValue(false)
       const out = await runSpawnSession('p1', input, { mode: 'ask', onApprove: approve })
       expect(out.isError).toBe(true)
       expect(approve).toHaveBeenCalledWith(
         expect.any(String),
         'spawn_session',
-        expect.objectContaining({ folder: '/proj', branch: 'flint/side-job' }),
+        expect.objectContaining({ folder: '/proj', branch: 'flint/side-job-abc123' }),
         undefined,
         undefined
       )
-      expect(discard).toHaveBeenCalled()
+      expect(invokeCommand).toHaveBeenCalledWith('agent_worktree_branch_name', {
+        sessionId: expect.any(String),
+        title: 'Side job',
+      })
+      expect(ensure).not.toHaveBeenCalled()
+      expect(discard).not.toHaveBeenCalled()
       expect(authorize).not.toHaveBeenCalled()
       expect(children()).toHaveLength(0)
     })

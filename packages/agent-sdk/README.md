@@ -89,7 +89,7 @@ What a handler answers with:
 | Field | Meaning |
 | --- | --- |
 | `text` | Tool text, sent to the model. |
-| `images` | A path, a data URL, `{ data, mimeType }`, or `{ url }`. A tool message cannot carry an image, so `text` stays on the tool message and the runtime leads the next user turn with the image parts. |
+| `images` | A path, a data URL, `{ data, mimeType }`, `{ path, mimeType }`, or `{ url }`. A plain string that is not a `data:` URL is read as a local file path with this process's permissions, so never pass a model- or user-supplied string through unchecked; prefer `{ path }` to make the intent explicit. A tool message cannot carry an image, so `text` stays on the tool message and the runtime leads the next user turn with the image parts. |
 | `details` | Host-only data, echoed as `item/tool_details` and never sent to the model. |
 | `error` / `isError` | The call failed; the message is the tool result the model sees. |
 

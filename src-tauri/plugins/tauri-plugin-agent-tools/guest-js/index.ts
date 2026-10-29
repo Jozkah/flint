@@ -1250,6 +1250,7 @@ export async function executeTool(
    */
   approval?: ApprovalSource
 ): Promise<ToolResult> {
+  const approvalToken = await mintApproval(threadId, callId, name, args, approval)
   return await invoke('plugin:agent-tools|execute_tool', {
     dataFolder,
     threadId,
@@ -1266,11 +1267,37 @@ export async function executeTool(
     actor,
     extraProjects,
     approval,
+    approvalToken,
   })
 }
 
 /** See `executeTool`'s `approval`. */
 export type ApprovalSource = 'prompted' | 'auto' | 'bypass' | 'secret'
+
+/**
+ * Rust accepts an approval that widens the gate (`prompted`, `bypass`,
+ * `secret`) only with a one-shot token it minted for this exact call: same
+ * thread, call id, tool, arguments and approval. `auto` and no approval need
+ * none.
+ */
+async function mintApproval(
+  threadId: string,
+  callId: string | undefined,
+  name: string,
+  args: Record<string, unknown>,
+  approval: ApprovalSource | undefined
+): Promise<string | undefined> {
+  if (approval !== 'prompted' && approval !== 'bypass' && approval !== 'secret') {
+    return undefined
+  }
+  return await invoke<string>('plugin:agent-tools|approval_mint', {
+    threadId,
+    callId,
+    name,
+    args,
+    approval,
+  })
+}
 
 /**
  * Run a failed `bash` call again outside the sandbox, after the user approved
@@ -1500,6 +1527,13 @@ export async function executeToolStreaming(
     approval?: ApprovalSource
   }
 ): Promise<ToolResult> {
+  const approvalToken = await mintApproval(
+    threadId,
+    options?.callId,
+    name,
+    args,
+    options?.approval
+  )
   return await invoke('plugin:agent-tools|execute_tool_streaming', {
     undoRun: options?.undoRun,
     dataFolder,
@@ -1517,6 +1551,7 @@ export async function executeToolStreaming(
     actor: options?.actor,
     extraProjects: options?.extraProjects,
     approval: options?.approval,
+    approvalToken,
   })
 }
 
