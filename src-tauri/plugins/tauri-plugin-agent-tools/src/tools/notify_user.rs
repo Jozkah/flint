@@ -57,6 +57,11 @@ fn allow(now: Instant) -> Result<(), String> {
     Ok(())
 }
 
+/// The app's AppUserModelID: the bundle identifier, which the installer puts
+/// on Flint's Start menu shortcut. A toast raised under it is shown as Flint's
+/// (F07-011); without an installed shortcut it falls back to PowerShell's.
+const FLINT_AUMID: &str = "jan.ai.app";
+
 const TOAST: &str = r#"
 $ErrorActionPreference='Stop'
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
@@ -65,7 +70,9 @@ $text = $xml.GetElementsByTagName('text')
 $text.Item(0).AppendChild($xml.CreateTextNode($env:NU_TITLE)) | Out-Null
 $text.Item(1).AppendChild($xml.CreateTextNode($env:NU_MESSAGE)) | Out-Null
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show($toast)
+$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+try { if (Get-StartApps | Where-Object { $_.AppID -eq $env:NU_AUMID }) { $app = $env:NU_AUMID } } catch { }
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show($toast)
 'Shown.'
 "#;
 
@@ -81,7 +88,8 @@ pub async fn notify_user(args: &Value) -> String {
     let mut cmd = tokio::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", &crate::tools::host_read::utf8_script(TOAST)])
         .env("NU_TITLE", &plan.title)
-        .env("NU_MESSAGE", &plan.message);
+        .env("NU_MESSAGE", &plan.message)
+        .env("NU_AUMID", FLINT_AUMID);
     match crate::tools::host_read::capture(cmd, Duration::from_secs(20)).await {
         Ok(out) if out.success => format!("Notification shown: {}", plan.title),
         Ok(out) => format!("ERROR: the notification could not be shown: {}", out.stderr.lines().next().unwrap_or("").trim()),
@@ -91,7 +99,7 @@ pub async fn notify_user(args: &Value) -> String {
 
 #[cfg(not(windows))]
 pub async fn notify_user(args: &Value) -> String {
-    let _ = (args, plan(args), allow(Instant::now()), TOAST);
+    let _ = (args, plan(args), allow(Instant::now()), TOAST, FLINT_AUMID);
     "ERROR: notify_user works on Windows only.".to_string()
 }
 

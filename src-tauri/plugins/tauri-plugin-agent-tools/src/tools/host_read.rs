@@ -451,7 +451,6 @@ fn decode_wsl(bytes: &[u8]) -> String {
 
 #[cfg(windows)]
 pub async fn host_query(args: &Value) -> String {
-    use std::process::Stdio;
     let plan = match plan(args) {
         Ok(plan) => plan,
         Err(message) => return message,
@@ -469,8 +468,9 @@ pub async fn host_query(args: &Value) -> String {
     for (key, value) in &plan.env {
         cmd.env(key, value);
     }
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).creation_flags(0x0800_0000);
-    let run = tokio::time::timeout(Duration::from_secs(plan.timeout_secs), cmd.output()).await;
+    cmd.creation_flags(0x0800_0000);
+    // A timeout stops the whole tree, not just powershell (F5x3-012).
+    let run = crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(plan.timeout_secs)).await;
     match run {
         Err(_) => format!("ERROR: host_query did not finish in {} seconds and was stopped.", plan.timeout_secs),
         Ok(Err(e)) => format!("ERROR: could not run the query: {e}"),

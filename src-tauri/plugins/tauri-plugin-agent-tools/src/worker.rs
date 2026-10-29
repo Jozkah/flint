@@ -423,7 +423,11 @@ fn supervise_launch(
         Launch::Shell(command) => {
             let shell = crate::tools::proc::shell();
             let mut cmd = std::process::Command::new(&shell.program);
-            cmd.args(&shell.args).arg(command);
+            crate::tools::proc::shell_line(&mut cmd, shell, command, None, true);
+            // Nothing may stop to ask a question: there is no one to answer it.
+            for (key, val) in crate::tools::win_env::NON_INTERACTIVE_ENV {
+                cmd.env(key, val);
+            }
             // A job is the user's command, not the app's: it must not inherit
             // the AppImage's library paths. The `Argv` arm below re-runs the
             // app itself and keeps them.

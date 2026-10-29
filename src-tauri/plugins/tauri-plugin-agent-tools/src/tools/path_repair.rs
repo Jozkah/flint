@@ -140,6 +140,10 @@ pub fn normalize_drive_args(tool: &str, path_args: &[&'static str], args: &mut V
 
 /// [`repair_args`] against the real filesystem, relative paths resolved as
 /// the tools resolve them.
+///
+/// This runs before the gate, so only spellings lexically inside the project
+/// root or scratch folder are probed (F5x4-009). A spelling elsewhere is never
+/// stat'ed: the escape is put back on the text alone and the gate decides.
 pub fn repair_args_on_disk(
     tool: &str,
     path_args: &[&'static str],
@@ -147,7 +151,31 @@ pub fn repair_args_on_disk(
     root: &Path,
     scratch: Option<&Path>,
 ) -> Result<(), String> {
-    let exists = |p: &str| crate::tools::sandbox::resolve_path(root, scratch, p).exists();
+    let probe = |p: &Path| p.exists();
+    repair_args_with_probe(tool, path_args, args, root, scratch, &probe)
+}
+
+fn repair_args_with_probe(
+    tool: &str,
+    path_args: &[&'static str],
+    args: &mut Value,
+    root: &Path,
+    scratch: Option<&Path>,
+    probe: &dyn Fn(&Path) -> bool,
+) -> Result<(), String> {
+    use crate::tools::sandbox::{lexical_normalize, resolve_path};
+    let root_n = lexical_normalize(root);
+    let scratch_n = scratch.map(lexical_normalize);
+    let exists = |p: &str| {
+        let resolved = lexical_normalize(&resolve_path(root, scratch, p));
+        let inside = resolved.starts_with(&root_n) || scratch_n.as_ref().is_some_and(|s| resolved.starts_with(s));
+        if inside {
+            probe(&resolved)
+        } else {
+            // Outside: the spelling without control characters is taken.
+            !p.chars().any(is_escape_control)
+        }
+    };
     repair_args(tool, path_args, args, &exists)
 }
 
@@ -207,6 +235,26 @@ mod tests {
         let mut args = json!({"path": "C:\tmp\\ws-demo"});
         let err = repair_args("request_access", &[], &mut args, &|_| false).unwrap_err();
         assert!(err.contains("`path`"), "{err}");
+    }
+
+    #[test]
+    fn a_path_outside_the_roots_is_never_probed() {
+        let probes = std::cell::Cell::new(0);
+        let probe = |_: &Path| {
+            probes.set(probes.get() + 1);
+            true
+        };
+        let root = std::env::temp_dir().join("pr-root-outside");
+        let raw = if cfg!(windows) { "D:/elsewhere/x\tmp.txt" } else { "/elsewhere/x\tmp.txt" };
+        let mut args = json!({ "path": raw });
+        let tool = crate::tools::lookup("read").unwrap();
+        repair_args_with_probe("read", tool.path_args, &mut args, &root, None, &probe).unwrap();
+        assert_eq!(probes.get(), 0);
+        assert!(!args["path"].as_str().unwrap().contains('\t'));
+        // Inside the root the probe is used.
+        let mut args = json!({ "path": "sub\tmp.txt" });
+        let _ = repair_args_with_probe("read", tool.path_args, &mut args, &root, None, &probe);
+        assert!(probes.get() > 0);
     }
 
     #[test]

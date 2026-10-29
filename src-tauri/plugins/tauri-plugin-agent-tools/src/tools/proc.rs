@@ -1325,6 +1325,42 @@ mod located_tests {
     }
 }
 
+/// The shell's arguments for running `command`: shared by the agent's shell and
+/// supervised jobs, so both quote the same way (F5x4-010). With `cwd` the
+/// command is wrapped to start there; `inline` false leaves the command for
+/// stdin.
+///
+/// `cmd.exe` does not parse its command line with C-runtime quote rules, so
+/// std's cooked `.arg` (which escapes inner quotes as `\"`) mangles any
+/// command that contains quotes -- a chained `cd "path with spaces" && ...`
+/// arrives with broken quoting and the command fails. cmd is handed a raw
+/// line instead: `/S /C "<command>"`, where `/S` makes cmd strip exactly the
+/// outer quote pair and run the remainder verbatim, so inner quoting, `&&`
+/// short-circuiting and exit codes are all preserved. Every other shell uses
+/// C-runtime rules, where cooked `.arg` is correct.
+pub(crate) fn shell_line(
+    cmd: &mut std::process::Command,
+    cfg: &ShellConfig,
+    command: &str,
+    cwd: Option<&Path>,
+    inline: bool,
+) {
+    let line = || match cwd {
+        Some(cwd) => located(cfg.flavor, command, cwd),
+        None => command.to_string(),
+    };
+    #[cfg(windows)]
+    if cfg.flavor == ShellFlavor::Cmd && inline {
+        use std::os::windows::process::CommandExt;
+        cmd.raw_arg("/S").raw_arg("/C").raw_arg(format!("\"{}\"", line()));
+        return;
+    }
+    cmd.args(&cfg.args);
+    if inline {
+        cmd.arg(line());
+    }
+}
+
 pub async fn spawn(
     cfg: &ShellConfig,
     command: &str,
@@ -1332,28 +1368,7 @@ pub async fn spawn(
     scratch: Option<&Path>,
 ) -> std::io::Result<Child> {
     let mut cmd = Command::new(&cfg.program);
-    // `cmd.exe` does not parse its command line with C-runtime quote rules, so
-    // std's cooked `.arg` (which escapes inner quotes as `\"`) mangles any
-    // command that contains quotes -- a chained `cd "path with spaces" && ...`
-    // arrives with broken quoting and the command fails. cmd is handed a raw
-    // line instead: `/S /C "<command>"`, where `/S` makes cmd strip exactly the
-    // outer quote pair and run the remainder verbatim, so inner quoting, `&&`
-    // short-circuiting and exit codes are all preserved. Every other shell uses
-    // C-runtime rules, where cooked `.arg` is correct.
-    #[cfg_attr(not(windows), allow(unused_mut))]
-    let mut handled_raw = false;
-    #[cfg(windows)]
-    if cfg.flavor == ShellFlavor::Cmd && !cfg.via_stdin {
-        let line = located(cfg.flavor, command, cwd);
-        cmd.raw_arg("/S").raw_arg("/C").raw_arg(format!("\"{line}\""));
-        handled_raw = true;
-    }
-    if !handled_raw {
-        cmd.args(&cfg.args);
-        if !cfg.via_stdin {
-            cmd.arg(located(cfg.flavor, command, cwd));
-        }
-    }
+    shell_line(cmd.as_std_mut(), cfg, command, Some(cwd), !cfg.via_stdin);
     // Strip every inherited variable, then re-add only the allowlist so the
     // sandboxed process holds no host secrets regardless of which backend wraps
     // it. `current_dir` on the workspace keeps relative work correct.

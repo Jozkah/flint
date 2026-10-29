@@ -504,13 +504,18 @@ impl Control {
         if let Ok(mut r) = self.reason.lock() {
             *r = Some(why.to_string());
         }
-        let _ = crate::tools::proc::kill_tree(self.pid);
-        self.token.release(self.pid);
+        // The tree is killed by pid only while the browser is still our live,
+        // unreaped child: then its pid cannot have been reused. Once it has
+        // exited, the pid may name another process (F03-027).
         if let Ok(mut c) = self.child.lock() {
             if let Some(mut child) = c.take() {
+                if matches!(child.try_wait(), Ok(None)) {
+                    let _ = crate::tools::proc::kill_tree(self.pid);
+                }
                 let _ = child.start_kill();
             }
         }
+        self.token.release(self.pid);
         if let Ok(mut r) = self.registered.lock() {
             r.take();
         }
@@ -598,6 +603,9 @@ struct Page {
     mains: Mains,
     ctl: Arc<Control>,
     seen: Arc<Mutex<Seen>>,
+    /// The helper's isolated world per tab session (F5a-004): the page's own
+    /// scripts cannot see or replace what the helper keeps there.
+    worlds: Mutex<HashMap<String, i64>>,
 }
 
 pub struct Session {
@@ -910,10 +918,11 @@ fn parse_origins(args: &Value) -> Result<(url::Url, OriginPolicy), String> {
 }
 
 async fn open(caller: &Caller, args: &Value) -> Reply {
-    let (url, wanted) = match parse_origins(args) {
+    let (url, mut wanted) = match parse_origins(args) {
         Ok(v) => v,
         Err(e) => return err(e),
     };
+    let requested: Vec<Origin> = wanted.allowed().to_vec();
     let popups = args.get("popups").and_then(Value::as_bool);
     // Reuse the run's session when it already allows everything asked for;
     // otherwise the browser is restarted, because its network confinement is
@@ -938,11 +947,13 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
                     Err(e) => err(e),
                 };
             }
+            // Everything this run already allowed stays allowed (F03-003).
+            wanted.extend(existing.policy.allowed());
+            existing.announce_closed("restarted to allow another origin");
             existing.ctl.kill_and_wait("restarted to allow another origin").await;
             restarted = true;
         }
     }
-    // Everything this run already allowed stays allowed.
     let mut origins: Vec<String> = Vec::new();
     for o in wanted.allowed() {
         origins.push(o.serialize());
@@ -954,7 +965,7 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
              FLINT_BROWSER_PATH to its full path. Flint does not download a browser.",
         );
     };
-    for o in wanted.allowed() {
+    for o in &requested {
         if !launch::port_open(o).await {
             return err(format!(
                 "Nothing is answering at {}. Start the app first (a dev server run in the background with bash, say), wait until it is up, then call open again.",
@@ -1157,6 +1168,7 @@ async fn start(
             mains: mains.clone(),
             ctl: ctl.clone(),
             seen: seen.clone(),
+            worlds: Mutex::new(HashMap::new()),
         }),
         seen,
         policy,
@@ -1276,7 +1288,57 @@ impl Page {
 
     async fn helper(&self, method: &str, args: &[Value]) -> Result<Value, String> {
         let prefix = self.active()?.prefix();
-        self.eval(&outline::call_expression(&prefix, method, args)).await
+        let r = self.helper_eval(&outline::call_expression(&prefix, method, args), true).await?;
+        Ok(r["result"]["value"].clone())
+    }
+
+    /// The helper's isolated world in the active tab's main frame, made on
+    /// first use and again after a navigation destroyed it.
+    async fn world(&self, fresh: bool) -> Result<i64, String> {
+        let session = self.session();
+        if !fresh {
+            if let Some(id) = self.worlds.lock().ok().and_then(|w| w.get(&session).copied()) {
+                return Ok(id);
+            }
+        }
+        let tree = self.call("Page.getFrameTree", json!({})).await?;
+        let frame = tree["frameTree"]["frame"]["id"].as_str().ok_or("the page has no main frame")?.to_string();
+        let made = self
+            .call(
+                "Page.createIsolatedWorld",
+                json!({ "frameId": frame, "worldName": "flint", "grantUniveralAccess": false }),
+            )
+            .await?;
+        let id = made["executionContextId"].as_i64().ok_or("no isolated world could be made for the page")?;
+        if let Ok(mut w) = self.worlds.lock() {
+            w.insert(session, id);
+        }
+        Ok(id)
+    }
+
+    /// Evaluate a helper expression in the isolated world. A context that a
+    /// navigation destroyed is made again once.
+    async fn helper_eval(&self, expression: &str, by_value: bool) -> Result<Value, String> {
+        let mut fresh = false;
+        loop {
+            let ctx = self.world(fresh).await?;
+            let r = self
+                .call(
+                    "Runtime.evaluate",
+                    json!({ "expression": expression, "contextId": ctx, "returnByValue": by_value, "awaitPromise": false }),
+                )
+                .await;
+            match r {
+                Err(e) if !fresh && e.to_ascii_lowercase().contains("context") => fresh = true,
+                Err(e) => return Err(e),
+                Ok(r) => {
+                    if let Some(ex) = r.get("exceptionDetails") {
+                        return Err(clip(&launch::exception_text(ex)));
+                    }
+                    return Ok(r);
+                }
+            }
+        }
     }
 
     /// Wait for the document to finish loading, then a short settle for what it starts.
@@ -1956,12 +2018,7 @@ impl Session {
             return Err(format!("{r} is disabled."));
         }
         let prefix = page.active()?.prefix();
-        let found = page
-            .call(
-                "Runtime.evaluate",
-                json!({ "expression": outline::call_expression(&prefix, "element", &[json!(r)]), "returnByValue": false }),
-            )
-            .await?;
+        let found = page.helper_eval(&outline::call_expression(&prefix, "element", &[json!(r)]), false).await?;
         let object_id = found["result"]["objectId"].as_str().ok_or_else(|| outline::stale_message(&r))?.to_string();
         page.call("DOM.setFileInputFiles", json!({ "files": [file.to_string_lossy()], "objectId": object_id })).await?;
         page.settle(Duration::from_secs(3)).await;
