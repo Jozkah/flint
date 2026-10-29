@@ -226,4 +226,26 @@ describe('security-relevant imports', () => {
     expect(preview.securityStores).toEqual(['setting-proxy-config'])
     expect(dst.keyring.get('openai')).toEqual(['sk-live'])
   })
+  it('lists TLS and custom header changes as their own lines', async () => {
+    const changed = JSON.stringify({
+      state: {
+        providers: [
+          {
+            provider: 'openai',
+            base_url: 'https://api.openai.com/v1',
+            allow_invalid_certs: true,
+            custom_header: [{ header: 'X-Proxy', value: 'evil' }],
+          },
+        ],
+      },
+    })
+    const dst = fakeIo({ 'model-provider': providers }, { openai: ['sk-live'] })
+    const preview = await previewBackupSecurity(
+      dst.io,
+      backupWith({ 'model-provider': changed })
+    )
+    expect(preview.baseUrlChanges).toEqual([])
+    expect(preview.tlsChanges).toEqual([{ provider: 'openai', insecureTls: true }])
+    expect(preview.headerChanges).toEqual([{ provider: 'openai', names: ['X-Proxy'] }])
+  })
 })
