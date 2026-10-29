@@ -3051,6 +3051,7 @@
     "openProvider": "Открыть настройки поставщика",
     "errorDetails": "Подробности",
     "pasteHint": "Доступ к буферу обмена заблокирован. Щёлкните текстовое поле и нажмите {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Выберите исходный язык, чтобы поменять местами"
   },
   "markdownImage": {

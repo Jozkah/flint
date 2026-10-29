@@ -2992,6 +2992,7 @@
     "openProvider": "Abrir configurações do provedor",
     "errorDetails": "Detalhes",
     "pasteHint": "O acesso à área de transferência foi bloqueado. Clique na caixa de texto e pressione {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Escolha um idioma de origem para inverter"
   },
   "markdownImage": {

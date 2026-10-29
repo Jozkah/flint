@@ -2934,6 +2934,7 @@
     "openProvider": "Anbieter-Einstellungen öffnen",
     "errorDetails": "Details",
     "pasteHint": "Der Zugriff auf die Zwischenablage wurde blockiert. Klicke in das Textfeld und drücke {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Wähle eine Ausgangssprache, um zu tauschen"
   },
   "markdownImage": {

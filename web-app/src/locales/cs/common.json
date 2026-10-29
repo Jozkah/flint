@@ -3051,6 +3051,7 @@
     "openProvider": "Otevřít nastavení poskytovatele",
     "errorDetails": "Podrobnosti",
     "pasteHint": "Přístup ke schránce byl zablokován. Klikněte do textového pole a stiskněte {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Pro prohození vyberte zdrojový jazyk"
   },
   "markdownImage": {

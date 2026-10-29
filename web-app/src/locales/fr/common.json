@@ -2992,6 +2992,7 @@
     "openProvider": "Ouvrir les paramètres du fournisseur",
     "errorDetails": "Détails",
     "pasteHint": "L'accès au presse-papiers a été bloqué. Cliquez dans la zone de texte et appuyez sur {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Choisissez une langue source pour inverser"
   },
   "markdownImage": {

@@ -268,10 +268,12 @@ export function ModelSetting({
         ...model.settings,
         chat_template_kwargs: {
           key: 'chat_template_kwargs',
-          title: 'Chat template options',
           description: '',
           controller_type: 'object',
           ...(existing ?? {}),
+          // The section title comes from i18n at render time; never persist
+          // English text (older saves carried one, so it is cleared here).
+          title: '',
           controller_props: {
             ...(existing?.controller_props ?? {}),
             value,

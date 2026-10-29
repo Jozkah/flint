@@ -2932,6 +2932,7 @@
     "openProvider": "開啟供應商設定",
     "errorDetails": "詳細資料",
     "pasteHint": "剪貼簿存取遭到封鎖。請點擊文字方塊並按 {{keys}}。",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "選擇來源語言後才能互換"
   },
   "markdownImage": {

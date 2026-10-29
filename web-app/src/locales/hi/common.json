@@ -2934,6 +2934,7 @@
     "openProvider": "प्रदाता सेटिंग्स खोलें",
     "errorDetails": "विवरण",
     "pasteHint": "क्लिपबोर्ड तक पहुँच अवरुद्ध हो गई। टेक्स्ट बॉक्स पर क्लिक करें और {{keys}} दबाएँ।",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "अदला-बदली के लिए स्रोत भाषा चुनें"
   },
   "markdownImage": {

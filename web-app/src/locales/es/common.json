@@ -2993,6 +2993,7 @@
     "openProvider": "Abrir ajustes del proveedor",
     "errorDetails": "Detalles",
     "pasteHint": "Se bloqueó el acceso al portapapeles. Haz clic en el cuadro de texto y pulsa {{keys}}.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Elige un idioma de origen para intercambiar"
   },
   "markdownImage": {

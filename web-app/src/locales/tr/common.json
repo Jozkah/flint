@@ -2932,6 +2932,7 @@
     "openProvider": "Sağlayıcı ayarlarını aç",
     "errorDetails": "Ayrıntılar",
     "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın.",
+    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
     "swapNeedsSource": "Değiştirmek için bir kaynak dil seçin"
   },
   "markdownImage": {

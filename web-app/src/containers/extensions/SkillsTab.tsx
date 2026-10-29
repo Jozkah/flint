@@ -41,8 +41,8 @@ type GroupKey = 'global' | string
  * (the desktop's permanent skill store, full CRUD -- the same store
  * `SkillsManagerDialog` edits) plus one read-oriented group per registered
  * project, so a project's local skills are visible without leaving the
- * page. Project skills open in the same editor on click; saving there
- * writes back into that project's `.jan/agent/skills`.
+ * page. Project skills open read-only in the same editor on click; edit
+ * them in the project folder itself.
  */
 export default function SkillsTab() {
   const { t } = useTranslation()
