@@ -181,6 +181,19 @@ impl Store {
         }
     }
 
+    /// Whether `host` has the user's "this local address is fine" rule, read
+    /// from the navigation snapshot without waiting. `None` while it is swapped.
+    pub fn nav_private_ok(&self, host: &str) -> Option<bool> {
+        let snap = match self.nav.try_read() {
+            Ok(g) => g.clone(),
+            Err(TryLockError::Poisoned(p)) => p.into_inner().clone(),
+            Err(TryLockError::WouldBlock) => return None,
+        };
+        Some(snap.is_some_and(|p| {
+            p.rules.verdict_for(host).is_some_and(|r| r.verdict == Verdict::Allow && r.private_ok)
+        }))
+    }
+
     /// Point the store at its file and read it. A second call does nothing.
     /// The file is read before `inner` is taken.
     pub fn open(&self, path: &Path) {
