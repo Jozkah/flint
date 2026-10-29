@@ -30,7 +30,7 @@ pub(super) async fn handle_agent(cmd: AgentCommands) {
             json_schema_attempts,
         } => run_cmd::run(project, task, model, safe, mode, providers, sandbox, budget, worktree, resume, output_format, input_format, host_tools, host_gate, events, profile, output_density, append_system_prompt, append_system_prompt_file, allow_tools, deny_tools, effort, ephemeral, json_schema, json_schema_attempts).await,
         AgentCommands::RunSubagent { spec } => run_cmd::run_subagent(spec).await,
-        AgentCommands::Serve => run_cmd::serve().await,
+        AgentCommands::Serve { max_runs, retention_days } => run_cmd::serve(max_runs, retention_days).await,
         AgentCommands::Step {
             project,
             task,
