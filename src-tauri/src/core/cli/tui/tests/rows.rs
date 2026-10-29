@@ -3113,12 +3113,35 @@ fn settings_prompt_shows_a_global_rows_value_from_its_own_scope() {
     let dir = tempfile::tempdir().unwrap();
     let toml_path = dir.path().join("agent.toml");
     std::fs::write(&toml_path, "[agent]\nask_timeout_secs = 987654\n").unwrap();
-    let prompt = SettingsPrompt { key: "ask_timeout_secs", input: String::new(), error: None };
-    let text: String = settings_prompt_lines(&prompt, &toml_path, 200)
+    let def = crate::core::cli::tui::commands::AGENT_SETTINGS
+        .iter()
+        .find(|d| d.key == "ask_timeout_secs")
+        .unwrap();
+    let current = crate::core::cli::tui::commands::current_setting_value(def, &toml_path);
+    let prompt = SettingsPrompt::new(def, current.as_deref());
+    let text: String = settings_prompt_lines(&prompt, 200)
         .iter()
         .flat_map(|l| l.spans.iter().map(|s| s.content.to_string()))
         .collect();
     assert!(!text.contains("987654"), "project value shown for a global row: {text}");
+}
+
+/// F2x1-008: the `/settings` box reads the value once, when it opens, rather
+/// than re-reading a settings file on every frame it is drawn.
+#[test]
+fn settings_prompt_shows_the_value_read_when_it_opened() {
+    use crate::core::cli::tui::commands::SettingsPrompt;
+    use crate::core::cli::tui::render::settings_prompt_lines;
+    let def = crate::core::cli::tui::commands::AGENT_SETTINGS
+        .iter()
+        .find(|d| d.key == "ask_timeout_secs")
+        .unwrap();
+    let prompt = SettingsPrompt::new(def, Some("424242"));
+    let text: String = settings_prompt_lines(&prompt, 200)
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.to_string()))
+        .collect();
+    assert!(text.contains("current: 424242"), "{text}");
 }
 
 /// P2C-014: truncation, clipping and panel padding are measured in terminal

@@ -390,6 +390,11 @@ pub struct SessionFlags {
     /// `--compact` / `--verbose`: how much a headless run says about itself
     /// (AH-181). `None` defers to `[output].density`, then normal.
     pub density: Option<Density>,
+    /// Build the session without starting its MCP servers: the caller hands it
+    /// servers that are already connected (an RPC model switch reuses the
+    /// session's own), so starting a second copy of every stdio server only to
+    /// abort it would be wasted spawns (F2b-004).
+    pub skip_mcp: bool,
     /// `--interrupted`: what to do with a resumed session whose last run was
     /// cut off mid-turn (AH-026). `None` refuses such a resume rather than
     /// choosing for the user.
@@ -682,14 +687,14 @@ fn route_models(model: String, cfg: &crate::core::agent::project::AgentToml) -> 
 /// the returned task before the first turn (tools are collected once per run),
 /// so a race with the first message cannot leave the model without its MCP
 /// tools. The task is `None` when no server is active.
-fn connect_mcp() -> (
+fn connect_mcp(skip: bool) -> (
     crate::core::state::SharedMcpServers,
     McpSettings,
     Option<tokio::task::JoinHandle<mcp::ConnectOutcome>>,
 ) {
     let mcp_servers: crate::core::state::SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     let mcp_settings = mcp::read_settings();
-    let mcp_task = if mcp::active_count() > 0 && !tauri_plugin_agent_tools::safe_mode::active() {
+    let mcp_task = if !skip && mcp::active_count() > 0 && !tauri_plugin_agent_tools::safe_mode::active() {
         let servers = mcp_servers.clone();
         Some(tokio::spawn(
             async move { mcp::connect_active(&servers).await },
@@ -818,7 +823,7 @@ pub(crate) fn prepare_agent_session(
         ));
     }
 
-    let (mcp_servers, mcp_settings, mcp_task) = connect_mcp();
+    let (mcp_servers, mcp_settings, mcp_task) = connect_mcp(flags.skip_mcp);
 
     // `think_tags` is user-wide and read from free rendering functions, so it is
     // applied to the process here, the one path every agent surface takes.
@@ -1144,4 +1149,15 @@ pub async fn cli_agent_ui(
 /// Where the TUI persists a project's threads (`<project>/.jan/agent`).
 pub fn agent_dir_for(project_root: &std::path::Path) -> PathBuf {
     project_root.join(".jan").join("agent")
+}
+
+#[cfg(test)]
+mod tests {
+    /// F2b-004: a session built to receive servers that are already connected
+    /// starts no connect of its own, whatever MCP servers are configured.
+    #[tokio::test]
+    async fn a_session_that_reuses_servers_starts_no_mcp_connect() {
+        let (_, _, task) = super::connect_mcp(true);
+        assert!(task.is_none(), "no connect task when the caller supplies servers");
+    }
 }
