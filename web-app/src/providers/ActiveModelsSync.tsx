@@ -22,12 +22,16 @@ export function ActiveModelsSync() {
 
   useEffect(() => {
     let alive = true
+    // Only the newest read is applied: an older, slower answer must not
+    // overwrite a newer one (a model would flick back to loaded).
+    let latest = 0
     const refresh = () => {
+      const seq = ++latest
       void serviceHub
         .models()
         .getActiveModels()
         .then((models) => {
-          if (!alive) return
+          if (!alive || seq !== latest) return
           const next = models ?? []
           const { activeModels, setActiveModels } = useAppState.getState()
           if (!sameList(activeModels, next)) setActiveModels(next)
