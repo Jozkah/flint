@@ -101,7 +101,8 @@ export function exportFileName(
   stem = stem.replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '')
   stem = Array.from(stem).slice(0, 80).join('').replace(/[. ]+$/g, '')
   if (!stem) stem = 'export'
-  if (RESERVED_NAMES.test(stem)) stem = `_${stem}`
+  // Windows reserves the device name with any extension too ("con.notes").
+  if (RESERVED_NAMES.test(stem.split('.')[0].trim())) stem = `_${stem}`
   return `${stem}${suffix}`
 }
 

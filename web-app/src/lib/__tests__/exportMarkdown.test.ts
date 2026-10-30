@@ -38,6 +38,8 @@ describe('exportFileName', () => {
   it('drops control characters, trailing dots and doubled extensions', () => {
     expect(exportFileName('line1\nline2. ', 'md')).toBe('line1 line2.md')
     expect(exportFileName('notes.md', 'md')).toBe('notes.md')
+    expect(exportFileName('con.notes', 'md')).toBe('_con.notes.md')
+    expect(exportFileName('console', 'md')).toBe('console.md')
     expect(exportFileName('report...', 'pdf')).toBe('report.pdf')
   })
   it('defuses reserved device names and empty titles', () => {

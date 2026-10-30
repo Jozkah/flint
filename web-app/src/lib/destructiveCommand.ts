@@ -489,7 +489,13 @@ function checkSegment(
       )
       if (!deletes) return null
       const starts: string[] = []
-      for (const a of args) {
+      let i = 0
+      // find's own leading options (-H, -L, -P, -O3, -D debugopts) come
+      // before the start points; they must not end the list early.
+      while (i < args.length && /^-(?:[HLP]|O\d*)$/.test(args[i])) i++
+      if (args[i] === '-D') i += 2
+      for (; i < args.length; i++) {
+        const a = args[i]
         if (a.startsWith('-') || a === '(' || a === '!') break
         starts.push(a)
       }
