@@ -172,7 +172,11 @@ fn get_vulkan_gpus_internal() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
             .iter()
             .filter(|heap| heap.flags.intersects(MemoryHeapFlags::DEVICE_LOCAL))
             .map(|heap| heap.size / (1024 * 1024))
-            .sum();
+            // The largest heap, not the sum: drivers can expose the same VRAM
+            // through more than one device-local heap (a BAR window), and
+            // adding them overstated what fits.
+            .max()
+            .unwrap_or(0);
 
         // No device-local memory at all: nothing can be offloaded to it.
         if total_memory == 0

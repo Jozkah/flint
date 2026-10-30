@@ -412,7 +412,10 @@ fn repo_of(pr_url: &str) -> Option<String> {
     let mut parts = rest.split('/');
     let owner = parts.next().filter(|s| !s.is_empty())?;
     let name = parts.next().filter(|s| !s.is_empty())?;
-    let ok = |s: &str| s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    // `.` and `..` pass the character test but are path segments, not names.
+    let ok = |s: &str| {
+        s != "." && s != ".." && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    };
     (ok(owner) && ok(name)).then(|| format!("{owner}/{name}"))
 }
 

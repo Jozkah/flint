@@ -86,13 +86,14 @@ pub fn section_value(ini: &str, section: &str, key: &str) -> Option<String> {
 /// presets that differ only in a model Jan did not touch therefore leave that
 /// model loaded, which is the whole point of reloading rather than restarting.
 pub fn specs(ini_path: &str, ini: &str) -> HashMap<String, LoadSpec> {
-    let mut bodies = section_bodies(ini);
+    let bodies = section_bodies(ini);
     let shared = bodies.get("*").cloned().unwrap_or_default();
     sections(ini)
         .into_iter()
         .map(|section| {
             let mut body = shared.clone();
-            body.extend(bodies.remove(&section).unwrap_or_default());
+            // `get`, not `remove`: a section listed twice keeps its body both times.
+            body.extend(bodies.get(&section).cloned().unwrap_or_default());
             body.sort();
             (
                 section.clone(),

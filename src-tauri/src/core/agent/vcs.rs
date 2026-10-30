@@ -966,7 +966,8 @@ fn changed_paths(repo: &Path) -> Result<Vec<String>, VcsError> {
         paths.push(normalized(&entry[3..]));
         // A rename or copy is followed by its old name, which is not a
         // separate change.
-        if code.starts_with('R') || code.starts_with('C') {
+        // Either column: a worktree-side rename shows as " R".
+        if code.contains('R') || code.contains('C') {
             entries.next();
         }
     }
