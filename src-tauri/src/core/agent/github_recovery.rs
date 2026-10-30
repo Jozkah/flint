@@ -160,6 +160,11 @@ pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
         .map(|e| e.to_ascii_lowercase())
         .collect();
     for dir in std::env::split_paths(&path) {
+        // An empty PATH entry means the current directory; a program found
+        // there is whatever the working folder holds, not an installed tool.
+        if dir.as_os_str().is_empty() || !dir.is_absolute() {
+            continue;
+        }
         let direct = dir.join(name);
         if direct.is_file() {
             return Some(direct);
