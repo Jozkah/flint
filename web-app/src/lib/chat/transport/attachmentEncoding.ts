@@ -88,8 +88,14 @@ export function mapUserInlineAttachments(messages: UIMessage[]): UIMessage[] {
           // of the same array, append the inline content a second time
           // (jan#9022). Non-text parts and metadata are carried over by
           // reference without being touched.
-          const parts = message.parts.map((part) => {
-            if (part.type === 'text') {
+          // Once, on the last text part: a message split into several text
+          // parts sent every file once per part.
+          let lastText = -1
+          message.parts.forEach((part, i) => {
+            if (part.type === 'text') lastText = i
+          })
+          const parts = message.parts.map((part, i) => {
+            if (part.type === 'text' && i === lastText) {
               return {
                 type: 'text' as const,
                 text: buildInlineText(part.text ?? ''),
