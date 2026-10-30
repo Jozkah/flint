@@ -265,7 +265,14 @@ impl SessionBudget {
             return self.spent_tokens;
         };
 
-        let delta = match usage.total_tokens {
+        // A provider that reports prompt and completion but no total still
+        // has a total: without it only completion tokens were charged and
+        // prompt growth never reached the token ceiling.
+        let reported_total = usage.total_tokens.or(match (usage.prompt_tokens, usage.completion_tokens) {
+            (Some(prompt), Some(completion)) => Some(prompt.saturating_add(completion)),
+            _ => None,
+        });
+        let delta = match reported_total {
             Some(total) => {
                 let delta = match (
                     usage.prompt_tokens,
@@ -532,6 +539,23 @@ mod tests {
         assert_eq!(b.record(&usage_with_parts(10_000, 200, 10_200)), 10_200);
         // The prompt grew 400: 200 is last step's reply, 200 is new tool output.
         assert_eq!(b.record(&usage_with_parts(10_400, 300, 10_700)), 10_700);
+    }
+
+    /// Prompt and completion without a total are charged like the same
+    /// counts with their total, not as completion tokens only.
+    #[test]
+    fn a_missing_total_is_derived_from_prompt_and_completion() {
+        let parts = |p: u64, c: u64| {
+            Some(Usage {
+                prompt_tokens: Some(p),
+                completion_tokens: Some(c),
+                total_tokens: None,
+                ..Default::default()
+            })
+        };
+        let mut b = SessionBudget::new(None);
+        assert_eq!(b.record(&parts(10_000, 200)), 10_200);
+        assert_eq!(b.record(&parts(10_400, 300)), 10_700);
     }
 
     #[test]
