@@ -521,6 +521,32 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
     })
 }
 
+/// Take the snapshot on a blocking worker while the request is in flight.
+///
+/// Parsing, redacting, hashing and appending the whole conversation can take
+/// tens to hundreds of milliseconds on a long chat; doing it inline put all
+/// of that in front of the first token. The snapshot is still of exactly what
+/// is sent (the same owned request), and it is awaited before its reference
+/// is handed out with the response head. A dropped handle (a failed send)
+/// does not cancel the worker, so a failed dispatch is still recorded.
+fn spawn_capture(req: &ProviderRequest) -> Option<tokio::task::JoinHandle<Option<SnapshotRef>>> {
+    req.body.as_deref()?;
+    let owned = req.clone();
+    Some(tokio::task::spawn_blocking(move || capture_snapshot(&owned)))
+}
+
+async fn join_capture(
+    handle: Option<tokio::task::JoinHandle<Option<SnapshotRef>>>,
+) -> Option<SnapshotRef> {
+    match handle?.await {
+        Ok(snapshot) => snapshot,
+        Err(e) => {
+            log::warn!("prompt snapshot: capture worker failed: {e}");
+            None
+        }
+    }
+}
+
 fn default_method() -> String {
     "GET".to_string()
 }
@@ -726,10 +752,11 @@ pub async fn send(mut req: ProviderRequest) -> Result<ProviderResponse, String> 
     req.timeout_secs = effective_timeout(req.timeout_secs, &host);
     // Taken from the request as it stands here, at the last point before it
     // leaves the process.
-    let snapshot = capture_snapshot(&req);
+    let capture = spawn_capture(&req);
     let response = send_once_retrying(&host, port, &req)
         .await?
         .map_err(|e| transport_failed(&host, port, &e))?;
+    let snapshot = join_capture(capture).await;
 
     let peer = note_peer(&host, port, &response);
     let status = response.status();
@@ -824,7 +851,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
             return Err(message);
         }
     };
-    let snapshot = capture_snapshot(&req);
+    let capture = spawn_capture(&req);
     let guard = StreamGuard::new(req.stream_id.clone());
     let attempt = match send_once_retrying(&host, port, &req).await {
         Ok(attempt) => attempt,
@@ -846,6 +873,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         }
     };
 
+    let snapshot = join_capture(capture).await;
     let raw = req.raw_chunks && sink.supports_raw();
     let peer = note_peer(&host, port, &response);
     let status = response.status();
