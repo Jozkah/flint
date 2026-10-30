@@ -142,12 +142,20 @@ export async function moveWithFolders(
   }
 
   const inherited = await inheritedFolders(surface, itemId, from, adapter)
+  let detached: string[] = []
   if (inherited.length) {
     const keep = await keepFolders(inherited)
-    if (!keep) await adapter.detach(itemId, inherited)
+    if (!keep) {
+      await adapter.detach(itemId, inherited)
+      detached = inherited
+    }
   }
   const moved = await groups().moveItem(surface, itemId, target)
-  if (!moved) return false
+  if (!moved) {
+    // The item stays where it was, so it keeps the folders it had there.
+    if (detached.length) await adapter.attach(itemId, detached)
+    return false
+  }
   if (from) await groups().setItemContext(surface, itemId, null)
   if (!group) return true
 

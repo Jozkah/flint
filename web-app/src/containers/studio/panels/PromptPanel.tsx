@@ -233,8 +233,11 @@ export function PromptPanel({
                 <DropdownMenuItem
                   disabled={!form.prompt}
                   onSelect={() => {
-                    void navigator.clipboard?.writeText(form.prompt)
-                    toast(t('studio:actions.promptCopied'))
+                    // Only claim a copy that happened.
+                    void navigator.clipboard
+                      ?.writeText(form.prompt)
+                      .then(() => toast(t('studio:actions.promptCopied')))
+                      .catch(() => undefined)
                   }}
                 >
                   {t('studio:prompt.copy')}
@@ -334,8 +337,11 @@ export function PromptPanel({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => {
-                      void navigator.clipboard?.writeText(latest.recipe.prompt)
-                      toast(t('studio:actions.promptCopied'))
+                      // Only claim a copy that happened.
+                      void navigator.clipboard
+                        ?.writeText(latest.recipe.prompt)
+                        .then(() => toast(t('studio:actions.promptCopied')))
+                        .catch(() => undefined)
                     }}
                   >
                     {t('studio:prompt.copy')}

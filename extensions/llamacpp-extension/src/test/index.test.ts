@@ -594,7 +594,7 @@ describe('llamacpp_extension', () => {
       
       expect(result).toEqual(mockResponse)
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3000/v1/chat/completions',
+        'http://127.0.0.1:3000/v1/chat/completions',
         expect.objectContaining({
           method: 'POST',
           headers: {
