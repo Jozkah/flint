@@ -1014,7 +1014,8 @@ fn parse_status_v2(raw: &str) -> (Option<String>, Vec<StatusRecord>) {
             i += 1;
         } else if let Some(rest) = tok.strip_prefix("u ") {
             // Unmerged: `<xy> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>`.
-            let path = rest.rsplit(' ').next().unwrap_or("").to_string();
+            // Nine fields before the path; the path itself may hold spaces.
+            let path = rest.splitn(10, ' ').nth(9).unwrap_or("").to_string();
             if !path.is_empty() {
                 records.push(StatusRecord {
                     path,
@@ -1626,6 +1627,15 @@ mod review_tests {
         assert_eq!(records.len(), 1);
         assert!(records[0].untracked);
         assert_eq!(records[0].path, "notes.txt");
+    }
+
+    #[test]
+    fn status_v2_keeps_spaces_in_an_unmerged_path() {
+        let raw = "u UU N... 100644 100644 100644 100644 a1 b2 c3 my notes.txt\0";
+        let (_branch, records) = parse_status_v2(raw);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].path, "my notes.txt");
+        assert_eq!(records[0].x, 'U');
     }
 
     #[test]

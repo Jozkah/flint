@@ -482,9 +482,11 @@ pub fn conflicts(repo: &Path) -> Result<MergeState, VcsError> {
     // `ls-files -u` lists the unmerged index entries: stage 1 is the common
     // ancestor, 2 ours, 3 theirs. Which stages are present is what says
     // whether a side deleted the file.
-    let unmerged = git(repo, &["ls-files", "-u"])?;
+    // `-z`: without it a path with a tab, newline or non-ASCII byte comes back
+    // C-quoted and names no file on disk.
+    let unmerged = git(repo, &["ls-files", "-u", "-z"])?;
     let mut stages: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
-    for line in unmerged.lines() {
+    for line in unmerged.split('\0').filter(|l| !l.is_empty()) {
         let Some((meta, path)) = line.split_once('\t') else { continue };
         let stage = meta.split_whitespace().last().and_then(|s| s.parse::<u8>().ok());
         if let Some(stage) = stage {

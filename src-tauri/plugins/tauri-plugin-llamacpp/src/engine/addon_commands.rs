@@ -352,6 +352,8 @@ pub async fn engine_addon_remove<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
     state: State<'_, Arc<LlamacppState>>,
 ) -> Result<(), String> {
+    // Not while a download or verify is writing the same folders.
+    let _busy = claim(&state)?;
     let root = addon_root(&app_handle, &state);
     let in_use = state.addon_in_use.lock().ok().and_then(|g| g.clone());
     match addon::remove_all(&root, addon::CUDA_KIND) {
@@ -382,6 +384,8 @@ pub async fn engine_addon_verify<R: tauri::Runtime>(
     state: State<'_, Arc<LlamacppState>>,
 ) -> Result<bool, String> {
     let exp = expect_for(None).ok_or_else(|| fail(AddonError::UnsupportedPlatform))?;
+    // A verify that removes a pack must not race a download installing one.
+    let _busy = claim(&state)?;
     let root = addon_root(&app_handle, &state);
     let key = addon::pubkey();
     tokio::task::spawn_blocking(move || {

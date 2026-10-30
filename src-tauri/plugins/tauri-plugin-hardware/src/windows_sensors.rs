@@ -252,6 +252,7 @@ mod cache {
                 Err(e) => {
                     log::warn!("Temperature query failed: {e}");
                     let _ = child.kill();
+                    let _ = child.wait();
                     return Vec::new();
                 }
             }
