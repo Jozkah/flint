@@ -2266,11 +2266,13 @@ export function ThreadConversation({
   }
 
   // Check for and send initial message from sessionStorage
-  const initialMessageSentRef = useRef(false)
+  // Keyed by thread: the primary pane is reused across thread switches, so a
+  // plain boolean would skip every later thread's first message.
+  const initialMessageSentRef = useRef<string | null>(null)
 
   useEffect(() => {
     // Prevent duplicate sends
-    if (initialMessageSentRef.current) return
+    if (initialMessageSentRef.current === threadId) return
 
     const initialMessageKey = `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${threadId}`
 
@@ -2279,7 +2281,7 @@ export function ThreadConversation({
     if (storedMessage) {
       // Mark as sent immediately to prevent duplicate sends
       safeSessionRemove(initialMessageKey)
-      initialMessageSentRef.current = true
+      initialMessageSentRef.current = threadId
 
       // Process message asynchronously
       ;(async () => {

@@ -120,10 +120,10 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const recentSearches = useMemo(() => {
     if (!open) return []
 
-    const stored = localStorage.getItem(localStorageKey.recentSearches)
-    if (!stored) return []
-
+    // Blocked storage (private mode, policy) must not throw during render.
     try {
+      const stored = localStorage.getItem(localStorageKey.recentSearches)
+      if (!stored) return []
       const threadIds = JSON.parse(stored) as string[]
       return threadIds
         .map((id) => threads[id])
@@ -138,7 +138,11 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const handleClearRecent = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    localStorage.removeItem(localStorageKey.recentSearches)
+    try {
+      localStorage.removeItem(localStorageKey.recentSearches)
+    } catch {
+      // Storage unavailable: nothing to clear.
+    }
     setRecentVersion((v) => v + 1)
   }
 
@@ -149,29 +153,34 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
   const handleSelectThread = (threadId: string, hit?: { messageId: string }) => {
     const hitQuery = searchQuery.trim()
-    // Save to recent searches
-    const stored = localStorage.getItem(localStorageKey.recentSearches)
-    let threadIds: string[] = []
+    // Save to recent searches. Best effort: blocked storage must not stop
+    // the selection from opening the thread.
+    try {
+      const stored = localStorage.getItem(localStorageKey.recentSearches)
+      let threadIds: string[] = []
 
-    if (stored) {
-      try {
-        threadIds = JSON.parse(stored) as string[]
-      } catch {
-        threadIds = []
+      if (stored) {
+        try {
+          threadIds = JSON.parse(stored) as string[]
+        } catch {
+          threadIds = []
+        }
       }
+
+      // Remove if already exists and add to front
+      threadIds = threadIds.filter((id) => id !== threadId)
+      threadIds.unshift(threadId)
+
+      // Keep only MAX_RECENT_SEARCHES
+      threadIds = threadIds.slice(0, MAX_RECENT_SEARCHES)
+
+      localStorage.setItem(
+        localStorageKey.recentSearches,
+        JSON.stringify(threadIds)
+      )
+    } catch {
+      // Recent searches are a convenience; skip them.
     }
-
-    // Remove if already exists and add to front
-    threadIds = threadIds.filter((id) => id !== threadId)
-    threadIds.unshift(threadId)
-
-    // Keep only MAX_RECENT_SEARCHES
-    threadIds = threadIds.slice(0, MAX_RECENT_SEARCHES)
-
-    localStorage.setItem(
-      localStorageKey.recentSearches,
-      JSON.stringify(threadIds)
-    )
 
     handleClose()
     // A hit inside a message opens the chat with the find bar on that phrase.
