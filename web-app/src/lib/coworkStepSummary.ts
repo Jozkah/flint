@@ -146,9 +146,12 @@ export function stepDurationMs(turn: Pick<CoworkTurn, 'startedAt' | 'endedAt'>):
 /** `420ms`, `1.4s`, `2m 05s`. */
 export function formatStepDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
-  const m = Math.floor(ms / 60_000)
-  const s = Math.round((ms % 60_000) / 1000)
+  // Round to whole seconds first, so 59.6s reads "1m 00s", not "60s", and
+  // 119.6s reads "2m 00s", not "1m 60s".
+  if (ms < 59_500) return `${(ms / 1000).toFixed(ms < 9_950 ? 1 : 0)}s`
+  const total = Math.round(ms / 1000)
+  const m = Math.floor(total / 60)
+  const s = total % 60
   return `${m}m ${String(s).padStart(2, '0')}s`
 }
 

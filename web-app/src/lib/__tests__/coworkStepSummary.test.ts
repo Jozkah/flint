@@ -82,6 +82,9 @@ describe('durations and state', () => {
     expect(formatStepDuration(420)).toBe('420ms')
     expect(formatStepDuration(1400)).toBe('1.4s')
     expect(formatStepDuration(125_000)).toBe('2m 05s')
+    expect(formatStepDuration(59_600)).toBe('1m 00s')
+    expect(formatStepDuration(119_600)).toBe('2m 00s')
+    expect(formatStepDuration(9_970)).toBe('10s')
   })
   it('needs both ends for a duration', () => {
     expect(stepDurationMs({ startedAt: 1 })).toBeUndefined()

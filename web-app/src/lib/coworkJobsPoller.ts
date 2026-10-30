@@ -26,7 +26,13 @@ export function setJobsLister(fn: (sid: string) => Promise<LiveJob[]>) {
   list = fn
 }
 
+// Sessions with a list request still out: a slow backend must not have a
+// new request stacked on it every tick.
+const inFlight = new Set<string>()
+
 function pollOne(sid: string) {
+  if (inFlight.has(sid)) return
+  inFlight.add(sid)
   void list(sid)
     .then((jobs) => {
       const watchers = listeners.get(sid)
@@ -38,6 +44,7 @@ function pollOne(sid: string) {
       // No backend (web build, or the command unavailable): the list still
       // shows what the transcript knows.
     })
+    .finally(() => inFlight.delete(sid))
 }
 
 function tick() {
