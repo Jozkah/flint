@@ -500,10 +500,19 @@ async fn await_ready(
     }
 }
 
+/// Bumped by every load; a watch from an earlier load sees a newer value and
+/// ends, so loads do not stack one idle watcher each.
+static IDLE_WATCH_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn spawn_idle_watch<R: Runtime>(app: tauri::AppHandle<R>) {
+    use std::sync::atomic::Ordering;
+    let generation = IDLE_WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
+            if IDLE_WATCH_GEN.load(Ordering::SeqCst) != generation {
+                return;
+            }
             let expired = {
                 let guard = resident().lock().await;
                 match guard.as_ref() {

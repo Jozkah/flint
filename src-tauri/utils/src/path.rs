@@ -65,7 +65,12 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 
 /// Removes file:/ and file:\ prefixes from file paths
 pub fn normalize_file_path(path: &str) -> String {
-    path.replace("file:/", "").replace("file:\\", "")
+    // Only a leading scheme: a folder name that contains "file:/" further in
+    // must survive.
+    path.strip_prefix("file:/")
+        .or_else(|| path.strip_prefix("file:\\"))
+        .unwrap_or(path)
+        .to_string()
 }
 
 /// Removes prefix from path string with proper formatting

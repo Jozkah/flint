@@ -1276,7 +1276,16 @@ fn authorized(api_key: &str, headers: &hyper::HeaderMap) -> bool {
         .get(hyper::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .is_some_and(|k| k == api_key)
+        .is_some_and(|k| constant_time_eq(k.as_bytes(), api_key.as_bytes()))
+}
+
+/// Compares without stopping at the first differing byte, so response timing
+/// does not reveal how much of a guessed key was right.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// The `model` field OpenAI requests carry, used to pick the engine. Absent for
