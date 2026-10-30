@@ -75,7 +75,9 @@ pub fn transcript_text(messages: &[serde_json::Value]) -> String {
     let mut lines = Vec::new();
     for m in &messages {
         let role = m.get("role").and_then(|r| r.as_str()).unwrap_or("?");
-        if role == "system" {
+        // A compaction summary is history kept under the system role; the
+        // advisor needs it, or a compacted run looks like it started mid-way.
+        if role == "system" && !crate::core::agent::compaction::is_compaction_summary(m) {
             continue;
         }
         let content = match m.get("content") {
