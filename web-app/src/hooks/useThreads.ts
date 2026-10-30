@@ -1,3 +1,4 @@
+import { forgetDeadTools } from '@/lib/deadTools'
 import { clearChatImages } from '@/lib/chatImages'
 import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
@@ -100,6 +101,7 @@ const forgetThreadState = (threadId: string) => {
   useModelOverrides.getState().dropThread(threadId)
   useThreadToolGrants.getState().dropThread(threadId)
   useToolApproval.getState().revokeThread(threadId)
+  forgetDeadTools(threadId)
 }
 
 // The selected thread id, or undefined when that thread was just deleted.
