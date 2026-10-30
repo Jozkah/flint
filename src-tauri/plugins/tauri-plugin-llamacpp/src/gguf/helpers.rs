@@ -197,7 +197,13 @@ fn read_gguf_value<R: Read + Seek + ReadBytesExt>(
                 ));
             }
 
-            if len > 24 {
+            // Numeric arrays up to a few thousand are kept: per-layer values
+            // (head counts, sliding windows) run past 24 on any large model,
+            // and dropping them hid what memory estimates need. Token and
+            // other string tables stay skipped.
+            let numeric = !matches!(elem_type, GgufValueType::String | GgufValueType::Array);
+            let keep = len <= 24 || (numeric && len <= 4096);
+            if !keep {
                 skip_array_data(reader, elem_type, len, depth + 1)?;
                 return Ok(format!(
                     "<Array of type {:?} with {} elements, data skipped>",
