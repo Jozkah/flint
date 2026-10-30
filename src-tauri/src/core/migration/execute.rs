@@ -252,6 +252,26 @@ pub fn execute(plan: &MigrationPlan, opts: &ExecuteOpts) -> MigrationResult {
     let flint_config = plan.dest_config_dir.clone();
     let flint_data = plan.dest_data_folder.clone();
 
+    // A manifest that exists but cannot be read is the ledger of an earlier,
+    // possibly interrupted run. Starting over would overwrite it and lose what
+    // that run created or replaced, so keep it aside and stop this run.
+    if let Err(e) = manifest::read(&flint_config) {
+        log::error!("migration: existing manifest is unreadable: {e}");
+        result.status = Status::Failed;
+        result.error = Some(match manifest::set_aside_unreadable(&flint_config) {
+            Ok(kept) => format!(
+                "the record of an earlier migration could not be read ({e}). \
+                 It was kept at {} and nothing was changed; run the migration again to start over.",
+                kept.display()
+            ),
+            Err(se) => format!(
+                "the record of an earlier migration could not be read ({e}) or moved aside ({se}); \
+                 nothing was changed."
+            ),
+        });
+        return result;
+    }
+
     // Short-circuit a completed migration for the same source (idempotent).
     if let Ok(Some(existing)) = manifest::read(&flint_config) {
         if existing.status == Status::Complete
@@ -1233,6 +1253,34 @@ mod tests {
             let l = legacy_paths(&roots);
             assert!(l.data_folder.join("threads/thread_1/thread.json").is_file());
         }
+    }
+
+    #[test]
+    fn an_unreadable_manifest_is_kept_aside_and_not_overwritten() {
+        let (_td, roots) = setup();
+        let f = flint_paths(&roots);
+        fs::create_dir_all(&f.config_dir).unwrap();
+        let bad = manifest::manifest_path(&f.config_dir);
+        fs::write(&bad, b"{\"status\": \"in_prog").unwrap();
+
+        let p = make_plan(&roots, Mode::Copy, Conflict::KeepBoth);
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Failed);
+        assert!(r.error.as_deref().unwrap_or("").contains("could not be read"), "{:?}", r.error);
+        // Nothing was copied and the old ledger survives, set aside.
+        assert!(!f.data_folder.join("threads/thread_1/thread.json").exists());
+        assert!(!bad.exists());
+        let kept: Vec<_> = fs::read_dir(&f.config_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains("unreadable"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(fs::read(kept[0].path()).unwrap(), b"{\"status\": \"in_prog");
+
+        // The next run starts over normally.
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
     }
 
     #[test]

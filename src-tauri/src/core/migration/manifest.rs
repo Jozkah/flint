@@ -205,9 +205,32 @@ pub fn write(flint_config_dir: &Path, manifest: &MigrationManifest) -> Result<()
     let tmp = path.with_extension("json.tmp");
     let text =
         serde_json::to_string_pretty(manifest).map_err(|e| format!("serialize manifest: {e}"))?;
-    std::fs::write(&tmp, text).map_err(|e| format!("write manifest tmp: {e}"))?;
+    {
+        use std::io::Write;
+        let mut f =
+            std::fs::File::create(&tmp).map_err(|e| format!("write manifest tmp: {e}"))?;
+        f.write_all(text.as_bytes())
+            .map_err(|e| format!("write manifest tmp: {e}"))?;
+        // Flushed before the rename, or a crash can leave an empty manifest
+        // in place of the rollback ledger.
+        f.sync_all().map_err(|e| format!("sync manifest tmp: {e}"))?;
+    }
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename manifest: {e}"))?;
     Ok(())
+}
+
+/// Move a manifest that exists but cannot be read out of the way, keeping it
+/// (with its created/replaced ledger) next to where it was. Returns where it
+/// went.
+pub fn set_aside_unreadable(flint_config_dir: &Path) -> Result<PathBuf, String> {
+    let path = manifest_path(flint_config_dir);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let kept = flint_config_dir.join(format!("migration_manifest.unreadable-{stamp}.json"));
+    std::fs::rename(&path, &kept).map_err(|e| format!("set aside manifest: {e}"))?;
+    Ok(kept)
 }
 
 /// Mark an existing manifest complete and persist it.
