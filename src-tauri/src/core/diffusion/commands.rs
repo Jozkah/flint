@@ -11,7 +11,7 @@ use std::path::Path;
 use tauri::Runtime;
 
 /// Imported adapters live in Studio's own directory, separate from model weights.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diffusion_list_loras<R: Runtime>(app: tauri::AppHandle<R>) -> Result<Vec<String>, String> {
     let dir = engine::diffusion_root(&app).join("loras");
     if !dir.exists() { return Ok(Vec::new()); }
@@ -27,7 +27,7 @@ pub fn diffusion_list_loras<R: Runtime>(app: tauri::AppHandle<R>) -> Result<Vec<
     Ok(names)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diffusion_import_lora<R: Runtime>(app: tauri::AppHandle<R>, path: String) -> Result<String, String> {
     let source = Path::new(&path);
     if !source.is_file() || !source.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("safetensors")) {

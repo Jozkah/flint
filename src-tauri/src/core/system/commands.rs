@@ -879,7 +879,7 @@ pub async fn export_diagnostic_bundle<R: Runtime>(app: AppHandle<R>) -> Result<O
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn launch_claude_code_with_config(
     api_url: String,
     api_key: Option<String>,
@@ -1185,7 +1185,7 @@ fn claude_code_config_dir() -> Option<PathBuf> {
 
 /// Settings in the user's Claude Code config that override what Save & Enable
 /// exports. The settings page explains each one; nothing is changed here.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn detect_claude_code_overrides() -> Vec<ClaudeCodeOverride> {
     claude_code_config_dir()
         .map(|dir| claude_code_overrides_in(&dir))
@@ -1383,7 +1383,7 @@ pub async fn install_jan_cli<R: Runtime>(
 }
 
 /// Remove the installed `flint` CLI binary.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn uninstall_jan_cli() -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -1414,7 +1414,7 @@ fn build_cleaned_env_content(env_file_path: &str) -> String {
 /// Clear all Flint-written Claude Code environment variables from the shell config.
 /// Uses the same write-probe logic as `launch_claude_code_with_config`; when the
 /// file is not writable it returns `NEED_PERMISSION:<path>` and never escalates.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_claude_code_env() -> Result<(), String> {
     if cfg!(target_os = "macos") {
         let home_dir = std::env::var("HOME").map_err(|e| e.to_string())?;

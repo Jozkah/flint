@@ -12,7 +12,7 @@ use super::picker::AsyncFileDialog;
 use std::fs;
 use tauri::{Manager, Runtime};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rm<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> Result<(), String> {
     if args.is_empty() || args[0].is_empty() {
         return Err("rm error: Invalid argument".to_string());
@@ -39,7 +39,7 @@ pub fn rm<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> Res
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mkdir<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> Result<(), String> {
     if args.is_empty() || args[0].is_empty() {
         return Err("mkdir error: Invalid argument".to_string());
@@ -50,7 +50,7 @@ pub fn mkdir<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> 
     fs::create_dir_all(&path).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mv<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> Result<(), String> {
     if args.len() < 2 || args[0].is_empty() || args[1].is_empty() {
         return Err("mv error: Invalid argument - source and destination required".to_string());
@@ -87,7 +87,7 @@ pub fn join_path<R: Runtime>(
     Ok(joined_path.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn exists_sync<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     args: Vec<String>,
@@ -105,7 +105,7 @@ pub fn exists_sync<R: Runtime>(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn file_stat<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     args: String,
@@ -135,7 +135,7 @@ pub fn file_stat<R: Runtime>(
     Ok(file_stat)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_file_sync<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     args: Vec<String>,
@@ -148,7 +148,7 @@ pub fn read_file_sync<R: Runtime>(
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_file_sync<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     args: Vec<String>,
@@ -168,7 +168,7 @@ pub fn write_file_sync<R: Runtime>(
     fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn readdir_sync<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     args: Vec<String>,
@@ -199,7 +199,7 @@ pub fn readdir_sync<R: Runtime>(
     Ok(paths)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_yaml(
     app: tauri::AppHandle<impl Runtime>,
     data: serde_json::Value,
@@ -213,7 +213,7 @@ pub fn write_yaml(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_yaml<R: Runtime>(
     app: tauri::AppHandle<R>,
     path: &str,
