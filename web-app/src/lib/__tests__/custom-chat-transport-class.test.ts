@@ -306,7 +306,7 @@ describe('CustomChatTransport', () => {
     expect(occurrences).toBe(1)
   })
 
-  it('mapUserInlineAttachments appends every attachment and preserves non-text parts', () => {
+  it('mapUserInlineAttachments appends every attachment once and preserves non-text parts', () => {
     const filePart = { type: 'file', url: 'blob:x', mediaType: 'image/png' }
     const messages = [
       {
@@ -328,11 +328,10 @@ describe('CustomChatTransport', () => {
     const result = transport.mapUserInlineAttachments(messages)
     const parts = result[0].parts
 
-    // Both text parts carry both attachments.
-    for (const idx of [0, 2]) {
-      expect(parts[idx].text).toContain('alpha')
-      expect(parts[idx].text).toContain('beta')
-    }
+    // The attachments are sent once, on the last text part (F7x2-037).
+    expect(parts[2].text).toContain('alpha')
+    expect(parts[2].text).toContain('beta')
+    expect(parts[0].text).toBe('one')
     // The non-text part is carried over untouched, same reference.
     expect(parts[1]).toBe(filePart)
     // Original message untouched.

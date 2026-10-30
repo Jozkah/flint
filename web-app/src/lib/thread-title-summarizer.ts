@@ -100,6 +100,7 @@ export function fallbackTitle(source: string): string | null {
  */
 const titleInFlight = new Map<string, Promise<string | null>>()
 const titleDone = new Set<string>()
+const MAX_TITLE_GUARDS = 200
 
 /** Forget every guard (tests). */
 export function resetTitleGuards(): void {
@@ -131,7 +132,16 @@ export function generateThreadTitle(
   const run = (async () => {
     const title = await requestTitle(transcript, abortSignal, session)
     if (title === ABORTED || abortSignal.aborted) return null
-    if (key) titleDone.add(key)
+    if (key) {
+      titleDone.add(key)
+      // Bounded: each key holds a whole first message, and a long session
+      // titles many chats. The oldest go first (Set keeps insertion order).
+      while (titleDone.size > MAX_TITLE_GUARDS) {
+        const oldest = titleDone.values().next().value
+        if (oldest === undefined) break
+        titleDone.delete(oldest)
+      }
+    }
     return title ?? fallbackTitle(source)
   })()
   if (!key) return run

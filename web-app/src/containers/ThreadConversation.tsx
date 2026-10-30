@@ -2138,8 +2138,12 @@ export function ThreadConversation({
           })
           return
         } finally {
-          useAppState.getState().setThreadEmbedding(threadId, false)
-          useAppState.getState().setThreadBusy(threadId, false)
+          // Only what this send set: a send with just images must not clear
+          // the busy flag of a turn whose tools are still waiting.
+          if (hasEmbeddingDocuments) {
+            useAppState.getState().setThreadEmbedding(threadId, false)
+            useAppState.getState().setThreadBusy(threadId, false)
+          }
         }
       }
 
