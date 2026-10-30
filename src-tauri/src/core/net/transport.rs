@@ -470,6 +470,10 @@ fn unattributed(req: &ProviderRequest) -> Unattributed {
 /// prompt snapshot has to be taken at. A request with no session is not a
 /// dispatch (discovery, a health check) and is not recorded.
 fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
+    capture_snapshot_into(req, &resolve_jan_data_folder())
+}
+
+fn capture_snapshot_into(req: &ProviderRequest, data_folder: &std::path::Path) -> Option<SnapshotRef> {
     let body = req.body.as_deref()?;
     let payload: serde_json::Value = serde_json::from_str(body).ok()?;
     // A chat dispatch, not an arbitrary POST.
@@ -512,13 +516,44 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
         },
     };
     let snapshot = snapshot::capture(&payload, &identity);
-    snapshot::append(&resolve_jan_data_folder(), &snapshot);
+    snapshot::append(data_folder, &snapshot);
     Some(SnapshotRef {
         id: snapshot.id.clone(),
         hash: snapshot.hash.clone(),
         redactions: snapshot.redactions.len(),
         invocation,
     })
+}
+
+/// Take the snapshot on a blocking worker while the request is in flight.
+///
+/// Parsing, redacting, hashing and appending the whole conversation can take
+/// tens to hundreds of milliseconds on a long chat; doing it inline put all
+/// of that in front of the first token. The snapshot is still of exactly what
+/// is sent (the same owned request), and it is awaited before its reference
+/// is handed out with the response head. A dropped handle (a failed send)
+/// does not cancel the worker, so a failed dispatch is still recorded.
+fn spawn_capture(req: &ProviderRequest) -> Option<tokio::task::JoinHandle<Option<SnapshotRef>>> {
+    req.body.as_deref()?;
+    let owned = req.clone();
+    // Resolved here, on the dispatching thread: the folder is where this
+    // dispatch belongs, not wherever the worker thread would resolve it.
+    let data_folder = resolve_jan_data_folder();
+    Some(tokio::task::spawn_blocking(move || {
+        capture_snapshot_into(&owned, &data_folder)
+    }))
+}
+
+async fn join_capture(
+    handle: Option<tokio::task::JoinHandle<Option<SnapshotRef>>>,
+) -> Option<SnapshotRef> {
+    match handle?.await {
+        Ok(snapshot) => snapshot,
+        Err(e) => {
+            log::warn!("prompt snapshot: capture worker failed: {e}");
+            None
+        }
+    }
 }
 
 fn default_method() -> String {
@@ -726,10 +761,11 @@ pub async fn send(mut req: ProviderRequest) -> Result<ProviderResponse, String> 
     req.timeout_secs = effective_timeout(req.timeout_secs, &host);
     // Taken from the request as it stands here, at the last point before it
     // leaves the process.
-    let snapshot = capture_snapshot(&req);
+    let capture = spawn_capture(&req);
     let response = send_once_retrying(&host, port, &req)
         .await?
         .map_err(|e| transport_failed(&host, port, &e))?;
+    let snapshot = join_capture(capture).await;
 
     let peer = note_peer(&host, port, &response);
     let status = response.status();
@@ -824,7 +860,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
             return Err(message);
         }
     };
-    let snapshot = capture_snapshot(&req);
+    let capture = spawn_capture(&req);
     let guard = StreamGuard::new(req.stream_id.clone());
     let attempt = match send_once_retrying(&host, port, &req).await {
         Ok(attempt) => attempt,
@@ -846,6 +882,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         }
     };
 
+    let snapshot = join_capture(capture).await;
     let raw = req.raw_chunks && sink.supports_raw();
     let peer = note_peer(&host, port, &response);
     let status = response.status();
@@ -1205,6 +1242,15 @@ mod tests {
             body: Some(r#"{"messages":[{"role":"user","content":"hi"}]}"#.into()),
             ..Default::default()
         }
+    }
+
+    #[tokio::test]
+    async fn the_background_capture_skips_bodyless_and_sessionless_requests() {
+        let bodyless = ProviderRequest::default();
+        assert!(spawn_capture(&bodyless).is_none());
+        assert!(join_capture(spawn_capture(&bodyless)).await.is_none());
+        // A chat body with no session is parsed on the worker and not recorded.
+        assert!(join_capture(spawn_capture(&chat_request())).await.is_none());
     }
 
     #[test]
