@@ -112,13 +112,29 @@ describe('chunk sizing against embedding context', () => {
     const big = 'a'.repeat(200)
     const llm = {
       countEmbeddingTokens: vi.fn().mockImplementation((texts: string[]) =>
-        Promise.resolve([texts[0].length])
+        Promise.resolve(texts.map((t) => t.length))
       ),
     }
     const out = await (ext as any).splitChunkToFit(big, 80, llm)
     expect(out.length).toBeGreaterThan(1)
     expect(out.join('')).toBe(big)
     out.forEach((c: string) => expect(c.length).toBeLessThanOrEqual(80))
+  })
+
+  it('ensureChunksFitEmbeddingContext counts every chunk in one batched call', async () => {
+    const count = vi.fn().mockImplementation((texts: string[]) =>
+      Promise.resolve(texts.map((t) => t.length))
+    )
+    getByName.mockReturnValue(
+      makeEngine({
+        getEmbeddingContextSize: vi.fn().mockResolvedValue(1000),
+        countEmbeddingTokens: count,
+      })
+    )
+    const chunks = Array.from({ length: 50 }, (_, i) => `chunk ${i}`)
+    await expect((ext as any).ensureChunksFitEmbeddingContext(chunks)).resolves.toEqual(chunks)
+    expect(count).toHaveBeenCalledTimes(1)
+    expect(count).toHaveBeenCalledWith(chunks)
   })
 
   it('splitChunkToFit stops halving at the minimum chunk size even if over budget', async () => {
