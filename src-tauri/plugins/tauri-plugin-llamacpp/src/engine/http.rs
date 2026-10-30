@@ -596,7 +596,13 @@ impl EngineServer {
 
         tokio::spawn(async move {
             loop {
-                match rx.recv().await {
+                // A client that went away is noticed now, not at the next
+                // lifecycle event, so its task and receiver are freed.
+                let next = tokio::select! {
+                    next = rx.recv() => next,
+                    _ = tx.closed() => return,
+                };
+                match next {
                     Ok(event) => {
                         let frame = Bytes::from(event.to_sse_frame());
                         if tx.send(Ok(Frame::data(frame))).await.is_err() {

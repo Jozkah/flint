@@ -697,6 +697,15 @@ fn ends_without_newline(path: &Path) -> bool {
 /// Replace a JSONL file with `values`, through a temp file and rename, so a
 /// crash leaves either the old records or the new ones. Callers hold the
 /// mailbox lock, which is what every append also holds.
+/// Write and flush a temp file to disk before it is renamed into place, so a
+/// power loss cannot leave the rename pointing at an empty file.
+fn write_durably(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path)?;
+    f.write_all(bytes)?;
+    f.sync_all()
+}
+
 fn write_jsonl_atomically<T: Serialize>(path: &Path, values: &[T]) -> Result<()> {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let mut buf = String::new();
@@ -711,7 +720,10 @@ fn write_jsonl_atomically<T: Serialize>(path: &Path, values: &[T]) -> Result<()>
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::write(&temp, buf).map_err(|e| MailboxError::io("write mailbox file", e))?;
+    write_durably(&temp, buf.as_ref()).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        MailboxError::io("write mailbox file", e)
+    })?;
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         MailboxError::io("replace mailbox file", e)
@@ -732,7 +744,10 @@ fn write_json_atomically<T: Serialize>(path: &Path, value: &T) -> Result<()> {
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::write(&temp, text).map_err(|e| MailboxError::io("write mailbox file", e))?;
+    write_durably(&temp, text.as_ref()).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        MailboxError::io("write mailbox file", e)
+    })?;
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         MailboxError::io("replace mailbox file", e)

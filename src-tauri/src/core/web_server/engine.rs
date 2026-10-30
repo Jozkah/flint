@@ -68,9 +68,27 @@ impl Supervisor {
 fn env_allowed(key: &str) -> bool {
     const PREFIXES: [&str; 8] = ["GGML_", "LLAMA_", "CUDA_", "HIP_", "VK_", "ROCR_", "HSA_", "OMP_"];
     key != "JAN_LLAMA_API_KEY"
+        && !llama_arg_redirects(key)
         && key.len() <= 64
         && key.bytes().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
         && PREFIXES.iter().any(|p| key.starts_with(p))
+}
+
+/// `LLAMA_ARG_*` variables are llama.cpp command-line options. Tuning ones
+/// (threads, timeout, batch sizes) are fine; any that binds a socket, swaps
+/// the key, or names a file, URL, model or repo to load is not.
+fn llama_arg_redirects(upper: &str) -> bool {
+    if upper == "LLAMA_LOG_FILE" || upper == "LLAMA_CACHE" {
+        return true;
+    }
+    let Some(rest) = upper.strip_prefix("LLAMA_ARG_") else {
+        return false;
+    };
+    const MARKERS: [&str; 13] = [
+        "HOST", "PORT", "API_KEY", "MODEL", "HF", "MMPROJ", "SSL", "FILE", "PATH", "URL", "DIR",
+        "PRESET", "LORA",
+    ];
+    MARKERS.iter().any(|m| rest.contains(m))
 }
 
 fn clean_envs(envs: HashMap<String, String>) -> Result<HashMap<String, String>, String> {
@@ -284,6 +302,9 @@ mod tests {
             assert!(env_allowed(ok), "{ok}");
         }
         for bad in ["PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "JAN_LLAMA_API_KEY", "cuda_visible", "GGML-X", "HOME", ""] {
+            assert!(!env_allowed(bad), "{bad}");
+        }
+        for bad in ["LLAMA_ARG_HOST", "LLAMA_ARG_PORT", "LLAMA_ARG_API_KEY", "LLAMA_ARG_MODEL", "LLAMA_ARG_MODEL_URL", "LLAMA_ARG_HF_REPO", "LLAMA_ARG_SSL_KEY_FILE", "LLAMA_LOG_FILE"] {
             assert!(!env_allowed(bad), "{bad}");
         }
         assert!(clean_envs(HashMap::from([("CUDA_VISIBLE_DEVICES".into(), "0".into())])).is_ok());
