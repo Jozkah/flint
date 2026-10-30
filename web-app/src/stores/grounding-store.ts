@@ -18,8 +18,10 @@ type State = {
   ) => void
 }
 
+// The text itself, not its length: an edit that keeps the length (a
+// regenerated answer of the same size) must be grounded again.
 const fingerprint = (text: string, citations: RagCitation[]) =>
-  `${text.length}:${citations.map((c) => c.id).join(',')}`
+  `${text}|${citations.map((c) => c.id).join(',')}`
 
 const lastFp: Record<string, string> = {}
 // Monotonic token per message: a multi-tool turn flickers to !isStreaming
@@ -52,6 +54,8 @@ export const useGroundingStore = create<State>((set) => ({
       })
       .catch(() => {
         if (runSeq[messageId] !== token) return
+        // Forget the fingerprint so the same text can be tried again.
+        delete lastFp[messageId]
         set((s) => ({ computing: { ...s.computing, [messageId]: false } }))
       })
   },
