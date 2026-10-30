@@ -1235,6 +1235,15 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn the_background_capture_skips_bodyless_and_sessionless_requests() {
+        let bodyless = ProviderRequest::default();
+        assert!(spawn_capture(&bodyless).is_none());
+        assert!(join_capture(spawn_capture(&bodyless)).await.is_none());
+        // A chat body with no session is parsed on the worker and not recorded.
+        assert!(join_capture(spawn_capture(&chat_request())).await.is_none());
+    }
+
     #[test]
     fn a_call_with_no_identity_at_all_is_a_utility_call_not_a_loss() {
         assert_eq!(unattributed(&chat_request()), Unattributed::Utility);
