@@ -286,11 +286,25 @@ export default class VectorDBExt extends VectorDBExtension {
     if (!ctxSize || ctxSize <= 0) return chunks
     const budget = Math.max(1, ctxSize - EMBEDDING_CONTEXT_SAFETY_TOKENS)
 
+    // One batched count for every chunk (one embedding-model resolution),
+    // then only the oversized ones are split and re-counted.
+    const counts = await this.countTokens(chunks, llm)
     const out: string[] = []
-    for (const chunk of chunks) {
-      out.push(...(await this.splitChunkToFit(chunk, budget, llm)))
+    for (let i = 0; i < chunks.length; i++) {
+      out.push(...(await this.splitChunkToFit(chunks[i], budget, llm, counts[i])))
     }
     return out
+  }
+
+  private async countTokens(texts: string[], llm: EmbeddingEngine): Promise<number[]> {
+    if (texts.length === 0) return []
+    try {
+      return await llm.countEmbeddingTokens(texts)
+    } catch (e) {
+      throw new Error(
+        `Failed to count embedding tokens: ${describeError(e)}`
+      )
+    }
   }
 
   /**
@@ -314,23 +328,20 @@ export default class VectorDBExt extends VectorDBExtension {
   private async splitChunkToFit(
     text: string,
     budget: number,
-    llm: EmbeddingEngine
+    llm: EmbeddingEngine,
+    knownCount?: number
   ): Promise<string[]> {
     if (!text) return []
-    let count: number
-    try {
-      ;[count] = await llm.countEmbeddingTokens([text])
-    } catch (e) {
-      throw new Error(
-        `Failed to count embedding tokens: ${describeError(e)}`
-      )
-    }
+    const count = knownCount ?? (await this.countTokens([text], llm))[0]
     if (count <= budget || text.length <= MIN_CHUNK_SIZE_CHARS) return [text]
     const mid = splitPoint(text)
-    return [
-      ...(await this.splitChunkToFit(text.slice(0, mid), budget, llm)),
-      ...(await this.splitChunkToFit(text.slice(mid), budget, llm)),
-    ]
+    const halves = [text.slice(0, mid), text.slice(mid)].filter(Boolean)
+    const halfCounts = await this.countTokens(halves, llm)
+    const out: string[] = []
+    for (let i = 0; i < halves.length; i++) {
+      out.push(...(await this.splitChunkToFit(halves[i], budget, llm, halfCounts[i])))
+    }
+    return out
   }
 
   async ingestFile(threadId: string, file: VectorDBFileInput, opts: VectorDBIngestOptions): Promise<AttachmentFileInfo> {

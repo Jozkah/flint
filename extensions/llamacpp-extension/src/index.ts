@@ -228,6 +228,7 @@ const LEGACY_NGL_DEFAULT = 100
 /// Matches the `timeout` default in settings.json.
 const DEFAULT_TIMEOUT = 600
 const TOKENIZE_TIMEOUT_MS = 60_000
+const TOKENIZE_CONCURRENCY = 4
 const EMBED_TIMEOUT_MS = 120_000
 
 /**
@@ -3546,8 +3547,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    */
   async countEmbeddingTokens(texts: string[]): Promise<number[]> {
     const sInfo = await this.ensureEmbeddingModelLoaded()
-    const counts: number[] = []
-    for (const text of texts) {
+    const counts: number[] = new Array(texts.length)
+    const countOne = async (text: string): Promise<number> => {
       const res = await fetchWithTimeout(
         `http://localhost:${sInfo.port}/tokenize`,
         {
@@ -3564,8 +3565,20 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         throw new Error(`Tokenize request failed with status ${res.status}`)
       }
       const json = (await res.json()) as { tokens?: unknown[] }
-      counts.push(Array.isArray(json.tokens) ? json.tokens.length : 0)
+      return Array.isArray(json.tokens) ? json.tokens.length : 0
     }
+    // Small bounded pool: one model resolution for the whole batch, and a
+    // few tokenize requests in flight instead of one at a time.
+    let next = 0
+    const worker = async () => {
+      while (next < texts.length) {
+        const i = next++
+        counts[i] = await countOne(texts[i])
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(TOKENIZE_CONCURRENCY, texts.length) }, worker)
+    )
     return counts
   }
 
