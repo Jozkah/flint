@@ -34,9 +34,10 @@ export const useAttachmentNamesStore = create<AttachmentNamesState>(
           : ext?.listAttachments?.bind(ext)
 
       if (!fetcher) {
+        // The extension may not be registered yet; a later request tries
+        // again instead of the scope staying "loaded" with no names.
         set((s) => ({
           loading: { ...s.loading, [key]: false },
-          loadedScopes: { ...s.loadedScopes, [key]: true },
         }))
         return
       }
