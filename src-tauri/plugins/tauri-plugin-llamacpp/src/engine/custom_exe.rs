@@ -30,6 +30,19 @@ const NO_DIALOG_HINT: &str = if cfg!(target_os = "linux") {
 
 type Fingerprint =(PathBuf, u64, Option<SystemTime>);
 
+/// `path` for people to read, without the `\\?\` verbatim prefix that
+/// `canonicalize` adds on Windows. Display only: spawn the canonical path.
+pub fn display_path(path: &Path) -> String {
+    let s = path.display().to_string();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        s
+    }
+}
+
 #[derive(Default)]
 pub struct CustomExeGate {
     confirm: OnceLock<ConfirmFn>,
@@ -65,7 +78,7 @@ impl CustomExeGate {
         if !confirm(canon.clone()).await {
             return Err(format!(
                 "Running the custom llama-server {} was not allowed{}",
-                canon.display(),
+                display_path(&canon),
                 NO_DIALOG_HINT
             ));
         }
@@ -113,6 +126,13 @@ mod tests {
         std::fs::write(&p, b"different").unwrap();
         assert!(gate.authorize(&p).await.is_ok());
         assert_eq!(asked.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn display_path_drops_the_verbatim_prefix() {
+        assert_eq!(display_path(Path::new(r"\\?\C:\a\b.exe")), r"C:\a\b.exe");
+        assert_eq!(display_path(Path::new(r"\\?\UNC\srv\s\b.exe")), r"\\srv\s\b.exe");
+        assert_eq!(display_path(Path::new("/usr/bin/llama-server")), "/usr/bin/llama-server");
     }
 
     #[tokio::test]

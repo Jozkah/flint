@@ -37,6 +37,11 @@ function installExitFlush() {
     .then(async ({ listen, emit }) => {
       await listen(FLUSH_BEFORE_EXIT_EVENT, async () => {
         try {
+          // Replies still streaming are saved first (FQA-002). Imported here:
+          // that module reaches the message write queue, which imports this one.
+          await import('@/lib/persistInterruptedReplies')
+            .then((m) => m.persistInterruptedReplies())
+            .catch((e) => console.error('saving interrupted replies failed:', e))
           await flushDeferredStores()
         } finally {
           await emit(FLUSH_BEFORE_EXIT_DONE_EVENT)
