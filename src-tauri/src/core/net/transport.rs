@@ -470,6 +470,10 @@ fn unattributed(req: &ProviderRequest) -> Unattributed {
 /// prompt snapshot has to be taken at. A request with no session is not a
 /// dispatch (discovery, a health check) and is not recorded.
 fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
+    capture_snapshot_into(req, &resolve_jan_data_folder())
+}
+
+fn capture_snapshot_into(req: &ProviderRequest, data_folder: &std::path::Path) -> Option<SnapshotRef> {
     let body = req.body.as_deref()?;
     let payload: serde_json::Value = serde_json::from_str(body).ok()?;
     // A chat dispatch, not an arbitrary POST.
@@ -512,7 +516,7 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
         },
     };
     let snapshot = snapshot::capture(&payload, &identity);
-    snapshot::append(&resolve_jan_data_folder(), &snapshot);
+    snapshot::append(data_folder, &snapshot);
     Some(SnapshotRef {
         id: snapshot.id.clone(),
         hash: snapshot.hash.clone(),
@@ -532,7 +536,12 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
 fn spawn_capture(req: &ProviderRequest) -> Option<tokio::task::JoinHandle<Option<SnapshotRef>>> {
     req.body.as_deref()?;
     let owned = req.clone();
-    Some(tokio::task::spawn_blocking(move || capture_snapshot(&owned)))
+    // Resolved here, on the dispatching thread: the folder is where this
+    // dispatch belongs, not wherever the worker thread would resolve it.
+    let data_folder = resolve_jan_data_folder();
+    Some(tokio::task::spawn_blocking(move || {
+        capture_snapshot_into(&owned, &data_folder)
+    }))
 }
 
 async fn join_capture(
