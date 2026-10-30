@@ -3080,7 +3080,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     abortController?: AbortController
   ): Promise<chatCompletion | AsyncIterable<chatCompletionChunk>> {
     const sessionInfo = await this.ensureHealthySession(opts.model)
-    const baseUrl = `http://localhost:${sessionInfo.port}/v1`
+    const baseUrl = `http://127.0.0.1:${sessionInfo.port}/v1`
     const url = `${baseUrl}/chat/completions`
     const headers = {
       'Content-Type': 'application/json',
@@ -3550,7 +3550,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const counts: number[] = new Array(texts.length)
     const countOne = async (text: string): Promise<number> => {
       const res = await fetchWithTimeout(
-        `http://localhost:${sInfo.port}/tokenize`,
+        `http://127.0.0.1:${sInfo.port}/tokenize`,
         {
           method: 'POST',
           headers: {
@@ -3614,7 +3614,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       session: SessionInfo,
       batchInput: string[]
     ) => {
-      const baseUrl = `http://localhost:${session.port}/v1/embeddings`
+      const baseUrl = `http://127.0.0.1:${session.port}/v1/embeddings`
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.api_key}`,
