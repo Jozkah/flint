@@ -111,7 +111,8 @@ describe('TauriAppService', () => {
 
       const result = await appService.readLogs()
 
-      expect(result).toEqual([expect.objectContaining({ message: '' })])
+      // Empty lines are dropped, so no logs means no entries (HKS-032).
+      expect(result).toEqual([])
     })
   })
 
