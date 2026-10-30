@@ -17,6 +17,10 @@ use tokio::sync::watch;
 struct Entry {
     id: u64,
     cancel: watch::Sender<bool>,
+    /// Guards waiting on this entry. Two waits on one model share it, so a
+    /// cancel reaches both and the first to finish does not unregister the
+    /// other.
+    waiters: usize,
 }
 
 #[derive(Default)]
@@ -47,13 +51,31 @@ impl LoadTracker {
 
     /// Registers a load of `model_id`.
     pub fn begin(&self, model_id: &str) -> LoadGuard {
-        let (tx, rx) = watch::channel(false);
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = inner.loads.get_mut(model_id) {
+            // Join a live wait; one already cancelled is not joined, the new
+            // load starts its own.
+            if !*entry.cancel.borrow() {
+                entry.waiters += 1;
+                return LoadGuard {
+                    tracker: self.clone(),
+                    model_id: model_id.to_string(),
+                    id: entry.id,
+                    cancelled: entry.cancel.subscribe(),
+                };
+            }
+        }
+        let (tx, rx) = watch::channel(false);
         inner.next_id += 1;
         let id = inner.next_id;
-        inner
-            .loads
-            .insert(model_id.to_string(), Entry { id, cancel: tx });
+        inner.loads.insert(
+            model_id.to_string(),
+            Entry {
+                id,
+                cancel: tx,
+                waiters: 1,
+            },
+        );
         LoadGuard {
             tracker: self.clone(),
             model_id: model_id.to_string(),
@@ -104,7 +126,14 @@ impl Drop for LoadGuard {
             .inner
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if inner.loads.get(&self.model_id).map(|e| e.id) == Some(self.id) {
+        let last = match inner.loads.get_mut(&self.model_id) {
+            Some(entry) if entry.id == self.id => {
+                entry.waiters = entry.waiters.saturating_sub(1);
+                entry.waiters == 0
+            }
+            _ => false,
+        };
+        if last {
             inner.loads.remove(&self.model_id);
         }
     }
@@ -196,6 +225,23 @@ mod tests {
         assert!(t.is_loading("m"), "the second load is still being waited on");
         drop(second);
         assert!(!t.is_loading("m"));
+    }
+
+    #[tokio::test]
+    async fn one_cancel_reaches_every_wait_on_the_model() {
+        let t = LoadTracker::new();
+        let first = t.begin("m");
+        let second = t.begin("m");
+        drop(second);
+        assert!(t.is_loading("m"), "the first wait is still registered");
+        assert!(t.cancel("m"));
+        tokio::time::timeout(Duration::from_secs(1), first.cancelled())
+            .await
+            .expect("the earlier wait is cancelled too");
+        // A load after the cancel starts fresh.
+        drop(first);
+        let fresh = t.begin("m");
+        assert!(!*fresh.cancelled.borrow());
     }
 
     #[test]

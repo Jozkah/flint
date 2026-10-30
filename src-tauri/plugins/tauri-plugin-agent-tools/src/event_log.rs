@@ -560,10 +560,16 @@ pub fn append_within(
 /// A session's events in log order. A torn last line is skipped; any other
 /// line that is not an envelope is an error, as is a newer version.
 pub fn read_session(data_folder: &Path, session: &str) -> Result<Vec<Envelope>, LogError> {
-    let Ok(file) = std::fs::File::open(log_path(data_folder, session)) else {
+    let Ok(bytes) = std::fs::read(log_path(data_folder, session)) else {
         return Ok(Vec::new());
     };
-    let lines: Vec<String> = std::io::BufReader::new(file).lines().map_while(Result::ok).collect();
+    // Split on bytes: `lines()` stopped at the first invalid UTF-8 line and
+    // dropped everything after it as if the log ended there. A bad line now
+    // fails to decode and is reported like any other corrupt line.
+    let lines: Vec<String> = bytes
+        .split(|b| *b == b'\n')
+        .map(|l| String::from_utf8_lossy(l.strip_suffix(b"\r").unwrap_or(l)).into_owned())
+        .collect();
     let mut out = Vec::with_capacity(lines.len());
     let last = lines.iter().rposition(|l| !l.trim().is_empty());
     for (i, line) in lines.iter().enumerate() {

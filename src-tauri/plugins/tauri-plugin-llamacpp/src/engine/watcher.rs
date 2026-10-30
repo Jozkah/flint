@@ -100,10 +100,17 @@ async fn subscribe_once<R: Runtime>(
 /// unload, since it has no particular load to watch.
 fn parse_unload(block: &str) -> Option<UnloadPayload> {
     for line in block.lines() {
-        let data = line
+        // An `event:` or `id:` line, or one that is not JSON, is skipped,
+        // not taken as the end of the block.
+        let Some(data) = line
             .strip_prefix("data: ")
-            .or_else(|| line.strip_prefix("data:"))?;
-        let json: serde_json::Value = serde_json::from_str(data).ok()?;
+            .or_else(|| line.strip_prefix("data:"))
+        else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(data) else {
+            continue;
+        };
         if json.get("event").and_then(|v| v.as_str()) != Some("status_change") {
             continue;
         }
