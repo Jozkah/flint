@@ -79,17 +79,26 @@ async fn subscribe_once<R: Runtime>(
     }
 
     let mut stream = resp.bytes_stream();
-    let mut buf = String::new();
+    // Bytes until a whole block is in: decoding each chunk on its own split a
+    // multi-byte character that straddled two chunks. Bounded, so a peer that
+    // never ends a block cannot grow it without limit.
+    const MAX_PENDING: usize = 1024 * 1024;
+    let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
         let Ok(bytes) = chunk else { break };
-        buf.push_str(&String::from_utf8_lossy(&bytes));
-        while let Some(pos) = buf.find("\n\n") {
-            let block: String = buf.drain(..pos + 2).collect();
+        buf.extend_from_slice(&bytes);
+        while let Some(pos) = buf.windows(2).position(|w| w == b"\n\n") {
+            let raw: Vec<u8> = buf.drain(..pos + 2).collect();
+            let block = String::from_utf8_lossy(&raw);
             if let Some(payload) = parse_unload(&block) {
                 if let Err(e) = app_handle.emit(UNLOADED_EVENT, payload) {
                     log::warn!("emit {UNLOADED_EVENT} failed: {e}");
                 }
             }
+        }
+        if buf.len() > MAX_PENDING {
+            log::warn!("/models/sse sent {} bytes without ending a block; dropping them", buf.len());
+            buf.clear();
         }
     }
     Ok(())

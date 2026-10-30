@@ -11,7 +11,8 @@ function asNumber(v: any, defaultValue = 0): number {
 
 export function normalizeMlxConfig(config: any): MlxConfig {
   return {
-    ctx_size: asNumber(config.ctx_size),
+    // A caller with no settings passes undefined; that is "defaults".
+    ctx_size: asNumber(config?.ctx_size),
   }
 }
 

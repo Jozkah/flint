@@ -350,7 +350,16 @@ pub async fn load_mlx_model_impl(
         }
     }
 
-    let pid = child.id().map(|id| id as i32).unwrap_or(-1);
+    // No pid means the process already exited. Registering it under -1 made
+    // every such session share one key and look alive.
+    let Some(pid) = child.id().map(|id| id as i32) else {
+        return Err(MlxError::new(
+            ErrorCode::ModelLoadFailed,
+            "The MLX server exited right after it reported ready.".into(),
+            None,
+        )
+        .into());
+    };
 
     log::info!("MLX server process started with PID: {} and is ready", pid);
     let session_info = SessionInfo {
