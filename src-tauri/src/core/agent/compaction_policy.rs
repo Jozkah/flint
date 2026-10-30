@@ -548,7 +548,9 @@ pub fn parse_structured_summary(text: &str) -> Result<StructuredSummary, String>
 fn extract_block(text: &str, tag: &str) -> Option<String> {
     let open = format!("<{tag}>");
     let close = format!("</{tag}>");
-    let start = text.find(&open)? + open.len();
+    // The last opening tag: an analysis that mentions `<summary>` before the
+    // real block must not be taken as the block.
+    let start = text.rfind(&open)? + open.len();
     let end = text[start..].find(&close)? + start;
     Some(text[start..end].to_string())
 }
