@@ -65,9 +65,9 @@ export function PluginBrowsePane({
           </form>
           {searchError && <PluginAlert>{searchError}</PluginAlert>}
           <div className="flex flex-col gap-1" role="list" aria-label={t('plugins:browseButton')}>
-            {entries.map((entry) => (
+            {entries.map((entry, i) => (
               <div
-                key={entry.name}
+                key={`${entry.name}-${i}`}
                 role="listitem"
                 className="flex items-start justify-between gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 py-2 transition-colors hover:bg-hover-row"
               >

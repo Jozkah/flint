@@ -254,7 +254,7 @@ export default function PluginsTab({
       ) : (
         entries.map((entry, i) => (
           <MarketCard
-            key={entry.name}
+            key={`${entry.name}-${i}`}
             entry={entry}
             index={i}
             installed={plugins.some((p) => p.name === entry.name)}

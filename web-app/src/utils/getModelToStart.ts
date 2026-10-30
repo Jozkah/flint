@@ -38,20 +38,9 @@ export const getModelToStart = (params: {
     const provider = getProviderByName(lastUsedModel.provider)
     if (provider && provider.models.some((m) => m.id === lastUsedModel.model)) {
       return { model: lastUsedModel.model, provider }
-    } else {
-      // Last used model not found under provider, fallback to first llamacpp model
-      const llamacppProvider = getProviderByName('llamacpp')
-      if (
-        llamacppProvider &&
-        llamacppProvider.models &&
-        llamacppProvider.models.length > 0
-      ) {
-        return {
-          model: llamacppProvider.models[0].id,
-          provider: llamacppProvider,
-        }
-      }
     }
+    // A last-used model that is gone falls through to the selected model,
+    // rather than jumping straight to the first llama.cpp model.
   }
 
   // Use selected model if available
