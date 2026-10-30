@@ -342,7 +342,32 @@ struct Counted {
 /// dispatch that appears in both is counted once, with the payload-usage
 /// record preferred because it carries the cache figure.
 fn counted(data_folder: &Path) -> Vec<Counted> {
-    let mut out: Vec<Counted> = tauri_plugin_agent_tools::usage::read_all(data_folder)
+    let mut out = usage_log_counted(data_folder);
+    let known: std::collections::BTreeSet<String> =
+        out.iter().map(|c| c.invocation.clone()).collect();
+    counted_rest(data_folder, &mut out, &known);
+    out
+}
+
+/// The payload-usage log, parsed once per change of its size or mtime: the
+/// quota check runs every turn and the log only grows (CAGC-026).
+fn usage_log_counted(data_folder: &Path) -> Vec<Counted> {
+    type Key = (std::path::PathBuf, std::time::SystemTime, u64);
+    static CACHE: std::sync::Mutex<Option<(Key, Vec<Counted>)>> = std::sync::Mutex::new(None);
+    let path = tauri_plugin_agent_tools::usage::log_path(data_folder);
+    let key: Option<Key> = std::fs::metadata(&path)
+        .ok()
+        .and_then(|m| Some((path.clone(), m.modified().ok()?, m.len())));
+    if let Some(key) = &key {
+        if let Ok(cache) = CACHE.lock() {
+            if let Some((k, records)) = cache.as_ref() {
+                if k == key {
+                    return records.clone();
+                }
+            }
+        }
+    }
+    let fresh: Vec<Counted> = tauri_plugin_agent_tools::usage::read_all(data_folder)
         .into_iter()
         // One past the cap, so a report can tell it was cut short.
         .take(MAX_RECORDS + 1)
@@ -358,12 +383,20 @@ fn counted(data_folder: &Path) -> Vec<Counted> {
             estimated: record.source == tauri_plugin_agent_tools::usage::UsageSource::Estimated,
         })
         .collect();
-    let known: std::collections::BTreeSet<String> =
-        out.iter().map(|c| c.invocation.clone()).collect();
+    if let (Some(key), Ok(mut cache)) = (key, CACHE.lock()) {
+        *cache = Some((key, fresh.clone()));
+    }
+    fresh
+}
 
+fn counted_rest(
+    data_folder: &Path,
+    out: &mut Vec<Counted>,
+    known: &std::collections::BTreeSet<String>,
+) {
     // The event log, for the runs that only recorded there.
     let events_dir = data_folder.join("events");
-    let Ok(entries) = std::fs::read_dir(&events_dir) else { return out };
+    let Ok(entries) = std::fs::read_dir(&events_dir) else { return };
     for entry in entries.flatten().take(10_000) {
         for record in events_file_counted(&entry.path()) {
             if !known.contains(&record.invocation) {
@@ -371,7 +404,6 @@ fn counted(data_folder: &Path) -> Vec<Counted> {
             }
         }
     }
-    out
 }
 
 /// Parsed `usage.reported` dispatches of one session event log, by the file's
