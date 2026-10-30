@@ -406,6 +406,10 @@ pub fn apply(record: &CopyRecord, paths: &[String], force: bool) -> Result<Apply
         .collect();
     let mut manifest = read_manifest(copy)?;
     let mut outcome = ApplyOutcome::default();
+    // Files already written stay recorded in the manifest even when a later
+    // one fails; returning early skipped the manifest and left them looking
+    // like unapplied changes.
+    let result = (|| -> Result<(), String> {
     for rel in paths {
         let checked = checked_rel(rel)?;
         let Some(change) = current.get(rel) else {
@@ -441,7 +445,10 @@ pub fn apply(record: &CopyRecord, paths: &[String], force: bool) -> Result<Apply
         }
         outcome.applied.push(rel.clone());
     }
+    Ok(())
+    })();
     write_manifest(copy, &manifest)?;
+    result?;
     Ok(outcome)
 }
 
