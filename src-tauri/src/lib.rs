@@ -961,7 +961,7 @@ pub fn build_app() -> tauri::App {
                             .set_title("Run a custom llama-server?")
                             .set_description(format!(
                                 "Flint was asked to start this program as its model server:\n\n{}\n\nOnly allow this if you chose this file yourself in Settings.",
-                                exe.display()
+                                tauri_plugin_llamacpp::engine::custom_exe::display_path(&exe)
                             ))
                             .set_buttons(rfd::MessageButtons::YesNo)
                             .show()

@@ -105,12 +105,18 @@ import { threadChanged, useRefreshWhenVisible } from '@/lib/threadRefresh'
 import { followSentMessage } from '@/lib/followSentMessage'
 import {
   convertThreadMessagesToUIMessages,
-  extractContentPartsFromUIMessage,
   mergeSettledToolParts,
   uiMessageHasMeaningfulContent,
   threadMessageIsEmpty,
 } from '@/lib/messages'
-import { toMs } from '@/lib/messageTime'
+import {
+  buildAssistantThreadMessage,
+  resolveAssistantParentIn,
+} from '@/lib/assistantReply'
+import {
+  registerReplyContext,
+  wasPersistedOnQuit,
+} from '@/lib/persistInterruptedReplies'
 import { newUserThreadContent } from '@/lib/completion'
 import {
   computeActivePath,
@@ -126,11 +132,7 @@ import {
   repairDanglingParents,
   planContinuation,
 } from '@/lib/message-branching'
-import {
-  ThreadMessage,
-  MessageStatus,
-  ChatCompletionRole,
-} from '@janhq/core'
+import { ThreadMessage } from '@janhq/core'
 import {
   createImageAttachment,
   createAudioAttachment,
@@ -758,9 +760,10 @@ export function ThreadConversation({
       // because the stream wrapper prepended the partial text as the first delta.
       if (
         message.role === 'assistant' &&
-        uiMessageHasMeaningfulContent(message)
+        uiMessageHasMeaningfulContent(message) &&
+        // Saved already as an interrupted reply while the app was closing.
+        !wasPersistedOnQuit(message.id)
       ) {
-        const contentParts = extractContentPartsFromUIMessage(message)
         const messageMetadata = {
           ...((message.metadata || {}) as Record<string, unknown>),
           ...(isStoppedTurn ? { stopped: true } : {}),
@@ -807,31 +810,16 @@ export function ThreadConversation({
           parentForAssistant = resolveAssistantParent(undefined)
         }
 
-        // The reply keeps the time it began with. Every step of a tool turn
-        // finishes into this same message, and each used to restamp it with
-        // the time that step ended.
-        const repliedAt =
-          useMessages
+        const assistantMessage: ThreadMessage = buildAssistantThreadMessage({
+          message,
+          threadId,
+          existing: useMessages
             .getState()
             .getMessages(threadId)
-            .find((m) => m.id === message.id)?.created_at ||
-          toMs(message.metadata && (message.metadata as { createdAt?: unknown }).createdAt) ||
-          Date.now()
-        const assistantMessage: ThreadMessage = {
-          type: 'text',
-          role: ChatCompletionRole.Assistant,
-          content: contentParts,
-          id: message.id,
-          object: 'thread.message',
-          thread_id: threadId,
-          status: MessageStatus.Ready,
-          created_at: repliedAt,
-          completed_at: Date.now(),
-          metadata:
-            parentForAssistant != null
-              ? { ...messageMetadata, parentId: parentForAssistant }
-              : messageMetadata,
-        }
+            .find((m) => m.id === message.id),
+          metadata: messageMetadata,
+          parentId: parentForAssistant,
+        })
 
         const existingMessages = useMessages.getState().getMessages(threadId)
         const existingMessage = existingMessages.find(
@@ -2435,27 +2423,30 @@ export function ThreadConversation({
   // Resolve the user message that an assistant reply hangs off of.
   const resolveAssistantParent = useCallback(
     (messageId: string | undefined): string | null => {
-      const msgs = useMessages.getState().getMessages(threadId)
       const activeRootId = (
         useThreads.getState().threads[threadId]?.metadata as
           | Record<string, unknown>
           | undefined
       )?.activeRootId as string | undefined
-      const path = computeActivePath(msgs, activeRootId)
-      const idx =
-        messageId == null
-          ? path.length - 1
-          : path.findIndex((m) => m.id === messageId)
-      if (idx === -1) return null
-      const sel = path[idx]
-      if (sel.role === 'user') return sel.id
-      for (let i = idx; i >= 0; i--) {
-        if (path[i].role === 'user') return path[i].id
-      }
-      return null
+      return resolveAssistantParentIn(
+        useMessages.getState().getMessages(threadId),
+        activeRootId,
+        messageId
+      )
     },
     [threadId]
   )
+
+  // What the quit path needs to save a reply that is still streaming the way
+  // onFinish would: the stopped turn it continues and the turn it answers.
+  useEffect(() => {
+    if (!threadId) return
+    return registerReplyContext(threadId, () => ({
+      continueReplaceId: continueReplaceIdRef.current,
+      parentId:
+        pendingAssistantParentId.current ?? resolveAssistantParent(undefined),
+    }))
+  }, [threadId, resolveAssistantParent])
 
   // Regenerate keeps the previous reply as a prior version (no deletion); the
   // new reply arrives in onFinish as a sibling and becomes the active branch.
