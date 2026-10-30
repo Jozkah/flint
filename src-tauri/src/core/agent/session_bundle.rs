@@ -149,20 +149,39 @@ fn spellings(path: &std::path::Path) -> Vec<String> {
 /// Replace `needle` in `text` wherever it occurs, ignoring ASCII case on
 /// Windows, where a path is the same path in any case.
 fn replace_path(text: &str, needle: &str, with: &str) -> String {
-    if !cfg!(windows) {
-        return text.replace(needle, with);
+    if needle.is_empty() {
+        return text.to_string();
     }
-    let lower = text.to_ascii_lowercase();
-    let target = needle.to_ascii_lowercase();
+    // Case-insensitive on Windows, where paths are. ASCII lowercasing keeps
+    // byte offsets the same, so they index `text` too.
+    let (hay, target) = if cfg!(windows) {
+        (text.to_ascii_lowercase(), needle.to_ascii_lowercase())
+    } else {
+        (text.to_string(), needle.to_string())
+    };
     let mut out = String::with_capacity(text.len());
     let mut last = 0;
     let mut from = 0;
-    while let Some(found) = lower[from..].find(&target) {
+    while let Some(found) = hay[from..].find(&target) {
         let at = from + found;
+        let end = at + needle.len();
+        // Whole path components only: `/home/me/proj` must not eat the
+        // start of `/home/me/project2`.
+        let continues = !needle.ends_with(['/', '\\'])
+            && text[end..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'));
+        if continues {
+            // Step one character, not past the whole match: a later,
+            // overlapping occurrence may still be a whole component.
+            from = at + text[at..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
         out.push_str(&text[last..at]);
         out.push_str(with);
-        last = at + needle.len();
-        from = last;
+        last = end;
+        from = end;
     }
     out.push_str(&text[last..]);
     out
@@ -241,6 +260,14 @@ pub fn parse_import(bytes: &[u8]) -> Result<Value, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_path_is_replaced_only_as_whole_components() {
+        assert_eq!(replace_path("/a/proj/x", "/a/proj", "<R>"), "<R>/x");
+        assert_eq!(replace_path("/a/proj2/x", "/a/proj", "<R>"), "/a/proj2/x");
+        assert_eq!(replace_path("/a/proj and /a/proj.", "/a/proj", "<R>"), "<R> and /a/proj.");
+        assert_eq!(replace_path("/a/proj/x", "/a/proj/", "<R>/"), "<R>/x");
+    }
 
     fn bundle() -> Value {
         json!({

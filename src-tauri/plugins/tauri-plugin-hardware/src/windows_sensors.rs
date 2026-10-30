@@ -213,7 +213,13 @@ mod cache {
         // A hung WMI provider would otherwise block this forever and leave
         // `running` set, so no refresh is ever tried again.
         const DEADLINE: Duration = Duration::from_secs(20);
-        let child = std::process::Command::new("powershell.exe")
+        // The system copy by full path: a bare name is looked up on PATH,
+        // where any folder ahead of System32 could supply its own.
+        let powershell = std::env::var_os("SystemRoot")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"))
+            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        let child = std::process::Command::new(powershell)
             .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
             .creation_flags(CREATE_NO_WINDOW)
             .stdin(std::process::Stdio::null())

@@ -1096,6 +1096,9 @@ pub(crate) fn resolve_dispatch(
                 .clone()
                 .filter(|s| !s.trim().is_empty())
                 .ok_or_else(|| SubagentError::UnknownSubagent(req.subagent_name.clone()))?;
+            // A one-off's name ends up in run ids, transcripts and file names
+            // like a saved one's does, so it meets the same rule.
+            validate_name(&req.subagent_name)?;
             let definition = SubagentDefinition {
                 name: req.subagent_name.clone(),
                 description: req.description.clone(),
