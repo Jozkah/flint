@@ -162,7 +162,7 @@ export function convertUIMessageToThreadMessage(
 
   // Extract tool calls from parts
   const toolCalls = (uiMessage.parts as any[])
-    .filter((part) => part.type.startsWith('tool'))
+    .filter((part) => part.type.startsWith('tool-'))
     .map((part) => {
       const toolName = part.type.replace('tool-', '')
       return {
