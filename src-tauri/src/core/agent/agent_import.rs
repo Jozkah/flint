@@ -675,6 +675,9 @@ pub fn import(
         entry.definition.scope = scope;
         let target = scope_dir.join(format!("{}.toml", entry.definition.name));
         let before = std::fs::read(&target).ok();
+        // Recorded before the write: a create that fails part way must be
+        // undone too, not just the entries before it.
+        undo.push((target, before));
         if let Err(e) = registry.create_in(scope_dir, entry.definition.clone(), scope, overwrite) {
             for (path, content) in undo.into_iter().rev() {
                 let _ = match content {
@@ -684,7 +687,6 @@ pub fn import(
             }
             return Err(refused(e));
         }
-        undo.push((target, before));
     }
     Ok(report)
 }

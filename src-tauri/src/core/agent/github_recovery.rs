@@ -715,7 +715,16 @@ pub(crate) fn run_bounded(
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(err) = stderr.as_mut() {
-            let _ = err.take(64 * 1024).read_to_end(&mut buf);
+            // Keep 64 KiB but read to the end: stopping at the cap left `gh`
+            // blocked writing to a full stderr pipe until the timeout.
+            let mut chunk = [0u8; 16 * 1024];
+            while let Ok(n) = err.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                let room = (64 * 1024usize).saturating_sub(buf.len());
+                buf.extend_from_slice(&chunk[..n.min(room)]);
+            }
         }
         let _ = err_tx.send(buf);
     });
