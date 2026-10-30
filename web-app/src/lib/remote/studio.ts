@@ -82,6 +82,10 @@ export function itemId(v: unknown): string {
 function modelId(v: unknown): string {
   const id = str(v)
   if (!id || id.length > 200 || !/^[\w.:/-]+$/.test(id)) throw new RemoteRpcError('bad_params', 'modelId is required')
+  // Dots are allowed in names, but a `..` segment names a parent folder.
+  if (id.split(/[/:]/).some((part) => part === '..' || part === '.')) {
+    throw new RemoteRpcError('bad_params', 'modelId is required')
+  }
   return id
 }
 

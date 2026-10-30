@@ -136,6 +136,10 @@ export const appStudio: RemoteStudio = {
     }
   },
   async load(modelId) {
+    // Only a model the Studio lists, like download: a phone must not name
+    // an arbitrary id for the engine to resolve.
+    const known = (await freshStatus()).models.some((m) => m.id === modelId)
+    if (!known) throw new RemoteRpcError('not_found', 'No such model')
     await useStudio.getState().load(modelId)
   },
   async unload() {
