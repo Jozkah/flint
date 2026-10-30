@@ -213,6 +213,15 @@ export async function resolveExcerpt(
     }
     const lines = file.content.split('\n')
     if (file.content.endsWith('\n')) lines.pop()
+    // Line 0, a negative line or a backwards range names no lines at all.
+    if (!(start >= 1) || !(end >= start)) {
+      return {
+        ok: false,
+        raw,
+        reason: 'refused',
+        message: `lines ${start}-${end} are not a valid range`,
+      }
+    }
     if (start > lines.length) {
       return {
         ok: false,
