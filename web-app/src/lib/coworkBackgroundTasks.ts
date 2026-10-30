@@ -70,7 +70,15 @@ export class BackgroundTasks {
       // Never rejects: a throw becomes a failed outcome the parent can read.
       promise: Promise.resolve(),
     } as unknown as Entry
-    entry.promise = run().then(
+    // A `run` that throws before returning its promise becomes a failed
+    // outcome too, not an exception here. It still starts synchronously.
+    let started: ReturnType<typeof run>
+    try {
+      started = run()
+    } catch (error) {
+      started = Promise.reject(error)
+    }
+    entry.promise = started.then(
       (outcome) => this.settle(entry, outcome, now),
       (error) =>
         this.settle(
