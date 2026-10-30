@@ -381,5 +381,9 @@ export async function applyBackup(
 }
 
 export function defaultBackupName(now = new Date()): string {
-  return `flint-settings-${now.toISOString().slice(0, 10)}.json`
+  // The user's calendar day, not UTC's: an evening backup west of Greenwich
+  // was named after tomorrow.
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  return `flint-settings-${day}.json`
 }

@@ -333,20 +333,34 @@ export function CoworkProposalReview({
     void load()
   }, [load])
 
+  // Runs one action; a rejection is shown as the error instead of escaping.
+  const settle = async <T,>(action: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await action()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return null
+    }
+  }
+
   const create = async () => {
     setBusy('create')
     setError(null)
     setMessage(null)
-    const out = propose
-      ? await propose()
-      : 'branch' in worktree
-        ? await proposeFromWorktree({ record: worktree, session, run })
-        : ({
-            ok: false,
-            message: t('common:proposal.noWorktree'),
-            conflicts: [],
-          } as const)
+    // A throw must not leave the buttons stuck on busy.
+    const out = await settle(() =>
+      propose
+        ? propose()
+        : 'branch' in worktree
+          ? proposeFromWorktree({ record: worktree, session, run })
+          : Promise.resolve({
+              ok: false as const,
+              message: t('common:proposal.noWorktree'),
+              conflicts: [],
+            })
+    )
     setBusy(null)
+    if (!out) return
     if (!out.ok) {
       setError(out.message)
       return
@@ -382,10 +396,11 @@ export function CoworkProposalReview({
     setBusy('apply')
     setError(null)
     setMessage(null)
-    const out = applyWith
-      ? await applyWith(approval)
-      : await applyProposal(approval)
+    const out = await settle(() =>
+      applyWith ? applyWith(approval) : applyProposal(approval)
+    )
     setBusy(null)
+    if (!out) return
     if (!out.ok) {
       setError(out.message)
       setConflicts(out.conflicts)
@@ -404,8 +419,9 @@ export function CoworkProposalReview({
     if (!proposal) return
     setBusy('reject')
     setError(null)
-    const out = await rejectProposal(proposal)
+    const out = await settle(() => rejectProposal(proposal))
     setBusy(null)
+    if (!out) return
     if (!out.ok) {
       setError(out.message)
       return
