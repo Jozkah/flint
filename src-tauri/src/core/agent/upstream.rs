@@ -2267,13 +2267,22 @@ fn loose_converter_client() -> Client {
     match loose.as_ref() {
         Some((built_for, client)) if *built_for == key => client.clone(),
         _ => {
-            let client = crate::core::net::tls::apply12(
+            match crate::core::net::tls::apply12(
                 Client::builder().danger_accept_invalid_certs(true),
             )
             .build()
-            .unwrap_or_default();
-            *loose = Some((key, client.clone()));
-            client
+            {
+                Ok(client) => {
+                    *loose = Some((key, client.clone()));
+                    client
+                }
+                // Not cached: a default client verifies certificates, which is
+                // not what was asked for, so the next call tries again.
+                Err(e) => {
+                    log::warn!("could not build the certificate-skipping client: {e}");
+                    Client::default()
+                }
+            }
         }
     }
 }

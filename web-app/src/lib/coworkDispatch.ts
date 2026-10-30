@@ -610,12 +610,20 @@ export async function dispatchCoworkTool(
 ): Promise<ToolOutcome> {
   const mode = effectiveMode(ctx)
   if (mode !== ctx.mode) ctx = { ...ctx, mode }
-  const outcome = await withToolActivity(
-    call,
-    { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
-    signal,
-    () => boundedToolCall(call, ctx, signal)
-  )
+  let outcome: Awaited<ReturnType<typeof boundedToolCall>>
+  try {
+    outcome = await withToolActivity(
+      call,
+      { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
+      signal,
+      () => boundedToolCall(call, ctx, signal)
+    )
+  } catch (error) {
+    // A call that throws (timeout, abort) never reaches the read below; its
+    // edited input must not stay in the map for the rest of the session.
+    editedCalls.delete(call.toolCallId)
+    throw error
+  }
   // The user rewrote the command before allowing it: the row and the model's
   // copy show what ran, and the result says it was the user's edit.
   const ranInput = editedCalls.get(call.toolCallId)

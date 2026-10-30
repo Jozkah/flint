@@ -214,7 +214,12 @@ impl StagedPatch {
                      hunks: &mut Vec<Hunk>| {
             if let Some((old, new)) = pending.take() {
                 let index = hunks.len();
-                let strip = |s: &&str| s.strip_suffix('\n').unwrap_or(s).to_string();
+                // A CRLF file's lines end "\r\n"; the review shows the text,
+                // not a stray carriage return.
+                let strip = |s: &&str| {
+                    let s = s.strip_suffix('\n').unwrap_or(s);
+                    s.strip_suffix('\r').unwrap_or(s).to_string()
+                };
                 hunks.push(Hunk {
                     index,
                     old_start: old.start + 1,

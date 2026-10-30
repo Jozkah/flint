@@ -1470,7 +1470,9 @@ pub fn pr_for_commit(project: &Path, sha: &str) -> Option<(u64, String)> {
     }
     let mut cmd = Command::new("gh");
     cmd.current_dir(project)
-        .args(["pr", "list", "--search", sha, "--state", "all", "--json", "number,url", "--limit", "1"])
+        // The pulls that contain this commit, not a text search: "--search sha"
+        // also matched a PR that merely mentions the hash.
+        .args(["api", &format!("repos/{{owner}}/{{repo}}/commits/{sha}/pulls")])
         .env("GH_PROMPT_DISABLED", "1");
     jan_utils::system::hide_console_window(&mut cmd);
     let out = cmd.output().ok()?;
@@ -1479,7 +1481,7 @@ pub fn pr_for_commit(project: &Path, sha: &str) -> Option<(u64, String)> {
     }
     let list: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
     let first = list.as_array()?.first()?;
-    let url = first.get("url")?.as_str()?;
+    let url = first.get("html_url").or_else(|| first.get("url"))?.as_str()?;
     if !url.starts_with("https://github.com/") {
         return None;
     }
