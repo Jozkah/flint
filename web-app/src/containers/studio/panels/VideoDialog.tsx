@@ -50,8 +50,11 @@ export function VideoDialog({
           <Button
             variant="outline"
             onClick={() => {
-              void navigator.clipboard?.writeText(r.prompt)
-              toast(t('studio:actions.promptCopied'))
+              // Only claim a copy that happened.
+              void navigator.clipboard
+                ?.writeText(r.prompt)
+                .then(() => toast(t('studio:actions.promptCopied')))
+                .catch(() => undefined)
             }}
           >
             {t('studio:video.copyPrompt')}

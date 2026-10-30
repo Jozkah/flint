@@ -402,6 +402,15 @@ pub enum CheckLog {
 
 pub(crate) use super::github_recovery::{run_bounded, GhOutput};
 
+/// Whether two commit ids name the same commit. A short id (7+ hex, which
+/// `is_head_sha` accepts) matches the full id it abbreviates; comparing
+/// whole strings called every short id stale.
+fn same_commit(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim().to_ascii_lowercase(), b.trim().to_ascii_lowercase());
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    short.len() >= 7 && long.starts_with(&short)
+}
+
 fn is_head_sha(sha: &str) -> bool {
     (7..=64).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -500,7 +509,7 @@ pub(crate) fn check_log_with(
         Ok(h) => h.head_ref_oid,
         Err(e) => return unavailable(&format!("unreadable pull request: {e}"), details_url),
     };
-    if !current.eq_ignore_ascii_case(head_sha) {
+    if !same_commit(&current, head_sha) {
         return CheckLog::Stale { current_head_sha: current };
     }
 
@@ -524,7 +533,7 @@ pub(crate) fn check_log_with(
         );
     }
     let job_sha = job.stdout.trim();
-    if !job_sha.eq_ignore_ascii_case(head_sha) {
+    if !same_commit(job_sha, head_sha) {
         return CheckLog::Stale { current_head_sha: current };
     }
 

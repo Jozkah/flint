@@ -130,7 +130,9 @@ export class DictationSession {
         const raw = await this.deps.transcribe(encodeWav(phrase, SAMPLE_RATE), {
           language: this.deps.language?.(),
         })
-        if (this.cancelled) return
+        // Ended too: a transcript that lands after stop() gave up waiting and
+        // returned must not change the text the caller already took.
+        if (this.cancelled || this.ended) return
         this.failures = 0
         if (!isPlausibleTranscript(raw, seconds)) continue
         const text = cleanTranscript(raw)
