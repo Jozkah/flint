@@ -66,6 +66,9 @@ export function resolveCodePath(
     return { kind: 'unresolved', reason: 'outside' }
   }
   const rel = trimmed.replace(/\\/g, '/').replace(/^\.\//, '')
+  // A relative path that climbs out ("../x") is outside the tree it would
+  // be opened against.
+  if (rel.split('/').includes('..')) return { kind: 'unresolved', reason: 'outside' }
   if (ctx.relativeIsProject && ctx.treeRoot) return { kind: 'project', rel }
   if (!ctx.hasSession) return { kind: 'unresolved', reason: 'no-session' }
   return { kind: 'sandbox', rel }

@@ -7,6 +7,13 @@ const flagged = (cmd: string, ws = WS) =>
   destructiveCommandReason(cmd, ws) !== null
 
 describe('destructiveCommandReason', () => {
+  it('flags find -delete outside the workspace after find options', () => {
+    expect(flagged('find /etc -name x -delete')).toBe(true)
+    expect(flagged('find -L /etc -name x -delete')).toBe(true)
+    expect(flagged('find -H -O2 /var -delete')).toBe(true)
+    expect(flagged('find -L ./build -name x -delete')).toBe(false)
+  })
+
   it('flags rm -rf outside the workspace', () => {
     for (const cmd of [
       'rm -rf /',
