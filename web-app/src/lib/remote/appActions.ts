@@ -220,8 +220,13 @@ export function appActions(navigate: Navigate): RemoteActions {
     sendViaComposer: async (kind, id, text, files) => {
       const entry = await waitForComposer(kind, id)
       if (!entry) return false
-      await entry.send(text, files)
-      unstageComposerDocs(kind, id)
+      // Unstaged even when the send throws, or the staged documents ride
+      // along on the next, unrelated send.
+      try {
+        await entry.send(text, files)
+      } finally {
+        unstageComposerDocs(kind, id)
+      }
       return true
     },
 
