@@ -1,3 +1,4 @@
+import { clearChatImages } from '@/lib/chatImages'
 import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 import { toast } from 'sonner'
@@ -161,6 +162,9 @@ const cleanupThreadArtifacts = (threadId: string, permanent?: boolean) => {
     if (!permanent && (await archiveEnabled())) return
     cleanupVectorDB(threadId)
     cleanupThreadWorkspace(threadId)
+    // The chat's picture names (img_1 -> gallery id); the pictures stay in
+    // the gallery.
+    clearChatImages(threadId)
   })()
   cleanupThreadCache(threadId)
   // "Allow all temporarily" lasts only as long as its conversation.

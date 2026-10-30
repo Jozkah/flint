@@ -34,10 +34,30 @@ const PREFIXES: &[&str] = &["GGML_", "LLAMA_", "GPU_", "VK_"];
 fn allowed(name: &str) -> bool {
     // Windows environment names are case-insensitive.
     let upper = name.to_ascii_uppercase();
-    if upper == super::addon::WORKER_ADDON_ENV || DENIED.contains(&upper.as_str()) {
+    if upper == super::addon::WORKER_ADDON_ENV
+        || DENIED.contains(&upper.as_str())
+        || llama_arg_redirects(&upper)
+    {
         return false;
     }
     EXACT.contains(&upper.as_str()) || PREFIXES.iter().any(|p| upper.starts_with(p))
+}
+
+/// `LLAMA_ARG_*` variables are llama.cpp command-line options. Tuning ones
+/// (threads, timeout, batch sizes) are fine; any that binds a socket, swaps
+/// the key, or names a file, URL, model or repo to load is not.
+fn llama_arg_redirects(upper: &str) -> bool {
+    if upper == "LLAMA_LOG_FILE" || upper == "LLAMA_CACHE" {
+        return true;
+    }
+    let Some(rest) = upper.strip_prefix("LLAMA_ARG_") else {
+        return false;
+    };
+    const MARKERS: [&str; 13] = [
+        "HOST", "PORT", "API_KEY", "MODEL", "HF", "MMPROJ", "SSL", "FILE", "PATH", "URL", "DIR",
+        "PRESET", "LORA",
+    ];
+    MARKERS.iter().any(|m| rest.contains(m))
 }
 
 /// Keeps only allow-listed variables. Rejected names are logged, never values.
@@ -77,6 +97,9 @@ mod tests {
             ("GGML_BACKEND_PATH", "/evil"),
             ("LLAMA_ARG_PORT", "1"),
             ("VK_ICD_FILENAMES", "/evil"),
+            ("LLAMA_ARG_MODEL", "/etc/x.gguf"),
+            ("llama_arg_hf_repo", "a/b"),
+            ("LLAMA_LOG_FILE", "/x"),
         ]));
         assert!(out.is_empty(), "{out:?}");
     }
