@@ -9,6 +9,7 @@ import {
   embedTexts,
   type AttachmentFileInfo,
   logger,
+  fs,
 } from '@janhq/core'
 import './env.d'
 import { getRAGTools, RETRIEVE, LIST_ATTACHMENTS, GET_CHUNKS } from './tools'
@@ -475,9 +476,10 @@ export default class RagExtension extends RAGExtension {
 
     for (const f of files) {
       if (!f?.path) continue
-      if (maxSize && f.size && f.size > maxSize * 1024 * 1024) {
+      const size = maxSize ? await sizeOf(f) : f.size
+      if (maxSize && size && size > maxSize * 1024 * 1024) {
         throw new Error(
-          `File '${f.name}' exceeds size limit (${f.size} bytes > ${maxSize} MB).`
+          `File '${f.name}' exceeds size limit (${size} bytes > ${maxSize} MB).`
         )
       }
 
@@ -533,9 +535,10 @@ export default class RagExtension extends RAGExtension {
 
     for (const f of files) {
       if (!f?.path) continue
-      if (maxSize && f.size && f.size > maxSize * 1024 * 1024) {
+      const size = maxSize ? await sizeOf(f) : f.size
+      if (maxSize && size && size > maxSize * 1024 * 1024) {
         throw new Error(
-          `File '${f.name}' exceeds size limit (${f.size} bytes > ${maxSize} MB).`
+          `File '${f.name}' exceeds size limit (${size} bytes > ${maxSize} MB).`
         )
       }
 
@@ -610,4 +613,17 @@ export default class RagExtension extends RAGExtension {
     return embedTexts(texts)
   }
 
+}
+
+/**
+ * A file's size: the one the caller gave, or read from disk. Without the
+ * read, an attachment that arrived with no size skipped the size limit.
+ */
+async function sizeOf(f: { path: string; size?: number }): Promise<number | undefined> {
+  if (typeof f.size === 'number') return f.size
+  try {
+    return (await fs.fileStat(f.path))?.size
+  } catch {
+    return undefined
+  }
 }
