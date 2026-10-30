@@ -182,12 +182,26 @@ pub(crate) fn acquire_lock(
             let held_ms = read_lock_stamp(&path);
             let age_ms = now_ms.saturating_sub(held_ms);
             if age_ms >= stale_after_secs.saturating_mul(1000) {
-                // Stale: reclaim by overwriting the stamp with ours.
-                write_lock_body(&path, now_ms);
-                Ok(Some(ConsolidationLock {
-                    path,
-                    released: false,
-                }))
+                // Stale: move it aside, then take a fresh one with create_new.
+                // Only one reclaimer's rename can succeed, so two processes
+                // that both saw it stale cannot both end up holding it (an
+                // overwrite let every one of them "win").
+                let aside = dir.join(format!("{LOCK_FILE}.stale-{}-{now_ms}", std::process::id()));
+                if std::fs::rename(&path, &aside).is_err() {
+                    return Ok(None);
+                }
+                let _ = std::fs::remove_file(&aside);
+                match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                    Ok(mut file) => {
+                        use std::io::Write;
+                        let _ = write!(file, "{} {}", std::process::id(), now_ms);
+                        Ok(Some(ConsolidationLock {
+                            path,
+                            released: false,
+                        }))
+                    }
+                    Err(_) => Ok(None),
+                }
             } else {
                 Ok(None)
             }
@@ -197,6 +211,7 @@ pub(crate) fn acquire_lock(
 }
 
 /// The lock body is `<pid> <epoch_ms>`; only the timestamp matters to staleness.
+#[cfg(test)]
 fn write_lock_body(path: &Path, now_ms: u64) {
     let _ = std::fs::write(path, format!("{} {}", std::process::id(), now_ms));
 }
