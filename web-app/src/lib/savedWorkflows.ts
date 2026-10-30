@@ -223,8 +223,13 @@ export async function writeSaved(
   if (text.length > MAX_SAVED_CHARS) return { error: 'this workflow is too large to save' }
   try {
     await io.mkdir(io.dir)
-    const existing = await io.list(io.dir).catch(() => [] as string[])
-    if (existing.length >= MAX_SAVED_WORKFLOWS && !existing.some((p) => p.endsWith(`${def.name}.json`))) {
+    // Only saved workflows count, by exact file name: other files in the
+    // folder used up the limit, and `endsWith` let `my-x` pass for `x`.
+    const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
+    const existing = (await io.list(io.dir).catch(() => [] as string[]))
+      .map(baseName)
+      .filter((n) => n.endsWith('.json'))
+    if (existing.length >= MAX_SAVED_WORKFLOWS && !existing.includes(`${def.name}.json`)) {
       return { error: `at most ${MAX_SAVED_WORKFLOWS} saved workflows` }
     }
     await io.write(fileFor(io, def.name), text)
