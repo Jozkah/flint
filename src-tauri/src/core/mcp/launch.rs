@@ -208,6 +208,11 @@ mod launchable_tests {
 /// The environment is rebuilt rather than filtered. `Command` inherits the
 /// parent's environment by default, and Flint's process holds the user's whole
 /// session — so `env_clear` first, then exactly the names the user approved.
+/// Host temp variables the AppContainer helper needs to find its own record
+/// folder (see `confined_mcp_command`).
+#[cfg(windows)]
+pub(super) const MCP_HELPER_TEMP_VARS: &[&str] = &["TMP", "TEMP"];
+
 pub(super) fn confined_mcp_command(
     cmd: Command,
     params: &crate::core::mcp::models::McpServerConfig,
@@ -277,6 +282,17 @@ pub(super) fn confined_mcp_command(
     // allowlist; these reach the helper, not the server as given.
     #[cfg(windows)]
     for name in tauri_plugin_agent_tools::tools::win_env::REQUIRED {
+        if let Some(value) = std::env::var_os(name) {
+            confined.env(name, value);
+        }
+    }
+    // The helper keeps its record of granted write roots under the host temp
+    // folder (`std::env::temp_dir()`). With TMP/TEMP cleared Windows falls
+    // back to C:\Windows, which a normal user cannot write, so every imported
+    // server failed at "sandbox setup failed ... Access is denied". The helper
+    // gives the server its own private temp; these reach only the helper.
+    #[cfg(windows)]
+    for name in MCP_HELPER_TEMP_VARS {
         if let Some(value) = std::env::var_os(name) {
             confined.env(name, value);
         }
