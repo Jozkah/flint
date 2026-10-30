@@ -13,6 +13,7 @@ import {
   missingMediaCapabilities,
   pastedImageFiles,
   pastedMediaFiles,
+  pasteIsTextFirst,
   splitDroppedFiles,
 } from '@/lib/composerIntake'
 import { isDocumentAttachmentName } from '@/constants/attachments'
@@ -233,6 +234,10 @@ export function useComposerDropPaste({
     // cannot see opens the question below rather than being dropped on
     // the floor, which is what gating this on vision amounted to.
     const clipboardItems = e.clipboardData?.items
+    // Spreadsheet cells and Office/browser selections put a rendered picture
+    // next to their text. The text is what was meant, so it wins unless the
+    // clipboard holds a real file.
+    if (pasteIsTextFirst(e.clipboardData)) return
 
     // Try clipboardData.items first (traditional method). Image items that
     // give no file fall through to the async clipboard below.

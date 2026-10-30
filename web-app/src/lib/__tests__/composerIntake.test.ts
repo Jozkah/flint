@@ -7,6 +7,7 @@ import {
   missingMediaCapabilities,
   pastedImageFiles,
   pastedMediaFiles,
+  pasteIsTextFirst,
   pickedImageMime,
   rejectionLines,
   splitDroppedFiles,
@@ -145,5 +146,25 @@ describe('rejectionLines', () => {
     expect(lines).toHaveLength(2)
     expect(lines[0]).toMatch(/: a, c$/)
     expect(lines[1]).toMatch(/: b$/)
+  })
+})
+
+describe('pasteIsTextFirst', () => {
+  const data = (types: string[], text = '') => ({
+    types,
+    getData: (t: string) => (t === 'text/plain' ? text : ''),
+  })
+  it('keeps the text of a spreadsheet or Office selection that also carries a picture', () => {
+    expect(pasteIsTextFirst(data(['text/plain', 'text/html', 'image/png'], 'a	b'))).toBe(true)
+  })
+  it('attaches a pasted image when there is no text', () => {
+    expect(pasteIsTextFirst(data(['image/png']))).toBe(false)
+    expect(pasteIsTextFirst(data(['text/plain', 'image/png'], '  '))).toBe(false)
+  })
+  it('attaches a copied file even when a file name comes as text', () => {
+    expect(pasteIsTextFirst(data(['Files', 'text/plain', 'image/png'], 'x.png'))).toBe(false)
+  })
+  it('handles a missing clipboard', () => {
+    expect(pasteIsTextFirst(null)).toBe(false)
   })
 })

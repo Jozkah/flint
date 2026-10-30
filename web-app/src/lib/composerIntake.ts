@@ -150,3 +150,17 @@ export function rejectionLines(
     ([reason, names]) => `${t(reasonMessageKey(reason))}: ${names.join(', ')}`
   )
 }
+
+/**
+ * Whether a paste carries text that should be inserted as text even though an
+ * image rides along with it. A copied file (`Files`) is always an attachment.
+ */
+export function pasteIsTextFirst(
+  data: Pick<DataTransfer, 'types' | 'getData'> | null | undefined
+): boolean {
+  if (!data) return false
+  const types = Array.from(data.types ?? [])
+  if (types.includes('Files')) return false
+  if (!types.includes('text/plain')) return false
+  return data.getData('text/plain').trim().length > 0
+}
