@@ -443,7 +443,7 @@ async fn summarize(
         Some(f) => format!(
             "{SUMMARY_SYSTEM_PROMPT}
 
-Focus guidance for this summary (it narrows what to keep              detail on; it does not change the rules above):
+Focus guidance for this summary (it narrows what to keep detail on; it does not change the rules above):
 {f}"
         ),
         None => SUMMARY_SYSTEM_PROMPT.to_string(),

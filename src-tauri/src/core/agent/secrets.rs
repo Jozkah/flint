@@ -124,7 +124,11 @@ pub(crate) fn for_run() -> Option<Arc<SecretFilter>> {
     if !enabled(env.as_deref(), setting) {
         return None;
     }
-    let vars: Vec<(String, String)> = std::env::vars().collect();
+    // `vars()` panics on a variable that is not valid Unicode; such a value
+    // cannot be matched as text anyway, so it is skipped.
+    let vars: Vec<(String, String)> = std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        .collect();
     Some(Arc::new(SecretFilter::new(process_key(), &vars)))
 }
 

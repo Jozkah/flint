@@ -226,7 +226,7 @@ pub(crate) fn admissible(
     }
     if req.isolate != Some(false) && project_root.join(".git").exists() {
         return Err(SubagentError::Upstream(
-            "a durable subagent does not get a checkout of its own, so in a git repository it has to be              dispatched with isolate: false, accepting that its changes land in the project directly"
+            "a durable subagent does not get a checkout of its own, so in a git repository it has to be dispatched with isolate: false, accepting that its changes land in the project directly"
                 .to_string(),
         ));
     }

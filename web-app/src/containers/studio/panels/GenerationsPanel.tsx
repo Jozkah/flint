@@ -47,7 +47,8 @@ export function GenerationsPanel({
     setPicked(new Set())
   }
   const removePicked = async () => {
-    for (const item of items) if (picked.has(item.id)) await remove(item.kind, item.id)
+    // Every picked item, not just the current tab's: the button counts them all.
+    for (const item of all) if (picked.has(item.id)) await remove(item.kind, item.id)
     leaveSelect()
   }
   const activate = (item: GalleryItem) => (selecting ? toggle(item.id) : onOpen(item))

@@ -182,7 +182,14 @@ pub fn quotas(data_folder: &Path) -> Result<Quotas, QuotaError> {
 pub fn write_quotas(data_folder: &Path, quotas: &Quotas) -> Result<(), QuotaError> {
     let text = toml::to_string_pretty(quotas)
         .map_err(|e| QuotaError::new(QuotaErrorKind::Malformed, format!("quotas.toml: {e}")))?;
-    std::fs::write(quotas_path(data_folder), text)
+    // Staged and renamed: a crash mid-write must not leave a torn file that
+    // reads as malformed and disables every ceiling.
+    let path = quotas_path(data_folder);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| QuotaError::new(QuotaErrorKind::Unreadable, format!("quotas.toml: {e}")))?;
+    }
+    crate::core::atomic_io::write_atomic_durable(&path, text.as_bytes())
         .map_err(|e| QuotaError::new(QuotaErrorKind::Unreadable, format!("quotas.toml: {e}")))
 }
 

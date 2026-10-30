@@ -228,7 +228,10 @@ pub fn since(period: Option<&str>) -> Result<Option<String>, SpendError> {
     let Some(period) = period.map(str::trim).filter(|p| !p.is_empty()) else {
         return Ok(None);
     };
-    let (count, unit) = period.split_at(period.len().saturating_sub(1));
+    // Split on the last character, not the last byte: a non-ASCII unit
+    // would otherwise panic on a char boundary.
+    let split = period.char_indices().last().map(|(i, _)| i).unwrap_or(0);
+    let (count, unit) = period.split_at(split);
     let count: i64 = count.parse().map_err(|_| {
         SpendError::new(
             SpendErrorKind::BadPeriod,
@@ -237,8 +240,8 @@ pub fn since(period: Option<&str>) -> Result<Option<String>, SpendError> {
     })?;
     let minutes = match unit {
         "m" => count,
-        "h" => count * 60,
-        "d" => count * 60 * 24,
+        "h" => count.checked_mul(60).unwrap_or(i64::MAX),
+        "d" => count.checked_mul(60 * 24).unwrap_or(i64::MAX),
         _ => {
             return Err(SpendError::new(
                 SpendErrorKind::BadPeriod,
@@ -253,7 +256,7 @@ pub fn since(period: Option<&str>) -> Result<Option<String>, SpendError> {
         ));
     }
     let cutoff = std::time::SystemTime::now()
-        .checked_sub(std::time::Duration::from_secs(minutes as u64 * 60))
+        .checked_sub(std::time::Duration::from_secs((minutes as u64).saturating_mul(60)))
         .unwrap_or(std::time::UNIX_EPOCH);
     let seconds = cutoff
         .duration_since(std::time::UNIX_EPOCH)
@@ -341,7 +344,8 @@ struct Counted {
 fn counted(data_folder: &Path) -> Vec<Counted> {
     let mut out: Vec<Counted> = tauri_plugin_agent_tools::usage::read_all(data_folder)
         .into_iter()
-        .take(MAX_RECORDS)
+        // One past the cap, so a report can tell it was cut short.
+        .take(MAX_RECORDS + 1)
         .map(|record| Counted {
             at: record.at.clone(),
             session: record.session.clone(),

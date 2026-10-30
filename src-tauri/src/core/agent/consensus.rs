@@ -250,7 +250,7 @@ pub fn decide(quorum: Quorum, reviewers: usize, verdicts: &[Verdict], cancelled:
     }
     // Approval is out of reach once too few reviewers are left who could still
     // approve.
-    if reviewers - rejections < needed {
+    if reviewers.saturating_sub(rejections) < needed {
         return Outcome::Rejected;
     }
     Outcome::Undecided
