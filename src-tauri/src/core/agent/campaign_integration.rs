@@ -417,7 +417,17 @@ pub fn run_command(dir: &Path, command: &str, seconds: u64) -> Result<CommandRun
         std::thread::spawn(move || {
             let mut buffer = Vec::new();
             if let Some(mut pipe) = pipe {
-                let _ = pipe.read_to_end(&mut buffer);
+                // Keep only the first 16 MiB, but read to the end so a chatty
+                // command is not blocked on a full pipe.
+                const CAP: usize = 16 * 1024 * 1024;
+                let mut chunk = [0u8; 64 * 1024];
+                while let Ok(n) = pipe.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    let room = CAP.saturating_sub(buffer.len());
+                    buffer.extend_from_slice(&chunk[..n.min(room)]);
+                }
             }
             let _ = tx.send(buffer);
         });

@@ -515,12 +515,23 @@ fn supervise_launch(
     // Truncate once, then open both handles in append mode: with a plain
     // `create` handle each stream kept its own offset and the stdout writes
     // overwrote the stderr ones.
-    let mut sink = std::fs::File::create(&out)
+    let sink = std::fs::File::create(&out)
         .and_then(|_| std::fs::OpenOptions::new().append(true).open(&out))
         .map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("the job's output file is not usable: {e}"))
             .at(Stage::Job)
-    })?;
+    });
+    // The job is already running: an unusable output file must not leave it
+    // orphaned, still working with nobody supervising it.
+    let mut sink = match sink {
+        Ok(sink) => sink,
+        Err(e) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(claim_path(data_folder, job.as_str()));
+            return Err(e);
+        }
+    };
     // Both streams, in order of arrival, into one file: what a person reads is
     // what the command printed. Each stream keeps up to its own cap. Both
     // pumps keep reading to end of stream past the cap (and when the file

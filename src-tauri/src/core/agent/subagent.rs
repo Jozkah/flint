@@ -974,8 +974,12 @@ pub(crate) fn compact_child_result(text: &str, run_id: Option<&str>) -> String {
         .map_or(text.len(), |(i, _)| i);
     let omitted = total - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
     let how = match run_id {
-        Some(id) => format!(
+        Some(id) if total <= RETAINED_RESULT_CHARS => format!(
             " The full {total}-character answer is kept: call await_subagent with run_id={id} and offset={CHILD_RESULT_HEAD_CHARS} to read the omitted part."
+        ),
+        // Past the retention cap only the first part can be read back.
+        Some(id) => format!(
+            " The first {RETAINED_RESULT_CHARS} of its {total} characters are kept: call await_subagent with run_id={id} and offset={CHILD_RESULT_HEAD_CHARS} to read on from the head."
         ),
         None => String::new(),
     };
