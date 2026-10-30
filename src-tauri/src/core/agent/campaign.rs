@@ -572,6 +572,13 @@ fn normalize_path(raw: &str) -> Option<String> {
 }
 
 fn covers(outer: &str, inner: &str) -> bool {
+    // Spelled alike before comparing: `./src/`, `src\` and `src` are one path.
+    let norm = |p: &str| {
+        let p = p.trim().replace('\\', "/");
+        let p = p.trim_start_matches("./").trim_end_matches('/').to_string();
+        if p == "." { String::new() } else { p }
+    };
+    let (outer, inner) = (norm(outer), norm(inner));
     outer.is_empty() || inner == outer || inner.starts_with(&format!("{outer}/"))
 }
 

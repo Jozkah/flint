@@ -587,7 +587,12 @@ fn fetch_pull_request(repo: &Path, number: u64, repo_hint: Option<&str>) -> Resu
     let origin = run(repo, &["remote", "get-url", "origin"])
         .map_err(|_| "this repository has no origin remote to fetch a pull request from".to_string())?;
     if let Some(hint) = repo_hint {
-        if !origin.to_lowercase().contains(&hint.to_lowercase()) {
+        // The repository the URL names, not any URL containing the text
+        // (`acme/app` must not match `acme/app-fork`).
+        let url = origin.trim().trim_end_matches('/').to_lowercase();
+        let url = url.strip_suffix(".git").unwrap_or(&url);
+        let hint_l = hint.to_lowercase();
+        if !(url.ends_with(&format!("/{hint_l}")) || url.ends_with(&format!(":{hint_l}"))) {
             return Err(format!("origin ({origin}) is not {hint}, so pull request #{number} cannot be fetched from it"));
         }
     }

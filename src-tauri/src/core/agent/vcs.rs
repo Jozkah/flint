@@ -1147,7 +1147,10 @@ fn protected(repo: &Path, branch: &str) -> bool {
         return true;
     }
     git(repo, &["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
-        .map(|r| r.trim().rsplit('/').next() == Some(branch))
+        // The whole name after the remote prefix: a default like
+        // `release/2` is not protected as "2", nor is a branch "2" protected
+        // because of it.
+        .map(|r| r.trim().strip_prefix("refs/remotes/origin/") == Some(branch))
         .unwrap_or(false)
 }
 
