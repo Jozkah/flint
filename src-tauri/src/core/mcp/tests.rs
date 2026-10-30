@@ -1178,12 +1178,14 @@ mod mcp_confinement_tests {
             return;
         };
 
-        // On Windows the AppContainer helper also gets the two names it needs
-        // to start (Jozkah/jan#284); nothing else from the host.
+        // On Windows the AppContainer helper also gets the names it needs to
+        // start (Jozkah/jan#284) and the host temp folder for its grant
+        // record; nothing else from the host.
         let helper_needs = |k: &str| {
             cfg!(windows)
                 && tauri_plugin_agent_tools::tools::win_env::REQUIRED
                     .iter()
+                    .chain(["TMP", "TEMP"].iter())
                     .any(|r| r.eq_ignore_ascii_case(k))
         };
         let passed: Vec<String> = cmd
@@ -1195,6 +1197,30 @@ mod mcp_confinement_tests {
 
         assert_eq!(passed, vec!["API_TOKEN".to_string()]);
         assert!(!passed.iter().any(|one| one.contains("AWS")));
+    }
+
+    /// Live failure: with TMP/TEMP cleared the helper's `temp_dir()` fell back
+    /// to C:\Windows and every imported server stopped at "sandbox setup
+    /// failed ... jan-appcontainer-write-roots: Access is denied".
+    #[cfg(windows)]
+    #[test]
+    fn the_helper_keeps_the_host_temp_folder() {
+        let Ok(cmd) = confined_mcp_command(plain(), &params(&[]), &confinement()) else {
+            return;
+        };
+        let envs: Vec<(String, Option<std::ffi::OsString>)> = cmd
+            .as_std()
+            .get_envs()
+            .map(|(k, v)| (k.to_string_lossy().to_uppercase(), v.map(|v| v.to_os_string())))
+            .collect();
+        for name in ["TMP", "TEMP"] {
+            if let Some(host) = std::env::var_os(name) {
+                assert!(
+                    envs.iter().any(|(k, v)| k == name && v.as_ref() == Some(&host)),
+                    "{name} must reach the sandbox helper"
+                );
+            }
+        }
     }
 
     #[test]
