@@ -54,6 +54,9 @@ export function DynamicControllerSetting({
       className="opacity-50 pointer-events-none select-none"
       title={disabledReason}
       aria-disabled
+      // pointer-events only stops the mouse; inert also takes the control
+      // out of the tab order so keys cannot change it either.
+      inert
     >
       {control}
     </div>

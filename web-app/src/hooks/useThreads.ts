@@ -329,8 +329,12 @@ const threadDeletion = (
         },
         {} as Record<string, Thread>
       )
+      // Only threads that were starred change; rewriting every thread file
+      // for an unstar is wasted IO.
       Object.values(updatedThreads).forEach((thread) => {
-        persistThread(thread, state.threads[thread.id])
+        if (state.threads[thread.id]?.isFavorite) {
+          persistThread(thread, state.threads[thread.id])
+        }
       })
       return { threads: updatedThreads }
     })

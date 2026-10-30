@@ -64,7 +64,7 @@ export class TauriAppService extends DefaultAppService {
 
   async readLogs(): Promise<LogEntry[]> {
     const logData: string = (await invokeCommand('read_logs')) ?? ''
-    return logData.split('\n').map(this.parseLogLine)
+    return logData.split('\n').filter(Boolean).map(this.parseLogLine)
   }
 
   async readLogsSince(offset?: number): Promise<LogChunk> {

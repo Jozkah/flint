@@ -1011,11 +1011,13 @@ function SystemMonitorContent() {
   )
   const applyActivations = (updates: Record<string, boolean>) => {
     setActivations(updates)
-    serviceHub.models().stopAllModels()
-    serviceHub
-      .models()
-      .getActiveModels()
+    // Read the active list after the stop finished, or it still shows the
+    // models being stopped.
+    void Promise.resolve(serviceHub.models().stopAllModels())
+      .catch((e) => console.error('Stopping models failed:', e))
+      .then(() => serviceHub.models().getActiveModels())
       .then((models) => setActiveModels(models || []))
+      .catch(() => undefined)
   }
   const toggleGroup = (group: GpuGroup) => {
     const activated = group.devices.some((device) => device.activated)

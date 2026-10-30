@@ -697,7 +697,9 @@ pub(crate) fn run_bounded(
                 }
                 let room = cap.saturating_sub(buf.len());
                 buf.extend_from_slice(&chunk[..n.min(room)]);
-                if n >= room {
+                // Only output that did not fit makes it "full"; a read that
+                // exactly fills the cap is not truncation by itself.
+                if n > room {
                     full_flag.store(true, Ordering::SeqCst);
                     break;
                 }
