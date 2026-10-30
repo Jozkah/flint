@@ -40,7 +40,8 @@ function flush(id: string) {
   if (!slot) return
   if (slot.timer) clearTimeout(slot.timer)
   slot.timer = null
-  const events = diffLiveReply(slot.kind, id, slot.sent, slot.current)
+  // No phone listening: the diff would be thrown away, so it is not built.
+  const events = sink ? diffLiveReply(slot.kind, id, slot.sent, slot.current) : []
   slot.sent = slot.current
   if (!slot.current) slots.delete(id)
   if (sink) for (const e of events) sink(e, threadTopic(id))
