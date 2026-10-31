@@ -49,8 +49,6 @@ export class TauriAppService extends DefaultAppService {
     const keepModelsAndConfigs = options?.keepModelsAndConfigs ?? false
     const clearWebData = options?.clearWebData ?? false
 
-    pruneLocalStorageByFlags({ keepAppData, keepModelsAndConfigs })
-
     if (!keepAppData && !keepModelsAndConfigs && !clearWebData) {
       await invokeCommand('factory_reset')
     } else {
@@ -60,6 +58,10 @@ export class TauriAppService extends DefaultAppService {
         clearWebData,
       })
     }
+
+    // Only once the reset went through: a failed reset must not leave the
+    // UI's persisted state wiped while the data on disk is still there.
+    pruneLocalStorageByFlags({ keepAppData, keepModelsAndConfigs })
   }
 
   async readLogs(): Promise<LogEntry[]> {

@@ -102,6 +102,19 @@ describe('TauriAppService – coverage', () => {
       expect(localStorage.getItem('threads')).toBeNull()
     })
 
+    it('leaves localStorage alone when the reset itself fails', async () => {
+      const { invoke } = await import('@tauri-apps/api/core')
+      vi.mocked(invoke).mockRejectedValue(new Error('reset failed'))
+      localStorage.setItem('model-provider', '{"providers":[]}')
+      localStorage.setItem('setup-completed', 'true')
+
+      await expect(svc.factoryReset()).rejects.toThrow('reset failed')
+
+      expect(localStorage.getItem('model-provider')).toBe('{"providers":[]}')
+      expect(localStorage.getItem('setup-completed')).toBe('true')
+      localStorage.clear()
+    })
+
     it('keeps model localStorage when models are preserved', async () => {
       const { invoke } = await import('@tauri-apps/api/core')
       vi.mocked(invoke).mockResolvedValue(undefined)
