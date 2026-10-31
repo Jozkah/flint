@@ -160,7 +160,20 @@ export function fitCloudSize(
   if (w * h > maxArea) scale(Math.sqrt(maxArea / (w * h)))
   if (minArea > 0 && w * h < minArea) scale(Math.sqrt(minArea / (w * h)))
   const fit = (n: number) => snapSide(n, 16, maxEdge)
-  return { width: fit(w), height: fit(h) }
+  let fw = fit(w)
+  let fh = fit(h)
+  // Rounding to 16 can step back over an area limit: step the larger side
+  // down, or the smaller side up, until the size fits (P2D-010).
+  while (fw * fh > maxArea && Math.max(fw, fh) > 16) {
+    if (fw >= fh) fw -= 16
+    else fh -= 16
+  }
+  const cap = Math.floor(maxEdge / 16) * 16
+  while (minArea > 0 && fw * fh < minArea && Math.min(fw, fh) < cap) {
+    if (fw <= fh) fw += 16
+    else fh += 16
+  }
+  return { width: fw, height: fh }
 }
 
 const ASPECT_RATIOS: Array<[number, number]> = [

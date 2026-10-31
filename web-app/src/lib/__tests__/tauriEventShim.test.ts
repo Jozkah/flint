@@ -68,6 +68,34 @@ describe('browser event bus', () => {
     expect(fetch.mock.calls[0][0]).toBe('/api/v1/events')
   })
 
+  it('reads frames with CRLF line ends (LIBC-042)', async () => {
+    const CRLF = String.fromCharCode(13) + NL
+    const text = 'data: {"event":"crlf","payload":7}' + CRLF + CRLF
+    const bytes = new TextEncoder().encode(text)
+    // Cut between the CR and the LF.
+    const cut = text.indexOf(CRLF) + 1
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, cut))
+        controller.enqueue(bytes.slice(cut))
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        redirected: false,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body,
+      })
+    )
+    const { listen } = await import('@/lib/tauriEventShim')
+    const seen: unknown[] = []
+    await listen<number>('crlf', (e) => seen.push(e.payload))
+    await vi.waitFor(() => expect(seen).toEqual([7]))
+  })
+
   it('does not treat a sign-in page as an event stream', async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true,

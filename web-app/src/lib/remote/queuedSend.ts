@@ -12,7 +12,10 @@ const phoneStaged = new Map<string, Set<string>>()
 
 /** Stage documents in the conversation's composer, read at send time. */
 export function stageComposerDocs(id: string, docs: Attachment[]): void {
-  phoneStaged.set(id, new Set(docs.map((d) => d.path ?? '')))
+  // Merged: a second staging before the send must not forget the first (P2D-016).
+  const staged = phoneStaged.get(id) ?? new Set<string>()
+  for (const d of docs) staged.add(d.path ?? '')
+  phoneStaged.set(id, staged)
   useChatAttachments.getState().setAttachments(id, (prev) => [
     ...prev,
     ...docs.filter((d) => !prev.some((x) => x.path === d.path)),
