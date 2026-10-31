@@ -341,6 +341,8 @@ function normalizeSegment(segment: string): string {
     .replace(/^&\s+/, '')
     .replace(/^(['"])(?:[^'"]*[\\/])?([\w.-]+?)\.(?:cmd|exe|bat|ps1)\1(?=\s|$)/i, '$2')
     .replace(/^(?:[^\s'"]*[\\/])?([\w.-]+?)\.(?:cmd|exe|bat|ps1)(?=\s|$)/i, '$1')
+    // `npm --prefix DIR test`, `pnpm -C DIR test`, `yarn --cwd DIR test`.
+    .replace(/^(npm|pnpm|yarn)\s+(?:--prefix|-C|--dir|--cwd)(?:\s+|=)(?:'[^']*'|"[^"]*"|\S+)\s+/i, '$1 ')
 }
 
 export function classifyCommand(command: string): CheckKind | null {

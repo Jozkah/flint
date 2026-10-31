@@ -95,6 +95,8 @@ describe('classifying commands as checks', () => {
     ['node --test-isolation=none --test test/', 'test'],
     ['node test/slug.test.js', 'test'],
     ["Set-Location 'C:\\tmp\\repo'; npm.cmd test", 'test'],
+    ["npm --prefix 'C:\\tmp\\repo' test", 'test'],
+    ['pnpm -C web-app test', 'test'],
     ["& 'C:\\Program Files\\nodejs\\node.exe' --test", 'test'],
     ['npm run build', 'build'],
     ['cargo build -j 4', 'build'],
