@@ -41,10 +41,10 @@
     "gitRemote": "Flint vol executar {{command}}, que canvia {{target}}",
     "gitDestructive": "Flint vol executar {{command}}, que pot fer perdre feina",
     "approveCampaign": "Flint vol iniciar la campanya \"{{title}}\" ({{count}} tasques)",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint vol executar un workflow: {{agents}} agents en {{phases}} fases",
+    "spawnWorktree": "Flint vol iniciar un xat imbricat que pot canviar fitxers en un worktree nou de {{folder}} (branca {{branch}})",
+    "spawnChat": "Flint vol iniciar un xat imbricat anomenat \"{{title}}\"",
+    "enterWorktree": "Flint vol moure l'accés d'escriptura d'aquesta sessió a un worktree: {{folder}} (branca {{branch}}, basada en {{base}})",
     "spendPause": "Flint vol continuar aquesta execució més enllà de la seva pausa de despesa",
     "changeFileOutside": "Flint vol canviar {{target}}, que és fora de {{workspace}}",
     "changeManyFilesOutside": "Flint vol canviar {{count}} fitxers, alguns fora de {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Envia canvis a un repositori remot que altres persones poden veure. Flint ho pregunta cada vegada tret que permetis temporalment les accions Git remotes ordinàries per a aquesta conversa.",
     "gitDestructive": "El que elimina o sobreescriu pot no ser recuperable.",
     "campaignPlan": "Inicia sessions separades, cadascuna en la seva pròpia branca de worktree, que llegeixen i canvien fitxers i fan servir la quota del teu model en paral·lel. Aprovar el pla no aprova cap crida que faci una tasca. Flint pregunta cada vegada.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Inicia tants subagents, fase per fase, que llegeixen i canvien fitxers i consumeixen la teva quota del model. Flint ho pregunta cada vegada per a un workflow d'aquesta mida.",
+    "spawnWorktree": "El xat imbricat llegeix i canvia fitxers a la seva pròpia branca d'aquest projecte, consumeix la teva quota del model i continua executant-se mentre fas altres coses. Els seus canvis es queden en aquesta branca fins que els fusionis. Flint ho pregunta cada vegada.",
+    "spawnChat": "El xat imbricat és una sessió nova que consumeix la teva quota del model i continua executant-se mentre fas altres coses. S'inicia sense accés a carpetes. Flint ho pregunta cada vegada perquè has activat \"Pregunta abans d'iniciar xats imbricats\" per a aquesta sessió.",
+    "enterWorktree": "Aquesta sessió només pot llegir i canviar fitxers en aquell worktree a la seva pròpia branca, no a la carpeta del projecte. Els seus canvis es queden en aquesta branca fins que els fusionis. Flint ho pregunta cada vegada.",
     "spendPause": "L'execució continua gastant quota de model de pagament fins que acabi o arribi al límit. Si ho denegues, s'atura."
   },
   "repeat": {
@@ -399,11 +399,11 @@
     "session": "Permet per a aquesta conversa"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "Pendent de la teva aprovació: {{tool}}",
+    "waitBody": "L'execució està en pausa fa {{seconds}} s fins que la permetis o la denegueu.",
+    "destructive": "Ordre destructiva: {{reason}}. Es pregunta tot i que aquesta eina està permesa en cas contrari.",
+    "selfApproval": "{{tool}} aprova ell mateix les ordres a {{server}}. Només tu les pots aprovar, per això es pregunta cada vegada.",
+    "sensitive": "Crida a eina sensible: revisa'n l'acció abans de permetre-la.",
+    "autoPause": "S'han executat {{count}} crides a eines sense preguntar. Vols continuar?"
   }
 }

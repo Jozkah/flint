@@ -1,27 +1,27 @@
 {
   "discover": {
-    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
-    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
-    "familiesError": "Could not load the model kinds: {{error}}",
+    "unsupportedArch": "Model gambar dan video lokal memerlukan Windows x64 atau Linux x64. Arsitektur ini belum didukung.",
+    "intro": "Model gambar dalam format GGUF yang dapat dijalankan Studio. Pilih file bobot dan jenis modelnya; text encoder dan VAE yang dibutuhkan diunduh bersamanya dan diperiksa seperti unduhan lainnya.",
+    "familiesError": "Tidak dapat memuat jenis model: {{error}}",
     "retry": "Retry",
-    "emptyTitle": "No picture models found",
-    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "emptyTitle": "Tidak ada model gambar ditemukan",
+    "emptyDescription": "Coba pencarian yang lebih luas, misalnya qwen image, flux atau z-image.",
     "gated": "Gated",
-    "hideFiles": "Hide files",
-    "chooseFile": "Choose a file",
-    "whatKind": "What kind of model is this?",
-    "modelFamily": "Model family",
-    "pickOne": "Pick one…",
-    "filesError": "Could not list the files: {{error}}",
-    "noWeights": "No weights files (.gguf) in this repository.",
-    "unsupportedSystem": "Unsupported system",
+    "hideFiles": "Sembunyikan file",
+    "chooseFile": "Pilih file",
+    "whatKind": "Model jenis apa ini?",
+    "modelFamily": "Keluarga model",
+    "pickOne": "Pilih satu…",
+    "filesError": "Tidak dapat mencantumkan file: {{error}}",
+    "noWeights": "Tidak ada file bobot (.gguf) di repositori ini.",
+    "unsupportedSystem": "Sistem tidak didukung",
     "inStudio": "In Studio",
     "adding": "Adding…",
-    "addToStudio": "Add to Studio",
-    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
-    "pickKindFirst": "Pick what kind of model this is first.",
-    "added": "{{name}} added to Studio",
-    "openStudio": "Open Studio"
+    "addToStudio": "Tambahkan ke Studio",
+    "unsupportedToast": "Pembuatan gambar lokal memerlukan Windows x64 atau Linux x64.",
+    "pickKindFirst": "Pilih dahulu jenis model ini.",
+    "added": "{{name}} ditambahkan ke Studio",
+    "openStudio": "Buka Studio"
   },
   "page": {
     "title": "Studio",
@@ -240,5 +240,5 @@
     "all": "Semua",
     "empty": "Belum ada apa-apa di sini. Apa pun yang Anda buat akan muncul di sini."
   },
-  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
+  "videoMemoryWarning": "Komputer ini memiliki sekitar {{gb}} GB memori. Pembuatan video membutuhkan banyak memori, dan pada mesin seperti ini satu klip bisa memakan waktu berjam-jam karena kehabisan memori dan swap ke disk."
 }

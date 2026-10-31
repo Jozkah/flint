@@ -24,12 +24,12 @@
     "description": "Quan està desactivat, es diu a les altres sessions que aquesta no accepta missatges, i res del que enviïn hi arriba."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Pregunta'm abans de lliurar",
+    "description": "Si està activat, cada missatge d'una altra sessió espera aquí que l'aprovis o el denegueu. No es lliura ni s'inicia res fins que l'aprovis, i un missatge al qual no responguis en 5 minuts es descarta i se n'informa el remitent. Només mentre s'accepten missatges."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Pregunta'm abans d'iniciar xats imbricats",
+    "description": "Si està activat, cada vegada que l'agent vol iniciar un xat imbricat (spawn_session) te'n pregunta abans. Desactivat per defecte: un xat imbricat sense worktree s'inicia sense accés a carpetes i sense cap dels permisos d'aquesta sessió."
   },
   "subagentQuestion": {
     "title": "{{name}} pregunta a l'agent",
@@ -93,14 +93,14 @@
   "waitingIn_other": "{{count}} missatges a {{session}}",
   "waitingIn_many": "{{count}} missatges a {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Missatges pendents d'aprovació",
+    "banner": "Pendent de la teva aprovació ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Avís d'estat",
+    "expires": "Caduca d'aquí a {{minutes}} min",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Aprova el missatge de {{name}}",
+    "denyLabel": "Denega el missatge de {{name}}"
   }
 }

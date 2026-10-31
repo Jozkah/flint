@@ -25,7 +25,7 @@
   "jsonValue": "JSON",
   "trueValue": "True",
   "falseValue": "False",
-  "jsonValuePlaceholder": "JSON Value",
+  "jsonValuePlaceholder": "JSON-Wert",
   "save": "Speichern",
   "createNew": "Neuen Assistenten anlegen",
   "personality": "Persönlichkeit",

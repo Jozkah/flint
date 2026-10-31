@@ -1347,11 +1347,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "Hubungkan ke komputer Anda",
+    "intro": "Aktifkan Akses jarak jauh di Flint pada komputer Anda, lalu masukkan alamatnya atau tempel tautan pemasangan.",
+    "address": "Alamat komputer",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "Percayai sertifikat baru komputer ini"
   }
 }

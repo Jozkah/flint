@@ -39,11 +39,8 @@
   "importedTooltip": "Diimpor dari file lokal. Menghapusnya dari Flint tidak akan menghapus file di disk.",
   "importModelSuccess": "Model {{provider}} telah berhasil diimpor.",
   "importModelError": "Gagal mengimpor model:",
-
   "importScanHint": "Mencari di LM Studio, Ollama, cache Hugging Face, llama.cpp, dan GPT4All. Tidak ada yang disalin sebelum Anda mengimpor.",
-
   "importAddFolder": "Tambah folder model",
-
   "importRemoveFolder": "Hapus folder {{folder}}",
   "stop": "Hentikan",
   "start": "Mulai",
@@ -160,7 +157,7 @@
     "description": "Hanya untuk endpoint Azure bergaya deployments (/openai/deployments/<name>) yang URL-nya tanpa ?api-version=. Endpoint /openai/v1 tidak membutuhkannya."
   },
   "baseUrl": {
-    "title": "Base URL",
+    "title": "URL Dasar",
     "openaiDescription": "Gunakan proxy atau gateway yang kompatibel dengan API OpenAI. Defaultnya adalah https://api.openai.com/v1.",
     "azureDescription": "Endpoint Azure OpenAI Anda. Ganti YOUR-RESOURCE-NAME dengan nama resource Azure Anda.",
     "litellmDescription": "Alamat proxy LiteLLM Anda, termasuk /v1. Bawaannya adalah http://localhost:4000/v1.",

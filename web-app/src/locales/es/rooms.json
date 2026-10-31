@@ -668,5 +668,5 @@
     "ranToolsDropped": "su salida se descartó para que cupiera en la ventana de contexto.",
     "ranToolsRetry": "el proveedor falló después y la solicitud se está reintentando."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "No se pudo eliminar la sala"
 }

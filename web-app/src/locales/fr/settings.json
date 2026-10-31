@@ -26,10 +26,10 @@
     "overridden_one": "{{count}} rôle configuré",
     "overridden_other": "{{count}} rôles configurés",
     "overridden_many": "{{count}} de rôles configurés",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Sous-agents simultanés",
+    "maxConcurrentDesc": "Nombre maximal de sous-agents exécutés en même temps (de 1 à 16). Les autres attendent leur tour.",
+    "maxDepth": "Profondeur des sous-agents",
+    "maxDepthDesc": "1 : les sous-agents ne peuvent pas démarrer de sous-agents. 2 ou 3 leur permet de déléguer le travail sur autant de niveaux, avec les mêmes limites et approbations."
   },
   "autoDownload": "Téléchargement automatique des nouvelles mises à jour",
   "checkForUpdates": "Vérifier les mises à jour",
@@ -128,7 +128,7 @@
     "previousPaneDesc": "Passer au panneau précédent de la vue partagée.",
     "findInChat": "Rechercher dans la discussion",
     "findInChatDesc": "Cherche dans la conversation affichée à l'écran.",
-    "notSet": "Not set"
+    "notSet": "Non défini"
   },
   "interface": {
     "title": "Interface",
@@ -259,7 +259,7 @@
     "sslVerification": "Vérification SSL",
     "ignoreSsl": "Ignorer les certificats SSL",
     "ignoreSslDesc": "Autorisez les certificats auto-signés ou non vérifiés. Cela peut être nécessaire pour certains proxys mais réduit la sécurité. N'activez que si vous faites confiance à votre proxy.",
-    "proxySsl": "Proxy SSL",
+    "proxySsl": "SSL du proxy",
     "proxySslDesc": "Validez le certificat SSL lors de la connexion au proxy.",
     "proxyHostSsl": "SSL de l'hôte du proxy",
     "proxyHostSslDesc": "Validez le certificat SSL de l'hôte du proxy.",
@@ -477,8 +477,8 @@
     "stopServerToEdit": "Arrêtez le serveur pour modifier",
     "trustedHostsInvalid": "Hôte non valide : {{hosts}}. Utilisez un hôte ou hôte:port, comme example.com ou 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Non enregistré. Entrée pour enregistrer, Échap pour annuler.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Exécuter les outils sur le serveur",
+    "serverToolsDesc": "Exécute les outils côté serveur pour les points de terminaison de chat."
   },
   "privacy": {
     "analytics": "Analytique",
@@ -553,10 +553,10 @@
     "revealLogs": "Afficher les journaux",
     "factoryResetTitle": "Réinitialiser aux paramètres d'usine",
     "factoryResetDesc": "Cela réinitialisera tous les paramètres de l'application à leurs valeurs par défaut. Cette action ne peut pas être annulée. Nous ne le recommandons que si l'application est corrompue.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Conserver les données de l’application",
+    "keepAppDataDesc": "Votre historique de chat et vos conversations seront conservés.",
+    "keepModelsAndConfigs": "Conserver tous les modèles et configurations",
+    "keepModelsAndConfigsDesc": "Les modèles téléchargés, les paramètres du moteur et les configurations MCP seront conservés.",
     "clearWebData": "Effacer les données d'interface en cache",
     "clearWebDataDesc": "Supprime le stockage local en cache et les préférences d'interface conservés par la fenêtre de l'application. L'interface revient à son état par défaut.",
     "cancel": "Annuler",
@@ -621,28 +621,28 @@
       "uninstall": "Désinstaller",
       "uninstalling": "Désinstallation…",
       "foreignDesc": "Trouvée dans {{path}}, installée par une autre copie de Flint. Installez ici pour utiliser la CLI de cette copie.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI installé dans {{path}}",
+      "installFailed": "Échec de l’installation",
+      "uninstalledToast": "Flint CLI désinstallé",
+      "uninstallFailed": "Échec de la désinstallation"
     },
     "startupGroup": "Démarrage et zone de notification",
     "cliGroup": "Ligne de commande",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Garder l’ordinateur éveillé pendant les exécutions",
+    "keepAwakeDesc": "Empêche Windows de passer en veille pendant qu’un agent travaille. L’écran peut quand même s’éteindre.",
+    "siteIcons": "Charger les icônes des sites",
+    "siteIconsDesc": "Affiche l’icône propre à chaque site web à côté de son nom dans les résultats de recherche et les citations. Récupérer une icône indique à ce site que vous l’avez consulté. Désactivé, une lettre est affichée à la place.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Veuillez saisir un jeton Hugging Face à valider",
+      "valid": "Le jeton est valide",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Votre jeton Hugging Face est valide.",
+      "invalid": "Jeton invalide",
+      "invalidDesc": "Le jeton Hugging Face fourni est invalide. Vérifiez votre jeton et réessayez.",
+      "timedOut": "Délai de validation dépassé",
+      "timedOutDesc": "La requête de validation a expiré. Vérifiez votre connexion réseau et réessayez.",
+      "failed": "Échec de la validation",
+      "failedDesc": "Une erreur réseau s’est produite lors de la validation du jeton. Vérifiez votre connexion Internet."
     }
   },
   "extensions": {
@@ -1480,7 +1480,7 @@
       "settleFailed": "Impossible de résoudre ce conflit",
       "forgotten": "Souvenir oublié",
       "forgetFailed": "Impossible d'oublier ce souvenir",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Impossible de restaurer cette mémoire",
       "changeFailed": "Impossible de modifier ce souvenir",
       "updated": "Souvenir mis à jour",
       "updateFailed": "Impossible de mettre à jour ce souvenir",
@@ -1624,15 +1624,15 @@
     "title": "Valeurs par défaut"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Utilisation par élément",
+    "description": "Appels et jetons des sous-agents sur les {{window}} écoulés, d’après les journaux de session.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "Rien n’a été enregistré sur cette période.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Serveurs MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Configuré mais jamais utilisé",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

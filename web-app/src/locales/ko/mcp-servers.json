@@ -272,13 +272,13 @@
   "autoApproveServerHint": "이 서버의 도구만 자동 승인합니다. 모든 MCP 도구에 대한 스위치는 설정 > 권한에 있습니다.",
   "allowAllMoved": "모든 MCP 도구를 묻지 않고 실행하는 스위치는 설정 > 권한에 있습니다.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}}에 입력이 필요합니다",
+    "urlTitle": "{{server}}이(가) 페이지를 열려고 합니다",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "숨겨진 필드는 {{server}}에만 전송됩니다. 채팅에는 표시되지 않습니다.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "페이지 열기"
   }
 }

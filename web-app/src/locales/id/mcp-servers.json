@@ -269,13 +269,13 @@
   "autoApproveServerHint": "Hanya menyetujui otomatis alat milik server ini. Sakelar untuk semua alat MCP ada di Pengaturan > Izin.",
   "allowAllMoved": "Sakelar yang membuat semua alat MCP berjalan tanpa bertanya ada di Pengaturan > Izin.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} membutuhkan masukan Anda",
+    "urlTitle": "{{server}} ingin membuka sebuah halaman",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Kolom tersembunyi hanya dikirim ke {{server}}. Kolom ini tidak ditampilkan di obrolan.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Buka halaman"
   }
 }

@@ -39,11 +39,8 @@
   "importedTooltip": "Zaimportowany z pliku lokalnego. Usunięcie go z Flint nie usunie pliku z dysku.",
   "importModelSuccess": "Pomyślnie zaimportowano model dostawcy {{provider}}.",
   "importModelError": "Nie udało się zaimportować modelu:",
-
   "importScanHint": "Szuka w LM Studio, Ollama, pamięci podręcznej Hugging Face, llama.cpp i GPT4All. Nic nie jest kopiowane, dopóki nie zaimportujesz.",
-
   "importAddFolder": "Dodaj folder z modelami",
-
   "importRemoveFolder": "Usuń folder {{folder}}",
   "stop": "Zatrzymaj",
   "start": "Uruchom",
