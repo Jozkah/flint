@@ -1655,13 +1655,30 @@ class RoomRun {
     try {
       await this.runCompareJobs(jobs)
     } catch (e) {
+      this.countAnsweredQuestions()
       if (e instanceof LimitStop) {
         await this.stopForLimit(e.limit)
         return false
       }
       throw e
     }
+    this.countAnsweredQuestions()
     return true
+  }
+
+  /**
+   * A compare room spends one round per question, and its header reads
+   * `usage.rounds` as "Questions n / max". Answers given from the Run panel
+   * (outside a round) never closed one, so the header stayed at 0 after a
+   * question both participants had answered (RQA-013). Count the questions
+   * that have an answer instead; never lower what rounds already counted.
+   */
+  private countAnsweredQuestions() {
+    const grid = compareGrid(this.messages)
+    const answered = grid.questions.filter((q) => (grid.answers.get(q.id) ?? []).length > 0).length
+    if (answered > this.room.usage.rounds) {
+      this.room = { ...this.room, usage: { ...this.room.usage, rounds: answered } }
+    }
   }
 
   // ---- closing -------------------------------------------------------------

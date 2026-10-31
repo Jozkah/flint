@@ -121,6 +121,8 @@ describe('compare mode: engine', () => {
     expect(room.status).toBe('awaiting-user')
     expect(room.round).toBe(1)
     expect(room.usage.turns).toBe(3)
+    // The header's "Questions n / max" reads this: one question answered.
+    expect(room.usage.rounds).toBe(1)
     expect([...room.spokenThisRound].sort()).toEqual(['p-a', 'p-b', 'p-c'])
     const speech = messagesOf(p).filter((m) => m.kind === 'speech')
     expect(speech).toHaveLength(3)
