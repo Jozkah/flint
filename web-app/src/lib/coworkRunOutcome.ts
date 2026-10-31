@@ -294,6 +294,12 @@ const RULES: Rule[] = [
       /^(?:cargo\s+(?:test|nextest)|go\s+test|dotnet\s+test|swift\s+test|deno\s+test|mix\s+test|rake\s+(?:test|spec)|(?:mvn|mvnw|\.\/mvnw)\s+(?:\S+\s+)*(?:test|verify)|(?:gradle|gradlew|\.\/gradlew)\s+(?:\S+\s+)*(?:test|check)|make\s+(?:test|check)|flutter\s+test)(?:\s|$)/i,
   },
   {
+    // Node's built-in runner, or one test file run directly (RQA-007).
+    kind: 'test',
+    pattern:
+      /^(?:node|deno\s+run)\s+(?:\S+\s+)*?(?:--test(?:[\s=]|$)|\S*\.(?:test|spec)\.[cm]?[jt]sx?(?:\s|$))/i,
+  },
+  {
     kind: 'lint',
     pattern:
       /^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:lint|typecheck|type-check|check-types|tsc)(?::\S+)?(?:\s|$)/i,

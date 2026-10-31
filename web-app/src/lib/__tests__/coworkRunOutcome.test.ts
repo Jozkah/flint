@@ -91,6 +91,9 @@ describe('classifying commands as checks', () => {
     ['mvn -q test', 'test'],
     ['./gradlew test', 'test'],
     ['bundle exec rspec', 'test'],
+    ['node --test', 'test'],
+    ['node --test-isolation=none --test test/', 'test'],
+    ['node test/slug.test.js', 'test'],
     ['npm run build', 'build'],
     ['cargo build -j 4', 'build'],
     ['go build ./...', 'build'],
@@ -104,7 +107,7 @@ describe('classifying commands as checks', () => {
     expect(classifyCommand(command)).toBe(kind)
   })
 
-  it.each(['ls -la', 'cat package.json', 'git status', 'echo test passed', 'npm install'])(
+  it.each(['ls -la', 'cat package.json', 'git status', 'echo test passed', 'npm install', 'node src/index.js'])(
     '%s is not a check',
     (command) => {
       expect(classifyCommand(command)).toBeNull()
