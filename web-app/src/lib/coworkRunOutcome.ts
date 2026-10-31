@@ -132,7 +132,7 @@ export type UnresolvedItem =
    * turn ran read-only and the tool was never offered: the remedy is a mode
    * change, not an approval, and the card has to say so.
    */
-  | { kind: 'refused'; tool: string; target: string; readOnly?: boolean }
+  | { kind: 'refused'; tool: string; target: string; readOnly?: boolean; detail?: string }
   /** A tool call cancelled before it finished. */
   | { kind: 'cancelled'; tool: string; target: string }
   /** A tool call that failed or timed out. Checks are reported separately. */
@@ -616,7 +616,17 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
       (phase === 'refused' || phase === 'failed' || phase === 'done-error')
     )
       unresolved.push({ kind: 'refused', tool, target, readOnly: true })
-    else if (phase === 'refused') unresolved.push({ kind: 'refused', tool, target })
+    else if (phase === 'refused') {
+      // Why it was refused: "Not allowed: bash" alone named the tool twice
+      // and said nothing a person could act on.
+      const why = turn.result?.trim() || turn.content?.trim()
+      unresolved.push({
+        kind: 'refused',
+        tool,
+        target,
+        ...(why ? { detail: redactSecrets(why.replace(/\s+/g, ' ')).slice(0, 300) } : {}),
+      })
+    }
     else if (phase === 'cancelled' && !checkCalls.has(turn))
       unresolved.push({ kind: 'cancelled', tool, target })
     else if (!input.running && isUnfinished(phase) && !checkCalls.has(turn))
