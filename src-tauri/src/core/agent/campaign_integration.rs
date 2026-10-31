@@ -280,6 +280,114 @@ fn scripts_tampered(root: &Path, checkout: &Path, command: &str) -> Option<Strin
     ))
 }
 
+/// A `cargo` or `go` gate runs code from the tree before any test: build
+/// scripts and proc-macro crates for cargo, `//go:generate` sources for go.
+/// When those files differ from the user's checkout, refuse, naming them.
+fn build_code_tampered(root: &Path, checkout: &Path, command: &str) -> Option<String> {
+    let first = command.split_whitespace().next().unwrap_or("");
+    let runner = Path::new(first)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(runner.as_str(), "cargo" | "go") {
+        return None;
+    }
+    let (theirs, ours) = (build_code_files(root, &runner), build_code_files(checkout, &runner));
+    let mut changed: Vec<&String> = theirs
+        .keys()
+        .chain(ours.keys())
+        .filter(|k| theirs.get(*k) != ours.get(*k))
+        .collect();
+    changed.sort();
+    changed.dedup();
+    if changed.is_empty() {
+        return None;
+    }
+    let what = if runner == "cargo" { "build scripts / proc-macro crates" } else { "go:generate sources" };
+    let mut names: Vec<String> = changed.iter().take(10).map(|s| s.to_string()).collect();
+    if changed.len() > 10 {
+        names.push(format!("and {} more", changed.len() - 10));
+    }
+    Some(format!(
+        "the gate `{command}` was not run: the agent-written tree changed these {what} compared with \
+         your checkout: {}. They run on this machine without a sandbox when the gate builds, so the \
+         gate only runs them as they are in your checkout. Review those files, copy the changes you \
+         trust into your checkout (or revert them in the agent's tree), then run the gate again",
+        names.join(", ")
+    ))
+}
+
+/// Folders never searched for build code: build output, VCS data, packages.
+const BUILD_CODE_SKIP: &[&str] = &["target", ".git", "node_modules", ".jan"];
+
+/// Every file under `dir` (relative, `/`-separated) that `runner` executes at
+/// build time, with its contents. Bounded so a huge tree cannot stall the gate.
+fn build_code_files(dir: &Path, runner: &str) -> BTreeMap<String, Vec<u8>> {
+    let mut all = Vec::new();
+    collect_files(dir, 0, &mut all);
+    let mut out = BTreeMap::new();
+    let rel = |p: &Path| p.strip_prefix(dir).unwrap_or(p).to_string_lossy().replace('\\', "/");
+    if runner == "go" {
+        for path in all.iter().filter(|p| p.extension().is_some_and(|e| e == "go")) {
+            if let Ok(bytes) = std::fs::read(path) {
+                if bytes.windows(14).any(|w| w == b"//go:generate ") {
+                    out.insert(rel(path), bytes);
+                }
+            }
+        }
+        return out;
+    }
+    for manifest in all.iter().filter(|p| p.file_name().is_some_and(|n| n == "Cargo.toml")) {
+        let Some(crate_dir) = manifest.parent() else { continue };
+        let doc = std::fs::read_to_string(manifest)
+            .ok()
+            .and_then(|t| t.parse::<toml::Value>().ok())
+            .unwrap_or(toml::Value::Table(Default::default()));
+        let proc_macro = doc
+            .get("lib")
+            .and_then(|l| l.get("proc-macro").or_else(|| l.get("proc_macro")))
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false);
+        if proc_macro {
+            for path in all.iter().filter(|p| p.starts_with(crate_dir) && p.extension().is_some_and(|e| e == "rs")) {
+                if let Ok(bytes) = std::fs::read(path) {
+                    out.insert(rel(path), bytes);
+                }
+            }
+        }
+        let build = match doc.get("package").and_then(|p| p.get("build")) {
+            Some(toml::Value::String(s)) => Some(crate_dir.join(s)),
+            Some(toml::Value::Boolean(false)) => None,
+            _ => Some(crate_dir.join("build.rs")),
+        };
+        if let Some(build) = build {
+            if let Ok(bytes) = std::fs::read(&build) {
+                out.insert(rel(&build), bytes);
+            }
+        }
+    }
+    out
+}
+
+fn collect_files(dir: &Path, depth: usize, out: &mut Vec<std::path::PathBuf>) {
+    if depth > 16 || out.len() > 50_000 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else { continue };
+        let path = entry.path();
+        if kind.is_dir() {
+            if !BUILD_CODE_SKIP.iter().any(|s| entry.file_name() == *s) {
+                collect_files(&path, depth + 1, out);
+            }
+        } else if kind.is_file() {
+            out.push(path);
+        }
+    }
+}
+
 /// Script names added, removed or changed between two `scripts` objects,
 /// sorted. A non-object side counts as having no scripts.
 fn changed_script_keys(a: &Value, b: &Value) -> Vec<String> {
@@ -345,7 +453,7 @@ pub fn gate_command_with_checkout(root: &Path, checkout: Option<&Path>) -> GateC
         None => detect_gate(checkout, "detected_checkout"),
     };
     if let Some(command) = &choice.command {
-        choice.blocked = scripts_tampered(root, checkout, command);
+        choice.blocked = scripts_tampered(root, checkout, command).or_else(|| build_code_tampered(root, checkout, command));
     }
     choice
 }
@@ -2531,6 +2639,55 @@ mod tests {
         // Unchanged scripts run.
         std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"vitest"}}"#).unwrap();
         assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// F1a-009: a cargo or go gate runs build scripts, proc-macro crates and
+    /// go:generate sources; agent changes to them block the gate.
+    #[test]
+    fn agent_written_build_code_blocks_cargo_and_go_gates() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let base = std::env::temp_dir().join(format!("jan-gate-build-{}-{stamp}", std::process::id()));
+        let (tree, checkout) = (base.join("tree"), base.join("checkout"));
+        for dir in [&tree, &checkout] {
+            std::fs::create_dir_all(dir.join("macros/src")).unwrap();
+            std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+            std::fs::write(dir.join("build.rs"), "fn main() {}\n").unwrap();
+            std::fs::write(dir.join("macros/Cargo.toml"), "[package]\nname = \"m\"\n[lib]\nproc-macro = true\n").unwrap();
+            std::fs::write(dir.join("macros/src/lib.rs"), "// macro\n").unwrap();
+            std::fs::write(dir.join("main.rs"), "fn main() {}\n").unwrap();
+        }
+        let g = gate_command_with_checkout(&tree, Some(&checkout));
+        assert_eq!(g.command.as_deref(), Some("cargo check"));
+        assert!(g.blocked.is_none(), "{:?}", g.blocked);
+        // Ordinary source changes are the agent's job and do not block.
+        std::fs::write(tree.join("main.rs"), "fn main() { changed() }\n").unwrap();
+        assert!(gate_command_with_checkout(&tree, Some(&checkout)).blocked.is_none());
+        // A rewritten build script blocks, naming the file.
+        std::fs::write(tree.join("build.rs"), "fn main() { evil() }\n").unwrap();
+        let why = gate_command_with_checkout(&tree, Some(&checkout)).blocked.unwrap();
+        assert!(why.contains("build.rs") && why.contains("cargo check"), "{why}");
+        std::fs::write(tree.join("build.rs"), "fn main() {}\n").unwrap();
+        // So does a proc-macro source, and a build script moved by Cargo.toml.
+        std::fs::write(tree.join("macros/src/lib.rs"), "// evil\n").unwrap();
+        let why = gate_command_with_checkout(&tree, Some(&checkout)).blocked.unwrap();
+        assert!(why.contains("macros/src/lib.rs"), "{why}");
+        std::fs::write(tree.join("macros/src/lib.rs"), "// macro\n").unwrap();
+        std::fs::write(tree.join("Cargo.toml"), "[package]\nname = \"x\"\nbuild = \"gen.rs\"\n").unwrap();
+        std::fs::write(tree.join("gen.rs"), "fn main() {}\n").unwrap();
+        let why = gate_command_with_checkout(&tree, Some(&checkout)).blocked.unwrap();
+        assert!(why.contains("gen.rs"), "{why}");
+        // go: a changed go:generate source blocks a go gate.
+        let (gt, gc) = (base.join("gtree"), base.join("gcheckout"));
+        for dir in [&gt, &gc] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join("go.mod"), "module x\n").unwrap();
+            std::fs::write(dir.join("gen.go"), "//go:generate echo hi\npackage x\n").unwrap();
+        }
+        assert!(gate_command_with_checkout(&gt, Some(&gc)).blocked.is_none());
+        std::fs::write(gt.join("gen.go"), "//go:generate curl evil\npackage x\n").unwrap();
+        let why = gate_command_with_checkout(&gt, Some(&gc)).blocked.unwrap();
+        assert!(why.contains("gen.go") && why.contains("go:generate"), "{why}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
