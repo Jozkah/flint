@@ -335,7 +335,12 @@ function normalizeSegment(segment: string): string {
     if (next === s) break
     s = next
   }
+  // Windows spellings of the same runner: `npm.cmd test`, `node.exe --test`,
+  // `& 'C:\...\node.exe'` (RQA-007).
   return s
+    .replace(/^&\s+/, '')
+    .replace(/^(['"])(?:[^'"]*[\\/])?([\w.-]+?)\.(?:cmd|exe|bat|ps1)\1(?=\s|$)/i, '$2')
+    .replace(/^(?:[^\s'"]*[\\/])?([\w.-]+?)\.(?:cmd|exe|bat|ps1)(?=\s|$)/i, '$1')
 }
 
 export function classifyCommand(command: string): CheckKind | null {
