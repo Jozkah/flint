@@ -24,9 +24,16 @@ pub fn create_thread_in(root: &Path, mut thread: Value) -> Result<Value, String>
     ensure_data_dirs(root)?;
     let id = Uuid::new_v4().to_string();
     thread["id"] = Value::String(id.clone());
-    fs::create_dir_all(get_thread_dir(root, &id)).map_err(|e| e.to_string())?;
     let data = serde_json::to_vec_pretty(&thread).map_err(|e| e.to_string())?;
-    write_file_atomically(&get_thread_metadata_path(root, &id), &data)?;
+    let dir = get_thread_dir(root, &id);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // A failed write must not leave an empty thread folder behind, which the
+    // thread list would then show as a broken entry. The id is fresh, so the
+    // folder holds nothing else.
+    if let Err(e) = write_file_atomically(&get_thread_metadata_path(root, &id), &data) {
+        let _ = fs::remove_dir_all(&dir);
+        return Err(e);
+    }
     Ok(thread)
 }
 
