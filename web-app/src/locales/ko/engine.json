@@ -4,7 +4,7 @@
     "peak": "최대",
     "avg": "평균",
     "now": "now",
-    "ago": "{{count}} min ago",
+    "ago": "{{count}}분 전",
     "calls": "calls"
   },
   "models": {
@@ -239,25 +239,25 @@
   },
   "dependencies": {
     "redownload": {
-      "label": "Re-download the backend",
-      "description": "Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Flint settings."
+      "label": "백엔드 다시 다운로드",
+      "description": "핵심 백엔드 파일이 없거나 손상되었습니다. 보통 다운로드가 중단되었거나 압축 해제가 일부만 완료되었다는 뜻입니다. 백엔드를 삭제하고 Flint 설정에서 다시 다운로드하세요."
     },
     "cuda": {
-      "windows": "Install the CUDA Toolkit{{version}} from NVIDIA. During installation, select \"CUDA\" components.",
-      "linux": "Install the CUDA Toolkit{{version}} from NVIDIA. On Debian/Ubuntu: sudo apt install cuda-toolkit-{{apt}}. On RHEL/Fedora: use the NVIDIA repo."
+      "windows": "NVIDIA에서 CUDA Toolkit{{version}}을(를) 설치하세요. 설치 중에 \"CUDA\" 구성 요소를 선택하세요.",
+      "linux": "NVIDIA에서 CUDA Toolkit{{version}}을(를) 설치하세요. Debian/Ubuntu: sudo apt install cuda-toolkit-{{apt}}. RHEL/Fedora: NVIDIA 저장소를 사용하세요."
     },
     "nccl": {
-      "windows": "Install NCCL from the NVIDIA Developer site. NCCL is used for multi-GPU collective communications.",
-      "linux": "Install NCCL via the NVIDIA package repository. On Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. See the NVIDIA NCCL install guide for your distro."
+      "windows": "NVIDIA Developer 사이트에서 NCCL을 설치하세요. NCCL은 멀티 GPU 집합 통신에 사용됩니다.",
+      "linux": "NVIDIA 패키지 저장소에서 NCCL을 설치하세요. Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. 사용 중인 배포판용 NVIDIA NCCL 설치 가이드를 참고하세요."
     },
     "cudnn": {
-      "windows": "Install cuDNN from the NVIDIA Developer site and place the DLLs alongside the application or in System32.",
-      "linux": "Install cuDNN via the NVIDIA package repository or download the tarball and copy libs to /usr/local/cuda/lib64."
+      "windows": "NVIDIA Developer 사이트에서 cuDNN을 설치하고 DLL을 애플리케이션과 같은 위치 또는 System32에 두세요.",
+      "linux": "NVIDIA 패키지 저장소에서 cuDNN을 설치하거나 tarball을 다운로드해 라이브러리를 /usr/local/cuda/lib64에 복사하세요."
     },
     "vulkan": {
-      "label": "Vulkan Runtime",
-      "windows": "Install the Vulkan Runtime from LunarG. Your GPU driver may already include it — update your GPU driver first.",
-      "linux": "Install the Vulkan loader: on Ubuntu/Debian: sudo apt install libvulkan1. On Arch: sudo pacman -S vulkan-icd-loader. On RHEL/Fedora: sudo dnf install vulkan-loader."
+      "label": "Vulkan 런타임",
+      "windows": "LunarG에서 Vulkan 런타임을 설치하세요. GPU 드라이버에 이미 포함되어 있을 수 있으므로 먼저 GPU 드라이버를 업데이트하세요.",
+      "linux": "Vulkan 로더를 설치하세요. Ubuntu/Debian: sudo apt install libvulkan1. Arch: sudo pacman -S vulkan-icd-loader. RHEL/Fedora: sudo dnf install vulkan-loader."
     }
   }
 }

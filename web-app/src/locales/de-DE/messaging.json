@@ -24,12 +24,12 @@
     "description": "Wenn deaktiviert, wird anderen Sitzungen mitgeteilt, dass diese keine Nachrichten annimmt, und nichts, was sie senden, erreicht sie."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Vor der Zustellung fragen",
+    "description": "Wenn aktiviert, wartet jede Nachricht einer anderen Sitzung hier auf Ihre Genehmigung oder Ablehnung. Es wird nichts zugestellt oder gestartet, bevor Sie genehmigen, und eine Nachricht, die Sie nicht innerhalb von 5 Minuten beantworten, wird verworfen und ihr Absender informiert. Nur solange Nachrichten akzeptiert werden."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Vor dem Start verschachtelter Chats fragen",
+    "description": "Wenn aktiviert, fragt der Agent Sie jedes Mal zuerst, wenn er einen verschachtelten Chat (spawn_session) starten möchte. Standardmäßig aus: Ein verschachtelter Chat ohne Worktree startet ohne Ordnerzugriff und ohne die Freigaben dieser Sitzung."
   },
   "subagentQuestion": {
     "title": "{{name}} fragt den Agenten",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{count}} Nachricht in {{session}}",
   "waitingIn_other": "{{count}} Nachrichten in {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Nachrichten warten auf Genehmigung",
+    "banner": "Wartet auf Ihre Genehmigung ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Statushinweis",
+    "expires": "Läuft in {{minutes}} Min. ab",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Nachricht von {{name}} genehmigen",
+    "denyLabel": "Nachricht von {{name}} ablehnen"
   }
 }

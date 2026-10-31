@@ -39,11 +39,8 @@
   "importedTooltip": "Yerel bir dosyadan içe aktarıldı. Flint'ten kaldırmak, dosyayı diskten silmez.",
   "importModelSuccess": "{{provider}} modeli başarıyla içe aktarıldı.",
   "importModelError": "Model içe aktarılamadı:",
-
   "importScanHint": "LM Studio, Ollama, Hugging Face önbelleği, llama.cpp ve GPT4All içinde arar. İçe aktarana kadar hiçbir şey kopyalanmaz.",
-
   "importAddFolder": "Model klasörü ekle",
-
   "importRemoveFolder": "{{folder}} klasörünü kaldır",
   "stop": "Durdur",
   "start": "Başlat",

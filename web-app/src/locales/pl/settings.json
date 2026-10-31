@@ -27,10 +27,10 @@
     "overridden_other": "Ustawiono {{count}} roli",
     "overridden_few": "Ustawiono {{count}} role",
     "overridden_many": "Ustawiono {{count}} ról",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Subagenci jednocześnie",
+    "maxConcurrentDesc": "Największa liczba subagentów działających w tym samym czasie (od 1 do 16). Pozostali czekają na swoją kolej.",
+    "maxDepth": "Głębokość subagentów",
+    "maxDepthDesc": "1: subagenci nie mogą uruchamiać subagentów. 2 lub 3 pozwala im przekazywać pracę w dół o tyle poziomów, z tymi samymi limitami i zatwierdzeniami."
   },
   "autoDownload": "Automatycznie pobieraj nowe aktualizacje",
   "checkForUpdates": "Sprawdź Dostępność Aktualizacji",
@@ -129,7 +129,7 @@
     "previousPaneDesc": "Przejdź do poprzedniego panelu widoku podzielonego.",
     "findInChat": "Szukaj w czacie",
     "findInChatDesc": "Przeszukaj rozmowę widoczną na ekranie.",
-    "notSet": "Not set"
+    "notSet": "Nie ustawiono"
   },
   "interface": {
     "title": "Wygląd",
@@ -442,7 +442,7 @@
     "swaggerDocsDesc": "Wyświetl interaktywną dokumentację API (Swagger UI).",
     "openDocs": "Otwórz Dokumentację",
     "startupConfiguration": "Konfiguracja Startowa",
-    "runOnStartup": "Auto start",
+    "runOnStartup": "Autostart",
     "runOnStartupDesc": "Automatycznie uruchamiaj lokalny serwer API podczas uruchamiania aplikacji. Używa ostatnio używanego modelu lub wybiera pierwszy dostępny model, jeśli nie jest dostępny.",
     "runInBackground": "Uruchamiaj w tle",
     "runInBackgroundDesc": "Utrzymuje działanie serwera w zasobniku systemowym po zamknięciu okna. Po wyłączeniu zamknięcie okna zamyka Flint i zatrzymuje serwer.",
@@ -479,8 +479,8 @@
     "stopServerToEdit": "Zatrzymaj serwer, aby edytować",
     "trustedHostsInvalid": "Nieprawidłowy host: {{hosts}}. Użyj hosta lub host:port, np. example.com lub 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Niezapisane. Enter zapisuje, Escape cofa.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Wykonuj narzędzia na serwerze",
+    "serverToolsDesc": "Uruchamiaj narzędzia po stronie serwera dla punktów końcowych czatu."
   },
   "privacy": {
     "analytics": "Dane Analityczne",
@@ -555,10 +555,10 @@
     "revealLogs": "Wyświetl Dzienniki",
     "factoryResetTitle": "Przywróć Ustawienia Fabryczne",
     "factoryResetDesc": "Przywraca domyślne ustawienia aplikacji. Tej operacji nie można cofnąć. Zalecane przy uszkodzeniu danych aplikacji.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Zachowaj dane aplikacji",
+    "keepAppDataDesc": "Historia czatów i rozmowy zostaną zachowane.",
+    "keepModelsAndConfigs": "Zachowaj wszystkie modele i konfiguracje",
+    "keepModelsAndConfigsDesc": "Pobrane modele, ustawienia silnika i konfiguracje MCP zostaną zachowane.",
     "clearWebData": "Wyczyść dane interfejsu w pamięci podręcznej",
     "clearWebDataDesc": "Usuwa lokalny magazyn i preferencje interfejsu przechowywane przez okno aplikacji. Interfejs wraca do stanu domyślnego.",
     "cancel": "Anuluj",
@@ -623,28 +623,28 @@
       "uninstall": "Odinstaluj",
       "uninstalling": "Odinstalowywanie…",
       "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI zainstalowano w {{path}}",
+      "installFailed": "Instalacja nie powiodła się",
+      "uninstalledToast": "Flint CLI odinstalowano",
+      "uninstallFailed": "Odinstalowanie nie powiodło się"
     },
     "startupGroup": "Uruchamianie i zasobnik",
     "cliGroup": "Wiersz poleceń",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Nie usypiaj komputera podczas uruchomień",
+    "keepAwakeDesc": "Zapobiega usypianiu systemu Windows, gdy agent pracuje. Ekran nadal może się wyłączyć.",
+    "siteIcons": "Wczytuj ikony stron",
+    "siteIconsDesc": "Pokazuje własną ikonę każdej strony obok jej nazwy w wynikach wyszukiwania i cytatach. Pobranie ikony informuje stronę, że ją oglądano. Po wyłączeniu pokazywana jest litera.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Wpisz token Hugging Face do sprawdzenia",
+      "valid": "Token jest prawidłowy",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Twój token Hugging Face jest prawidłowy.",
+      "invalid": "Token nieprawidłowy",
+      "invalidDesc": "Podany token Hugging Face jest nieprawidłowy. Sprawdź token i spróbuj ponownie.",
+      "timedOut": "Upłynął limit czasu weryfikacji",
+      "timedOutDesc": "Żądanie weryfikacji przekroczyło limit czasu. Sprawdź połączenie sieciowe i spróbuj ponownie.",
+      "failed": "Weryfikacja nie powiodła się",
+      "failedDesc": "Podczas weryfikacji tokena wystąpił błąd sieci. Sprawdź połączenie z internetem."
     }
   },
   "extensions": {
@@ -1497,7 +1497,7 @@
       "settleFailed": "Nie udało się rozstrzygnąć tego konfliktu",
       "forgotten": "Wspomnienie zapomniane",
       "forgetFailed": "Nie udało się zapomnieć tego wspomnienia",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Nie udało się przywrócić tej pamięci",
       "changeFailed": "Nie udało się zmienić tego wspomnienia",
       "updated": "Wspomnienie zaktualizowane",
       "updateFailed": "Nie udało się zaktualizować tego wspomnienia",
@@ -1650,15 +1650,15 @@
     "title": "Domyślne"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Użycie według elementu",
+    "description": "Wywołania i tokeny subagentów z ostatnich {{window}}, na podstawie dzienników sesji.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "W tym okresie nic nie zarejestrowano.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Serwery MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Skonfigurowane, ale nigdy nieużywane",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

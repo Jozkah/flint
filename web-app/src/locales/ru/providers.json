@@ -39,11 +39,8 @@
   "importedTooltip": "Импортировано из локального файла. Удаление из Flint не удалит файл на диске.",
   "importModelSuccess": "Модель {{provider}} успешно импортирована.",
   "importModelError": "Не удалось импортировать модель:",
-
   "importScanHint": "Ищет в LM Studio, Ollama, кэше Hugging Face, llama.cpp и GPT4All. Ничего не копируется, пока вы не импортируете.",
-
   "importAddFolder": "Добавить папку с моделями",
-
   "importRemoveFolder": "Убрать папку {{folder}}",
   "stop": "Остановить",
   "start": "Начать",
