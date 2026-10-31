@@ -65,10 +65,16 @@ export function summarizeShared(
       urgent: true,
       text: t('common:sharedFolder.waitingApproval', { count: waiting }),
     }
+  // "Working" means a run in flight: idle sessions that finished earlier are
+  // still attached to the folder, but saying they are working misleads.
+  const working = view.others.filter((p) => p.status === 'running').length
   return {
     kind: 'calm',
     urgent: false,
-    text: t('common:sharedFolder.others', { count: view.others.length }),
+    text:
+      working > 0
+        ? t('common:sharedFolder.others', { count: working })
+        : t('common:sharedFolder.othersIdle', { count: view.others.length }),
   }
 }
 

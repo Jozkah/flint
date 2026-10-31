@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "このフォルダーで他の{{count}}件のセッションが作業中",
     "others_other": "このフォルダーで他の{{count}}件のセッションが作業中",
+    "othersIdle_one": "このフォルダーで他の{{count}}件のセッションが開いています（待機中）",
+    "othersIdle_other": "このフォルダーで他の{{count}}件のセッションが開いています（待機中）",
     "waitingApproval_one": "他の{{count}}件のセッションが承認待ち",
     "waitingApproval_other": "他の{{count}}件のセッションが承認待ち",
     "waitingApprovalOne": "承認待ち",
