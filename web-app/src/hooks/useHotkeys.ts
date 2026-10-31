@@ -41,7 +41,6 @@ export function useKeyboardShortcut({
     return ctrlKey
   }, [ctrlKey, usePlatformMetaKey])
   const router = useRouter()
-  const pathname = router.state.location.pathname
   // Read at keypress time, so a new callback or route list each render does
   // not tear the window listener down and put it back.
   const callbackRef = useRef(callback)
@@ -57,7 +56,8 @@ export function useKeyboardShortcut({
       // a command. Also stand down for an event something already handled.
       if (e.defaultPrevented || useKeybindings.getState().recording) return
       // Check if we're on an excluded route
-      if (excludeRoutesRef.current.includes(pathname)) {
+      // The route at keypress time, not the one of the last render (P2F-012).
+      if (excludeRoutesRef.current.includes(router.state.location.pathname)) {
         // console.warn('Excluded route, not executing shortcut')
         return
       }
@@ -84,6 +84,6 @@ export function useKeyboardShortcut({
     effectiveCtrlKey,
     altKey,
     shiftKey,
-    pathname,
+    router,
   ])
 }

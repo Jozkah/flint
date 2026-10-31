@@ -65,7 +65,9 @@ export async function listSubagents(): Promise<SubagentDefinition[]> {
   try {
     cache = await invoke<SubagentDefinition[]>('agent_subagent_list')
   } catch {
-    cache = []
+    // Not cached: a transient failure must not hide saved definitions until
+    // restart (F7x1-010).
+    return []
   }
   return cache
 }

@@ -1,5 +1,6 @@
 {
   "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message.",
   "welcome": "Hi, how are you?",
   "description": "How can I help you today?",
   "startedAt": "Started {{time}}",

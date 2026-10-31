@@ -19,6 +19,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
 import { whenExtensionsLoaded } from '@/lib/extensionEvents'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
+import { errorText } from '@/lib/errorText'
 import { getProviderApiType } from '@/lib/providerCaps'
 import { useAppState } from '@/hooks/useAppState'
 import {
@@ -632,6 +633,10 @@ export function useLocalApiAutoStart(serviceHub: ServiceHub) {
           })()
 
           if (modelsToStart.length > 0) {
+            // Removed together after every start settled: each failure
+            // filtering the list captured at mount kept only its own removal
+            // (LIBC-035).
+            const unloadable: { model: string; provider: string }[] = []
             await Promise.allSettled(
               modelsToStart.map(async ({ model, provider: providerName }) => {
                 const provider = getProviderByName(providerName)
@@ -647,16 +652,25 @@ export function useLocalApiAutoStart(serviceHub: ServiceHub) {
                   console.warn(`Failed to auto-start server model ${model}:`, err)
                   // A picture or video model cannot load in the chat engine, so
                   // trying it again at every launch only repeats the error.
-                  if (/image or video generation model/.test(JSON.stringify(err))) {
-                    setLastServerModels(
-                      lastServerModels.filter(
-                        (m) => !(m.model === model && m.provider === providerName)
-                      )
-                    )
+                  // errorText: JSON.stringify of an Error is `{}` (LIBC-034).
+                  if (/image or video generation model/.test(errorText(err))) {
+                    unloadable.push({ model, provider: providerName })
                   }
                 }
               })
             )
+            if (unloadable.length > 0) {
+              setLastServerModels(
+                useLocalApiServer
+                  .getState()
+                  .lastServerModels.filter(
+                    (m) =>
+                      !unloadable.some(
+                        (u) => u.model === m.model && u.provider === m.provider
+                      )
+                  )
+              )
+            }
           }
 
           return guardServerStart(
