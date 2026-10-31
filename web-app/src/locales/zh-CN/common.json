@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}。已将分组文件夹加入文件夹上下文；访问仍需批准",
       "foldersAdded": "{{base}}。已将项目文件夹加入分组"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "未命名分组",
+    "folderNotInspected": "无法检查文件夹"
   },
   "htmlArtifact": {
     "code": "代码",
@@ -144,7 +144,7 @@
   "modelProviders": "模型提供商",
   "localProviders": "本地",
   "remoteProviders": "远程",
-  "manageProviders": "Manage providers",
+  "manageProviders": "管理提供商",
   "hiddenProviders": "{{count}} disabled",
   "hideProvider": "隐藏提供商",
   "showProvider": "显示提供商",
@@ -334,7 +334,7 @@
       "threads": "对话"
     },
     "openItem": "打开 {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "打开 Studio"
   },
   "searchGroup": {
     "pages": "页面",
@@ -678,7 +678,7 @@
       "pairedHint": "此模型可以接收图像输入。投影器在导入模型时选定；如需使用其他投影器，请重新导入。",
       "noneHint": "没有视觉投影器，此模型无法读取图像。请在启用多模态的情况下重新导入模型并选择其 mmproj 文件；与模型文件放在一起的投影器会被自动识别。"
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "自动适配正在选择 GPU 层数。请关闭自动适配后再手动设置。",
     "samplingDefaults": {
       "title": "默认采样参数",
       "description": "此模型的默认采样器设置。除非被助手级或请求级设置覆盖，否则将使用这些值。"
@@ -891,8 +891,8 @@
         "failed": "无法获取网页：{{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "无法加载此项目的文件。",
+    "retryLoad": "重试"
   },
   "attachmentsIngestion": {
     "title": "选择附件的导入方式",
@@ -1056,11 +1056,11 @@
     "chunksCount": "{{count}} 个分块"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp 仍在忙碌",
+    "description": "一个或多个模型未能及时卸载。强制退出将终止 llama.cpp，并可能中断正在进行的响应。",
+    "forceQuit": "强制退出",
+    "forcing": "正在强制退出…",
+    "shuttingDown": "正在关闭…"
   },
   "duration": {
     "seconds": "{{count}}秒",
@@ -1087,8 +1087,8 @@
     "thisChat": "此聊天",
     "thisRoom": "此房间",
     "thisSession": "此会话",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "缺少 API 密钥",
+    "keyMissingDescription": "{{subject}} 使用的提供商尚未设置 API 密钥。请在设置中添加密钥，或选择其他模型以继续。"
   },
   "skillsUsedCount_one": "使用了 {{count}} 个技能",
   "skillsUsedCount_other": "使用了 {{count}} 个技能",
@@ -1149,8 +1149,8 @@
     "alsoAttached": "其他附加",
     "addFolder": "添加其他文件夹",
     "removeFolder": "移除 {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "将 {{folder}} 设为只读",
+    "makeEditable": "将 {{folder}} 设为可编辑",
     "readOnly": "只读",
     "editable": "可编辑",
     "inWorktree": "通过 worktree",
@@ -1158,8 +1158,8 @@
     "footnoteWorktree": "Flint 更改的是此文件夹的 git worktree，绝不直接更改文件夹本身。",
     "writesFolder": "附加的文件夹",
     "writesFolderNote": "编辑直接写入标记为可编辑的文件夹。",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "标记为可编辑的文件夹",
+    "writesExtrasNote": "主文件夹保持只读；编辑只会写入其他标记为可编辑的文件夹。",
     "writesWorktree": "会话 worktree",
     "writesWorktreeNote": "编辑写入 git worktree，供你审阅并合并。",
     "footnote": "Agent 会直接读取和编辑此文件夹。可在 diff 面板中查看更改内容。",
@@ -1241,10 +1241,10 @@
     "compactFailed": "暂无可压缩的内容。",
     "newSession": "新会话",
     "compactSuperseded": "压缩期间对话发生了变化，因此未替换任何内容。请重新压缩。",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "压缩失败：{{reason}}。你的对话未发生更改。",
+    "compactDone": "已压缩。摘要由 {{model}} 生成。",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "对话已继续进行，因此无法再撤销此次压缩。",
     "btwFailed": "无法回答旁支问题。"
   },
   "autoCompactNeedsWindow": "自动压缩需要上下文大小，而 Flint 找不到 {{model}} 的上下文大小。请为此模型设置最大上下文 Token 数，以便长聊天在填满之前被压缩。如果提供商因长度拒绝请求，Flint 会压缩并重试一次。",
@@ -1273,8 +1273,8 @@
     "interruptedNoReply_other": "已保留 {{calls}} 个已完成的步骤。",
     "interruptedContinue": "继续",
     "interruptedDiscard": "丢弃未完成的回复并继续",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "你离开期间：",
+    "recapDismiss": "关闭回顾"
   },
   "modelNoTools": "{{model}} 无法调用工具，因此不能作为 Agent 使用。请选择支持工具调用的模型。",
   "sessionModelUnavailable": "{{model}} 已不可用。请在模型菜单中选择其他模型。",
@@ -1386,7 +1386,7 @@
     "chooseAgainAction": "重新选择",
     "externalGone": "此文件是从项目之外打开的，该访问权限未能保留。请重新选择它以再次打开。",
     "oneFolderAtATime": "一次只能添加一个文件夹。未添加“{{name}}”。",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "无法打开 {{name}}。"
   },
   "settingsSearch": {
     "label": "搜索设置",
@@ -2154,29 +2154,29 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "上下文压缩",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "后台任务",
+      "tokenUsage": "Token 用量",
+      "fellBack": "提供商已回退",
+      "fellBackDetail": "{{from}} 未响应；正在尝试 {{to}}",
+      "theModel": "该模型",
+      "nextProvider": "下一个提供商",
+      "requestFailed": "请求失败",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "reasoningCharacters_one": "{{count}} 个字符的推理",
+      "reasoningCharacters_other": "{{count}} 个字符的推理",
+      "toolCalls_one": "{{count}} 次工具调用",
+      "toolCalls_other": "{{count}} 次工具调用",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "运行已开始",
+      "runEnded": "运行已结束",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "智能体已结束",
+      "jobStarted": "后台任务已开始",
+      "jobEnded": "后台任务已结束"
     }
   },
   "appRail": {
@@ -2363,15 +2363,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "智能体浏览器",
+    "note": "智能体自带临时浏览器的只读视图。不使用 Flint 的预览。",
+    "lastAction": "最后操作：{{action}}",
+    "screenshotAlt": "智能体浏览器中的页面",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "隐藏智能体浏览器",
+    "tabs": "智能体浏览器标签页",
+    "waiting": "正在等待页面的第一张图片…"
   },
   "browserVerify": {
     "title": "在浏览器中验证",
@@ -2409,23 +2409,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "决策模型",
+    "backendLabel": "由谁回答",
+    "backendExplained": "默认使用 Jev (TypeSafe)。也可以选择你已在 Flint 中拥有的开源模型：本地 llama.cpp 或 MLX 模型，或任何兼容 OpenAI 的提供商，包括自托管的开放权重模型。它回答的是同样的有限选项；任何不恰好是其中之一的回答都会被忽略，由 Flint 决定。",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "开源模型",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Von、Laya、Kev 或 Rizzo Flow 等小型类型化决策模型：将该模型兼容 OpenAI 的端点添加为提供商（或在本地加载），然后在下方选择。",
+    "backendPresetMissing": "{{name}} 尚未配置。请将其兼容 OpenAI 的端点添加为提供商，或在本地加载，然后在下方选择。在此之前将使用 Jev。",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "选择模型",
+    "backendModelSearch": "搜索模型",
+    "backendModelEmpty": "没有可用的模型。请先添加提供商或加载本地模型。",
+    "backendModelEmptySearch": "没有与“{{query}}”匹配的模型",
+    "backendNoModel": "未选择模型：在你选择之前将使用 Jev。",
+    "backendLocal": "在本机或你的本地网络上运行：决策文本不会发送给 TypeSafe 或任何云服务。",
+    "backendRemote": "下方每个选择加入项所列的相同文本将发送给 {{provider}}，而不是 TypeSafe。",
     "automationTitle": "自动选择",
     "routeToggle": "路由到合适的助手",
     "routeExplained": "当“技能建议”开启时，Jev 可以针对每条新消息把仍在 Flint 上的对话转移到 Quartz、Coal、Blaze 或 Redstone。关闭时，你选择的助手对每条消息都保持不变。你自己选择的助手无论如何都不会被更改。",
@@ -2522,9 +2522,9 @@
   "coworkParallel": {
     "settingTitle": "Git 文件夹中的新会话在各自的 worktree 中工作",
     "settingDescription": "连接到 Git 仓库的每个新会话都会获得自己的 worktree 和分支（flint/<title>），这样多个会话可以同时在同一文件夹中工作，互不干扰，也不会触碰你的检出。可在会话中审查、合并或丢弃每个分支。",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "从我当前的分支启动工作树",
+    "baseDescription": "关闭（默认）：新工作树从仓库的默认分支开始。开启：从你已检出的提交开始，因此会包含尚未推送的提交。明确指定的分支（例如由智能体指定）始终优先。",
+    "resumeGone": "无法重新进入此会话的工作树（{{reason}}），因此已回到仅审阅状态。没有重新创建任何内容。",
     "branchTitle": "此会话在自己的 worktree 中使用分支 {{branch}}",
     "basedOn": "基于 {{base}}",
     "openFolder": "打开文件夹",
@@ -2597,12 +2597,12 @@
     "noneForProvider": "此提供商没有可调参数。",
     "maybeUnsupported": "{{providers}} 可能不支持",
     "modelReports": "模型：{{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "没有覆盖项 — 使用模型默认值。",
+    "unrecognized_one": "已隐藏 {{count}} 个无法识别的参数：{{keys}}",
+    "unrecognized_other": "已隐藏 {{count}} 个无法识别的参数：{{keys}}",
+    "notSupportedStripped": "不支持 — 发送时将被移除",
+    "mayBeIgnored": "此提供商可能会忽略",
+    "notSupportedSkipped": "不支持 — 将被跳过。",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2622,72 +2622,72 @@
     "chooseNote": "在你确认之前不会复制任何内容。JAN 的数据永远不会被修改或删除。",
     "copyDescription": "为下方勾选的项目，将你的 JAN 对话、设置和提供商密钥复制到 Flint。JAN 本身不会被更改或删除。",
     "freshDescription": "以空白状态启动 Flint。不会读取或复制 JAN 的任何内容，包括其提供商密钥，现在和以后启动都是如此。你随时可以在设置的数据文件夹中导入。",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "从 JAN 迁移",
+    "descriptionNoLegacy": "将你现有的 JAN 数据带入 Flint。",
+    "descriptionFound": "Flint 发现了现有的 JAN 安装。请选择如何迁移你的数据。",
+    "detecting": "正在查找现有的 JAN 安装…",
+    "noData": "在此计算机上未找到 JAN 数据。没有可迁移的内容 — 你可以直接开始使用 Flint。",
+    "foundAt": "在 {{path}} 找到 JAN 数据（{{size}}）。",
+    "whatToBring": "要迁移的内容",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "如果某项在 Flint 中已存在",
+    "conflictAria": "冲突处理",
+    "resolveAria": "解决冲突",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "复制到 Flint"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "复用 JAN 数据",
+        "description": "让 Flint 直接指向你现有的 JAN 数据，不进行复制。"
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "移动到 Flint",
+        "description": "复制到 Flint，并在每一项都成功后删除 JAN 源数据。会保留备份，以便你回滚。"
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "全新开始"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "对话与助手",
+      "models": "已下载的模型与引擎",
+      "configs": "配置文件",
+      "settings": "设置与提供商凭据",
+      "common": "扩展、日志与缓存",
+      "agent": "智能体工作区与房间"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "保留现有的 Flint 项",
+      "use_jan": "用 JAN 项覆盖",
+      "keep_both": "两者都保留（JAN 副本会加后缀）"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "此 JAN 数据报告的架构不被此 Flint 版本完全支持。继续之前请查看警告。",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "预计大小",
+    "reusePath": "复用路径",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Flint 副本较新（已保留）",
+    "running": "正在迁移你的数据… 请勿关闭 Flint。",
+    "complete": "迁移完成。",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "你的 JAN 数据备份已保留在 {{path}}。",
+    "restartNeeded": "重启 Flint 以开始使用这些数据。",
+    "reuseInPlace": "Flint 现在直接使用位于 {{path}} 的 JAN 数据。",
+    "failed": "迁移未完成。",
+    "unknownError": "发生未知错误。",
+    "rolledBackNote": "你的数据已回滚到之前的状态。",
+    "quarantined": "部分数据已隔离在 {{path}}。",
+    "notNow": "暂不",
+    "dontAskAgain": "不再询问",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "全新开始",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2932,27 +2932,27 @@
     "openProvider": "打开提供商设置",
     "errorDetails": "详情",
     "pasteHint": "剪贴板访问被阻止。请点击文本框并按 {{keys}}。",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "长文本可能超出模型处理范围。如果翻译失败或提前中断，请将其拆分。",
     "swapNeedsSource": "选择源语言后才能互换"
   },
   "markdownImage": {
     "load": "从 {{host}} 加载图片"
   },
   "messageSaveFailed": "无法保存消息，重启后可能丢失。",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "无法将机密保存到系统钥匙串。更改已还原。",
+  "keptChat": "已保留的对话",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "你的视频已就绪",
+    "imageReady": "你的图片已就绪",
+    "stoppedWaiting": "已停止等待。{{provider}} 可能仍在渲染，在其完成前新请求可能会被拒绝。",
+    "providerFallback": "提供商",
+    "pictureInChat": "该图片正在某个对话中使用。该对话将无法再查看或编辑它。"
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "应用日志 - Flint",
+    "systemMonitor": "系统监视器 - Flint",
+    "localApiServerLogs": "本地 API 服务器日志 - Flint"
   },
   "threadSaveFailed": "无法保存对此对话的更改，已还原。",
   "attachmentsProcessFailed": "无法准备附件，因此消息未发送",
@@ -3239,89 +3239,89 @@
   "chatRules": "规则",
   "chatRuleForThisChat": "在此对话中使用此规则",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "移交到另一台计算机…",
+    "saved": "移交已保存。有 {{count}} 项凭据未包含在内，且仅记录了文件夹名称而非位置。",
+    "failed": "无法保存移交：{{message}}",
+    "label": "从另一台计算机移交",
+    "title": "此会话是从另一台计算机移交而来的。",
+    "checkFailed": "无法检查所附加的文件夹：{{error}}",
+    "folderMatches": "所附加的文件夹与该会话工作所在的文件夹一致（{{name}}）。",
+    "folderDiffers": "所附加的文件夹不是该会话工作所在的文件夹：{{differences}}。",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "分支 {{branch}}，提交 {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "此会话在名为 {{name}} 的文件夹中工作。请在这台计算机上附加该文件夹以继续。",
+      "folderAt": "此会话在名为 {{name}} 的文件夹中工作（{{at}}）。请在这台计算机上附加该文件夹以继续。",
+      "provider": "这台计算机上未设置提供商 {{provider}}，因此无法使用该会话的模型。请选择其他模型以继续。",
+      "model": "在这台计算机上，{{provider}} 未提供模型 {{id}}。请选择其他模型以继续。"
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "它名为 {{actual}}，而不是 {{expected}}",
+      "branch": "它位于分支 {{actual}}，而不是 {{expected}}",
+      "noBranch": "它不在任何分支上，而不是 {{expected}}",
+      "head": "它位于提交 {{actual}}，而不是 {{expected}}",
+      "noHead": "它没有任何提交，而不是 {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "无法加载此图片。",
+  "attachedImage": "附加的图片 {{n}}",
+  "saveChanges": "保存更改",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "正在加载模型…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "失败，耗时"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "网页搜索",
+    "embeddings": "嵌入模型（用于 RAG/向量，不用于聊天）",
+    "raw_completion": "原始补全（续写你的文本，无聊天或工具）"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "切换助手（{{shortcut}}）",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "逆向工程",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "同一文件",
+      "nested": "文件夹及其内部内容",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "重新生成的文件"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "{{id}} 可修改的内容（以逗号分隔）",
+    "bothChange": "{{a}} 和 {{b}} 都会修改：",
+    "legend": "如何处理 {{a}} 和 {{b}}",
+    "serializeAb": "先运行 {{a}}，再运行 {{b}}",
+    "serializeBa": "先运行 {{b}}，再运行 {{a}}",
+    "revise": "更改 {{id}} 可修改的内容",
+    "parallel": "仍然并行运行（会记录；每项更改在应用前仍会经过审查和检查）",
+    "region": "重叠的团队任务",
+    "headline": "这些任务会修改相同的路径，且没有任何顺序约束。尚未运行任何任务。",
+    "caveat": "按各任务声明的路径进行比较，而非阅读代码：此处没有重叠并不代表这些更改能够兼容。",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "不运行这些任务"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "toggleSnippet": "切换片段",
+    "documents_one": "{{count}} 条文档引用",
+    "documents_other": "{{count}} 条文档引用",
+    "web_one": "{{count}} 个网页来源",
+    "web_other": "{{count}} 个网页来源",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "{{files}} 只有一部分能放入一条消息。",
+    "readFailed": "无法读取 {{name}}：{{error}}",
+    "remoteImagesOnly": "只能向服务器会话发送图片；请移除其他媒体文件。"
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3330,37 +3330,37 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "filesChanged_one": "已更改 {{count}} 个文件",
+    "filesChanged_other": "已更改 {{count}} 个文件",
+    "mediaFiles_one": "{{count}} 个媒体文件",
+    "mediaFiles_other": "{{count}} 个媒体文件",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "此会话未选择模型。",
+    "toolsFailed": "此模型在 {{date}} 的测试中工具调用失败。",
+    "toolsFailedDetail": "此模型在 {{date}} 的测试中工具调用失败：{{detail}}。",
+    "noToolSupport": "所选模型无法调用工具，因此 Cowork 只能与其聊天。",
+    "modelToolsWorked": "已选择模型。在 {{date}} 的测试中工具调用正常；这只是一次探测，并不保证适用于所有任务。",
+    "modelSelected": "已选择模型。提供商是否响应会在运行开始时检查。",
+    "contextWindow": "上下文窗口：{{tokens}} 个 token。",
+    "contextUnknown": "找不到此模型的上下文窗口，因此 Flint 无法在其占满之前发出警告。",
+    "mcpOffered_one": "设置中的 {{count}} 个 MCP 服务器会提供给 Cowork 运行，并在发送消息时连接。",
+    "mcpOffered_other": "设置中的 {{count}} 个 MCP 服务器会提供给 Cowork 运行，并在发送消息时连接。",
+    "mcpNone": "未配置 MCP 服务器。",
+    "localReady": "当运行需要该模型时，会启动本地运行时。",
+    "localAbsent": "所选模型不在本地运行。"
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "正在保存记忆",
+    "readingMemory": "正在读取记忆",
+    "readingSkill": "正在读取技能",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "已使用技能",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} 个子智能体正在工作",
+    "subagentsWorking_other": "{{count}} 个子智能体正在工作",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3381,20 +3381,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "已存在使用此 ID 的会话",
+    "assistantExists": "已存在使用此 ID 的助手"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "描述此项目",
+    "continue": "继续 FLINT.md 草稿",
+    "description": "Flint 读取了该文件夹的清单和布局，没有运行任何内容。请编辑描述；只有在你接受后，它才会成为该文件夹的 FLINT.md。",
+    "surveying": "正在勘察文件夹…",
+    "surveyed": "已勘察 {{seen}} 个文件，读取了 {{read}} 个。尚未写入任何内容。",
+    "wrote": "已写入 FLINT.md",
+    "discarded": "草稿已丢弃。未写入任何内容。",
+    "notRead": "勘察时未读取的内容",
+    "discard": "丢弃草稿",
+    "resurvey": "重新勘察",
+    "accept": "接受并写入 FLINT.md"
   }
 }

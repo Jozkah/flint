@@ -24,12 +24,12 @@
     "description": "オフの場合、他のセッションには、このセッションがメッセージを受け付けないことが通知され、送信されたものは届きません。"
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "配信前に確認する",
+    "description": "オンにすると、他のセッションからの各メッセージはここで待機し、承認または拒否するまで配信も開始もされません。5 分以内に応答しなかったメッセージは破棄され、送信元に通知されます。メッセージを受け付けている間のみ有効です。"
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "ネストされたチャットの開始前に確認する",
+    "description": "オンにすると、エージェントがネストされたチャット(spawn_session)を開始しようとするたびに、先に確認します。既定ではオフです。worktree のないネストされたチャットは、フォルダーへのアクセス権もこのセッションの許可も持たずに開始します。"
   },
   "subagentQuestion": {
     "title": "{{name}} からエージェントへの質問",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{session}} に {{count}} 件",
   "waitingIn_other": "{{session}} に {{count}} 件",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "承認待ちのメッセージ",
+    "banner": "承認待ち({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "ステータス通知",
+    "expires": "{{minutes}} 分後に期限切れ",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "{{name}} からのメッセージを承認",
+    "denyLabel": "{{name}} からのメッセージを拒否"
   }
 }

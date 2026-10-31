@@ -1347,11 +1347,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "내 컴퓨터에 연결",
+    "intro": "컴퓨터의 Flint에서 원격 액세스를 켠 다음 주소를 입력하거나 페어링 링크를 붙여넣으세요.",
+    "address": "컴퓨터 주소",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "이 컴퓨터의 새 인증서 신뢰"
   }
 }
