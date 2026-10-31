@@ -41,10 +41,10 @@
     "gitRemote": "Flint ingin menjalankan {{command}}, yang mengubah {{target}}",
     "gitDestructive": "Flint ingin menjalankan {{command}}, yang dapat menghilangkan pekerjaan",
     "approveCampaign": "Flint ingin memulai campaign \"{{title}}\" ({{count}} tugas)",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint ingin menjalankan alur kerja: {{agents}} agen dalam {{phases}} fase",
+    "spawnWorktree": "Flint ingin memulai obrolan bertingkat yang dapat mengubah file di worktree baru dari {{folder}} (cabang {{branch}})",
+    "spawnChat": "Flint ingin memulai obrolan bertingkat bernama \"{{title}}\"",
+    "enterWorktree": "Flint ingin memindahkan akses tulis sesi ini ke sebuah worktree: {{folder}} (cabang {{branch}}, berdasarkan {{base}})",
     "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya",
     "changeFileOutside": "Flint ingin mengubah {{target}}, yang berada di luar {{workspace}}",
     "changeManyFilesOutside": "Flint ingin mengubah {{count}} berkas, sebagian di luar {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Mengirim perubahan ke repositori jarak jauh yang dapat dilihat orang lain. Flint bertanya setiap kali kecuali Anda mengizinkan sementara aksi Git jarak jauh biasa untuk percakapan ini.",
     "gitDestructive": "Apa yang dihapus atau ditimpanya mungkin tidak dapat dipulihkan.",
     "campaignPlan": "Ini memulai sesi terpisah, masing-masing di branch worktree sendiri, yang membaca dan mengubah file serta memakai kuota model Anda secara paralel. Menyetujui rencana tidak menyetujui panggilan apa pun yang dibuat tugas. Flint bertanya setiap kali.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Ini memulai sejumlah subagen tersebut, fase demi fase, yang membaca dan mengubah file serta memakai kuota model Anda. Flint selalu bertanya untuk alur kerja sebesar ini.",
+    "spawnWorktree": "Obrolan bertingkat membaca dan mengubah file di cabangnya sendiri pada proyek ini, memakai kuota model Anda, dan terus berjalan saat Anda mengerjakan hal lain. Perubahannya tetap di cabang itu sampai Anda menggabungkannya. Flint selalu bertanya.",
+    "spawnChat": "Obrolan bertingkat adalah sesi baru yang memakai kuota model Anda dan terus berjalan saat Anda mengerjakan hal lain. Ia dimulai tanpa akses folder. Flint selalu bertanya karena Anda mengaktifkan \"Tanya sebelum obrolan bertingkat dimulai\" untuk sesi ini.",
+    "enterWorktree": "Sesi ini hanya dapat membaca dan mengubah file di worktree itu pada cabangnya sendiri, bukan di folder proyek Anda. Perubahannya tetap di cabang itu sampai Anda menggabungkannya. Flint selalu bertanya.",
     "spendPause": "Proses terus memakai kuota model berbayar sampai selesai atau mencapai batasnya. Menolak akan menghentikannya."
   },
   "repeat": {
@@ -396,11 +396,11 @@
     "session": "Izinkan untuk percakapan ini"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "Menunggu persetujuan Anda: {{tool}}",
+    "waitBody": "Proses dijeda selama {{seconds}} dtk sampai Anda mengizinkan atau menolaknya.",
+    "destructive": "Perintah destruktif: {{reason}}. Ditanyakan meskipun alat ini diizinkan.",
+    "selfApproval": "{{tool}} menyetujui perintah di {{server}} sendiri. Hanya Anda yang dapat menyetujuinya, jadi selalu ditanyakan setiap kali.",
+    "sensitive": "Panggilan alat sensitif: tinjau tindakannya sebelum mengizinkan.",
+    "autoPause": "{{count}} panggilan alat berjalan tanpa bertanya. Lanjutkan?"
   }
 }

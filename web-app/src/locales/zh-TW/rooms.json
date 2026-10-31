@@ -649,5 +649,5 @@
     "ranToolsDropped": "它們的輸出已被捨棄,以符合上下文視窗。",
     "ranToolsRetry": "隨後供應商發生錯誤,請求正在重試。"
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "刪除聊天室失敗"
 }

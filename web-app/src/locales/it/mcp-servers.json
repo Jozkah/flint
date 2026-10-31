@@ -275,13 +275,13 @@
   "autoApproveServerHint": "Approva automaticamente solo gli strumenti di questo server. L'interruttore per tutti gli strumenti MCP è in Impostazioni > Permessi.",
   "allowAllMoved": "L'interruttore che consente di eseguire tutti gli strumenti MCP senza chiedere è in Impostazioni > Permessi.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} ha bisogno del tuo input",
+    "urlTitle": "{{server}} vuole aprire una pagina",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "I campi nascosti vanno solo a {{server}}. Non vengono mostrati nella chat.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Apri pagina"
   }
 }

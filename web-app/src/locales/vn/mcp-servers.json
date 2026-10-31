@@ -275,13 +275,13 @@
   "autoApproveServerHint": "Chỉ tự động duyệt công cụ của máy chủ này. Công tắc cho mọi công cụ MCP nằm ở Cài đặt > Quyền.",
   "allowAllMoved": "Công tắc cho phép mọi công cụ MCP chạy mà không cần hỏi nằm ở Cài đặt > Quyền.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} cần thông tin từ bạn",
+    "urlTitle": "{{server}} muốn mở một trang",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Các trường ẩn chỉ được gửi đến {{server}}. Chúng không hiển thị trong cuộc trò chuyện.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Mở trang"
   }
 }

@@ -150,7 +150,7 @@
     "context": "Konteks",
     "autoCompactAt": "Auto-compact pada {{percent}}%",
     "autoCompactOff": "Auto-compact mati",
-    "autoCompact": "Auto-compact",
+    "autoCompact": "Pemadatan otomatis",
     "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks. Atur Max Context Tokens untuk model ini.",
     "changes": "Perubahan",
     "changesSession": "Ukuran diff diketahui untuk pengeditan yang dibuat sejak Flint dimulai.",
@@ -244,13 +244,13 @@
   },
   "breakdown": {
     "messages": "Messages",
-    "systemTools": "System tools",
-    "mcpTools": "MCP tools",
+    "systemTools": "Alat sistem",
+    "mcpTools": "Alat MCP",
     "skills": "Skills",
-    "memory": "Memory files",
-    "systemPrompt": "System prompt",
+    "memory": "File memori",
+    "systemPrompt": "Prompt sistem",
     "unmeasured": "Unmeasured",
     "more": "{{count}} more",
-    "windowUnknown": "{{used}} tokens (window unknown)"
+    "windowUnknown": "{{used}} token (jendela tidak diketahui)"
   }
 }

@@ -649,5 +649,5 @@
     "ranToolsDropped": "它们的输出已被丢弃,以适应上下文窗口。",
     "ranToolsRetry": "随后提供商出错,请求正在重试。"
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "删除房间失败"
 }

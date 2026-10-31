@@ -24,12 +24,12 @@
     "description": "Kapalıyken, diğer oturumlara bunun mesaj almadığı söylenir ve gönderdikleri hiçbir şey ona ulaşmaz."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Teslim etmeden önce bana sor",
+    "description": "Açıkken, başka bir oturumdan gelen her mesaj onaylamanız veya reddetmeniz için burada bekler. Siz onaylayana kadar hiçbir şey teslim edilmez veya başlatılmaz; 5 dakika içinde yanıtlamadığınız mesaj atılır ve göndericiye bildirilir. Yalnızca mesajlar kabul edilirken geçerlidir."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "İç içe sohbetler başlamadan önce bana sor",
+    "description": "Açıkken, ajan her iç içe sohbet başlatmak istediğinde (spawn_session) önce size sorar. Varsayılan olarak kapalıdır: worktree'siz bir iç içe sohbet, klasör erişimi ve bu oturumun hiçbir izni olmadan başlar."
   },
   "subagentQuestion": {
     "title": "{{name}} ajana soruyor",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{session}} içinde {{count}} ileti",
   "waitingIn_other": "{{session}} içinde {{count}} ileti",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Onay bekleyen mesajlar",
+    "banner": "Onayınız bekleniyor ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Durum bildirimi",
+    "expires": "{{minutes}} dk içinde sona erer",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "{{name}} kişisinin mesajını onayla",
+    "denyLabel": "{{name}} kişisinin mesajını reddet"
   }
 }

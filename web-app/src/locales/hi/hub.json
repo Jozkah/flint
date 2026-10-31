@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "आपके डिवाइस पर आराम से चलना चाहिए"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "धीमा हो सकता है",
+      "detail": "चलेगा लेकिन मेमोरी की गुंजाइश बहुत कम बचेगी"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "फिट नहीं होगा",
+      "detail": "संभवतः आपकी उपलब्ध मेमोरी से अधिक है"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "फिट अज्ञात",
+      "detail": "मेमोरी आवश्यकताओं का अनुमान नहीं लगाया जा सका"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "डिवाइस संगतता: {{label}}",
+    "variantInfo": "मॉडल वेरिएंट की जानकारी",
+    "modelInfo": "मॉडल की जानकारी",
+    "defaultQuantization": "डिफ़ॉल्ट क्वांटाइज़ेशन",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "डिवाइस संगतता",
+    "estimateNote": "फ़ाइल आकार और आपके हार्डवेयर से अनुमानित। वास्तविक प्रदर्शन क्वांटाइज़ेशन और कॉन्टेक्स्ट लंबाई पर निर्भर करता है।",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "कॉन्टेक्स्ट मेमोरी मॉडल फ़ाइल से पढ़ी गई।",
+      "fromSize": "कॉन्टेक्स्ट मेमोरी का अनुमान फ़ाइल आकार से लगाया गया।",
+      "sizeEstimated": "फ़ाइल आकार का अनुमान पैरामीटर से लगाया गया।",
+      "gpuOff": "आपके द्वारा बंद किया गया GPU गिना नहीं जाता।"
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "पूर्ण प्रेसिज़न",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "अज्ञात क्वांटाइज़ेशन",
+      "full": "सर्वोच्च गुणवत्ता, बहुत बड़ी मेमोरी खपत",
+      "q8": "मूल के निकट गुणवत्ता, बड़ी मेमोरी खपत",
+      "q6": "मध्यम कम्प्रेशन के साथ बहुत उच्च गुणवत्ता",
+      "q5": "उच्च गुणवत्ता और गुणवत्ता/आकार का बेहतरीन संतुलन",
+      "recommended": "अधिकांश सिस्टम के लिए गुणवत्ता, गति और मेमोरी का अनुशंसित संतुलन",
+      "q4": "रोज़मर्रा के लोकल इन्फ़रेंस के लिए संतुलित आकार और गुणवत्ता",
+      "q3": "छोटा और तेज़, गुणवत्ता में ध्यान देने योग्य समझौते के साथ",
+      "q2": "बहुत छोटी खपत, लेकिन गुणवत्ता में सबसे बड़ा समझौता",
+      "other": "क्वांटाइज़्ड GGUF मॉडल"
     }
   }
 }

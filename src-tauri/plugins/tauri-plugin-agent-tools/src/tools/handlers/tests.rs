@@ -3069,6 +3069,18 @@ async fn bash_command_takes_precedence_over_spurious_job_id() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// RQA-004: a model that calls the search term `query` still gets results.
+#[tokio::test]
+async fn grep_accepts_query_as_the_pattern() {
+    let root = unique_root();
+    std::fs::write(root.join("a.txt"), "needle here\n").unwrap();
+    let out = execute_builtin(lookup("grep").unwrap(), &json!({ "query": "needle" }), &root).await;
+    assert!(out.contains("a.txt"), "{out}");
+    let missing = execute_builtin(lookup("grep").unwrap(), &json!({ "path": "." }), &root).await;
+    assert!(missing.contains("missing required argument 'pattern'"), "{missing}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[tokio::test]
 async fn bash_missing_command_and_job_id_errors() {
     let root = unique_root();
