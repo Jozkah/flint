@@ -464,23 +464,23 @@ fn sweep_staging_older_than(base: &Path, age: std::time::Duration) {
 /// A file being replaced is first moved aside into the staging directory, so a
 /// failure part-way can put back every entry already moved -- the new file
 /// removed, the old one returned -- and leave the project as it was
-/// (Jozkah/jan#193). The caller removes `staging` afterwards either way.
+/// (Jozkah/jan#193). The caller removes `staging` afterwards, unless a
+/// roll-back failed and it was kept under another name (`keep_staging`).
 fn move_into_place(staging: &Path, base: &Path, paths: &[&str]) -> Result<(), HarnessError> {
     // Bundle paths live under the component roots, so this cannot collide.
     let aside = staging.join(".replaced");
-    let mut done: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
-    let undo = |done: Vec<(PathBuf, Option<PathBuf>)>| {
-        for (to, old) in done.into_iter().rev() {
-            let _ = std::fs::remove_file(&to);
-            if let Some(old) = old {
-                let _ = std::fs::rename(&old, &to);
-            }
+    let mut done: Vec<Moved> = Vec::new();
+    let undo = |done: Vec<Moved>, e: std::io::Error, path: &str| {
+        let what = format!("{path} could not be moved into place: {e}");
+        let left = roll_back(done);
+        if left.is_empty() {
+            return err(ErrorKind::Io, Stage::Persistence, what);
         }
+        err(ErrorKind::Io, Stage::Persistence, format!("{what}. {}", keep_staging(staging, base, &left)))
     };
     for path in paths {
         let from = staging.join(path);
         let to = base.join(path);
-        let fail = |e: std::io::Error| err(ErrorKind::Io, Stage::Persistence, format!("{path} could not be moved into place: {e}"));
         if let Some(parent) = to.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -492,21 +492,58 @@ fn move_into_place(staging: &Path, base: &Path, paths: &[&str]) -> Result<(), Ha
                 .map_or(Ok(()), std::fs::create_dir_all)
                 .and_then(|_| std::fs::rename(&to, &keep));
             if let Err(e) = moved_aside {
-                undo(done);
-                return Err(fail(e));
+                return Err(undo(done, e, path));
             }
             old = Some(keep);
         }
         if let Err(e) = std::fs::rename(&from, &to) {
-            if let Some(old) = &old {
-                let _ = std::fs::rename(old, &to);
+            // Nothing new is at `to`: only the file moved aside goes back.
+            if let Some(old) = old {
+                done.push(Moved { rel: path.to_string(), to: PathBuf::new(), old: Some(old), target: to });
             }
-            undo(done);
-            return Err(fail(e));
+            return Err(undo(done, e, path));
         }
-        done.push((to, old));
+        done.push(Moved { rel: path.to_string(), target: to.clone(), to, old });
     }
     Ok(())
+}
+
+/// One entry `move_into_place` put in place: the new file at `to` (empty
+/// when there is none to remove) and, when it replaced one, where the old
+/// file was moved aside to go back to `target`.
+struct Moved {
+    rel: String,
+    to: PathBuf,
+    old: Option<PathBuf>,
+    target: PathBuf,
+}
+
+/// Undo `done` newest first. Returns the bundle paths that could not be put
+/// back as they were (F1a-002); empty means the project is as it was.
+fn roll_back(done: Vec<Moved>) -> Vec<String> {
+    let mut left = Vec::new();
+    for m in done.into_iter().rev() {
+        let removed = m.to.as_os_str().is_empty() || std::fs::remove_file(&m.to).is_ok() || !m.to.exists();
+        let restored = m.old.as_ref().is_none_or(|old| std::fs::rename(old, &m.target).is_ok());
+        if !removed || !restored {
+            left.push(m.rel);
+        }
+    }
+    left
+}
+
+/// A roll-back left files out of place: keep the staging directory (it holds
+/// the replaced originals) under a name the stale-staging sweep never removes,
+/// and say where it is and which files need fixing by hand.
+fn keep_staging(staging: &Path, base: &Path, left: &[String]) -> String {
+    let kept = base.join(format!(".bundle-undo-{}", staging_id()));
+    let kept = if std::fs::rename(staging, &kept).is_ok() { kept } else { staging.to_path_buf() };
+    format!(
+        "Undoing the import also failed for {}; the original files are kept in {} (under .replaced) \
+         -- restore them by hand",
+        left.join(", "),
+        kept.display()
+    )
 }
 
 #[cfg(test)]
@@ -671,6 +708,42 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::Io);
         assert!(!base.join("skills/new.md").exists(), "a moved entry was left behind");
         assert_eq!(std::fs::read_to_string(base.join("skills/old.md")).unwrap(), "original\n");
+    }
+
+    /// F1a-002: a roll-back that cannot put a file back says so, and keeps
+    /// the staging directory (with the originals) out of the sweep's reach.
+    #[test]
+    fn a_failed_roll_back_names_the_files_and_keeps_staging() {
+        let dst = project("undo-fails");
+        let base = agent_dir(&dst);
+        put(&dst, "skills/new.md", "new\n");
+        let staging = base.join(".bundle-import-undo");
+        std::fs::create_dir_all(staging.join(".replaced/skills")).unwrap();
+        std::fs::write(staging.join(".replaced/skills/kept.md"), "original\n").unwrap();
+        let left = roll_back(vec![
+            Moved { rel: "skills/new.md".into(), to: base.join("skills/new.md"), old: None, target: base.join("skills/new.md") },
+            // The original it should restore is gone: this one stays out of place.
+            Moved {
+                rel: "skills/lost.md".into(),
+                to: PathBuf::new(),
+                old: Some(staging.join(".replaced/skills/missing.md")),
+                target: base.join("skills/lost.md"),
+            },
+        ]);
+        assert_eq!(left, ["skills/lost.md"]);
+        assert!(!base.join("skills/new.md").exists());
+        let why = keep_staging(&staging, &base, &left);
+        assert!(why.contains("skills/lost.md") && why.contains(".bundle-undo-"), "{why}");
+        assert!(!staging.exists());
+        let kept: Vec<_> = std::fs::read_dir(&base)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".bundle-undo-"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert!(kept[0].path().join(".replaced/skills/kept.md").is_file());
+        sweep_staging_older_than(&base, std::time::Duration::ZERO);
+        assert!(kept[0].path().exists(), "the sweep removed the kept originals");
     }
 
     #[test]
