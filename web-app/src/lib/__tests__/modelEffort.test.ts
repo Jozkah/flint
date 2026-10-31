@@ -70,8 +70,8 @@ describe('which levels a provider actually honours', () => {
     // llama.cpp sends no budget at all (unbounded): not a level.
     expect(effortProfile('llamacpp', model('qwen3')).recommended).toBeNull()
     expect(effortProfile('google', model('gemini-3-pro'))).toEqual({
-      levels: [],
-      recommended: null,
+      levels: ['low', 'high'],
+      recommended: 'high',
       canDisable: false,
     })
   })
@@ -84,8 +84,18 @@ describe('which levels a provider actually honours', () => {
     ['openai', 'o3', false, ['low', 'medium', 'high'], 'medium'],
     ['openai', 'gpt-5.2', false, EFFORT_LEVELS, 'medium'],
     ['anthropic', 'claude-opus-4-5', false, EFFORT_LEVELS, 'medium'],
-    ['anthropic', 'claude-opus-4-7', false, [], null],
-    ['gemini', 'gemini-2.5-pro', false, [], null],
+    ['anthropic', 'claude-opus-4-7', false, EFFORT_LEVELS, 'high'],
+    ['anthropic', 'claude-sonnet-4-6', false, ['low', 'medium', 'high'], 'high'],
+    ['anthropic', 'claude-haiku-5-5', false, [], null],
+    ['gemini', 'gemini-2.5-pro', false, EFFORT_LEVELS, null],
+    ['gemini', 'gemini-2.5-flash', false, ['low', 'medium', 'high'], null],
+    ['google', 'gemini-3-flash-preview', false, ['low', 'medium', 'high'], 'high'],
+    ['google', 'gemini-1.5-pro', false, [], null],
+    ['claude-cli', 'claude-opus-5-5', false, EFFORT_LEVELS, 'high'],
+    ['claude-cli', 'claude-sonnet-5-5', false, ['low', 'medium', 'high'], 'high'],
+    ['claude-cli', 'claude-haiku-4-5', false, [], null],
+    ['codex-cli', 'gpt-6.1-sol', false, EFFORT_LEVELS, 'medium'],
+    ['gemini-cli', 'gemini-2.5-pro', false, [], null],
     ['pxa', 'gpt-oss-120b', true, ['low', 'medium', 'high'], 'medium'],
     ['pxa', 'some-unknown-model', false, [], null],
   ] as const)(
@@ -242,18 +252,44 @@ describe('which levels a provider actually honours', () => {
     }
   })
 
-  it('offers none for an Anthropic model that reasons adaptively', () => {
-    // 4.6+ sizes its own thinking; a level changes nothing, so a control here
-    // would be four stops that all do the same thing.
+  it('offers the effort option for an Anthropic model that reasons adaptively', () => {
+    // 4.6+ sizes its own thinking; `effort` steers it. `xhigh` from Opus 4.7.
     for (const id of ['claude-opus-4-6', 'claude-sonnet-4-7']) {
-      expect(supportedEffortLevels('anthropic', model(id)), id).toEqual([])
-      expect(supportsEffort('anthropic', model(id)), id).toBe(false)
+      expect(supportedEffortLevels('anthropic', model(id)), id).toEqual([
+        'low',
+        'medium',
+        'high',
+      ])
     }
+    expect(supportedEffortLevels('anthropic', model('claude-opus-4-8'))).toEqual(
+      EFFORT_LEVELS
+    )
   })
 
-  it('offers none for Google, whose budget is dynamic rather than stepped', () => {
-    expect(supportedEffortLevels('google', model('gemini-3-pro'))).toEqual([])
-    expect(supportedEffortLevels('gemini', model('gemini-3-pro'))).toEqual([])
+  it('offers Google its thinking levels (3.x) or budgets (2.5)', () => {
+    expect(supportedEffortLevels('google', model('gemini-3-pro'))).toEqual([
+      'low',
+      'high',
+    ])
+    expect(supportedEffortLevels('gemini', model('gemini-3.1-pro-preview'))).toEqual(
+      ['low', 'high']
+    )
+  })
+
+  it('reads an overriding table when one is given', () => {
+    const rules = [
+      {
+        providers: ['google'],
+        match: /gemini-3-pro/,
+        profile: { levels: ['low' as const], recommended: null, canDisable: false },
+      },
+    ]
+    expect(effortProfile('google', model('gemini-3-pro'), rules).levels).toEqual([
+      'low',
+    ])
+    expect(effortProfile('google', model('gemini-2.5-pro'), rules).levels).toEqual(
+      []
+    )
   })
 
   it('offers none for a provider with no reasoning mapping at all', () => {

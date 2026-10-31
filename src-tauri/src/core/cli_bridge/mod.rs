@@ -253,6 +253,8 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
         .unwrap_or_else(|| backend.models().remove(0));
     let streaming = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let want_usage = body["stream_options"]["include_usage"].as_bool().unwrap_or(false);
+    // Validated against each CLI's own levels in `Backend::args`.
+    let effort = body.get("reasoning_effort").and_then(Value::as_str).map(str::to_string);
     let prompt = build_prompt(&body);
     let stdin_text = if prompt.system.is_empty() {
         format!("{}{}", backend.preamble(), prompt.transcript)
@@ -264,11 +266,12 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
     let start = move |stdin_text: String| {
         let (events_tx, events_rx) = mpsc::channel::<Event>(64);
         let run_model = model.clone();
+        let run_effort = effort.clone();
         let images = prompt.images.clone();
         tokio::spawn(async move {
             let gate = GATE.get_or_init(|| Semaphore::new(MAX_CONCURRENT));
             let _permit = gate.acquire().await;
-            backend::run(backend, &run_model, stdin_text, images, events_tx).await;
+            backend::run(backend, &run_model, run_effort.as_deref(), stdin_text, images, events_tx).await;
         });
         events_rx
     };
