@@ -24,12 +24,12 @@
     "description": "끄면 다른 세션에 이 세션이 메시지를 받지 않는다고 알리며, 보낸 메시지는 도달하지 않습니다."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "전달하기 전에 확인",
+    "description": "켜면 다른 세션에서 온 각 메시지가 여기서 대기하며, 승인하거나 거부할 때까지 전달되거나 시작되지 않습니다. 5분 안에 응답하지 않은 메시지는 삭제되고 발신자에게 알립니다. 메시지를 수락하는 동안에만 적용됩니다."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "중첩 채팅 시작 전에 확인",
+    "description": "켜면 에이전트가 중첩 채팅(spawn_session)을 시작하려 할 때마다 먼저 확인합니다. 기본값은 꺼짐입니다. worktree가 없는 중첩 채팅은 폴더 접근 권한도, 이 세션의 허용 항목도 없이 시작됩니다."
   },
   "subagentQuestion": {
     "title": "{{name}}이(가) 에이전트에게 질문함",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{session}}에 메시지 {{count}}개",
   "waitingIn_other": "{{session}}에 메시지 {{count}}개",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "승인 대기 중인 메시지",
+    "banner": "승인 대기 중({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "상태 알림",
+    "expires": "{{minutes}}분 후 만료",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "{{name}}의 메시지 승인",
+    "denyLabel": "{{name}}의 메시지 거부"
   }
 }

@@ -306,7 +306,7 @@
     "title": "Finestra di contesto sconosciuta",
     "description": "{{subject}} usa modelli di cui Flint non riesce a determinare la finestra di contesto. Imposta Max Context Tokens per ciascuno, oppure usa il valore predefinito sicuro di {{window}} token, che fa compattare presto le discussioni lunghe.",
     "usedBy": "Usato da: {{names}}",
-    "placeholder": "Max Context Tokens",
+    "placeholder": "Token di contesto massimi",
     "useDefault": "Usa {{window}} (predefinito sicuro)",
     "continue": "Continua",
     "cancel": "Annulla"
@@ -668,5 +668,5 @@
     "ranToolsDropped": "il loro output è stato scartato per rientrare nella finestra di contesto.",
     "ranToolsRetry": "il provider è poi andato in errore e la richiesta viene ritentata."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Impossibile eliminare la stanza"
 }

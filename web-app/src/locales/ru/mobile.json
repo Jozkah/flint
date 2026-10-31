@@ -1401,11 +1401,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "Подключение к вашему компьютеру",
+    "intro": "Включите удалённый доступ во Flint на компьютере, затем введите его адрес или вставьте ссылку для сопряжения.",
+    "address": "Адрес компьютера",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "Доверять новому сертификату этого компьютера"
   }
 }

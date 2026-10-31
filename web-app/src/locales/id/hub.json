@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "Seharusnya berjalan lancar di perangkat Anda"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "Mungkin lambat",
+      "detail": "Akan berjalan tetapi menyisakan sedikit ruang memori"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "Tidak muat",
+      "detail": "Kemungkinan melebihi memori yang tersedia"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "Kecocokan tidak diketahui",
+      "detail": "Tidak dapat memperkirakan kebutuhan memori"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "Kompatibilitas perangkat: {{label}}",
+    "variantInfo": "Informasi Varian Model",
+    "modelInfo": "Informasi Model",
+    "defaultQuantization": "Kuantisasi Default",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "Kompatibilitas perangkat",
+    "estimateNote": "Diperkirakan dari ukuran file dan perangkat keras Anda. Performa sebenarnya bergantung pada kuantisasi dan panjang konteks.",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "Memori konteks dibaca dari file model.",
+      "fromSize": "Memori konteks diperkirakan dari ukuran file.",
+      "sizeEstimated": "Ukuran file diperkirakan dari parameter.",
+      "gpuOff": "GPU yang Anda matikan tidak dihitung."
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "Presisi penuh",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "Kuantisasi tidak diketahui",
+      "full": "Fidelitas tertinggi, jejak memori sangat besar",
+      "q8": "Kualitas mendekati asli, jejak memori besar",
+      "q6": "Kualitas sangat tinggi dengan kompresi sedang",
+      "q5": "Kualitas tinggi dan kompromi kualitas/ukuran yang baik",
+      "recommended": "Keseimbangan kualitas, kecepatan, dan memori yang direkomendasikan untuk sebagian besar sistem",
+      "q4": "Ukuran dan kualitas seimbang untuk inferensi lokal sehari-hari",
+      "q3": "Lebih kecil dan lebih cepat, dengan kompromi kualitas yang terasa",
+      "q2": "Jejak sangat kecil dengan kompromi kualitas terbesar",
+      "other": "Model GGUF terkuantisasi"
     }
   }
 }

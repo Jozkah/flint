@@ -24,12 +24,12 @@
     "description": "Když je vypnuto, ostatní relace se dozvědí, že tato zprávy nepřijímá, a nic, co pošlou, se k ní nedostane."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Zeptat se před doručením",
+    "description": "Když je zapnuto, každá zpráva z jiné relace tu čeká na vaše schválení nebo zamítnutí. Nic se nedoručí ani nespustí, dokud nepotvrdíte, a zpráva, na kterou do 5 minut neodpovíte, se zahodí a odesílatel se to dozví. Platí jen při přijímání zpráv."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Zeptat se před spuštěním vnořených chatů",
+    "description": "Když je zapnuto, agent se vás pokaždé, když chce spustit vnořený chat (spawn_session), nejprve zeptá. Ve výchozím stavu vypnuto: vnořený chat bez worktree se spustí bez přístupu ke složkám a bez oprávnění této relace."
   },
   "subagentQuestion": {
     "title": "{{name}} se ptá agenta",
@@ -96,14 +96,14 @@
   "waitingIn_many": "{{count}} zprávy v {{session}}",
   "waitingIn_other": "{{count}} zpráv v {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Zprávy čekající na schválení",
+    "banner": "Čeká na vaše schválení ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Stavové oznámení",
+    "expires": "Vyprší za {{minutes}} min",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Schválit zprávu od {{name}}",
+    "denyLabel": "Zamítnout zprávu od {{name}}"
   }
 }

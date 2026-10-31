@@ -114,12 +114,12 @@
     "inUse": "Burada kullanımda: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "GPU'ya aktarma (bu yükleme)",
+    "all": "{{layers}} katmanın tamamı GPU'da çalışıyor.",
+    "partial": "{{total}} katmanın {{gpu}} tanesi GPU'da çalışıyor; kalanı daha yavaş olan CPU'da çalışıyor.",
+    "none": "Hiçbir katman GPU'da çalışmıyor: model CPU'da çalışıyor.",
+    "unknown": "Motor kaç katmanı aktardığını bildirmedi.",
+    "memory": "Model ağırlıkları: GPU'da {{gpu}}, sistem belleğinde {{cpu}}."
   },
   "metalBudget": {
     "warning": "Bu model bu Mac'in GPU'su için fazla büyük olabilir: yaklaşık {{required}} gerekiyor, macOS ise varsayılan olarak GPU'nun yaklaşık {{budget}} kullanmasına izin veriyor. Yüklenip ilk mesajda başarısız olabilir. Bağlam boyutunu düşürün, GPU'ya daha az katman aktarın veya daha küçük bir niceleme seçin."

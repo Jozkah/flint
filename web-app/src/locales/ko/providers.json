@@ -39,11 +39,8 @@
   "importedTooltip": "로컬 파일에서 가져왔습니다. Flint에서 제거해도 디스크의 파일은 삭제되지 않습니다.",
   "importModelSuccess": "모델 {{provider}}을(를) 성공적으로 가져왔습니다.",
   "importModelError": "모델 가져오기 실패:",
-
   "importScanHint": "LM Studio, Ollama, Hugging Face 캐시, llama.cpp, GPT4All에서 찾습니다. 가져오기 전에는 아무것도 복사되지 않습니다.",
-
   "importAddFolder": "모델 폴더 추가",
-
   "importRemoveFolder": "폴더 {{folder}} 제거",
   "stop": "중지",
   "start": "시작",

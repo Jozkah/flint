@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "Должна работать без проблем на вашем устройстве"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "Может быть медленно",
+      "detail": "Будет работать, но оставит мало запаса памяти"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "Не поместится",
+      "detail": "Вероятно, превышает доступную память"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "Совместимость неизвестна",
+      "detail": "Не удалось оценить требования к памяти"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "Совместимость с устройством: {{label}}",
+    "variantInfo": "Сведения о варианте модели",
+    "modelInfo": "Сведения о модели",
+    "defaultQuantization": "Квантование по умолчанию",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "Совместимость с устройством",
+    "estimateNote": "Оценка по размеру файла и вашему оборудованию. Фактическая производительность зависит от квантования и длины контекста.",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "Память контекста прочитана из файла модели.",
+      "fromSize": "Память контекста оценена по размеру файла.",
+      "sizeEstimated": "Размер файла оценён по параметрам.",
+      "gpuOff": "Отключённый вами GPU не учитывается."
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "Полная точность",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "Неизвестное квантование",
+      "full": "Наивысшая точность, очень большой объём памяти",
+      "q8": "Качество, близкое к исходному, большой объём памяти",
+      "q6": "Очень высокое качество при умеренном сжатии",
+      "q5": "Высокое качество и удачный баланс качества и размера",
+      "recommended": "Рекомендуемый баланс качества, скорости и памяти для большинства систем",
+      "q4": "Сбалансированные размер и качество для повседневного локального вывода",
+      "q3": "Меньше и быстрее, с заметной потерей качества",
+      "q2": "Очень малый объём при наибольшей потере качества",
+      "other": "Квантованная модель GGUF"
     }
   }
 }

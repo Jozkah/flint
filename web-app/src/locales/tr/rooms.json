@@ -653,5 +653,5 @@
     "ranToolsDropped": "çıktıları bağlam penceresine sığması için atıldı.",
     "ranToolsRetry": "ardından sağlayıcı hata verdi ve istek yeniden deneniyor."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Oda silinemedi"
 }

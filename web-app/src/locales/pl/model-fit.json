@@ -114,12 +114,12 @@
     "inUse": "Używany tutaj: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "Odciążanie na GPU (to wczytanie)",
+    "all": "Wszystkie warstwy ({{layers}}) działają na GPU.",
+    "partial": "{{gpu}} z {{total}} warstw działa na GPU; pozostałe działają na CPU, co jest wolniejsze.",
+    "none": "Żadna warstwa nie działa na GPU: model działa na CPU.",
+    "unknown": "Silnik nie podał, ile warstw odciążył.",
+    "memory": "Wagi modelu: {{gpu}} na GPU, {{cpu}} w pamięci systemowej."
   },
   "metalBudget": {
     "warning": "Ten model może być za duży dla GPU tego Maca: potrzebuje około {{required}}, a macOS domyślnie pozwala GPU użyć około {{budget}}. Może się wczytać, a potem zawieść przy pierwszej wiadomości. Zmniejsz rozmiar kontekstu, przenieś na GPU mniej warstw lub wybierz mniejszą kwantyzację."

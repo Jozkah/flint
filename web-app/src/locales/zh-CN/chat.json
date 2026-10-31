@@ -268,34 +268,34 @@
     "stopGenerating": "停止生成"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "减小上下文大小（ctx-size）",
+    "oomDisableMtp": "禁用 MTP（多 Token 预测）",
+    "oomLowerGpuLayers": "降低 n-gpu-layers 或切换到 CPU 后端",
+    "oomSmallerModel": "使用更小 / 量化程度更高的模型",
+    "serverContext": "此模型的上下文窗口由其服务器设定，Flint 无法扩大。请开始新对话、缩短对话，或在服务器上调高上限。",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "模型返回了空回复。请重试或切换模型。",
+    "thinkingOnly": "模型完成了思考，但没有给出答案。请继续或重新生成以再试一次。",
+    "noReply": "运行结束，但没有回复。",
+    "noReplyToolError": "运行结束，但没有回复。最后一次工具错误（{{tool}}）：{{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "已导入的对话",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "无法保存此图片。",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "savedPictures_one": "已保存 {{count}} 张图片",
+    "savedPictures_other": "已保存 {{count}} 张图片",
+    "picturesMissing": "；{{count}} 张已不在图库中",
+    "picturesGone": "这些图片已不在 Studio 图库中。",
+    "tooLarge": "此导出文件为 {{mb}} MB，上限为 50 MB；请导出单条消息或分支，或省略工具详情",
+    "untitled": "新对话",
+    "tooTall": "对话过长，无法生成一张图片（约 {{height}}k 像素，上限为 {{limit}}k）；请导出为 PDF 或 Markdown，或导出单条消息",
+    "pageNotDrawn": "无法绘制页面",
+    "noCanvas": "没有可用于绘制图片的画布",
+    "imageNotEncoded": "无法对图片进行编码"
   }
 }
