@@ -127,6 +127,8 @@
     "reasoningOff": "Off",
     "reasoningEffort": "Impegno di ragionamento",
     "reasoningEffortDefault": "Predefinito",
+    "roomEffort": "Impegno per tutti i modelli",
+    "roomEffortHint": "Usato da ogni modello che supporta l'impegno, a meno che la sua impostazione non lo sostituisca.",
     "thinkingBudget": "Budget di pensiero",
     "thinkingBudgetHint": "Una quota del contesto del modello, calcolata quando il turno viene inviato e limitata in modo che la risposta ci stia ancora.",
     "pricing": "Prezzi (facoltativo)",

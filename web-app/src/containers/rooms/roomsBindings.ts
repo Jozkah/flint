@@ -60,6 +60,8 @@ export type RoomSettingsPatch = Partial<
 > & {
   /** Per-turn tool budgets; `null` returns to the defaults. */
   toolBudget?: Room['toolBudget'] | null
+  /** The room-wide reasoning effort; `null` returns to each model's default. */
+  reasoningEffort?: Room['reasoningEffort'] | null
   /** A participant's `reasoning: null` returns it to its model's default. */
   participants?: Array<
     Omit<Participant, 'reasoning' | 'assistantId' | 'workProfile'> & {

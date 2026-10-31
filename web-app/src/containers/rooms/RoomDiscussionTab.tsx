@@ -10,22 +10,28 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { RoomModelSelect } from './RoomModelSelect'
+import { Segmented } from '@/components/ui/segmented'
+import { EFFORT_LEVELS, effortLabel, type EffortLevel } from '@/lib/modelEffort'
 import { MODES, COMPARE_RUNS, LOCAL_PROVIDERS, CompareIsolationNote } from './roomEditorHelpers'
 
 export function RoomDiscussionTab({
-  hidden, uid, room, mode, compareRun, moderator, participants, visibleErrors, disabled, onMode, onCompareRun, onModerator,
+  hidden, uid, room, mode, compareRun, reasoningEffort = null, moderator, participants, visibleErrors, disabled, onMode, onCompareRun,
+  onReasoningEffort, onModerator,
 }: {
   hidden: boolean
   uid: string
   room: Room
   mode: SpeakingMode
   compareRun: CompareRun
+  /** The room-wide effort ("same for all"); null: each model's default. */
+  reasoningEffort?: EffortLevel | null
   moderator: ModeratorConfig
   participants: DraftParticipant[]
   visibleErrors: Errors
   disabled: boolean
   onMode: (v: SpeakingMode) => void
   onCompareRun: (v: CompareRun) => void
+  onReasoningEffort?: (v: EffortLevel | null) => void
   onModerator: (v: ModeratorConfig) => void
 }) {
   const { t } = useTranslation()
@@ -111,6 +117,28 @@ export function RoomDiscussionTab({
                   {t('rooms:editor.compareRunSuggest')}
                 </p>
               )}
+          </div>
+        )}
+
+        {onReasoningEffort && (
+          <div data-testid="room-reasoning-effort" className="flex min-w-0 flex-col gap-1.5 border-t border-border pt-2.5">
+            <span className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
+              {t('rooms:editor.roomEffort')}
+            </span>
+            <p className="text-xs text-muted-foreground">{t('rooms:editor.roomEffortHint')}</p>
+            <Segmented<string>
+              size="sm"
+              wrap
+              aria-label={t('rooms:editor.roomEffort')}
+              value={reasoningEffort ?? 'default'}
+              onValueChange={(next) =>
+                !disabled && onReasoningEffort(next === 'default' ? null : (next as EffortLevel))
+              }
+              options={[
+                { value: 'default', label: t('rooms:editor.reasoningEffortDefault') },
+                ...EFFORT_LEVELS.map((l) => ({ value: l, label: effortLabel(l) })),
+              ]}
+            />
           </div>
         )}
 

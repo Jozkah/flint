@@ -818,6 +818,21 @@ fn compare_run_settings_and_answer_metadata_round_trip() {
 }
 
 #[test]
+fn room_reasoning_effort_round_trips_and_is_optional() {
+    let (_dir, store) = new_store();
+    let mut json = room_json("r1");
+    json["reasoningEffort"] = json!("high");
+    store.save(parse_room(json).expect("room parses"), 5000).unwrap();
+    let raw: Value =
+        serde_json::from_slice(&fs::read(store.root().join("r1").join(ROOM_FILE)).unwrap())
+            .unwrap();
+    assert_eq!(raw["reasoningEffort"], json!("high"));
+    let older = parse_room(room_json("r2")).unwrap();
+    assert!(older.reasoning_effort.is_none());
+    assert!(serde_json::to_value(&older).unwrap().get("reasoningEffort").is_none());
+}
+
+#[test]
 fn tools2_fields_round_trip_and_old_rooms_load_unchanged() {
     let (_dir, store) = new_store();
     // An older room has none of the new fields and loads as before.

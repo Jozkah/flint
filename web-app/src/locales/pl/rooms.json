@@ -129,6 +129,8 @@
     "reasoningOff": "Wyłączone",
     "reasoningEffort": "Wysiłek rozumowania",
     "reasoningEffortDefault": "Domyślny",
+    "roomEffort": "Wysiłek dla wszystkich modeli",
+    "roomEffortHint": "Używany przez każdy model obsługujący wysiłek, chyba że jego własne ustawienie go zastępuje.",
     "thinkingBudget": "Budżet myślenia",
     "thinkingBudgetHint": "Część kontekstu modelu, obliczana przy wysyłaniu tury i ograniczana tak, aby odpowiedź nadal się mieściła.",
     "pricing": "Cennik (opcjonalnie)",

@@ -129,6 +129,8 @@
     "reasoningOff": "Vypnuto",
     "reasoningEffort": "Úsilí uvažování",
     "reasoningEffortDefault": "Výchozí",
+    "roomEffort": "Úsilí pro všechny modely",
+    "roomEffortHint": "Použije ho každý model, který úsilí podporuje, pokud ho nepřepíše vlastní nastavení.",
     "thinkingBudget": "Rozpočet přemýšlení",
     "thinkingBudgetHint": "Podíl kontextu modelu, vypočítaný při odeslání příspěvku a omezený tak, aby se odpověď ještě vešla.",
     "pricing": "Ceny (volitelné)",
