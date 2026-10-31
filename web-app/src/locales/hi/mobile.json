@@ -1363,11 +1363,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "अपने कंप्यूटर से कनेक्ट करें",
+    "intro": "अपने कंप्यूटर पर Flint में रिमोट एक्सेस चालू करें, फिर उसका पता दर्ज करें या पेयरिंग लिंक पेस्ट करें।",
+    "address": "कंप्यूटर का पता",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "इस कंप्यूटर के नए सर्टिफ़िकेट पर भरोसा करें"
   }
 }

@@ -41,10 +41,10 @@
     "gitRemote": "Flint muốn chạy {{command}}, lệnh này thay đổi {{target}}",
     "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc",
     "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint muốn chạy một quy trình: {{agents}} tác tử trong {{phases}} giai đoạn",
+    "spawnWorktree": "Flint muốn bắt đầu một cuộc trò chuyện lồng nhau có thể thay đổi tệp trong một worktree mới của {{folder}} (nhánh {{branch}})",
+    "spawnChat": "Flint muốn bắt đầu một cuộc trò chuyện lồng nhau có tên \"{{title}}\"",
+    "enterWorktree": "Flint muốn chuyển quyền ghi của phiên này vào một worktree: {{folder}} (nhánh {{branch}}, dựa trên {{base}})",
     "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu",
     "changeFileOutside": "Flint muốn thay đổi {{target}}, nằm ngoài {{workspace}}",
     "changeManyFilesOutside": "Flint muốn thay đổi {{count}} tệp, một số nằm ngoài {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Nó gửi các thay đổi đến một kho từ xa mà người khác có thể thấy. Flint hỏi mỗi lần trừ khi bạn tạm thời cho phép các thao tác Git từ xa thông thường cho cuộc trò chuyện này.",
     "gitDestructive": "Những gì nó xóa hoặc ghi đè có thể không khôi phục được.",
     "campaignPlan": "Nó bắt đầu các phiên riêng biệt, mỗi phiên trên nhánh worktree của nó, đọc và thay đổi tệp và dùng song song hạn mức mô hình của bạn. Việc duyệt kế hoạch không duyệt bất kỳ lệnh gọi nào mà một tác vụ thực hiện. Flint hỏi mỗi lần.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Nó khởi chạy từng ấy tác tử con, từng giai đoạn một, đọc và thay đổi tệp và dùng hạn mức mô hình của bạn. Flint luôn hỏi với một quy trình lớn như vậy.",
+    "spawnWorktree": "Cuộc trò chuyện lồng nhau đọc và thay đổi tệp trên nhánh riêng của dự án này, dùng hạn mức mô hình của bạn và tiếp tục chạy trong khi bạn làm việc khác. Các thay đổi của nó nằm trên nhánh đó cho đến khi bạn hợp nhất. Flint luôn hỏi.",
+    "spawnChat": "Cuộc trò chuyện lồng nhau là một phiên mới dùng hạn mức mô hình của bạn và tiếp tục chạy trong khi bạn làm việc khác. Nó bắt đầu mà không có quyền truy cập thư mục. Flint luôn hỏi vì bạn đã bật \"Hỏi trước khi bắt đầu cuộc trò chuyện lồng nhau\" cho phiên này.",
+    "enterWorktree": "Phiên này chỉ có thể đọc và thay đổi tệp trong worktree đó trên nhánh riêng của nó, không phải trong thư mục dự án của bạn. Các thay đổi của nó nằm trên nhánh đó cho đến khi bạn hợp nhất. Flint luôn hỏi.",
     "spendPause": "Lượt chạy tiếp tục dùng hạn mức mô hình trả phí cho đến khi xong hoặc chạm trần. Từ chối sẽ dừng lượt chạy."
   },
   "repeat": {
@@ -399,11 +399,11 @@
     "session": "Cho phép cho cuộc trò chuyện này"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "Đang chờ bạn chấp thuận: {{tool}}",
+    "waitBody": "Lượt chạy đã tạm dừng {{seconds}} giây cho đến khi bạn cho phép hoặc từ chối.",
+    "destructive": "Lệnh phá hủy: {{reason}}. Vẫn hỏi dù công cụ này vốn được cho phép.",
+    "selfApproval": "{{tool}} tự chấp thuận các lệnh trên {{server}}. Chỉ bạn mới có thể chấp thuận chúng, nên luôn hỏi mỗi lần.",
+    "sensitive": "Lệnh gọi công cụ nhạy cảm: hãy xem lại hành động của nó trước khi cho phép.",
+    "autoPause": "{{count}} lệnh gọi công cụ đã chạy mà không hỏi. Tiếp tục?"
   }
 }

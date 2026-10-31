@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "Dovrebbe funzionare senza problemi sul tuo dispositivo"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "Potrebbe essere lento",
+      "detail": "Funzionerà ma lascia poco margine di memoria"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "Non ci sta",
+      "detail": "Probabilmente supera la memoria disponibile"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "Compatibilità sconosciuta",
+      "detail": "Impossibile stimare i requisiti di memoria"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "Compatibilità del dispositivo: {{label}}",
+    "variantInfo": "Informazioni sulla variante del modello",
+    "modelInfo": "Informazioni sul modello",
+    "defaultQuantization": "Quantizzazione predefinita",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "Compatibilità del dispositivo",
+    "estimateNote": "Stima basata sulla dimensione del file e sul tuo hardware. Le prestazioni reali dipendono dalla quantizzazione e dalla lunghezza del contesto.",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "Memoria del contesto letta dal file del modello.",
+      "fromSize": "Memoria del contesto stimata dalla dimensione del file.",
+      "sizeEstimated": "Dimensione del file stimata dai parametri.",
+      "gpuOff": "Una GPU che hai disattivato non viene conteggiata."
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "Precisione completa",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "Quantizzazione sconosciuta",
+      "full": "Massima fedeltà, ingombro di memoria molto grande",
+      "q8": "Qualità quasi originale, grande ingombro di memoria",
+      "q6": "Qualità molto alta con compressione moderata",
+      "q5": "Alta qualità e ottimo compromesso qualità/dimensione",
+      "recommended": "Equilibrio consigliato tra qualità, velocità e memoria per la maggior parte dei sistemi",
+      "q4": "Dimensione e qualità bilanciate per l'inferenza locale di tutti i giorni",
+      "q3": "Più piccolo e veloce, con un compromesso di qualità evidente",
+      "q2": "Ingombro molto ridotto con il maggior compromesso di qualità",
+      "other": "Modello GGUF quantizzato"
     }
   }
 }

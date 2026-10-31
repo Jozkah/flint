@@ -39,11 +39,8 @@
   "importedTooltip": "ローカルファイルからインポートされています。Flintから削除しても、ディスク上のファイルは削除されません。",
   "importModelSuccess": "モデル{{provider}}は正常にインポートされました。",
   "importModelError": "モデルのインポートに失敗しました:",
-
   "importScanHint": "LM Studio、Ollama、Hugging Face キャッシュ、llama.cpp、GPT4All を探します。インポートするまで何もコピーされません。",
-
   "importAddFolder": "モデルのフォルダを追加",
-
   "importRemoveFolder": "フォルダ {{folder}} を削除",
   "stop": "停止",
   "start": "開始",

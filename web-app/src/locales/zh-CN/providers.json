@@ -39,11 +39,8 @@
   "importedTooltip": "从本地文件导入。从 Flint 中移除不会删除磁盘上的文件。",
   "importModelSuccess": "模型 {{provider}} 已成功导入。",
   "importModelError": "导入模型失败：",
-
   "importScanHint": "会在 LM Studio、Ollama、Hugging Face 缓存、llama.cpp 和 GPT4All 中查找。导入之前不会复制任何内容。",
-
   "importAddFolder": "添加模型文件夹",
-
   "importRemoveFolder": "移除文件夹 {{folder}}",
   "stop": "停止",
   "start": "开始",
@@ -160,7 +157,7 @@
     "description": "仅适用于 URL 中没有 ?api-version= 的部署式 Azure 端点（/openai/deployments/<name>）。/openai/v1 端点不需要。"
   },
   "baseUrl": {
-    "title": "Base URL",
+    "title": "基础 URL",
     "openaiDescription": "使用兼容 OpenAI API 的代理或网关。默认值为 https://api.openai.com/v1。",
     "azureDescription": "你的 Azure OpenAI 端点。请将 YOUR-RESOURCE-NAME 替换为你的 Azure 资源名称。",
     "litellmDescription": "你的 LiteLLM 代理地址，包含 /v1。默认为 http://localhost:4000/v1。",

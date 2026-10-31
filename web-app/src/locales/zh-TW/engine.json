@@ -4,7 +4,7 @@
     "peak": "峰值",
     "avg": "平均",
     "now": "now",
-    "ago": "{{count}} min ago",
+    "ago": "{{count}} 分鐘前",
     "calls": "calls"
   },
   "models": {
@@ -239,25 +239,25 @@
   },
   "dependencies": {
     "redownload": {
-      "label": "Re-download the backend",
-      "description": "Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Flint settings."
+      "label": "重新下載後端",
+      "description": "部分核心後端檔案遺失或已損毀 — 這通常表示下載被中斷，或壓縮檔只解壓縮了一部分。請刪除該後端，並在 Flint 設定中重新下載。"
     },
     "cuda": {
-      "windows": "Install the CUDA Toolkit{{version}} from NVIDIA. During installation, select \"CUDA\" components.",
-      "linux": "Install the CUDA Toolkit{{version}} from NVIDIA. On Debian/Ubuntu: sudo apt install cuda-toolkit-{{apt}}. On RHEL/Fedora: use the NVIDIA repo."
+      "windows": "從 NVIDIA 安裝 CUDA Toolkit{{version}}。安裝時請選取「CUDA」元件。",
+      "linux": "從 NVIDIA 安裝 CUDA Toolkit{{version}}。在 Debian/Ubuntu 上：sudo apt install cuda-toolkit-{{apt}}。在 RHEL/Fedora 上：使用 NVIDIA 軟體庫。"
     },
     "nccl": {
-      "windows": "Install NCCL from the NVIDIA Developer site. NCCL is used for multi-GPU collective communications.",
-      "linux": "Install NCCL via the NVIDIA package repository. On Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. See the NVIDIA NCCL install guide for your distro."
+      "windows": "從 NVIDIA 開發人員網站安裝 NCCL。NCCL 用於多 GPU 集合通訊。",
+      "linux": "透過 NVIDIA 套件庫安裝 NCCL。在 Debian/Ubuntu 上：sudo apt install libnccl2 libnccl-dev。請參閱適用於你的發行版的 NVIDIA NCCL 安裝指南。"
     },
     "cudnn": {
-      "windows": "Install cuDNN from the NVIDIA Developer site and place the DLLs alongside the application or in System32.",
-      "linux": "Install cuDNN via the NVIDIA package repository or download the tarball and copy libs to /usr/local/cuda/lib64."
+      "windows": "從 NVIDIA 開發人員網站安裝 cuDNN，並將 DLL 放在應用程式旁邊或 System32 中。",
+      "linux": "透過 NVIDIA 套件庫安裝 cuDNN，或下載 tarball 並將程式庫複製到 /usr/local/cuda/lib64。"
     },
     "vulkan": {
-      "label": "Vulkan Runtime",
-      "windows": "Install the Vulkan Runtime from LunarG. Your GPU driver may already include it — update your GPU driver first.",
-      "linux": "Install the Vulkan loader: on Ubuntu/Debian: sudo apt install libvulkan1. On Arch: sudo pacman -S vulkan-icd-loader. On RHEL/Fedora: sudo dnf install vulkan-loader."
+      "label": "Vulkan 執行階段",
+      "windows": "從 LunarG 安裝 Vulkan 執行階段。你的 GPU 驅動程式可能已包含它 — 請先更新 GPU 驅動程式。",
+      "linux": "安裝 Vulkan loader：在 Ubuntu/Debian 上：sudo apt install libvulkan1。在 Arch 上：sudo pacman -S vulkan-icd-loader。在 RHEL/Fedora 上：sudo dnf install vulkan-loader。"
     }
   }
 }

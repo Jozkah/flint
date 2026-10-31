@@ -1,27 +1,27 @@
 {
   "discover": {
-    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
-    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
-    "familiesError": "Could not load the model kinds: {{error}}",
+    "unsupportedArch": "Yerel görsel ve video modelleri Windows x64 veya Linux x64 gerektirir. Bu mimari henüz desteklenmiyor.",
+    "intro": "Studio'nun çalıştırabildiği GGUF biçimindeki görsel modelleri. Bir ağırlık dosyası ve modelin türünü seçin; gereken metin kodlayıcı ve VAE onunla birlikte indirilir ve diğer tüm indirmeler gibi denetlenir.",
+    "familiesError": "Model türleri yüklenemedi: {{error}}",
     "retry": "Retry",
-    "emptyTitle": "No picture models found",
-    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "emptyTitle": "Görsel modeli bulunamadı",
+    "emptyDescription": "Daha geniş bir arama deneyin, örneğin qwen image, flux veya z-image.",
     "gated": "Gated",
-    "hideFiles": "Hide files",
-    "chooseFile": "Choose a file",
-    "whatKind": "What kind of model is this?",
-    "modelFamily": "Model family",
-    "pickOne": "Pick one…",
-    "filesError": "Could not list the files: {{error}}",
-    "noWeights": "No weights files (.gguf) in this repository.",
-    "unsupportedSystem": "Unsupported system",
+    "hideFiles": "Dosyaları gizle",
+    "chooseFile": "Bir dosya seçin",
+    "whatKind": "Bu ne tür bir model?",
+    "modelFamily": "Model ailesi",
+    "pickOne": "Birini seçin…",
+    "filesError": "Dosyalar listelenemedi: {{error}}",
+    "noWeights": "Bu depoda ağırlık dosyası (.gguf) yok.",
+    "unsupportedSystem": "Desteklenmeyen sistem",
     "inStudio": "In Studio",
     "adding": "Adding…",
-    "addToStudio": "Add to Studio",
-    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
-    "pickKindFirst": "Pick what kind of model this is first.",
-    "added": "{{name}} added to Studio",
-    "openStudio": "Open Studio"
+    "addToStudio": "Studio'ya ekle",
+    "unsupportedToast": "Yerel görsel üretimi Windows x64 veya Linux x64 gerektirir.",
+    "pickKindFirst": "Önce bunun ne tür bir model olduğunu seçin.",
+    "added": "{{name}} Studio'ya eklendi",
+    "openStudio": "Studio'yu aç"
   },
   "page": {
     "title": "Stüdyo",
@@ -243,5 +243,5 @@
     "all": "Tümü",
     "empty": "Burada henüz bir şey yok. Ürettikleriniz burada görünür."
   },
-  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
+  "videoMemoryWarning": "Bu bilgisayarda yaklaşık {{gb}} GB bellek var. Video üretimi çok bellek ister ve bunun gibi bir makinede tek bir klip saatler sürebilir, çünkü bellek tükenir ve diske takas yapılır."
 }
