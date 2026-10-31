@@ -80,6 +80,12 @@ export function isOpenAICompatibleReasoningProvider(
   providerId: string | null | undefined,
   model: Model | null | undefined
 ): boolean {
+  // The subscription bridge speaks the OpenAI-compatible wire format and
+  // forwards `reasoning_effort` to the CLI as its own flag (see
+  // `src-tauri/src/core/cli_bridge`), but only for the families its table names.
+  if (providerId && SUBSCRIPTION_BRIDGE_PROVIDERS.has(providerId)) {
+    return tableProfile(providerId, model?.id ?? '') !== null
+  }
   return (
     !!providerId &&
     !NATIVELY_WIRED_REASONING_PROVIDERS.has(providerId) &&
@@ -169,6 +175,109 @@ function compatibleProfile(modelId: string): EffortProfile {
 }
 
 /**
+ * Effort capability for the cloud and subscription families whose levels are
+ * fixed by the vendor rather than derived: one row per provider and model
+ * family, first match wins, and a provider with rows but no matching row has
+ * no control (conservative: an unknown family keeps the provider default).
+ * Pass a different table to `effortProfile` to override it.
+ *
+ * - **anthropic** 4.6+ (adaptive thinking): the `effort` request option, which
+ *   Anthropic defaults to `high`. `xhigh` only on Opus/Fable from 4.7 on;
+ *   Haiku is left out, since effort is documented for Opus and Sonnet only.
+ * - **google / gemini** 3.x: `thinkingLevel`; Pro takes `low`/`high`, Flash
+ *   also `medium`. 2.5: a `thinkingBudget` per level (see
+ *   `GEMINI_LEVEL_BUDGET_TOKENS`), `xhigh` only on Pro (Flash tops out at a
+ *   24576-token budget).
+ * - **claude-cli**: `claude --effort`. **codex-cli**: `-c
+ *   model_reasoning_effort`. **gemini-cli** has no command-line switch for
+ *   thinking, so it has no rows and no control.
+ */
+export interface EffortRule {
+  providers: string[]
+  match: RegExp
+  profile: EffortProfile
+}
+
+const ANTHROPIC_XHIGH = /(opus|fable)-(4-([7-9]|\d{2,})|([5-9]|\d{2,}))(-|$)/
+
+const ANTHROPIC_EFFORT = /(opus|sonnet|fable)-(4-([6-9]|\d{2,})|([5-9]|\d{2,}))(-|$)/
+
+// The effort bar replaces the Auto/On/Off menu wherever it shows, so a model
+// that can switch thinking off keeps an Off stop: Anthropic's API (`thinking:
+// disabled`) and Gemini 2.5 Flash (`thinkingBudget: 0`). The Claude CLI and
+// Gemini Pro/3.x have no off switch.
+export const EFFORT_RULES: EffortRule[] = [
+  {
+    providers: ['anthropic'],
+    match: ANTHROPIC_XHIGH,
+    profile: { levels: EFFORT_LEVELS, recommended: 'high', canDisable: true },
+  },
+  {
+    providers: ['anthropic'],
+    match: ANTHROPIC_EFFORT,
+    profile: { levels: THREE_LEVELS, recommended: 'high', canDisable: true },
+  },
+  {
+    providers: ['claude-cli'],
+    match: ANTHROPIC_XHIGH,
+    profile: { levels: EFFORT_LEVELS, recommended: 'high', canDisable: false },
+  },
+  {
+    providers: ['claude-cli'],
+    match: ANTHROPIC_EFFORT,
+    profile: { levels: THREE_LEVELS, recommended: 'high', canDisable: false },
+  },
+  {
+    providers: ['google', 'gemini'],
+    match: /gemini-([3-9]|\d{2,})[.\d]*-pro/,
+    profile: { levels: ['low', 'high'], recommended: 'high', canDisable: false },
+  },
+  {
+    providers: ['google', 'gemini'],
+    match: /gemini-([3-9]|\d{2,})[.\d]*-flash/,
+    profile: { levels: THREE_LEVELS, recommended: 'high', canDisable: false },
+  },
+  {
+    providers: ['google', 'gemini'],
+    match: /gemini-2\.5-pro/,
+    profile: { levels: EFFORT_LEVELS, recommended: null, canDisable: false },
+  },
+  {
+    providers: ['google', 'gemini'],
+    match: /gemini-2\.5-flash/,
+    profile: { levels: THREE_LEVELS, recommended: null, canDisable: true },
+  },
+]
+
+/** Providers reached through Flint's local subscription bridge. */
+export const SUBSCRIPTION_BRIDGE_PROVIDERS = new Set([
+  'claude-cli',
+  'codex-cli',
+  'gemini-cli',
+])
+
+function tableProfile(
+  providerId: string,
+  modelId: string,
+  rules: EffortRule[] = EFFORT_RULES
+): EffortProfile | null {
+  const id = modelId.toLowerCase()
+  if (providerId === 'codex-cli') {
+    // The same levels as OpenAI's API for the model; the CLI has no Off.
+    return { ...openaiProfile(id), canDisable: false }
+  }
+  const rule = rules.find(
+    (r) => r.providers.includes(providerId) && r.match.test(id)
+  )
+  return rule ? rule.profile : null
+}
+
+/** Is this Gemini model one that takes `thinkingLevel` (3.x and later)? */
+export function geminiTakesThinkingLevel(modelId: string): boolean {
+  return /gemini-([3-9]|\d{2,})/.test(modelId.toLowerCase())
+}
+
+/**
  * What this provider and model will actually act on, read from the model
  * rather than fixed per provider, since models of one provider differ.
  *
@@ -189,7 +298,8 @@ function compatibleProfile(modelId: string): EffortProfile {
  */
 export function effortProfile(
   providerId: string | null | undefined,
-  model: Model | null | undefined
+  model: Model | null | undefined,
+  rules: EffortRule[] = EFFORT_RULES
 ): EffortProfile {
   switch (providerId) {
     case 'openai':
@@ -204,10 +314,13 @@ export function effortProfile(
     case 'anthropic':
       return anthropicTakesAnExplicitBudget(model?.id ?? '')
         ? { levels: EFFORT_LEVELS, recommended: 'medium', canDisable: true }
-        : NO_EFFORT
+        : (tableProfile(providerId, model?.id ?? '', rules) ?? NO_EFFORT)
     case 'google':
     case 'gemini':
-      return NO_EFFORT
+    case 'claude-cli':
+    case 'codex-cli':
+    case 'gemini-cli':
+      return tableProfile(providerId, model?.id ?? '', rules) ?? NO_EFFORT
     default:
       return isOpenAICompatibleReasoningProvider(providerId, model)
         ? compatibleProfile(model?.id ?? '')

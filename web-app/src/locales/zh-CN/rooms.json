@@ -123,6 +123,8 @@
     "reasoningOff": "关",
     "reasoningEffort": "推理强度",
     "reasoningEffortDefault": "默认",
+    "roomEffort": "所有模型的推理强度",
+    "roomEffortHint": "所有支持推理强度的模型都会使用它，除非模型自己的设置覆盖了它。",
     "thinkingBudget": "思考预算",
     "thinkingBudgetHint": "模型上下文的一定比例，在发送该轮时计算，并设有上限以确保回复仍能容纳。",
     "pricing": "定价（可选）",

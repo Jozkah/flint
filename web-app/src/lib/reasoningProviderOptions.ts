@@ -8,6 +8,7 @@ import {
 import {
   clampEffort,
   effortProfile,
+  geminiTakesThinkingLevel,
   isOpenAICompatibleReasoningProvider,
   isThinkingOff,
 } from './modelEffort'
@@ -68,6 +69,28 @@ const ANTHROPIC_LEVEL_BUDGET_TOKENS: Record<
 }
 const DEFAULT_ANTHROPIC_BUDGET_TOKENS = 8192
 
+// Gemini 2.5 takes a token budget rather than a level. Within every 2.5
+// model's range (Flash tops out at 24576, so it is never offered `xhigh`).
+const GEMINI_LEVEL_BUDGET_TOKENS: Record<
+  Exclude<ThinkingBudgetLevelKey, 'unlimited'>,
+  number
+> = {
+  low: 2048,
+  medium: 8192,
+  high: 16384,
+  xhigh: 32768,
+}
+
+/** The stored level, clamped to what this model takes; null when none. */
+function pickedLevel(
+  providerId: string,
+  model: Model | null | undefined,
+  level: ThinkingBudgetLevelKey | undefined
+) {
+  if (!level || level === 'unlimited') return null
+  return clampEffort(level, effortProfile(providerId, model).levels)
+}
+
 function readReasoning(model: Model | null | undefined): ReasoningChoice {
   const v = model?.settings?.reasoning?.controller_props?.value
   return v === 'on' || v === 'off' || v === 'auto' ? v : undefined
@@ -105,6 +128,20 @@ export function buildReasoningProviderOptions(
     if (reasoning === 'off') {
       return { google: { thinkingConfig: { thinkingBudget: 0 } } }
     }
+    // A level the model takes: Gemini 3+ by `thinkingLevel`, 2.5 by a budget.
+    const picked = pickedLevel(providerId, model, level)
+    if (picked) {
+      return {
+        google: {
+          thinkingConfig: geminiTakesThinkingLevel(model?.id ?? '')
+            ? { thinkingLevel: picked, includeThoughts: true }
+            : {
+                thinkingBudget: GEMINI_LEVEL_BUDGET_TOKENS[picked],
+                includeThoughts: true,
+              },
+        },
+      }
+    }
     if (reasoning === 'on' || level) {
       return {
         google: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
@@ -141,11 +178,15 @@ export function buildReasoningProviderOptions(
         }
       }
       const supportsDisplay = !/(opus|sonnet)-4-6\b/.test(id)
+      // Adaptive thinking sizes itself; the `effort` option steers how hard,
+      // on the models that take it (see `EFFORT_RULES`).
+      const effort = pickedLevel(providerId, model, level)
       return {
         anthropic: {
           thinking: supportsDisplay
             ? { type: 'adaptive', display: 'summarized' }
             : { type: 'adaptive' },
+          ...(effort ? { effort } : {}),
         },
       }
     }

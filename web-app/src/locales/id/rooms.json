@@ -123,6 +123,8 @@
     "reasoningOff": "Mati",
     "reasoningEffort": "Upaya penalaran",
     "reasoningEffortDefault": "Default",
+    "roomEffort": "Upaya untuk semua model",
+    "roomEffortHint": "Dipakai setiap model yang mendukung upaya, kecuali pengaturannya sendiri menggantikannya.",
     "thinkingBudget": "Anggaran Berpikir",
     "thinkingBudgetHint": "Porsi konteks model, dihitung saat giliran dikirim dan dibatasi agar balasan tetap muat.",
     "pricing": "Harga (opsional)",
