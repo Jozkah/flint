@@ -375,13 +375,48 @@ fn live_streams() -> &'static Mutex<HashMap<String, Arc<Cancel>>> {
     LIVE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Ask a stream to stop. Unknown ids are ignored: the stream may already have
-/// finished on its own, which is not an error.
+/// Ids cancelled before their stream registered, newest last. Stop can reach
+/// the backend before the request it names does (both are separate IPC
+/// calls); without this the cancel was dropped and the request ran to the
+/// end. Ids are unique per request, so a leftover never cancels another one;
+/// the list is capped because a finished stream's id is never claimed.
+fn early_cancels() -> &'static Mutex<std::collections::VecDeque<String>> {
+    static EARLY: OnceLock<Mutex<std::collections::VecDeque<String>>> = OnceLock::new();
+    EARLY.get_or_init(|| Mutex::new(std::collections::VecDeque::new()))
+}
+
+const EARLY_CANCELS_KEPT: usize = 256;
+
+/// Ask a stream to stop. An id not (yet) registered is remembered, so a stream
+/// that registers after its cancel starts cancelled; one that already finished
+/// costs a slot in a short list.
 pub fn cancel_stream(stream_id: &str) {
     if let Ok(live) = live_streams().lock() {
         if let Some(cancel) = live.get(stream_id) {
             cancel.cancel();
+            return;
         }
+        // Still holding `live`: a stream registering now waits, then sees this.
+        if let Ok(mut early) = early_cancels().lock() {
+            if early.len() >= EARLY_CANCELS_KEPT {
+                early.pop_front();
+            }
+            early.push_back(stream_id.to_string());
+        }
+    }
+}
+
+/// Whether `stream_id` was cancelled before it registered (claimed once).
+fn take_early_cancel(stream_id: &str) -> bool {
+    let Ok(mut early) = early_cancels().lock() else {
+        return false;
+    };
+    match early.iter().position(|id| id == stream_id) {
+        Some(at) => {
+            early.remove(at);
+            true
+        }
+        None => false,
     }
 }
 
@@ -397,6 +432,11 @@ impl StreamGuard {
         if let Some(id) = &id {
             if let Ok(mut live) = live_streams().lock() {
                 live.insert(id.clone(), cancelled.clone());
+                // Under the same lock `cancel_stream` records into, so a
+                // cancel is either seen here or finds the live entry.
+                if take_early_cancel(id) {
+                    cancelled.cancel();
+                }
             }
         }
         Self { id, cancelled }
@@ -862,7 +902,24 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
     };
     let capture = spawn_capture(&req);
     let guard = StreamGuard::new(req.stream_id.clone());
-    let attempt = match send_once_retrying(&host, port, &req).await {
+    // Raced against Stop too: a slow model (a long prompt on a local server)
+    // can take minutes to send its head, and a request left waiting for it
+    // keeps the server busy after the run was stopped, so the next request
+    // queued behind it and Stop looked like it did nothing (RQA-016).
+    let sent = tokio::select! {
+        biased;
+        _ = guard.wait_cancelled() => None,
+        sent = send_once_retrying(&host, port, &req) => Some(sent),
+    };
+    let Some(sent) = sent else {
+        // No head was sent, so the consumer hears an error, never a bare end
+        // it would wait on. Dropping the request future closes the connection.
+        sink.send(StreamChunk::Error {
+            message: "request cancelled".to_string(),
+        });
+        return Ok(());
+    };
+    let attempt = match sent {
         Ok(attempt) => attempt,
         Err(message) => {
             sink.send(StreamChunk::Error {
@@ -1233,6 +1290,77 @@ mod tests {
         done.unwrap().unwrap();
         let chunks = seen.lock().unwrap();
         assert!(matches!(chunks.last(), Some(StreamChunk::End)));
+    }
+
+    /// A server that reads the request and then sends nothing at all: a slow
+    /// model still working through the prompt before its first byte.
+    fn silent_server() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                std::thread::sleep(Duration::from_secs(30));
+            }
+        });
+        port
+    }
+
+    struct Chunks(std::sync::Arc<Mutex<Vec<StreamChunk>>>);
+    impl ChunkSink for Chunks {
+        fn send(&self, chunk: StreamChunk) {
+            self.0.lock().unwrap().push(chunk);
+        }
+    }
+
+    fn slow_request(port: u16, id: &str) -> ProviderRequest {
+        ProviderRequest {
+            url: format!("http://llm-host:{port}/v1/chat/completions"),
+            method: "POST".into(),
+            body: Some("{}".into()),
+            timeout_secs: Some(25),
+            stream_id: Some(id.into()),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_ends_a_request_still_waiting_for_the_head() {
+        let port = silent_server();
+        let _guard = pin(vec![ip("127.0.0.1")]);
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+        tokio::spawn(async {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            cancel_stream("stop-before-head");
+        });
+        let done = tokio::time::timeout(
+            Duration::from_secs(10),
+            send_stream(slow_request(port, "stop-before-head"), Chunks(seen.clone())),
+        )
+        .await;
+        assert!(done.is_ok(), "Stop must not wait for a slow model's first byte");
+        let chunks = seen.lock().unwrap();
+        assert!(
+            matches!(chunks.as_slice(), [StreamChunk::Error { .. }]),
+            "no head was sent, so the consumer hears an error: {chunks:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cancel_that_arrives_before_its_stream_still_stops_it() {
+        let port = silent_server();
+        let _guard = pin(vec![ip("127.0.0.1")]);
+        cancel_stream("cancelled-early");
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let done = tokio::time::timeout(
+            Duration::from_secs(10),
+            send_stream(slow_request(port, "cancelled-early"), Chunks(seen.clone())),
+        )
+        .await;
+        assert!(done.is_ok(), "an early cancel must not be lost");
+        // Claimed once: the id does not linger to cancel anything else.
+        assert!(!take_early_cancel("cancelled-early"));
     }
 
     fn chat_request() -> ProviderRequest {
