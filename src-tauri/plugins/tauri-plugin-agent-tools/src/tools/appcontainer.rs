@@ -395,6 +395,10 @@ pub fn sweep_recorded_roots() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
+        // An applied marker goes with its record (revoke_recorded_roots).
+        if name.ends_with(".applied") {
+            continue;
+        }
         if let Err(e) = win::revoke_recorded_roots(&name) {
             eprintln!("could not withdraw the folder grants of {name}: {e}");
         }
@@ -1037,6 +1041,42 @@ pub(crate) fn holders_dir(record: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// Beside a container's record: the hash of the root set last applied in
+/// full (O05-010). In the host's temp folder like the record, so a sandboxed
+/// command cannot forge it. Lets a new process (every shell helper is one)
+/// skip re-walking grants that are already in place.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn applied_marker(record: &Path) -> PathBuf {
+    let mut name = record.as_os_str().to_os_string();
+    name.push(".applied");
+    PathBuf::from(name)
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn applied_hash(listed: &str) -> String {
+    format!("{:016x}", fnv1a(listed.as_bytes()))
+}
+
+/// Was exactly `listed` the last root set applied in full for `record`?
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn applied_matches(record: &Path, listed: &str) -> bool {
+    std::fs::read_to_string(applied_marker(record)).is_ok_and(|t| t.trim() == applied_hash(listed))
+}
+
+/// Record that `listed` was applied in full. Written only after success.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn note_applied(record: &Path, listed: &str) -> Result<(), String> {
+    let marker = applied_marker(record);
+    std::fs::write(&marker, applied_hash(listed)).map_err(|e| format!("{}: {e}", marker.display()))
+}
+
+/// Forget the applied set: done before any grant change, so a change that
+/// fails part-way is never taken for one already in place.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn forget_applied(record: &Path) {
+    let _ = std::fs::remove_file(applied_marker(record));
+}
+
 /// [`roots_record`] read back: `(write roots, read roots)`.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn parse_roots_record(text: &str) -> (Vec<PathBuf>, Vec<PathBuf>) {
@@ -1414,6 +1454,7 @@ mod win {
         let _lock = RecordLock::acquire(&record)?;
         // Every holder goes: the grant they all rested on is gone.
         let _ = std::fs::remove_dir_all(super::holders_dir(&record));
+        super::forget_applied(&record);
         let Ok(text) = std::fs::read_to_string(&record) else {
             return Ok(());
         };
@@ -1616,13 +1657,12 @@ mod win {
         let listed = super::roots_record(roots, &read_roots);
         let recorded = std::fs::read_to_string(record).unwrap_or_default();
         // Report-04 F8: every bash command lands here, and re-applying the
-        // same grants walks up to 50k entries. Skip when this process already
-        // applied exactly this set, the record still says so, and every
-        // isolated `.jan` is still in place.
-        let applied = APPLIED_UNION.get_or_init(Default::default);
+        // same grants walks up to 50k entries. Skip when exactly this set was
+        // last applied in full (by any process: the marker is on disk,
+        // O05-010), the record still says so, and every isolated `.jan` is
+        // still in place.
         if recorded == listed
-            && applied.lock().ok().and_then(|m| m.get(record).cloned()).as_deref()
-                == Some(listed.as_str())
+            && super::applied_matches(record, &listed)
             && roots.iter().all(|r| r.join(crate::tools::sandbox::JAN_DIR).is_dir())
         {
             // A `git init` or a clone the last command made has no guard yet.
@@ -1631,6 +1671,7 @@ mod win {
             }
             return Ok(());
         }
+        super::forget_applied(record);
         let (old_write, old_read) = super::parse_roots_record(&recorded);
         let previous: Vec<PathBuf> = old_write.into_iter().chain(old_read).collect();
         for step in root_acl_plan(&previous, roots, &read_roots, |p| p.is_dir()) {
@@ -1680,16 +1721,10 @@ mod win {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         std::fs::write(record, &listed).map_err(|e| format!("{}: {e}", record.display()))?;
-        if let Ok(mut m) = applied.lock() {
-            m.insert(record.to_path_buf(), listed);
-        }
+        // A failed marker write only costs the next command a full walk.
+        let _ = super::note_applied(record, &listed);
         Ok(())
     }
-
-    /// The root set this process last applied, per container record.
-    static APPLIED_UNION: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<PathBuf, String>>,
-    > = std::sync::OnceLock::new();
 
     /// Give `path` a protected DACL holding every ACE it has now, explicit or
     /// inherited, except those naming `sid`. Inherited ACEs are kept as
@@ -3189,15 +3224,36 @@ mod tests {
             win::aces_for(&repo, psid).iter().any(|&(_, _, mask)| mask & FILE_WRITE_DATA != 0),
             "the write root was not granted write"
         );
+        // O05-010: the applied set is marked on disk, for the next process.
+        let listed = std::fs::read_to_string(&record).unwrap();
+        assert!(applied_matches(&record, &listed), "no applied marker after a full apply");
 
         win::revoke_recorded_roots(&name).unwrap();
         assert!(win::aces_for(&repo, psid).is_empty(), "an ACE outlived the revoke");
         assert!(!record.exists(), "the record outlived the revoke");
+        assert!(!applied_marker(&record).exists(), "the applied marker outlived the revoke");
         std::fs::write(repo.join("owner.txt"), b"still mine").expect("owner keeps access");
 
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// O05-010: the applied marker matches only the exact set it was written
+    /// for, and is gone once forgotten.
+    #[test]
+    fn the_applied_marker_matches_only_its_own_set() {
+        let dir = std::env::temp_dir().join(format!("jan_ac_marker_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let record = dir.join("Jan.Agent.test");
+        assert!(!applied_matches(&record, "C:\\a\n"));
+        note_applied(&record, "C:\\a\n").unwrap();
+        assert!(applied_matches(&record, "C:\\a\n"));
+        assert!(!applied_matches(&record, "C:\\a\nr\tC:\\b\n"));
+        forget_applied(&record);
+        assert!(!applied_marker(&record).exists());
+        assert!(!applied_matches(&record, "C:\\a\n"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// One holder's set never withdraws what another still needs; write wins.
