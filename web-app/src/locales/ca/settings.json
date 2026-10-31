@@ -26,10 +26,10 @@
     "overridden_one": "{{count}} rol definit",
     "overridden_many": "{{count}} de rols definits",
     "overridden_other": "{{count}} rols definits",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Subagents alhora",
+    "maxConcurrentDesc": "El màxim de subagents que s'executen alhora (d'1 a 16). Els altres esperen el seu torn.",
+    "maxDepth": "Profunditat dels subagents",
+    "maxDepthDesc": "1: els subagents no poden iniciar subagents. 2 o 3 els permet passar la feina cap avall tants nivells, amb els mateixos límits i aprovacions."
   },
   "autoDownload": "Descarrega automàticament les noves actualitzacions",
   "checkForUpdates": "Cerca actualitzacions",
@@ -128,7 +128,7 @@
     "previousPaneDesc": "Passa al panell anterior de la vista dividida.",
     "findInChat": "Cerca al xat",
     "findInChatDesc": "Cerca a la conversa que es veu a la pantalla.",
-    "notSet": "Not set"
+    "notSet": "No definit"
   },
   "interface": {
     "title": "Interfície",
@@ -479,8 +479,8 @@
     "stopServerToEdit": "Atura el servidor per editar",
     "trustedHostsInvalid": "No és un amfitrió vàlid: {{hosts}}. Fes servir un amfitrió o amfitrió:port, com example.com o 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Sense desar. Prem Retorn per desar, Escape per desfer.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Executa eines al servidor",
+    "serverToolsDesc": "Executa les eines al costat del servidor per als endpoints de xat."
   },
   "privacy": {
     "analytics": "Analítica",
@@ -555,10 +555,10 @@
     "revealLogs": "Mostra els registres",
     "factoryResetTitle": "Restableix als valors d’origen",
     "factoryResetDesc": "Això restablirà tots els paràmetres de l’app als valors per defecte. No es pot desfer. Només ho recomanem si l’aplicació està malmesa.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Conserva les dades de l'aplicació",
+    "keepAppDataDesc": "L'historial de xats i les converses es conservaran.",
+    "keepModelsAndConfigs": "Conserva tots els models i configuracions",
+    "keepModelsAndConfigsDesc": "Els models baixats, la configuració del motor i les configuracions MCP es conservaran.",
     "clearWebData": "Esborra les dades d'interfície en memòria cau",
     "clearWebDataDesc": "Elimina l'emmagatzematge local en memòria cau i les preferències d'interfície que conserva la finestra de l'aplicació. La interfície es restableix al seu estat per defecte.",
     "cancel": "Cancel·la",
@@ -623,28 +623,28 @@
       "uninstall": "Desinstal·la",
       "uninstalling": "S'està desinstal·lant…",
       "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI instal·lat a {{path}}",
+      "installFailed": "La instal·lació ha fallat",
+      "uninstalledToast": "Flint CLI desinstal·lat",
+      "uninstallFailed": "La desinstal·lació ha fallat"
     },
     "startupGroup": "Inici i safata",
     "cliGroup": "Línia d'ordres",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Mantén l'ordinador actiu durant les execucions",
+    "keepAwakeDesc": "Evita que Windows s'adormi mentre una execució de l'agent està en curs. La pantalla encara es pot apagar.",
+    "siteIcons": "Carrega les icones dels llocs",
+    "siteIconsDesc": "Mostra la icona de cada lloc web al costat del seu nom als resultats de cerca i a les citacions. Obtenir una icona fa saber a aquell lloc que l'has vist. Desactivat mostra una lletra.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Introdueix un token de Hugging Face per validar-lo",
+      "valid": "El token és vàlid",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "El teu token de Hugging Face és vàlid.",
+      "invalid": "Token no vàlid",
+      "invalidDesc": "El token de Hugging Face proporcionat no és vàlid. Revisa el token i torna-ho a provar.",
+      "timedOut": "La validació ha caducat",
+      "timedOutDesc": "La sol·licitud de validació ha caducat. Revisa la connexió de xarxa i torna-ho a provar.",
+      "failed": "La validació ha fallat",
+      "failedDesc": "S'ha produït un error de xarxa en validar el token. Revisa la connexió a Internet."
     }
   },
   "extensions": {
@@ -1482,7 +1482,7 @@
       "settleFailed": "No s'ha pogut resoldre aquest conflicte",
       "forgotten": "Record oblidat",
       "forgetFailed": "No s'ha pogut oblidar aquest record",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "No s'ha pogut restaurar aquest record",
       "changeFailed": "No s'ha pogut canviar aquest record",
       "updated": "Record actualitzat",
       "updateFailed": "No s'ha pogut actualitzar aquest record",
@@ -1626,15 +1626,15 @@
     "title": "Valors per defecte"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Ús per element",
+    "description": "Crides i tokens dels subagents durant les darreres {{window}}, dels registres de sessions.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "No s'ha registrat res en aquest interval.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Servidors MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Configurat però mai utilitzat",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

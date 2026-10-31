@@ -655,5 +655,5 @@
     "ranToolsDropped": "ihre Ausgabe wurde verworfen, damit sie ins Kontextfenster passt.",
     "ranToolsRetry": "der Anbieter ist danach ausgefallen und die Anfrage wird erneut versucht."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Raum konnte nicht gelöscht werden"
 }

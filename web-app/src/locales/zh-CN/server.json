@@ -25,40 +25,40 @@
   "limitsTitle": "什么在哪里运行",
   "limits": "聊天、房间、模型和工具在服务器上运行。协作会话和战役需要一个在已打开 Flint 的电脑上运行的智能体：请通过远程访问和手机应用连接到那台电脑。无头服务器可以列出战役并审阅提案，但不运行会话。",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "批准此计划以启动",
+    "summary_one": "{{count}} 个任务。服务器会自行运行它们，不连接任何客户端，并且在任何内容进入你的文件夹之前会再次询问。",
+    "summary_other": "{{count}} 个任务。服务器会自行运行它们，不连接任何客户端，并且在任何内容进入你的文件夹之前会再次询问。",
+    "cost": "大致成本：{{low}} 到 {{high}} 个 token。",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "任务的工作方式",
+    "accessWorktree": "在各自的文件夹中独立工作",
+    "accessAsk": "每个操作都询问",
+    "approve": "批准并启动",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "计划未获批准"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "文件夹缺失",
+      "corrupt": "不再是工作树",
+      "branchMoved": "分支已移动",
+      "identityChanged": "仓库已更改"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "未合并：{{files}} 中存在冲突。未做任何更改。",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "已合并到 {{target}}（快进）。",
+    "merged": "已合并到 {{target}}。",
+    "discarded": "已丢弃。此会话没有其工作树就无法继续。",
+    "counts": "{{pending}} 个未提交，{{unmerged}} 个待合并",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "合并到 {{base}}",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "将移除检出内容及其分支，其中有 {{pending}} 个未提交的文件和 {{unmerged}} 个未合并的提交。",
+    "discardAnyway": "仍然丢弃",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "未提出更改：{{error}}",
+    "filesChanged": "已更改 {{count}} 个文件：{{files}}{{more}}"
   }
 }

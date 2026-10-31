@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "既定値（設定より: 自動）"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "エージェントスロット",
+    "description": "サブエージェント、ワークフローエージェント、およびスロットを指定しないその他のリクエスト用の追加スロットです。並列エージェントがチャットや Cowork の KV キャッシュを押し出さないようにします。スロットは 1 つの KV プールを共有するため、メモリ消費はわずかです(ハイブリッドモデルではスロットごとにリカレント状態も保持します)。0 でオフになります。「バックグラウンドスロットを予約」がオンである必要があります。モデルを再読み込みします。"
   }
 }

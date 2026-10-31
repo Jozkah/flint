@@ -277,13 +277,13 @@
   "autoApproveServerHint": "Aprova automàticament només les eines d'aquest servidor. L'interruptor per a totes les eines MCP és a Configuració > Permisos.",
   "allowAllMoved": "L'interruptor que permet executar totes les eines MCP sense preguntar és a Configuració > Permisos.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} necessita la teva intervenció",
+    "urlTitle": "{{server}} vol obrir una pàgina",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Els camps ocults només van a {{server}}. No es mostren al xat.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Obre la pàgina"
   }
 }

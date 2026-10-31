@@ -685,5 +685,5 @@
     "ranToolsDropped": "ich wynik został odrzucony, aby zmieścić się w oknie kontekstu.",
     "ranToolsRetry": "dostawca zwrócił potem błąd, więc żądanie jest ponawiane."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Nie udało się usunąć pokoju"
 }

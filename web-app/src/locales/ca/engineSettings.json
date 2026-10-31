@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "Predeterminat (de la configuració: Auto)"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "Slots de l'agent",
+    "description": "Slots addicionals per a subagents, agents de workflow i altres sol·licituds que no indiquen cap slot, de manera que els agents en paral·lel no expulsen la memòria cau KV del teu xat o de Cowork. Comparteixen un únic pool KV, així que un slot costa poca memòria (els models híbrids també mantenen l'estat recurrent per slot). 0 els desactiva. Requereix tenir activat Reserva slots en segon pla. Recarrega el model."
   }
 }

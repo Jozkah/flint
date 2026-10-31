@@ -685,5 +685,5 @@
     "ranToolsDropped": "jejich výstup byl vyřazen, aby se vešel do kontextového okna.",
     "ranToolsRetry": "poskytovatel pak selhal a požadavek se opakuje."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Místnost se nepodařilo smazat"
 }

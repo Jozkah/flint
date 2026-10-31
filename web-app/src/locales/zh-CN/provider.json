@@ -6,7 +6,7 @@
   "apiTypeLabel": "API 格式",
   "apiTypeOpenAI": "OpenAI 兼容",
   "apiTypeAnthropic": "Anthropic 兼容",
-  "baseUrlLabel": "Base URL",
+  "baseUrlLabel": "基础 URL",
   "detectedLocal": "在此电脑上找到",
   "useDetected": "使用 {{name}}",
   "baseUrlPlaceholder": "https://your-endpoint/v1",

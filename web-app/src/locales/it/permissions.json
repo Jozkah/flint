@@ -41,10 +41,10 @@
     "gitRemote": "Flint vuole eseguire {{command}}, che modifica {{target}}",
     "gitDestructive": "Flint vuole eseguire {{command}}, che può far perdere del lavoro",
     "approveCampaign": "Flint vuole avviare la campagna \"{{title}}\" ({{count}} attività)",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint vuole eseguire un workflow: {{agents}} agenti in {{phases}} fasi",
+    "spawnWorktree": "Flint vuole avviare una chat annidata che può modificare file in un nuovo worktree di {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint vuole avviare una chat annidata chiamata \"{{title}}\"",
+    "enterWorktree": "Flint vuole spostare l'accesso in scrittura di questa sessione in un worktree: {{folder}} (branch {{branch}}, basato su {{base}})",
     "spendPause": "Flint vuole proseguire questa esecuzione oltre la sua pausa di spesa",
     "changeFileOutside": "Flint vuole modificare {{target}}, che si trova fuori da {{workspace}}",
     "changeManyFilesOutside": "Flint vuole modificare {{count}} file, alcuni fuori da {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Invia modifiche a un repository remoto che altre persone possono vedere. Flint chiede ogni volta, a meno che tu non consenta temporaneamente le normali azioni Git remote per questa conversazione.",
     "gitDestructive": "Ciò che rimuove o sovrascrive potrebbe non essere recuperabile.",
     "campaignPlan": "Avvia sessioni separate, ciascuna sul proprio branch worktree, che leggono e modificano file e usano in parallelo la quota del tuo modello. Approvare il piano non approva alcuna chiamata fatta da un'attività. Flint chiede ogni volta.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Avvia tanti subagenti, fase per fase, che leggono e modificano file e usano la tua quota del modello. Flint lo chiede ogni volta per un workflow di queste dimensioni.",
+    "spawnWorktree": "La chat annidata legge e modifica file sul proprio branch di questo progetto, usa la tua quota del modello e continua a funzionare mentre fai altro. Le sue modifiche restano su quel branch finché non le unisci. Flint lo chiede ogni volta.",
+    "spawnChat": "La chat annidata è una nuova sessione che usa la tua quota del modello e continua a funzionare mentre fai altro. Parte senza accesso alle cartelle. Flint lo chiede ogni volta perché hai attivato \"Chiedi prima di avviare chat annidate\" per questa sessione.",
+    "enterWorktree": "Questa sessione può leggere e modificare file solo in quel worktree sul proprio branch, non nella cartella del progetto. Le sue modifiche restano su quel branch finché non le unisci. Flint lo chiede ogni volta.",
     "spendPause": "L'esecuzione continua a consumare quota di modello a pagamento finché non termina o raggiunge il limite. Negare la ferma."
   },
   "repeat": {
@@ -399,11 +399,11 @@
     "session": "Consenti per questa conversazione"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "In attesa della tua approvazione: {{tool}}",
+    "waitBody": "L'esecuzione è in pausa da {{seconds}} s in attesa che tu la consenta o la rifiuti.",
+    "destructive": "Comando distruttivo: {{reason}}. Richiesto anche se questo strumento è altrimenti consentito.",
+    "selfApproval": "{{tool}} approva da solo i comandi su {{server}}. Solo tu puoi approvarli, quindi viene chiesto ogni volta.",
+    "sensitive": "Chiamata a strumento sensibile: controlla la sua azione prima di consentirla.",
+    "autoPause": "{{count}} chiamate a strumenti eseguite senza chiedere. Continuare?"
   }
 }

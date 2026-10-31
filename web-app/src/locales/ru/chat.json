@@ -301,36 +301,36 @@
     "stopGenerating": "Остановить генерацию"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Уменьшить размер контекста (ctx-size)",
+    "oomDisableMtp": "Отключить MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Уменьшите n-gpu-layers или переключитесь на CPU-бэкенд",
+    "oomSmallerModel": "Использовать модель поменьше / с более сильным квантованием",
+    "serverContext": "Размер контекстного окна этой модели задаётся её сервером, поэтому Flint не может его увеличить. Начните новый чат, сократите разговор или увеличьте лимит на сервере.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "Модель вернула пустой ответ. Повторите попытку или смените модель.",
+    "thinkingOnly": "Модель закончила размышлять, но не дала ответа. Продолжите или сгенерируйте ответ заново.",
+    "noReply": "Запуск завершился без ответа.",
+    "noReplyToolError": "Запуск завершился без ответа. Последняя ошибка инструмента ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "Импортированный чат",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "Это изображение нельзя сохранить.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "savedPictures_few": "Saved {{count}} pictures",
-    "savedPictures_many": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "savedPictures_one": "Сохранено {{count}} изображение",
+    "savedPictures_other": "Сохранено {{count}} изображения",
+    "savedPictures_few": "Сохранено {{count}} изображения",
+    "savedPictures_many": "Сохранено {{count}} изображений",
+    "picturesMissing": "; {{count}} больше нет в галерее",
+    "picturesGone": "Изображений больше нет в галерее Studio.",
+    "tooLarge": "этот экспорт весит {{mb}} МБ, а лимит — 50 МБ; экспортируйте одно сообщение или ветку либо исключите сведения об инструментах",
+    "untitled": "Новый разговор",
+    "tooTall": "разговор слишком длинный для одного изображения (около {{height}}k px, лимит — {{limit}}k); экспортируйте его в PDF или Markdown либо экспортируйте одно сообщение",
+    "pageNotDrawn": "не удалось отрисовать страницу",
+    "noCanvas": "нет доступного canvas для отрисовки изображения",
+    "imageNotEncoded": "не удалось закодировать изображение"
   }
 }

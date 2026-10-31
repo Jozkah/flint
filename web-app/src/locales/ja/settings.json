@@ -25,10 +25,10 @@
     "advanced": "詳細設定: ロールごとの設定",
     "overridden_one": "{{count}} 個のロールを設定済み",
     "overridden_other": "{{count}} 個のロールを設定済み",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "同時実行サブエージェント数",
+    "maxConcurrentDesc": "同時に実行するサブエージェントの最大数(1 ~ 16)。残りは順番を待ちます。",
+    "maxDepth": "サブエージェントの深さ",
+    "maxDepthDesc": "1:サブエージェントはサブエージェントを起動できません。2 または 3 にすると、同じ制限と承認の下で、その階層数まで作業を委任できます。"
   },
   "autoDownload": "新しいアップデートを自動的にダウンロード",
   "checkForUpdates": "アップデートを確認",
@@ -127,7 +127,7 @@
     "previousPaneDesc": "分割ビューの前のペインへ移動します。",
     "findInChat": "チャット内を検索",
     "findInChatDesc": "画面上の会話を検索します。",
-    "notSet": "Not set"
+    "notSet": "未設定"
   },
   "interface": {
     "title": "外観",
@@ -475,8 +475,8 @@
     "stopServerToEdit": "編集するにはサーバーを停止してください",
     "trustedHostsInvalid": "無効なホスト: {{hosts}}。example.com や 192.168.1.5:3000 のようにホストまたはホスト:ポートで入力してください。",
     "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "サーバーでツールを実行",
+    "serverToolsDesc": "チャットエンドポイント用にツールをサーバー側で実行します。"
   },
   "privacy": {
     "analytics": "分析",
@@ -619,28 +619,28 @@
       "uninstall": "アンインストール",
       "uninstalling": "アンインストール中…",
       "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI を {{path}} にインストールしました",
+      "installFailed": "インストールに失敗しました",
+      "uninstalledToast": "Flint CLI をアンインストールしました",
+      "uninstallFailed": "アンインストールに失敗しました"
     },
     "startupGroup": "起動とトレイ",
     "cliGroup": "コマンドライン",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "実行中はコンピューターをスリープさせない",
+    "keepAwakeDesc": "エージェントの実行中、Windows がスリープ状態になるのを防ぎます。画面は消灯する場合があります。",
+    "siteIcons": "サイトアイコンを読み込む",
+    "siteIconsDesc": "検索結果や引用で、各 Web サイトのアイコンを名前の横に表示します。アイコンを取得すると、そのサイトに閲覧したことが伝わります。オフにすると文字が表示されます。",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "検証する Hugging Face トークンを入力してください",
+      "valid": "トークンは有効です",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Hugging Face トークンは有効です。",
+      "invalid": "トークンが無効です",
+      "invalidDesc": "指定された Hugging Face トークンは無効です。トークンを確認してもう一度お試しください。",
+      "timedOut": "検証がタイムアウトしました",
+      "timedOutDesc": "検証リクエストがタイムアウトしました。ネットワーク接続を確認してもう一度お試しください。",
+      "failed": "検証に失敗しました",
+      "failedDesc": "トークンの検証中にネットワークエラーが発生しました。インターネット接続を確認してください。"
     }
   },
   "extensions": {
@@ -1463,7 +1463,7 @@
       "settleFailed": "矛盾を解決できませんでした",
       "forgotten": "メモリを忘れました",
       "forgetFailed": "メモリを忘れられませんでした",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "そのメモリを復元できませんでした",
       "changeFailed": "メモリを変更できませんでした",
       "updated": "メモリを更新しました",
       "updateFailed": "メモリを更新できませんでした",
@@ -1592,15 +1592,15 @@
     "title": "デフォルト"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "項目別の使用状況",
+    "description": "セッションログに基づく、過去 {{window}} の呼び出しとサブエージェントのトークン。",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "この期間に記録はありません。",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "MCP サーバー",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "設定済みだが未使用",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

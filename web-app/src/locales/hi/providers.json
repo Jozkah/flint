@@ -39,11 +39,8 @@
   "importedTooltip": "लोकल फ़ाइल से इम्पोर्ट किया गया। इसे Flint से हटाने पर डिस्क की फ़ाइल नहीं हटेगी।",
   "importModelSuccess": "मॉडल {{provider}} सफलतापूर्वक आयात किया गया है।",
   "importModelError": "मॉडल आयात करने में विफल रहा:",
-
   "importScanHint": "LM Studio, Ollama, Hugging Face कैश, llama.cpp और GPT4All में देखता है। इंपोर्ट करने तक कुछ भी कॉपी नहीं होता।",
-
   "importAddFolder": "मॉडल का फ़ोल्डर जोड़ें",
-
   "importRemoveFolder": "फ़ोल्डर {{folder}} हटाएँ",
   "stop": "रोकें",
   "start": "शुरू करें",

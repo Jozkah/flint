@@ -649,5 +649,5 @@
     "ranToolsDropped": "それらの出力はコンテキストウィンドウに収めるため破棄されました。",
     "ranToolsRetry": "その後プロバイダーが失敗し、リクエストを再試行しています。"
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "ルームを削除できませんでした"
 }
