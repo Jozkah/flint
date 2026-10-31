@@ -26,10 +26,10 @@
     "overridden_one": "{{count}} função configurada",
     "overridden_other": "{{count}} funções configuradas",
     "overridden_many": "{{count}} de funções configuradas",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Subagentes simultâneos",
+    "maxConcurrentDesc": "Máximo de subagentes rodando ao mesmo tempo (de 1 a 16). Os demais esperam a vez.",
+    "maxDepth": "Profundidade de subagentes",
+    "maxDepthDesc": "1: subagentes não podem iniciar subagentes. 2 ou 3 permite repassar o trabalho para baixo esse número de níveis, com os mesmos limites e aprovações."
   },
   "autoDownload": "Download automático de novas atualizações",
   "checkForUpdates": "Verificar Atualizações",
@@ -128,7 +128,7 @@
     "previousPaneDesc": "Ir para o painel anterior da visualização dividida.",
     "findInChat": "Buscar no chat",
     "findInChatDesc": "Pesquise a conversa na tela.",
-    "notSet": "Not set"
+    "notSet": "Não definido"
   },
   "interface": {
     "title": "Interface",
@@ -477,8 +477,8 @@
     "stopServerToEdit": "Pare o servidor para editar",
     "trustedHostsInvalid": "Host inválido: {{hosts}}. Use um host ou host:porta, como example.com ou 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Não salvo. Pressione Enter para salvar, Esc para desfazer.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Executar ferramentas no servidor",
+    "serverToolsDesc": "Executa ferramentas no lado do servidor para os endpoints de chat."
   },
   "privacy": {
     "analytics": "Analytics",
@@ -553,10 +553,10 @@
     "revealLogs": "Mostrar Logs",
     "factoryResetTitle": "Redefinir para Configurações de Fábrica",
     "factoryResetDesc": "Isso redefinirá todas as configurações do app para os padrões. Isso não pode ser desfeito. Recomendamos isso apenas se o app estiver corrompido.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Manter os dados do aplicativo",
+    "keepAppDataDesc": "Seu histórico de chats e conversas será preservado.",
+    "keepModelsAndConfigs": "Manter todos os modelos e configurações",
+    "keepModelsAndConfigsDesc": "Os modelos baixados, as configurações dos mecanismos e as configurações de MCP serão preservados.",
     "clearWebData": "Limpar dados em cache da interface",
     "clearWebDataDesc": "Remove o armazenamento local em cache e as preferências de interface mantidas pela janela do app. A interface volta ao estado padrão.",
     "cancel": "Cancelar",
@@ -621,28 +621,28 @@
       "uninstall": "Desinstalar",
       "uninstalling": "Desinstalando…",
       "foreignDesc": "Encontrada em {{path}}, instalada por outra cópia do Flint. Instale aqui para usar a CLI desta cópia.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "CLI do Flint instalada em {{path}}",
+      "installFailed": "Falha na instalação",
+      "uninstalledToast": "CLI do Flint desinstalada",
+      "uninstallFailed": "Falha na desinstalação"
     },
     "startupGroup": "Inicialização e bandeja",
     "cliGroup": "Linha de comando",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Manter o computador ativo durante as execuções",
+    "keepAwakeDesc": "Impede que o Windows entre em suspensão enquanto um agente está trabalhando. A tela ainda pode apagar.",
+    "siteIcons": "Carregar ícones de sites",
+    "siteIconsDesc": "Mostra o ícone de cada site ao lado do nome nos resultados de pesquisa e nas citações. Buscar um ícone informa ao site que você o visualizou. Desativado, mostra uma letra.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Digite um token do Hugging Face para validar",
+      "valid": "O token é válido",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Seu token do Hugging Face é válido.",
+      "invalid": "Token inválido",
+      "invalidDesc": "O token do Hugging Face informado é inválido. Verifique o token e tente novamente.",
+      "timedOut": "A validação expirou",
+      "timedOutDesc": "A solicitação de validação expirou. Verifique sua conexão de rede e tente novamente.",
+      "failed": "Falha na validação",
+      "failedDesc": "Ocorreu um erro de rede ao validar o token. Verifique sua conexão com a internet."
     }
   },
   "extensions": {
@@ -1509,7 +1509,7 @@
       "settleFailed": "Não foi possível resolver esse conflito",
       "forgotten": "Memória esquecida",
       "forgetFailed": "Não foi possível esquecer essa memória",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Não foi possível restaurar essa memória",
       "changeFailed": "Não foi possível alterar essa memória",
       "updated": "Memória atualizada",
       "updateFailed": "Não foi possível atualizar essa memória",
@@ -1653,15 +1653,15 @@
     "title": "Padrões"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Uso por item",
+    "description": "Chamadas e tokens de subagentes nos últimos {{window}}, a partir dos logs de sessão.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "Nada registrado neste período.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Servidores MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Configurado, mas nunca usado",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

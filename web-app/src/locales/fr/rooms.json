@@ -668,5 +668,5 @@
     "ranToolsDropped": "leur sortie a été supprimée pour tenir dans la fenêtre de contexte.",
     "ranToolsRetry": "le fournisseur a ensuite échoué et la requête est relancée."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Échec de la suppression du salon"
 }

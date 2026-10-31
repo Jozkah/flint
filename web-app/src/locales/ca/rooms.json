@@ -668,5 +668,5 @@
     "ranToolsDropped": "la seva sortida s'ha descartat perquè càpiga a la finestra de context.",
     "ranToolsRetry": "el proveïdor ha fallat després i la sol·licitud es torna a intentar."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "No s'ha pogut eliminar la sala"
 }

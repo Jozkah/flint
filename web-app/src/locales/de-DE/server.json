@@ -25,40 +25,40 @@
   "limitsTitle": "Was wo läuft",
   "limits": "Chat, Räume, Modelle und Werkzeuge laufen auf dem Server. Cowork-Sitzungen und Kampagnen brauchen einen Agenten, der auf einem Computer mit geöffnetem Flint läuft: Erreiche diesen Computer über den Fernzugriff und die Handy-App. Ein Server ohne Oberfläche kann Kampagnen auflisten und Vorschläge prüfen, führt aber keine Sitzungen aus.",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "Diesen Plan genehmigen, um ihn zu starten",
+    "summary_one": "{{count}} Aufgabe. Der Server führt sie eigenständig ohne angeschlossenen Client aus und fragt erneut, bevor etwas Ihren Ordner erreicht.",
+    "summary_other": "{{count}} Aufgaben. Der Server führt sie eigenständig ohne angeschlossenen Client aus und fragt erneut, bevor etwas Ihren Ordner erreicht.",
+    "cost": "Grobe Kosten: {{low}} bis {{high}} Tokens.",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "Wie Aufgaben arbeiten",
+    "accessWorktree": "Selbstständig in ihrem eigenen Ordner arbeiten",
+    "accessAsk": "Bei jeder Aktion nachfragen",
+    "approve": "Genehmigen und starten",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "der Plan wurde nicht genehmigt"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "Ordner fehlt",
+      "corrupt": "kein Worktree mehr",
+      "branchMoved": "Branch verschoben",
+      "identityChanged": "Repository geändert"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "Nicht zusammengeführt: Konflikte in {{files}}. Es wurde nichts geändert.",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "In {{target}} zusammengeführt (Fast-Forward).",
+    "merged": "In {{target}} zusammengeführt.",
+    "discarded": "Verworfen. Diese Sitzung kann ohne ihren Worktree nicht fortgesetzt werden.",
+    "counts": "{{pending}} nicht committet, {{unmerged}} zusammenzuführen",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "In {{base}} zusammenführen",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "Entfernt den Checkout und seinen Branch samt {{pending}} nicht committeter/n Datei(en) und {{unmerged}} nicht zusammengeführter/n Commit(s).",
+    "discardAnyway": "Trotzdem verwerfen",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "Änderungen wurden nicht vorgeschlagen: {{error}}",
+    "filesChanged": "{{count}} Datei(en) geändert: {{files}}{{more}}"
   }
 }

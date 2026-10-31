@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. Grup klasörleri klasör bağlamına eklendi; erişim hâlâ onay gerektiriyor",
       "foldersAdded": "{{base}}. Öğenin klasörleri gruba eklendi"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Adsız grup",
+    "folderNotInspected": "Klasör incelenemedi"
   },
   "htmlArtifact": {
     "code": "Kod",
@@ -334,7 +334,7 @@
       "threads": "Konuşmalar"
     },
     "openItem": "{{item}} öğesini aç",
-    "openStudio": "Open Studio"
+    "openStudio": "Studio'yu aç"
   },
   "searchGroup": {
     "pages": "Sayfalar",
@@ -889,8 +889,8 @@
         "failed": "Sayfa getirilemedi: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "Bu projenin dosyaları yüklenemedi.",
+    "retryLoad": "Tekrar dene"
   },
   "attachmentsIngestion": {
     "title": "Eklerin nasıl işleneceğini seçin",
@@ -1085,8 +1085,8 @@
     "thisChat": "Bu sohbet",
     "thisRoom": "Bu oda",
     "thisSession": "Bu oturum",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "API anahtarı eksik",
+    "keyMissingDescription": "{{subject}}, henüz API anahtarı olmayan bir sağlayıcı kullanıyor. Ayarlar'dan anahtarı ekleyin veya devam etmek için başka bir model seçin."
   },
   "skillsUsedCount_one": "{{count}} beceri kullanıldı",
   "skillsUsedCount_other": "{{count}} beceri kullanıldı",
@@ -1147,8 +1147,8 @@
     "alsoAttached": "Ayrıca eklenenler",
     "addFolder": "Başka bir klasör ekle",
     "removeFolder": "{{folder}} kaldır",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "{{folder}} klasörünü salt okunur yap",
+    "makeEditable": "{{folder}} klasörünü düzenlenebilir yap",
     "readOnly": "salt okunur",
     "editable": "düzenlenebilir",
     "inWorktree": "worktree üzerinden",
@@ -1156,8 +1156,8 @@
     "footnoteWorktree": "Flint bu klasörün bir git worktree'sini değiştirir, klasörün kendisini asla.",
     "writesFolder": "Eklenen klasörler",
     "writesFolderNote": "Düzenlemeler doğrudan düzenlenebilir olarak işaretlenen klasörlere yazılır.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Düzenlenebilir olarak işaretlenen klasörler",
+    "writesExtrasNote": "Ana klasör salt okunur kalır; düzenlemeler yalnızca düzenlenebilir olarak işaretlenen diğer klasörlere yazılır.",
     "writesWorktree": "Oturum worktree'si",
     "writesWorktreeNote": "Düzenlemeler, inceleyip birleştirmeniz için bir git worktree'sine yazılır.",
     "footnote": "Ajan bu klasörü doğrudan okur ve düzenler. Değişiklikleri fark panelinde inceleyin.",
@@ -1239,10 +1239,10 @@
     "compactFailed": "Henüz sıkıştırılacak bir şey yok.",
     "newSession": "Yeni oturum",
     "compactSuperseded": "Sohbet sıkıştırılırken değişti, bu yüzden hiçbir şey değiştirilmedi. Yeniden sıkıştırın.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "Sıkıştırma başarısız oldu: {{reason}}. Konuşmanız değişmedi.",
+    "compactDone": "Sıkıştırıldı. Özeti {{model}} yazdı.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "Konuşma o zamandan beri ilerledi, bu yüzden sıkıştırma artık geri alınamaz.",
     "btwFailed": "Yan soru yanıtlanamadı."
   },
   "autoCompactNeedsWindow": "Otomatik sıkıştırma bir bağlam boyutu gerektirir ve {{model}} için Flint'in bulabildiği bir boyut yok. Uzun sohbetlerin dolmadan önce sıkıştırılması için bu model için En Yüksek Bağlam Token'ını ayarlayın. Sağlayıcı bir isteği uzunluğu nedeniyle reddederse Flint sıkıştırır ve bir kez yeniden dener.",
@@ -1271,8 +1271,8 @@
     "interruptedNoReply_other": "{{calls}} tamamlanmış adım korundu.",
     "interruptedContinue": "Devam et",
     "interruptedDiscard": "Tamamlanmamış yanıtı at ve devam et",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Siz yokken:",
+    "recapDismiss": "Özeti kapat"
   },
   "modelNoTools": "{{model}} araç çağıramadığından ajan olarak hareket edemiyor. Araç çağırabilen bir model seçin.",
   "sessionModelUnavailable": "{{model}} artık kullanılamıyor. Model menüsünden başka bir model seçin.",
@@ -1384,7 +1384,7 @@
     "chooseAgainAction": "Yeniden seç",
     "externalGone": "Bu dosya projenin dışından açıldı ve bu erişim korunmadı. Yeniden açmak için tekrar seçin.",
     "oneFolderAtATime": "Aynı anda yalnızca bir klasör eklenebilir. \"{{name}}\" eklenmedi.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "{{name}} açılamadı."
   },
   "settingsSearch": {
     "label": "Ayarlarda ara",
@@ -2152,29 +2152,29 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Bağlam sıkıştırma",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Arka plan işi",
+      "tokenUsage": "Token kullanımı",
+      "fellBack": "Sağlayıcı yedeğe geçti",
+      "fellBackDetail": "{{from}} yanıt vermedi; {{to}} deneniyor",
+      "theModel": "model",
+      "nextProvider": "sonraki sağlayıcı",
+      "requestFailed": "İstek başarısız oldu",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "reasoningCharacters_one": "{{count}} karakter akıl yürütme",
+      "reasoningCharacters_other": "{{count}} karakter akıl yürütme",
+      "toolCalls_one": "{{count}} araç çağrısı",
+      "toolCalls_other": "{{count}} araç çağrısı",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Çalıştırma başladı",
+      "runEnded": "Çalıştırma bitti",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Ajan bitti",
+      "jobStarted": "Arka plan işi başladı",
+      "jobEnded": "Arka plan işi bitti"
     }
   },
   "appRail": {
@@ -2361,15 +2361,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Ajan tarayıcısı",
+    "note": "Ajanın kendi geçici tarayıcısının salt okunur görünümü. Flint'in önizlemesi kullanılmaz.",
+    "lastAction": "Son eylem: {{action}}",
+    "screenshotAlt": "Ajanın tarayıcısındaki sayfa",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Ajan tarayıcısını gizle",
+    "tabs": "Ajan tarayıcısı sekmeleri",
+    "waiting": "Sayfanın ilk görüntüsü bekleniyor…"
   },
   "browserVerify": {
     "title": "Tarayıcıda doğrula",
@@ -2407,23 +2407,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Karar modeli",
+    "backendLabel": "Kim yanıtlar",
+    "backendExplained": "Varsayılan Jev (TypeSafe). Ya da Flint'te zaten sahip olduğunuz açık bir model seçin: yerel bir llama.cpp veya MLX modeli ya da kendi barındırdığınız açık ağırlıklı modeller dahil OpenAI uyumlu herhangi bir sağlayıcı. Aynı sınırlı seçeneklere yanıt verir; bunlardan tam olarak biri olmayan her şey yok sayılır ve kararı Flint verir.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Açık model",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Von, Laya, Kev veya Rizzo Flow gibi küçük tipli karar modelleri: modelin OpenAI uyumlu uç noktasını sağlayıcı olarak ekleyin (veya yerel olarak yükleyin), sonra aşağıdan seçin.",
+    "backendPresetMissing": "{{name}} henüz yapılandırılmadı. OpenAI uyumlu uç noktasını sağlayıcı olarak ekleyin veya yerel olarak yükleyin, sonra aşağıdan seçin. O zamana kadar Jev kullanılır.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Bir model seçin",
+    "backendModelSearch": "Modellerde ara",
+    "backendModelEmpty": "Kullanılabilir model yok. Önce bir sağlayıcı ekleyin veya yerel bir model yükleyin.",
+    "backendModelEmptySearch": "\"{{query}}\" ile eşleşen model yok",
+    "backendNoModel": "Model seçilmedi: siz seçene kadar Jev kullanılır.",
+    "backendLocal": "Bu bilgisayarda veya yerel ağınızda çalışır: karar metni TypeSafe'e veya herhangi bir bulut hizmetine gitmez.",
+    "backendRemote": "Her bir isteğe bağlı seçenek için aşağıda listelenen aynı metin, TypeSafe yerine {{provider}} sağlayıcısına gönderilir.",
     "automationTitle": "Otomatik seçimler",
     "routeToggle": "Doğru asistana yönlendir",
     "routeExplained": "Beceri önerisi Açıkken Jev, hâlâ Flint'te olan bir konuşmayı her yeni mesaj için Quartz, Coal, Blaze veya Redstone'a taşıyabilir. Kapalıyken seçtiğiniz asistan her mesaj için kalır. Kendi seçtiğiniz bir asistan her iki durumda da asla değiştirilmez.",
@@ -2520,9 +2520,9 @@
   "coworkParallel": {
     "settingTitle": "Git klasöründeki yeni oturumlar kendi worktree'lerinde çalışır",
     "settingDescription": "Bir Git deposuna bağlanan her yeni oturum kendi worktree'sini ve dalını (flint/<title>) alır; böylece birçok oturum aynı klasörde birbirine ve senin çalışma kopyana dokunmadan aynı anda çalışabilir. Her dalı oturumdan incele, birleştir veya at.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Worktree'leri geçerli dalımdan başlat",
+    "baseDescription": "Kapalı (varsayılan): yeni bir worktree deponun varsayılan dalından başlar. Açık: şu an çıkış yaptığınız commit'ten başlar, yani henüz göndermediğiniz commit'leri de taşır. Açıkça verilen bir dal (örneğin ajan tarafından) her zaman önceliklidir.",
+    "resumeGone": "Bu oturumun worktree'sine yeniden girilemedi ({{reason}}), bu yüzden yalnızca inceleme durumuna döndü. Hiçbir şey yeniden oluşturulmadı.",
     "branchTitle": "Bu oturum kendi worktree'sinde {{branch}} dalında çalışıyor",
     "basedOn": "{{base}} tabanlı",
     "openFolder": "Klasörü aç",
@@ -2595,12 +2595,12 @@
     "noneForProvider": "Bu sağlayıcı için ayarlanabilir parametre yok.",
     "maybeUnsupported": "{{providers}} tarafından desteklenmeyebilir",
     "modelReports": "Model: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "Geçersiz kılma yok — model varsayılanları kullanılıyor.",
+    "unrecognized_one": "{{count}} tanınmayan parametre gizlendi: {{keys}}",
+    "unrecognized_other": "{{count}} tanınmayan parametre gizlendi: {{keys}}",
+    "notSupportedStripped": "Desteklenmiyor — gönderirken çıkarılacak",
+    "mayBeIgnored": "Bu sağlayıcı tarafından yok sayılabilir",
+    "notSupportedSkipped": "Desteklenmiyor — atlanacak.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2620,72 +2620,72 @@
     "chooseNote": "Siz onaylayana kadar hiçbir şey kopyalanmaz. JAN verileri asla değiştirilmez veya silinmez.",
     "copyDescription": "Aşağıda işaretlediğiniz öğeler için JAN sohbetlerinizi, ayarlarınızı ve sağlayıcı anahtarlarınızı Flint'e kopyalar. JAN'ın kendisi asla değiştirilmez veya silinmez.",
     "freshDescription": "Flint'i boş başlatır. Sağlayıcı anahtarları dahil JAN'dan hiçbir şey okunmaz veya kopyalanmaz, ne şimdi ne sonraki açılışlarda. İstediğiniz zaman Ayarlar, Veri klasörü bölümünden içe aktarabilirsiniz.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "JAN'dan taşı",
+    "descriptionNoLegacy": "Mevcut JAN verilerinizi Flint'e getirin.",
+    "descriptionFound": "Flint mevcut bir JAN kurulumu buldu. Verilerinizi nasıl aktaracağınızı seçin.",
+    "detecting": "Mevcut bir JAN kurulumu aranıyor…",
+    "noData": "Bu bilgisayarda JAN verisi bulunamadı. Taşınacak bir şey yok — Flint'i hemen kullanmaya başlayabilirsiniz.",
+    "foundAt": "JAN verisi {{path}} konumunda bulundu ({{size}}).",
+    "whatToBring": "Nelerin aktarılacağı",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Bir öğe Flint'te zaten varsa",
+    "conflictAria": "Çakışma çözümü",
+    "resolveAria": "Çakışmaları çöz",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Flint'e kopyala"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "JAN verilerini yeniden kullan",
+        "description": "Flint'i mevcut JAN verilerinize kopyalamadan, olduğu yerde yönlendirin."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Flint'e taşı",
+        "description": "Flint'e kopyalayın, ardından tüm öğeler başarılı olunca JAN kaynağını kaldırın. Geri alabilmeniz için bir yedek tutulur."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Sıfırdan başla"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Konuşmalar ve asistanlar",
+      "models": "İndirilen modeller ve motorlar",
+      "configs": "Yapılandırma dosyaları",
+      "settings": "Ayarlar ve sağlayıcı kimlik bilgileri",
+      "common": "Uzantılar, günlükler ve önbellekler",
+      "agent": "Ajan çalışma alanı ve odalar"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Mevcut Flint öğesini koru",
+      "use_jan": "JAN öğesiyle üzerine yaz",
+      "keep_both": "İkisini de koru (JAN kopyasına sonek eklenir)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "JAN verisi, bu Flint sürümünün tam desteklemediği bir şema bildiriyor. Devam etmeden önce uyarıları inceleyin.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Tahmini boyut",
+    "reusePath": "Yeniden kullanma yolu",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Flint kopyası daha yeni (korundu)",
+    "running": "Verileriniz taşınıyor… Flint'i kapatmayın.",
+    "complete": "Taşıma tamamlandı.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "JAN verilerinizin yedeği {{path}} konumunda tutuldu.",
+    "restartNeeded": "Bu verileri kullanmaya başlamak için Flint'i yeniden başlatın.",
+    "reuseInPlace": "Flint artık JAN verilerinizi {{path}} konumunda olduğu yerde kullanıyor.",
+    "failed": "Taşıma tamamlanamadı.",
+    "unknownError": "Bilinmeyen bir hata oluştu.",
+    "rolledBackNote": "Verileriniz önceki durumuna geri alındı.",
+    "quarantined": "Kısmi veriler {{path}} konumunda karantinaya alındı.",
+    "notNow": "Şimdi değil",
+    "dontAskAgain": "Bir daha sorma",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Sıfırdan başla",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2932,27 +2932,27 @@
     "openProvider": "Sağlayıcı ayarlarını aç",
     "errorDetails": "Ayrıntılar",
     "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Uzun metin modele sığmayabilir. Çeviri başarısız olursa veya erken durursa metni bölün.",
     "swapNeedsSource": "Değiştirmek için bir kaynak dil seçin"
   },
   "markdownImage": {
     "load": "Görseli {{host}} adresinden yükle"
   },
   "messageSaveFailed": "Mesaj kaydedilemedi. Yeniden başlatmadan sonra kaybolabilir.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "Gizli bilgi sistem anahtarlığına kaydedilemedi. Değişiklik geri alındı.",
+  "keptChat": "Korunan sohbet",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "Videonuz hazır",
+    "imageReady": "Görseliniz hazır",
+    "stoppedWaiting": "Beklemeyi bıraktı. {{provider}} işlemeye devam ediyor olabilir ve bitene kadar yeni bir istek reddedilebilir.",
+    "providerFallback": "Sağlayıcı",
+    "pictureInChat": "Bu resim bir sohbette kullanılıyor. Sohbet artık onu görüntüleyemez veya düzenleyemez."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Uygulama Günlükleri - Flint",
+    "systemMonitor": "Sistem İzleyici - Flint",
+    "localApiServerLogs": "Yerel API Sunucusu Günlükleri - Flint"
   },
   "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı.",
   "attachmentsProcessFailed": "Ekler hazırlanamadı, bu yüzden mesaj gönderilmedi",
@@ -3251,89 +3251,89 @@
   "chatRules": "Kurallar",
   "chatRuleForThisChat": "Bu kuralı bu sohbette kullan",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Başka bir bilgisayara devret…",
+    "saved": "Devir kaydedildi. {{count}} kimlik bilgisi dışarıda bırakıldı ve klasör konumlandırılmadan yalnızca adlandırıldı.",
+    "failed": "Devir kaydedilemedi: {{message}}",
+    "label": "Başka bir bilgisayardan devredildi",
+    "title": "Bu oturum başka bir bilgisayardan devredildi.",
+    "checkFailed": "Eklenen klasör kontrol edilemedi: {{error}}",
+    "folderMatches": "Eklenen klasör, oturumun çalıştığı klasörle eşleşiyor ({{name}}).",
+    "folderDiffers": "Eklenen klasör, oturumun çalıştığı klasör değil: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "{{branch}} dalı, {{commit}} commit'inde",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Bu oturum {{name}} adlı bir klasörde çalıştı. Devam etmek için o klasörü bu bilgisayara ekleyin.",
+      "folderAt": "Bu oturum {{name}} adlı bir klasörde çalıştı ({{at}}). Devam etmek için o klasörü bu bilgisayara ekleyin.",
+      "provider": "{{provider}} sağlayıcısı bu bilgisayarda kurulu değil, bu yüzden oturumun modeli kullanılamıyor. Devam etmek için başka bir model seçin.",
+      "model": "{{id}} modeli bu bilgisayarda {{provider}} üzerinden kullanılamıyor. Devam etmek için başka bir model seçin."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "adı {{expected}} değil, {{actual}}",
+      "branch": "{{expected}} değil, {{actual}} dalında",
+      "noBranch": "hiçbir dalda değil, {{expected}} değil",
+      "head": "{{expected}} değil, {{actual}} commit'inde",
+      "noHead": "hiçbir commit'te değil, {{expected}} değil"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "Bu görsel yüklenemedi.",
+  "attachedImage": "Ekli görsel {{n}}",
+  "saveChanges": "Değişiklikleri kaydet",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "Model yükleniyor…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Şu süre sonra başarısız oldu:"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Web Araması",
+    "embeddings": "Gömme modeli (RAG/vektörler için, sohbet için değil)",
+    "raw_completion": "Ham tamamlama (metninizi sürdürür, sohbet veya araç yok)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Asistanı değiştir ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Tersine mühendislik",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "aynı dosya",
+      "nested": "bir klasör ve içindeki bir şey",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "yeniden oluşturulan bir dosya"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "{{id}} neleri değiştirebilir (virgülle ayrılmış)",
+    "bothChange": "{{a}} ve {{b}} ikisi de şunları değiştirir:",
+    "legend": "{{a}} ve {{b}} için ne yapılacak",
+    "serializeAb": "Önce {{a}}, sonra {{b}} çalışsın",
+    "serializeBa": "Önce {{b}}, sonra {{a}} çalışsın",
+    "revise": "{{id}} görevinin değiştirebileceklerini değiştir",
+    "parallel": "Yine de yan yana çalıştır (kaydedilir; her değişiklik uygulanmadan önce yine incelenir ve denetlenir)",
+    "region": "Çakışan ekip görevleri",
+    "headline": "Bu görevler aynı yolları değiştirir ve aralarında bir sıra yok. Henüz hiçbir şey çalışmadı.",
+    "caveat": "Her görevin bildirdiği yollara göre karşılaştırıldı, kod okunarak değil: burada çakışma olmaması değişikliklerin birbiriyle uyumlu olduğu anlamına gelmez.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "Bu görevleri çalıştırma"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "toggleSnippet": "Alıntıyı aç/kapat",
+    "documents_one": "{{count}} belge atfı",
+    "documents_other": "{{count}} belge atfı",
+    "web_one": "{{count}} web kaynağı",
+    "web_other": "{{count}} web kaynağı",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "{{files}} dosyasının yalnızca bir kısmı tek mesaja sığar.",
+    "readFailed": "{{name}} okunamadı: {{error}}",
+    "remoteImagesOnly": "Bir sunucu oturumuna yalnızca görseller gönderilebilir; diğer medya dosyalarını kaldırın."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3342,37 +3342,37 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "filesChanged_one": "{{count}} dosya değişti",
+    "filesChanged_other": "{{count}} dosya değişti",
+    "mediaFiles_one": "{{count}} medya dosyası",
+    "mediaFiles_other": "{{count}} medya dosyası",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "Bu oturum için model seçilmedi.",
+    "toolsFailed": "Araç çağrıları, bu modelin {{date}} tarihli testinde başarısız oldu.",
+    "toolsFailedDetail": "Araç çağrıları, bu modelin {{date}} tarihli testinde başarısız oldu: {{detail}}.",
+    "noToolSupport": "Seçilen model araç çağıramaz, bu yüzden Cowork onunla yalnızca sohbet edebilir.",
+    "modelToolsWorked": "Bir model seçildi. Araç çağrıları {{date}} tarihli testte çalıştı; bu tek bir yoklamadır, her görev için garanti değildir.",
+    "modelSelected": "Bir model seçildi. Sağlayıcının yanıt verip vermediği bir çalıştırma başladığında denetlenir.",
+    "contextWindow": "Bağlam penceresi: {{tokens}} token.",
+    "contextUnknown": "Bu model için bağlam penceresi bulunamadı, bu yüzden Flint dolmadan önce uyaramaz.",
+    "mcpOffered_one": "Ayarlar'daki {{count}} MCP sunucusu Cowork çalıştırmalarına sunulur ve bir mesaj gönderildiğinde bağlanır.",
+    "mcpOffered_other": "Ayarlar'daki {{count}} MCP sunucusu Cowork çalıştırmalarına sunulur ve bir mesaj gönderildiğinde bağlanır.",
+    "mcpNone": "Hiç MCP sunucusu yapılandırılmadı.",
+    "localReady": "Yerel çalışma zamanı, bir çalıştırma modele ihtiyaç duyduğunda başlatılır.",
+    "localAbsent": "Seçilen model yerel olarak çalıştırılmıyor."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Bellek kaydediliyor",
+    "readingMemory": "Bellek okunuyor",
+    "readingSkill": "Beceri okunuyor",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Kullanılan beceri",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} alt ajan çalışıyor",
+    "subagentsWorking_other": "{{count}} alt ajan çalışıyor",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3393,20 +3393,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Bu kimliğe sahip bir oturum zaten var",
+    "assistantExists": "Bu kimliğe sahip bir asistan zaten var"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Bu projeyi tanımla",
+    "continue": "FLINT.md taslağına devam et",
+    "description": "Flint klasörün manifestolarını ve düzenini okudu ve hiçbir şey çalıştırmadı. Açıklamayı düzenleyin; yalnızca kabul ettiğinizde klasörün FLINT.md dosyası olur.",
+    "surveying": "Klasör inceleniyor…",
+    "surveyed": "{{seen}} dosya incelendi, {{read}} dosya okundu. Hiçbir şey yazılmadı.",
+    "wrote": "FLINT.md yazıldı",
+    "discarded": "Taslak atıldı. Hiçbir şey yazılmadı.",
+    "notRead": "İncelemenin okumadıkları",
+    "discard": "Taslağı at",
+    "resurvey": "Yeniden incele",
+    "accept": "Kabul et ve FLINT.md yaz"
   }
 }

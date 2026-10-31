@@ -27,10 +27,10 @@
     "overridden_few": "Nastaveny {{count}} role",
     "overridden_many": "Nastaveno rolí: {{count}}",
     "overridden_other": "Nastaveno rolí: {{count}}",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Podagenti současně",
+    "maxConcurrentDesc": "Nejvyšší počet podagentů, kteří běží současně (1 až 16). Ostatní čekají, až na ně přijde řada.",
+    "maxDepth": "Hloubka podagentů",
+    "maxDepthDesc": "1: podagenti nemohou spouštět další podagenty. 2 nebo 3 jim umožní předávat práci o tolik úrovní níž, při stejných limitech a schváleních."
   },
   "autoDownload": "Automatické stahování nových aktualizací",
   "checkForUpdates": "Zkontrolovat aktualizace",
@@ -129,7 +129,7 @@
     "previousPaneDesc": "Přejít na předchozí panel rozděleného zobrazení.",
     "findInChat": "Hledat v chatu",
     "findInChatDesc": "Prohledá konverzaci na obrazovce.",
-    "notSet": "Not set"
+    "notSet": "Nenastaveno"
   },
   "interface": {
     "title": "Rozhraní",
@@ -230,7 +230,7 @@
     "driverVersion": "Verze ovladače",
     "computeCapability": "Výpočetní schopnost",
     "systemMonitor": "Monitorování systému",
-    "backendApi": "Backend API",
+    "backendApi": "API backendu",
     "apiVersion": "Verze API",
     "refresh": "Obnovit",
     "detectingDevices": "Zjišťování GPU...",
@@ -479,8 +479,8 @@
     "stopServerToEdit": "Pro úpravu zastavte server",
     "trustedHostsInvalid": "Neplatný hostitel: {{hosts}}. Použijte hostitele nebo hostitel:port, např. example.com nebo 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Neuloženo. Enter uloží, Escape vrátí změnu.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Spouštět nástroje na serveru",
+    "serverToolsDesc": "Spouštět nástroje na straně serveru pro chatové koncové body."
   },
   "privacy": {
     "analytics": "Analytika",
@@ -555,10 +555,10 @@
     "revealLogs": "Zobrazit záznamy",
     "factoryResetTitle": "Obnovit tovární nastavení",
     "factoryResetDesc": "Tím obnovíte všechna nastavení aplikace na výchozí hodnoty. Tuto akci nelze vrátit zpět. Doporučujeme to pouze v případě, že je aplikace poškozena.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Zachovat data aplikace",
+    "keepAppDataDesc": "Vaše historie chatů a konverzace zůstanou zachovány.",
+    "keepModelsAndConfigs": "Zachovat všechny modely a konfigurace",
+    "keepModelsAndConfigsDesc": "Stažené modely, nastavení enginu a konfigurace MCP zůstanou zachovány.",
     "clearWebData": "Vymazat data rozhraní z cache",
     "clearWebDataDesc": "Odebere data místního úložiště a předvolby rozhraní uložené okny aplikace. Rozhraní se vrátí do výchozího stavu.",
     "cancel": "Zrušit",
@@ -623,28 +623,28 @@
       "uninstall": "Odinstalovat",
       "uninstalling": "Odinstalovává se…",
       "foreignDesc": "Nalezeno v {{path}}, nainstalováno jinou kopií Flintu. Nainstalujte zde, abyste použili CLI této kopie.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI nainstalováno do {{path}}",
+      "installFailed": "Instalace selhala",
+      "uninstalledToast": "Flint CLI odinstalováno",
+      "uninstallFailed": "Odinstalace selhala"
     },
     "startupGroup": "Spuštění a lišta",
     "cliGroup": "Příkazový řádek",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Udržovat počítač během běhů vzhůru",
+    "keepAwakeDesc": "Brání Windows v přechodu do spánku, dokud pracuje běh agenta. Obrazovka se může stále vypnout.",
+    "siteIcons": "Načítat ikony webů",
+    "siteIconsDesc": "Zobrazuje u názvu každého webu v hledání a citacích jeho vlastní ikonu. Stažení ikony webu sdělí, že jste se na něj dívali. Při vypnutí se zobrazí písmeno.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Zadejte token Hugging Face k ověření",
+      "valid": "Token je platný",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Váš token Hugging Face je platný.",
+      "invalid": "Token je neplatný",
+      "invalidDesc": "Zadaný token Hugging Face je neplatný. Zkontrolujte token a zkuste to znovu.",
+      "timedOut": "Ověření vypršelo",
+      "timedOutDesc": "Požadavek na ověření vypršel. Zkontrolujte připojení k síti a zkuste to znovu.",
+      "failed": "Ověření selhalo",
+      "failedDesc": "Při ověřování tokenu došlo k síťové chybě. Zkontrolujte připojení k internetu."
     }
   },
   "extensions": {
@@ -1497,7 +1497,7 @@
       "settleFailed": "Tento rozpor se nepodařilo vyřešit",
       "forgotten": "Vzpomínka zapomenuta",
       "forgetFailed": "Tuto vzpomínku se nepodařilo zapomenout",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Tuto paměť se nepodařilo obnovit",
       "changeFailed": "Tuto vzpomínku se nepodařilo změnit",
       "updated": "Vzpomínka aktualizována",
       "updateFailed": "Tuto vzpomínku se nepodařilo aktualizovat",
@@ -1650,15 +1650,15 @@
     "title": "Výchozí"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Využití podle položky",
+    "description": "Volání a tokeny podagentů za posledních {{window}}, podle protokolů relací.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "V tomto okně nic nezaznamenáno.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Servery MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Nakonfigurováno, ale nikdy nepoužito",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

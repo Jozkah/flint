@@ -26,10 +26,10 @@
     "overridden_one": "Đã đặt {{count}} vai trò",
     "overridden_other": "Đã đặt {{count}} vai trò",
     "overridden_many": "Đã đặt {{count}} vai trò",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Số tác tử con cùng lúc",
+    "maxConcurrentDesc": "Số tác tử con tối đa chạy cùng một lúc (1 đến 16). Phần còn lại chờ đến lượt.",
+    "maxDepth": "Độ sâu tác tử con",
+    "maxDepthDesc": "1: tác tử con không thể khởi chạy tác tử con. 2 hoặc 3 cho phép chúng giao việc xuống từng ấy cấp, với cùng các giới hạn và chấp thuận."
   },
   "autoDownload": "Tự động tải xuống các bản cập nhật mới",
   "checkForUpdates": "Kiểm tra Cập nhật",
@@ -128,7 +128,7 @@
     "previousPaneDesc": "Chuyển sang khung trước khi chia màn hình.",
     "findInChat": "Tìm trong cuộc trò chuyện",
     "findInChatDesc": "Tìm trong cuộc trò chuyện đang hiển thị.",
-    "notSet": "Not set"
+    "notSet": "Chưa đặt"
   },
   "interface": {
     "title": "Giao diện",
@@ -259,7 +259,7 @@
     "sslVerification": "Xác minh SSL",
     "ignoreSsl": "Bỏ qua chứng chỉ SSL",
     "ignoreSslDesc": "Cho phép các chứng chỉ tự ký hoặc chưa được xác minh. Điều này có thể được yêu cầu cho một số proxy nhưng làm giảm tính bảo mật. Chỉ bật nếu bạn tin tưởng proxy của mình.",
-    "proxySsl": "Proxy SSL",
+    "proxySsl": "SSL proxy",
     "proxySslDesc": "Xác thực chứng chỉ SSL khi kết nối với proxy.",
     "proxyHostSsl": "Máy chủ proxy SSL",
     "proxyHostSslDesc": "Xác thực chứng chỉ SSL của máy chủ proxy.",
@@ -440,7 +440,7 @@
     "swaggerDocsDesc": "Xem tài liệu API tương tác (Swagger UI).",
     "openDocs": "Mở tài liệu",
     "startupConfiguration": "Cấu hình khởi động",
-    "runOnStartup": "Auto start",
+    "runOnStartup": "Tự khởi động",
     "runOnStartupDesc": "Tự động khởi động Máy chủ API Cục bộ khi ứng dụng khởi chạy. Sử dụng mô hình đã dùng gần nhất hoặc chọn mô hình đầu tiên có sẵn nếu không khả dụng.",
     "runInBackground": "Chạy nền",
     "runInBackgroundDesc": "Giữ máy chủ chạy trong khay hệ thống khi đóng cửa sổ. Khi tắt, đóng cửa sổ sẽ thoát Flint và dừng máy chủ.",
@@ -477,8 +477,8 @@
     "stopServerToEdit": "Dừng máy chủ để chỉnh sửa",
     "trustedHostsInvalid": "Máy chủ không hợp lệ: {{hosts}}. Dùng máy chủ hoặc máy chủ:cổng, ví dụ example.com hoặc 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Chưa lưu. Nhấn Enter để lưu, Escape để hoàn tác.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Thực thi công cụ trên máy chủ",
+    "serverToolsDesc": "Chạy công cụ phía máy chủ cho các endpoint trò chuyện."
   },
   "privacy": {
     "analytics": "Phân tích",
@@ -553,10 +553,10 @@
     "revealLogs": "Hiển thị Nhật ký",
     "factoryResetTitle": "Đặt lại về Cài đặt Gốc",
     "factoryResetDesc": "Điều này sẽ đặt lại tất cả cài đặt ứng dụng về mặc định. Không thể hoàn tác. Chúng tôi chỉ khuyến nghị điều này nếu ứng dụng bị hỏng.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Giữ dữ liệu ứng dụng",
+    "keepAppDataDesc": "Lịch sử trò chuyện và các cuộc trò chuyện của bạn sẽ được giữ lại.",
+    "keepModelsAndConfigs": "Giữ tất cả mô hình và cấu hình",
+    "keepModelsAndConfigsDesc": "Các mô hình đã tải xuống, cài đặt engine và cấu hình MCP sẽ được giữ lại.",
     "clearWebData": "Xóa dữ liệu giao diện đã lưu đệm",
     "clearWebDataDesc": "Xóa bộ nhớ cục bộ đã lưu đệm và tùy chọn giao diện do cửa sổ ứng dụng giữ. Giao diện được đặt lại về trạng thái mặc định.",
     "cancel": "Hủy",
@@ -621,28 +621,28 @@
       "uninstall": "Gỡ cài đặt",
       "uninstalling": "Đang gỡ cài đặt…",
       "foreignDesc": "Tìm thấy tại {{path}}, do một bản Flint khác cài đặt. Cài ở đây để dùng CLI của bản này.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Đã cài Flint CLI vào {{path}}",
+      "installFailed": "Cài đặt thất bại",
+      "uninstalledToast": "Đã gỡ cài đặt Flint CLI",
+      "uninstallFailed": "Gỡ cài đặt thất bại"
     },
     "startupGroup": "Khởi động và khay hệ thống",
     "cliGroup": "Dòng lệnh",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Giữ máy tính thức trong khi chạy",
+    "keepAwakeDesc": "Ngăn Windows chuyển sang chế độ ngủ khi một lượt chạy tác tử đang hoạt động. Màn hình vẫn có thể tắt.",
+    "siteIcons": "Tải biểu tượng trang web",
+    "siteIconsDesc": "Hiển thị biểu tượng riêng của mỗi trang web bên cạnh tên của nó trong kết quả tìm kiếm và trích dẫn. Việc tải biểu tượng cho trang đó biết bạn đã xem nó. Tắt sẽ hiển thị một chữ cái thay thế.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Vui lòng nhập token Hugging Face để xác thực",
+      "valid": "Token hợp lệ",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Token Hugging Face của bạn hợp lệ.",
+      "invalid": "Token không hợp lệ",
+      "invalidDesc": "Token Hugging Face đã cung cấp không hợp lệ. Vui lòng kiểm tra token và thử lại.",
+      "timedOut": "Xác thực đã hết thời gian chờ",
+      "timedOutDesc": "Yêu cầu xác thực đã hết thời gian chờ. Vui lòng kiểm tra kết nối mạng và thử lại.",
+      "failed": "Xác thực thất bại",
+      "failedDesc": "Đã xảy ra lỗi mạng khi xác thực token. Vui lòng kiểm tra kết nối internet."
     }
   },
   "extensions": {
@@ -1480,7 +1480,7 @@
       "settleFailed": "Không thể giải quyết mâu thuẫn đó",
       "forgotten": "Đã quên ký ức",
       "forgetFailed": "Không thể quên ký ức đó",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Không thể khôi phục bộ nhớ đó",
       "changeFailed": "Không thể thay đổi ký ức đó",
       "updated": "Đã cập nhật ký ức",
       "updateFailed": "Không thể cập nhật ký ức đó",
@@ -1624,15 +1624,15 @@
     "title": "Mặc định"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Mức dùng theo mục",
+    "description": "Số lệnh gọi và token của tác tử con trong {{window}} qua, từ nhật ký phiên.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "Không có gì được ghi trong khoảng thời gian này.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Máy chủ MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Đã cấu hình nhưng chưa từng dùng",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }
