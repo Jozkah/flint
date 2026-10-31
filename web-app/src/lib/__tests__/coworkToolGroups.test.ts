@@ -31,6 +31,9 @@ describe('groupsToOffer', () => {
     expect(groupsToOffer({ text: 'open the website and click login' })).toContain('browser')
     expect(groupsToOffer({ text: 'run these three reviewers in parallel' })).toContain('team')
     expect(groupsToOffer({ text: 'why is my docker container down' })).toContain('devops')
+    // RQA-006: naming the tool itself offers its group.
+    expect(groupsToOffer({ text: 'run the tests with host_build (program npm)' })).toContain('devops')
+    expect(groupsToOffer({ text: 'check it with git_inspect' })).toContain('repo')
   })
 
   it('keeps a group once the session used it, so the prefix does not flip', () => {
