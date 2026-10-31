@@ -1328,7 +1328,65 @@ pub fn build_app() -> tauri::App {
     tauri::mobile_entry_point
 )]
 pub fn run() {
+    install_async_runtime();
     run_app(build_app());
+}
+
+/// Stack for every async-runtime worker and blocking thread.
+///
+/// Tokio's default is 2 MiB. Unoptimised (debug) builds keep large futures on
+/// the stack, and the first git tool call of a cowork run overflowed a worker
+/// there (RQA-012). Release builds use far less, so 8 MiB is a safe margin for
+/// both; the CLI already runs on a 32 MiB thread for the same reason.
+#[cfg(not(feature = "cli"))]
+pub const ASYNC_WORKER_STACK_BYTES: usize = 8 * 1024 * 1024;
+
+/// Hand Tauri a Tokio runtime with [`ASYNC_WORKER_STACK_BYTES`] stacks. Must
+/// run before anything touches `tauri::async_runtime`. If the runtime cannot
+/// be built, Tauri's default runtime is used as before.
+#[cfg(not(feature = "cli"))]
+fn install_async_runtime() {
+    match build_async_runtime() {
+        Ok(runtime) => {
+            // Lives for the whole process, like Tauri's own default runtime.
+            let runtime: &'static tokio::runtime::Runtime = Box::leak(Box::new(runtime));
+            tauri::async_runtime::set(runtime.handle().clone());
+        }
+        Err(e) => log::warn!("async runtime with larger stacks unavailable: {e}"),
+    }
+}
+
+#[cfg(not(feature = "cli"))]
+fn build_async_runtime() -> std::io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(ASYNC_WORKER_STACK_BYTES)
+        .build()
+}
+
+#[cfg(all(test, not(feature = "cli")))]
+mod async_runtime_stack_tests {
+    use super::*;
+
+    /// Puts 3 MiB on the stack in one frame: more than Tokio's 2 MiB default,
+    /// well under ASYNC_WORKER_STACK_BYTES.
+    #[inline(never)]
+    fn three_mib_frame() -> u8 {
+        let mut buf = [1u8; 3 * 1024 * 1024];
+        std::hint::black_box(&mut buf);
+        buf[12_345]
+    }
+
+    #[test]
+    fn workers_and_blocking_threads_have_more_than_the_2_mib_default() -> std::io::Result<()> {
+        let rt = build_async_runtime()?;
+        // 3 MiB would overflow Tokio's default 2 MiB worker stack.
+        let on_worker = rt.block_on(async { tokio::spawn(async { three_mib_frame() }).await });
+        assert!(on_worker.is_ok());
+        let on_blocking = rt.block_on(async { tokio::task::spawn_blocking(three_mib_frame).await });
+        assert!(on_blocking.is_ok());
+        Ok(())
+    }
 }
 
 /// Ask the main webview to write its deferred stores, and wait for it to say
