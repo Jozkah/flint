@@ -172,6 +172,45 @@ pub(crate) fn token_allowed_for(endpoint: &Url) -> bool {
 }
 
 /// `base` with `parts` appended as path segments.
+/// A repository file path safe to request and to map onto disk: relative, no
+/// backslash, no empty, `.` or `..` part, and no control character (NUL
+/// included). Any other Unicode is allowed: Hugging Face serves such names.
+/// Shared by the desktop app and the CLI.
+pub fn valid_remote_path(filename: &str) -> bool {
+    !filename.is_empty()
+        && !filename.starts_with('/')
+        && !filename.contains('\\')
+        && filename.split('/').all(|part| {
+            !part.is_empty() && part != "." && part != ".." && !part.chars().any(char::is_control)
+        })
+}
+
+/// One path component made safe for every file system: anything but ASCII
+/// letters, digits, `-`, `_` and `.` becomes `-`. A name that had to change
+/// gets the first 8 hex digits of the SHA-256 of the original (lowercased)
+/// before its extension, so `a b.gguf` and `a+b.gguf` no longer land on the
+/// same file. A name that is already clean is returned as it is.
+pub fn safe_path_component(value: &str) -> String {
+    let mapped: String = value
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
+        .collect();
+    let mut out = mapped.trim_matches(['.', '-']).to_string();
+    if out.is_empty() {
+        out = "file".to_string();
+    }
+    if out == value {
+        return out;
+    }
+    use sha2::{Digest, Sha256};
+    let digest = hex::encode(Sha256::digest(value.to_lowercase().as_bytes()));
+    let tag = &digest[..8];
+    match out.rfind('.') {
+        Some(i) if i > 0 => format!("{}-{tag}{}", &out[..i], &out[i..]),
+        _ => format!("{out}-{tag}"),
+    }
+}
+
 pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
     let mut url = base.clone();
     {
@@ -189,6 +228,31 @@ pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_paths_allow_unicode_but_not_control_characters() {
+        assert!(valid_remote_path("modèle-Q4.gguf"));
+        assert!(valid_remote_path("日本語/model.gguf"));
+        assert!(valid_remote_path("a+b (1).gguf"));
+        assert!(!valid_remote_path("a\u{0}b.gguf"));
+        assert!(!valid_remote_path("a\nb.gguf"));
+        assert!(!valid_remote_path("../x.gguf"));
+        assert!(!valid_remote_path("/x.gguf"));
+        assert!(!valid_remote_path("a\\b.gguf"));
+        assert!(!valid_remote_path("a//b.gguf"));
+    }
+
+    #[test]
+    fn changed_names_get_a_hash_so_they_do_not_collide() {
+        assert_eq!(safe_path_component("model-Q4_K_M.gguf"), "model-Q4_K_M.gguf");
+        let space = safe_path_component("a b.gguf");
+        let plus = safe_path_component("a+b.gguf");
+        assert_ne!(space, plus);
+        assert!(space.starts_with("a-b-") && space.ends_with(".gguf"), "{space}");
+        assert_eq!(space.len(), "a-b-12345678.gguf".len());
+        assert_eq!(safe_path_component("a b.gguf"), space, "stable");
+        assert_ne!(safe_path_component("日本"), safe_path_component("中文"));
+    }
 
     #[test]
     fn token_only_goes_to_https_endpoints() {
