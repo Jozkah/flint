@@ -117,6 +117,8 @@ export type RoomSettingsPatch = {
   objective?: string
   mode?: SpeakingMode
   compareRun?: CompareRun
+  /** The room-wide reasoning effort; `null` returns to each model's default. */
+  reasoningEffort?: Room['reasoningEffort'] | null
   moderator?: Partial<ModeratorConfig>
   limits?: Partial<RoomLimits>
   participants?: ParticipantPatch[]

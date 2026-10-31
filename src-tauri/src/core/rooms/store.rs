@@ -380,6 +380,10 @@ pub struct Room {
     /// Compare rooms: "together" or "one-by-one". Absent means together.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compare_run: Option<CompareRun>,
+    /// The reasoning effort every participant uses unless it sets its own
+    /// ("low", "medium", "high", "xhigh"). Absent: each model's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     /// Per-turn tool budgets. Absent on rooms saved before they existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_budget: Option<RoomToolBudget>,
