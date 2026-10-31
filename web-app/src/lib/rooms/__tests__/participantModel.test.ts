@@ -344,6 +344,25 @@ describe('room tool budget and picker', () => {
     expect(args.prepareStep?.({ stepNumber: 2 })?.toolChoice).toBe('none')
   })
 
+  // A compare room downgrades a writer to read for the turn. That narrows its
+  // tools, not its steps: it used to fall to read's 8 steps from full's 30 and
+  // hit "This turn reached its step budget." on routine work.
+  it("sizes the default step budget from the participant's own access, not the compare downgrade", async () => {
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({
+        toolContext: { roomId: 'r', folder: '/w', extraFolders: [], access: 'read', budgetAccess: 'full' } as never,
+      }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: stream as never }
+    )
+    const args = stream.mock.calls[0][0] as {
+      prepareStep?: (o: { stepNumber: number }) => { toolChoice?: string } | undefined
+    }
+    expect(args.prepareStep?.({ stepNumber: 7 })).toBeUndefined()
+    expect(args.prepareStep?.({ stepNumber: 28 })).toBeUndefined()
+    expect(args.prepareStep?.({ stepNumber: 29 })?.toolChoice).toBe('none')
+  })
+
   it('leaves out the tools the user switched off', async () => {
     const on = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
     await streamParticipantReply(
