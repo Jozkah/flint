@@ -265,6 +265,12 @@ async function streamViaServer(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffered = ''
+  const emit = (line: string) => {
+    if (!line) return
+    const chunk = JSON.parse(line) as StreamChunk | { kind: 'ping' }
+    // Keepalive only: it exists so idle connections are not dropped.
+    if (chunk.kind !== 'ping') onChunk(chunk)
+  }
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
@@ -273,14 +279,14 @@ async function streamViaServer(
     while (newline >= 0) {
       const line = buffered.slice(0, newline).trim()
       buffered = buffered.slice(newline + 1)
-      if (line) {
-        const chunk = JSON.parse(line) as StreamChunk | { kind: 'ping' }
-        // Keepalive only: it exists so idle connections are not dropped.
-        if (chunk.kind !== 'ping') onChunk(chunk)
-      }
+      emit(line)
       newline = buffered.indexOf(LINE_BREAK)
     }
   }
+  // A last line the server closed without a newline (often the `end` chunk)
+  // is still a line (LIBC-040).
+  buffered += decoder.decode()
+  emit(buffered.trim())
 }
 
 function bytesOf(b64: string): Uint8Array {
@@ -561,8 +567,12 @@ export const providerFetch: typeof globalThis.fetch = async (
 
     if (isServerTransport() && !hasTauriRuntime()) {
       const abort = new AbortController()
+      const onAbort = () => abort.abort()
       // Ending the local body (consumer released it) also ends the HTTP read.
       void streamViaServer(payload, onChunk, abort.signal)
+        // A long-lived caller signal must not keep every finished stream's
+        // listener (LIBC-039).
+        .finally(() => signal?.removeEventListener('abort', onAbort))
         .then(() => {
           // A stream that closes cleanly without its `end` chunk (proxy
           // timeout, server restart) would otherwise hang the reply forever.
@@ -572,7 +582,7 @@ export const providerFetch: typeof globalThis.fetch = async (
         .catch((e: unknown) => {
           if (!ended) fail(e)
         })
-      signal?.addEventListener('abort', () => abort.abort(), { once: true })
+      signal?.addEventListener('abort', onAbort, { once: true })
       return
     }
 

@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Uruchom każde, maksymalnie 5",
     "enabled": "Włączone",
     "save": "Zapisz zadanie",
-    "saving": "Zapisywanie"
+    "saving": "Zapisywanie",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "To zadanie jest wyłączone, więc nie uruchomi się, dopóki go nie włączysz.",

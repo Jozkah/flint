@@ -63,5 +63,8 @@
   "resumeSub": "Bắt đầu điều gì đó mới hoặc tiếp tục từ chỗ bạn đã dừng.",
   "startChat": "Đặt câu hỏi",
   "startFiles": "Cowork",
-  "usage": "Mức sử dụng"
+  "usage": "Mức sử dụng",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

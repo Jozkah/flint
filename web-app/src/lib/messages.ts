@@ -86,6 +86,9 @@ export function convertUIMessageToThreadMessage(
   threadId: string
 ): ThreadMessage {
   const content: ThreadContent[] = []
+  // Reasoning parts in stream order, joined into one <think> block after the
+  // loop: prepending each one reversed several of them (LIBB-013).
+  const reasoning: string[] = []
 
   // Extract text and image parts from UIMessage
   // Use 'any' for parts since the AI SDK types vary between versions
@@ -101,19 +104,7 @@ export function convertUIMessageToThreadMessage(
     } else if (part.type === 'reasoning') {
       // Wrap reasoning in <think> tags for compatibility with existing rendering
       // The reasoning content is in 'reasoning' or 'text' depending on SDK version
-      const reasoningText = part.reasoning ?? part.text ?? ''
-      const existingText = content.find((c) => c.type === ContentType.Text)
-      if (existingText && existingText.text) {
-        existingText.text.value = `<think>${reasoningText}</think>${existingText.text.value}`
-      } else {
-        content.unshift({
-          type: ContentType.Text,
-          text: {
-            value: `<think>${reasoningText}</think>`,
-            annotations: [],
-          },
-        })
-      }
+      reasoning.push(part.reasoning ?? part.text ?? '')
     } else if (part.type === 'file' && part.mediaType) {
       const mediaType = part.mediaType as string
       if (mediaType?.startsWith('image/')) {
@@ -146,6 +137,19 @@ export function convertUIMessageToThreadMessage(
           input_video: { data, format: mediaType },
         })
       }
+    }
+  }
+
+  if (reasoning.length > 0) {
+    const think = `<think>${reasoning.join('')}</think>`
+    const existingText = content.find((c) => c.type === ContentType.Text)
+    if (existingText && existingText.text) {
+      existingText.text.value = `${think}${existingText.text.value}`
+    } else {
+      content.unshift({
+        type: ContentType.Text,
+        text: { value: think, annotations: [] },
+      })
     }
   }
 

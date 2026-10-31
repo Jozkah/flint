@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Executa-les totes, fins a 5",
     "enabled": "Activada",
     "save": "Desa la tasca",
-    "saving": "Desant"
+    "saving": "Desant",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Aquesta tasca està desactivada, de manera que no s'executarà fins que l'activis.",

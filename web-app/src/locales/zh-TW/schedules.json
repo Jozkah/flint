@@ -133,7 +133,9 @@
     "catchUpAllCapped": "逐個執行，最多 5 次",
     "enabled": "已啟用",
     "save": "儲存工作",
-    "saving": "正在儲存"
+    "saving": "正在儲存",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "此工作已關閉，因此在你開啟之前不會執行。",

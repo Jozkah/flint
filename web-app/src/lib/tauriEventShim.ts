@@ -24,6 +24,7 @@ function dispatch(event: string, payload: unknown): void {
 }
 
 const LINE_BREAK = String.fromCharCode(10)
+const CRLF = String.fromCharCode(13) + LINE_BREAK
 let streaming = false
 /** The open event connection, so it can be closed when nobody is listening. */
 let connection: AbortController | null = null
@@ -46,18 +47,25 @@ async function readStream(): Promise<'ended' | 'unavailable'> {
   for (;;) {
     const { done, value } = await reader.read()
     if (done) return 'ended'
-    buffered += decoder.decode(value, { stream: true })
+    // SSE allows CRLF line ends; a proxy that sends them must not stall the
+    // frame split (LIBC-042).
+    // Whole buffer, so a CR at the end of one read pairs with the LF of the next.
+    buffered = (buffered + decoder.decode(value, { stream: true })).split(CRLF).join(LINE_BREAK)
     let end = buffered.indexOf(LINE_BREAK + LINE_BREAK)
     while (end >= 0) {
       const block = buffered.slice(0, end)
       buffered = buffered.slice(end + 2)
-      for (const line of block.split(LINE_BREAK)) {
-        if (!line.startsWith('data:')) continue
+      // A frame's `data:` lines are one value, joined by newlines.
+      const data = block
+        .split(LINE_BREAK)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(line.startsWith('data: ') ? 6 : 5))
+      if (data.length > 0) {
         try {
-          const message = JSON.parse(line.slice(5).trim()) as { event?: string; payload?: unknown }
+          const message = JSON.parse(data.join(LINE_BREAK)) as { event?: string; payload?: unknown }
           if (typeof message.event === 'string') dispatch(message.event, message.payload)
         } catch {
-          // A malformed line is skipped; the stream carries on.
+          // A malformed frame is skipped; the stream carries on.
         }
       }
       end = buffered.indexOf(LINE_BREAK + LINE_BREAK)

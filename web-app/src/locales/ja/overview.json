@@ -60,5 +60,8 @@
   "resumeSub": "新しく始めるか、前回の続きから再開できます。",
   "startChat": "質問する",
   "startFiles": "Cowork",
-  "usage": "使用状況"
+  "usage": "使用状況",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

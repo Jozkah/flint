@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Запустить каждый, до 5",
     "enabled": "Включена",
     "save": "Сохранить задачу",
-    "saving": "Сохранение"
+    "saving": "Сохранение",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Эта задача выключена, поэтому она не будет выполняться, пока вы её не включите.",
