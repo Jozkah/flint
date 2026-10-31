@@ -288,5 +288,7 @@
     "pageNotDrawn": "the page could not be drawn",
     "noCanvas": "no canvas is available to draw the image",
     "imageNotEncoded": "the image could not be encoded"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

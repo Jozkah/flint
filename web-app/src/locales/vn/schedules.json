@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Chạy từng lượt, tối đa 5",
     "enabled": "Đã bật",
     "save": "Lưu tác vụ",
-    "saving": "Đang lưu"
+    "saving": "Đang lưu",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Tác vụ này đang tắt, nên sẽ không chạy cho đến khi bạn bật.",

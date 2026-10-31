@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Jalankan masing-masing, hingga 5",
     "enabled": "Aktif",
     "save": "Simpan tugas",
-    "saving": "Menyimpan"
+    "saving": "Menyimpan",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Tugas ini dimatikan, jadi tidak akan berjalan sampai Anda mengaktifkannya.",

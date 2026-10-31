@@ -109,6 +109,7 @@
     "runId": "çalıştırma {{id}}",
     "turnId": "tur {{id}}",
     "snapshotId": "anlık görüntü {{id}}",
-    "noRequests": "henüz kayıtlı istek yok"
+    "noRequests": "henüz kayıtlı istek yok",
+    "id": "ID"
   }
 }

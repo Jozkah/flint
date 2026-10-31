@@ -109,6 +109,7 @@
     "runId": "実行 {{id}}",
     "turnId": "ターン {{id}}",
     "snapshotId": "スナップショット {{id}}",
-    "noRequests": "記録されたリクエストはまだありません"
+    "noRequests": "記録されたリクエストはまだありません",
+    "id": "ID"
   }
 }

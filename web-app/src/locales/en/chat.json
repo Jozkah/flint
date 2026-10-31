@@ -1,5 +1,4 @@
 {
-  "rawToolCallNote": "Tool call was emitted as text. No tool ran. Check this model’s tool support and try again.",
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
   "welcome": "Hi, how are you?",

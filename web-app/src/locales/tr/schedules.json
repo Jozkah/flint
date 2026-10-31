@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Her birini çalıştır, en fazla 5",
     "enabled": "Etkin",
     "save": "Görevi kaydet",
-    "saving": "Kaydediliyor"
+    "saving": "Kaydediliyor",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Bu görev kapalı, bu nedenle siz açana kadar çalışmaz.",

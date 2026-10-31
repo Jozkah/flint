@@ -87,16 +87,17 @@ export function useAttachmentName(fileId: string | undefined): string | undefine
   return useAttachmentNamesStore((s) => (fileId ? s.byId[fileId] : undefined))
 }
 
+/** Joins wanted ids into one effect dependency; never part of an id. */
+const KEY_SEPARATOR = String.fromCharCode(10)
+
 export function useEnsureAttachmentNames(
   scope: 'thread' | 'project' | undefined,
   id: string | undefined,
   wanted?: readonly string[]
 ) {
   const ensure = useAttachmentNamesStore((s) => s.ensure)
-  const wantedKey = (wanted ?? []).join('
-')
+  const wantedKey = (wanted ?? []).join(KEY_SEPARATOR)
   useEffect(() => {
-    if (scope && id) ensure(scope, id, wantedKey ? wantedKey.split('
-') : undefined)
+    if (scope && id) ensure(scope, id, wantedKey ? wantedKey.split(KEY_SEPARATOR) : undefined)
   }, [scope, id, wantedKey, ensure])
 }
