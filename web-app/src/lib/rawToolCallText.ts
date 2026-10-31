@@ -1,11 +1,11 @@
 import { sanitizeInvalidJsonEscapes, stripCodeFence } from '@/lib/toolCallRepair'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** Explain tool markup emitted as plain text, which never executes a tool. */
 export function explainRawToolCall(text: string): string {
-  return text.replace(
-    /<tool_call>\s*<function=[\s\S]*?(?:<\/tool_call>|$)/gi,
-    'Tool call was emitted as text. No tool ran. Check this model’s tool support and try again.'
-  )
+  // A function, so the note is not read as a replacement pattern (F7x2-034).
+  const note = i18n.t('chat:rawToolCallNote')
+  return text.replace(/<tool_call>\s*<function=[\s\S]*?(?:<\/tool_call>|$)/gi, () => note)
 }
 
 export function hasRawToolCall(text: string): boolean {
