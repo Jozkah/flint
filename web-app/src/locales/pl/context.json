@@ -252,13 +252,13 @@
   },
   "breakdown": {
     "messages": "Messages",
-    "systemTools": "System tools",
-    "mcpTools": "MCP tools",
+    "systemTools": "Narzędzia systemowe",
+    "mcpTools": "Narzędzia MCP",
     "skills": "Skills",
-    "memory": "Memory files",
-    "systemPrompt": "System prompt",
+    "memory": "Pliki pamięci",
+    "systemPrompt": "Prompt systemowy",
     "unmeasured": "Unmeasured",
     "more": "{{count}} more",
-    "windowUnknown": "{{used}} tokens (window unknown)"
+    "windowUnknown": "{{used}} tokenów (okno nieznane)"
   }
 }

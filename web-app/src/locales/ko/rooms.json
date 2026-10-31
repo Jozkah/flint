@@ -647,5 +647,5 @@
     "ranToolsDropped": "그 출력은 컨텍스트 창에 맞추기 위해 삭제되었습니다.",
     "ranToolsRetry": "이후 공급자에서 오류가 발생하여 요청을 다시 시도하는 중입니다."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "룸을 삭제하지 못했습니다"
 }

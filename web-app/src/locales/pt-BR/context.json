@@ -248,13 +248,13 @@
   },
   "breakdown": {
     "messages": "Messages",
-    "systemTools": "System tools",
-    "mcpTools": "MCP tools",
+    "systemTools": "Ferramentas do sistema",
+    "mcpTools": "Ferramentas MCP",
     "skills": "Skills",
-    "memory": "Memory files",
-    "systemPrompt": "System prompt",
+    "memory": "Arquivos de memória",
+    "systemPrompt": "Prompt do sistema",
     "unmeasured": "Unmeasured",
     "more": "{{count}} more",
-    "windowUnknown": "{{used}} tokens (window unknown)"
+    "windowUnknown": "{{used}} tokens (janela desconhecida)"
   }
 }

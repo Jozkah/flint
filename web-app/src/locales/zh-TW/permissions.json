@@ -41,10 +41,10 @@
     "gitRemote": "Flint 想要執行 {{command}}，這會變更 {{target}}",
     "gitDestructive": "Flint 想要執行 {{command}}，這可能會遺失工作成果",
     "approveCampaign": "Flint 想要開始戰役「{{title}}」（{{count}} 個任務）",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint 想要執行一個工作流程：{{phases}} 個階段中的 {{agents}} 個代理程式",
+    "spawnWorktree": "Flint 想要啟動一個巢狀聊天，它可以在 {{folder}} 的新工作樹（分支 {{branch}}）中變更檔案",
+    "spawnChat": "Flint 想要啟動一個名為「{{title}}」的巢狀聊天",
+    "enterWorktree": "Flint 想要將此工作階段的寫入權限移入某個工作樹：{{folder}}（分支 {{branch}}，基於 {{base}}）",
     "spendPause": "Flint 想在超過支出暫停額度後繼續此次執行",
     "changeFileOutside": "Flint 想修改 {{workspace}} 之外的 {{target}}",
     "changeManyFilesOutside": "Flint 想修改 {{count}} 個檔案,其中一些在 {{workspace}} 之外"
@@ -67,10 +67,10 @@
     "gitRemote": "它會將變更傳送到其他人可見的遠端儲存庫。除非你為此對話暫時允許一般的遠端 Git 動作，否則 Flint 每次都會詢問。",
     "gitDestructive": "它刪除或覆寫的內容可能無法復原。",
     "campaignPlan": "它會啟動各自獨立的工作階段，每個工作階段位於自己的 worktree 分支上，讀取並變更檔案，並平行消耗你的模型配額。核准計畫並不等於核准任務發出的任何呼叫。Flint 每次都會詢問。",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "這會依階段逐步啟動相應數量的子代理程式，它們會讀取和變更檔案，並使用你的模型額度。對於這麼大的工作流程，Flint 每次都會詢問。",
+    "spawnWorktree": "巢狀聊天會在這個專案自己的分支上讀取和變更檔案，使用你的模型額度，並在你做其他事情時持續執行。在你合併之前，它的變更會保留在該分支上。Flint 每次都會詢問。",
+    "spawnChat": "巢狀聊天是一個新的工作階段，會使用你的模型額度，並在你做其他事情時持續執行。它啟動時沒有資料夾存取權。因為你為此工作階段開啟了「巢狀聊天啟動前先詢問」，所以 Flint 每次都會詢問。",
+    "enterWorktree": "此工作階段只能在該工作樹自己的分支上讀取和變更檔案，而不能在你的專案資料夾中。在你合併之前，它的變更會保留在該分支上。Flint 每次都會詢問。",
     "spendPause": "執行會繼續消耗付費模型額度，直到結束或達到上限。拒絕則停止執行。"
   },
   "repeat": {
@@ -396,11 +396,11 @@
     "session": "在此對話中允許"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "等待你的核准：{{tool}}",
+    "waitBody": "執行已暫停 {{seconds}} 秒，等待你允許或拒絕。",
+    "destructive": "具破壞性的指令：{{reason}}。即使此工具原本已被允許，仍會詢問。",
+    "selfApproval": "{{tool}} 會自行核准 {{server}} 上的指令。只有你能核准它們，因此每次都會詢問。",
+    "sensitive": "敏感的工具呼叫：允許前請檢查其動作。",
+    "autoPause": "已有 {{count}} 次工具呼叫未經詢問而執行。是否繼續？"
   }
 }
