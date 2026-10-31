@@ -4,6 +4,7 @@
  * the store, persistence or a run.
  */
 import { isWorkProfileId } from '@/lib/workProfiles'
+import { isEffortLevel, type EffortLevel } from '@/lib/modelEffort'
 import { modelToolSupport, type ProviderLookup } from './availability'
 import { normaliseParticipantReasoning } from './participantReasoning'
 import { ROOM_TOOL_BUDGET_CEILINGS } from './toolBudget'
@@ -32,6 +33,11 @@ export function cleanDisabledTools(list: readonly unknown[] | null | undefined):
     if (out.length >= 256) break
   }
   return out
+}
+
+/** The room-wide effort: a known level, else none (each model's default). */
+export function roomEffortField(value: unknown): EffortLevel | undefined {
+  return isEffortLevel(value) ? value : undefined
 }
 
 /** The stored tool budget: only the fields set, clamped; none means defaults. */
