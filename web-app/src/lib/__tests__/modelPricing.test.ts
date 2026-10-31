@@ -5,6 +5,7 @@ import {
   isFree,
   replyCost,
   resolvePricing,
+  withClaudeCacheDefaults,
   type Pricing,
 } from '../modelPricing'
 
@@ -165,6 +166,16 @@ describe('resolvePricing with cache prices', () => {
     expect(gpt).toEqual({ input: 2.5, output: 10 })
     const c = costBreakdown(gpt!, { inputTokens: 1_000_000, cachedInputTokens: 500_000 })
     expect(c.total).toBeCloseTo(2.5)
+  })
+
+  it('needs claude in the id before giving the Claude cache discount', () => {
+    const base = { input: 1, output: 2 }
+    expect(withClaudeCacheDefaults('opus-mt-en-de', base)).toEqual(base)
+    expect(withClaudeCacheDefaults('anthropic/claude-sonnet-4', base)).toEqual({
+      ...base,
+      cachedInput: 0.1,
+      cacheWrite: 1.25,
+    })
   })
 
   it('treats a local model as free, and an unknown one as unpriced', () => {

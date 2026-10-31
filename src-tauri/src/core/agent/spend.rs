@@ -101,7 +101,7 @@ pub struct Price {
 /// publishes. Matched on the part after any provider prefix.
 pub(crate) fn is_claude_family(model: &str) -> bool {
     let bare = model.rsplit('/').next().unwrap_or(model).to_ascii_lowercase();
-    ["claude", "sonnet", "opus", "haiku"].iter().any(|m| bare.contains(m))
+    bare.contains("claude")
 }
 
 impl Price {
@@ -680,6 +680,13 @@ pub fn render(report: &Report) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn claude_family_needs_claude_in_the_id() {
+        assert!(!is_claude_family("opus-mt-en-de"));
+        assert!(!is_claude_family("Helsinki-NLP/opus-mt-en-de"));
+        assert!(is_claude_family("anthropic/claude-sonnet-4"));
+    }
+
     use super::*;
     use crate::core::agent::fixtures::Workspace;
     use tauri_plugin_agent_tools::usage::{self, UsageSource};
