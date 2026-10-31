@@ -8,6 +8,7 @@ import {
   extractModelRepo,
   extractQuantLabel,
   getModelCapabilities,
+  initialModelCapabilities,
   selectDefaultQuant,
 } from '../models'
 import { ModelCapabilities } from '@/types/models'
@@ -36,6 +37,32 @@ vi.mock('token.js', () => ({
     },
   },
 }))
+
+describe('initialModelCapabilities', () => {
+  it('starts a custom OpenAI-compatible provider model with tools on (RQA-015)', () => {
+    expect(initialModelCapabilities('my-llama-box', 'deepseek', null)).toEqual([
+      ModelCapabilities.COMPLETION,
+      ModelCapabilities.TOOLS,
+    ])
+  })
+  it("follows the provider's list when it says anything", () => {
+    expect(initialModelCapabilities('my-gateway', 'm', [])).toEqual([
+      ModelCapabilities.COMPLETION,
+    ])
+    expect(initialModelCapabilities('my-gateway', 'm', ['vision'])).toEqual([
+      ModelCapabilities.COMPLETION,
+      'vision',
+    ])
+  })
+  it('keeps the bundled table for built-in providers and local engines', () => {
+    expect(initialModelCapabilities('cohere', 'command', null)).toEqual([
+      ModelCapabilities.COMPLETION,
+    ])
+    expect(initialModelCapabilities('llamacpp', 'x', null)).toEqual([
+      ModelCapabilities.COMPLETION,
+    ])
+  })
+})
 
 describe('defaultModel', () => {
   it('returns nothing when no provider is given', () => {

@@ -1,5 +1,6 @@
 import { providerModels as models } from '@/constants/models'
 import { ModelCapabilities } from '@/types/models'
+import { predefinedProviders } from '@/constants/providers'
 
 /**
  * First model of a provider's built-in cloud catalogue.
@@ -62,6 +63,35 @@ export const getModelCapabilities = (
     supportsToolCalls.includes(modelId) ? ModelCapabilities.TOOLS : undefined,
     supportsImages.includes(modelId) ? ModelCapabilities.VISION : undefined,
   ].filter(Boolean) as string[]
+}
+
+/** Providers whose models are not reached over an OpenAI-compatible list. */
+const NOT_CUSTOM = new Set(['llamacpp', 'mlx'])
+
+/**
+ * The capabilities a model fetched from (or added to) a provider starts with.
+ *
+ * The provider's list wins when it says anything (OpenRouter's
+ * `supported_parameters`). Otherwise a built-in provider keeps its bundled
+ * table. A custom OpenAI-compatible provider the user added has neither, and
+ * its models used to start with Tools off: a first cowork run then had no
+ * tools and failed in ways that did not point at the toggle (RQA-015). Such a
+ * model now starts with Tools on; the per-model toggle turns it off for a
+ * server that cannot call tools.
+ */
+export const initialModelCapabilities = (
+  providerName: string,
+  modelId: string,
+  listed: readonly string[] | null
+): string[] => {
+  const base = getModelCapabilities(providerName, modelId)
+  if (listed) return [...new Set([...base, ...listed])]
+  const custom =
+    !NOT_CUSTOM.has(providerName) &&
+    !predefinedProviders.some((p) => p.provider === providerName)
+  return custom && !base.includes(ModelCapabilities.TOOLS)
+    ? [...base, ModelCapabilities.TOOLS]
+    : base
 }
 
 /**
