@@ -127,6 +127,8 @@
     "reasoningOff": "Desactivat",
     "reasoningEffort": "Esforç de raonament",
     "reasoningEffortDefault": "Per defecte",
+    "roomEffort": "Esforç per a tots els models",
+    "roomEffortHint": "L'utilitzen tots els models que admeten esforç, tret que la seva pròpia configuració el substitueixi.",
     "thinkingBudget": "Pressupost de pensament",
     "thinkingBudgetHint": "Una part del context del model, calculada quan s'envia el torn i limitada perquè la resposta encara hi càpiga.",
     "pricing": "Preus (opcional)",
