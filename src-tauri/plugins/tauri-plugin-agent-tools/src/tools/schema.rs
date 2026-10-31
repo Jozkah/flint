@@ -41,11 +41,31 @@ const BROWSER_DESCRIPTION: &str = "Drive a real browser against a web app runnin
 /// there; theirs is filled in here (per platform for `bash`).
 const BUILTIN_SCHEMAS_JSON: &str = include_str!("schemas/builtin.json");
 
+/// Tools that only work on Windows (each answers "works on Windows only"
+/// elsewhere). They are not advertised on other platforms, so a model there
+/// does not spend a turn finding that out.
+pub const WINDOWS_ONLY_TOOLS: &[&str] = &[
+    "windows_events",
+    "host_query",
+    "host_action",
+    "clipboard",
+    "open_path",
+    "host_powershell",
+    "host_package",
+    "host_wsl",
+    "notify_user",
+];
+
 /// OpenAI function schemas for the built-in tools, in `BUILTIN_TOOLS` order.
 pub fn builtin_tool_schemas() -> Vec<Value> {
     // Compile-time constant; the tests below parse it, so the empty fallback
     // never triggers in a shipped build.
     let mut schemas: Vec<Value> = serde_json::from_str(BUILTIN_SCHEMAS_JSON).unwrap_or_default();
+    if !cfg!(windows) {
+        schemas.retain(|s| {
+            !s["function"]["name"].as_str().is_some_and(|n| WINDOWS_ONLY_TOOLS.contains(&n))
+        });
+    }
     for schema in &mut schemas {
         let function = &mut schema["function"];
         let description = match function["name"].as_str() {
@@ -125,7 +145,9 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 58);
+        // Per platform: the Windows-only tools are advertised on Windows only.
+        assert_eq!(schemas.len(), if cfg!(windows) { 58 } else { 58 - WINDOWS_ONLY_TOOLS.len() });
+        assert_eq!(WINDOWS_ONLY_TOOLS.len(), 9);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }
@@ -136,10 +158,36 @@ mod tests {
         // The same set: the advertised order is the prompt's, kept stable for
         // prefix caching, and need not follow the registry's.
         let mut names = names;
-        let mut expected: Vec<&str> = BUILTIN_TOOLS.iter().map(|t| t.name).collect();
+        let mut expected: Vec<&str> = BUILTIN_TOOLS
+            .iter()
+            .map(|t| t.name)
+            .filter(|n| cfg!(windows) || !WINDOWS_ONLY_TOOLS.contains(n))
+            .collect();
         names.sort_unstable();
         expected.sort_unstable();
         assert_eq!(names, expected);
+    }
+
+    /// The Windows-only list is exactly the tools whose description says so.
+    #[test]
+    fn windows_only_list_matches_the_descriptions() {
+        let raw: Vec<Value> = serde_json::from_str(BUILTIN_SCHEMAS_JSON).unwrap();
+        let mut said: Vec<&str> = raw
+            .iter()
+            .filter(|s| s["function"]["description"].as_str().unwrap().contains("Windows only"))
+            .map(|s| s["function"]["name"].as_str().unwrap())
+            .collect();
+        let mut listed = WINDOWS_ONLY_TOOLS.to_vec();
+        said.sort_unstable();
+        listed.sort_unstable();
+        assert_eq!(said, listed);
+        let offered: Vec<String> = builtin_tool_schemas()
+            .iter()
+            .map(|s| s["function"]["name"].as_str().unwrap().to_string())
+            .collect();
+        for name in WINDOWS_ONLY_TOOLS {
+            assert_eq!(offered.iter().any(|o| o == name), cfg!(windows), "{name}");
+        }
     }
 
     /// The browser tools tell the model page content is data, and say which
