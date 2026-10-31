@@ -268,34 +268,34 @@
     "stopGenerating": "生成を停止"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "コンテキストサイズ(ctx-size)を小さくする",
+    "oomDisableMtp": "MTP(マルチトークン予測)を無効にする",
+    "oomLowerGpuLayers": "n-gpu-layers を下げるか、CPU バックエンドに切り替える",
+    "oomSmallerModel": "より小さい/量子化の強いモデルを使う",
+    "serverContext": "このモデルのコンテキストウィンドウはサーバー側で設定されているため、Flint では拡大できません。新しいチャットを始める、会話を短くする、またはサーバー側の上限を引き上げてください。",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "モデルが空の返信を返しました。もう一度試すか、モデルを切り替えてください。",
+    "thinkingOnly": "モデルは回答を出さずに思考を終えました。続行するか再生成してもう一度お試しください。",
+    "noReply": "実行は返信なしで終了しました。",
+    "noReplyToolError": "実行は返信なしで終了しました。最後のツールエラー({{tool}}):{{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "インポートしたチャット",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "この画像は保存できません。",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "savedPictures_one": "{{count}} 枚の画像を保存しました",
+    "savedPictures_other": "{{count}} 枚の画像を保存しました",
+    "picturesMissing": "; {{count}} 枚はギャラリーにありません",
+    "picturesGone": "画像はもう Studio ギャラリーにありません。",
+    "tooLarge": "このエクスポートは {{mb}} MB で、上限の 50 MB を超えています。単一のメッセージまたはブランチをエクスポートするか、ツールの詳細を除外してください",
+    "untitled": "新しい会話",
+    "tooTall": "会話が長すぎて 1 枚の画像にできません(約 {{height}}k px、上限は {{limit}}k)。PDF または Markdown でエクスポートするか、単一のメッセージをエクスポートしてください",
+    "pageNotDrawn": "ページを描画できませんでした",
+    "noCanvas": "画像を描画するためのキャンバスが利用できません",
+    "imageNotEncoded": "画像をエンコードできませんでした"
   }
 }

@@ -39,11 +39,8 @@
   "importedTooltip": "Importat des d'un fitxer local. Eliminar-lo de Flint no suprimirà el fitxer del disc.",
   "importModelSuccess": "El model {{provider}} s’ha importat correctament.",
   "importModelError": "No s’ha pogut importar el model:",
-
   "importScanHint": "Cerca a LM Studio, Ollama, la memòria cau de Hugging Face, llama.cpp i GPT4All. No es copia res fins que importis.",
-
   "importAddFolder": "Afegeix una carpeta de models",
-
   "importRemoveFolder": "Elimina la carpeta {{folder}}",
   "stop": "Atura",
   "start": "Inicia",

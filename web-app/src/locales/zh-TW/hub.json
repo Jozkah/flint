@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "應該能在你的裝置上流暢執行"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "可能較慢",
+      "detail": "可以執行，但記憶體餘裕很小"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "無法容納",
+      "detail": "可能超出你的可用記憶體"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "適配性未知",
+      "detail": "無法估算記憶體需求"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "裝置相容性：{{label}}",
+    "variantInfo": "模型變體資訊",
+    "modelInfo": "模型資訊",
+    "defaultQuantization": "預設量化",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "裝置相容性",
+    "estimateNote": "根據檔案大小和你的硬體估算。實際效能取決於量化方式和上下文長度。",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "上下文記憶體讀取自模型檔案。",
+      "fromSize": "上下文記憶體依檔案大小估算。",
+      "sizeEstimated": "檔案大小依參數估算。",
+      "gpuOff": "你已關閉的 GPU 不計入。"
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "完整精度",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "未知量化",
+      "full": "最高擬真度，記憶體佔用極大",
+      "q8": "接近原始品質，記憶體佔用大",
+      "q6": "品質很高，壓縮程度適中",
+      "q5": "品質高，品質與大小的取捨出色",
+      "recommended": "在品質、速度和記憶體之間取得建議的平衡，適合大多數系統",
+      "q4": "大小與品質均衡，適合日常本機推論",
+      "q3": "更小更快，但品質有明顯折損",
+      "q2": "佔用極小，品質折損最大",
+      "other": "量化的 GGUF 模型"
     }
   }
 }

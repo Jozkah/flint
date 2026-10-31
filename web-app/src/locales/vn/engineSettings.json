@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "Mặc định (theo cài đặt: Tự động)"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "Khe tác tử",
+    "description": "Các khe bổ sung cho tác tử con, tác tử quy trình và các yêu cầu khác không chỉ định khe, để các tác tử song song không đẩy bộ nhớ đệm KV của cuộc trò chuyện hay Cowork ra ngoài. Chúng dùng chung một vùng KV, nên mỗi khe tốn ít bộ nhớ (mô hình lai còn giữ trạng thái hồi quy cho mỗi khe). 0 là tắt. Cần bật Dành riêng khe nền. Sẽ tải lại mô hình."
   }
 }

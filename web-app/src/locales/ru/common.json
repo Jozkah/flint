@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. Папки группы добавлены в контекст папок; доступ по-прежнему требует подтверждения",
       "foldersAdded": "{{base}}. Папки элемента добавлены в группу"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Группа без названия",
+    "folderNotInspected": "Не удалось проверить папку"
   },
   "htmlArtifact": {
     "code": "Код",
@@ -146,7 +146,7 @@
   "modelProviders": "Поставщики моделей",
   "localProviders": "Локальные",
   "remoteProviders": "Удалённые",
-  "manageProviders": "Manage providers",
+  "manageProviders": "Управление провайдерами",
   "hiddenProviders": "{{count}} disabled",
   "hideProvider": "Скрыть провайдера",
   "showProvider": "Показать провайдера",
@@ -338,7 +338,7 @@
       "threads": "Разговоры"
     },
     "openItem": "Открыть {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "Открыть Studio"
   },
   "searchGroup": {
     "pages": "Страницы",
@@ -694,7 +694,7 @@
       "pairedHint": "Эта модель принимает изображения на вход. Проектор выбирается при импорте модели; чтобы использовать другой, импортируйте модель заново.",
       "noneHint": "Без визуального проектора эта модель не может читать изображения. Импортируйте модель заново с включённой мультимодальностью и выберите файл mmproj; проектор, лежащий рядом с файлом модели, находится автоматически."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "Автоподбор выбирает слои GPU. Отключите автоподбор, чтобы задать значение вручную.",
     "samplingDefaults": {
       "title": "Параметры сэмплирования по умолчанию",
       "description": "Настройки сэмплера по умолчанию для этой модели. Используются, если их не переопределяют значения для ассистента или запроса."
@@ -906,8 +906,8 @@
         "failed": "Не удалось загрузить страницу: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "Не удалось загрузить файлы этого проекта.",
+    "retryLoad": "Повторить"
   },
   "attachmentsIngestion": {
     "title": "Выберите способ обработки вложений",
@@ -1071,11 +1071,11 @@
     "chunksCount": "Фрагментов: {{count}}"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp ещё занят",
+    "description": "Одна или несколько моделей не выгрузились вовремя. Принудительное завершение остановит llama.cpp и может прервать активные ответы.",
+    "forceQuit": "Завершить принудительно",
+    "forcing": "Принудительное завершение…",
+    "shuttingDown": "Завершение работы…"
   },
   "duration": {
     "seconds": "{{count}} с",
@@ -1104,8 +1104,8 @@
     "thisChat": "Этот чат",
     "thisRoom": "Эта комната",
     "thisSession": "Эта сессия",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "Отсутствует ключ API",
+    "keyMissingDescription": "{{subject}} использует провайдера, для которого ещё нет ключа API. Добавьте ключ в настройках или выберите другую модель, чтобы продолжить."
   },
   "skillsUsedCount_one": "Использован {{count}} навык",
   "skillsUsedCount_few": "Использовано {{count}} навыка",
@@ -1174,8 +1174,8 @@
     "alsoAttached": "Также подключены",
     "addFolder": "Добавить ещё папку",
     "removeFolder": "Убрать {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "Сделать {{folder}} доступной только для чтения",
+    "makeEditable": "Сделать {{folder}} доступной для редактирования",
     "readOnly": "только чтение",
     "editable": "редактируемая",
     "inWorktree": "через worktree",
@@ -1183,8 +1183,8 @@
     "footnoteWorktree": "Flint изменяет git worktree этой папки, но никогда саму папку.",
     "writesFolder": "Подключённые папки",
     "writesFolderNote": "Правки вносятся прямо в папки, отмеченные как редактируемые.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Папки, отмеченные как редактируемые",
+    "writesExtrasNote": "Основная папка остаётся только для чтения; изменения попадают лишь в другие папки, отмеченные как редактируемые.",
     "writesWorktree": "Worktree сеанса",
     "writesWorktreeNote": "Правки вносятся в git worktree, который вы проверяете и сливаете.",
     "footnote": "Агент только читает эту папку. Ничто внутри неё никогда не изменяется.",
@@ -1266,10 +1266,10 @@
     "compactFailed": "Пока нечего сжимать.",
     "newSession": "Новая сессия",
     "compactSuperseded": "Беседа изменилась во время сжатия, поэтому ничего не заменено. Сожмите её ещё раз.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "Не удалось уплотнить: {{reason}}. Ваш разговор не изменён.",
+    "compactDone": "Уплотнено. Сводку написала {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "Разговор с тех пор продолжился, поэтому уплотнение больше нельзя отменить.",
     "btwFailed": "Не удалось ответить на побочный вопрос."
   },
   "autoCompactNeedsWindow": "Для автосжатия нужен размер контекста, а у {{model}} Flint не может его найти. Задайте «Макс. токенов контекста» для этой модели, чтобы длинные чаты сжимались до заполнения. Если провайдер отклоняет запрос из-за длины, Flint сжимает и повторяет один раз.",
@@ -1304,8 +1304,8 @@
     "interruptedNoReply_other": "Сохранено {{calls}} завершённых шага.",
     "interruptedContinue": "Продолжить",
     "interruptedDiscard": "Отбросить незавершённый ответ и продолжить",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Пока вас не было:",
+    "recapDismiss": "Закрыть сводку"
   },
   "modelNoTools": "{{model}} не может вызывать инструменты, поэтому не может работать как агент. Выберите модель с вызовом инструментов.",
   "sessionModelUnavailable": "{{model}} больше недоступна. Выберите другую модель в меню моделей.",
@@ -1417,7 +1417,7 @@
     "chooseAgainAction": "Выбрать снова",
     "externalGone": "Этот файл был открыт вне проекта, и доступ не сохранился. Выберите его снова, чтобы открыть заново.",
     "oneFolderAtATime": "Можно добавить только одну папку за раз. «{{name}}» не добавлена.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "Не удалось открыть {{name}}."
   },
   "settingsSearch": {
     "label": "Поиск по настройкам",
@@ -2229,35 +2229,35 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Уплотнение контекста",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Фоновая задача",
+      "tokenUsage": "Использование токенов",
+      "fellBack": "Провайдер переключился на резервный",
+      "fellBackDetail": "{{from}} не ответил; пробуем {{to}}",
+      "theModel": "модель",
+      "nextProvider": "следующий провайдер",
+      "requestFailed": "Запрос не выполнен",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
       "characters_few": "{{count}} characters",
       "characters_many": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "reasoningCharacters_few": "{{count}} characters of reasoning",
-      "reasoningCharacters_many": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
-      "toolCalls_few": "{{count}} tool calls",
-      "toolCalls_many": "{{count}} tool calls",
+      "reasoningCharacters_one": "{{count}} символ рассуждения",
+      "reasoningCharacters_other": "{{count}} символа рассуждения",
+      "reasoningCharacters_few": "{{count}} символа рассуждения",
+      "reasoningCharacters_many": "{{count}} символов рассуждения",
+      "toolCalls_one": "{{count}} вызов инструмента",
+      "toolCalls_other": "{{count}} вызова инструмента",
+      "toolCalls_few": "{{count}} вызова инструмента",
+      "toolCalls_many": "{{count}} вызовов инструментов",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Запуск начат",
+      "runEnded": "Запуск завершён",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Агент завершил работу",
+      "jobStarted": "Фоновая задача начата",
+      "jobEnded": "Фоновая задача завершена"
     }
   },
   "appRail": {
@@ -2454,15 +2454,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Браузер агента",
+    "note": "Просмотр собственного временного браузера агента только для чтения. Предпросмотр Flint не используется.",
+    "lastAction": "Последнее действие: {{action}}",
+    "screenshotAlt": "Страница в браузере агента",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Скрыть браузер агента",
+    "tabs": "Вкладки браузера агента",
+    "waiting": "Ожидание первого снимка страницы…"
   },
   "browserVerify": {
     "title": "Проверить в браузере",
@@ -2504,23 +2504,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Модель решений",
+    "backendLabel": "Кто отвечает",
+    "backendExplained": "По умолчанию используется Jev (TypeSafe). Либо выберите открытую модель, уже имеющуюся во Flint: локальную модель llama.cpp или MLX либо любого OpenAI-совместимого провайдера, включая самостоятельно размещённые модели с открытыми весами. Она отвечает на те же ограниченные варианты; всё, что не совпадает ровно с одним из них, игнорируется, и решает Flint.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Открытая модель",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Небольшие модели типизированных решений, такие как Von, Laya, Kev или Rizzo Flow: добавьте OpenAI-совместимую конечную точку модели как провайдера (или загрузите её локально), затем выберите ниже.",
+    "backendPresetMissing": "{{name}} ещё не настроен. Добавьте его OpenAI-совместимую конечную точку как провайдера или загрузите локально, затем выберите ниже. До тех пор используется Jev.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Выберите модель",
+    "backendModelSearch": "Поиск моделей",
+    "backendModelEmpty": "Нет доступных моделей. Сначала добавьте провайдера или загрузите локальную модель.",
+    "backendModelEmptySearch": "Нет моделей по запросу «{{query}}»",
+    "backendNoModel": "Модель не выбрана: используется Jev, пока вы не выберете модель.",
+    "backendLocal": "Работает на этом компьютере или в вашей локальной сети: текст решения не передаётся ни в TypeSafe, ни в какой-либо облачный сервис.",
+    "backendRemote": "Тот же текст, перечисленный ниже для каждого включаемого пункта, отправляется провайдеру {{provider}} вместо TypeSafe.",
     "automationTitle": "Автоматический выбор",
     "routeToggle": "Направлять к подходящему ассистенту",
     "routeExplained": "Когда «Предложение навыков» включено, Jev может переводить разговор, который ещё на Flint, на Quartz, Coal, Blaze или Redstone для каждого нового сообщения. Когда выключено, выбранный вами ассистент остаётся для каждого сообщения. Ассистент, которого вы выбрали сами, в любом случае не меняется.",
@@ -2623,9 +2623,9 @@
   "coworkParallel": {
     "settingTitle": "Новые сессии в папке Git работают в собственном worktree",
     "settingDescription": "Каждая новая сессия в репозитории Git получает собственный worktree и ветку (flint/<title>), поэтому много сессий могут работать в одной папке одновременно, не мешая друг другу и не трогая вашу рабочую копию. Просматривайте, сливайте или отбрасывайте каждую ветку прямо из сессии.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Создавать worktree от моей текущей ветки",
+    "baseDescription": "Выкл. (по умолчанию): новый worktree создаётся от ветки репозитория по умолчанию. Вкл.: он создаётся от коммита, который у вас извлечён, поэтому включает неопубликованные коммиты. Явно указанная ветка (например, агентом) всегда приоритетнее.",
+    "resumeGone": "Не удалось повторно войти в worktree этой сессии ({{reason}}), поэтому она вернулась в режим только просмотра. Ничего не создавалось заново.",
     "branchTitle": "Эта сессия работает в ветке {{branch}}, в собственном worktree",
     "basedOn": "от {{base}}",
     "openFolder": "Открыть папку",
@@ -2698,14 +2698,14 @@
     "noneForProvider": "У этого провайдера нет настраиваемых параметров.",
     "maybeUnsupported": "Может не поддерживаться {{providers}}",
     "modelReports": "Модель: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "unrecognized_few": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "Нет переопределений — используются значения модели по умолчанию.",
+    "unrecognized_one": "{{count}} нераспознанный параметр скрыт: {{keys}}",
+    "unrecognized_other": "{{count}} нераспознанного параметра скрыто: {{keys}}",
+    "unrecognized_few": "{{count}} нераспознанных параметра скрыто: {{keys}}",
+    "unrecognized_many": "{{count}} нераспознанных параметров скрыто: {{keys}}",
+    "notSupportedStripped": "Не поддерживается — будет удалено при отправке",
+    "mayBeIgnored": "Может игнорироваться этим провайдером",
+    "notSupportedSkipped": "Не поддерживается — будет пропущено.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2725,76 +2725,76 @@
     "chooseNote": "Ничего не копируется, пока вы не подтвердите. Данные JAN никогда не изменяются и не удаляются.",
     "copyDescription": "Копирует ваши разговоры, настройки и ключи провайдеров из JAN в Flint для отмеченных ниже элементов. Сам JAN никогда не изменяется и не удаляется.",
     "freshDescription": "Запускает Flint с чистого листа. Из JAN ничего не читается и не копируется, включая ключи провайдеров, ни сейчас, ни при следующих запусках. Импортировать можно в любой момент в Настройки, Папка данных.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "Миграция из JAN",
+    "descriptionNoLegacy": "Перенесите существующие данные JAN во Flint.",
+    "descriptionFound": "Flint нашёл существующую установку JAN. Выберите, как перенести данные.",
+    "detecting": "Поиск существующей установки JAN…",
+    "noData": "Данные JAN на этом компьютере не найдены. Переносить нечего — можно сразу начать работу с Flint.",
+    "foundAt": "Найдены данные JAN в {{path}} ({{size}}).",
+    "whatToBring": "Что перенести",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
     "fileCount_few": "{{count}} files",
     "fileCount_many": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Если элемент уже есть во Flint",
+    "conflictAria": "Разрешение конфликтов",
+    "resolveAria": "Разрешить конфликты",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Копировать во Flint"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "Использовать данные JAN",
+        "description": "Направить Flint на ваши существующие данные JAN на месте, без копирования."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Переместить во Flint",
+        "description": "Скопировать во Flint, затем удалить источник JAN после успешного переноса каждого элемента. Резервная копия сохраняется, чтобы можно было откатиться."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Начать с нуля"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Разговоры и ассистенты",
+      "models": "Загруженные модели и движки",
+      "configs": "Файлы конфигурации",
+      "settings": "Настройки и учётные данные провайдеров",
+      "common": "Расширения, журналы и кэши",
+      "agent": "Рабочее пространство агента и комнаты"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Оставить существующий элемент Flint",
+      "use_jan": "Перезаписать элементом JAN",
+      "keep_both": "Оставить оба (к копии JAN добавляется суффикс)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "Данные JAN сообщают о схеме, которую эта сборка Flint поддерживает не полностью. Прежде чем продолжить, просмотрите предупреждения.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Ориентировочный размер",
+    "reusePath": "Путь для повторного использования",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
     "conflictCount_few": "{{count}} conflicts",
     "conflictCount_many": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Копия во Flint новее (сохранена)",
+    "running": "Перенос данных… Не закрывайте Flint.",
+    "complete": "Миграция завершена.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "Резервная копия данных JAN сохранена в {{path}}.",
+    "restartNeeded": "Перезапустите Flint, чтобы начать использовать эти данные.",
+    "reuseInPlace": "Теперь Flint использует ваши данные JAN на месте в {{path}}.",
+    "failed": "Миграция не завершена.",
+    "unknownError": "Произошла неизвестная ошибка.",
+    "rolledBackNote": "Ваши данные возвращены в прежнее состояние.",
+    "quarantined": "Частичные данные помещены на карантин в {{path}}.",
+    "notNow": "Не сейчас",
+    "dontAskAgain": "Больше не спрашивать",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Начать с нуля",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -3051,27 +3051,27 @@
     "openProvider": "Открыть настройки поставщика",
     "errorDetails": "Подробности",
     "pasteHint": "Доступ к буферу обмена заблокирован. Щёлкните текстовое поле и нажмите {{keys}}.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Длинный текст может не поместиться в модель. Разбейте его, если перевод не удаётся или обрывается.",
     "swapNeedsSource": "Выберите исходный язык, чтобы поменять местами"
   },
   "markdownImage": {
     "load": "Загрузить изображение с {{host}}"
   },
   "messageSaveFailed": "Не удалось сохранить сообщение. Оно может пропасть после перезапуска.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "Не удалось сохранить секрет в системной связке ключей. Изменение отменено.",
+  "keptChat": "Сохранённый чат",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "Ваше видео готово",
+    "imageReady": "Ваше изображение готово",
+    "stoppedWaiting": "Ожидание прекращено. {{provider}} может продолжать рендеринг, а новый запрос может быть отклонён до его завершения.",
+    "providerFallback": "Провайдер",
+    "pictureInChat": "Это изображение используется в чате. Чат больше не может его просматривать или редактировать."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Журналы приложения - Flint",
+    "systemMonitor": "Системный монитор - Flint",
+    "localApiServerLogs": "Журналы локального API-сервера - Flint"
   },
   "threadSaveFailed": "Не удалось сохранить изменение в этом чате. Оно отменено.",
   "attachmentsProcessFailed": "Не удалось подготовить вложения, поэтому сообщение не отправлено",
@@ -3396,93 +3396,93 @@
   "chatRules": "Правила",
   "chatRuleForThisChat": "Использовать это правило в этом чате",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Передать на другой компьютер…",
+    "saved": "Передача сохранена. Учётных данных пропущено: {{count}}; папка указана по имени, а не по расположению.",
+    "failed": "Не удалось сохранить передачу: {{message}}",
+    "label": "Передано с другого компьютера",
+    "title": "Эта сессия была передана с другого компьютера.",
+    "checkFailed": "Не удалось проверить прикреплённую папку: {{error}}",
+    "folderMatches": "Прикреплённая папка совпадает с той, в которой работала сессия ({{name}}).",
+    "folderDiffers": "Прикреплённая папка — не та, в которой работала сессия: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "ветка {{branch}} на коммите {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Эта сессия работала в папке с именем {{name}}. Прикрепите эту папку на этом компьютере, чтобы продолжить.",
+      "folderAt": "Эта сессия работала в папке с именем {{name}} ({{at}}). Прикрепите эту папку на этом компьютере, чтобы продолжить.",
+      "provider": "Провайдер {{provider}} не настроен на этом компьютере, поэтому модель сессии использовать нельзя. Выберите другую модель, чтобы продолжить.",
+      "model": "Модель {{id}} недоступна у {{provider}} на этом компьютере. Выберите другую модель, чтобы продолжить."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "она называется {{actual}}, а не {{expected}}",
+      "branch": "она на ветке {{actual}}, а не {{expected}}",
+      "noBranch": "она не находится ни на какой ветке, а не на {{expected}}",
+      "head": "она на коммите {{actual}}, а не {{expected}}",
+      "noHead": "она не находится ни на каком коммите, а не на {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "Не удалось загрузить это изображение.",
+  "attachedImage": "Прикреплённое изображение {{n}}",
+  "saveChanges": "Сохранить изменения",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "Загрузка модели…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Ошибка через"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Веб-поиск",
+    "embeddings": "Модель эмбеддингов (для RAG/векторов, не для чата)",
+    "raw_completion": "Сырое дополнение (продолжает ваш текст, без чата и инструментов)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Сменить ассистента ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Реверс-инжиниринг",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "тот же файл",
+      "nested": "папка и что-то внутри неё",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "пересозданный файл"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "Что может изменять {{id}} (через запятую)",
+    "bothChange": "{{a}} и {{b}} изменят одно и то же:",
+    "legend": "Что делать с {{a}} и {{b}}",
+    "serializeAb": "Сначала {{a}}, затем {{b}}",
+    "serializeBa": "Сначала {{b}}, затем {{a}}",
+    "revise": "Изменить, что может менять {{id}}",
+    "parallel": "Всё равно запустить параллельно (запишется; каждое изменение всё равно проверяется до применения)",
+    "region": "Пересекающиеся задачи команды",
+    "headline": "Эти задачи изменят одни и те же пути, и ничто не задаёт порядок. Пока ничего не запущено.",
+    "caveat": "Сравнение идёт по путям, заявленным каждой задачей, а не по коду: отсутствие пересечений не значит, что изменения совместимы.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "Не запускать эти задачи"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "documents_few": "{{count}} document citations",
-    "documents_many": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
-    "web_few": "{{count}} web sources",
-    "web_many": "{{count}} web sources",
+    "toggleSnippet": "Показать или скрыть фрагмент",
+    "documents_one": "{{count}} цитата из документа",
+    "documents_other": "{{count}} цитаты из документов",
+    "documents_few": "{{count}} цитаты из документов",
+    "documents_many": "{{count}} цитат из документов",
+    "web_one": "{{count}} веб-источник",
+    "web_other": "{{count}} веб-источника",
+    "web_few": "{{count}} веб-источника",
+    "web_many": "{{count}} веб-источников",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "Только часть {{files}} помещается в одно сообщение.",
+    "readFailed": "Не удалось прочитать {{name}}: {{error}}",
+    "remoteImagesOnly": "На серверную сессию можно отправлять только изображения; удалите остальные медиафайлы."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3491,45 +3491,45 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "filesChanged_few": "{{count}} files changed",
-    "filesChanged_many": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
-    "mediaFiles_few": "{{count}} media files",
-    "mediaFiles_many": "{{count}} media files",
+    "filesChanged_one": "Изменён {{count}} файл",
+    "filesChanged_other": "Изменено {{count}} файла",
+    "filesChanged_few": "Изменено {{count}} файла",
+    "filesChanged_many": "Изменено {{count}} файлов",
+    "mediaFiles_one": "{{count}} медиафайл",
+    "mediaFiles_other": "{{count}} медиафайла",
+    "mediaFiles_few": "{{count}} медиафайла",
+    "mediaFiles_many": "{{count}} медиафайлов",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpOffered_few": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpOffered_many": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "Для этой сессии не выбрана модель.",
+    "toolsFailed": "Вызовы инструментов не прошли проверку этой модели {{date}}.",
+    "toolsFailedDetail": "Вызовы инструментов не прошли проверку этой модели {{date}}: {{detail}}.",
+    "noToolSupport": "Выбранная модель не умеет вызывать инструменты, поэтому в Cowork с ней можно только общаться.",
+    "modelToolsWorked": "Модель выбрана. Вызовы инструментов сработали в проверке {{date}}; это одна проба, а не гарантия для любой задачи.",
+    "modelSelected": "Модель выбрана. Отвечает ли провайдер, проверяется при запуске.",
+    "contextWindow": "Контекстное окно: {{tokens}} токенов.",
+    "contextUnknown": "Не удалось определить контекстное окно этой модели, поэтому Flint не может предупредить до его заполнения.",
+    "mcpOffered_one": "{{count}} MCP-сервер из настроек предлагается запускам Cowork и подключается при отправке сообщения.",
+    "mcpOffered_other": "{{count}} MCP-сервера из настроек предлагаются запускам Cowork и подключаются при отправке сообщения.",
+    "mcpOffered_few": "{{count}} MCP-сервера из настроек предлагаются запускам Cowork и подключаются при отправке сообщения.",
+    "mcpOffered_many": "{{count}} MCP-серверов из настроек предлагаются запускам Cowork и подключаются при отправке сообщения.",
+    "mcpNone": "MCP-серверы не настроены.",
+    "localReady": "Локальная среда запускается, когда запуску нужна модель.",
+    "localAbsent": "Выбранная модель не запускается локально."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Сохранение памяти",
+    "readingMemory": "Чтение памяти",
+    "readingSkill": "Чтение навыка",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Использован навык",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
-    "subagentsWorking_few": "{{count}} subagents working",
-    "subagentsWorking_many": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} субагент работает",
+    "subagentsWorking_other": "{{count}} субагента работают",
+    "subagentsWorking_few": "{{count}} субагента работают",
+    "subagentsWorking_many": "{{count}} субагентов работают",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3550,20 +3550,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Сессия с этим идентификатором уже существует",
+    "assistantExists": "Ассистент с этим идентификатором уже существует"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Опишите этот проект",
+    "continue": "Продолжить черновик FLINT.md",
+    "description": "Flint прочитал манифесты и структуру папки и ничего не запускал. Отредактируйте описание; оно станет файлом FLINT.md этой папки, только когда вы его примете.",
+    "surveying": "Обзор папки…",
+    "surveyed": "Просмотрено файлов: {{seen}}, прочитано: {{read}}. Ничего не записано.",
+    "wrote": "FLINT.md записан",
+    "discarded": "Черновик отброшен. Ничего не записано.",
+    "notRead": "Что обзор не прочитал",
+    "discard": "Отбросить черновик",
+    "resurvey": "Повторить обзор",
+    "accept": "Принять и записать FLINT.md"
   }
 }

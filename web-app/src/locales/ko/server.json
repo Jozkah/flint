@@ -25,40 +25,40 @@
   "limitsTitle": "실행 위치",
   "limits": "채팅, 룸, 모델, 도구는 서버에서 실행됩니다. Cowork 세션과 캠페인은 Flint가 켜져 있는 컴퓨터에서 실행되는 에이전트가 필요합니다. 원격 접속과 휴대폰 앱으로 해당 컴퓨터에 연결하세요. 헤드리스 서버는 캠페인을 나열하고 제안을 검토할 수 있지만 세션은 실행하지 않습니다.",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "시작하려면 이 계획을 승인하세요",
+    "summary_one": "작업 {{count}}개. 서버는 클라이언트 연결 없이 자체적으로 실행하며, 폴더에 무언가 반영되기 전에 다시 확인합니다.",
+    "summary_other": "작업 {{count}}개. 서버는 클라이언트 연결 없이 자체적으로 실행하며, 폴더에 무언가 반영되기 전에 다시 확인합니다.",
+    "cost": "대략적인 비용: {{low}} ~ {{high}}토큰.",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "작업 방식",
+    "accessWorktree": "자체 폴더 안에서 자율적으로 작업",
+    "accessAsk": "각 작업마다 확인",
+    "approve": "승인 후 시작",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "계획이 승인되지 않았습니다"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "폴더를 찾을 수 없음",
+      "corrupt": "더 이상 worktree가 아님",
+      "branchMoved": "브랜치가 이동됨",
+      "identityChanged": "저장소가 변경됨"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "병합되지 않음: {{files}}에서 충돌이 발생했습니다. 아무것도 변경되지 않았습니다.",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "{{target}}에 병합했습니다(fast-forward).",
+    "merged": "{{target}}에 병합했습니다.",
+    "discarded": "삭제했습니다. 이 세션은 worktree 없이는 계속할 수 없습니다.",
+    "counts": "커밋되지 않음 {{pending}}개, 병합 대기 {{unmerged}}개",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "{{base}}에 병합",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "체크아웃과 해당 브랜치를 제거합니다. 커밋되지 않은 파일 {{pending}}개와 병합되지 않은 커밋 {{unmerged}}개가 포함됩니다.",
+    "discardAnyway": "그래도 삭제",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "변경 사항이 제안되지 않았습니다: {{error}}",
+    "filesChanged": "파일 {{count}}개 변경됨: {{files}}{{more}}"
   }
 }

@@ -24,12 +24,12 @@
     "description": "Khi tắt, các phiên khác được báo rằng phiên này không nhận tin nhắn, và không có gì họ gửi đến được nó."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Hỏi tôi trước khi chuyển đi",
+    "description": "Khi bật, mỗi tin nhắn từ phiên khác sẽ chờ ở đây để bạn chấp thuận hoặc từ chối. Không có gì được chuyển đi hay khởi chạy cho đến khi bạn chấp thuận, và tin nhắn bạn không trả lời trong 5 phút sẽ bị loại bỏ và người gửi được thông báo. Chỉ áp dụng khi đang nhận tin nhắn."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Hỏi tôi trước khi bắt đầu cuộc trò chuyện lồng nhau",
+    "description": "Khi bật, mỗi lần tác tử muốn bắt đầu một cuộc trò chuyện lồng nhau (spawn_session), nó sẽ hỏi bạn trước. Mặc định tắt: cuộc trò chuyện lồng nhau không có worktree sẽ bắt đầu mà không có quyền truy cập thư mục và không có quyền nào của phiên này."
   },
   "subagentQuestion": {
     "title": "{{name}} hỏi tác tử",
@@ -93,14 +93,14 @@
   "waitingIn_other": "{{count}} tin nhắn trong {{session}}",
   "waitingIn_many": "{{count}} tin nhắn trong {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Tin nhắn đang chờ chấp thuận",
+    "banner": "Đang chờ bạn chấp thuận ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Thông báo trạng thái",
+    "expires": "Hết hạn sau {{minutes}} phút",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Chấp thuận tin nhắn từ {{name}}",
+    "denyLabel": "Từ chối tin nhắn từ {{name}}"
   }
 }

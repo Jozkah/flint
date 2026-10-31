@@ -668,5 +668,5 @@
     "ranToolsDropped": "đầu ra của chúng đã bị loại bỏ để vừa với cửa sổ ngữ cảnh.",
     "ranToolsRetry": "sau đó nhà cung cấp gặp lỗi và yêu cầu đang được thử lại."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Xóa phòng thất bại"
 }
