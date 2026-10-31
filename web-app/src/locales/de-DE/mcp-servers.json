@@ -13,7 +13,7 @@
     "requires": "Erfordert, dass die Browsererweiterung in deinem Chrome-basierten Browser installiert ist.",
     "install": "Erweiterung installieren →"
   },
-  "serverName": "Server Name",
+  "serverName": "Servername",
   "enterServerName": "Server Namen eingeben",
   "command": "Kommando",
   "enterCommand": "Kommando eingeben (uvx oder npx)",
@@ -272,13 +272,13 @@
   "autoApproveServerHint": "Genehmigt nur die Tools dieses Servers automatisch. Der Schalter für alle MCP-Tools befindet sich unter Einstellungen > Berechtigungen.",
   "allowAllMoved": "Der Schalter, mit dem alle MCP-Tools ohne Nachfrage laufen, befindet sich unter Einstellungen > Berechtigungen.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} benötigt Ihre Eingabe",
+    "urlTitle": "{{server}} möchte eine Seite öffnen",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Ausgeblendete Felder gehen nur an {{server}}. Sie werden nicht im Chat angezeigt.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Seite öffnen"
   }
 }

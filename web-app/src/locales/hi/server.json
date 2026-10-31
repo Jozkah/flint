@@ -25,40 +25,40 @@
   "limitsTitle": "क्या कहाँ चलता है",
   "limits": "चैट, रूम, मॉडल और टूल सर्वर पर चलते हैं। Cowork सत्रों और कैंपेन को ऐसा एजेंट चाहिए जो Flint खुले हुए कंप्यूटर पर चलता हो: उस कंप्यूटर तक रिमोट एक्सेस और फ़ोन ऐप से पहुँचें। बिना स्क्रीन वाला सर्वर कैंपेन सूचीबद्ध कर सकता है और प्रस्तावों की समीक्षा कर सकता है, लेकिन सत्र नहीं चलाता।",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "इसे शुरू करने के लिए इस योजना को स्वीकृत करें",
+    "summary_one": "{{count}} टास्क। सर्वर इन्हें अपने आप चलाता है, बिना किसी क्लाइंट के, और आपके फ़ोल्डर तक कुछ भी पहुँचने से पहले फिर पूछता है।",
+    "summary_other": "{{count}} टास्क। सर्वर इन्हें अपने आप चलाता है, बिना किसी क्लाइंट के, और आपके फ़ोल्डर तक कुछ भी पहुँचने से पहले फिर पूछता है।",
+    "cost": "मोटा अनुमानित खर्च: {{low}} से {{high}} टोकन।",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "टास्क कैसे काम करते हैं",
+    "accessWorktree": "अपने फ़ोल्डर के भीतर खुद काम करें",
+    "accessAsk": "हर कार्रवाई के लिए पूछें",
+    "approve": "स्वीकृत करें और शुरू करें",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "योजना स्वीकृत नहीं हुई"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "फ़ोल्डर गायब है",
+      "corrupt": "अब वर्कट्री नहीं है",
+      "branchMoved": "ब्रांच खिसक गई",
+      "identityChanged": "रिपॉज़िटरी बदल गई"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "मर्ज नहीं हुआ: {{files}} में टकराव। कुछ भी नहीं बदला गया।",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "{{target}} में मर्ज हुआ (फ़ास्ट-फ़ॉरवर्ड)।",
+    "merged": "{{target}} में मर्ज हुआ।",
+    "discarded": "हटा दिया गया। यह सत्र अपनी वर्कट्री के बिना जारी नहीं रह सकता।",
+    "counts": "{{pending}} अनकमिटेड, {{unmerged}} मर्ज होने बाकी",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "{{base}} में मर्ज करें",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "चेकआउट और उसकी ब्रांच हटा देता है, साथ में {{pending}} अनकमिटेड फ़ाइल और {{unmerged}} अनमर्ज्ड कमिट।",
+    "discardAnyway": "फिर भी हटाएँ",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "बदलाव प्रस्तावित नहीं किए गए: {{error}}",
+    "filesChanged": "{{count}} फ़ाइल बदली: {{files}}{{more}}"
   }
 }

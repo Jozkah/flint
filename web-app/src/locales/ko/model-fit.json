@@ -114,12 +114,12 @@
     "inUse": "여기서 사용 중: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "GPU 오프로드(이번 로드)",
+    "all": "전체 {{layers}}개 레이어가 GPU에서 실행됩니다.",
+    "partial": "{{total}}개 레이어 중 {{gpu}}개가 GPU에서 실행되고 나머지는 더 느린 CPU에서 실행됩니다.",
+    "none": "GPU에서 실행되는 레이어가 없습니다. 모델이 CPU에서 실행되고 있습니다.",
+    "unknown": "엔진이 오프로드한 레이어 수를 알려주지 않았습니다.",
+    "memory": "모델 가중치: GPU {{gpu}}, 시스템 메모리 {{cpu}}."
   },
   "metalBudget": {
     "warning": "이 모델은 이 Mac의 GPU에 너무 클 수 있습니다. 약 {{required}}가 필요하지만 macOS는 기본적으로 GPU가 약 {{budget}}만 쓰도록 합니다. 로드된 뒤 첫 메시지에서 실패할 수 있습니다. 컨텍스트 크기를 줄이거나, GPU로 오프로드하는 레이어를 줄이거나, 더 작은 양자화를 선택하세요."

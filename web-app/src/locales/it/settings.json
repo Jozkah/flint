@@ -26,10 +26,10 @@
     "overridden_one": "{{count}} ruolo impostato",
     "overridden_other": "{{count}} ruoli impostati",
     "overridden_many": "{{count}} di ruoli impostati",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Subagenti contemporanei",
+    "maxConcurrentDesc": "Il maggior numero di subagenti eseguiti contemporaneamente (da 1 a 16). Gli altri aspettano il proprio turno.",
+    "maxDepth": "Profondità dei subagenti",
+    "maxDepthDesc": "1: i subagenti non possono avviare subagenti. 2 o 3 permette loro di passare il lavoro verso il basso per quel numero di livelli, con gli stessi limiti e le stesse approvazioni."
   },
   "autoDownload": "Scarica automaticamente i nuovi aggiornamenti",
   "checkForUpdates": "Verifica aggiornamenti",
@@ -128,7 +128,7 @@
     "previousPaneDesc": "Passa al riquadro precedente della vista divisa.",
     "findInChat": "Cerca nella chat",
     "findInChatDesc": "Cerca nella conversazione sullo schermo.",
-    "notSet": "Not set"
+    "notSet": "Non impostato"
   },
   "interface": {
     "title": "Interfaccia",
@@ -459,7 +459,7 @@
     "trustedHosts": "Host attendibili",
     "trustedHostsDesc": "Host autorizzati ad accedere al server, separati da virgole.",
     "advancedSettings": "Impostazioni avanzate",
-    "cors": "Cross-Origin Resource Sharing (CORS)",
+    "cors": "Condivisione delle risorse tra origini (CORS)",
     "corsDesc": "Consenti richieste cross-origin al server API.",
     "verboseLogs": "Log dettagliati del server",
     "verboseLogsDesc": "Abilita log dettagliati del server per il debug.",
@@ -477,8 +477,8 @@
     "stopServerToEdit": "Arresta il server per modificare",
     "trustedHostsInvalid": "Host non valido: {{hosts}}. Usa un host o host:porta, come example.com o 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Non salvato. Premi Invio per salvare, Esc per annullare.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Esegui strumenti sul server",
+    "serverToolsDesc": "Esegue gli strumenti lato server per gli endpoint di chat."
   },
   "privacy": {
     "analytics": "Analisi dati",
@@ -621,28 +621,28 @@
       "uninstall": "Disinstalla",
       "uninstalling": "Disinstallazione…",
       "foreignDesc": "Trovata in {{path}}, installata da un'altra copia di Flint. Installa qui per usare la CLI di questa copia.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI installato in {{path}}",
+      "installFailed": "Installazione non riuscita",
+      "uninstalledToast": "Flint CLI disinstallato",
+      "uninstallFailed": "Disinstallazione non riuscita"
     },
     "startupGroup": "Avvio e area di notifica",
     "cliGroup": "Riga di comando",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Mantieni il computer attivo durante le esecuzioni",
+    "keepAwakeDesc": "Impedisce a Windows di andare in stop mentre un'esecuzione dell'agente è in corso. Lo schermo può comunque spegnersi.",
+    "siteIcons": "Carica le icone dei siti",
+    "siteIconsDesc": "Mostra l'icona di ogni sito accanto al suo nome nei risultati di ricerca e nelle citazioni. Recuperare un'icona dice a quel sito che l'hai visualizzato. Disattivato mostra una lettera.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Inserisci un token Hugging Face da convalidare",
+      "valid": "Il token è valido",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Il tuo token Hugging Face è valido.",
+      "invalid": "Token non valido",
+      "invalidDesc": "Il token Hugging Face fornito non è valido. Controlla il token e riprova.",
+      "timedOut": "Convalida scaduta",
+      "timedOutDesc": "La richiesta di convalida è scaduta. Controlla la connessione di rete e riprova.",
+      "failed": "Convalida non riuscita",
+      "failedDesc": "Si è verificato un errore di rete durante la convalida del token. Controlla la connessione a Internet."
     }
   },
   "extensions": {
@@ -1480,7 +1480,7 @@
       "settleFailed": "Impossibile risolvere il conflitto",
       "forgotten": "Ricordo dimenticato",
       "forgetFailed": "Impossibile dimenticare il ricordo",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Impossibile ripristinare quel ricordo",
       "changeFailed": "Impossibile modificare il ricordo",
       "updated": "Ricordo aggiornato",
       "updateFailed": "Impossibile aggiornare il ricordo",
@@ -1624,15 +1624,15 @@
     "title": "Predefiniti"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Utilizzo per elemento",
+    "description": "Chiamate e token dei subagenti nelle ultime {{window}}, dai log delle sessioni.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "Nulla registrato in questo intervallo.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Server MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Configurato ma mai usato",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

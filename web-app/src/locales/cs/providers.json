@@ -39,11 +39,8 @@
   "importedTooltip": "Importováno z lokálního souboru. Odebrání z Flintu soubor na disku nesmaže.",
   "importModelSuccess": "Model {{provider}} byl úspěšně importován.",
   "importModelError": "Nepodařilo se importovat model:",
-
   "importScanHint": "Hledá v LM Studiu, Ollamě, cache Hugging Face, llama.cpp a GPT4All. Nic se nekopíruje, dokud neimportujete.",
-
   "importAddFolder": "Přidat složku s modely",
-
   "importRemoveFolder": "Odebrat složku {{folder}}",
   "stop": "Zastavit",
   "start": "Spustit",
@@ -56,7 +53,7 @@
     "connected": "Připojeno"
   },
   "table": {
-    "contextAutoFit": "auto-fit",
+    "contextAutoFit": "automatické přizpůsobení",
     "contextAuto": "auto",
     "contextAutoFitTitle": "Velikost kontextu je prázdná, proto engine při načtení modelu přizpůsobil toto okno vaší paměti.",
     "contextAutoTitle": "Velikost kontextu je prázdná: engine zvolí okno při načtení modelu.",

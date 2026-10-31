@@ -1,27 +1,27 @@
 {
   "discover": {
-    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
-    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
-    "familiesError": "Could not load the model kinds: {{error}}",
+    "unsupportedArch": "本機影像和影片模型需要 Windows x64 或 Linux x64。尚不支援此架構。",
+    "intro": "Studio 可以執行的 GGUF 格式圖片模型。選擇權重檔案以及模型類型；它所需的文字編碼器和 VAE 會隨之下載，並像其他下載一樣接受檢查。",
+    "familiesError": "無法載入模型類型：{{error}}",
     "retry": "Retry",
-    "emptyTitle": "No picture models found",
-    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "emptyTitle": "找不到圖片模型",
+    "emptyDescription": "請嘗試更廣泛的搜尋，例如 qwen image、flux 或 z-image。",
     "gated": "Gated",
-    "hideFiles": "Hide files",
-    "chooseFile": "Choose a file",
-    "whatKind": "What kind of model is this?",
-    "modelFamily": "Model family",
-    "pickOne": "Pick one…",
-    "filesError": "Could not list the files: {{error}}",
-    "noWeights": "No weights files (.gguf) in this repository.",
-    "unsupportedSystem": "Unsupported system",
+    "hideFiles": "隱藏檔案",
+    "chooseFile": "選擇檔案",
+    "whatKind": "這是哪種類型的模型？",
+    "modelFamily": "模型系列",
+    "pickOne": "請選擇…",
+    "filesError": "無法列出檔案：{{error}}",
+    "noWeights": "此儲存庫中沒有權重檔案 (.gguf)。",
+    "unsupportedSystem": "不支援的系統",
     "inStudio": "In Studio",
     "adding": "Adding…",
-    "addToStudio": "Add to Studio",
-    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
-    "pickKindFirst": "Pick what kind of model this is first.",
-    "added": "{{name}} added to Studio",
-    "openStudio": "Open Studio"
+    "addToStudio": "新增到 Studio",
+    "unsupportedToast": "本機影像生成需要 Windows x64 或 Linux x64。",
+    "pickKindFirst": "請先選擇這是哪種類型的模型。",
+    "added": "{{name}} 已新增到 Studio",
+    "openStudio": "開啟 Studio"
   },
   "page": {
     "title": "工作室",
@@ -240,5 +240,5 @@
     "all": "全部",
     "empty": "這裡還沒有內容。你建立的內容會顯示在這裡。"
   },
-  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
+  "videoMemoryWarning": "這台電腦約有 {{gb}} GB 記憶體。影片生成需要大量記憶體，在這樣的機器上，一個片段可能需要數小時，因為它會用盡記憶體並交換到磁碟。"
 }

@@ -1363,11 +1363,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "連線到你的電腦",
+    "intro": "在你電腦上的 Flint 中開啟遠端存取，然後輸入其位址或貼上配對連結。",
+    "address": "電腦位址",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "信任這台電腦的新憑證"
   }
 }

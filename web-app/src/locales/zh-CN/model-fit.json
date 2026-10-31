@@ -114,12 +114,12 @@
     "inUse": "此处正在使用：{{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "GPU 卸载（本次加载）",
+    "all": "全部 {{layers}} 层都在 GPU 上运行。",
+    "partial": "{{total}} 层中有 {{gpu}} 层在 GPU 上运行；其余在 CPU 上运行，速度较慢。",
+    "none": "没有层在 GPU 上运行：模型正在 CPU 上运行。",
+    "unknown": "引擎没有说明卸载了多少层。",
+    "memory": "模型权重：GPU 上 {{gpu}}，系统内存中 {{cpu}}。"
   },
   "metalBudget": {
     "warning": "此模型对这台 Mac 的 GPU 来说可能太大：它需要约 {{required}}，而 macOS 默认只允许 GPU 使用约 {{budget}}。它可能加载成功，却在第一条消息时失败。请减小上下文大小、减少卸载到 GPU 的层数，或选择更小的量化版本。"

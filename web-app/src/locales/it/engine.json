@@ -4,7 +4,7 @@
     "peak": "picco",
     "avg": "media",
     "now": "now",
-    "ago": "{{count}} min ago",
+    "ago": "{{count}} min fa",
     "calls": "calls"
   },
   "models": {
@@ -246,25 +246,25 @@
   },
   "dependencies": {
     "redownload": {
-      "label": "Re-download the backend",
-      "description": "Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Flint settings."
+      "label": "Scarica di nuovo il backend",
+      "description": "Alcuni file principali del backend mancano o sono danneggiati: di solito significa che il download è stato interrotto o l'archivio è stato estratto solo in parte. Elimina il backend e scaricalo di nuovo dalle impostazioni di Flint."
     },
     "cuda": {
-      "windows": "Install the CUDA Toolkit{{version}} from NVIDIA. During installation, select \"CUDA\" components.",
-      "linux": "Install the CUDA Toolkit{{version}} from NVIDIA. On Debian/Ubuntu: sudo apt install cuda-toolkit-{{apt}}. On RHEL/Fedora: use the NVIDIA repo."
+      "windows": "Installa il CUDA Toolkit{{version}} da NVIDIA. Durante l'installazione seleziona i componenti \"CUDA\".",
+      "linux": "Installa il CUDA Toolkit{{version}} da NVIDIA. Su Debian/Ubuntu: sudo apt install cuda-toolkit-{{apt}}. Su RHEL/Fedora: usa il repository NVIDIA."
     },
     "nccl": {
-      "windows": "Install NCCL from the NVIDIA Developer site. NCCL is used for multi-GPU collective communications.",
-      "linux": "Install NCCL via the NVIDIA package repository. On Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. See the NVIDIA NCCL install guide for your distro."
+      "windows": "Installa NCCL dal sito NVIDIA Developer. NCCL viene usato per le comunicazioni collettive multi-GPU.",
+      "linux": "Installa NCCL dal repository dei pacchetti NVIDIA. Su Debian/Ubuntu: sudo apt install libnccl2 libnccl-dev. Consulta la guida all'installazione di NVIDIA NCCL per la tua distribuzione."
     },
     "cudnn": {
-      "windows": "Install cuDNN from the NVIDIA Developer site and place the DLLs alongside the application or in System32.",
-      "linux": "Install cuDNN via the NVIDIA package repository or download the tarball and copy libs to /usr/local/cuda/lib64."
+      "windows": "Installa cuDNN dal sito NVIDIA Developer e metti le DLL accanto all'applicazione o in System32.",
+      "linux": "Installa cuDNN dal repository dei pacchetti NVIDIA oppure scarica il tarball e copia le librerie in /usr/local/cuda/lib64."
     },
     "vulkan": {
-      "label": "Vulkan Runtime",
-      "windows": "Install the Vulkan Runtime from LunarG. Your GPU driver may already include it — update your GPU driver first.",
-      "linux": "Install the Vulkan loader: on Ubuntu/Debian: sudo apt install libvulkan1. On Arch: sudo pacman -S vulkan-icd-loader. On RHEL/Fedora: sudo dnf install vulkan-loader."
+      "label": "Runtime Vulkan",
+      "windows": "Installa il Vulkan Runtime da LunarG. Il driver della tua GPU potrebbe già includerlo: aggiorna prima il driver della GPU.",
+      "linux": "Installa il loader Vulkan: su Ubuntu/Debian: sudo apt install libvulkan1. Su Arch: sudo pacman -S vulkan-icd-loader. Su RHEL/Fedora: sudo dnf install vulkan-loader."
     }
   }
 }

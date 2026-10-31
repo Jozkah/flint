@@ -1382,11 +1382,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "Se connecter à votre ordinateur",
+    "intro": "Activez l’accès à distance dans Flint sur votre ordinateur, puis saisissez son adresse ou collez le lien d’appairage.",
+    "address": "Adresse de l’ordinateur",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "Faire confiance au nouveau certificat de cet ordinateur"
   }
 }

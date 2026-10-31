@@ -41,10 +41,10 @@
     "gitRemote": "Flint가 {{target}}을(를) 변경하는 {{command}}을(를) 실행하려고 합니다",
     "gitDestructive": "Flint가 작업 내용을 잃을 수 있는 {{command}}을(를) 실행하려고 합니다",
     "approveCampaign": "Flint가 캠페인 \"{{title}}\"({{count}}개 작업)을 시작하려 합니다",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint가 워크플로를 실행하려고 합니다: {{phases}}단계에 걸쳐 에이전트 {{agents}}개",
+    "spawnWorktree": "Flint가 {{folder}}의 새 worktree(브랜치 {{branch}})에서 파일을 변경할 수 있는 중첩 채팅을 시작하려고 합니다",
+    "spawnChat": "Flint가 \"{{title}}\"이라는 중첩 채팅을 시작하려고 합니다",
+    "enterWorktree": "Flint가 이 세션의 쓰기 권한을 worktree로 옮기려고 합니다: {{folder}}(브랜치 {{branch}}, 기준 {{base}})",
     "spendPause": "Flint가 지출 일시 중지 한도를 넘어 이 실행을 계속하려 합니다",
     "changeFileOutside": "Flint가 {{workspace}} 밖에 있는 {{target}}을(를) 변경하려고 합니다",
     "changeManyFilesOutside": "Flint가 파일 {{count}}개를 변경하려고 합니다(일부는 {{workspace}} 밖)"
@@ -67,10 +67,10 @@
     "gitRemote": "다른 사람이 볼 수 있는 원격 저장소로 변경 사항을 보냅니다. 이 대화에서 일반적인 원격 Git 작업을 일시적으로 허용하지 않는 한 Flint는 매번 묻습니다.",
     "gitDestructive": "제거되거나 덮어써진 내용은 복구할 수 없을 수 있습니다.",
     "campaignPlan": "각각 자체 worktree branch에서 별도의 세션을 시작하며, 이 세션들은 파일을 읽고 변경하고 모델 사용량을 병렬로 소비합니다. 계획을 승인해도 작업이 하는 호출이 승인되지는 않습니다. Flint는 매번 묻습니다.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "해당 수의 하위 에이전트가 단계별로 시작되어 파일을 읽고 변경하며 모델 할당량을 사용합니다. 이 정도 규모의 워크플로는 Flint가 매번 확인합니다.",
+    "spawnWorktree": "중첩 채팅은 이 프로젝트의 자체 브랜치에서 파일을 읽고 변경하며, 모델 할당량을 사용하고, 다른 작업을 하는 동안에도 계속 실행됩니다. 변경 사항은 병합할 때까지 해당 브랜치에 남습니다. Flint가 매번 확인합니다.",
+    "spawnChat": "중첩 채팅은 모델 할당량을 사용하고 다른 작업을 하는 동안에도 계속 실행되는 새 세션입니다. 폴더 접근 권한 없이 시작됩니다. 이 세션에서 \"중첩 채팅 시작 전에 확인\"을 켰기 때문에 Flint가 매번 확인합니다.",
+    "enterWorktree": "이 세션은 프로젝트 폴더가 아니라 자체 브랜치의 해당 worktree 안에서만 파일을 읽고 변경할 수 있습니다. 변경 사항은 병합할 때까지 해당 브랜치에 남습니다. Flint가 매번 확인합니다.",
     "spendPause": "실행은 끝나거나 한도에 이를 때까지 유료 모델 할당량을 계속 사용합니다. 거부하면 실행이 중지됩니다."
   },
   "repeat": {
@@ -396,11 +396,11 @@
     "session": "이 대화에 허용"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "승인 대기 중: {{tool}}",
+    "waitBody": "허용하거나 거부할 때까지 실행이 {{seconds}}초 동안 일시 중지되었습니다.",
+    "destructive": "파괴적인 명령: {{reason}}. 이 도구는 원래 허용되어 있지만 확인합니다.",
+    "selfApproval": "{{tool}}은(는) {{server}}의 명령을 자체적으로 승인합니다. 승인은 본인만 할 수 있으므로 매번 확인합니다.",
+    "sensitive": "민감한 도구 호출: 허용하기 전에 해당 작업을 검토하세요.",
+    "autoPause": "도구 호출 {{count}}개가 확인 없이 실행되었습니다. 계속할까요?"
   }
 }

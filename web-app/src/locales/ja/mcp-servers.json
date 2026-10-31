@@ -272,13 +272,13 @@
   "autoApproveServerHint": "このサーバーのツールのみ自動承認します。すべての MCP ツールのスイッチは 設定 > 権限 にあります。",
   "allowAllMoved": "すべての MCP ツールを確認なしで実行できるスイッチは 設定 > 権限 にあります。",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} があなたの入力を必要としています",
+    "urlTitle": "{{server}} がページを開こうとしています",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "非表示のフィールドは {{server}} にのみ送信されます。チャットには表示されません。",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "ページを開く"
   }
 }

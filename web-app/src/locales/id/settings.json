@@ -24,10 +24,10 @@
     "precedence": "Urutan: yang diminta model (jika diizinkan), lalu pengaturan peran, lalu pengaturan untuk semua subagen, lalu induk.",
     "advanced": "Lanjutan: pengaturan per peran",
     "overridden_other": "{{count}} peran diatur",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Subagen sekaligus",
+    "maxConcurrentDesc": "Jumlah subagen terbanyak yang berjalan bersamaan (1 hingga 16). Sisanya menunggu giliran.",
+    "maxDepth": "Kedalaman subagen",
+    "maxDepthDesc": "1: subagen tidak dapat memulai subagen. 2 atau 3 memungkinkan mereka menyerahkan pekerjaan ke bawah sebanyak itu tingkat, dengan batas dan persetujuan yang sama."
   },
   "autoDownload": "Unduh pembaruan baru secara otomatis",
   "checkForUpdates": "Periksa Pembaruan",
@@ -126,7 +126,7 @@
     "previousPaneDesc": "Pindah ke panel sebelumnya di tampilan terbagi.",
     "findInChat": "Cari di obrolan",
     "findInChatDesc": "Cari di percakapan yang tampil di layar.",
-    "notSet": "Not set"
+    "notSet": "Belum diatur"
   },
   "interface": {
     "title": "Tampilan",
@@ -263,7 +263,7 @@
     "proxyHostSslDesc": "Validasi sertifikat SSL dari host proksi.",
     "peerSsl": "SSL Sejawat",
     "peerSslDesc": "Validasi sertifikat SSL dari koneksi sejawat.",
-    "hostSsl": "Host SSL",
+    "hostSsl": "SSL Host",
     "hostSslDesc": "Validasi sertifikat SSL dari host tujuan.",
     "caBundle": "Otoritas Sertifikat",
     "caBundlePath": "Bundel CA kustom",
@@ -436,7 +436,7 @@
     "swaggerDocsDesc": "Lihat dokumentasi API interaktif (Swagger UI).",
     "openDocs": "Buka Dokumentasi",
     "startupConfiguration": "Konfigurasi Startup",
-    "runOnStartup": "Auto start",
+    "runOnStartup": "Mulai otomatis",
     "runOnStartupDesc": "Mulai Server API Lokal secara otomatis saat aplikasi diluncurkan. Menggunakan model terakhir yang digunakan, atau memilih model pertama yang tersedia jika tidak tersedia.",
     "runInBackground": "Jalankan di latar belakang",
     "runInBackgroundDesc": "Biarkan server berjalan di system tray saat jendela ditutup. Saat mati, menutup jendela keluar dari Flint dan menghentikan server.",
@@ -473,8 +473,8 @@
     "stopServerToEdit": "Hentikan server untuk mengedit",
     "trustedHostsInvalid": "Host tidak valid: {{hosts}}. Gunakan host atau host:port, seperti example.com atau 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Belum disimpan. Tekan Enter untuk menyimpan, Escape untuk membatalkan.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Jalankan alat di server",
+    "serverToolsDesc": "Jalankan alat di sisi server untuk endpoint obrolan."
   },
   "privacy": {
     "analytics": "Analitik",
@@ -549,10 +549,10 @@
     "revealLogs": "Tampilkan Log",
     "factoryResetTitle": "Setel Ulang ke Pengaturan Pabrik",
     "factoryResetDesc": "Ini akan mengatur ulang semua pengaturan aplikasi ke default. Tindakan ini tidak dapat dibatalkan. Kami hanya merekomendasikan ini jika aplikasi rusak.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Pertahankan data aplikasi",
+    "keepAppDataDesc": "Riwayat obrolan dan percakapan Anda akan dipertahankan.",
+    "keepModelsAndConfigs": "Pertahankan semua model dan konfigurasi",
+    "keepModelsAndConfigsDesc": "Model yang diunduh, pengaturan engine, dan konfigurasi MCP akan dipertahankan.",
     "clearWebData": "Bersihkan data antarmuka ter-cache",
     "clearWebDataDesc": "Menghapus local storage ter-cache dan preferensi UI yang disimpan jendela aplikasi. Antarmuka kembali ke keadaan default.",
     "cancel": "Batal",
@@ -617,28 +617,28 @@
       "uninstall": "Copot",
       "uninstalling": "Mencopot…",
       "foreignDesc": "Ditemukan di {{path}}, dipasang oleh salinan Flint lain. Pasang di sini untuk memakai CLI salinan ini.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI terinstal di {{path}}",
+      "installFailed": "Instalasi gagal",
+      "uninstalledToast": "Flint CLI dihapus",
+      "uninstallFailed": "Penghapusan gagal"
     },
     "startupGroup": "Startup dan tray",
     "cliGroup": "Baris perintah",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Jaga komputer tetap menyala selama proses berjalan",
+    "keepAwakeDesc": "Mencegah Windows masuk ke mode tidur saat proses agen sedang bekerja. Layar masih bisa mati.",
+    "siteIcons": "Muat ikon situs",
+    "siteIconsDesc": "Menampilkan ikon milik setiap situs di samping namanya pada hasil pencarian dan kutipan. Mengambil ikon memberi tahu situs itu bahwa Anda melihatnya. Jika mati, ditampilkan huruf.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Masukkan token Hugging Face untuk divalidasi",
+      "valid": "Token valid",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Token Hugging Face Anda valid.",
+      "invalid": "Token tidak valid",
+      "invalidDesc": "Token Hugging Face yang diberikan tidak valid. Periksa token Anda dan coba lagi.",
+      "timedOut": "Validasi habis waktu",
+      "timedOutDesc": "Permintaan validasi habis waktu. Periksa koneksi jaringan Anda dan coba lagi.",
+      "failed": "Validasi gagal",
+      "failedDesc": "Terjadi kesalahan jaringan saat memvalidasi token. Periksa koneksi internet Anda."
     }
   },
   "extensions": {
@@ -1460,7 +1460,7 @@
       "settleFailed": "Tidak dapat menyelesaikan konflik itu",
       "forgotten": "Memori dilupakan",
       "forgetFailed": "Tidak dapat melupakan memori itu",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Tidak dapat memulihkan memori itu",
       "changeFailed": "Tidak dapat mengubah memori itu",
       "updated": "Memori diperbarui",
       "updateFailed": "Tidak dapat memperbarui memori itu",
@@ -1589,15 +1589,15 @@
     "title": "Default"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Penggunaan per item",
+    "description": "Panggilan dan token subagen selama {{window}} terakhir, dari log sesi.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "Tidak ada yang tercatat dalam jendela ini.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Server MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Dikonfigurasi tetapi tidak pernah digunakan",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }
