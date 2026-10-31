@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "이 폴더에서 다른 세션 {{count}}개가 작업 중",
     "others_other": "이 폴더에서 다른 세션 {{count}}개가 작업 중",
+    "othersIdle_one": "이 폴더에 다른 세션 {{count}}개가 열려 있음(대기 중)",
+    "othersIdle_other": "이 폴더에 다른 세션 {{count}}개가 열려 있음(대기 중)",
     "waitingApproval_one": "다른 세션 {{count}}개가 승인 대기 중",
     "waitingApproval_other": "다른 세션 {{count}}개가 승인 대기 중",
     "waitingApprovalOne": "승인 대기 중",

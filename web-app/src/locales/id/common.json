@@ -377,6 +377,7 @@
   },
   "sharedFolder": {
     "others_other": "{{count}} sesi lain sedang bekerja di folder ini",
+    "othersIdle_other": "{{count}} sesi lain terbuka di folder ini, tidak aktif",
     "waitingApproval_other": "{{count}} sesi lain menunggu persetujuan",
     "waitingApprovalOne": "Menunggu persetujuan",
     "holdEdit": "{{owner}} sedang mengedit {{target}}: {{session}} diminta mengirim pesan kepadanya",

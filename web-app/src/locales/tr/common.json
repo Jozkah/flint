@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "Bu klasörde {{count}} başka oturum çalışıyor",
     "others_other": "Bu klasörde {{count}} başka oturum çalışıyor",
+    "othersIdle_one": "Bu klasörde {{count}} başka oturum açık, boşta",
+    "othersIdle_other": "Bu klasörde {{count}} başka oturum açık, boşta",
     "waitingApproval_one": "{{count}} başka oturum onay bekliyor",
     "waitingApproval_other": "{{count}} başka oturum onay bekliyor",
     "waitingApprovalOne": "Onay bekliyor",
