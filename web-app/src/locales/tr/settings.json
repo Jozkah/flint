@@ -25,10 +25,10 @@
     "advanced": "Gelişmiş: rol başına ayarlar",
     "overridden_one": "{{count}} rol ayarlandı",
     "overridden_other": "{{count}} rol ayarlandı",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Aynı anda alt ajan",
+    "maxConcurrentDesc": "Aynı anda çalışan en fazla alt ajan sayısı (1 ile 16 arası). Diğerleri sıralarını bekler.",
+    "maxDepth": "Alt ajan derinliği",
+    "maxDepthDesc": "1: alt ajanlar alt ajan başlatamaz. 2 veya 3, aynı sınırlar ve onaylar altında işi o kadar seviye aşağı devretmelerine izin verir."
   },
   "autoDownload": "Yeni güncellemeleri otomatik indir",
   "checkForUpdates": "Güncellemeleri kontrol et",
@@ -127,7 +127,7 @@
     "previousPaneDesc": "Bölünmüş görünümde önceki bölmeye geç.",
     "findInChat": "Sohbette bul",
     "findInChatDesc": "Ekrandaki konuşmada ara.",
-    "notSet": "Not set"
+    "notSet": "Ayarlanmadı"
   },
   "interface": {
     "title": "Arayüz",
@@ -475,8 +475,8 @@
     "stopServerToEdit": "Düzenlemek için sunucuyu durdurun",
     "trustedHostsInvalid": "Geçersiz ana bilgisayar: {{hosts}}. example.com veya 192.168.1.5:3000 gibi bir ana bilgisayar ya da ana bilgisayar:bağlantı noktası kullanın.",
     "trustedHostsUnsaved": "Kaydedilmedi. Kaydetmek için Enter, geri almak için Escape.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Araçları sunucuda çalıştır",
+    "serverToolsDesc": "Sohbet uç noktaları için araçları sunucu tarafında çalıştırır."
   },
   "privacy": {
     "analytics": "Analizler",
@@ -619,28 +619,28 @@
       "uninstall": "Kaldır",
       "uninstalling": "Kaldırılıyor…",
       "foreignDesc": "{{path}} konumunda bulundu, Flint'in başka bir kopyası kurmuş. Bu kopyanın CLI'sini kullanmak için buraya kurun.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI {{path}} konumuna kuruldu",
+      "installFailed": "Kurulum başarısız oldu",
+      "uninstalledToast": "Flint CLI kaldırıldı",
+      "uninstallFailed": "Kaldırma başarısız oldu"
     },
     "startupGroup": "Başlangıç ve tepsi",
     "cliGroup": "Komut satırı",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Çalıştırmalar sırasında bilgisayarı uyanık tut",
+    "keepAwakeDesc": "Bir ajan çalıştırması sürerken Windows'un uykuya geçmesini engeller. Ekran yine de kapanabilir.",
+    "siteIcons": "Site simgelerini yükle",
+    "siteIconsDesc": "Arama sonuçlarında ve atıflarda her web sitesinin kendi simgesini adının yanında gösterir. Bir simgeyi getirmek, o siteye baktığınızı bildirir. Kapalıyken bir harf gösterilir.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Doğrulamak için lütfen bir Hugging Face token'ı girin",
+      "valid": "Token geçerli",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Hugging Face token'ınız geçerli.",
+      "invalid": "Token geçersiz",
+      "invalidDesc": "Girilen Hugging Face token'ı geçersiz. Lütfen token'ınızı kontrol edip tekrar deneyin.",
+      "timedOut": "Doğrulama zaman aşımına uğradı",
+      "timedOutDesc": "Doğrulama isteği zaman aşımına uğradı. Lütfen ağ bağlantınızı kontrol edip tekrar deneyin.",
+      "failed": "Doğrulama başarısız oldu",
+      "failedDesc": "Token doğrulanırken bir ağ hatası oluştu. Lütfen internet bağlantınızı kontrol edin."
     }
   },
   "extensions": {
@@ -1463,7 +1463,7 @@
       "settleFailed": "Çelişki giderilemedi",
       "forgotten": "Anı unutuldu",
       "forgetFailed": "Anı unutulamadı",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Bu bellek geri yüklenemedi",
       "changeFailed": "Anı değiştirilemedi",
       "updated": "Anı güncellendi",
       "updateFailed": "Anı güncellenemedi",
@@ -1598,15 +1598,15 @@
     "title": "Varsayılanlar"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Öğeye göre kullanım",
+    "description": "Oturum günlüklerinden, son {{window}} içindeki çağrılar ve alt ajan token'ları.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "Bu aralıkta kaydedilen bir şey yok.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "MCP sunucuları",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Yapılandırılmış ama hiç kullanılmamış",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

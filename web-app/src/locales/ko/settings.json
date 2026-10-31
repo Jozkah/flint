@@ -25,10 +25,10 @@
     "advanced": "고급: 역할별 설정",
     "overridden_one": "역할 {{count}}개 설정됨",
     "overridden_other": "역할 {{count}}개 설정됨",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "동시 하위 에이전트 수",
+    "maxConcurrentDesc": "동시에 실행되는 최대 하위 에이전트 수(1~16). 나머지는 차례를 기다립니다.",
+    "maxDepth": "하위 에이전트 깊이",
+    "maxDepthDesc": "1: 하위 에이전트가 하위 에이전트를 시작할 수 없습니다. 2 또는 3이면 같은 제한과 승인 아래에서 해당 단계 수만큼 작업을 아래로 넘길 수 있습니다."
   },
   "autoDownload": "새 업데이트 자동 다운로드",
   "checkForUpdates": "업데이트 확인",
@@ -127,7 +127,7 @@
     "previousPaneDesc": "분할 보기의 이전 창으로 이동합니다.",
     "findInChat": "채팅에서 찾기",
     "findInChatDesc": "화면에 보이는 대화를 검색합니다.",
-    "notSet": "Not set"
+    "notSet": "설정 안 됨"
   },
   "interface": {
     "title": "인터페이스",
@@ -475,8 +475,8 @@
     "stopServerToEdit": "편집하려면 서버를 중지하세요",
     "trustedHostsInvalid": "유효하지 않은 호스트: {{hosts}}. example.com 또는 192.168.1.5:3000처럼 호스트 또는 호스트:포트를 입력하세요.",
     "trustedHostsUnsaved": "저장되지 않음. Enter로 저장, Escape로 되돌리기.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "서버에서 도구 실행",
+    "serverToolsDesc": "채팅 엔드포인트의 도구를 서버 측에서 실행합니다."
   },
   "privacy": {
     "analytics": "분석",
@@ -551,10 +551,10 @@
     "revealLogs": "로그 표시",
     "factoryResetTitle": "초기 설정으로 재설정",
     "factoryResetDesc": "모든 앱 설정이 기본값으로 재설정됩니다. 이 작업은 실행 취소할 수 없습니다. 앱이 손상된 경우에만 권장합니다.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "애플리케이션 데이터 유지",
+    "keepAppDataDesc": "채팅 기록과 대화가 보존됩니다.",
+    "keepModelsAndConfigs": "모든 모델과 구성 유지",
+    "keepModelsAndConfigsDesc": "다운로드한 모델, 엔진 설정, MCP 구성이 보존됩니다.",
     "clearWebData": "캐시된 인터페이스 데이터 지우기",
     "clearWebDataDesc": "앱 창이 보관하는 캐시된 로컬 저장소와 UI 환경설정을 삭제합니다. 인터페이스가 기본 상태로 재설정됩니다.",
     "cancel": "취소",
@@ -619,28 +619,28 @@
       "uninstall": "제거",
       "uninstalling": "제거 중…",
       "foreignDesc": "{{path}}에서 찾았습니다. 다른 Flint 사본이 설치한 것입니다. 이 사본의 CLI를 쓰려면 여기에 설치하세요.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI를 {{path}}에 설치했습니다",
+      "installFailed": "설치 실패",
+      "uninstalledToast": "Flint CLI를 제거했습니다",
+      "uninstallFailed": "제거 실패"
     },
     "startupGroup": "시작 및 트레이",
     "cliGroup": "명령줄",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "실행 중 컴퓨터 절전 방지",
+    "keepAwakeDesc": "에이전트가 실행 중일 때 Windows가 절전 모드로 들어가지 않도록 합니다. 화면은 꺼질 수 있습니다.",
+    "siteIcons": "사이트 아이콘 불러오기",
+    "siteIconsDesc": "검색 결과와 인용에서 각 웹사이트의 아이콘을 이름 옆에 표시합니다. 아이콘을 가져오면 해당 사이트에 열람 사실이 전달됩니다. 끄면 글자가 표시됩니다.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "확인할 Hugging Face 토큰을 입력하세요",
+      "valid": "토큰이 유효합니다",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Hugging Face 토큰이 유효합니다.",
+      "invalid": "토큰이 유효하지 않음",
+      "invalidDesc": "제공한 Hugging Face 토큰이 유효하지 않습니다. 토큰을 확인한 후 다시 시도하세요.",
+      "timedOut": "확인 시간 초과",
+      "timedOutDesc": "확인 요청 시간이 초과되었습니다. 네트워크 연결을 확인한 후 다시 시도하세요.",
+      "failed": "확인 실패",
+      "failedDesc": "토큰을 확인하는 중 네트워크 오류가 발생했습니다. 인터넷 연결을 확인하세요."
     }
   },
   "extensions": {
@@ -1636,7 +1636,7 @@
       "settleFailed": "충돌을 해결할 수 없습니다",
       "forgotten": "메모리를 삭제했습니다",
       "forgetFailed": "메모리를 삭제할 수 없습니다",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "해당 메모리를 복원할 수 없습니다",
       "changeFailed": "메모리를 변경할 수 없습니다",
       "updated": "메모리를 업데이트했습니다",
       "updateFailed": "메모리를 업데이트할 수 없습니다",
@@ -1765,15 +1765,15 @@
     "title": "기본값"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "항목별 사용량",
+    "description": "세션 로그 기준, 최근 {{window}} 동안의 호출 및 하위 에이전트 토큰입니다.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "이 기간에 기록된 내용이 없습니다.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "MCP 서버",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "구성되었지만 사용된 적 없음",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

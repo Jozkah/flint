@@ -278,13 +278,13 @@
   "autoApproveServerHint": "Автоматически одобряет только инструменты этого сервера. Переключатель для всех инструментов MCP находится в Настройки > Разрешения.",
   "allowAllMoved": "Переключатель, позволяющий запускать все инструменты MCP без запроса, находится в Настройки > Разрешения.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} нужен ваш ввод",
+    "urlTitle": "{{server}} хочет открыть страницу",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Скрытые поля передаются только {{server}}. В чате они не показываются.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Открыть страницу"
   }
 }

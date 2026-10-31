@@ -1363,11 +1363,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "Bilgisayarınıza bağlanın",
+    "intro": "Bilgisayarınızdaki Flint'te Uzaktan erişimi açın, sonra adresini girin veya eşleştirme bağlantısını yapıştırın.",
+    "address": "Bilgisayar adresi",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "Bu bilgisayarın yeni sertifikasına güven"
   }
 }

@@ -25,40 +25,40 @@
   "limitsTitle": "什麼在哪裡執行",
   "limits": "聊天、房間、模型和工具在伺服器上執行。Cowork 工作階段與戰役需要一個在已開啟 Flint 的電腦上執行的智能體：請透過遠端存取與手機應用程式連線到那台電腦。無頭伺服器可以列出戰役並檢視提案，但不會執行工作階段。",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "核准此計畫以啟動",
+    "summary_one": "{{count}} 個任務。伺服器會自行執行它們，不連接任何用戶端，並且在任何內容進入你的資料夾之前會再次詢問。",
+    "summary_other": "{{count}} 個任務。伺服器會自行執行它們，不連接任何用戶端，並且在任何內容進入你的資料夾之前會再次詢問。",
+    "cost": "概略成本：{{low}} 到 {{high}} 個 token。",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "任務的運作方式",
+    "accessWorktree": "在各自的資料夾中獨立工作",
+    "accessAsk": "每個動作都詢問",
+    "approve": "核准並啟動",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "計畫未獲核准"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "資料夾遺失",
+      "corrupt": "不再是工作樹",
+      "branchMoved": "分支已移動",
+      "identityChanged": "儲存庫已變更"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "未合併：{{files}} 中存在衝突。未做任何變更。",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "已合併到 {{target}}（快轉）。",
+    "merged": "已合併到 {{target}}。",
+    "discarded": "已捨棄。此工作階段沒有其工作樹就無法繼續。",
+    "counts": "{{pending}} 個未提交，{{unmerged}} 個待合併",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "合併到 {{base}}",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "將移除簽出內容及其分支，其中有 {{pending}} 個未提交的檔案和 {{unmerged}} 個未合併的提交。",
+    "discardAnyway": "仍然捨棄",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "未提出變更：{{error}}",
+    "filesChanged": "已變更 {{count}} 個檔案：{{files}}{{more}}"
   }
 }

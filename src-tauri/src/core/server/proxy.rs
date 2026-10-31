@@ -1441,839 +1441,70 @@ async fn proxy_request(
     let metered = is_metered(&method, &destination_path);
 
     // What route resolution decides for a request that is forwarded upstream.
+    let cx = RouteCtx {
+        client: &client,
+        local_client: &local_client,
+        config: &config,
+        llama_state: &llama_state,
+        mlx_sessions: &mlx_sessions,
+        provider_configs: &provider_configs,
+        model_param_defaults: &model_param_defaults,
+        mcp_servers: &mcp_servers,
+        mcp_settings: &mcp_settings,
+        jan_data_folder: &jan_data_folder,
+        origin_header: &origin_header,
+        host_header: &host_header,
+        headers: &headers,
+        path: &path,
+        method: &method,
+        destination_path: &destination_path,
+        metered,
+    };
     let mut plan = ForwardPlan::default();
 
     match (method.clone(), destination_path.as_str()) {
         // OpenAI Responses API: rewritten to a chat/completions call on this
         // same server and the answer rewritten back (see `responses_route`).
         (hyper::Method::POST, "/responses") => {
-            let collected = match read_limited(body, max_api_body()).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Ok(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts));
-                }
-            };
-            let url = super::responses_route::loopback_url(&config.host, config.port, &config.prefix);
-            let handled = super::responses_route::handle(&collected, &headers, &url, &local_client).await;
-            let mut response = Response::builder()
-                .status(handled.status)
-                .header("Content-Type", handled.content_type);
-            if handled.content_type == "text/event-stream" {
-                response = response.header("Cache-Control", "no-cache");
+            match route_responses(&cx, body).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
             }
-            response = add_cors_headers_with_host_and_origin(
-                response,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-            return Ok(response.body(handled.body).unwrap());
         }
         // Anthropic /messages endpoint - tries /messages first, falls back to /chat/completions on error
         (hyper::Method::POST, "/messages") => {
-            plan.is_anthropic_messages = true;
-            log::info!(
-                "Handling POST request to /messages with chat/completions fallback on error",
-            );
-            let body_bytes = match read_limited(body, max_api_body()).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Ok(body_error_response(
-                        e,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    ));
-                }
-            };
-            plan.buffered_body = Some(body_bytes.clone());
-
-            // Parse body to get model_id for routing (don't transform yet)
-            match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-                Ok(mut json_body) => {
-                    // Drop Claude Code's billing-header attribution before it is
-                    // forwarded (passthrough) or transformed, so it can't bust
-                    // upstream prompt caching or reach the model.
-                    strip_billing_header_in_body(&mut json_body);
-                    if let Ok(cleaned) = serde_json::to_vec(&json_body) {
-                        plan.buffered_body = Some(cleaned.into());
-                    }
-
-                    if config.enable_server_tool_execution
-                        && !json_body
-                            .get("stream")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false)
-                    {
-                        let openai_body = match transform_anthropic_to_openai(&json_body) {
-                            Some(v) => v,
-                            None => {
-                                let mut error_response =
-                                    Response::builder().status(StatusCode::BAD_REQUEST);
-                                error_response = add_cors_headers_with_host_and_origin(
-                                    error_response,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(error_response
-                                    .body(full("Invalid /messages payload for orchestration mode"))
-                                    .unwrap());
-                            }
-                        };
-
-                        match run_server_side_openai_orchestration(
-                            &openai_body,
-                            // The agent loop runs on genai (reqwest 0.13); the
-                            // proxy's own passthrough stays on 0.12.
-                            &crate::core::agent::upstream::agent_http_client(),
-                            provider_configs.clone(),
-                            llama_state.clone(),
-                            mlx_sessions.clone(),
-                            mcp_servers.clone(),
-                            mcp_settings.clone(),
-                            &jan_data_folder,
-                        )
-                        .await
-                        {
-                            Ok(openai_response) => {
-                                let anthropic_response =
-                                    transform_openai_response_to_anthropic(&openai_response);
-                                let body_str = serde_json::to_string(&anthropic_response)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let mut response_builder = Response::builder()
-                                    .status(StatusCode::OK)
-                                    .header(hyper::header::CONTENT_TYPE, "application/json");
-                                response_builder = add_cors_headers_with_host_and_origin(
-                                    response_builder,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(response_builder.body(full(body_str)).unwrap());
-                            }
-                            Err(e) => {
-                                let mut error_response =
-                                    Response::builder().status(StatusCode::BAD_GATEWAY);
-                                error_response = add_cors_headers_with_host_and_origin(
-                                    error_response,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
-                            }
-                        }
-                    }
-
-                    if let Some(model_id) = json_body.get("model").and_then(|v| v.as_str()) {
-                        let pc = provider_configs.lock().await;
-
-                        // Try to find a provider for this model
-                        let provider_name: Option<String> = resolve_provider_name(&pc, model_id);
-
-                        drop(pc);
-
-                        if let Some(ref p) = provider_name {
-                            log::info!("Using remote provider '{p}' for model '{model_id}'");
-                            let pc2 = provider_configs.lock().await;
-                            let provider_config = pc2.get(p.as_str()).cloned();
-                            drop(pc2);
-
-                            if let Some(provider_cfg) = provider_config {
-                                plan.target_base_url = provider_cfg.base_url.clone().map(|url| {
-                                    format!("{}{}", url.trim_end_matches('/'), "/messages")
-                                });
-                                plan.session_api_keys = provider_cfg.bearer_key_chain();
-                                plan.provider_headers = custom_header_pairs(&provider_cfg);
-                            }
-                        } else {
-                            let mlx_session_info = {
-                                let mlx_guard = mlx_sessions.lock().await;
-                                mlx_guard
-                                    .values()
-                                    .find(|s| model_ids_match(model_id, &s.info.model_id))
-                                    .map(|s| s.info.clone())
-                            };
-
-                            if let Some(info) = mlx_session_info {
-                                let target_port = info.port;
-                                plan.session_api_keys = vec![info.api_key.clone()];
-                                plan.mlx_model_id = Some(info.model_id.clone());
-                                plan.target_base_url =
-                                    Some(format!("http://127.0.0.1:{}/v1/messages", target_port));
-                            } else if let Some((url, key)) =
-                                engine_upstream(&llama_state, "/messages").await
-                            {
-                                plan.session_api_keys = vec![key];
-                                plan.target_base_url = Some(url);
-                            } else {
-                                log::warn!("No running session found for model_id: {model_id}");
-                                let mut error_response =
-                                    Response::builder().status(StatusCode::NOT_FOUND);
-                                error_response = add_cors_headers_with_host_and_origin(
-                                    error_response,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(error_response
-                                    .body(full(format!(
-                                        "No running session found for model '{model_id}'"
-                                    )))
-                                    .unwrap());
-                            }
-                        }
-                    } else {
-                        let error_msg = "Request body must contain a 'model' field";
-                        log::warn!("POST body for /messages missing 'model' field");
-                        let mut error_response =
-                            Response::builder().status(StatusCode::BAD_REQUEST);
-                        error_response = add_cors_headers_with_host_and_origin(
-                            error_response,
-                            &host_header,
-                            &origin_header,
-                            &config.trusted_hosts,
-                        );
-                        return Ok(error_response.body(full(error_msg)).unwrap());
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Failed to parse POST body for /messages as JSON: {e}");
-                    let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    let error_msg = format!("Invalid JSON body: {}", e);
-                    return Ok(error_response.body(full(error_msg)).unwrap());
-                }
+            match route_messages(&cx, body, &mut plan).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
             }
         }
         (hyper::Method::POST, "/orchestrations") => {
-            // Headless orchestration endpoint:
-            // - Load assistant system prompt + assistant model hint
-            // - Ask the model for tool_calls
-            // - Execute MCP tools server-side
-            // - Feed tool results back and continue until completion
-            log::info!(
-                "Handling POST request to {destination_path} for assistant tool orchestration"
-            );
-
-            let body_bytes = match read_limited(body, max_api_body()).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Ok(body_error_response(
-                        e,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    ));
-                }
-            };
-
-            let json_body: serde_json::Value = match serde_json::from_slice(&body_bytes) {
-                Ok(v) => v,
-                Err(e) => {
-                    let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    return Ok(error_response
-                        .body(full(format!("Invalid JSON body: {e}")))
-                        .unwrap());
-                }
-            };
-
-            let assistant_id = json_body
-                .get("assistant_id")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .map(|v| v.to_string());
-
-            let stream = json_body
-                .get("stream")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if stream {
-                let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-                error_response = add_cors_headers_with_host_and_origin(
-                    error_response,
-                    &host_header,
-                    &origin_header,
-                    &config.trusted_hosts,
-                );
-                return Ok(error_response
-                    .body(full("stream=true is not supported for /orchestrations"))
-                    .unwrap());
+            match route_orchestrations(&cx, body).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
             }
-
-            let messages_value = match json_body.get("messages") {
-                Some(v) => v,
-                None => {
-                    let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    return Ok(error_response
-                        .body(full("Missing required field 'messages'"))
-                        .unwrap());
-                }
-            };
-
-            let mut conversation_messages = match parse_openai_messages(messages_value) {
-                Ok(msgs) => msgs,
-                Err(e) => {
-                    let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    return Ok(error_response.body(full(e)).unwrap());
-                }
-            };
-            // Self-heal a client-supplied conversation that has a tool_calls
-            // turn missing one of its results -- some providers (notably
-            // Anthropic) reject the entire request on a dangling tool_use.
-            let repaired = repair_dangling_tool_calls(&mut conversation_messages);
-            if repaired > 0 {
-                log::warn!("proxy: repaired {repaired} dangling tool call(s) with no prior result");
-            }
-
-            // Load assistant config for system prompt + model hint when assistant_id is provided.
-            let (assistant_instructions, assistant_model_hint) =
-                if let Some(assistant_id) = assistant_id.as_deref() {
-                    match load_assistant_config(&jan_data_folder, assistant_id) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            let mut error_response =
-                                Response::builder().status(StatusCode::BAD_REQUEST);
-                            error_response = add_cors_headers_with_host_and_origin(
-                                error_response,
-                                &host_header,
-                                &origin_header,
-                                &config.trusted_hosts,
-                            );
-                            return Ok(error_response.body(full(e)).unwrap());
-                        }
-                    }
-                } else {
-                    (None, None)
-                };
-
-            if let Some(sys) = assistant_instructions {
-                replace_system_prompt(&mut conversation_messages, &sys);
-            }
-
-            // Resolve model to use for orchestration.
-            let model_override = json_body.get("model").and_then(|v| v.as_str());
-            let mut model_id: Option<String>;
-
-            if let Some(ov) = model_override {
-                model_id = Some(ov.to_string());
-            } else if let Some(h) = assistant_model_hint {
-                let trimmed = h.trim();
-                if !trimmed.is_empty() && trimmed != "*" {
-                    model_id = Some(trimmed.to_string());
-                } else {
-                    model_id = router_first_model(&llama_state, &local_client).await;
-                    if model_id.is_none() {
-                        let mlx_guard = mlx_sessions.lock().await;
-                        model_id = mlx_guard.values().next().map(|s| s.info.model_id.clone());
-                    }
-                }
-            } else {
-                model_id = router_first_model(&llama_state, &local_client).await;
-                if model_id.is_none() {
-                    let mlx_guard = mlx_sessions.lock().await;
-                    model_id = mlx_guard.values().next().map(|s| s.info.model_id.clone());
-                }
-            }
-
-            let model_id = match model_id {
-                Some(v) => v,
-                None => {
-                    let mut error_response = Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .header("Content-Type", "application/json")
-                        .header("Retry-After", "1");
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    return Ok(error_response
-                        .body(full(error_json(
-                            "No running model sessions available",
-                            "server_error",
-                            "no_model_loaded",
-                        )))
-                        .unwrap());
-                }
-            };
-
-            // Tool execution support (MCP only for now).
-            let (openai_tools, tool_to_server, tool_call_names) =
-                match collect_mcp_openai_tools(&mcp_servers, &mcp_settings).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let mut error_response =
-                            Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
-                        error_response = add_cors_headers_with_host_and_origin(
-                            error_response,
-                            &host_header,
-                            &origin_header,
-                            &config.trusted_hosts,
-                        );
-                        return Ok(error_response.body(full(e)).unwrap());
-                    }
-                };
-
-            let (upstream_url, session_api_keys) = match resolve_upstream_for_model(
-                &model_id,
-                provider_configs.clone(),
-                llama_state.clone(),
-                mlx_sessions.clone(),
-            )
-            .await
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    let mut error_response = Response::builder().status(StatusCode::NOT_FOUND);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    return Ok(error_response.body(full(e)).unwrap());
-                }
-            };
-            // `provider/model` records the provider qualifier used to resolve
-            // the upstream above; the request body must carry the bare model id.
-            let body_model_id = {
-                let pc = provider_configs.lock().await;
-                crate::core::agent::upstream::strip_provider_prefix(&model_id, &pc)
-            };
-
-            let max_turns = json_body
-                .get("max_turns")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(8)
-                .clamp(1, 20) as usize;
-
-            let mut last_response: Option<serde_json::Value> = None;
-
-            for _turn in 0..max_turns {
-                // Build upstream request body for each turn so messages are updated.
-                let mut completion_map = serde_json::Map::new();
-                completion_map.insert("model".to_string(), serde_json::json!(body_model_id));
-                completion_map.insert(
-                    "messages".to_string(),
-                    serde_json::Value::Array(conversation_messages.clone()),
-                );
-                completion_map.insert("stream".to_string(), serde_json::json!(false));
-                completion_map.insert("tool_choice".to_string(), serde_json::json!("auto"));
-
-                if !openai_tools.is_empty() {
-                    completion_map.insert(
-                        "tools".to_string(),
-                        serde_json::Value::Array(openai_tools.clone()),
-                    );
-                }
-
-                copy_optional_chat_params(&json_body, &mut completion_map);
-
-                let request_value = serde_json::Value::Object(completion_map);
-
-                let completion = match call_openai_chat_completions(
-                    if is_local_url(&upstream_url) { &local_client } else { &client },
-                    &upstream_url,
-                    &session_api_keys,
-                    &request_value,
-                )
-                .await
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let mut error_response =
-                            Response::builder().status(StatusCode::BAD_GATEWAY);
-                        error_response = add_cors_headers_with_host_and_origin(
-                            error_response,
-                            &host_header,
-                            &origin_header,
-                            &config.trusted_hosts,
-                        );
-                        return Ok(error_response.body(full(e)).unwrap());
-                    }
-                };
-
-                let tool_calls = extract_tool_calls(&completion);
-                last_response = Some(completion.clone());
-
-                if tool_calls.is_empty() {
-                    let body_str =
-                        serde_json::to_string(&completion).unwrap_or_else(|_| "{}".to_string());
-                    let mut response_builder = Response::builder()
-                        .status(StatusCode::OK)
-                        .header(hyper::header::CONTENT_TYPE, "application/json");
-                    response_builder = add_cors_headers_with_host_and_origin(
-                        response_builder,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    return Ok(response_builder.body(full(body_str)).unwrap());
-                }
-
-                // Append assistant tool call message, then execute tool calls.
-                if let Some(choice_message) = extract_choice_message(&completion) {
-                    let assistant_content = choice_message
-                        .get("content")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null);
-                    conversation_messages.push(serde_json::json!({
-                        "role": "assistant",
-                        "content": assistant_content,
-                        "tool_calls": tool_calls.clone()
-                    }));
-                } else {
-                    conversation_messages.push(serde_json::json!({
-                        "role": "assistant",
-                        "content": serde_json::Value::Null,
-                        "tool_calls": tool_calls.clone()
-                    }));
-                }
-
-                let tool_results = execute_mcp_tool_calls(
-                    &tool_calls,
-                    &tool_to_server,
-                    &tool_call_names,
-                    &mcp_servers,
-                    &mcp_settings,
-                )
-                .await;
-
-                for (tool_call_id, result_text) in tool_results {
-                    conversation_messages.push(serde_json::json!({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": result_text
-                    }));
-                }
-            }
-
-            // Safety catch: model kept requesting tools beyond max_turns.
-            let body_json = last_response.unwrap_or_else(|| serde_json::json!({}));
-            let body_str = serde_json::to_string(&body_json).unwrap_or_else(|_| "{}".to_string());
-            let mut error_response = Response::builder().status(StatusCode::UNPROCESSABLE_ENTITY);
-            error_response = add_cors_headers_with_host_and_origin(
-                error_response,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-            let payload = format!(
-                "{{\"error\":\"max_turns reached while resolving tool calls\",\"last_response\":{body_str}}}"
-            );
-            let response = error_response.body(full(payload)).unwrap();
-            return Ok(response);
         }
         (hyper::Method::POST, "/chat/completions")
         | (hyper::Method::POST, "/completions")
         | (hyper::Method::POST, "/embeddings")
         | (hyper::Method::POST, "/messages/count_tokens") => {
-            log::info!(
-                "Handling POST request to {destination_path} requiring model lookup in body",
-            );
-            let body_bytes = match read_limited(body, max_api_body()).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Ok(body_error_response(
-                        e,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    ));
-                }
-            };
-            plan.buffered_body = Some(body_bytes.clone());
-
-            match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-                Ok(mut json_body) => {
-                    // Work around strict JSON-schema converters that reject property schemas
-                    // of the form `{ "description": "..." }` (missing `type`).
-                    // This happens for OpenAI-style tool schemas used with /chat/completions.
-                    if destination_path == "/chat/completions" {
-                        normalize_openai_tools_in_chat_body(&mut json_body);
-                    }
-                    // Strip Claude Code's billing header from chat/token-count
-                    // bodies too (it lands in the first message content here).
-                    strip_billing_header_in_body(&mut json_body);
-                    if let Ok(cleaned) = serde_json::to_vec(&json_body) {
-                        plan.buffered_body = Some(cleaned.into());
-                    }
-
-                    if config.enable_server_tool_execution
-                        && destination_path == "/chat/completions"
-                        && !json_body
-                            .get("stream")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false)
-                    {
-                        match run_server_side_openai_orchestration(
-                            &json_body,
-                            &crate::core::agent::upstream::agent_http_client(),
-                            provider_configs.clone(),
-                            llama_state.clone(),
-                            mlx_sessions.clone(),
-                            mcp_servers.clone(),
-                            mcp_settings.clone(),
-                            &jan_data_folder,
-                        )
-                        .await
-                        {
-                            Ok(openai_response) => {
-                                let body_str = serde_json::to_string(&openai_response)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let mut response_builder = Response::builder()
-                                    .status(StatusCode::OK)
-                                    .header(hyper::header::CONTENT_TYPE, "application/json");
-                                response_builder = add_cors_headers_with_host_and_origin(
-                                    response_builder,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(response_builder.body(full(body_str)).unwrap());
-                            }
-                            Err(e) => {
-                                let mut error_response =
-                                    Response::builder().status(StatusCode::BAD_GATEWAY);
-                                error_response = add_cors_headers_with_host_and_origin(
-                                    error_response,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
-                            }
-                        }
-                    }
-
-                    if let Some(model_id) = json_body.get("model").and_then(|v| v.as_str()) {
-                        log::debug!("Extracted model_id: {model_id}");
-
-                        // First, check if there's a registered remote provider for this model
-                        let pc = provider_configs.lock().await;
-
-                        // Try to find a provider that has this model configured
-                        let provider_name = resolve_provider_name(&pc, model_id);
-
-                        drop(pc);
-
-                        if let Some(ref provider) = provider_name {
-                            // Found a remote provider, stream the response directly
-                            log::info!("Found remote provider '{provider}' for model '{model_id}'");
-
-                            // Get the provider config
-                            let pc2 = provider_configs.lock().await;
-                            let provider_config = pc2.get(provider.as_str()).cloned();
-
-                            // Log registered providers for debugging
-                            log::debug!(
-                                "Registered providers: {:?}",
-                                pc2.keys().collect::<Vec<_>>()
-                            );
-
-                            drop(pc2);
-
-                            if let Some(provider_cfg) = provider_config {
-                                // A converter only applies to chat/completions; other
-                                // paths keep verbatim forwarding.
-                                let converter = if destination_path == "/chat/completions" {
-                                    converter_for(provider_cfg.api_type.as_deref())
-                                } else {
-                                    None
-                                };
-                                if let Some(api_url) = provider_cfg.base_url.clone() {
-                                    let path = converter
-                                        .as_ref()
-                                        .map(|c| c.upstream_path(&json_body))
-                                        .unwrap_or_else(|| destination_path.clone());
-                                    plan.target_base_url = Some(format!("{api_url}{path}"));
-                                } else {
-                                    plan.target_base_url = None;
-                                }
-                                plan.upstream_converter = converter;
-                                plan.session_api_keys = provider_cfg.bearer_key_chain();
-                                plan.provider_headers = custom_header_pairs(&provider_cfg);
-                            } else {
-                                log::error!("Provider config not found for '{provider}'");
-                            }
-                        } else {
-                            let sessions_find_model = model_id;
-
-                            let mlx_session_info = {
-                                let mlx_guard = mlx_sessions.lock().await;
-                                mlx_guard
-                                    .values()
-                                    .find(|s| model_ids_match(sessions_find_model, &s.info.model_id))
-                                    .map(|s| s.info.clone())
-                            };
-
-                            let router_up = engine_upstream(&llama_state, &destination_path).await;
-
-                            if mlx_session_info.is_none() && router_up.is_none() {
-                                log::warn!(
-                                    "Request for model '{model_id}' but no models are running."
-                                );
-                                let mut error_response = Response::builder()
-                                    .status(StatusCode::SERVICE_UNAVAILABLE)
-                                    .header("Content-Type", "application/json")
-                                    .header("Retry-After", "1");
-                                error_response = add_cors_headers_with_host_and_origin(
-                                    error_response,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(error_response
-                                    .body(full(error_json(
-                                        "No models are available",
-                                        "server_error",
-                                        "no_model_loaded",
-                                    )))
-                                    .unwrap());
-                            }
-
-                            if let Some(info) = mlx_session_info {
-                                let target_port = info.port;
-                                plan.session_api_keys = vec![info.api_key.clone()];
-                                plan.mlx_model_id = Some(info.model_id.clone());
-                                log::debug!("Found MLX session for model_id {model_id}");
-                                plan.target_base_url = Some(format!(
-                                    "http://127.0.0.1:{target_port}/v1{destination_path}"
-                                ));
-                            } else if let Some((url, key)) = router_up {
-                                log::debug!("Routing model_id {model_id} via llamacpp router");
-                                plan.engine_model_id = Some(model_id.to_string());
-                                plan.session_api_keys = vec![key];
-                                plan.target_base_url = Some(url);
-                            } else {
-                                log::warn!("No running session found for model_id: {model_id}");
-                                let mut error_response =
-                                    Response::builder().status(StatusCode::NOT_FOUND);
-                                error_response = add_cors_headers_with_host_and_origin(
-                                    error_response,
-                                    &host_header,
-                                    &origin_header,
-                                    &config.trusted_hosts,
-                                );
-                                return Ok(error_response
-                                    .body(full(format!(
-                                        "No running session found for model '{model_id}'"
-                                    )))
-                                    .unwrap());
-                            }
-                        }
-                    } else {
-                        let error_msg = "Request body must contain a 'model' field";
-                        log::warn!(
-                            "POST body for {destination_path} is missing 'model' field or it's not a string"
-                        );
-                        let mut error_response =
-                            Response::builder().status(StatusCode::BAD_REQUEST);
-                        error_response = add_cors_headers_with_host_and_origin(
-                            error_response,
-                            &host_header,
-                            &origin_header,
-                            &config.trusted_hosts,
-                        );
-                        return Ok(error_response.body(full(error_msg)).unwrap());
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Failed to parse POST body for {destination_path} as JSON: {e}");
-                    let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
-                        &host_header,
-                        &origin_header,
-                        &config.trusted_hosts,
-                    );
-                    let error_msg = format!("Invalid JSON body: {}", e);
-                    return Ok(error_response.body(full(error_msg)).unwrap());
-                }
+            match route_model_in_body(&cx, body, &mut plan).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
             }
         }
         (hyper::Method::POST, "/images/generations") => {
-            let body_bytes = match read_limited(body, max_api_body()).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Ok(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts));
-                }
-            };
-            let (status, payload) = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-                Ok(json) => match super::images_route::generate(&json).await {
-                    Ok(done) => (StatusCode::OK, done),
-                    Err(e) => (
-                        StatusCode::from_u16(e.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                        e.body(),
-                    ),
-                },
-                Err(_) => (
-                    StatusCode::BAD_REQUEST,
-                    super::images_route::ApiError {
-                        status: 400,
-                        message: "The request body must be JSON.".into(),
-                        param: Some("body"),
-                        code: "invalid_request",
-                    }
-                    .body(),
-                ),
-            };
-            let mut builder = Response::builder()
-                .status(status)
-                .header(hyper::header::CONTENT_TYPE, "application/json");
-            builder = add_cors_headers_with_host_and_origin(
-                builder,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-            return Ok(builder.body(full(payload.to_string())).unwrap());
+            match route_images(&cx, body).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
+            }
         }
 
         (hyper::Method::POST, "/videos") => {
-            let body_bytes = match read_limited(body, max_api_body()).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Ok(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts));
-                }
-            };
-            let outcome = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-                Ok(json) => super::images_route::create_video(&json).await,
-                Err(_) => Err(super::images_route::ApiError {
-                    status: 400,
-                    message: "The request body must be JSON.".into(),
-                    param: Some("body"),
-                    code: "invalid_request",
-                }),
-            };
-            return Ok(json_response(outcome, &host_header, &origin_header, &config));
+            match route_videos(&cx, body).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
+            }
         }
 
         (hyper::Method::GET, video_path) if video_path.starts_with("/videos/") => {
@@ -2304,188 +1535,25 @@ async fn proxy_request(
         }
 
         (hyper::Method::GET, "/models") => {
-            log::debug!("Handling GET /v1/models request");
-
-            let preset_ini = std::fs::read_to_string(
-                std::path::Path::new(&jan_data_folder)
-                    .join("llamacpp")
-                    .join("router.preset.ini"),
-            )
-            .unwrap_or_default();
-            let local_models: Vec<_> = engine_list_model_entries(&llama_state, &local_client)
-                .await
-                .into_iter()
-                .map(|(id, context)| {
-                    // An unloaded model has no engine-reported window; fall
-                    // back to the configured one rather than let clients guess.
-                    let context =
-                        context.or_else(|| preset_context_length(&preset_ini, &id));
-                    let mut model = serde_json::json!({
-                        "id": id,
-                        "object": "model",
-                        "created": 1,
-                        "owned_by": "llama.cpp"
-                    });
-                    // IDE clients (Kilo Code, Cline) size their prompts from
-                    // these; only set when the engine reported a window.
-                    if let Some(context) = context {
-                        model["context_length"] = context.into();
-                        model["max_model_len"] = context.into();
-                    }
-                    model
-                })
-                .collect();
-
-            // Get MLX sessions
-            let mlx_models: Vec<_> = {
-                let mlx_guard = mlx_sessions.lock().await;
-                mlx_guard
-                    .values()
-                    .map(|session| {
-                        serde_json::json!({
-                            "id": session.info.model_id,
-                            "object": "model",
-                            "created": 1,
-                            "owned_by": "mlx"
-                        })
-                    })
-                    .collect()
-            };
-
-            // Get remote provider models
-            let pc = provider_configs.lock().await;
-            let remote_models: Vec<_> = pc
-                .values()
-                .flat_map(|provider_cfg| provider_cfg.models.clone())
-                .map(|model_id| {
-                    serde_json::json!({
-                        "id": model_id,
-                        "object": "model",
-                        "created": 1,
-                        "owned_by": "remote"
-                    })
-                })
-                .collect();
-
-            // Store counts before moving
-            let local_count = local_models.len();
-            let mlx_count = mlx_models.len();
-            let remote_count = remote_models.len();
-
-            // Combine all models
-            let mut all_models = Vec::with_capacity(local_count + mlx_count + remote_count);
-            all_models.extend(local_models);
-            all_models.extend(mlx_models);
-            all_models.extend(remote_models);
-
-            let response_json = serde_json::json!({
-                "object": "list",
-                "data": all_models
-            });
-
-            let body_str =
-                serde_json::to_string(&response_json).unwrap_or_else(|_| "{}".to_string());
-
-            let mut response_builder = Response::builder()
-                .status(StatusCode::OK)
-                .header(hyper::header::CONTENT_TYPE, "application/json");
-
-            response_builder = add_cors_headers_with_host_and_origin(
-                response_builder,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-
-            log::debug!(
-                "Returning {} models ({} llama.cpp, {} MLX, {} remote)",
-                all_models.len(),
-                local_count,
-                mlx_count,
-                remote_count
-            );
-
-            return Ok(response_builder.body(full(body_str)).unwrap());
+            match route_models(&cx).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
+            }
         }
 
         (hyper::Method::GET, "/openapi.json") => {
-            let static_body = include_str!("../../../static/openapi.json"); // relative to src-tauri/src/
-                                                                            // Parse the static OpenAPI JSON and update the server URL with actual host and port
-            match serde_json::from_str::<serde_json::Value>(static_body) {
-                Ok(mut openapi_spec) => {
-                    // Update the servers array with the actual host and port
-                    if let Some(servers) = openapi_spec
-                        .get_mut("servers")
-                        .and_then(|s| s.as_array_mut())
-                    {
-                        for server in servers {
-                            if let Some(server_obj) = server.as_object_mut() {
-                                if let Some(url) = server_obj.get_mut("url") {
-                                    let base_url = format!(
-                                        "http://{}:{}{}",
-                                        config.host, config.port, config.prefix
-                                    );
-                                    *url = serde_json::Value::String(base_url);
-                                }
-                            }
-                        }
-                    }
-                    let body = serde_json::to_string(&openapi_spec)
-                        .unwrap_or_else(|_| static_body.to_string());
-                    return Ok(Response::builder()
-                        .status(StatusCode::OK)
-                        .header(hyper::header::CONTENT_TYPE, "application/json")
-                        .body(full(body))
-                        .unwrap());
-                }
-                Err(_) => {
-                    // If parsing fails, return the static file as fallback
-                    return Ok(Response::builder()
-                        .status(StatusCode::OK)
-                        .header(hyper::header::CONTENT_TYPE, "application/json")
-                        .body(full(static_body))
-                        .unwrap());
-                }
+            match route_openapi(&cx).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
             }
         }
 
         // DOCS route
         (hyper::Method::GET, "/") => {
-            let html = r#"
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>API Docs</title>
-  <link rel="stylesheet" type="text/css" href="/docs/swagger-ui.css">
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="/docs/swagger-ui-bundle.js"></script>
-  <script>
-  window.onload = () => {
-    SwaggerUIBundle({
-      url: '/openapi.json',
-      dom_id: '#swagger-ui',
-    });
-  };
-  </script>
-</body>
-</html>
-    "#;
-
-            let mut response_builder = Response::builder()
-                .status(StatusCode::OK)
-                .header(hyper::header::CONTENT_TYPE, "text/html");
-
-            response_builder = add_cors_headers_with_host_and_origin(
-                response_builder,
-                &host_header,
-                &origin_header,
-                &config.trusted_hosts,
-            );
-
-            return Ok(response_builder.body(full(html)).unwrap());
+            match route_docs_index(&cx).await? {
+                Routed::Done(response) => return Ok(response),
+                Routed::Forward => {}
+            }
         }
 
         (hyper::Method::GET, "/docs/swagger-ui.css") => {
@@ -2544,6 +1612,1163 @@ async fn proxy_request(
         }
     }
 
+    forward(&cx, plan).await
+}
+
+/// Everything a route and the forward step read about one request.
+#[derive(Clone, Copy)]
+struct RouteCtx<'a> {
+    client: &'a Client,
+    local_client: &'a Client,
+    config: &'a ProxyConfig,
+    llama_state: &'a Arc<LlamacppState>,
+    mlx_sessions: &'a Arc<Mutex<HashMap<i32, MlxBackendSession>>>,
+    provider_configs: &'a Arc<Mutex<HashMap<String, ProviderConfig>>>,
+    model_param_defaults: &'a Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    mcp_servers: &'a SharedMcpServers,
+    mcp_settings: &'a Arc<Mutex<McpSettings>>,
+    jan_data_folder: &'a String,
+    origin_header: &'a String,
+    host_header: &'a String,
+    headers: &'a hyper::HeaderMap,
+    path: &'a String,
+    method: &'a hyper::Method,
+    destination_path: &'a String,
+    metered: bool,
+}
+
+/// What a route decided: answered here, or forwarded upstream with the plan
+/// it filled in.
+enum Routed {
+    Done(Response<ResBody>),
+    Forward,
+}
+
+
+/// OpenAI Responses API, answered through chat/completions on this server.
+async fn route_responses(cx: &RouteCtx<'_>, body: Incoming) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        local_client,
+        config,
+        origin_header,
+        host_header,
+        headers,
+        ..
+    } = *cx;
+    let collected = match read_limited(body, max_api_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Routed::Done(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts)));
+        }
+    };
+    let url = super::responses_route::loopback_url(&config.host, config.port, &config.prefix);
+    let handled = super::responses_route::handle(&collected, &headers, &url, &local_client).await;
+    let mut response = Response::builder()
+        .status(handled.status)
+        .header("Content-Type", handled.content_type);
+    if handled.content_type == "text/event-stream" {
+        response = response.header("Cache-Control", "no-cache");
+    }
+    response = add_cors_headers_with_host_and_origin(
+        response,
+        &host_header,
+        &origin_header,
+        &config.trusted_hosts,
+    );
+    Ok(Routed::Done(response.body(handled.body).unwrap()))
+}
+
+/// Anthropic `/messages`: run server-side or resolve where to forward it.
+async fn route_messages(cx: &RouteCtx<'_>, body: Incoming, plan: &mut ForwardPlan) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        config,
+        llama_state,
+        mlx_sessions,
+        provider_configs,
+        mcp_servers,
+        mcp_settings,
+        jan_data_folder,
+        origin_header,
+        host_header,
+        ..
+    } = *cx;
+    plan.is_anthropic_messages = true;
+    log::info!(
+        "Handling POST request to /messages with chat/completions fallback on error",
+    );
+    let body_bytes = match read_limited(body, max_api_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Routed::Done(body_error_response(
+                e,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            )));
+        }
+    };
+    plan.buffered_body = Some(body_bytes.clone());
+
+    // Parse body to get model_id for routing (don't transform yet)
+    match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        Ok(mut json_body) => {
+            // Drop Claude Code's billing-header attribution before it is
+            // forwarded (passthrough) or transformed, so it can't bust
+            // upstream prompt caching or reach the model.
+            strip_billing_header_in_body(&mut json_body);
+            if let Ok(cleaned) = serde_json::to_vec(&json_body) {
+                plan.buffered_body = Some(cleaned.into());
+            }
+
+            if config.enable_server_tool_execution
+                && !json_body
+                    .get("stream")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            {
+                let openai_body = match transform_anthropic_to_openai(&json_body) {
+                    Some(v) => v,
+                    None => {
+                        let mut error_response =
+                            Response::builder().status(StatusCode::BAD_REQUEST);
+                        error_response = add_cors_headers_with_host_and_origin(
+                            error_response,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(error_response
+                            .body(full("Invalid /messages payload for orchestration mode"))
+                            .unwrap()));
+                    }
+                };
+
+                match run_server_side_openai_orchestration(
+                    &openai_body,
+                    // The agent loop runs on genai (reqwest 0.13); the
+                    // proxy's own passthrough stays on 0.12.
+                    &crate::core::agent::upstream::agent_http_client(),
+                    provider_configs.clone(),
+                    llama_state.clone(),
+                    mlx_sessions.clone(),
+                    mcp_servers.clone(),
+                    mcp_settings.clone(),
+                    &jan_data_folder,
+                )
+                .await
+                {
+                    Ok(openai_response) => {
+                        let anthropic_response =
+                            transform_openai_response_to_anthropic(&openai_response);
+                        let body_str = serde_json::to_string(&anthropic_response)
+                            .unwrap_or_else(|_| "{}".to_string());
+                        let mut response_builder = Response::builder()
+                            .status(StatusCode::OK)
+                            .header(hyper::header::CONTENT_TYPE, "application/json");
+                        response_builder = add_cors_headers_with_host_and_origin(
+                            response_builder,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(response_builder.body(full(body_str)).unwrap()));
+                    }
+                    Err(e) => {
+                        let mut error_response =
+                            Response::builder().status(StatusCode::BAD_GATEWAY);
+                        error_response = add_cors_headers_with_host_and_origin(
+                            error_response,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(error_response.body(full(e.message().to_string())).unwrap()));
+                    }
+                }
+            }
+
+            if let Some(model_id) = json_body.get("model").and_then(|v| v.as_str()) {
+                let pc = provider_configs.lock().await;
+
+                // Try to find a provider for this model
+                let provider_name: Option<String> = resolve_provider_name(&pc, model_id);
+
+                drop(pc);
+
+                if let Some(ref p) = provider_name {
+                    log::info!("Using remote provider '{p}' for model '{model_id}'");
+                    let pc2 = provider_configs.lock().await;
+                    let provider_config = pc2.get(p.as_str()).cloned();
+                    drop(pc2);
+
+                    if let Some(provider_cfg) = provider_config {
+                        plan.target_base_url = provider_cfg.base_url.clone().map(|url| {
+                            format!("{}{}", url.trim_end_matches('/'), "/messages")
+                        });
+                        plan.session_api_keys = provider_cfg.bearer_key_chain();
+                        plan.provider_headers = custom_header_pairs(&provider_cfg);
+                    }
+                } else {
+                    let mlx_session_info = {
+                        let mlx_guard = mlx_sessions.lock().await;
+                        mlx_guard
+                            .values()
+                            .find(|s| model_ids_match(model_id, &s.info.model_id))
+                            .map(|s| s.info.clone())
+                    };
+
+                    if let Some(info) = mlx_session_info {
+                        let target_port = info.port;
+                        plan.session_api_keys = vec![info.api_key.clone()];
+                        plan.mlx_model_id = Some(info.model_id.clone());
+                        plan.target_base_url =
+                            Some(format!("http://127.0.0.1:{}/v1/messages", target_port));
+                    } else if let Some((url, key)) =
+                        engine_upstream(&llama_state, "/messages").await
+                    {
+                        plan.session_api_keys = vec![key];
+                        plan.target_base_url = Some(url);
+                    } else {
+                        log::warn!("No running session found for model_id: {model_id}");
+                        let mut error_response =
+                            Response::builder().status(StatusCode::NOT_FOUND);
+                        error_response = add_cors_headers_with_host_and_origin(
+                            error_response,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(error_response
+                            .body(full(format!(
+                                "No running session found for model '{model_id}'"
+                            )))
+                            .unwrap()));
+                    }
+                }
+            } else {
+                let error_msg = "Request body must contain a 'model' field";
+                log::warn!("POST body for /messages missing 'model' field");
+                let mut error_response =
+                    Response::builder().status(StatusCode::BAD_REQUEST);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    &host_header,
+                    &origin_header,
+                    &config.trusted_hosts,
+                );
+                return Ok(Routed::Done(error_response.body(full(error_msg)).unwrap()));
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to parse POST body for /messages as JSON: {e}");
+            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            let error_msg = format!("Invalid JSON body: {}", e);
+            return Ok(Routed::Done(error_response.body(full(error_msg)).unwrap()));
+        }
+    }
+    Ok(Routed::Forward)
+}
+
+/// Headless orchestration: model plus server-side MCP tools.
+async fn route_orchestrations(cx: &RouteCtx<'_>, body: Incoming) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        client,
+        local_client,
+        config,
+        llama_state,
+        mlx_sessions,
+        provider_configs,
+        mcp_servers,
+        mcp_settings,
+        jan_data_folder,
+        origin_header,
+        host_header,
+        destination_path,
+        ..
+    } = *cx;
+    // Headless orchestration endpoint:
+    // - Load assistant system prompt + assistant model hint
+    // - Ask the model for tool_calls
+    // - Execute MCP tools server-side
+    // - Feed tool results back and continue until completion
+    log::info!(
+        "Handling POST request to {destination_path} for assistant tool orchestration"
+    );
+
+    let body_bytes = match read_limited(body, max_api_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Routed::Done(body_error_response(
+                e,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            )));
+        }
+    };
+
+    let json_body: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(Routed::Done(error_response
+                .body(full(format!("Invalid JSON body: {e}")))
+                .unwrap()));
+        }
+    };
+
+    let assistant_id = json_body
+        .get("assistant_id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string());
+
+    let stream = json_body
+        .get("stream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if stream {
+        let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+        error_response = add_cors_headers_with_host_and_origin(
+            error_response,
+            &host_header,
+            &origin_header,
+            &config.trusted_hosts,
+        );
+        return Ok(Routed::Done(error_response
+            .body(full("stream=true is not supported for /orchestrations"))
+            .unwrap()));
+    }
+
+    let messages_value = match json_body.get("messages") {
+        Some(v) => v,
+        None => {
+            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(Routed::Done(error_response
+                .body(full("Missing required field 'messages'"))
+                .unwrap()));
+        }
+    };
+
+    let mut conversation_messages = match parse_openai_messages(messages_value) {
+        Ok(msgs) => msgs,
+        Err(e) => {
+            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(Routed::Done(error_response.body(full(e)).unwrap()));
+        }
+    };
+    // Self-heal a client-supplied conversation that has a tool_calls
+    // turn missing one of its results -- some providers (notably
+    // Anthropic) reject the entire request on a dangling tool_use.
+    let repaired = repair_dangling_tool_calls(&mut conversation_messages);
+    if repaired > 0 {
+        log::warn!("proxy: repaired {repaired} dangling tool call(s) with no prior result");
+    }
+
+    // Load assistant config for system prompt + model hint when assistant_id is provided.
+    let (assistant_instructions, assistant_model_hint) =
+        if let Some(assistant_id) = assistant_id.as_deref() {
+            match load_assistant_config(&jan_data_folder, assistant_id) {
+                Ok(v) => v,
+                Err(e) => {
+                    let mut error_response =
+                        Response::builder().status(StatusCode::BAD_REQUEST);
+                    error_response = add_cors_headers_with_host_and_origin(
+                        error_response,
+                        &host_header,
+                        &origin_header,
+                        &config.trusted_hosts,
+                    );
+                    return Ok(Routed::Done(error_response.body(full(e)).unwrap()));
+                }
+            }
+        } else {
+            (None, None)
+        };
+
+    if let Some(sys) = assistant_instructions {
+        replace_system_prompt(&mut conversation_messages, &sys);
+    }
+
+    // Resolve model to use for orchestration.
+    let model_override = json_body.get("model").and_then(|v| v.as_str());
+    let mut model_id: Option<String>;
+
+    if let Some(ov) = model_override {
+        model_id = Some(ov.to_string());
+    } else if let Some(h) = assistant_model_hint {
+        let trimmed = h.trim();
+        if !trimmed.is_empty() && trimmed != "*" {
+            model_id = Some(trimmed.to_string());
+        } else {
+            model_id = router_first_model(&llama_state, &local_client).await;
+            if model_id.is_none() {
+                let mlx_guard = mlx_sessions.lock().await;
+                model_id = mlx_guard.values().next().map(|s| s.info.model_id.clone());
+            }
+        }
+    } else {
+        model_id = router_first_model(&llama_state, &local_client).await;
+        if model_id.is_none() {
+            let mlx_guard = mlx_sessions.lock().await;
+            model_id = mlx_guard.values().next().map(|s| s.info.model_id.clone());
+        }
+    }
+
+    let model_id = match model_id {
+        Some(v) => v,
+        None => {
+            let mut error_response = Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header("Content-Type", "application/json")
+                .header("Retry-After", "1");
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(Routed::Done(error_response
+                .body(full(error_json(
+                    "No running model sessions available",
+                    "server_error",
+                    "no_model_loaded",
+                )))
+                .unwrap()));
+        }
+    };
+
+    // Tool execution support (MCP only for now).
+    let (openai_tools, tool_to_server, tool_call_names) =
+        match collect_mcp_openai_tools(&mcp_servers, &mcp_settings).await {
+            Ok(v) => v,
+            Err(e) => {
+                let mut error_response =
+                    Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    &host_header,
+                    &origin_header,
+                    &config.trusted_hosts,
+                );
+                return Ok(Routed::Done(error_response.body(full(e)).unwrap()));
+            }
+        };
+
+    let (upstream_url, session_api_keys) = match resolve_upstream_for_model(
+        &model_id,
+        provider_configs.clone(),
+        llama_state.clone(),
+        mlx_sessions.clone(),
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            let mut error_response = Response::builder().status(StatusCode::NOT_FOUND);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(Routed::Done(error_response.body(full(e)).unwrap()));
+        }
+    };
+    // `provider/model` records the provider qualifier used to resolve
+    // the upstream above; the request body must carry the bare model id.
+    let body_model_id = {
+        let pc = provider_configs.lock().await;
+        crate::core::agent::upstream::strip_provider_prefix(&model_id, &pc)
+    };
+
+    let max_turns = json_body
+        .get("max_turns")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(8)
+        .clamp(1, 20) as usize;
+
+    let mut last_response: Option<serde_json::Value> = None;
+
+    for _turn in 0..max_turns {
+        // Build upstream request body for each turn so messages are updated.
+        let mut completion_map = serde_json::Map::new();
+        completion_map.insert("model".to_string(), serde_json::json!(body_model_id));
+        completion_map.insert(
+            "messages".to_string(),
+            serde_json::Value::Array(conversation_messages.clone()),
+        );
+        completion_map.insert("stream".to_string(), serde_json::json!(false));
+        completion_map.insert("tool_choice".to_string(), serde_json::json!("auto"));
+
+        if !openai_tools.is_empty() {
+            completion_map.insert(
+                "tools".to_string(),
+                serde_json::Value::Array(openai_tools.clone()),
+            );
+        }
+
+        copy_optional_chat_params(&json_body, &mut completion_map);
+
+        let request_value = serde_json::Value::Object(completion_map);
+
+        let completion = match call_openai_chat_completions(
+            if is_local_url(&upstream_url) { &local_client } else { &client },
+            &upstream_url,
+            &session_api_keys,
+            &request_value,
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                let mut error_response =
+                    Response::builder().status(StatusCode::BAD_GATEWAY);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    &host_header,
+                    &origin_header,
+                    &config.trusted_hosts,
+                );
+                return Ok(Routed::Done(error_response.body(full(e)).unwrap()));
+            }
+        };
+
+        let tool_calls = extract_tool_calls(&completion);
+        last_response = Some(completion.clone());
+
+        if tool_calls.is_empty() {
+            let body_str =
+                serde_json::to_string(&completion).unwrap_or_else(|_| "{}".to_string());
+            let mut response_builder = Response::builder()
+                .status(StatusCode::OK)
+                .header(hyper::header::CONTENT_TYPE, "application/json");
+            response_builder = add_cors_headers_with_host_and_origin(
+                response_builder,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(Routed::Done(response_builder.body(full(body_str)).unwrap()));
+        }
+
+        // Append assistant tool call message, then execute tool calls.
+        if let Some(choice_message) = extract_choice_message(&completion) {
+            let assistant_content = choice_message
+                .get("content")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            conversation_messages.push(serde_json::json!({
+                "role": "assistant",
+                "content": assistant_content,
+                "tool_calls": tool_calls.clone()
+            }));
+        } else {
+            conversation_messages.push(serde_json::json!({
+                "role": "assistant",
+                "content": serde_json::Value::Null,
+                "tool_calls": tool_calls.clone()
+            }));
+        }
+
+        let tool_results = execute_mcp_tool_calls(
+            &tool_calls,
+            &tool_to_server,
+            &tool_call_names,
+            &mcp_servers,
+            &mcp_settings,
+        )
+        .await;
+
+        for (tool_call_id, result_text) in tool_results {
+            conversation_messages.push(serde_json::json!({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": result_text
+            }));
+        }
+    }
+
+    // Safety catch: model kept requesting tools beyond max_turns.
+    let body_json = last_response.unwrap_or_else(|| serde_json::json!({}));
+    let body_str = serde_json::to_string(&body_json).unwrap_or_else(|_| "{}".to_string());
+    let mut error_response = Response::builder().status(StatusCode::UNPROCESSABLE_ENTITY);
+    error_response = add_cors_headers_with_host_and_origin(
+        error_response,
+        &host_header,
+        &origin_header,
+        &config.trusted_hosts,
+    );
+    let payload = format!(
+        "{{\"error\":\"max_turns reached while resolving tool calls\",\"last_response\":{body_str}}}"
+    );
+    let response = error_response.body(full(payload)).unwrap();
+    Ok(Routed::Done(response))
+}
+
+/// Routes that name their model in the body: chat/completions, completions, embeddings, count_tokens.
+async fn route_model_in_body(cx: &RouteCtx<'_>, body: Incoming, plan: &mut ForwardPlan) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        config,
+        llama_state,
+        mlx_sessions,
+        provider_configs,
+        mcp_servers,
+        mcp_settings,
+        jan_data_folder,
+        origin_header,
+        host_header,
+        destination_path,
+        ..
+    } = *cx;
+    log::info!(
+        "Handling POST request to {destination_path} requiring model lookup in body",
+    );
+    let body_bytes = match read_limited(body, max_api_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Routed::Done(body_error_response(
+                e,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            )));
+        }
+    };
+    plan.buffered_body = Some(body_bytes.clone());
+
+    match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        Ok(mut json_body) => {
+            // Work around strict JSON-schema converters that reject property schemas
+            // of the form `{ "description": "..." }` (missing `type`).
+            // This happens for OpenAI-style tool schemas used with /chat/completions.
+            if destination_path == "/chat/completions" {
+                normalize_openai_tools_in_chat_body(&mut json_body);
+            }
+            // Strip Claude Code's billing header from chat/token-count
+            // bodies too (it lands in the first message content here).
+            strip_billing_header_in_body(&mut json_body);
+            if let Ok(cleaned) = serde_json::to_vec(&json_body) {
+                plan.buffered_body = Some(cleaned.into());
+            }
+
+            if config.enable_server_tool_execution
+                && destination_path == "/chat/completions"
+                && !json_body
+                    .get("stream")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            {
+                match run_server_side_openai_orchestration(
+                    &json_body,
+                    &crate::core::agent::upstream::agent_http_client(),
+                    provider_configs.clone(),
+                    llama_state.clone(),
+                    mlx_sessions.clone(),
+                    mcp_servers.clone(),
+                    mcp_settings.clone(),
+                    &jan_data_folder,
+                )
+                .await
+                {
+                    Ok(openai_response) => {
+                        let body_str = serde_json::to_string(&openai_response)
+                            .unwrap_or_else(|_| "{}".to_string());
+                        let mut response_builder = Response::builder()
+                            .status(StatusCode::OK)
+                            .header(hyper::header::CONTENT_TYPE, "application/json");
+                        response_builder = add_cors_headers_with_host_and_origin(
+                            response_builder,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(response_builder.body(full(body_str)).unwrap()));
+                    }
+                    Err(e) => {
+                        let mut error_response =
+                            Response::builder().status(StatusCode::BAD_GATEWAY);
+                        error_response = add_cors_headers_with_host_and_origin(
+                            error_response,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(error_response.body(full(e.message().to_string())).unwrap()));
+                    }
+                }
+            }
+
+            if let Some(model_id) = json_body.get("model").and_then(|v| v.as_str()) {
+                log::debug!("Extracted model_id: {model_id}");
+
+                // First, check if there's a registered remote provider for this model
+                let pc = provider_configs.lock().await;
+
+                // Try to find a provider that has this model configured
+                let provider_name = resolve_provider_name(&pc, model_id);
+
+                drop(pc);
+
+                if let Some(ref provider) = provider_name {
+                    // Found a remote provider, stream the response directly
+                    log::info!("Found remote provider '{provider}' for model '{model_id}'");
+
+                    // Get the provider config
+                    let pc2 = provider_configs.lock().await;
+                    let provider_config = pc2.get(provider.as_str()).cloned();
+
+                    // Log registered providers for debugging
+                    log::debug!(
+                        "Registered providers: {:?}",
+                        pc2.keys().collect::<Vec<_>>()
+                    );
+
+                    drop(pc2);
+
+                    if let Some(provider_cfg) = provider_config {
+                        // A converter only applies to chat/completions; other
+                        // paths keep verbatim forwarding.
+                        let converter = if destination_path == "/chat/completions" {
+                            converter_for(provider_cfg.api_type.as_deref())
+                        } else {
+                            None
+                        };
+                        if let Some(api_url) = provider_cfg.base_url.clone() {
+                            let path = converter
+                                .as_ref()
+                                .map(|c| c.upstream_path(&json_body))
+                                .unwrap_or_else(|| destination_path.clone());
+                            plan.target_base_url = Some(format!("{api_url}{path}"));
+                        } else {
+                            plan.target_base_url = None;
+                        }
+                        plan.upstream_converter = converter;
+                        plan.session_api_keys = provider_cfg.bearer_key_chain();
+                        plan.provider_headers = custom_header_pairs(&provider_cfg);
+                    } else {
+                        log::error!("Provider config not found for '{provider}'");
+                    }
+                } else {
+                    let sessions_find_model = model_id;
+
+                    let mlx_session_info = {
+                        let mlx_guard = mlx_sessions.lock().await;
+                        mlx_guard
+                            .values()
+                            .find(|s| model_ids_match(sessions_find_model, &s.info.model_id))
+                            .map(|s| s.info.clone())
+                    };
+
+                    let router_up = engine_upstream(&llama_state, &destination_path).await;
+
+                    if mlx_session_info.is_none() && router_up.is_none() {
+                        log::warn!(
+                            "Request for model '{model_id}' but no models are running."
+                        );
+                        let mut error_response = Response::builder()
+                            .status(StatusCode::SERVICE_UNAVAILABLE)
+                            .header("Content-Type", "application/json")
+                            .header("Retry-After", "1");
+                        error_response = add_cors_headers_with_host_and_origin(
+                            error_response,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(error_response
+                            .body(full(error_json(
+                                "No models are available",
+                                "server_error",
+                                "no_model_loaded",
+                            )))
+                            .unwrap()));
+                    }
+
+                    if let Some(info) = mlx_session_info {
+                        let target_port = info.port;
+                        plan.session_api_keys = vec![info.api_key.clone()];
+                        plan.mlx_model_id = Some(info.model_id.clone());
+                        log::debug!("Found MLX session for model_id {model_id}");
+                        plan.target_base_url = Some(format!(
+                            "http://127.0.0.1:{target_port}/v1{destination_path}"
+                        ));
+                    } else if let Some((url, key)) = router_up {
+                        log::debug!("Routing model_id {model_id} via llamacpp router");
+                        plan.engine_model_id = Some(model_id.to_string());
+                        plan.session_api_keys = vec![key];
+                        plan.target_base_url = Some(url);
+                    } else {
+                        log::warn!("No running session found for model_id: {model_id}");
+                        let mut error_response =
+                            Response::builder().status(StatusCode::NOT_FOUND);
+                        error_response = add_cors_headers_with_host_and_origin(
+                            error_response,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        return Ok(Routed::Done(error_response
+                            .body(full(format!(
+                                "No running session found for model '{model_id}'"
+                            )))
+                            .unwrap()));
+                    }
+                }
+            } else {
+                let error_msg = "Request body must contain a 'model' field";
+                log::warn!(
+                    "POST body for {destination_path} is missing 'model' field or it's not a string"
+                );
+                let mut error_response =
+                    Response::builder().status(StatusCode::BAD_REQUEST);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    &host_header,
+                    &origin_header,
+                    &config.trusted_hosts,
+                );
+                return Ok(Routed::Done(error_response.body(full(error_msg)).unwrap()));
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to parse POST body for {destination_path} as JSON: {e}");
+            let mut error_response = Response::builder().status(StatusCode::BAD_REQUEST);
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            let error_msg = format!("Invalid JSON body: {}", e);
+            return Ok(Routed::Done(error_response.body(full(error_msg)).unwrap()));
+        }
+    }
+    Ok(Routed::Forward)
+}
+
+/// `/images/generations`.
+async fn route_images(cx: &RouteCtx<'_>, body: Incoming) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        config,
+        origin_header,
+        host_header,
+        ..
+    } = *cx;
+    let body_bytes = match read_limited(body, max_api_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Routed::Done(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts)));
+        }
+    };
+    let (status, payload) = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        Ok(json) => match super::images_route::generate(&json).await {
+            Ok(done) => (StatusCode::OK, done),
+            Err(e) => (
+                StatusCode::from_u16(e.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                e.body(),
+            ),
+        },
+        Err(_) => (
+            StatusCode::BAD_REQUEST,
+            super::images_route::ApiError {
+                status: 400,
+                message: "The request body must be JSON.".into(),
+                param: Some("body"),
+                code: "invalid_request",
+            }
+            .body(),
+        ),
+    };
+    let mut builder = Response::builder()
+        .status(status)
+        .header(hyper::header::CONTENT_TYPE, "application/json");
+    builder = add_cors_headers_with_host_and_origin(
+        builder,
+        &host_header,
+        &origin_header,
+        &config.trusted_hosts,
+    );
+    Ok(Routed::Done(builder.body(full(payload.to_string())).unwrap()))
+}
+
+/// `POST /videos`.
+async fn route_videos(cx: &RouteCtx<'_>, body: Incoming) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        config,
+        origin_header,
+        host_header,
+        ..
+    } = *cx;
+    let body_bytes = match read_limited(body, max_api_body()).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Routed::Done(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts)));
+        }
+    };
+    let outcome = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+        Ok(json) => super::images_route::create_video(&json).await,
+        Err(_) => Err(super::images_route::ApiError {
+            status: 400,
+            message: "The request body must be JSON.".into(),
+            param: Some("body"),
+            code: "invalid_request",
+        }),
+    };
+    Ok(Routed::Done(json_response(outcome, &host_header, &origin_header, &config)))
+}
+
+/// `GET /models`: every model this server can answer for.
+async fn route_models(cx: &RouteCtx<'_>) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        local_client,
+        config,
+        llama_state,
+        mlx_sessions,
+        provider_configs,
+        jan_data_folder,
+        origin_header,
+        host_header,
+        ..
+    } = *cx;
+    log::debug!("Handling GET /v1/models request");
+
+    let preset_ini = std::fs::read_to_string(
+        std::path::Path::new(&jan_data_folder)
+            .join("llamacpp")
+            .join("router.preset.ini"),
+    )
+    .unwrap_or_default();
+    let local_models: Vec<_> = engine_list_model_entries(&llama_state, &local_client)
+        .await
+        .into_iter()
+        .map(|(id, context)| {
+            // An unloaded model has no engine-reported window; fall
+            // back to the configured one rather than let clients guess.
+            let context =
+                context.or_else(|| preset_context_length(&preset_ini, &id));
+            let mut model = serde_json::json!({
+                "id": id,
+                "object": "model",
+                "created": 1,
+                "owned_by": "llama.cpp"
+            });
+            // IDE clients (Kilo Code, Cline) size their prompts from
+            // these; only set when the engine reported a window.
+            if let Some(context) = context {
+                model["context_length"] = context.into();
+                model["max_model_len"] = context.into();
+            }
+            model
+        })
+        .collect();
+
+    // Get MLX sessions
+    let mlx_models: Vec<_> = {
+        let mlx_guard = mlx_sessions.lock().await;
+        mlx_guard
+            .values()
+            .map(|session| {
+                serde_json::json!({
+                    "id": session.info.model_id,
+                    "object": "model",
+                    "created": 1,
+                    "owned_by": "mlx"
+                })
+            })
+            .collect()
+    };
+
+    // Get remote provider models
+    let pc = provider_configs.lock().await;
+    let remote_models: Vec<_> = pc
+        .values()
+        .flat_map(|provider_cfg| provider_cfg.models.clone())
+        .map(|model_id| {
+            serde_json::json!({
+                "id": model_id,
+                "object": "model",
+                "created": 1,
+                "owned_by": "remote"
+            })
+        })
+        .collect();
+
+    // Store counts before moving
+    let local_count = local_models.len();
+    let mlx_count = mlx_models.len();
+    let remote_count = remote_models.len();
+
+    // Combine all models
+    let mut all_models = Vec::with_capacity(local_count + mlx_count + remote_count);
+    all_models.extend(local_models);
+    all_models.extend(mlx_models);
+    all_models.extend(remote_models);
+
+    let response_json = serde_json::json!({
+        "object": "list",
+        "data": all_models
+    });
+
+    let body_str =
+        serde_json::to_string(&response_json).unwrap_or_else(|_| "{}".to_string());
+
+    let mut response_builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(hyper::header::CONTENT_TYPE, "application/json");
+
+    response_builder = add_cors_headers_with_host_and_origin(
+        response_builder,
+        &host_header,
+        &origin_header,
+        &config.trusted_hosts,
+    );
+
+    log::debug!(
+        "Returning {} models ({} llama.cpp, {} MLX, {} remote)",
+        all_models.len(),
+        local_count,
+        mlx_count,
+        remote_count
+    );
+
+    Ok(Routed::Done(response_builder.body(full(body_str)).unwrap()))
+}
+
+/// `GET /openapi.json`.
+async fn route_openapi(cx: &RouteCtx<'_>) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        config,
+        ..
+    } = *cx;
+    let static_body = include_str!("../../../static/openapi.json"); // relative to src-tauri/src/
+                                                                    // Parse the static OpenAPI JSON and update the server URL with actual host and port
+    match serde_json::from_str::<serde_json::Value>(static_body) {
+        Ok(mut openapi_spec) => {
+            // Update the servers array with the actual host and port
+            if let Some(servers) = openapi_spec
+                .get_mut("servers")
+                .and_then(|s| s.as_array_mut())
+            {
+                for server in servers {
+                    if let Some(server_obj) = server.as_object_mut() {
+                        if let Some(url) = server_obj.get_mut("url") {
+                            let base_url = format!(
+                                "http://{}:{}{}",
+                                config.host, config.port, config.prefix
+                            );
+                            *url = serde_json::Value::String(base_url);
+                        }
+                    }
+                }
+            }
+            let body = serde_json::to_string(&openapi_spec)
+                .unwrap_or_else(|_| static_body.to_string());
+            return Ok(Routed::Done(Response::builder()
+                .status(StatusCode::OK)
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(full(body))
+                .unwrap()));
+        }
+        Err(_) => {
+            // If parsing fails, return the static file as fallback
+            return Ok(Routed::Done(Response::builder()
+                .status(StatusCode::OK)
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(full(static_body))
+                .unwrap()));
+        }
+    }
+}
+
+/// `GET /`: the API docs page.
+async fn route_docs_index(cx: &RouteCtx<'_>) -> Result<Routed, hyper::Error> {
+    let RouteCtx {
+        config,
+        origin_header,
+        host_header,
+        ..
+    } = *cx;
+    let html = r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>API Docs</title>
+  <link rel="stylesheet" type="text/css" href="/docs/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="/docs/swagger-ui-bundle.js"></script>
+  <script>
+  window.onload = () => {
+    SwaggerUIBundle({
+      url: '/openapi.json',
+      dom_id: '#swagger-ui',
+    });
+  };
+  </script>
+</body>
+</html>
+    "#;
+
+    let mut response_builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(hyper::header::CONTENT_TYPE, "text/html");
+
+    response_builder = add_cors_headers_with_host_and_origin(
+        response_builder,
+        &host_header,
+        &origin_header,
+        &config.trusted_hosts,
+    );
+
+    Ok(Routed::Done(response_builder.body(full(html)).unwrap()))
+}
+
+/// Send a resolved request upstream: the per-key retry loop, header
+/// building, streamed or buffered reply, and response translation.
+async fn forward(cx: &RouteCtx<'_>, mut plan: ForwardPlan) -> Result<Response<ResBody>, hyper::Error> {
+    let RouteCtx {
+        client,
+        local_client,
+        config,
+        model_param_defaults,
+        jan_data_folder,
+        origin_header,
+        host_header,
+        headers,
+        path,
+        method,
+        destination_path,
+        metered,
+        ..
+    } = *cx;
     let upstream_url = match plan.target_base_url.clone() {
         Some(p) => p,
         None => {
@@ -3003,6 +3228,7 @@ async fn proxy_request(
     );
     Ok(error_response.body(full("Internal proxy error")).unwrap())
 }
+
 
 /// Gives an engine response the model id the request named.
 ///

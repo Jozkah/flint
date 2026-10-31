@@ -1,27 +1,27 @@
 {
   "discover": {
-    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
-    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
-    "familiesError": "Could not load the model kinds: {{error}}",
+    "unsupportedArch": "Les modèles locaux d’image et de vidéo nécessitent Windows x64 ou Linux x64. Cette architecture n’est pas encore prise en charge.",
+    "intro": "Modèles d’images au format GGUF que Studio peut exécuter. Choisissez un fichier de poids et le type de modèle ; l’encodeur de texte et le VAE nécessaires sont téléchargés avec lui et vérifiés comme tout autre téléchargement.",
+    "familiesError": "Impossible de charger les types de modèles : {{error}}",
     "retry": "Retry",
-    "emptyTitle": "No picture models found",
-    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "emptyTitle": "Aucun modèle d’image trouvé",
+    "emptyDescription": "Essayez une recherche plus large, par exemple qwen image, flux ou z-image.",
     "gated": "Gated",
-    "hideFiles": "Hide files",
-    "chooseFile": "Choose a file",
-    "whatKind": "What kind of model is this?",
-    "modelFamily": "Model family",
-    "pickOne": "Pick one…",
-    "filesError": "Could not list the files: {{error}}",
-    "noWeights": "No weights files (.gguf) in this repository.",
-    "unsupportedSystem": "Unsupported system",
+    "hideFiles": "Masquer les fichiers",
+    "chooseFile": "Choisir un fichier",
+    "whatKind": "De quel type de modèle s’agit-il ?",
+    "modelFamily": "Famille de modèles",
+    "pickOne": "Choisir…",
+    "filesError": "Impossible de lister les fichiers : {{error}}",
+    "noWeights": "Aucun fichier de poids (.gguf) dans ce dépôt.",
+    "unsupportedSystem": "Système non pris en charge",
     "inStudio": "In Studio",
     "adding": "Adding…",
-    "addToStudio": "Add to Studio",
-    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
-    "pickKindFirst": "Pick what kind of model this is first.",
-    "added": "{{name}} added to Studio",
-    "openStudio": "Open Studio"
+    "addToStudio": "Ajouter à Studio",
+    "unsupportedToast": "La génération d’images en local nécessite Windows x64 ou Linux x64.",
+    "pickKindFirst": "Choisissez d’abord le type de ce modèle.",
+    "added": "{{name}} ajouté à Studio",
+    "openStudio": "Ouvrir Studio"
   },
   "page": {
     "title": "Studio",
@@ -246,5 +246,5 @@
     "all": "Tout",
     "empty": "Rien ici pour l'instant. Ce que vous créez apparaît ici."
   },
-  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
+  "videoMemoryWarning": "Cet ordinateur dispose d’environ {{gb}} Go de mémoire. La génération de vidéo en demande beaucoup, et sur une machine comme celle-ci un clip peut prendre des heures, car la mémoire est saturée et le système swappe sur le disque."
 }

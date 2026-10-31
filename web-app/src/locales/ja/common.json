@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}。グループのフォルダーをフォルダーのコンテキストに追加しました。アクセスには引き続き承認が必要です",
       "foldersAdded": "{{base}}。項目のフォルダーをグループに追加しました"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "無題のグループ",
+    "folderNotInspected": "フォルダーを検査できませんでした"
   },
   "htmlArtifact": {
     "code": "コード",
@@ -334,7 +334,7 @@
       "threads": "会話"
     },
     "openItem": "{{item}} を開く",
-    "openStudio": "Open Studio"
+    "openStudio": "Studio を開く"
   },
   "searchGroup": {
     "pages": "ページ",
@@ -678,7 +678,7 @@
       "pairedHint": "このモデルは画像入力に対応しています。プロジェクターはモデルのインポート時に選択されます。別のものを使うには、もう一度インポートしてください。",
       "noneHint": "ビジョンプロジェクターがないと、このモデルは画像を読み取れません。マルチモーダルを有効にしてモデルを再インポートし、mmproj ファイルを選択してください。モデルファイルと同じ場所にあるプロジェクターは自動的に検出されます。"
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "自動フィットが GPU レイヤーを選択しています。手動で設定するには自動フィットをオフにしてください。",
     "samplingDefaults": {
       "title": "デフォルトのサンプリングパラメータ",
       "description": "このモデルのデフォルトのサンプラー設定です。アシスタントごとまたはリクエストごとの値で上書きされない限り使用されます。"
@@ -889,8 +889,8 @@
         "failed": "ページを取得できませんでした: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "このプロジェクトのファイルを読み込めませんでした。",
+    "retryLoad": "再試行"
   },
   "attachmentsIngestion": {
     "title": "添付ファイルの取り込み方法を選択",
@@ -1085,8 +1085,8 @@
     "thisChat": "このチャット",
     "thisRoom": "このルーム",
     "thisSession": "このセッション",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "API キーがありません",
+    "keyMissingDescription": "{{subject}} は API キーが未設定のプロバイダーを使用しています。設定でキーを追加するか、別のモデルを選んで続行してください。"
   },
   "skillsUsedCount_one": "{{count}} 個のスキルを使用",
   "skillsUsedCount_other": "{{count}} 個のスキルを使用",
@@ -1147,8 +1147,8 @@
     "alsoAttached": "その他の添付",
     "addFolder": "フォルダーを追加",
     "removeFolder": "{{folder}} を削除",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "{{folder}} を読み取り専用にする",
+    "makeEditable": "{{folder}} を編集可能にする",
     "readOnly": "読み取り専用",
     "editable": "編集可",
     "inWorktree": "worktree 経由",
@@ -1156,8 +1156,8 @@
     "footnoteWorktree": "Flint はこのフォルダーの git worktree を変更し、フォルダー自体は変更しません。",
     "writesFolder": "添付したフォルダー",
     "writesFolderNote": "編集は「編集可」と表示されたフォルダーに直接反映されます。",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "編集可能にしたフォルダー",
+    "writesExtrasNote": "メインフォルダーは読み取り専用のままです。編集は編集可能にした他のフォルダーにのみ反映されます。",
     "writesWorktree": "セッションの worktree",
     "writesWorktreeNote": "編集は git worktree に反映され、レビューしてマージできます。",
     "footnote": "エージェントはこのフォルダーを読み取るだけです。中のものが変更されることはありません。",
@@ -1239,10 +1239,10 @@
     "compactFailed": "まだ圧縮するものはありません。",
     "newSession": "新しいセッション",
     "compactSuperseded": "圧縮中に会話が変更されたため、何も置き換えられませんでした。もう一度圧縮してください。",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "圧縮に失敗しました:{{reason}}。会話は変更されていません。",
+    "compactDone": "圧縮しました。要約は {{model}} が作成しました。",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "その後も会話が進んだため、圧縮はもう元に戻せません。",
     "btwFailed": "補足の質問に答えられませんでした。"
   },
   "autoCompactNeedsWindow": "自動圧縮にはコンテキストサイズが必要ですが、Flint は {{model}} のコンテキストサイズを見つけられません。長いチャットがいっぱいになる前に圧縮されるよう、このモデルの最大コンテキストトークン数を設定してください。長さを理由にプロバイダーがリクエストを拒否した場合、Flint は圧縮して 1 回だけ再試行します。",
@@ -1271,8 +1271,8 @@
     "interruptedNoReply_other": "完了済みの {{calls}} ステップを保持。",
     "interruptedContinue": "続ける",
     "interruptedDiscard": "未完了の返信を破棄して続ける",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "不在中の出来事:",
+    "recapDismiss": "要約を閉じる"
   },
   "modelNoTools": "{{model}} はツールを呼び出せないため、エージェントとして動作できません。ツール呼び出しに対応したモデルを選んでください。",
   "sessionModelUnavailable": "{{model}} は利用できなくなりました。モデルメニューから別のモデルを選んでください。",
@@ -1384,7 +1384,7 @@
     "chooseAgainAction": "選び直す",
     "externalGone": "このファイルはプロジェクト外から開かれたもので、そのアクセス権は失効しました。選び直して開き直してください。",
     "oneFolderAtATime": "フォルダーは一度に1つだけ追加できます。「{{name}}」は追加されませんでした。",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "{{name}} を開けませんでした。"
   },
   "settingsSearch": {
     "label": "設定を検索",
@@ -2152,29 +2152,29 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "コンテキスト圧縮",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "バックグラウンドジョブ",
+      "tokenUsage": "トークン使用量",
+      "fellBack": "プロバイダーをフォールバック",
+      "fellBackDetail": "{{from}} が応答しませんでした。{{to}} を試しています",
+      "theModel": "モデル",
+      "nextProvider": "次のプロバイダー",
+      "requestFailed": "リクエストに失敗しました",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "reasoningCharacters_one": "推論 {{count}} 文字",
+      "reasoningCharacters_other": "推論 {{count}} 文字",
+      "toolCalls_one": "ツール呼び出し {{count}} 件",
+      "toolCalls_other": "ツール呼び出し {{count}} 件",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "実行を開始しました",
+      "runEnded": "実行が終了しました",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "エージェントが終了しました",
+      "jobStarted": "バックグラウンドジョブを開始しました",
+      "jobEnded": "バックグラウンドジョブが終了しました"
     }
   },
   "appRail": {
@@ -2361,15 +2361,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "エージェントブラウザー",
+    "note": "エージェント専用の一時的なブラウザーの読み取り専用ビューです。Flint のプレビューは使用されません。",
+    "lastAction": "最後の操作:{{action}}",
+    "screenshotAlt": "エージェントのブラウザー内のページ",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "エージェントブラウザーを非表示",
+    "tabs": "エージェントブラウザーのタブ",
+    "waiting": "ページの最初の画像を待機中…"
   },
   "browserVerify": {
     "title": "ブラウザーで検証",
@@ -2407,23 +2407,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "判断モデル",
+    "backendLabel": "応答するもの",
+    "backendExplained": "既定は Jev(TypeSafe)です。または、Flint にあるオープンモデルを選べます。ローカルの llama.cpp や MLX モデル、あるいはセルフホストのオープンウェイトモデルを含む任意の OpenAI 互換プロバイダーです。同じ限定された選択肢に答え、そのいずれにも正確に一致しないものは無視され、Flint が判断します。",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "オープンモデル",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Von、Laya、Kev、Rizzo Flow などの小型の型付き判断モデル:モデルの OpenAI 互換エンドポイントをプロバイダーとして追加(またはローカルに読み込み)し、下から選択してください。",
+    "backendPresetMissing": "{{name}} はまだ設定されていません。OpenAI 互換エンドポイントをプロバイダーとして追加するか、ローカルに読み込み、下から選択してください。それまでは Jev が使用されます。",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "モデルを選択",
+    "backendModelSearch": "モデルを検索",
+    "backendModelEmpty": "利用可能なモデルがありません。先にプロバイダーを追加するか、ローカルモデルを読み込んでください。",
+    "backendModelEmptySearch": "「{{query}}」に一致するモデルはありません",
+    "backendNoModel": "モデルが未選択です。選択するまで Jev が使用されます。",
+    "backendLocal": "このマシンまたはローカルネットワーク上で実行されます。判断テキストが TypeSafe やクラウドサービスに送信されることはありません。",
+    "backendRemote": "各オプトインの下に記載された同じテキストが、TypeSafe の代わりに {{provider}} に送信されます。",
     "automationTitle": "自動選択",
     "routeToggle": "適切なアシスタントに振り分ける",
     "routeExplained": "スキル提案がオンの場合、Jev は、まだ Flint のままの会話を、新しいメッセージごとに Quartz、Coal、Blaze、Redstone に移すことがあります。オフの場合は、選択したアシスタントがすべてのメッセージで維持されます。ご自身で選んだアシスタントは、どちらの場合も変更されません。",
@@ -2520,9 +2520,9 @@
   "coworkParallel": {
     "settingTitle": "Git フォルダーの新しいセッションは専用の worktree で作業する",
     "settingDescription": "Git リポジトリに接続した新しいセッションごとに専用の worktree とブランチ (flint/<title>) が作られるため、複数のセッションが同じフォルダーで互いにもあなたのチェックアウトにも触れずに同時に作業できます。各ブランチはセッションからレビュー、マージ、破棄できます。",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "現在のブランチから worktree を開始",
+    "baseDescription": "オフ(既定):新しい worktree はリポジトリの既定ブランチから開始します。オン:チェックアウト中のコミットから開始するため、未プッシュのコミットも含まれます。(エージェントなどにより)明示的に指定されたブランチが常に優先されます。",
+    "resumeGone": "このセッションの worktree に再度入れなかったため({{reason}})、レビュー専用に戻りました。何も再作成されていません。",
     "branchTitle": "このセッションは専用の worktree でブランチ {{branch}} を使っています",
     "basedOn": "{{base}} から",
     "openFolder": "フォルダーを開く",
@@ -2595,12 +2595,12 @@
     "noneForProvider": "このプロバイダーには調整可能なパラメーターがありません。",
     "maybeUnsupported": "{{providers}} ではサポートされていない可能性があります",
     "modelReports": "モデル: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "上書きなし。モデルの既定値を使用します。",
+    "unrecognized_one": "認識できないパラメーター {{count}} 件を非表示にしました:{{keys}}",
+    "unrecognized_other": "認識できないパラメーター {{count}} 件を非表示にしました:{{keys}}",
+    "notSupportedStripped": "非対応。送信時に除去されます",
+    "mayBeIgnored": "このプロバイダーでは無視される可能性があります",
+    "notSupportedSkipped": "非対応。スキップされます。",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2620,72 +2620,72 @@
     "chooseNote": "確認するまで何もコピーされません。JAN のデータが変更または削除されることはありません。",
     "copyDescription": "下で選んだ項目について、JAN の会話、設定、プロバイダーキーを Flint にコピーします。JAN 自体は変更も削除もされません。",
     "freshDescription": "Flint を空の状態で始めます。プロバイダーキーを含め、JAN からは何も読み込まれずコピーもされず、以降の起動でも同様です。設定のデータフォルダからいつでもインポートできます。",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "JAN から移行",
+    "descriptionNoLegacy": "既存の JAN のデータを Flint に取り込みます。",
+    "descriptionFound": "Flint は既存の JAN のインストールを見つけました。データの取り込み方法を選択してください。",
+    "detecting": "既存の JAN のインストールを検索中…",
+    "noData": "このマシンに JAN のデータは見つかりませんでした。移行するものはないので、すぐに Flint を使い始められます。",
+    "foundAt": "{{path}} に JAN のデータが見つかりました({{size}})。",
+    "whatToBring": "取り込む内容",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Flint に既にある項目の扱い",
+    "conflictAria": "競合の解決",
+    "resolveAria": "競合を解決",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Flint にコピー"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "JAN のデータを再利用",
+        "description": "JAN の既存データをコピーせず、その場所のまま Flint から参照します。"
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Flint に移動",
+        "description": "Flint にコピーし、すべての項目が成功したら JAN 側を削除します。ロールバックできるようバックアップが保持されます。"
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "最初から始める"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "会話とアシスタント",
+      "models": "ダウンロード済みのモデルとエンジン",
+      "configs": "設定ファイル",
+      "settings": "設定とプロバイダーの認証情報",
+      "common": "拡張機能、ログ、キャッシュ",
+      "agent": "エージェントのワークスペースとルーム"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "既存の Flint の項目を保持",
+      "use_jan": "JAN の項目で上書き",
+      "keep_both": "両方を保持(JAN のコピーには接尾辞が付きます)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "この JAN データは、この Flint ビルドが完全にはサポートしていないスキーマを報告しています。続行する前に警告を確認してください。",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "推定サイズ",
+    "reusePath": "再利用するパス",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Flint のコピーの方が新しい(保持)",
+    "running": "データを移行中…Flint を閉じないでください。",
+    "complete": "移行が完了しました。",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "JAN データのバックアップを {{path}} に保持しました。",
+    "restartNeeded": "このデータを使い始めるには Flint を再起動してください。",
+    "reuseInPlace": "Flint は {{path}} にある JAN のデータをそのまま使用しています。",
+    "failed": "移行は完了しませんでした。",
+    "unknownError": "不明なエラーが発生しました。",
+    "rolledBackNote": "データは以前の状態にロールバックされました。",
+    "quarantined": "一部のデータを {{path}} に隔離しました。",
+    "notNow": "今はしない",
+    "dontAskAgain": "今後確認しない",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "最初から始める",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2927,27 +2927,27 @@
     "openProvider": "プロバイダー設定を開く",
     "errorDetails": "詳細",
     "pasteHint": "クリップボードへのアクセスがブロックされました。テキスト欄をクリックして {{keys}} を押してください。",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "長いテキストはモデルに収まらない場合があります。翻訳が失敗または途中で止まった場合は、テキストを分割してください。",
     "swapNeedsSource": "入れ替えるには翻訳元の言語を選んでください"
   },
   "markdownImage": {
     "load": "{{host}} から画像を読み込む"
   },
   "messageSaveFailed": "メッセージを保存できませんでした。再起動後に失われる可能性があります。",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "システムのキーリングにシークレットを保存できませんでした。変更は元に戻されました。",
+  "keptChat": "保持したチャット",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "動画の準備ができました",
+    "imageReady": "画像の準備ができました",
+    "stoppedWaiting": "待機を停止しました。{{provider}} はレンダリングを続けている可能性があり、完了するまで新しいリクエストが拒否される場合があります。",
+    "providerFallback": "プロバイダー",
+    "pictureInChat": "その画像はチャットで使用されています。チャットからはその画像を表示・編集できなくなります。"
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "アプリログ - Flint",
+    "systemMonitor": "システムモニター - Flint",
+    "localApiServerLogs": "ローカル API サーバーログ - Flint"
   },
   "threadSaveFailed": "このスレッドの変更を保存できませんでした。元に戻しました。",
   "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした",
@@ -3234,89 +3234,89 @@
   "chatRules": "ルール",
   "chatRuleForThisChat": "このチャットでこのルールを使う",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "別のコンピューターに引き継ぐ…",
+    "saved": "引き継ぎを保存しました。認証情報 {{count}} 件は除外され、フォルダーは場所ではなく名前で記録されます。",
+    "failed": "引き継ぎを保存できませんでした:{{message}}",
+    "label": "別のコンピューターから引き継ぎ",
+    "title": "このセッションは別のコンピューターから引き継がれました。",
+    "checkFailed": "添付されたフォルダーを確認できませんでした:{{error}}",
+    "folderMatches": "添付されたフォルダーは、セッションが作業していたフォルダー({{name}})と一致します。",
+    "folderDiffers": "添付されたフォルダーは、セッションが作業していたフォルダーではありません:{{differences}}。",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "ブランチ {{branch}}、コミット {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "このセッションは {{name}} という名前のフォルダーで作業していました。続行するには、このコンピューターでそのフォルダーを添付してください。",
+      "folderAt": "このセッションは {{name}} という名前のフォルダー({{at}})で作業していました。続行するには、このコンピューターでそのフォルダーを添付してください。",
+      "provider": "プロバイダー {{provider}} がこのコンピューターで設定されていないため、セッションのモデルを使用できません。続行するには別のモデルを選んでください。",
+      "model": "モデル {{id}} は、このコンピューターの {{provider}} では利用できません。続行するには別のモデルを選んでください。"
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "名前が {{expected}} ではなく {{actual}} です",
+      "branch": "ブランチが {{expected}} ではなく {{actual}} です",
+      "noBranch": "ブランチがなく、{{expected}} ではありません",
+      "head": "コミットが {{expected}} ではなく {{actual}} です",
+      "noHead": "コミットがなく、{{expected}} ではありません"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "この画像を読み込めませんでした。",
+  "attachedImage": "添付画像 {{n}}",
+  "saveChanges": "変更を保存",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "モデルを読み込み中…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "失敗までの時間"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Web 検索",
+    "embeddings": "埋め込みモデル(RAG/ベクトル用、チャット用ではありません)",
+    "raw_completion": "生の補完(入力テキストの続きを生成。チャットやツールは使用しません)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "アシスタントを切り替え({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "リバースエンジニアリング",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "同じファイル",
+      "nested": "フォルダーとその中のもの",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "再生成されるファイル"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "{{id}} が変更できる範囲(カンマ区切り)",
+    "bothChange": "{{a}} と {{b}} は両方とも次を変更します:",
+    "legend": "{{a}} と {{b}} への対処",
+    "serializeAb": "先に {{a}}、次に {{b}} を実行",
+    "serializeBa": "先に {{b}}、次に {{a}} を実行",
+    "revise": "{{id}} が変更できる範囲を変更",
+    "parallel": "それでも並行して実行(記録されます。各変更は適用前に引き続きレビューと確認が行われます)",
+    "region": "重複するチームタスク",
+    "headline": "これらのタスクは、順序付けなしで同じパスを変更します。まだ何も実行されていません。",
+    "caveat": "各タスクが宣言したパスで比較しており、コードは読んでいません。ここで重複がなくても、変更が整合するとは限りません。",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "これらのタスクを実行しない"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "toggleSnippet": "スニペットを切り替え",
+    "documents_one": "ドキュメントの引用 {{count}} 件",
+    "documents_other": "ドキュメントの引用 {{count}} 件",
+    "web_one": "Web ソース {{count}} 件",
+    "web_other": "Web ソース {{count}} 件",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "{{files}} の一部のみが 1 つのメッセージに収まります。",
+    "readFailed": "{{name}} を読み取れませんでした:{{error}}",
+    "remoteImagesOnly": "サーバーセッションには画像のみ送信できます。他のメディアファイルを削除してください。"
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3325,37 +3325,37 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "filesChanged_one": "{{count}} 個のファイルが変更されました",
+    "filesChanged_other": "{{count}} 個のファイルが変更されました",
+    "mediaFiles_one": "メディアファイル {{count}} 件",
+    "mediaFiles_other": "メディアファイル {{count}} 件",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "このセッションにはモデルが選択されていません。",
+    "toolsFailed": "{{date}} のこのモデルのテストでツール呼び出しが失敗しました。",
+    "toolsFailedDetail": "{{date}} のこのモデルのテストでツール呼び出しが失敗しました:{{detail}}。",
+    "noToolSupport": "選択したモデルはツールを呼び出せないため、Cowork ではチャットのみ可能です。",
+    "modelToolsWorked": "モデルが選択されています。{{date}} のテストではツール呼び出しが動作しました。これは 1 回の確認であり、すべてのタスクを保証するものではありません。",
+    "modelSelected": "モデルが選択されています。プロバイダーが応答するかどうかは、実行開始時に確認されます。",
+    "contextWindow": "コンテキストウィンドウ:{{tokens}} トークン。",
+    "contextUnknown": "このモデルのコンテキストウィンドウを取得できなかったため、いっぱいになる前に Flint が警告することはできません。",
+    "mcpOffered_one": "設定の MCP サーバー {{count}} 件が Cowork の実行に提供され、メッセージ送信時に接続されます。",
+    "mcpOffered_other": "設定の MCP サーバー {{count}} 件が Cowork の実行に提供され、メッセージ送信時に接続されます。",
+    "mcpNone": "MCP サーバーが設定されていません。",
+    "localReady": "ローカルランタイムは、実行でモデルが必要になったときに起動します。",
+    "localAbsent": "選択したモデルはローカルでは実行されません。"
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "メモリを保存中",
+    "readingMemory": "メモリを読み取り中",
+    "readingSkill": "スキルを読み取り中",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "使用したスキル",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "サブエージェント {{count}} 件が作業中",
+    "subagentsWorking_other": "サブエージェント {{count}} 件が作業中",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3376,20 +3376,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "この ID のセッションは既に存在します",
+    "assistantExists": "この ID のアシスタントは既に存在します"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "このプロジェクトを説明",
+    "continue": "FLINT.md の下書きを続ける",
+    "description": "Flint はフォルダーのマニフェストとレイアウトを読み取りましたが、何も実行していません。説明を編集してください。承認した場合にのみ、フォルダーの FLINT.md になります。",
+    "surveying": "フォルダーを調査中…",
+    "surveyed": "{{seen}} 個のファイルを調査し、{{read}} 個を読み取りました。何も書き込まれていません。",
+    "wrote": "FLINT.md を書き込みました",
+    "discarded": "下書きを破棄しました。何も書き込まれていません。",
+    "notRead": "調査で読み取られなかったもの",
+    "discard": "下書きを破棄",
+    "resurvey": "再調査",
+    "accept": "承認して FLINT.md を書き込む"
   }
 }

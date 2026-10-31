@@ -272,13 +272,13 @@
   "autoApproveServerHint": "Yalnızca bu sunucunun araçlarını otomatik onaylar. Tüm MCP araçları için anahtar Ayarlar > İzinler altındadır.",
   "allowAllMoved": "Tüm MCP araçlarının sormadan çalışmasını sağlayan anahtar Ayarlar > İzinler altındadır.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} girdinize ihtiyaç duyuyor",
+    "urlTitle": "{{server}} bir sayfa açmak istiyor",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Gizli alanlar yalnızca {{server}} sunucusuna gider. Sohbette gösterilmez.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Sayfayı aç"
   }
 }

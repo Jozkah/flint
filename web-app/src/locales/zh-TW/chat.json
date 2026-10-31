@@ -268,34 +268,34 @@
     "stopGenerating": "停止生成"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "縮小上下文大小（ctx-size）",
+    "oomDisableMtp": "停用 MTP（多 Token 預測）",
+    "oomLowerGpuLayers": "降低 n-gpu-layers 或切換到 CPU 後端",
+    "oomSmallerModel": "使用更小 / 量化程度更高的模型",
+    "serverContext": "此模型的上下文視窗由其伺服器決定，Flint 無法擴大。請開始新對話、縮短對話，或在伺服器上調高上限。",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "模型傳回了空白回覆。請重試或切換模型。",
+    "thinkingOnly": "模型完成了思考，但沒有給出答案。請繼續或重新產生以再試一次。",
+    "noReply": "執行結束，但沒有回覆。",
+    "noReplyToolError": "執行結束，但沒有回覆。最後一次工具錯誤（{{tool}}）：{{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "已匯入的對話",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "無法儲存此圖片。",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "savedPictures_one": "已儲存 {{count}} 張圖片",
+    "savedPictures_other": "已儲存 {{count}} 張圖片",
+    "picturesMissing": "；{{count}} 張已不在圖庫中",
+    "picturesGone": "這些圖片已不在 Studio 圖庫中。",
+    "tooLarge": "此匯出檔案為 {{mb}} MB，上限為 50 MB；請匯出單則訊息或分支，或省略工具詳細資料",
+    "untitled": "新對話",
+    "tooTall": "對話過長，無法產生單張圖片（約 {{height}}k 像素，上限為 {{limit}}k）；請匯出為 PDF 或 Markdown，或匯出單則訊息",
+    "pageNotDrawn": "無法繪製頁面",
+    "noCanvas": "沒有可用於繪製圖片的畫布",
+    "imageNotEncoded": "無法對圖片進行編碼"
   }
 }
