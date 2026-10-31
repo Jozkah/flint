@@ -991,6 +991,10 @@ class RoomRun {
           // Writers read only in compare mode unless isolated (see
           // turnToolAccess).
           access: turnToolAccess(this.room, participant.toolAccess, workspace !== null),
+          // The step budget follows what the user gave, not the compare
+          // downgrade: a full-access participant kept 30 steps elsewhere but
+          // got 8 here, and hit "reached its step budget" on routine work.
+          budgetAccess: participant.toolAccess,
           participantName: participant.name,
           participantId: participant.id,
           ...(this.room.toolBudget ? { budget: this.room.toolBudget } : {}),

@@ -108,7 +108,10 @@ export async function streamParticipantReply(
 ): Promise<StreamReplyResult> {
   const lookup = deps.lookup ?? defaultProviderLookup
   const stream = deps.streamText ?? streamText
-  const budget = resolveToolBudget(input.toolContext?.budget, input.toolContext?.access ?? 'read')
+  const budget = resolveToolBudget(
+    input.toolContext?.budget,
+    input.toolContext?.budgetAccess ?? input.toolContext?.access ?? 'read'
+  )
   const maxSteps = budget.maxSteps
   let budgetHit: RoomBudgetHit | undefined
   const provider = lookup(input.model.provider)

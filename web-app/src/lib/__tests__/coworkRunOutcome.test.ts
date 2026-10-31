@@ -254,6 +254,22 @@ describe('deriving a run outcome', () => {
     })
   })
 
+  it('a refused call carries the reason, not only the tool name', () => {
+    const why =
+      "tool 'bash' is denied: .jan is the agent's own state directory and is hidden."
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [user(), bash('ls -la .jan', { toolState: 'refused', isError: true, result: why })],
+      })
+    )
+    expect(outcome.unresolved).toContainEqual({
+      kind: 'refused',
+      tool: 'bash',
+      target: 'ls -la .jan',
+      detail: why,
+    })
+  })
+
   it('a cancelled run that already wrote files is partial, and keeps them', () => {
     const outcome = deriveRunOutcome(
       input({
