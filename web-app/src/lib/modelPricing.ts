@@ -42,7 +42,7 @@ const valid = (n: unknown): n is number =>
 type PricedModel = Pick<Model, 'id' | 'inputCostPerMillion' | 'outputCostPerMillion'> &
   Partial<Pick<Model, 'cachedInputCostPerMillion' | 'cacheWriteCostPerMillion'>>
 
-const CLAUDE_FAMILY = ['claude', 'sonnet', 'opus', 'haiku']
+const CLAUDE_FAMILY = ['claude']
 
 /**
  * Anthropic's published cache ratios (read 0.1x, 5-minute write 1.25x input),
