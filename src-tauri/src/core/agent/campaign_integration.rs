@@ -833,8 +833,19 @@ fn safe_rel(path: &str) -> bool {
         && !path.starts_with('-')
         && !path.starts_with('/')
         && !path.starts_with('\\')
-        && !path.contains(':')
+        && !has_unsafe_colon(path)
         && !path.split(['/', '\\']).any(|part| part == "..")
+}
+
+/// A colon is unsafe where git or the OS would read it as more than a name:
+/// a leading `:` is pathspec magic, `X:` is a drive, and on Windows any colon
+/// names an alternate data stream. Elsewhere it is an ordinary file name byte,
+/// so such paths are kept rather than silently dropped.
+fn has_unsafe_colon(path: &str) -> bool {
+    let b = path.as_bytes();
+    path.starts_with(':')
+        || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
+        || (cfg!(windows) && path.contains(':'))
 }
 
 fn cut_chars(text: &str, max: usize) -> (String, bool) {
@@ -2892,6 +2903,10 @@ two
             assert!(!safe_rel(bad), "{bad}");
         }
         assert!(safe_rel("src/a.txt"));
+        for bad in [":(glob)*", "c:x", "Z:/y"] {
+            assert!(!safe_rel(bad), "{bad}");
+        }
+        assert_eq!(safe_rel("notes/12:30.txt"), !cfg!(windows));
     }
 
     // --- conflict resolver, verification trust, campaign diff ---------------
