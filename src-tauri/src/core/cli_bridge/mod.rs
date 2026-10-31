@@ -283,11 +283,9 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
         let mut failure: Option<String> = None;
         let mut usage = (0u64, 0u64);
         let mut retried = false;
-        if streaming {
-            let _ = out_tx
-                .send(chunk(&id, &reply_model, json!({"role": "assistant", "content": ""}), Value::Null))
-                .await;
-        }
+        // The role chunk goes out with the first real output, so a CLI that
+        // fails before answering still gets a proper HTTP status (see below).
+        let mut opened = false;
         loop {
             while let Some(event) = events_rx.recv().await {
                 match event {
@@ -297,13 +295,25 @@ async fn completion(backend: Backend, body: Value) -> Response<Body> {
                             continue;
                         }
                         collected.push_str(&ready);
-                        if streaming
-                            && out_tx.send(chunk(&id, &reply_model, json!({"content": ready}), Value::Null)).await.is_err()
-                        {
-                            return;
+                        if streaming {
+                            if !opened {
+                                opened = true;
+                                let role = chunk(&id, &reply_model, json!({"role": "assistant", "content": ""}), Value::Null);
+                                if out_tx.send(role).await.is_err() {
+                                    return;
+                                }
+                            }
+                            if out_tx.send(chunk(&id, &reply_model, json!({"content": ready}), Value::Null)).await.is_err() {
+                                return;
+                            }
                         }
                     }
-                    Event::Usage { input, output } => usage = (input, output),
+                    // A finished turn outranks an earlier error the CLI recovered
+                    // from (Codex reports retried stream drops as `error`).
+                    Event::Usage { input, output } => {
+                        usage = (input, output);
+                        failure = None;
+                    }
                     Event::Failed(message) => failure = Some(message),
                 }
             }
@@ -333,13 +343,18 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
         if let Some(message) = failure {
             let error = json!({"error": {"message": message, "type": "cli_bridge_error"}});
             let _ = out_tx
-                .send(if streaming { format!("data: {error}\n\n") } else { error.to_string() })
+                .send(if streaming && opened { format!("data: {error}\n\n") } else { error.to_string() })
                 .await;
             return;
         }
         let tool_calls: Vec<Value> = calls.iter().enumerate().map(|(i, call)| tool_call_json(i, call, &id)).collect();
         let finish = if tool_calls.is_empty() { "stop" } else { "tool_calls" };
         if streaming {
+            if !opened {
+                let _ = out_tx
+                    .send(chunk(&id, &reply_model, json!({"role": "assistant", "content": ""}), Value::Null))
+                    .await;
+            }
             if !tail.is_empty() {
                 let _ = out_tx.send(chunk(&id, &reply_model, json!({"content": tail}), Value::Null)).await;
             }
@@ -377,8 +392,24 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
         }
     });
 
+    let mut out_rx = out_rx;
     if streaming {
-        let stream = tokio_stream::wrappers::ReceiverStream::new(out_rx)
+        // Hold the headers until the CLI says something: a failure before any
+        // output becomes a real status the caller can classify, instead of a
+        // 200 stream every client retries as a dropped connection.
+        let Some(first) = out_rx.recv().await else {
+            return error(StatusCode::BAD_GATEWAY, "the CLI returned no answer");
+        };
+        if !first.starts_with("data: ") {
+            let _ = pump.await;
+            return match serde_json::from_str::<Value>(&first) {
+                Ok(value) => failure_reply(value),
+                Err(_) => error(StatusCode::BAD_GATEWAY, "the CLI returned no answer"),
+            };
+        }
+        let rest = tokio_stream::wrappers::ReceiverStream::new(out_rx);
+        let stream = futures::stream::once(async move { first })
+            .chain(rest)
             .map(|text| Ok::<_, Infallible>(Frame::data(Bytes::from(text))));
         let body = BodyExt::boxed(StreamBody::new(stream));
         return Response::builder()
@@ -389,14 +420,59 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
             .expect("static response");
     }
     // Non-streaming: wait for the single JSON payload (or an error object).
-    let mut out_rx = out_rx;
     let payload = out_rx.recv().await.unwrap_or_default();
     let _ = pump.await;
     match serde_json::from_str::<Value>(&payload) {
-        Ok(value) if value.get("error").is_some() => reply(StatusCode::BAD_GATEWAY, value),
+        Ok(value) if value.get("error").is_some() => failure_reply(value),
         Ok(value) => reply(StatusCode::OK, value),
         Err(_) => error(StatusCode::BAD_GATEWAY, "the CLI returned no answer"),
     }
+}
+
+/// The HTTP status for a CLI failure, plus a `Retry-After` in seconds when the
+/// message says how long to wait. Callers retry 429/5xx and give up on other
+/// 4xx, so only failures another attempt might fix get a retryable status.
+/// Matching is on the CLIs' own wording; anything unrecognised stays 502.
+fn failure_status(message: &str) -> (StatusCode, Option<u64>) {
+    let lower = message.to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|needle| lower.contains(needle));
+    // Checked first: the install hint itself mentions `login`.
+    if has(&["not installed or not on path", "could not start"]) {
+        return (StatusCode::FAILED_DEPENDENCY, None);
+    }
+    // Claude Code: "Claude AI usage limit reached|<reset unix seconds>".
+    if has(&["usage limit", "limit reached", "out of extra usage", "quota"]) {
+        let reset = message
+            .rsplit_once('|')
+            .and_then(|(_, tail)| tail.trim().parse::<u64>().ok())
+            .map(|reset| reset.saturating_sub(unix_now()).max(1));
+        // 402, not 429: the plan's window resets in hours, so retrying within a
+        // request's budget only burns attempts. Clients treat 402 as "out of
+        // credit on this login" and stop.
+        return (StatusCode::PAYMENT_REQUIRED, Some(reset.unwrap_or(3600)));
+    }
+    if has(&["rate limit", "rate_limit", "too many requests", "429"]) {
+        return (StatusCode::TOO_MANY_REQUESTS, None);
+    }
+    if has(&["not logged in", "please run /login", "login", "log in", "sign in", "authenticat", "unauthorized", "401", "oauth token", "invalid api key"]) {
+        return (StatusCode::UNAUTHORIZED, None);
+    }
+    if has(&["issue with the selected model", "model not found", "unknown model", "does not exist", "not supported", "unrecognized_model"]) {
+        return (StatusCode::BAD_REQUEST, None);
+    }
+    (StatusCode::BAD_GATEWAY, None)
+}
+
+fn failure_reply(value: Value) -> Response<Body> {
+    let message = value["error"]["message"].as_str().unwrap_or_default();
+    let (status, retry_after) = failure_status(message);
+    let mut response = reply(status, value);
+    if let Some(seconds) = retry_after {
+        if let Ok(header) = hyper::header::HeaderValue::from_str(&seconds.to_string()) {
+            response.headers_mut().insert("retry-after", header);
+        }
+    }
+    response
 }
 
 use futures::StreamExt;
@@ -488,6 +564,20 @@ mod tests {
         live_roundtrip(Backend::Claude, "claude-haiku-5-5").await;
     }
 
+    /// A CLI failure before any output is a real status, streamed or not.
+    #[tokio::test]
+    #[ignore]
+    async fn live_claude_bad_model() {
+        let port = test_server().await;
+        let key = ("authorization", "Bearer secret-token-secret-token-secret-token");
+        for stream in [false, true] {
+            let body = json!({"model": "claude-nonexistent-9", "stream": stream, "messages": [{"role": "user", "content": "hi"}]});
+            let (status, text) = http(port, "POST", "/claude-cli/v1/chat/completions", &[key], &body.to_string()).await;
+            assert_eq!(status, 400, "stream={stream} {text}");
+            assert!(text.contains("selected model"), "{text}");
+        }
+    }
+
     #[tokio::test]
     #[ignore]
     async fn live_codex() {
@@ -572,6 +662,33 @@ mod tests {
     #[ignore]
     async fn live_gemini() {
         live_roundtrip(Backend::Gemini, "gemini-2.5-flash").await;
+    }
+
+    #[test]
+    fn cli_failures_map_to_statuses_callers_can_classify() {
+        // Recorded from Claude Code 2.1.303 with an unknown --model.
+        let bad_model = "There's an issue with the selected model (claude-nonexistent-9). It may not exist or you may not have access to it. Run --model to pick a different model.";
+        assert_eq!(failure_status(bad_model), (StatusCode::BAD_REQUEST, None));
+        let reset = unix_now() + 120;
+        let (status, retry) = failure_status(&format!("Claude AI usage limit reached|{reset}"));
+        assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+        assert!(retry.is_some_and(|s| (100..=121).contains(&s)), "{retry:?}");
+        assert_eq!(failure_status("You've hit your usage limit.").1, Some(3600));
+        assert_eq!(failure_status("API Error: 429 rate_limit_error").0, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(failure_status("Invalid API key · Please run /login").0, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            failure_status("claude is not installed or not on PATH. Install it and sign in with `claude login`.").0,
+            StatusCode::FAILED_DEPENDENCY
+        );
+        assert_eq!(failure_status("API Error: 529 Overloaded").0, StatusCode::BAD_GATEWAY);
+        assert_eq!(failure_status("claude stopped responding").0, StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn failure_reply_carries_retry_after() {
+        let response = failure_reply(json!({"error": {"message": "usage limit reached", "type": "cli_bridge_error"}}));
+        assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
+        assert_eq!(response.headers()["retry-after"], "3600");
     }
 
     #[test]
