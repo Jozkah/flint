@@ -1028,8 +1028,19 @@ class RoomRun {
     }
     const res = await this.deps.streamReply({
       model: args.model,
-      ...(args.participant?.reasoning
-        ? { reasoning: args.participant.reasoning }
+      ...(args.participant &&
+      (args.participant.reasoning || this.room.reasoningEffort)
+        ? {
+            // The participant's own level wins; the room-wide "same for all"
+            // effort fills in where it has none.
+            reasoning:
+              this.room.reasoningEffort && !args.participant.reasoning?.level
+                ? {
+                    ...(args.participant.reasoning ?? {}),
+                    level: this.room.reasoningEffort,
+                  }
+                : args.participant.reasoning,
+          }
         : {}),
       ...(args.participant && participantSampling(args.participant)
         ? { sampling: participantSampling(args.participant) }
