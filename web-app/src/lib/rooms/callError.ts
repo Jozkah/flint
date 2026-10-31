@@ -60,6 +60,12 @@ export type RoomToolContext = {
   tokenBudget?: number
   /** The room's per-turn tool budget; absent uses the defaults. */
   budget?: RoomToolBudget
+  /**
+   * The access the participant was given, when the turn runs with less (a
+   * compare-mode writer reads only). Sizes the default step budget, so the
+   * downgrade narrows what it may do, not how long it may work.
+   */
+  budgetAccess?: ToolAccess
   /** Tools the user switched off for this participant. */
   disabledTools?: string[]
   /**
