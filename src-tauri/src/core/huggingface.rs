@@ -271,19 +271,7 @@ pub(crate) fn valid_repo_id(repo: &str) -> bool {
         })
 }
 
-pub(crate) fn valid_remote_path(filename: &str) -> bool {
-    !filename.is_empty()
-        && !filename.starts_with('/')
-        && !filename.contains('\\')
-        && filename.split('/').all(|part| {
-            !part.is_empty()
-                && part != "."
-                && part != ".."
-                && part
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' ' | '+' | '(' | ')'))
-        })
-}
+pub(crate) use crate::core::hf_endpoint::valid_remote_path;
 
 fn gated(value: &serde_json::Value) -> bool {
     match value {
@@ -293,22 +281,7 @@ fn gated(value: &serde_json::Value) -> bool {
     }
 }
 
-fn safe_component(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for c in value.chars() {
-        if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
-            out.push(c);
-        } else {
-            out.push('-');
-        }
-    }
-    let trimmed = out.trim_matches(['.', '-']).to_string();
-    if trimmed.is_empty() {
-        "file".to_string()
-    } else {
-        trimmed
-    }
-}
+use crate::core::hf_endpoint::safe_path_component as safe_component;
 
 pub(crate) fn relative_download_path(repo: &str, filename: &str) -> PathBuf {
     let mut path = PathBuf::from("downloads").join("huggingface");

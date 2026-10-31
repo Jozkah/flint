@@ -54,30 +54,8 @@ pub fn valid_repo_id(repo: &str) -> bool {
         })
 }
 
-pub fn valid_remote_path(file: &str) -> bool {
-    !file.is_empty()
-        && !file.starts_with('/')
-        && !file.contains('\\')
-        && file.split('/').all(|p| {
-            !p.is_empty()
-                && p != "."
-                && p != ".."
-                && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' ' | '+' | '(' | ')'))
-        })
-}
-
-fn safe_component(value: &str) -> String {
-    let out: String = value
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
-        .collect();
-    let trimmed = out.trim_matches(['.', '-']).to_string();
-    if trimmed.is_empty() {
-        "file".to_string()
-    } else {
-        trimmed
-    }
-}
+pub use crate::core::hf_endpoint::valid_remote_path;
+use crate::core::hf_endpoint::safe_path_component as safe_component;
 
 /// Where a download lands under the data folder, the same place the app uses.
 pub fn download_path(data: &Path, repo: &str, file: &str) -> PathBuf {
