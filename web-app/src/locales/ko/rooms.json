@@ -123,6 +123,8 @@
     "reasoningOff": "꺼짐",
     "reasoningEffort": "추론 강도",
     "reasoningEffortDefault": "기본값",
+    "roomEffort": "모든 모델의 추론 강도",
+    "roomEffortHint": "추론 강도를 지원하는 모든 모델에 적용됩니다. 모델별 설정이 있으면 그 설정이 우선합니다.",
     "thinkingBudget": "생각 예산",
     "thinkingBudgetHint": "턴을 보낼 때 계산되는 모델 컨텍스트의 일부이며, 답변이 들어갈 수 있도록 상한이 정해집니다.",
     "pricing": "가격(선택)",

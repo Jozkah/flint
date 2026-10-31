@@ -21,8 +21,11 @@ import {
   isThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
 import {
+  clampEffort,
+  isEffortLevel,
   isOpenAICompatibleReasoningProvider,
   supportedEffortLevels,
+  type EffortLevel,
 } from '@/lib/modelEffort'
 import type { ParticipantReasoning } from './types'
 
@@ -91,14 +94,18 @@ export function applicableParticipantReasoning(
   const controls = participantReasoningControls(providerId, model)
   const out: ParticipantReasoning = {}
   if (r.mode && controls.modes) out.mode = r.mode
-  if (
-    r.level &&
-    (controls.thinkingBudget || controls.effortLevels.includes(r.level))
-  ) {
+  if (r.level && controls.thinkingBudget) {
     out.level = r.level
+  } else if (r.level && isEffortLevel(r.level)) {
+    // The nearest level this model takes, so a room-wide "same for all"
+    // effort still reaches a model with fewer stops (Gemini 3 Pro has no
+    // `medium`). Null where it takes none.
+    const level = clampEffort(r.level, controls.effortLevels as EffortLevel[])
+    if (level) out.level = level
   }
   return out.mode || out.level ? out : undefined
 }
+
 
 export type ParticipantReasoningRequest = {
   /** Fields for the request body, passed to `ModelFactory.createModel`. */

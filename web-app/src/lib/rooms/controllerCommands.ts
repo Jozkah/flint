@@ -19,6 +19,7 @@ import {
   cleanExtraFolders,
   normaliseModerator,
   normaliseParticipant,
+  roomEffortField,
   roomError,
   validateParticipants,
 } from './participants'
@@ -486,6 +487,11 @@ export function editorCommands(
           ),
           ...budgetField(
             patch.toolBudget === undefined ? room.toolBudget : patch.toolBudget
+          ),
+          reasoningEffort: roomEffortField(
+            patch.reasoningEffort === undefined
+              ? room.reasoningEffort
+              : patch.reasoningEffort
           ),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
           // Raising a limit that stopped the room clears the stop, so a message

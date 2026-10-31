@@ -1073,6 +1073,8 @@
   "rooms:editor.compareRunOption.together",
   "rooms:editor.compareRunSuggest",
   "rooms:editor.isolation.trust",
+  "rooms:editor.roomEffort",
+  "rooms:editor.roomEffortHint",
   "rooms:editor.saving",
   "rooms:mode.compare",
   "rooms:mode.compareHint",

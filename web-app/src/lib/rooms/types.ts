@@ -273,6 +273,11 @@ export type Room = {
   extraFolders?: string[]
   /** Compare rooms only; absent means 'together'. */
   compareRun?: CompareRun
+  /**
+   * The reasoning effort every participant uses ("same for all") unless its
+   * own `reasoning.level` overrides it. Absent: each model's own default.
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   /** Per-turn tool budgets; absent uses the defaults. */
   toolBudget?: RoomToolBudget
   /** What the user decided on each turn's change card, by message id. */
