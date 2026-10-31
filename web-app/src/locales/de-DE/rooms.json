@@ -125,6 +125,8 @@
     "reasoningOff": "Aus",
     "reasoningEffort": "Reasoning-Aufwand",
     "reasoningEffortDefault": "Standard",
+    "roomEffort": "Aufwand für alle Modelle",
+    "roomEffortHint": "Gilt für jedes Modell, das einen Aufwand unterstützt, sofern seine eigene Einstellung ihn nicht überschreibt.",
     "thinkingBudget": "Denkbudget",
     "thinkingBudgetHint": "Ein Anteil des Kontexts des Modells, der beim Senden des Beitrags berechnet und so begrenzt wird, dass die Antwort noch hineinpasst.",
     "pricing": "Preise (optional)",

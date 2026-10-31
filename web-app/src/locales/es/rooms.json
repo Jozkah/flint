@@ -127,6 +127,8 @@
     "reasoningOff": "Desactivado",
     "reasoningEffort": "Esfuerzo de razonamiento",
     "reasoningEffortDefault": "Predeterminado",
+    "roomEffort": "Esfuerzo para todos los modelos",
+    "roomEffortHint": "Lo usan todos los modelos que admiten esfuerzo, salvo que su propia configuración lo reemplace.",
     "thinkingBudget": "Presupuesto de pensamiento",
     "thinkingBudgetHint": "Una parte del contexto del modelo, calculada cuando se envía el turno y limitada para que la respuesta aún quepa.",
     "pricing": "Precios (opcional)",
