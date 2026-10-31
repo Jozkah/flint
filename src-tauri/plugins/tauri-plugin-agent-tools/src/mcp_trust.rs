@@ -344,11 +344,9 @@ impl State {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let body = serde_json::to_string_pretty(&self.stored).map_err(|e| e.to_string())?;
-        // Written beside the target and renamed, so a crash mid-write leaves
-        // the previous list rather than a truncated one.
-        let temp = path.with_extension(format!("json.tmp-{}", std::process::id()));
-        std::fs::write(&temp, body.as_bytes()).map_err(|e| e.to_string())?;
-        std::fs::rename(&temp, &path).map_err(|e| e.to_string())?;
+        // Written beside the target, flushed and renamed, so a crash mid-write
+        // leaves the previous list rather than a truncated one.
+        crate::atomic_file::write_atomic(&path, body.as_bytes())?;
         self.loaded_stamp = stamp_of(&path);
         Ok(())
     }
