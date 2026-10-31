@@ -403,9 +403,39 @@ function phaseOf(turn: CoworkTurn): ToolPhase {
 const isUnfinished = (phase: ToolPhase) =>
   phase === 'requested' || phase === 'awaiting-permission' || phase === 'running'
 
+/**
+ * The command line a shell-like tool call ran: `bash`'s `command`, or
+ * `host_build`'s program and arguments (RQA-002: a host_build test run used to
+ * leave the card saying no checks were run).
+ */
+function commandOf(turn: CoworkTurn): string | null {
+  if (turn.role !== 'tool') return null
+  const args = argsOf(turn)
+  if (turn.name === 'bash') {
+    return typeof args.command === 'string' && args.command.trim() ? args.command : null
+  }
+  if (turn.name === 'host_build') {
+    if (typeof args.program !== 'string' || !args.program.trim()) return null
+    const rest = Array.isArray(args.args)
+      ? args.args.filter((a): a is string => typeof a === 'string')
+      : []
+    return [args.program.trim(), ...rest].join(' ')
+  }
+  return null
+}
+
+/** A tool refusing its arguments, as the agent-tools call_shape repair words it. */
+const ARGUMENT_REFUSAL = /Expected call shape:|missing required argument/
+
+const HOST_BUILD_EXIT =/\(exit code (-?\d+)\)/
+
 function exitCodeOf(turn: CoworkTurn): { code: number | null; signaled: boolean } {
   if (typeof turn.exitCode === 'number') return { code: turn.exitCode, signaled: false }
   if (typeof turn.result !== 'string' || !turn.result) return { code: null, signaled: false }
+  if (turn.name === 'host_build') {
+    const match = HOST_BUILD_EXIT.exec(turn.result.slice(0, 400))
+    return { code: match ? Number(match[1]) : null, signaled: false }
+  }
   const parsed = parseBashOutput(turn.result)
   return { code: parsed.exit ?? null, signaled: parsed.signaled }
 }
@@ -449,9 +479,8 @@ function limitationsOf(
 }
 
 function commandFromTurn(turn: CoworkTurn, runEnded: boolean): CommandRecord | null {
-  if (turn.role !== 'tool' || turn.name !== 'bash') return null
-  const command = argsOf(turn).command
-  if (typeof command !== 'string' || !command.trim()) return null
+  const command = commandOf(turn)
+  if (!command) return null
   const phase = phaseOf(turn)
   const { code, signaled } = exitCodeOf(turn)
   return {
@@ -465,9 +494,8 @@ function commandFromTurn(turn: CoworkTurn, runEnded: boolean): CommandRecord | n
 }
 
 function checkFromTurn(turn: CoworkTurn, runEnded: boolean): ObservedCheck | null {
-  if (turn.role !== 'tool' || turn.name !== 'bash') return null
-  const command = argsOf(turn).command
-  if (typeof command !== 'string' || !command.trim()) return null
+  const command = commandOf(turn)
+  if (!command) return null
   const kind = classifyCommand(command)
   if (!kind) return null
   const phase = phaseOf(turn)
@@ -598,16 +626,16 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     const target = targetOf(turn)
     // A later success on the same tool and target answers an earlier refusal,
     // failure or cancellation: the run recovered, so it is not a loose end.
-    if ((phase === 'succeeded' || phase === 'done-ok') && target) {
+    // A call refused for its arguments is answered by any later success of the
+    // same tool (RQA-003): the retry fixes the arguments, so its target differs.
+    if (phase === 'succeeded' || phase === 'done-ok') {
       for (let i = unresolved.length - 1; i >= 0; i -= 1) {
         const item = unresolved[i]
-        if (
-          item.kind !== 'stop' &&
-          item.kind !== 'check-failed' &&
-          item.tool === tool &&
-          item.target === target
-        )
-          unresolved.splice(i, 1)
+        if (item.kind === 'stop' || item.kind === 'check-failed' || item.tool !== tool)
+          continue
+        const argumentRefusal =
+          item.kind === 'failed' && ARGUMENT_REFUSAL.test(item.detail ?? '')
+        if ((target && item.target === target) || argumentRefusal) unresolved.splice(i, 1)
       }
       continue
     }
