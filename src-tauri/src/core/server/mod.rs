@@ -47,3 +47,7 @@ mod mlx_stub {
 
 #[cfg(all(not(target_os = "macos"), not(feature = "cli")))]
 pub use mlx_stub::{MlxBackendSession, SessionInfo};
+
+#[cfg(test)]
+#[cfg(not(feature = "cli"))]
+mod proxy_route_tests;
