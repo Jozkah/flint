@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "Varsayılan (ayarlardan: Otomatik)"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "Ajan Yuvaları",
+    "description": "Alt ajanlar, iş akışı ajanları ve yuva belirtmeyen diğer istekler için ek yuvalar; böylece paralel ajanlar sohbetinizin veya Cowork'ün KV önbelleğini dışarı itmez. Tek bir KV havuzunu paylaşırlar, bu yüzden bir yuva az bellek tutar (hibrit modeller yuva başına yinelemeli durum da tutar). 0 bunları kapatır. Arka Plan Yuvalarını Ayır'ın açık olması gerekir. Modeli yeniden yükler."
   }
 }

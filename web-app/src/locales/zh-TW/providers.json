@@ -39,11 +39,8 @@
   "importedTooltip": "從本機檔案匯入。從 Flint 移除它不會刪除磁碟上的檔案。",
   "importModelSuccess": "模型 {{provider}} 已成功匯入。",
   "importModelError": "匯入模型失敗：",
-
   "importScanHint": "會在 LM Studio、Ollama、Hugging Face 快取、llama.cpp 和 GPT4All 中尋找。匯入之前不會複製任何內容。",
-
   "importAddFolder": "新增模型資料夾",
-
   "importRemoveFolder": "移除資料夾 {{folder}}",
   "stop": "停止",
   "start": "開始",

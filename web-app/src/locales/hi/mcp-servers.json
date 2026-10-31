@@ -272,13 +272,13 @@
   "autoApproveServerHint": "केवल इस सर्वर के टूल अपने-आप स्वीकृत होते हैं। सभी MCP टूल का स्विच सेटिंग्स > अनुमतियाँ में है।",
   "allowAllMoved": "बिना पूछे सभी MCP टूल चलाने देने वाला स्विच सेटिंग्स > अनुमतियाँ में है।",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} को आपके इनपुट की ज़रूरत है",
+    "urlTitle": "{{server}} एक पेज खोलना चाहता है",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "छिपे हुए फ़ील्ड केवल {{server}} को जाते हैं। वे चैट में नहीं दिखाए जाते।",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "पेज खोलें"
   }
 }

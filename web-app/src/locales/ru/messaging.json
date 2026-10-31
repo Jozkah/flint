@@ -24,12 +24,12 @@
     "description": "Когда выключено, другим сессиям сообщается, что эта не принимает сообщения, и ничего из отправленного ими не доходит до неё."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Спрашивать перед доставкой",
+    "description": "Если включено, каждое сообщение из другой сессии ждёт здесь, пока вы его одобрите или отклоните. Пока вы не одобрите, ничего не доставляется и не запускается, а сообщение, на которое вы не ответили в течение 5 минут, отбрасывается, и отправителю сообщается об этом. Только пока сообщения принимаются."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Спрашивать перед запуском вложенных чатов",
+    "description": "Если включено, каждый раз, когда агент хочет запустить вложенный чат (spawn_session), он сначала спрашивает вас. По умолчанию выключено: вложенный чат без worktree запускается без доступа к папкам и без разрешений этой сессии."
   },
   "subagentQuestion": {
     "title": "{{name}} спрашивает агента",
@@ -96,14 +96,14 @@
   "waitingIn_many": "{{count}} сообщений в {{session}}",
   "waitingIn_other": "{{count}} сообщения в {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Сообщения, ожидающие одобрения",
+    "banner": "Ожидает вашего одобрения ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Уведомление о статусе",
+    "expires": "Истекает через {{minutes}} мин",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Одобрить сообщение от {{name}}",
+    "denyLabel": "Отклонить сообщение от {{name}}"
   }
 }

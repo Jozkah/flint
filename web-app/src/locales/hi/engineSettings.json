@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "डिफ़ॉल्ट (सेटिंग्स से: स्वचालित)"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "एजेंट स्लॉट",
+    "description": "सबएजेंट, वर्कफ़्लो एजेंट और उन अन्य अनुरोधों के लिए अतिरिक्त स्लॉट जो कोई स्लॉट नहीं बताते, ताकि समानांतर एजेंट आपकी चैट या Cowork के KV कैश को बाहर न धकेलें। वे एक ही KV पूल साझा करते हैं, इसलिए एक स्लॉट में थोड़ी मेमोरी लगती है (हाइब्रिड मॉडल हर स्लॉट के लिए रिकरेंट स्टेट भी रखते हैं)। 0 इन्हें बंद कर देता है। इसके लिए Reserve Background Slots चालू होना चाहिए। मॉडल रीलोड होता है।"
   }
 }

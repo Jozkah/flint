@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "Bawaan (dari pengaturan: Otomatis)"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "Slot Agen",
+    "description": "Slot tambahan untuk subagen, agen alur kerja, dan permintaan lain yang tidak menyebut slot, agar agen paralel tidak menggusur cache KV obrolan atau Cowork Anda. Slot berbagi satu kumpulan KV, jadi satu slot hanya memakai sedikit memori (model hibrida juga menyimpan status rekuren per slot). 0 mematikannya. Memerlukan Reserve Background Slots aktif. Memuat ulang model."
   }
 }

@@ -114,12 +114,12 @@
     "inUse": "Dipakai di sini: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "Offload GPU (muatan ini)",
+    "all": "Semua {{layers}} lapisan berjalan di GPU.",
+    "partial": "{{gpu}} dari {{total}} lapisan berjalan di GPU; sisanya berjalan di CPU, yang lebih lambat.",
+    "none": "Tidak ada lapisan yang berjalan di GPU: model berjalan di CPU.",
+    "unknown": "Engine tidak menyebutkan berapa banyak lapisan yang di-offload.",
+    "memory": "Bobot model: {{gpu}} di GPU, {{cpu}} di memori sistem."
   },
   "metalBudget": {
     "warning": "Model ini mungkin terlalu besar untuk GPU Mac ini: butuh sekitar {{required}}, sedangkan macOS secara bawaan mengizinkan GPU memakai sekitar {{budget}}. Model bisa termuat lalu gagal pada pesan pertama. Kurangi ukuran konteks, pindahkan lebih sedikit lapisan ke GPU, atau pilih kuantisasi yang lebih kecil."
