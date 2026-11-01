@@ -109,6 +109,7 @@
     "runId": "exécution {{id}}",
     "turnId": "tour {{id}}",
     "snapshotId": "instantané {{id}}",
-    "noRequests": "aucune requête enregistrée pour l’instant"
+    "noRequests": "aucune requête enregistrée pour l’instant",
+    "id": "ID"
   }
 }

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
 import { ArrowDown, ChevronDown, Globe, Link2, Search, Wrench } from 'lucide-react'
 import { toneForTool, TONE_CLASSES } from '@/lib/semanticTone'
 import { stripConclusion } from '@/lib/rooms/consensus'
@@ -1097,7 +1099,10 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
   const compareStreamed = compareLives.map((l) => l.text.length).join(',')
   const api = useRoomsApi()
   const onRun = (participantId: string, scope: 'latest' | 'missing') =>
-    void api.controller.compareRun(room.id, [participantId], scope).catch(() => {})
+    // A run that could not start says so instead of doing nothing (P2E-021).
+    void api.controller
+      .compareRun(room.id, [participantId], scope)
+      .catch((e: unknown) => toast.error(errorText(e)))
   // Each live answer goes to the first question its model has not answered
   // (a late model answering earlier questions), else the newest one.
   const livesFor = useMemo(() => {

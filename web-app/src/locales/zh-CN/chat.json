@@ -297,5 +297,7 @@
     "pageNotDrawn": "无法绘制页面",
     "noCanvas": "没有可用于绘制图片的画布",
     "imageNotEncoded": "无法对图片进行编码"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

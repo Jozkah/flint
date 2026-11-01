@@ -109,6 +109,7 @@
     "runId": "lượt chạy {{id}}",
     "turnId": "lượt {{id}}",
     "snapshotId": "ảnh chụp {{id}}",
-    "noRequests": "chưa có yêu cầu nào được ghi nhận"
+    "noRequests": "chưa có yêu cầu nào được ghi nhận",
+    "id": "ID"
   }
 }

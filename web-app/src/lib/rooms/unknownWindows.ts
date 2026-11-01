@@ -8,6 +8,8 @@ import { promptUnknownWindows } from '@/hooks/useUnknownWindowPrompt'
 import { DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { modelKey, type ModelRef } from '@/lib/modelReplace'
+import { rememberListedWindow } from '@/lib/listedWindows'
+import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
 import {
   defaultProviderLookup,
   knownWindowFor,
@@ -108,9 +110,42 @@ export async function ensureKnownWindows(
   room: Room,
   lookup: ProviderLookup = defaultProviderLookup
 ): Promise<boolean> {
-  const entries = participantsWithUnknownWindow(room, lookup).filter(
-    (e) => !accepted.has(modelKey(e.model))
-  )
+  const unknown = () =>
+    participantsWithUnknownWindow(room, lookup).filter(
+      (e) => !accepted.has(modelKey(e.model))
+    )
+  let entries = unknown()
+  if (entries.length === 0) return true
+  // A local server usually states its window (`/props`, or its model list):
+  // ask it before asking the user.
+  if (await learnServerWindows(distinctModels(entries), lookup)) entries = unknown()
   if (entries.length === 0) return true
   return promptUnknownWindows(room.title || 'This room', entries)
+}
+
+/**
+ * Probe each model's endpoint for the window it runs at and remember what it
+ * says. Only local endpoints are asked (see `fetchServerWindow`). Resolves
+ * whether anything was learned.
+ */
+async function learnServerWindows(
+  models: readonly ModelRef[],
+  lookup: ProviderLookup
+): Promise<boolean> {
+  const learned = await Promise.all(
+    models.map(async (ref) => {
+      const { provider } = resolveModel(ref, lookup)
+      const baseUrl = provider?.base_url
+      if (!baseUrl) return false
+      const tokens = await fetchServerWindow(
+        baseUrl,
+        ref.id,
+        serverWindowHeaders(provider as Parameters<typeof serverWindowHeaders>[0])
+      ).catch(() => null)
+      if (tokens == null) return false
+      rememberListedWindow(baseUrl, ref.id, tokens)
+      return true
+    })
+  )
+  return learned.some(Boolean)
 }

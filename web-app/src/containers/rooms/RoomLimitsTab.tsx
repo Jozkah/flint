@@ -45,7 +45,11 @@ export function RoomLimitsTab({
                   placeholder={key === 'maxCostUsd' ? t('rooms:editor.costNone') : undefined}
                   aria-describedby={`${lid}-hint`}
                   onChange={(e) => onLimits({ ...limits, [key]: e.target.value })}
-                  onBlur={() => onLimits({ ...limits, [key]: showLimit(key, parsed.value) })}
+                  onBlur={() => {
+                    // Only a real change marks the draft dirty (F8-020).
+                    const shown = showLimit(key, parsed.value)
+                    if (shown !== limits[key]) onLimits({ ...limits, [key]: shown })
+                  }}
                 />
                 <p id={`${lid}-hint`} className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                   {parsed.capped && ceiling !== null ? (

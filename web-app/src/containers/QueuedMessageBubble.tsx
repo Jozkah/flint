@@ -116,10 +116,11 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
         </button>
       )}
       {message.steer ? (
-        <CornerDownRight
-          className="size-3.5 shrink-0 text-muted-foreground"
-          aria-label={t('common:queue.steering')}
-        />
+        // The label on a wrapper with a role: an SVG's own aria-label is not
+        // announced everywhere (F8x3-019).
+        <span role="img" aria-label={t('common:queue.steering')} className="inline-flex shrink-0">
+          <CornerDownRight className="size-3.5 text-muted-foreground" aria-hidden />
+        </span>
       ) : (
         <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       )}

@@ -297,5 +297,7 @@
     "pageNotDrawn": "페이지를 그릴 수 없었습니다",
     "noCanvas": "이미지를 그릴 캔버스를 사용할 수 없습니다",
     "imageNotEncoded": "이미지를 인코딩할 수 없었습니다"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

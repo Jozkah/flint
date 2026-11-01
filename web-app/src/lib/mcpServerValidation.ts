@@ -178,10 +178,15 @@ export function validateServerUrl(rawUrl: string): McpValidationIssue | null {
   return null
 }
 
+/** The longest MCP request timeout the form accepts, in seconds. */
+const MAX_TIMEOUT_SECONDS = 86_400
+
 export function validateTimeout(rawTimeout: string): McpValidationIssue | null {
   const timeout = rawTimeout.trim()
   if (timeout === '') return null
-  if (!/^\d+$/.test(timeout) || Number(timeout) <= 0) {
+  // Capped at a day: a typo of extra digits would otherwise wait for ever on
+  // a server that hangs (LIBB-031).
+  if (!/^\d+$/.test(timeout) || Number(timeout) <= 0 || Number(timeout) > MAX_TIMEOUT_SECONDS) {
     return error('timeoutInvalid')
   }
   return null

@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "इस फ़ोल्डर में {{count}} अन्य सत्र काम कर रहा है",
     "others_other": "इस फ़ोल्डर में {{count}} अन्य सत्र काम कर रहे हैं",
+    "othersIdle_one": "इस फ़ोल्डर में {{count}} अन्य सत्र खुला है, निष्क्रिय",
+    "othersIdle_other": "इस फ़ोल्डर में {{count}} अन्य सत्र खुले हैं, निष्क्रिय",
     "waitingApproval_one": "{{count}} अन्य सत्र मंज़ूरी का इंतज़ार कर रहा है",
     "waitingApproval_other": "{{count}} अन्य सत्र मंज़ूरी का इंतज़ार कर रहे हैं",
     "waitingApprovalOne": "मंज़ूरी का इंतज़ार",

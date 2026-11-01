@@ -122,6 +122,10 @@ export function DataFolderCard({
             setIsDialogOpen(false)
           } catch (error) {
             console.error(error)
+            // The folder did not move: close the dialog instead of leaving it
+            // open over a half-done change (RTE-006).
+            setSelectedNewPath(null)
+            setIsDialogOpen(false)
             toast.error(
               error instanceof Error
                 ? error.message

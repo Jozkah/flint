@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "另有 {{count}} 个会话正在此文件夹中工作",
     "others_other": "另有 {{count}} 个会话正在此文件夹中工作",
+    "othersIdle_one": "另有 {{count}} 个会话在此文件夹中打开，空闲",
+    "othersIdle_other": "另有 {{count}} 个会话在此文件夹中打开，空闲",
     "waitingApproval_one": "另有 {{count}} 个会话正在等待批准",
     "waitingApproval_other": "另有 {{count}} 个会话正在等待批准",
     "waitingApprovalOne": "等待批准",

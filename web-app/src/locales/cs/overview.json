@@ -66,5 +66,8 @@
   "resumeSub": "Začněte něco nového, nebo navažte tam, kde jste skončili.",
   "startChat": "Na něco se zeptat",
   "startFiles": "Cowork",
-  "usage": "Využití"
+  "usage": "Využití",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

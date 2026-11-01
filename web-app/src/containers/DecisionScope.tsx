@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, ChevronDown, Copy } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 
 const ICON_BTN =
   'flex size-6 shrink-0 items-center justify-center self-start rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
@@ -21,7 +22,7 @@ export function DecisionScope({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag()
 
   if (!resource) {
     return reason ? (
@@ -39,7 +40,6 @@ export function DecisionScope({
       ?.writeText(resource)
       .then(() => {
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
       })
       .catch(() => {})
   }

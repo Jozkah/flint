@@ -317,5 +317,7 @@
     "pageNotDrawn": "non è stato possibile disegnare la pagina",
     "noCanvas": "nessun canvas disponibile per disegnare l'immagine",
     "imageNotEncoded": "non è stato possibile codificare l'immagine"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

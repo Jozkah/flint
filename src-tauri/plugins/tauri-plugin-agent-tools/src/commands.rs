@@ -132,6 +132,16 @@ struct RetryCall {
     extra_projects: Option<Vec<String>>,
 }
 
+/// The refusal for a call that reaches the hidden agent state directory. It is
+/// returned to the model as this call's error, not a stop: it says why and how
+/// to carry on, because "denied" alone sent models retrying the same command.
+pub(crate) fn hidden_state_msg(name: &str) -> String {
+    let dir = crate::tools::sandbox::JAN_DIR;
+    format!(
+        "tool '{name}' is denied: {dir} is the agent's own state directory and is hidden.          This call was not run; the run continues. Leave {dir} out of the command (it does          not exist for you) and carry on with the rest of the task."
+    )
+}
+
 fn retry_offers() -> &'static crate::unsandboxed_retry::Offers<RetryCall> {
     static OFFERS: std::sync::OnceLock<crate::unsandboxed_retry::Offers<RetryCall>> =
         std::sync::OnceLock::new();
@@ -1377,11 +1387,7 @@ async fn execute_tool_inner(
             .into());
         }
         Decision::HardDeny(gate::DenyReason::Hidden) => {
-            return Err(format!(
-                "tool '{name}' is denied: {} is the agent's own state directory and is hidden",
-                crate::tools::sandbox::JAN_DIR
-            )
-            .into());
+            return Err(hidden_state_msg(&name).into());
         }
         Decision::HardDeny(gate::DenyReason::Policy) => {
             return Err(match &policy.load_error {
@@ -2880,6 +2886,14 @@ fn read_escape_message(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hidden_state_refusal_says_why_and_how_to_carry_on() {
+        let msg = super::hidden_state_msg("bash");
+        assert!(msg.contains("tool 'bash' is denied: .jan is the agent's own state directory and is hidden"));
+        assert!(msg.contains("not run"));
+        assert!(msg.contains("Leave .jan out of the command"));
+    }
+
     use super::*;
     use serde_json::json;
 

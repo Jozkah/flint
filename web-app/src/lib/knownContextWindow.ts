@@ -16,6 +16,7 @@
  */
 import { resolveModelCapabilities } from '@/lib/modelCapabilities'
 import { serverReportedLimit } from '@/lib/contextLimitRecovery'
+import { listedWindow } from '@/lib/listedWindows'
 
 type ModelLike = { id?: string | null; settings?: unknown } & Record<
   string,
@@ -55,6 +56,13 @@ export function knownContextWindowDetail(
     providerMetadata: metadata,
     providerDefault: provider ?? null,
   })
+  // What the endpoint's own model list (or `/props`) said beats a family
+  // guess from the bundled table and an unknown: a custom llama-server that
+  // reports `meta.n_ctx` was asked for a window it had already stated.
+  if (caps.contextTokens == null || caps.source === 'bundled') {
+    const listed = listedWindow(provider?.base_url, modelId)
+    if (listed != null) return { tokens: listed, bundled: false }
+  }
   return {
     tokens: caps.contextTokens,
     bundled: caps.source === 'bundled',

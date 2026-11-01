@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "{{count}} andere Sitzung arbeitet in diesem Ordner",
     "others_other": "{{count}} andere Sitzungen arbeiten in diesem Ordner",
+    "othersIdle_one": "{{count}} andere Sitzung ist in diesem Ordner offen, inaktiv",
+    "othersIdle_other": "{{count}} andere Sitzungen sind in diesem Ordner offen, inaktiv",
     "waitingApproval_one": "{{count}} andere Sitzung wartet auf Genehmigung",
     "waitingApproval_other": "{{count}} andere Sitzungen warten auf Genehmigung",
     "waitingApprovalOne": "Wartet auf Genehmigung",

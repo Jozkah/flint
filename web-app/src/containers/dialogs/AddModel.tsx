@@ -17,7 +17,8 @@ import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useState } from 'react'
 import { getProviderTitle } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { getModelCapabilities } from '@/lib/models'
+import { initialModelCapabilities } from '@/lib/models'
+import { listedCapabilities } from '@/lib/listedCapabilities'
 import { toast } from 'sonner'
 
 type DialogAddModelProps = {
@@ -54,7 +55,11 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
       id: modelId,
       model: modelId,
       name: modelId,
-      capabilities: getModelCapabilities(provider.provider, modelId),
+      capabilities: initialModelCapabilities(
+        provider.provider,
+        modelId,
+        listedCapabilities(provider.base_url, modelId)
+      ),
       version: '1.0',
     }
 

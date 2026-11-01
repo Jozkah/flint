@@ -55,7 +55,7 @@
     "urlRequired": "Enter the server URL.",
     "urlInvalid": "This is not a valid URL.",
     "urlScheme": "The URL must start with http:// or https://.",
-    "timeoutInvalid": "Enter a whole number of seconds greater than 0, or leave it empty.",
+    "timeoutInvalid": "Enter a whole number of seconds from 1 to 86400, or leave it empty.",
     "headerNameRequired": "Enter a header name for this value.",
     "headerNameInvalid": "Header names cannot contain spaces or special characters.",
     "headerNameDuplicate": "This header is already set.",

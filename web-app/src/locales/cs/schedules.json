@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Spustit každý, nejvýše 5",
     "enabled": "Povoleno",
     "save": "Uložit úkol",
-    "saving": "Ukládání"
+    "saving": "Ukládání",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Tento úkol je vypnutý, takže se nespustí, dokud jej nezapnete.",

@@ -543,7 +543,13 @@ pub async fn run(
             }
             Ok(Ok(Some(line))) => {
                 for event in backend.parse_line(&line) {
-                    failed |= matches!(event, Event::Failed(_));
+                    // Codex reports a retried stream drop as an `error` event and
+                    // then finishes the turn; a completed turn wins over it.
+                    match event {
+                        Event::Failed(_) => failed = true,
+                        Event::Usage { .. } => failed = false,
+                        Event::Text(_) => {}
+                    }
                     if events.send(event).await.is_err() {
                         return; // caller went away; kill_on_drop ends the CLI
                     }
@@ -587,6 +593,9 @@ mod tests {
         assert_eq!(Backend::Codex.parse_line(message), vec![Event::Text("hi".into())]);
         let done = r#"{"type":"turn.completed","usage":{"input_tokens":7,"output_tokens":2}}"#;
         assert_eq!(Backend::Codex.parse_line(done), vec![Event::Usage { input: 7, output: 2 }]);
+        // Codex 0.5x: a stream drop it retries is an `error` event mid-turn.
+        let retrying = r#"{"type":"error","message":"Reconnecting... 1/5 (stream disconnected before completion)"}"#;
+        assert!(matches!(Backend::Codex.parse_line(retrying).as_slice(), [Event::Failed(_)]));
         let gemini = r#"{"type":"message","role":"assistant","content":"yo","delta":true}"#;
         assert_eq!(Backend::Gemini.parse_line(gemini), vec![Event::Text("yo".into())]);
         let user = r#"{"type":"message","role":"user","content":"q"}"#;

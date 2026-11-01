@@ -109,6 +109,7 @@
     "runId": "執行 {{id}}",
     "turnId": "輪次 {{id}}",
     "snapshotId": "快照 {{id}}",
-    "noRequests": "尚無已記錄的請求"
+    "noRequests": "尚無已記錄的請求",
+    "id": "ID"
   }
 }

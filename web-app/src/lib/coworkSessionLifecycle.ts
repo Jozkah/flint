@@ -1,6 +1,7 @@
 import { clearNotices } from '@/lib/coworkRunNotices'
 import { useSubagentQuestions } from '@/lib/coworkSubagentQuestions'
 import { forgetSessionSubagents } from '@/lib/coworkSubagentHistory'
+import { forgetLaunchApprovals } from '@/lib/coworkSubagentLaunchGate'
 import { abortRun } from '@/lib/coworkRunner'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
@@ -60,6 +61,8 @@ export function deleteCoworkSession(
   useCoworkOrigins.getState().forget(id)
   // Its finished subagents can no longer be resumed.
   forgetSessionSubagents(id)
+  // Nor launched again under approvals given to it (F7x1-003).
+  forgetLaunchApprovals(id)
   clearNotices(id)
   useSubagentQuestions.getState().forgetSession(id)
   // Other sessions can no longer reach it; mail to it becomes undeliverable.

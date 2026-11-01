@@ -92,6 +92,8 @@
     "addTime": "Add time",
     "removeTime": "Remove {{time}}",
     "timeLabel": "Time of day",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list.",
     "days": "Days",
     "cron": "Cron expression",
     "cronHint": "Minute, hour, day of month, month, day of week. Example: 0 9 * * 1-5",

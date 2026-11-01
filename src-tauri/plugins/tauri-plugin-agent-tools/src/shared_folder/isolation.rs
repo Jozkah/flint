@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use super::{head, path_key};
-use crate::session_mailbox::Mailbox;
+use crate::session_mailbox::{Mailbox, SessionStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,6 +76,12 @@ pub fn decide_for_folder(
         .live_in_folder(&key)
         .iter()
         .filter(|r| !r.shared.isolated && Some(r.id.as_str()) != session_id)
+        // A second session isolates only beside one that is working now: every
+        // session in the app's list stays registered (idle) in its folder, so
+        // counting idle ones isolated every new session in a repo that had any
+        // earlier thread. A fork still isolates beside its idle parent, which
+        // is likely to be picked up again.
+        .filter(|r| is_fork || r.status == SessionStatus::Running)
         .count();
     let already_isolated = session_id
         .and_then(|id| mailbox.session(id))
@@ -104,11 +110,15 @@ mod tests {
         // Empty folder: the first session stays on the shared tree.
         assert!(!decide_for_folder(&m, folder, Some("a"), false, false).isolate);
         m.register_shared("a", "A", Some(folder), None, None, Some(false)).unwrap();
+        // An idle session (a finished thread still in the list) is not someone
+        // working: a newcomer stays on the shared tree. A fork still isolates.
+        assert!(!decide_for_folder(&m, folder, Some("b"), false, false).isolate);
+        let fork = decide_for_folder(&m, folder, None, true, false);
+        assert_eq!(fork.reason, IsolationReason::Fork);
+        m.set_status("a", true, Some("run-1")).unwrap();
         // It is not "another" to itself, but it is to a newcomer.
         assert!(!decide_for_folder(&m, folder, Some("a"), false, false).isolate);
         assert!(decide_for_folder(&m, folder, Some("b"), false, false).isolate);
-        let fork = decide_for_folder(&m, folder, None, true, false);
-        assert_eq!(fork.reason, IsolationReason::Fork);
         // An isolated session does not count as someone on the shared tree.
         m.register_shared("a", "A", Some(folder), None, None, Some(true)).unwrap();
         assert!(!decide_for_folder(&m, folder, Some("b"), false, false).isolate);
