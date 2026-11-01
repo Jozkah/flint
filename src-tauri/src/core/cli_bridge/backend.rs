@@ -493,6 +493,7 @@ pub async fn run(
         }
     }
     let Some(binary) = find_binary(backend.binary()) else {
+        log::warn!("cli_bridge: provider={} cli={} not found on PATH", backend.id(), backend.binary());
         let _ = events
             .send(Event::Failed(format!(
                 "{} is not installed or not on PATH. Install it and sign in with `{} login`.",
@@ -511,6 +512,12 @@ pub async fn run(
     {
         Ok(child) => child,
         Err(error) => {
+            log::error!(
+                "cli_bridge: provider={} cli={} failed to spawn: {}",
+                backend.id(),
+                backend.binary(),
+                redact_and_truncate(&error.to_string(), 300)
+            );
             let _ = events.send(Event::Failed(format!("could not start {}: {error}", backend.binary()))).await;
             return;
         }
@@ -537,6 +544,7 @@ pub async fn run(
     loop {
         match tokio::time::timeout(IDLE_TIMEOUT, lines.next_line()).await {
             Err(_) => {
+                log::warn!("cli_bridge: provider={} cli={} idle timeout, no output", backend.id(), backend.binary());
                 let _ = events.send(Event::Failed(format!("{} stopped responding", backend.binary()))).await;
                 failed = true;
                 break;
@@ -562,6 +570,13 @@ pub async fn run(
     if !failed && !status.as_ref().is_ok_and(|status| status.success()) {
         let detail = stderr_task.await.unwrap_or_default();
         let detail = detail.trim();
+        log::warn!(
+            "cli_bridge: provider={} cli={} exited non-zero: exit_code={} stderr={:?}",
+            backend.id(),
+            backend.binary(),
+            status.as_ref().ok().and_then(|s| s.code()).map_or("none".to_string(), |c| c.to_string()),
+            redact_and_truncate(detail, 300)
+        );
         let _ = events
             .send(Event::Failed(if detail.is_empty() {
                 format!("{} exited with an error", backend.binary())
@@ -572,9 +587,49 @@ pub async fn run(
     }
 }
 
+/// Make CLI output safe for the app log: mask anything resembling a key,
+/// token or auth header, collapse whitespace, and cap at `max` characters.
+pub fn redact_and_truncate(text: &str, max: usize) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+    static HEADER: OnceLock<Regex> = OnceLock::new();
+    static ASSIGN: OnceLock<Regex> = OnceLock::new();
+    static TOKEN: OnceLock<Regex> = OnceLock::new();
+    let header = HEADER.get_or_init(|| {
+        Regex::new(r"(?i)(authorization|bearer|cookie)(\s*[:=]?\s*)(basic |bearer )?\S+").unwrap()
+    });
+    let assign = ASSIGN.get_or_init(|| {
+        Regex::new(r"(?i)((?:api[_-]?key|token|secret|password|passwd|credential)s?\w*\s*[:=]\s*)\S+").unwrap()
+    });
+    let token = TOKEN.get_or_init(|| Regex::new(r"[A-Za-z0-9_\-\.]{24,}|sk-[A-Za-z0-9_\-]{8,}").unwrap());
+    let text = header.replace_all(text, "$1$2[redacted]");
+    let text = assign.replace_all(&text, "$1[redacted]");
+    let text = token.replace_all(&text, "[redacted]");
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= max {
+        flat
+    } else {
+        let mut cut: String = flat.chars().take(max).collect();
+        cut.push_str("...");
+        cut
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redaction_masks_secrets_and_truncates() {
+        let out = redact_and_truncate("Authorization: Bearer abc123 api_key=hunter2 sk-ant-api03-ABCDEFGHIJKLMNOP tok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xyz", 300);
+        assert!(!out.contains("abc123") && !out.contains("hunter2") && !out.contains("ABCDEFGH") && !out.contains("eyJhbG"), "{out}");
+        assert!(out.contains("[redacted]"));
+        assert_eq!(redact_and_truncate("plain  usage
+limit", 300), "plain usage limit");
+        let long = redact_and_truncate(&"ab ".repeat(400), 300);
+        assert_eq!(long.chars().count(), 303);
+        assert!(long.ends_with("..."));
+    }
 
     #[test]
     fn claude_text_deltas_and_usage_parse() {
