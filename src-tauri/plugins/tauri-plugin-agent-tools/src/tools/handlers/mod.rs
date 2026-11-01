@@ -1016,6 +1016,9 @@ mod find_cap_tests;
 mod bash_job_registry_tests;
 
 #[cfg(test)]
+mod bash_split_tests;
+
+#[cfg(test)]
 mod tests;
 
 /// A model that used a project-relative path (`lib/db.ts`) in a session whose

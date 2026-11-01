@@ -212,7 +212,8 @@ export const useAssistant = create<AssistantState>((set, get) => ({
 
     // If the deleted assistant was current, fallback to default and update localStorage
     if (wasCurrentAssistant) {
-      set({ currentAssistant: state.assistants.find(a => a.id === defaultAssistant.id) })
+      // From the list after the delete, never the removed entry (P2F-015).
+      set({ currentAssistant: get().assistants.find((a) => a.id === defaultAssistant.id) })
       setLastUsedAssistantId(defaultAssistant.id)
     }
 

@@ -41,10 +41,10 @@
     "gitRemote": "Flint chce spustit {{command}}, což změní {{target}}",
     "gitDestructive": "Flint chce spustit {{command}}, což může způsobit ztrátu práce",
     "approveCampaign": "Flint chce spustit kampaň „{{title}}“ (úkolů: {{count}})",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint chce spustit workflow: {{agents}} agentů ve {{phases}} fázích",
+    "spawnWorktree": "Flint chce spustit vnořený chat, který může měnit soubory v novém worktree složky {{folder}} (větev {{branch}})",
+    "spawnChat": "Flint chce spustit vnořený chat s názvem „{{title}}“",
+    "enterWorktree": "Flint chce přesunout zápisový přístup této relace do worktree: {{folder}} (větev {{branch}}, založeno na {{base}})",
     "spendPause": "Flint chce pokračovat v tomto běhu po dosažení limitu pozastavení výdajů",
     "changeFileOutside": "Flint chce změnit {{target}}, který je mimo {{workspace}}",
     "changeManyFilesOutside": "Flint chce změnit {{count}} souborů, některé mimo {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Odesílá změny do vzdáleného repozitáře, který mohou vidět další lidé. Flint se ptá pokaždé, pokud pro tuto konverzaci dočasně nepovolíte běžné vzdálené akce Gitu.",
     "gitDestructive": "To, co odstraní nebo přepíše, nemusí jít obnovit.",
     "campaignPlan": "Spustí samostatné relace, každou na vlastní větvi pracovního stromu, které čtou a mění soubory a souběžně čerpají z kvóty vašeho modelu. Schválení plánu neschvaluje žádné volání, které úkol provede. Flint se ptá pokaždé.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Spustí tolik podagentů, fázi po fázi, kteří čtou a mění soubory a spotřebovávají kvótu vašeho modelu. Flint se u takto velkého workflow ptá vždy.",
+    "spawnWorktree": "Vnořený chat čte a mění soubory na své vlastní větvi tohoto projektu, spotřebovává kvótu vašeho modelu a běží dál, zatímco děláte jiné věci. Jeho změny zůstanou na té větvi, dokud je nesloučíte. Flint se ptá vždy.",
+    "spawnChat": "Vnořený chat je nová relace, která spotřebovává kvótu vašeho modelu a běží dál, zatímco děláte jiné věci. Začíná bez přístupu ke složkám. Flint se ptá vždy, protože jste pro tuto relaci zapnuli „Zeptat se před spuštěním vnořených chatů“.",
+    "enterWorktree": "Tato relace může číst a měnit soubory jen v tom worktree na jeho vlastní větvi, ne ve složce vašeho projektu. Její změny zůstanou na té větvi, dokud je nesloučíte. Flint se ptá vždy.",
     "spendPause": "Běh dál spotřebovává placenou kvótu modelu, dokud neskončí nebo nedosáhne stropu. Zamítnutím se zastaví."
   },
   "repeat": {
@@ -401,11 +401,11 @@
     "session": "Povolit pro tuto konverzaci"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "Čeká na vaše schválení: {{tool}}",
+    "waitBody": "Běh je pozastaven již {{seconds}} s, dokud ho nepovolíte nebo nezamítnete.",
+    "destructive": "Destruktivní příkaz: {{reason}}. Ptá se i přesto, že tento nástroj je jinak povolen.",
+    "selfApproval": "{{tool}} schvaluje příkazy na {{server}} sám. Schválit je můžete jen vy, proto se ptá pokaždé.",
+    "sensitive": "Citlivé volání nástroje: před povolením zkontrolujte jeho akci.",
+    "autoPause": "Bez ptaní proběhlo {{count}} volání nástrojů. Pokračovat?"
   }
 }

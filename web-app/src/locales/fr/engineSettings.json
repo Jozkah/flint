@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "Par défaut (paramètres : Auto)"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "Slots d’agents",
+    "description": "Slots supplémentaires pour les sous-agents, les agents de workflow et les autres requêtes sans slot indiqué, afin que les agents parallèles n’évincent pas le cache KV de votre chat ou de Cowork. Ils partagent un même pool KV, un slot coûte donc peu de mémoire (les modèles hybrides conservent aussi un état récurrent par slot). 0 les désactive. Nécessite l’option Réserver des slots en arrière-plan. Recharge le modèle."
   }
 }

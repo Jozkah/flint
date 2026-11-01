@@ -9,10 +9,16 @@ import {
   saveMaxContextTokens,
 } from '../unknownWindows'
 import type { ProviderLookup } from '../availability'
+import { resetListedWindows } from '@/lib/listedWindows'
 import { makeParticipant, makeRoom } from '../../../containers/rooms/__tests__/roomsTestUtils'
 
 const prompt = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks/useUnknownWindowPrompt', () => ({ promptUnknownWindows: prompt }))
+const probe = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => null as number | null))
+vi.mock('@/lib/serverWindow', () => ({
+  fetchServerWindow: probe,
+  serverWindowHeaders: () => undefined,
+}))
 
 const userSet = (value: unknown) => ({
   max_context_tokens: { controller_props: { value } },
@@ -29,6 +35,13 @@ const providers = [
       { id: 'sized', settings: userSet(64000) },
     ],
   },
+  {
+    provider: 'llama-box',
+    active: true,
+    api_key: '',
+    base_url: 'http://127.0.0.1:8080/v1',
+    models: [{ id: 'mystery-local' }],
+  },
 ]
 const lookup: ProviderLookup = (name) => providers.find((p) => p.provider === name) as never
 
@@ -36,6 +49,9 @@ const on = (id: string) => ({ provider: 'custom', id })
 
 beforeEach(() => {
   prompt.mockReset()
+  probe.mockReset()
+  probe.mockResolvedValue(null)
+  resetListedWindows()
   resetAcceptedWindows()
   useModelProvider.setState({ providers: JSON.parse(JSON.stringify(providers)) } as never)
 })
@@ -114,6 +130,24 @@ describe('ensureKnownWindows', () => {
   it('returns true once the user resolves them', async () => {
     prompt.mockResolvedValue(true)
     expect(await ensureKnownWindows(unknownRoom(), lookup)).toBe(true)
+  })
+  const localRoom = () =>
+    makeRoom({
+      participants: [
+        makeParticipant('p1', { model: { provider: 'llama-box', id: 'mystery-local' } }),
+      ],
+    })
+  it('uses the window a local server reports instead of asking (RQA-014)', async () => {
+    probe.mockResolvedValue(32768)
+    expect(await ensureKnownWindows(localRoom(), lookup)).toBe(true)
+    expect(prompt).not.toHaveBeenCalled()
+    expect(probe).toHaveBeenCalledWith('http://127.0.0.1:8080/v1', 'mystery-local', undefined)
+    expect(hasUnknownWindow({ provider: 'llama-box', id: 'mystery-local' }, lookup)).toBe(false)
+  })
+  it('still asks when the server states nothing', async () => {
+    prompt.mockResolvedValue(true)
+    expect(await ensureKnownWindows(localRoom(), lookup)).toBe(true)
+    expect(prompt).toHaveBeenCalledTimes(1)
   })
 })
 

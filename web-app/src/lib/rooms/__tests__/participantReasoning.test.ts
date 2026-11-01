@@ -93,18 +93,29 @@ describe('participant reasoning request', () => {
   })
 
   it('drops what the current model would not act on', () => {
-    // Anthropic 4.6+ sizes its own thinking: no effort levels.
+    // Haiku takes no effort; Sonnet 4.6 tops out at high, so xhigh clamps.
     expect(
-      applicableParticipantReasoning('anthropic', model({ id: 'claude-sonnet-4-6' }), {
+      applicableParticipantReasoning('anthropic', model({ id: 'claude-haiku-5-5' }), {
         level: 'high',
       })
     ).toBeUndefined()
     expect(
-      applicableParticipantReasoning('anthropic', model({ id: 'claude-sonnet-4-6' }), {
+      applicableParticipantReasoning('anthropic', model({ id: 'claude-haiku-5-5' }), {
         mode: 'on',
         level: 'high',
       })
     ).toEqual({ mode: 'on' })
+    expect(
+      applicableParticipantReasoning('anthropic', model({ id: 'claude-sonnet-4-6' }), {
+        level: 'xhigh',
+      })
+    ).toEqual({ level: 'high' })
+    // Gemini 3 Pro has no medium: the nearest below it.
+    expect(
+      applicableParticipantReasoning('google', model({ id: 'gemini-3-pro' }), {
+        level: 'medium',
+      })
+    ).toEqual({ level: 'low' })
     expect(participantReasoningControls('llamacpp', model())).toEqual({
       modes: true,
       thinkingBudget: true,

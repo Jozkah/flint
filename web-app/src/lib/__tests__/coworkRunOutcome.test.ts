@@ -91,6 +91,13 @@ describe('classifying commands as checks', () => {
     ['mvn -q test', 'test'],
     ['./gradlew test', 'test'],
     ['bundle exec rspec', 'test'],
+    ['node --test', 'test'],
+    ['node --test-isolation=none --test test/', 'test'],
+    ['node test/slug.test.js', 'test'],
+    ["Set-Location 'C:\\tmp\\repo'; npm.cmd test", 'test'],
+    ["npm --prefix 'C:\\tmp\\repo' test", 'test'],
+    ['pnpm -C web-app test', 'test'],
+    ["& 'C:\\Program Files\\nodejs\\node.exe' --test", 'test'],
     ['npm run build', 'build'],
     ['cargo build -j 4', 'build'],
     ['go build ./...', 'build'],
@@ -104,7 +111,7 @@ describe('classifying commands as checks', () => {
     expect(classifyCommand(command)).toBe(kind)
   })
 
-  it.each(['ls -la', 'cat package.json', 'git status', 'echo test passed', 'npm install'])(
+  it.each(['ls -la', 'cat package.json', 'git status', 'echo test passed', 'npm install', 'node src/index.js'])(
     '%s is not a check',
     (command) => {
       expect(classifyCommand(command)).toBeNull()
@@ -254,6 +261,22 @@ describe('deriving a run outcome', () => {
     })
   })
 
+  it('a refused call carries the reason, not only the tool name', () => {
+    const why =
+      "tool 'bash' is denied: .jan is the agent's own state directory and is hidden."
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [user(), bash('ls -la .jan', { toolState: 'refused', isError: true, result: why })],
+      })
+    )
+    expect(outcome.unresolved).toContainEqual({
+      kind: 'refused',
+      tool: 'bash',
+      target: 'ls -la .jan',
+      detail: why,
+    })
+  })
+
   it('a cancelled run that already wrote files is partial, and keeps them', () => {
     const outcome = deriveRunOutcome(
       input({
@@ -326,6 +349,65 @@ describe('deriving a run outcome', () => {
     ])
     // Still worth showing, so the unverified claim is not the last word.
     expect(shouldShowRunOutcome(outcome)).toBe(true)
+  })
+
+  it('counts a host_build test run as a check (RQA-002)', () => {
+    const hostBuild = (args: string[], result: string, isError: boolean): CoworkTurn => ({
+      role: 'tool',
+      content: '',
+      name: 'host_build',
+      callId: `hb-${args.join('-')}`,
+      args: { program: 'npm', args },
+      status: 'done',
+      toolState: isError ? 'failed' : 'succeeded',
+      isError,
+      result,
+    })
+    const failed = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          hostBuild(['test'], 'ERROR: `npm test` failed (exit code 1).\nlog', true),
+          assistant('Done.'),
+        ],
+      })
+    )
+    expect(failed.checks).toHaveLength(1)
+    expect(failed.checks[0]).toMatchObject({ kind: 'test', command: 'npm test', outcome: 'failed', exitCode: 1 })
+    expect(failed.unresolved).toEqual([{ kind: 'check-failed', command: 'npm test', exitCode: 1 }])
+    const passed = deriveRunOutcome(
+      input({
+        turns: [user(), hostBuild(['test'], '`npm test` finished (exit code 0).\nok', false)],
+      })
+    )
+    expect(passed.checks[0]).toMatchObject({ outcome: 'passed', exitCode: 0 })
+    expect(passed.unresolved).toEqual([])
+  })
+
+  it('drops an argument refusal once the same tool later succeeds (RQA-003)', () => {
+    const grep = (args: Record<string, unknown>, ok: boolean): CoworkTurn => ({
+      role: 'tool',
+      content: '',
+      name: 'grep',
+      callId: `g-${JSON.stringify(args)}`,
+      args,
+      status: 'done',
+      toolState: ok ? 'succeeded' : 'failed',
+      isError: !ok,
+      result: ok
+        ? 'a.ts:1: x'
+        : "ERROR: missing required argument 'pattern'\nExpected call shape: {\"pattern\":\"<pattern>\"}. You sent: `path`.",
+    })
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [user(), grep({ path: 'src' }, false), grep({ pattern: 'x', path: 'src/lib' }, true)],
+      })
+    )
+    expect(outcome.unresolved).toEqual([])
+    const unrecovered = deriveRunOutcome(
+      input({ turns: [user(), grep({ path: 'src' }, false)] })
+    )
+    expect(unrecovered.unresolved).toHaveLength(1)
   })
 
   it('has no checks at all when none ran, so the surface can say so', () => {

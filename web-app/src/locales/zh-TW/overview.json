@@ -60,5 +60,8 @@
   "resumeSub": "開始新的內容，或從上次中斷的地方繼續。",
   "startChat": "提個問題",
   "startFiles": "Cowork",
-  "usage": "用量"
+  "usage": "用量",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

@@ -60,7 +60,7 @@ export default function AddEditAssistant({
   )
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
-  const emojiPickerTriggerRef = useRef<HTMLDivElement>(null)
+  const emojiPickerTriggerRef = useRef<HTMLButtonElement>(null)
   const [nameError, setNameError] = useState<string | null>(null)
   // const [toolStepsInput, setToolStepsInput] = useState('20')
 
@@ -185,8 +185,12 @@ export default function AddEditAssistant({
               <label className="inline-block text-sm font-medium text-fg-2">
                 {t('assistants:emoji')}
               </label>
-              <div
-                className="flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-muted pointer-coarse:size-11"
+              {/* A button, so the keyboard can open the picker (F8x4-005). */}
+              <button
+                type="button"
+                aria-label={t('assistants:emoji')}
+                aria-expanded={showEmojiPicker}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 ref={emojiPickerTriggerRef}
               >
@@ -199,7 +203,7 @@ export default function AddEditAssistant({
                 ) : (
                   <SmilePlus size={18} className="text-muted-foreground" aria-hidden />
                 )}
-              </div>
+              </button>
               <div className="relative" ref={emojiPickerRef}>
                 {showEmojiPicker && (
                 <Suspense fallback={null}>

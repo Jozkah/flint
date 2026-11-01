@@ -24,12 +24,12 @@
     "description": "Saat mati, sesi lain diberi tahu bahwa sesi ini tidak menerima pesan, dan tidak ada yang mereka kirim yang sampai."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Tanyakan dulu sebelum mengirim",
+    "description": "Jika aktif, setiap pesan dari sesi lain menunggu di sini untuk Anda setujui atau tolak. Tidak ada yang dikirim atau dimulai sampai Anda menyetujui, dan pesan yang tidak Anda jawab dalam 5 menit dibuang dan pengirimnya diberi tahu. Hanya saat pesan diterima."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Tanyakan dulu sebelum obrolan bertingkat dimulai",
+    "description": "Jika aktif, setiap kali agen ingin memulai obrolan bertingkat (spawn_session) ia bertanya kepada Anda dahulu. Mati secara default: obrolan bertingkat tanpa worktree dimulai tanpa akses folder dan tanpa izin sesi ini."
   },
   "subagentQuestion": {
     "title": "{{name}} bertanya kepada agen",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{count}} pesan di {{session}}",
   "waitingIn_other": "{{count}} pesan di {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Pesan menunggu persetujuan",
+    "banner": "Menunggu persetujuan Anda ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Pemberitahuan status",
+    "expires": "Kedaluwarsa dalam {{minutes}} mnt",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Setujui pesan dari {{name}}",
+    "denyLabel": "Tolak pesan dari {{name}}"
   }
 }

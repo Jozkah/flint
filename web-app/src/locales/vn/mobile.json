@@ -1382,11 +1382,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "Kết nối với máy tính của bạn",
+    "intro": "Bật Truy cập từ xa trong Flint trên máy tính của bạn, sau đó nhập địa chỉ của nó hoặc dán liên kết ghép nối.",
+    "address": "Địa chỉ máy tính",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "Tin cậy chứng chỉ mới của máy tính này"
   }
 }

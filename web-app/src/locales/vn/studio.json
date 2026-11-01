@@ -1,27 +1,27 @@
 {
   "discover": {
-    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
-    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
-    "familiesError": "Could not load the model kinds: {{error}}",
+    "unsupportedArch": "Các mô hình hình ảnh và video cục bộ yêu cầu Windows x64 hoặc Linux x64. Kiến trúc này chưa được hỗ trợ.",
+    "intro": "Các mô hình hình ảnh định dạng GGUF mà Studio có thể chạy. Chọn một tệp trọng số và loại mô hình; bộ mã hóa văn bản và VAE cần thiết sẽ được tải cùng và được kiểm tra như mọi lần tải khác.",
+    "familiesError": "Không thể tải các loại mô hình: {{error}}",
     "retry": "Retry",
-    "emptyTitle": "No picture models found",
-    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "emptyTitle": "Không tìm thấy mô hình hình ảnh nào",
+    "emptyDescription": "Hãy thử tìm kiếm rộng hơn, ví dụ qwen image, flux hoặc z-image.",
     "gated": "Gated",
-    "hideFiles": "Hide files",
-    "chooseFile": "Choose a file",
-    "whatKind": "What kind of model is this?",
-    "modelFamily": "Model family",
-    "pickOne": "Pick one…",
-    "filesError": "Could not list the files: {{error}}",
-    "noWeights": "No weights files (.gguf) in this repository.",
-    "unsupportedSystem": "Unsupported system",
+    "hideFiles": "Ẩn tệp",
+    "chooseFile": "Chọn một tệp",
+    "whatKind": "Đây là loại mô hình nào?",
+    "modelFamily": "Họ mô hình",
+    "pickOne": "Chọn một…",
+    "filesError": "Không thể liệt kê các tệp: {{error}}",
+    "noWeights": "Không có tệp trọng số (.gguf) nào trong kho lưu trữ này.",
+    "unsupportedSystem": "Hệ thống không được hỗ trợ",
     "inStudio": "In Studio",
     "adding": "Adding…",
-    "addToStudio": "Add to Studio",
-    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
-    "pickKindFirst": "Pick what kind of model this is first.",
-    "added": "{{name}} added to Studio",
-    "openStudio": "Open Studio"
+    "addToStudio": "Thêm vào Studio",
+    "unsupportedToast": "Tạo hình ảnh cục bộ yêu cầu Windows x64 hoặc Linux x64.",
+    "pickKindFirst": "Hãy chọn loại mô hình này trước.",
+    "added": "Đã thêm {{name}} vào Studio",
+    "openStudio": "Mở Studio"
   },
   "page": {
     "title": "Studio",
@@ -246,5 +246,5 @@
     "all": "Tất cả",
     "empty": "Chưa có gì ở đây. Những gì bạn tạo sẽ xuất hiện ở đây."
   },
-  "videoMemoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk."
+  "videoMemoryWarning": "Máy tính này có khoảng {{gb}} GB bộ nhớ. Tạo video cần rất nhiều, và trên một máy như thế này, một clip có thể mất hàng giờ vì hết bộ nhớ và phải hoán đổi ra đĩa."
 }

@@ -290,9 +290,17 @@ export function useAutoSessionWorktree(input: Input) {
   return {
     isGit,
     workOnCopy,
-    /** Why the default put this session in its own worktree, while it applies. */
+    /**
+     * Why the default put this session in its own worktree, while it applies.
+     * Only once the worktree exists and the session is switched to it: the
+     * decision alone said "using its own worktree" while a worktree that could
+     * not be made (or was never attached) left writes landing in the checkout.
+     */
     isolationReason:
-      sharedReason === 'fork' || sharedReason === 'secondSession'
+      (sharedReason === 'fork' || sharedReason === 'secondSession') &&
+      record &&
+      record.kind !== 'copy' &&
+      input.access === 'managed-worktree'
         ? sharedReason
         : null,
     /** The person chose the shared tree for this session. */

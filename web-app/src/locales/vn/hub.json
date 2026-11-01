@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "Sẽ chạy thoải mái trên thiết bị của bạn"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "Có thể chậm",
+      "detail": "Sẽ chạy nhưng còn rất ít bộ nhớ dự phòng"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "Không vừa",
+      "detail": "Có thể vượt quá bộ nhớ khả dụng của bạn"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "Chưa rõ độ phù hợp",
+      "detail": "Không thể ước tính yêu cầu bộ nhớ"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "Tương thích thiết bị: {{label}}",
+    "variantInfo": "Thông tin biến thể mô hình",
+    "modelInfo": "Thông tin mô hình",
+    "defaultQuantization": "Lượng tử hóa mặc định",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "Tương thích thiết bị",
+    "estimateNote": "Ước tính từ kích thước tệp và phần cứng của bạn. Hiệu năng thực tế phụ thuộc vào lượng tử hóa và độ dài ngữ cảnh.",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "Bộ nhớ ngữ cảnh được đọc từ tệp mô hình.",
+      "fromSize": "Bộ nhớ ngữ cảnh được ước tính từ kích thước tệp.",
+      "sizeEstimated": "Kích thước tệp được ước tính từ số tham số.",
+      "gpuOff": "GPU bạn đã tắt không được tính."
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "Độ chính xác đầy đủ",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "Lượng tử hóa không xác định",
+      "full": "Độ trung thực cao nhất, chiếm rất nhiều bộ nhớ",
+      "q8": "Chất lượng gần như nguyên bản, chiếm nhiều bộ nhớ",
+      "q6": "Chất lượng rất cao với mức nén vừa phải",
+      "q5": "Chất lượng cao và cân bằng tốt giữa chất lượng và kích thước",
+      "recommended": "Cân bằng được khuyến nghị giữa chất lượng, tốc độ và bộ nhớ cho hầu hết hệ thống",
+      "q4": "Cân bằng giữa kích thước và chất lượng cho suy luận cục bộ hằng ngày",
+      "q3": "Nhỏ hơn và nhanh hơn, đổi lại chất lượng giảm rõ rệt",
+      "q2": "Rất nhỏ gọn, đổi lại chất lượng giảm nhiều nhất",
+      "other": "Mô hình GGUF đã lượng tử hóa"
     }
   }
 }

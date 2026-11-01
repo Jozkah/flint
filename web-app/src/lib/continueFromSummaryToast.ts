@@ -24,16 +24,24 @@ export function continueFromSummaryWithToast(
     },
   })
   void continueFromSummary(threadId, { signal: controller.signal })
-    .then((id) => {
-      toast.dismiss(pending)
-      toast.success(t('chat:continueSummary.done'))
-      onDone(id)
-    })
-    .catch((error) => {
-      toast.dismiss(pending)
-      if (controller.signal.aborted) return
-      const code =
-        error instanceof ContinueFromSummaryError ? error.code : 'summary-failed'
-      toast.error(t(`chat:continueSummary.errors.${code}`))
-    })
+    .then(
+      (id) => {
+        toast.dismiss(pending)
+        toast.success(t('chat:continueSummary.done'))
+        // The summary worked: a throw while opening the new chat is not a
+        // failed summary (LIBA-010).
+        try {
+          onDone(id)
+        } catch (error) {
+          console.error('Opening the continued chat failed:', error)
+        }
+      },
+      (error) => {
+        toast.dismiss(pending)
+        if (controller.signal.aborted) return
+        const code =
+          error instanceof ContinueFromSummaryError ? error.code : 'summary-failed'
+        toast.error(t(`chat:continueSummary.errors.${code}`))
+      }
+    )
 }

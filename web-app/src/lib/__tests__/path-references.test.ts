@@ -79,6 +79,14 @@ describe('stripPromptReferences', () => {
       'ssh username@203.0.113.10'
     )
   })
+
+  it('keeps runs of spaces the user typed (LIBC-018)', () => {
+    expect(stripPromptReferences('a    b  c @src/main.ts')).toBe('a    b  c')
+    expect(stripPromptReferences('x = 1    # note\nsee @src/a.ts  here')).toBe(
+      'x = 1    # note\nsee here'
+    )
+    expect(stripPromptReferences('top\n  @src/a.ts  indented')).toBe('top\n  indented')
+  })
 })
 
 describe('excerpt references (@path:start-end)', () => {

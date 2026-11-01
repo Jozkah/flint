@@ -27,10 +27,10 @@
     "overridden_few": "Заданы {{count}} роли",
     "overridden_many": "Задано {{count}} ролей",
     "overridden_other": "Заданы {{count}} роли",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "Субагентов одновременно",
+    "maxConcurrentDesc": "Наибольшее число субагентов, работающих одновременно (от 1 до 16). Остальные ждут своей очереди.",
+    "maxDepth": "Глубина субагентов",
+    "maxDepthDesc": "1: субагенты не могут запускать субагентов. 2 или 3 позволяют им передавать работу вниз на столько уровней, с теми же лимитами и подтверждениями."
   },
   "autoDownload": "Автоматически загружать новые обновления",
   "checkForUpdates": "Проверить обновления",
@@ -129,7 +129,7 @@
     "previousPaneDesc": "Перейти к предыдущей панели разделённого вида.",
     "findInChat": "Поиск в чате",
     "findInChatDesc": "Поиск по открытому на экране разговору.",
-    "notSet": "Not set"
+    "notSet": "Не задано"
   },
   "interface": {
     "title": "Интерфейс",
@@ -479,8 +479,8 @@
     "stopServerToEdit": "Остановите сервер, чтобы изменить",
     "trustedHostsInvalid": "Недопустимый хост: {{hosts}}. Укажите хост или хост:порт, например example.com или 192.168.1.5:3000.",
     "trustedHostsUnsaved": "Не сохранено. Enter — сохранить, Escape — отменить.",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "Выполнять инструменты на сервере",
+    "serverToolsDesc": "Запускать инструменты на стороне сервера для чат-эндпоинтов."
   },
   "privacy": {
     "analytics": "Аналитика",
@@ -555,10 +555,10 @@
     "revealLogs": "Показать журналы",
     "factoryResetTitle": "Сброс к заводским настройкам",
     "factoryResetDesc": "Это сбросит все настройки приложения к значениям по умолчанию. Это действие нельзя отменить. Мы рекомендуем это только в случае, если приложение повреждено.",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "Сохранить данные приложения",
+    "keepAppDataDesc": "История чатов и разговоры будут сохранены.",
+    "keepModelsAndConfigs": "Сохранить все модели и конфигурации",
+    "keepModelsAndConfigsDesc": "Загруженные модели, настройки движка и конфигурации MCP будут сохранены.",
     "clearWebData": "Очистить кэшированные данные интерфейса",
     "clearWebDataDesc": "Удаляет кэшированное локальное хранилище и настройки интерфейса, хранимые окном приложения. Интерфейс сбрасывается в состояние по умолчанию.",
     "cancel": "Отмена",
@@ -623,28 +623,28 @@
       "uninstall": "Удалить",
       "uninstalling": "Удаление…",
       "foreignDesc": "Найдено в {{path}}, установлено другой копией Flint. Установите здесь, чтобы использовать CLI этой копии.",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI установлен в {{path}}",
+      "installFailed": "Не удалось установить",
+      "uninstalledToast": "Flint CLI удалён",
+      "uninstallFailed": "Не удалось удалить"
     },
     "startupGroup": "Запуск и трей",
     "cliGroup": "Командная строка",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "Не давать компьютеру засыпать во время запусков",
+    "keepAwakeDesc": "Не даёт Windows уходить в спящий режим, пока работает агент. Экран всё равно может отключиться.",
+    "siteIcons": "Загружать значки сайтов",
+    "siteIconsDesc": "Показывает собственный значок каждого сайта рядом с его названием в результатах поиска и цитатах. Загрузка значка сообщает сайту, что вы его просматривали. Если выключено, показывается буква.",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "Введите токен Hugging Face для проверки",
+      "valid": "Токен действителен",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "Ваш токен Hugging Face действителен.",
+      "invalid": "Токен недействителен",
+      "invalidDesc": "Указанный токен Hugging Face недействителен. Проверьте токен и повторите попытку.",
+      "timedOut": "Время проверки истекло",
+      "timedOutDesc": "Время ожидания запроса проверки истекло. Проверьте подключение к сети и повторите попытку.",
+      "failed": "Проверка не удалась",
+      "failedDesc": "При проверке токена произошла сетевая ошибка. Проверьте подключение к интернету."
     }
   },
   "extensions": {
@@ -1497,7 +1497,7 @@
       "settleFailed": "Не удалось разрешить конфликт",
       "forgotten": "Воспоминание забыто",
       "forgetFailed": "Не удалось забыть воспоминание",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "Не удалось восстановить эту запись памяти",
       "changeFailed": "Не удалось изменить воспоминание",
       "updated": "Воспоминание обновлено",
       "updateFailed": "Не удалось обновить воспоминание",
@@ -1650,15 +1650,15 @@
     "title": "По умолчанию"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "Использование по элементам",
+    "description": "Вызовы и токены субагентов за последние {{window}} по журналам сессий.",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "В этом периоде ничего не записано.",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "Серверы MCP",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "Настроено, но ни разу не использовалось",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

@@ -69,9 +69,9 @@ describe('switching a chat to a model that does not support effort', () => {
 
     expect(supportedEffortLevels('mistral', plainModel())).toEqual([])
     expect(supportsEffort('mistral', plainModel())).toBe(false)
-    // …and for a provider that reasons but ignores the level.
-    expect(supportsEffort('anthropic', adaptiveModel())).toBe(false)
-    expect(supportsEffort('google', model('gemini-3-pro', {}))).toBe(false)
+    // …and for a model of a reasoning provider with no effort row.
+    expect(supportsEffort('anthropic', model('claude-haiku-5-5', {}))).toBe(false)
+    expect(supportsEffort('google', model('gemini-1.5-pro', {}))).toBe(false)
   })
 
   it('sends no effort to a provider that would not honour one', () => {

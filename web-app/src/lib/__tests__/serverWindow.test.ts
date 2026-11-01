@@ -164,6 +164,18 @@ describe('reading a server window', () => {
       expect(parseModelsWindow(list, 'swift15-qwen3.8-27b')).toBe(262144)
     })
 
+    it("reads llama-server's meta.n_ctx, not the trained n_ctx_train", () => {
+      expect(
+        parseModelsWindow(
+          { data: [{ id: 'ds', meta: { n_ctx: 32768, n_ctx_train: 163840 } }] },
+          'ds'
+        )
+      ).toBe(32768)
+      expect(
+        parseModelsWindow({ data: [{ id: 'ds', meta: { n_ctx_train: 163840 } }] }, 'ds')
+      ).toBeNull()
+    })
+
     it('names no window for a model it does not list, among several', () => {
       expect(parseModelsWindow(list, 'pxa-qwen3.8-27b')).toBeNull()
       expect(parseModelsWindow({ data: [] }, 'x')).toBeNull()

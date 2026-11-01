@@ -192,10 +192,15 @@ export function groupsToOffer(input: OfferInput): ToolGroupId[] {
     ...history.flatMap(calledToolNames).map((n) => groupOf(n)),
     ...enabledGroups(history),
   ])
+  // A request that names a tool outright ("run the tests with host_build")
+  // gets its group (RQA-006): `\bbuild\b` does not match inside `host_build`,
+  // so the model was told the tool did not exist.
+  const words = new Set(userText.toLowerCase().match(/[a-z0-9_]+/g) ?? [])
   return GROUP_IDS.filter(
     (id) =>
       used.has(id) ||
       TOOL_GROUPS[id].trigger.test(userText) ||
+      TOOL_GROUPS[id].tools.some((name) => words.has(name)) ||
       (id === 'messaging' && input.fromSession === true)
   )
 }

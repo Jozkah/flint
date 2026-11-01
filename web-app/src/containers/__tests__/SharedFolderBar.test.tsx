@@ -121,6 +121,21 @@ describe('SharedFolderBar', () => {
     expect(screen.queryByTestId('shared-folder-bar')).toBeNull()
   })
 
+  it('counts only running sessions as working, idle ones as open', () => {
+    const mixed = view({
+      others: [peer('a'), peer('b', { status: 'idle' }), peer('c', { status: 'idle' })],
+    })
+    expect(summarizeShared(mixed, t).text).toBe(
+      'common:sharedFolder.others {"count":1}'
+    )
+    const idle = view({
+      others: [peer('b', { status: 'idle' }), peer('c', { status: 'idle' })],
+    })
+    expect(summarizeShared(idle, t).text).toBe(
+      'common:sharedFolder.othersIdle {"count":2}'
+    )
+  })
+
   it('shows one quiet row with the count and the names', async () => {
     await mount(view({ others: [peer('a'), peer('b')] }))
     const bar = screen.getByTestId('shared-folder-bar')

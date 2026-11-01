@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Esegui ciascuna, fino a 5",
     "enabled": "Attiva",
     "save": "Salva attività",
-    "saving": "Salvataggio"
+    "saving": "Salvataggio",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Questa attività è disattivata, quindi non verrà eseguita finché non la attivi.",

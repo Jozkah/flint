@@ -275,13 +275,13 @@
   "autoApproveServerHint": "Aprova automaticamente apenas as ferramentas deste servidor. A chave para todas as ferramentas MCP fica em Configurações > Permissões.",
   "allowAllMoved": "A chave que permite executar todas as ferramentas MCP sem perguntar fica em Configurações > Permissões.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} precisa da sua intervenção",
+    "urlTitle": "{{server}} quer abrir uma página",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Os campos ocultos vão apenas para {{server}}. Eles não aparecem no chat.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Abrir página"
   }
 }

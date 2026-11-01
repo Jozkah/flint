@@ -109,6 +109,7 @@
     "runId": "运行 {{id}}",
     "turnId": "轮次 {{id}}",
     "snapshotId": "快照 {{id}}",
-    "noRequests": "尚无已记录的请求"
+    "noRequests": "尚无已记录的请求",
+    "id": "ID"
   }
 }

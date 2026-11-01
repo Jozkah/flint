@@ -125,6 +125,8 @@
     "reasoningOff": "Off",
     "reasoningEffort": "Reasoning effort",
     "reasoningEffortDefault": "Default",
+    "roomEffort": "Effort for all models",
+    "roomEffortHint": "Used by every model that takes an effort, unless its own setting overrides it.",
     "thinkingBudget": "Thinking Budget",
     "thinkingBudgetHint": "A share of the model's context, worked out when the turn is sent and capped so the reply still fits.",
     "pricing": "Pricing (optional)",

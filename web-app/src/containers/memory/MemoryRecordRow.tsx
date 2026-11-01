@@ -46,7 +46,7 @@ export function MemoryRecordRow({ memory, busy, onTogglePin, onEdit, onForget }:
             {t('uiLeftovers:memory.why')}
           </summary>
           <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-muted p-2 text-fg-2 sm:grid-cols-[auto_1fr]">
-            <dt>ID</dt>
+            <dt>{t('uiLeftovers:memory.id')}</dt>
             <dd className="font-mono break-all">{memory.id}</dd>
             <dt>{t('uiLeftovers:scope')}</dt>
             <dd>{memory.scope}</dd>
