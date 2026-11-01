@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. Folder grup ditambahkan ke konteks folder; akses tetap perlu disetujui",
       "foldersAdded": "{{base}}. Folder item ditambahkan ke grup"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Grup tanpa judul",
+    "folderNotInspected": "Folder tidak dapat diperiksa"
   },
   "htmlArtifact": {
     "code": "Kode",
@@ -143,7 +143,7 @@
   "modelProviders": "Penyedia Model",
   "localProviders": "Lokal",
   "remoteProviders": "Jarak Jauh",
-  "manageProviders": "Manage providers",
+  "manageProviders": "Kelola penyedia",
   "hiddenProviders": "{{count}} disabled",
   "hideProvider": "Sembunyikan provider",
   "showProvider": "Tampilkan provider",
@@ -332,7 +332,7 @@
       "threads": "Percakapan"
     },
     "openItem": "Buka {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "Buka Studio"
   },
   "searchGroup": {
     "pages": "Halaman",
@@ -377,6 +377,7 @@
   },
   "sharedFolder": {
     "others_other": "{{count}} sesi lain sedang bekerja di folder ini",
+    "othersIdle_other": "{{count}} sesi lain terbuka di folder ini, tidak aktif",
     "waitingApproval_other": "{{count}} sesi lain menunggu persetujuan",
     "waitingApprovalOne": "Menunggu persetujuan",
     "holdEdit": "{{owner}} sedang mengedit {{target}}: {{session}} diminta mengirim pesan kepadanya",
@@ -672,7 +673,7 @@
       "pairedHint": "Model ini dapat menerima masukan gambar. Proyektor dipilih saat model diimpor; impor ulang model untuk memakai proyektor yang berbeda.",
       "noneHint": "Tanpa proyektor visi, model ini tidak dapat membaca gambar. Impor ulang model dengan Multimodal diaktifkan dan pilih file mmproj-nya; proyektor di samping file model ditemukan secara otomatis."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "Auto-fit sedang memilih lapisan GPU. Matikan Auto-fit untuk mengaturnya secara manual.",
     "samplingDefaults": {
       "title": "Parameter sampling default",
       "description": "Pengaturan sampler default untuk model ini. Dipakai kecuali ditimpa oleh nilai per asisten atau per permintaan."
@@ -885,8 +886,8 @@
         "failed": "Gagal mengambil halaman: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "Tidak dapat memuat file proyek ini.",
+    "retryLoad": "Coba lagi"
   },
   "attachmentsIngestion": {
     "title": "Pilih cara menyerap lampiran",
@@ -1050,11 +1051,11 @@
     "chunksCount": "{{count}} potongan"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp masih sibuk",
+    "description": "Satu atau beberapa model tidak dibongkar tepat waktu. Paksa keluar akan menghentikan llama.cpp dan dapat menginterupsi respons yang sedang berjalan.",
+    "forceQuit": "Paksa keluar",
+    "forcing": "Memaksa keluar…",
+    "shuttingDown": "Mematikan…"
   },
   "duration": {
     "seconds": "{{count}} dtk",
@@ -1080,8 +1081,8 @@
     "thisChat": "Obrolan ini",
     "thisRoom": "Ruang ini",
     "thisSession": "Sesi ini",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "Kunci API belum ada",
+    "keyMissingDescription": "{{subject}} memakai penyedia yang belum memiliki kunci API. Tambahkan kunci di Pengaturan, atau pilih model lain untuk melanjutkan."
   },
   "skillsUsedCount_other": "Memakai {{count}} skill",
   "artifactsAll": "Semua",
@@ -1139,8 +1140,8 @@
     "alsoAttached": "Juga dilampirkan",
     "addFolder": "Tambah folder lain",
     "removeFolder": "Hapus {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "Jadikan {{folder}} hanya-baca",
+    "makeEditable": "Jadikan {{folder}} dapat diedit",
     "readOnly": "hanya-baca",
     "editable": "dapat diedit",
     "inWorktree": "melalui worktree",
@@ -1148,8 +1149,8 @@
     "footnoteWorktree": "Flint mengubah git worktree dari folder ini, tidak pernah folder itu sendiri.",
     "writesFolder": "Folder yang dilampirkan",
     "writesFolderNote": "Editan langsung masuk ke folder yang ditandai dapat diedit.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Folder yang ditandai dapat diedit",
+    "writesExtrasNote": "Folder utama tetap hanya-baca; pengeditan hanya masuk ke folder lain yang ditandai dapat diedit.",
     "writesWorktree": "Worktree sesi",
     "writesWorktreeNote": "Editan masuk ke git worktree untuk Anda tinjau dan gabungkan.",
     "footnote": "Agen hanya membaca folder ini. Tidak ada isinya yang pernah diubah.",
@@ -1231,10 +1232,10 @@
     "compactFailed": "Belum ada yang perlu dipadatkan.",
     "newSession": "Sesi baru",
     "compactSuperseded": "Percakapan berubah saat sedang dipadatkan, jadi tidak ada yang diganti. Padatkan lagi.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "Pemadatan gagal: {{reason}}. Percakapan Anda tidak berubah.",
+    "compactDone": "Dipadatkan. Ringkasan ditulis oleh {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "Percakapan sudah berlanjut, sehingga pemadatan tidak dapat lagi dibatalkan.",
     "btwFailed": "Tidak dapat menjawab pertanyaan sampingan."
   },
   "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks, dan {{model}} tidak memilikinya yang dapat ditemukan Flint. Atur Max Context Tokens untuk model ini agar obrolan panjang dipadatkan sebelum penuh. Jika provider menolak permintaan karena panjangnya, Flint memadatkan dan mencoba sekali lagi.",
@@ -1261,8 +1262,8 @@
     "interruptedNoReply_other": "{{calls}} langkah selesai dipertahankan.",
     "interruptedContinue": "Lanjutkan",
     "interruptedDiscard": "Buang balasan yang belum selesai dan lanjutkan",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Selama Anda pergi:",
+    "recapDismiss": "Tutup rekap"
   },
   "modelNoTools": "{{model}} tidak dapat memanggil alat, jadi tidak dapat bertindak sebagai agen. Pilih model yang dapat memanggil alat.",
   "sessionModelUnavailable": "{{model}} tidak lagi tersedia. Pilih model lain di menu model.",
@@ -1374,7 +1375,7 @@
     "chooseAgainAction": "Pilih lagi",
     "externalGone": "File ini dibuka dari luar proyek, dan aksesnya tidak bertahan. Pilih lagi untuk membukanya kembali.",
     "oneFolderAtATime": "Hanya satu folder dalam satu waktu. \"{{name}}\" tidak ditambahkan.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "Tidak dapat membuka {{name}}."
   },
   "settingsSearch": {
     "label": "Cari pengaturan",
@@ -2116,29 +2117,29 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Pemadatan konteks",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Pekerjaan latar belakang",
+      "tokenUsage": "Penggunaan token",
+      "fellBack": "Penyedia beralih",
+      "fellBackDetail": "{{from}} tidak menjawab; mencoba {{to}}",
+      "theModel": "model",
+      "nextProvider": "penyedia berikutnya",
+      "requestFailed": "Permintaan gagal",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "reasoningCharacters_one": "{{count}} karakter penalaran",
+      "reasoningCharacters_other": "{{count}} karakter penalaran",
+      "toolCalls_one": "{{count}} panggilan alat",
+      "toolCalls_other": "{{count}} panggilan alat",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Proses dimulai",
+      "runEnded": "Proses berakhir",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Agen berakhir",
+      "jobStarted": "Pekerjaan latar belakang dimulai",
+      "jobEnded": "Pekerjaan latar belakang berakhir"
     }
   },
   "appRail": {
@@ -2320,15 +2321,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Browser agen",
+    "note": "Tampilan hanya-baca dari browser sementara milik agen. Pratinjau Flint tidak digunakan.",
+    "lastAction": "Tindakan terakhir: {{action}}",
+    "screenshotAlt": "Halaman di browser agen",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Sembunyikan browser agen",
+    "tabs": "Tab browser agen",
+    "waiting": "Menunggu gambar pertama halaman…"
   },
   "browserVerify": {
     "title": "Verifikasi di browser",
@@ -2364,23 +2365,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Model keputusan",
+    "backendLabel": "Siapa yang menjawab",
+    "backendExplained": "Jev (TypeSafe) adalah default. Atau pilih model terbuka yang sudah Anda miliki di Flint: model llama.cpp atau MLX lokal, atau penyedia kompatibel OpenAI apa pun, termasuk model open-weight yang di-host sendiri. Model ini menjawab pilihan terbatas yang sama; apa pun yang bukan persis salah satunya diabaikan dan Flint yang memutuskan.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Model terbuka",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Model keputusan bertipe kecil seperti Von, Laya, Kev, atau Rizzo Flow: tambahkan endpoint kompatibel OpenAI model tersebut sebagai penyedia (atau muat secara lokal), lalu pilih di bawah.",
+    "backendPresetMissing": "{{name}} belum dikonfigurasi. Tambahkan endpoint kompatibel OpenAI-nya sebagai penyedia, atau muat secara lokal, lalu pilih di bawah. Sampai saat itu Jev yang digunakan.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Pilih model",
+    "backendModelSearch": "Cari model",
+    "backendModelEmpty": "Tidak ada model tersedia. Tambahkan penyedia atau muat model lokal terlebih dahulu.",
+    "backendModelEmptySearch": "Tidak ada model yang cocok dengan \"{{query}}\"",
+    "backendNoModel": "Belum ada model dipilih: Jev digunakan sampai Anda memilih satu.",
+    "backendLocal": "Berjalan di komputer ini atau jaringan lokal Anda: teks keputusan tidak dikirim ke TypeSafe atau layanan cloud mana pun.",
+    "backendRemote": "Teks yang sama yang tercantum di bawah untuk setiap opsi dikirim ke {{provider}}, bukan ke TypeSafe.",
     "automationTitle": "Pilihan otomatis",
     "routeToggle": "Arahkan ke asisten yang tepat",
     "routeExplained": "Saat Saran skill Aktif, Jev dapat memindahkan percakapan yang masih memakai Flint ke Quartz, Coal, Blaze, atau Redstone untuk setiap pesan baru. Saat mati, asisten yang Anda pilih tetap dipakai untuk setiap pesan. Asisten yang Anda pilih sendiri tidak pernah diubah dalam kedua kasus.",
@@ -2474,9 +2475,9 @@
   "coworkParallel": {
     "settingTitle": "Sesi baru di folder Git bekerja di worktree sendiri",
     "settingDescription": "Setiap sesi baru di repositori Git mendapat worktree dan branch sendiri (flint/<title>), sehingga banyak sesi dapat bekerja di satu folder sekaligus tanpa saling mengganggu atau menyentuh checkout Anda. Tinjau, gabungkan, atau buang setiap branch dari sesi.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Mulai worktree dari cabang saya saat ini",
+    "baseDescription": "Mati (default): worktree baru dimulai dari cabang default repositori. Hidup: dimulai dari commit yang sedang Anda checkout, sehingga membawa commit yang belum Anda push. Cabang yang diberikan secara eksplisit (misalnya oleh agen) selalu diutamakan.",
+    "resumeGone": "Worktree sesi ini tidak dapat dimasuki kembali ({{reason}}), sehingga kembali ke mode tinjau saja. Tidak ada yang dibuat ulang.",
     "branchTitle": "Sesi ini bekerja di branch {{branch}}, di worktree sendiri",
     "basedOn": "dari {{base}}",
     "openFolder": "Buka folder",
@@ -2549,12 +2550,12 @@
     "noneForProvider": "Tidak ada parameter yang dapat diatur untuk penyedia ini.",
     "maybeUnsupported": "Mungkin tidak didukung oleh {{providers}}",
     "modelReports": "Model: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "Tidak ada penimpaan — memakai default model.",
+    "unrecognized_one": "{{count}} parameter tidak dikenal disembunyikan: {{keys}}",
+    "unrecognized_other": "{{count}} parameter tidak dikenal disembunyikan: {{keys}}",
+    "notSupportedStripped": "Tidak didukung — akan dihapus saat dikirim",
+    "mayBeIgnored": "Mungkin diabaikan oleh penyedia ini",
+    "notSupportedSkipped": "Tidak didukung — akan dilewati.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2574,72 +2575,72 @@
     "chooseNote": "Tidak ada yang disalin sampai Anda mengonfirmasi. Data JAN tidak pernah diubah atau dihapus.",
     "copyDescription": "Menyalin percakapan, pengaturan, dan kunci penyedia JAN Anda ke Flint, untuk item yang dicentang di bawah. JAN sendiri tidak pernah diubah atau dihapus.",
     "freshDescription": "Memulai Flint dalam keadaan kosong. Tidak ada yang dibaca atau disalin dari JAN, termasuk kunci penyedianya, sekarang maupun pada peluncuran berikutnya. Anda tetap bisa mengimpor dari Pengaturan, Folder data.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "Migrasi dari JAN",
+    "descriptionNoLegacy": "Bawa data JAN Anda yang ada ke Flint.",
+    "descriptionFound": "Flint menemukan instalasi JAN yang ada. Pilih cara memindahkan data Anda.",
+    "detecting": "Mencari instalasi JAN yang ada…",
+    "noData": "Tidak ada data JAN di komputer ini. Tidak ada yang perlu dimigrasikan — Anda dapat langsung mulai memakai Flint.",
+    "foundAt": "Data JAN ditemukan di {{path}} ({{size}}).",
+    "whatToBring": "Apa yang dibawa",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Jika item sudah ada di Flint",
+    "conflictAria": "Penyelesaian konflik",
+    "resolveAria": "Selesaikan konflik",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Salin ke Flint"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "Pakai ulang data JAN",
+        "description": "Arahkan Flint ke data JAN Anda yang ada di tempatnya, tanpa menyalinnya."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Pindahkan ke Flint",
+        "description": "Salin ke Flint, lalu hapus sumber JAN setelah semua item berhasil. Cadangan disimpan agar Anda dapat memulihkannya."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Mulai dari awal"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Percakapan & asisten",
+      "models": "Model & engine yang diunduh",
+      "configs": "File konfigurasi",
+      "settings": "Pengaturan & kredensial penyedia",
+      "common": "Ekstensi, log & cache",
+      "agent": "Ruang kerja agen & ruang obrolan"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Pertahankan item Flint yang ada",
+      "use_jan": "Timpa dengan item JAN",
+      "keep_both": "Pertahankan keduanya (salinan JAN diberi akhiran)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "Data JAN melaporkan skema yang tidak sepenuhnya didukung oleh build Flint ini. Tinjau peringatan sebelum melanjutkan.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Perkiraan ukuran",
+    "reusePath": "Jalur pakai ulang",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Salinan Flint lebih baru (dipertahankan)",
+    "running": "Memigrasikan data Anda… jangan tutup Flint.",
+    "complete": "Migrasi selesai.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "Cadangan data JAN Anda disimpan di {{path}}.",
+    "restartNeeded": "Mulai ulang Flint untuk mulai memakai data ini.",
+    "reuseInPlace": "Flint sekarang memakai data JAN Anda di tempatnya di {{path}}.",
+    "failed": "Migrasi tidak selesai.",
+    "unknownError": "Terjadi kesalahan yang tidak diketahui.",
+    "rolledBackNote": "Data Anda dikembalikan ke keadaan sebelumnya.",
+    "quarantined": "Data parsial dikarantina di {{path}}.",
+    "notNow": "Nanti saja",
+    "dontAskAgain": "Jangan tanya lagi",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Mulai dari awal",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2886,27 +2887,27 @@
     "openProvider": "Buka pengaturan penyedia",
     "errorDetails": "Detail",
     "pasteHint": "Akses papan klip diblokir. Klik kotak teks lalu tekan {{keys}}.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Teks yang panjang mungkin tidak muat di model. Pecah teks jika terjemahan gagal atau berhenti lebih awal.",
     "swapNeedsSource": "Pilih bahasa sumber untuk menukar"
   },
   "markdownImage": {
     "load": "Muat gambar dari {{host}}"
   },
   "messageSaveFailed": "Pesan tidak dapat disimpan. Pesan bisa hilang setelah dimulai ulang.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "Tidak dapat menyimpan rahasia ke keyring sistem. Perubahan dibatalkan.",
+  "keptChat": "Obrolan dipertahankan",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "Video Anda sudah siap",
+    "imageReady": "Gambar Anda sudah siap",
+    "stoppedWaiting": "Berhenti menunggu. {{provider}} mungkin masih merender, dan permintaan baru dapat ditolak sampai selesai.",
+    "providerFallback": "Penyedia",
+    "pictureInChat": "Gambar itu dipakai di sebuah obrolan. Obrolan tidak lagi dapat melihat atau mengeditnya."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Log Aplikasi - Flint",
+    "systemMonitor": "Monitor Sistem - Flint",
+    "localApiServerLogs": "Log Server API Lokal - Flint"
   },
   "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan.",
   "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim",
@@ -3193,89 +3194,89 @@
   "chatRules": "Aturan",
   "chatRuleForThisChat": "Gunakan aturan ini di obrolan ini",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Serahkan ke komputer lain…",
+    "saved": "Serah terima disimpan. {{count}} kredensial tidak disertakan, dan folder hanya disebut namanya, bukan lokasinya.",
+    "failed": "Serah terima tidak dapat disimpan: {{message}}",
+    "label": "Diserahkan dari komputer lain",
+    "title": "Sesi ini diserahkan dari komputer lain.",
+    "checkFailed": "Folder terlampir tidak dapat diperiksa: {{error}}",
+    "folderMatches": "Folder terlampir cocok dengan folder tempat sesi bekerja ({{name}}).",
+    "folderDiffers": "Folder terlampir bukan folder tempat sesi bekerja: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "cabang {{branch}} pada commit {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Sesi ini bekerja di folder bernama {{name}}. Lampirkan folder itu di komputer ini untuk melanjutkan.",
+      "folderAt": "Sesi ini bekerja di folder bernama {{name}} ({{at}}). Lampirkan folder itu di komputer ini untuk melanjutkan.",
+      "provider": "Penyedia {{provider}} belum disiapkan di komputer ini, sehingga model sesi tidak dapat digunakan. Pilih model lain untuk melanjutkan.",
+      "model": "Model {{id}} tidak tersedia dari {{provider}} di komputer ini. Pilih model lain untuk melanjutkan."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "namanya {{actual}}, bukan {{expected}}",
+      "branch": "berada di cabang {{actual}}, bukan {{expected}}",
+      "noBranch": "tidak berada di cabang mana pun, bukan {{expected}}",
+      "head": "berada di commit {{actual}}, bukan {{expected}}",
+      "noHead": "tidak berada di commit mana pun, bukan {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "Gambar ini tidak dapat dimuat.",
+  "attachedImage": "Gambar terlampir {{n}}",
+  "saveChanges": "Simpan perubahan",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "Memuat model…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Gagal setelah"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Pencarian Web",
+    "embeddings": "Model Embedding (untuk RAG/vektor, bukan obrolan)",
+    "raw_completion": "Penyelesaian mentah (melanjutkan teks Anda, tanpa obrolan atau alat)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Ganti asisten ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Rekayasa balik",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "file yang sama",
+      "nested": "folder dan sesuatu di dalamnya",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "file yang dibuat ulang"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "Apa yang boleh diubah {{id}} (pisahkan dengan koma)",
+    "bothChange": "{{a}} dan {{b}} sama-sama akan mengubah:",
+    "legend": "Apa yang harus dilakukan terhadap {{a}} dan {{b}}",
+    "serializeAb": "Jalankan {{a}} dahulu, lalu {{b}}",
+    "serializeBa": "Jalankan {{b}} dahulu, lalu {{a}}",
+    "revise": "Ubah apa yang boleh diubah {{id}}",
+    "parallel": "Tetap jalankan bersamaan (dicatat; setiap perubahan tetap ditinjau dan diperiksa sebelum diterapkan)",
+    "region": "Tugas tim yang tumpang tindih",
+    "headline": "Tugas-tugas ini akan mengubah jalur yang sama tanpa urutan apa pun. Belum ada yang dijalankan.",
+    "caveat": "Dibandingkan berdasarkan jalur yang dinyatakan setiap tugas, bukan dengan membaca kode: tidak ada tumpang tindih di sini bukan berarti perubahannya cocok satu sama lain.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "Jangan jalankan tugas ini"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "toggleSnippet": "Tampilkan/sembunyikan cuplikan",
+    "documents_one": "{{count}} kutipan dokumen",
+    "documents_other": "{{count}} kutipan dokumen",
+    "web_one": "{{count}} sumber web",
+    "web_other": "{{count}} sumber web",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "Hanya sebagian dari {{files}} yang muat dalam satu pesan.",
+    "readFailed": "Tidak dapat membaca {{name}}: {{error}}",
+    "remoteImagesOnly": "Hanya gambar yang dapat dikirim ke sesi server; hapus file media lainnya."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3284,37 +3285,37 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "filesChanged_one": "{{count}} file diubah",
+    "filesChanged_other": "{{count}} file diubah",
+    "mediaFiles_one": "{{count}} file media",
+    "mediaFiles_other": "{{count}} file media",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "Tidak ada model yang dipilih untuk sesi ini.",
+    "toolsFailed": "Panggilan alat gagal dalam pengujian model ini pada {{date}}.",
+    "toolsFailedDetail": "Panggilan alat gagal dalam pengujian model ini pada {{date}}: {{detail}}.",
+    "noToolSupport": "Model yang dipilih tidak dapat memanggil alat, jadi Cowork hanya dapat mengobrol dengannya.",
+    "modelToolsWorked": "Model dipilih. Panggilan alat berhasil dalam pengujian pada {{date}}; itu hanya satu uji coba, bukan jaminan untuk setiap tugas.",
+    "modelSelected": "Model dipilih. Apakah penyedia menjawab diperiksa saat proses dimulai.",
+    "contextWindow": "Jendela konteks: {{tokens}} token.",
+    "contextUnknown": "Jendela konteks model ini tidak ditemukan, jadi Flint tidak dapat memperingatkan sebelum penuh.",
+    "mcpOffered_one": "{{count}} server MCP dari Pengaturan ditawarkan ke proses Cowork dan terhubung saat pesan dikirim.",
+    "mcpOffered_other": "{{count}} server MCP dari Pengaturan ditawarkan ke proses Cowork dan terhubung saat pesan dikirim.",
+    "mcpNone": "Tidak ada server MCP yang dikonfigurasi.",
+    "localReady": "Runtime lokal dimulai saat proses membutuhkan model.",
+    "localAbsent": "Model yang dipilih tidak dijalankan secara lokal."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Menyimpan memori",
+    "readingMemory": "Membaca memori",
+    "readingSkill": "Membaca skill",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Skill digunakan",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} subagen bekerja",
+    "subagentsWorking_other": "{{count}} subagen bekerja",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3335,20 +3336,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Sesi dengan id ini sudah ada",
+    "assistantExists": "Asisten dengan id ini sudah ada"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Deskripsikan proyek ini",
+    "continue": "Lanjutkan draf FLINT.md",
+    "description": "Flint membaca manifes dan tata letak folder dan tidak menjalankan apa pun. Edit deskripsinya; deskripsi baru menjadi FLINT.md folder hanya setelah Anda menerimanya.",
+    "surveying": "Menyurvei folder…",
+    "surveyed": "Menyurvei {{seen}} file dan membaca {{read}}. Belum ada yang ditulis.",
+    "wrote": "FLINT.md ditulis",
+    "discarded": "Draf dibuang. Tidak ada yang ditulis.",
+    "notRead": "Yang tidak dibaca survei",
+    "discard": "Buang draf",
+    "resurvey": "Survei ulang",
+    "accept": "Terima dan tulis FLINT.md"
   }
 }

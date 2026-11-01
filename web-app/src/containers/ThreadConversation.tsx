@@ -3476,7 +3476,7 @@ export function ThreadConversation({
                 status === CHAT_STATUS.SUBMITTED && (
                 <div className="flex flex-row items-center gap-2">
                   {pendingContinueMessage && (
-                    <Shimmer duration={1}>Growing the Mind...</Shimmer>
+                    <Shimmer duration={1}>{t('chat:growingTheMind')}</Shimmer>
                   )}
                   {!pendingContinueMessage && !lastIsAssistant && (
                     <PromptProgress status={modelWaitStatus()} />

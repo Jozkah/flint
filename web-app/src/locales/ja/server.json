@@ -25,40 +25,40 @@
   "limitsTitle": "実行される場所",
   "limits": "チャット、ルーム、モデル、ツールはサーバー上で動作します。Cowork セッションとキャンペーンには、Flint を開いているコンピューター上で動くエージェントが必要です。リモートアクセスとモバイルアプリからそのコンピューターに接続してください。ヘッドレスのサーバーではキャンペーンの一覧表示と提案のレビューはできますが、セッションは実行されません。",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "開始するにはこのプランを承認してください",
+    "summary_one": "{{count}} 件のタスク。サーバーはクライアントを接続せずに自律的に実行し、フォルダーに何かが反映される前に再度確認します。",
+    "summary_other": "{{count}} 件のタスク。サーバーはクライアントを接続せずに自律的に実行し、フォルダーに何かが反映される前に再度確認します。",
+    "cost": "おおよそのコスト:{{low}} ~ {{high}} トークン。",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "タスクの動作",
+    "accessWorktree": "専用フォルダー内で自律的に作業",
+    "accessAsk": "操作ごとに確認",
+    "approve": "承認して開始",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "プランが承認されませんでした"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "フォルダーが見つかりません",
+      "corrupt": "もう worktree ではありません",
+      "branchMoved": "ブランチが移動しました",
+      "identityChanged": "リポジトリが変更されました"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "マージされませんでした:{{files}} で競合があります。何も変更されていません。",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "{{target}} にマージしました(fast-forward)。",
+    "merged": "{{target}} にマージしました。",
+    "discarded": "破棄しました。このセッションは worktree なしでは続行できません。",
+    "counts": "未コミット {{pending}} 件、マージ待ち {{unmerged}} 件",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "{{base}} にマージ",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "チェックアウトとそのブランチを削除します。未コミットのファイル {{pending}} 件と未マージのコミット {{unmerged}} 件が含まれます。",
+    "discardAnyway": "それでも破棄",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "変更は提案されませんでした:{{error}}",
+    "filesChanged": "{{count}} 個のファイルが変更されました:{{files}}{{more}}"
   }
 }

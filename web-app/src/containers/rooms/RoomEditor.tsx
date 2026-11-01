@@ -47,7 +47,7 @@ export function RoomEditor({ room }: { room: Room }) {
   const [draft, dispatch] = useReducer(roomDraftReducer, room, (r) =>
     draftFromRoom(r, activeParticipants(r))
   )
-  const { title, objective, mode, compareRun, moderator, limits, budget, participants } = draft
+  const { title, objective, mode, compareRun, reasoningEffort, moderator, limits, budget, participants } = draft
   const field =
     <K extends DraftField>(key: K) =>
     (value: RoomDraft[K]) =>
@@ -56,6 +56,7 @@ export function RoomEditor({ room }: { room: Room }) {
   const setObjective = field('objective')
   const setMode = field('mode')
   const setCompareRun = field('compareRun')
+  const setReasoningEffort = field('reasoningEffort')
   const setModerator = field('moderator')
   const setLimits = field('limits')
   const setBudget = field('budget')
@@ -171,6 +172,7 @@ export function RoomEditor({ room }: { room: Room }) {
         objective: objective.trim(),
         mode,
         ...(mode === 'compare' ? { compareRun } : {}),
+        reasoningEffort,
         moderator: { ...moderator, name: moderator.name.trim() },
         limits: limitsFromDraft(limits),
         toolBudget: budgetFromDraft(budget),
@@ -409,12 +411,14 @@ export function RoomEditor({ room }: { room: Room }) {
               room={room}
               mode={mode}
               compareRun={compareRun}
+              reasoningEffort={reasoningEffort}
               moderator={moderator}
               participants={participants}
               visibleErrors={visibleErrors}
               disabled={disabled}
               onMode={edit(setMode)}
               onCompareRun={edit(setCompareRun)}
+              onReasoningEffort={edit(setReasoningEffort)}
               onModerator={edit(setModerator)}
             />
 

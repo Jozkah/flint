@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. Le cartelle del gruppo sono state aggiunte al contesto delle cartelle; l'accesso richiede ancora approvazione",
       "foldersAdded": "{{base}}. Le cartelle dell'elemento sono state aggiunte al gruppo"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Gruppo senza titolo",
+    "folderNotInspected": "Impossibile ispezionare la cartella"
   },
   "htmlArtifact": {
     "code": "Codice",
@@ -336,7 +336,7 @@
       "threads": "Conversazioni"
     },
     "openItem": "Apri {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "Apri Studio"
   },
   "searchGroup": {
     "pages": "Pagine",
@@ -383,6 +383,9 @@
     "others_one": "{{count}} altra sessione lavora in questa cartella",
     "others_other": "{{count}} altre sessioni lavorano in questa cartella",
     "others_many": "{{count}} altre sessioni lavorano in questa cartella",
+    "othersIdle_one": "{{count}} altra sessione aperta in questa cartella, inattiva",
+    "othersIdle_other": "{{count}} altre sessioni aperte in questa cartella, inattive",
+    "othersIdle_many": "{{count}} altre sessioni aperte in questa cartella, inattive",
     "waitingApproval_one": "{{count}} altra sessione attende l’approvazione",
     "waitingApproval_other": "{{count}} altre sessioni attendono l’approvazione",
     "waitingApproval_many": "{{count}} altre sessioni attendono l’approvazione",
@@ -686,7 +689,7 @@
       "pairedHint": "Questo modello accetta immagini in ingresso. Il proiettore viene scelto all'importazione del modello; importalo di nuovo per usarne uno diverso.",
       "noneHint": "Senza un proiettore di visione questo modello non può leggere le immagini. Importa di nuovo il modello con Multimodale attivo e scegli il suo file mmproj; un proiettore accanto al file del modello viene trovato automaticamente."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "Auto-fit sta scegliendo i livelli GPU. Disattiva Auto-fit per impostarli manualmente.",
     "samplingDefaults": {
       "title": "Parametri di campionamento predefiniti",
       "description": "Impostazioni predefinite del campionatore per questo modello. Usate a meno che non siano sovrascritte da valori per assistente o per richiesta."
@@ -897,8 +900,8 @@
         "failed": "Impossibile scaricare la pagina: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "Impossibile caricare i file di questo progetto.",
+    "retryLoad": "Riprova"
   },
   "attachmentsIngestion": {
     "title": "Scegli come elaborare gli allegati",
@@ -1094,8 +1097,8 @@
     "thisChat": "Questa chat",
     "thisRoom": "Questa stanza",
     "thisSession": "Questa sessione",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "Manca una chiave API",
+    "keyMissingDescription": "{{subject}} usa un provider che non ha ancora una chiave API. Aggiungi la chiave nelle Impostazioni o scegli un altro modello per continuare."
   },
   "skillsUsedCount_one": "Ha usato {{count}} skill",
   "skillsUsedCount_other": "Ha usato {{count}} skill",
@@ -1160,8 +1163,8 @@
     "alsoAttached": "Allegate anche",
     "addFolder": "Aggiungi un'altra cartella",
     "removeFolder": "Rimuovi {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "Rendi {{folder}} di sola lettura",
+    "makeEditable": "Rendi {{folder}} modificabile",
     "readOnly": "sola lettura",
     "editable": "modificabile",
     "inWorktree": "tramite worktree",
@@ -1169,8 +1172,8 @@
     "footnoteWorktree": "Flint modifica un worktree Git di questa cartella, mai la cartella stessa.",
     "writesFolder": "Le cartelle allegate",
     "writesFolderNote": "Le modifiche finiscono direttamente nelle cartelle contrassegnate come modificabili.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Le cartelle contrassegnate come modificabili",
+    "writesExtrasNote": "La cartella principale resta di sola lettura; le modifiche vengono scritte solo nelle altre cartelle contrassegnate come modificabili.",
     "writesWorktree": "Worktree della sessione",
     "writesWorktreeNote": "Le modifiche finiscono in un worktree Git da rivedere e unire.",
     "footnote": "L'agente legge soltanto questa cartella. Nulla al suo interno viene mai modificato.",
@@ -1252,10 +1255,10 @@
     "compactFailed": "Ancora niente da compattare.",
     "newSession": "Nuova sessione",
     "compactSuperseded": "La conversazione è cambiata durante la compattazione, quindi non è stato sostituito nulla. Compatta di nuovo.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "Compattazione non riuscita: {{reason}}. La conversazione è invariata.",
+    "compactDone": "Compattato. Riepilogo scritto da {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "Nel frattempo la conversazione è andata avanti, quindi la compattazione non può più essere annullata.",
     "btwFailed": "Impossibile rispondere alla domanda a margine."
   },
   "autoCompactNeedsWindow": "L'auto-compattazione richiede una dimensione del contesto, e {{model}} non ne ha una che Flint riesca a trovare. Imposta Max Context Tokens per questo modello così le chat lunghe vengono compattate prima di riempirlo. Se il provider rifiuta una richiesta per la sua lunghezza, Flint compatta e riprova una volta.",
@@ -1287,8 +1290,8 @@
     "interruptedNoReply_many": "{{calls}} di passaggi completati conservati.",
     "interruptedContinue": "Continua",
     "interruptedDiscard": "Scarta la risposta incompleta e continua",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Mentre eri via:",
+    "recapDismiss": "Chiudi riepilogo"
   },
   "modelNoTools": "{{model}} non può chiamare strumenti, quindi non può fare da agente. Scegli un modello che chiami strumenti.",
   "sessionModelUnavailable": "{{model}} non è più disponibile. Scegli un altro modello dal menu dei modelli.",
@@ -1400,7 +1403,7 @@
     "chooseAgainAction": "Scegli di nuovo",
     "externalGone": "Questo file è stato aperto da fuori dal progetto, e quell'accesso non è sopravvissuto. Sceglilo di nuovo per riaprirlo.",
     "oneFolderAtATime": "Una sola cartella alla volta. «{{name}}» non è stata aggiunta.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "Impossibile aprire {{name}}."
   },
   "settingsSearch": {
     "label": "Cerca nelle impostazioni",
@@ -2185,32 +2188,32 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Compattazione del contesto",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Attività in background",
+      "tokenUsage": "Utilizzo dei token",
+      "fellBack": "Il provider è passato a un altro",
+      "fellBackDetail": "{{from}} non ha risposto; provo con {{to}}",
+      "theModel": "il modello",
+      "nextProvider": "il provider successivo",
+      "requestFailed": "Richiesta non riuscita",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
       "characters_many": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
+      "reasoningCharacters_one": "{{count}} carattere di ragionamento",
+      "reasoningCharacters_other": "{{count}} caratteri di ragionamento",
       "reasoningCharacters_many": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "toolCalls_one": "{{count}} chiamata a strumento",
+      "toolCalls_other": "{{count}} chiamate a strumenti",
       "toolCalls_many": "{{count}} tool calls",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Esecuzione avviata",
+      "runEnded": "Esecuzione terminata",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Agente terminato",
+      "jobStarted": "Attività in background avviata",
+      "jobEnded": "Attività in background terminata"
     }
   },
   "appRail": {
@@ -2402,15 +2405,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Browser dell'agente",
+    "note": "Vista di sola lettura del browser temporaneo dell'agente. L'anteprima di Flint non viene usata.",
+    "lastAction": "Ultima azione: {{action}}",
+    "screenshotAlt": "La pagina nel browser dell'agente",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Nascondi browser dell'agente",
+    "tabs": "Schede del browser dell'agente",
+    "waiting": "In attesa della prima immagine della pagina…"
   },
   "browserVerify": {
     "title": "Verifica nel browser",
@@ -2450,23 +2453,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Modello decisionale",
+    "backendLabel": "Chi risponde",
+    "backendExplained": "Jev (TypeSafe) è l'opzione predefinita. In alternativa scegli un modello aperto che hai già in Flint: un modello locale llama.cpp o MLX, oppure qualsiasi provider compatibile con OpenAI, inclusi i modelli open-weight self-hosted. Risponde alle stesse scelte limitate; qualsiasi cosa che non sia esattamente una di esse viene ignorata e decide Flint.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Modello aperto",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Piccoli modelli a decisione tipizzata come Von, Laya, Kev o Rizzo Flow: aggiungi l'endpoint compatibile con OpenAI del modello come provider (o caricalo in locale), poi sceglilo qui sotto.",
+    "backendPresetMissing": "{{name}} non è ancora configurato. Aggiungi il suo endpoint compatibile con OpenAI come provider, oppure caricalo in locale, poi sceglilo qui sotto. Nel frattempo viene usato Jev.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Scegli un modello",
+    "backendModelSearch": "Cerca modelli",
+    "backendModelEmpty": "Nessun modello disponibile. Aggiungi prima un provider o carica un modello locale.",
+    "backendModelEmptySearch": "Nessun modello corrisponde a \"{{query}}\"",
+    "backendNoModel": "Nessun modello scelto: viene usato Jev finché non ne scegli uno.",
+    "backendLocal": "Funziona su questo computer o sulla tua rete locale: il testo della decisione non va a TypeSafe né a nessun servizio cloud.",
+    "backendRemote": "Lo stesso testo elencato qui sotto per ogni opzione attivata viene inviato a {{provider}} invece che a TypeSafe.",
     "automationTitle": "Scelte automatiche",
     "routeToggle": "Instrada all'assistente giusto",
     "routeExplained": "Quando il suggerimento delle skill è On, Jev può spostare una conversazione che è ancora su Flint verso Quartz, Coal, Blaze o Redstone a ogni nuovo messaggio. Se è disattivato, l'assistente che hai scelto resta per ogni messaggio. Un assistente scelto da te non viene mai cambiato in nessuno dei due casi.",
@@ -2566,9 +2569,9 @@
   "coworkParallel": {
     "settingTitle": "Le nuove sessioni in una cartella Git lavorano nel proprio worktree",
     "settingDescription": "Ogni nuova sessione collegata a un repository Git riceve un proprio worktree e branch (flint/<title>), così più sessioni possono lavorare nella stessa cartella senza interferire tra loro o con il tuo checkout. Rivedi, unisci o scarta ogni branch dalla sessione.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Avvia i worktree dal mio branch corrente",
+    "baseDescription": "Disattivato (predefinito): un nuovo worktree parte dal branch predefinito del repository. Attivato: parte dal commit di cui hai fatto il checkout, quindi include i commit non ancora inviati. Un branch indicato esplicitamente (ad esempio dall'agente) ha sempre la precedenza.",
+    "resumeGone": "Non è stato possibile rientrare nel worktree di questa sessione ({{reason}}), quindi è tornata alla sola revisione. Non è stato ricreato nulla.",
     "branchTitle": "Questa sessione lavora sul branch {{branch}}, nel proprio worktree",
     "basedOn": "da {{base}}",
     "openFolder": "Apri cartella",
@@ -2641,13 +2644,13 @@
     "noneForProvider": "Nessun parametro regolabile per questo provider.",
     "maybeUnsupported": "Potrebbe non essere supportato da {{providers}}",
     "modelReports": "Modello: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "noOverrides": "Nessuna sostituzione: si usano i valori predefiniti del modello.",
+    "unrecognized_one": "{{count}} parametro non riconosciuto nascosto: {{keys}}",
+    "unrecognized_other": "{{count}} parametri non riconosciuti nascosti: {{keys}}",
     "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "notSupportedStripped": "Non supportato: verrà rimosso all'invio",
+    "mayBeIgnored": "Potrebbe essere ignorato da questo provider",
+    "notSupportedSkipped": "Non supportato: verrà saltato.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2667,74 +2670,74 @@
     "chooseNote": "Non viene copiato nulla finché non confermi. I dati di JAN non vengono mai modificati né eliminati.",
     "copyDescription": "Copia in Flint le tue conversazioni, impostazioni e chiavi dei provider di JAN, per gli elementi selezionati qui sotto. JAN non viene mai modificato né eliminato.",
     "freshDescription": "Avvia Flint vuoto. Non viene letto né copiato nulla da JAN, chiavi dei provider incluse, ora e nei prossimi avvii. Puoi sempre importare da Impostazioni, Cartella dati.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "Migra da JAN",
+    "descriptionNoLegacy": "Porta in Flint i tuoi dati JAN esistenti.",
+    "descriptionFound": "Flint ha trovato un'installazione JAN esistente. Scegli come trasferire i tuoi dati.",
+    "detecting": "Ricerca di un'installazione JAN esistente…",
+    "noData": "Nessun dato JAN trovato su questo computer. Non c'è nulla da migrare: puoi iniziare subito a usare Flint.",
+    "foundAt": "Trovati dati JAN in {{path}} ({{size}}).",
+    "whatToBring": "Cosa trasferire",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
     "fileCount_many": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Se un elemento esiste già in Flint",
+    "conflictAria": "Risoluzione dei conflitti",
+    "resolveAria": "Risolvi i conflitti",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Copia in Flint"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "Riutilizza i dati JAN",
+        "description": "Usa i dati JAN esistenti direttamente dove si trovano, senza copiarli."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Sposta in Flint",
+        "description": "Copia in Flint, poi rimuove l'origine JAN dopo che ogni elemento è riuscito. Viene conservato un backup per poter tornare indietro."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Inizia da zero"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Conversazioni e assistenti",
+      "models": "Modelli ed engine scaricati",
+      "configs": "File di configurazione",
+      "settings": "Impostazioni e credenziali dei provider",
+      "common": "Estensioni, log e cache",
+      "agent": "Workspace e stanze dell'agente"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Mantieni l'elemento Flint esistente",
+      "use_jan": "Sovrascrivi con l'elemento JAN",
+      "keep_both": "Mantieni entrambi (la copia JAN riceve un suffisso)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "I dati JAN riportano uno schema che questa build di Flint non supporta del tutto. Controlla gli avvisi prima di continuare.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Dimensione stimata",
+    "reusePath": "Percorso riutilizzato",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
     "conflictCount_many": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "La copia Flint è più recente (conservata)",
+    "running": "Migrazione dei dati in corso… non chiudere Flint.",
+    "complete": "Migrazione completata.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "Un backup dei dati JAN è stato conservato in {{path}}.",
+    "restartNeeded": "Riavvia Flint per iniziare a usare questi dati.",
+    "reuseInPlace": "Flint ora usa i tuoi dati JAN direttamente in {{path}}.",
+    "failed": "La migrazione non è stata completata.",
+    "unknownError": "Si è verificato un errore sconosciuto.",
+    "rolledBackNote": "I tuoi dati sono stati ripristinati allo stato precedente.",
+    "quarantined": "I dati parziali sono stati messi in quarantena in {{path}}.",
+    "notNow": "Non ora",
+    "dontAskAgain": "Non chiedere più",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Inizia da zero",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2992,27 +2995,27 @@
     "openProvider": "Apri impostazioni del provider",
     "errorDetails": "Dettagli",
     "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Un testo lungo potrebbe non entrare nel modello. Dividilo se la traduzione non riesce o si interrompe prima.",
     "swapNeedsSource": "Scegli una lingua di origine per invertire"
   },
   "markdownImage": {
     "load": "Carica immagine da {{host}}"
   },
   "messageSaveFailed": "Impossibile salvare il messaggio. Potrebbe andare perso dopo un riavvio.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "Impossibile salvare il segreto nel portachiavi di sistema. La modifica è stata annullata.",
+  "keptChat": "Chat conservata",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "Il tuo video è pronto",
+    "imageReady": "La tua immagine è pronta",
+    "stoppedWaiting": "Attesa interrotta. {{provider}} potrebbe continuare il rendering e una nuova richiesta può essere rifiutata finché non finisce.",
+    "providerFallback": "Il provider",
+    "pictureInChat": "Quell'immagine è usata in una chat. La chat non può più visualizzarla né modificarla."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Log dell'app - Flint",
+    "systemMonitor": "Monitor di sistema - Flint",
+    "localApiServerLogs": "Log del server API locale - Flint"
   },
   "threadSaveFailed": "Impossibile salvare la modifica a questa conversazione. È stata annullata.",
   "attachmentsProcessFailed": "Impossibile preparare gli allegati, quindi il messaggio non è stato inviato",
@@ -3324,91 +3327,91 @@
   "chatRules": "Regole",
   "chatRuleForThisChat": "Usa questa regola in questa chat",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Passa a un altro computer…",
+    "saved": "Passaggio salvato. {{count}} credenziale/i escluse, e la cartella è indicata per nome, non per posizione.",
+    "failed": "Impossibile salvare il passaggio: {{message}}",
+    "label": "Passata da un altro computer",
+    "title": "Questa sessione è stata passata da un altro computer.",
+    "checkFailed": "Impossibile controllare la cartella allegata: {{error}}",
+    "folderMatches": "La cartella allegata corrisponde a quella in cui la sessione lavorava ({{name}}).",
+    "folderDiffers": "La cartella allegata non è quella in cui la sessione lavorava: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "branch {{branch}} al commit {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Questa sessione lavorava in una cartella chiamata {{name}}. Allega quella cartella su questo computer per continuare.",
+      "folderAt": "Questa sessione lavorava in una cartella chiamata {{name}} ({{at}}). Allega quella cartella su questo computer per continuare.",
+      "provider": "Il provider {{provider}} non è configurato su questo computer, quindi il modello della sessione non può essere usato. Scegli un altro modello per continuare.",
+      "model": "Il modello {{id}} non è disponibile da {{provider}} su questo computer. Scegli un altro modello per continuare."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "si chiama {{actual}}, non {{expected}}",
+      "branch": "è sul branch {{actual}}, non {{expected}}",
+      "noBranch": "non è su nessun branch, non {{expected}}",
+      "head": "è al commit {{actual}}, non {{expected}}",
+      "noHead": "non è su nessun commit, non {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "Impossibile caricare questa immagine.",
+  "attachedImage": "Immagine allegata {{n}}",
+  "saveChanges": "Salva modifiche",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "Caricamento del modello…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Non riuscito dopo"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Ricerca web",
+    "embeddings": "Modello di embedding (per RAG/vettori, non per la chat)",
+    "raw_completion": "Completamento grezzo (continua il tuo testo, senza chat né strumenti)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Cambia assistente ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Reverse engineering",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "stesso file",
+      "nested": "una cartella e qualcosa al suo interno",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "un file rigenerato"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "Cosa può modificare {{id}} (separati da virgole)",
+    "bothChange": "{{a}} e {{b}} modificherebbero entrambi:",
+    "legend": "Cosa fare con {{a}} e {{b}}",
+    "serializeAb": "Esegui prima {{a}}, poi {{b}}",
+    "serializeBa": "Esegui prima {{b}}, poi {{a}}",
+    "revise": "Cambia cosa può modificare {{id}}",
+    "parallel": "Eseguili comunque in parallelo (registrato; ogni modifica viene comunque rivista e controllata prima di essere applicata)",
+    "region": "Attività del team sovrapposte",
+    "headline": "Queste attività modificherebbero gli stessi percorsi senza alcun ordine tra loro. Non è ancora stato eseguito nulla.",
+    "caveat": "Il confronto si basa sui percorsi dichiarati da ciascuna attività, non sulla lettura del codice: l'assenza di sovrapposizioni qui non significa che le modifiche siano compatibili.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "Non eseguire queste attività"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
+    "toggleSnippet": "Mostra/nascondi frammento",
+    "documents_one": "{{count}} citazione di documento",
+    "documents_other": "{{count}} citazioni di documenti",
     "documents_many": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "web_one": "{{count}} fonte web",
+    "web_other": "{{count}} fonti web",
     "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "Solo una parte di {{files}} entra in un messaggio.",
+    "readFailed": "Impossibile leggere {{name}}: {{error}}",
+    "remoteImagesOnly": "A una sessione sul server si possono inviare solo immagini; rimuovi gli altri file multimediali."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3417,40 +3420,40 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
+    "filesChanged_one": "{{count}} file modificato",
+    "filesChanged_other": "{{count}} file modificati",
     "filesChanged_many": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "mediaFiles_one": "{{count}} file multimediale",
+    "mediaFiles_other": "{{count}} file multimediali",
     "mediaFiles_many": "{{count}} media files",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
+    "noModel": "Nessun modello selezionato per questa sessione.",
+    "toolsFailed": "Le chiamate agli strumenti sono fallite in un test di questo modello il {{date}}.",
+    "toolsFailedDetail": "Le chiamate agli strumenti sono fallite in un test di questo modello il {{date}}: {{detail}}.",
+    "noToolSupport": "Il modello selezionato non può chiamare strumenti, quindi Cowork può solo chattare con esso.",
+    "modelToolsWorked": "Un modello è selezionato. Le chiamate agli strumenti hanno funzionato in un test il {{date}}; è una sola verifica, non una garanzia per ogni attività.",
+    "modelSelected": "Un modello è selezionato. Se il provider risponde viene verificato all'avvio di un'esecuzione.",
+    "contextWindow": "Finestra di contesto: {{tokens}} token.",
+    "contextUnknown": "Non è stato possibile trovare la finestra di contesto di questo modello, quindi Flint non può avvisare prima che si riempia.",
+    "mcpOffered_one": "{{count}} server MCP delle Impostazioni è offerto alle esecuzioni di Cowork e si connette all'invio di un messaggio.",
+    "mcpOffered_other": "{{count}} server MCP delle Impostazioni sono offerti alle esecuzioni di Cowork e si connettono all'invio di un messaggio.",
     "mcpOffered_many": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "mcpNone": "Nessun server MCP configurato.",
+    "localReady": "Il runtime locale viene avviato quando un'esecuzione richiede il modello.",
+    "localAbsent": "Il modello selezionato non viene eseguito in locale."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Salvataggio della memoria",
+    "readingMemory": "Lettura della memoria",
+    "readingSkill": "Lettura della skill",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Skill usata",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} subagente al lavoro",
+    "subagentsWorking_other": "{{count}} subagenti al lavoro",
     "subagentsWorking_many": "{{count}} subagents working",
     "verb": {
       "write": "Writing",
@@ -3472,20 +3475,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Esiste già una sessione con questo id",
+    "assistantExists": "Esiste già un assistente con questo id"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Descrivi questo progetto",
+    "continue": "Continua la bozza di FLINT.md",
+    "description": "Flint ha letto i manifest e la struttura della cartella e non ha eseguito nulla. Modifica la descrizione: diventa il FLINT.md della cartella solo quando la accetti.",
+    "surveying": "Analisi della cartella…",
+    "surveyed": "Analizzati {{seen}} file e letti {{read}}. Non è stato scritto nulla.",
+    "wrote": "FLINT.md scritto",
+    "discarded": "Bozza scartata. Non è stato scritto nulla.",
+    "notRead": "Cosa l'analisi non ha letto",
+    "discard": "Scarta bozza",
+    "resurvey": "Analizza di nuovo",
+    "accept": "Accetta e scrivi FLINT.md"
   }
 }

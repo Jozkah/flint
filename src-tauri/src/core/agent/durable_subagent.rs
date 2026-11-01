@@ -114,9 +114,8 @@ pub fn write_spec(data_folder: &Path, spec: &ChildSpec) -> Result<PathBuf, Harne
     }
     let body = serde_json::to_vec_pretty(spec)
         .map_err(|e| HarnessError::new(ErrorKind::Internal, e.to_string()).at(Stage::Child))?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body).map_err(|e| io("the subagent spec", e))?;
-    std::fs::rename(&tmp, &path).map_err(|e| io("the subagent spec", e))?;
+    crate::core::atomic_io::write_atomic_durable(&path, &body)
+        .map_err(|e| HarnessError::new(ErrorKind::Io, format!("the subagent spec could not be written: {e}")).at(Stage::Child))?;
     Ok(path)
 }
 

@@ -58,6 +58,8 @@ import { docFromUIMessage } from '@/lib/exportDoc'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { calledUnavailableTool, emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { toast } from 'sonner'
+import { copyToClipboard } from '@/lib/clipboard'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 import { toMs } from '@/lib/messageTime'
 import {
@@ -1024,7 +1026,12 @@ export const MessageItem = memo(
           open={ctxMenuOpen}
           onOpenChange={setCtxMenuOpen}
           point={ctxPoint}
-          onCopy={() => navigator.clipboard.writeText(getFullTextContent())}
+          onCopy={() => {
+            // A refused write (unfocused window, no permission) says so (P2E-016).
+            void copyToClipboard(getFullTextContent()).then((ok) => {
+              if (!ok) toast.error(t('chat:copyMessageFailed'))
+            })
+          }}
           buildExport={() => docFromUIMessage(message, undefined, new Date())}
           onRegenerate={
             selectedModel && onRegenerate && !isStreaming && isLastMessage

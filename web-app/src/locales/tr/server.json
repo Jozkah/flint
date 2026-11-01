@@ -25,40 +25,40 @@
   "limitsTitle": "Ne nerede çalışır",
   "limits": "Sohbet, odalar, modeller ve araçlar sunucuda çalışır. Birlikte Çalış oturumları ve Kampanyalar, Flint'in açık olduğu bir bilgisayarda çalışan bir ajan gerektirir: o bilgisayara Uzaktan erişim ve telefon uygulaması üzerinden ulaşın. Başsız bir sunucu kampanyaları listeleyebilir ve önerileri inceleyebilir, ancak oturum çalıştırmaz.",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "Başlatmak için bu planı onaylayın",
+    "summary_one": "{{count}} görev. Sunucu bunları istemci bağlı olmadan kendi başına çalıştırır ve herhangi bir şey klasörünüze ulaşmadan önce tekrar sorar.",
+    "summary_other": "{{count}} görev. Sunucu bunları istemci bağlı olmadan kendi başına çalıştırır ve herhangi bir şey klasörünüze ulaşmadan önce tekrar sorar.",
+    "cost": "Yaklaşık maliyet: {{low}} ile {{high}} token arası.",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "Görevler nasıl çalışır",
+    "accessWorktree": "Kendi klasörlerinde kendi başlarına çalışır",
+    "accessAsk": "Her eylem için sor",
+    "approve": "Onayla ve başlat",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "plan onaylanmadı"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "klasör eksik",
+      "corrupt": "artık bir worktree değil",
+      "branchMoved": "dal taşındı",
+      "identityChanged": "depo değişti"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "Birleştirilmedi: {{files}} dosyalarında çakışma var. Hiçbir şey değiştirilmedi.",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "{{target}} dalına birleştirildi (fast-forward).",
+    "merged": "{{target}} dalına birleştirildi.",
+    "discarded": "Atıldı. Bu oturum worktree'si olmadan devam edemez.",
+    "counts": "{{pending}} commit edilmemiş, {{unmerged}} birleştirilecek",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "{{base}} dalına birleştir",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "Checkout'u ve dalını, {{pending}} commit edilmemiş dosya ve {{unmerged}} birleştirilmemiş commit ile birlikte kaldırır.",
+    "discardAnyway": "Yine de at",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "Değişiklikler önerilmedi: {{error}}",
+    "filesChanged": "{{count}} dosya değişti: {{files}}{{more}}"
   }
 }

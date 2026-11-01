@@ -20,6 +20,7 @@ import {
 } from '@/lib/coworkStepSummary'
 import { isFinished, type ActivityTask } from '@/lib/coworkActivity'
 import type { CoworkTurn } from '@/types/coworkSession'
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 
 /** Characters of one block drawn before "Show more". Keeps a huge tool result
  * from putting megabytes of text in the DOM. */
@@ -75,14 +76,13 @@ function Bounded({
 }) {
   const { t } = useTranslation()
   const [all, setAll] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag()
   const long = text.length > TRANSCRIPT_BLOCK_CHARS
   const shown = !long || all ? text : text.slice(0, TRANSCRIPT_BLOCK_CHARS)
   const doCopy = () => {
     void navigator.clipboard?.writeText(text).then(
       () => {
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
       },
       () => setCopied(false)
     )

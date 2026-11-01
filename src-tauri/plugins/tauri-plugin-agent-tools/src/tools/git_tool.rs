@@ -2445,6 +2445,11 @@ fn render_output(
         } else {
             format!("$ {shown}\n{body}")
         }
+    } else if code == 1 && body.is_empty() && is_query_command(shown) {
+        // Exit 1 with no output from a lookup is git's "nothing matched"
+        // (RQA-001): reporting it as an ERROR made a run list a missing
+        // `user.*` config as an unresolved failure.
+        format!("$ {shown}\n(exit 1, no match: nothing was found; this is not an error)")
     } else {
         let note = match identity {
             Some(id) if auth_refused(&body) => {
@@ -2454,6 +2459,33 @@ fn render_output(
             _ => String::new(),
         };
         format!("ERROR: `{shown}` exited with {code}\n{body}{note}")
+    }
+}
+
+/// Whether `shown` is a git lookup whose exit 1 means "no match" rather than
+/// a failure: `config --get*`, `grep`, `diff --quiet/--exit-code`,
+/// `merge-base --is-ancestor`, `rev-parse --verify --quiet`, `show-ref`.
+fn is_query_command(shown: &str) -> bool {
+    let words: Vec<&str> = shown.split_whitespace().collect();
+    let Some(pos) = words.iter().position(|w| w.ends_with("git") || w.ends_with("git.exe")) else {
+        return false;
+    };
+    let rest = &words[pos + 1..];
+    // Skip global options such as `-C dir` or `-c k=v` before the subcommand.
+    let mut i = 0;
+    while i < rest.len() && rest[i].starts_with('-') {
+        i += if matches!(rest[i], "-C" | "-c") { 2 } else { 1 };
+    }
+    let Some(sub) = rest.get(i) else { return false };
+    let flags = &rest[i + 1..];
+    let has = |f: &str| flags.contains(&f);
+    match *sub {
+        "config" => flags.iter().any(|w| w.starts_with("--get")),
+        "grep" | "show-ref" => true,
+        "diff" => has("--quiet") || has("--exit-code"),
+        "merge-base" => has("--is-ancestor"),
+        "rev-parse" => has("--verify") && (has("--quiet") || has("-q")),
+        _ => false,
     }
 }
 
@@ -2560,6 +2592,22 @@ mod render_output_tests {
         );
         assert!(refused.starts_with("ERROR: `git push` exited with 128\n"), "{refused}");
         assert!(!refused.contains("user:pw"), "{refused}");
+    }
+
+    /// RQA-001: a lookup that found nothing is a result, not an error.
+    #[test]
+    fn an_empty_lookup_is_not_an_error() {
+        let shown = r"git config --show-origin --get-regexp ^user\.";
+        let out = render_output(shown, &output(1, "", ""), None, None);
+        assert!(!out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("no match"), "{out}");
+        for q in ["git grep foo", "git diff --quiet", "git -C x config --get user.name", "git merge-base --is-ancestor a b"] {
+            assert!(!render_output(q, &output(1, "", ""), None, None).starts_with("ERROR"), "{q}");
+        }
+        // Exit 1 with output, other exit codes, or a non-lookup stay errors.
+        assert!(render_output(shown, &output(1, "", "fatal: bad\n"), None, None).starts_with("ERROR"));
+        assert!(render_output(shown, &output(2, "", ""), None, None).starts_with("ERROR"));
+        assert!(render_output("git commit -m x", &output(1, "", ""), None, None).starts_with("ERROR"));
     }
 }
 

@@ -784,7 +784,7 @@ describe('ChatInput', () => {
     // its reasoning control.
     const modelSelection = {
       selectedProvider: 'google',
-      selectedModel: { id: 'gemini-3-pro', capabilities: ['tools'] },
+      selectedModel: { id: 'gemini-1.5-pro', capabilities: ['tools'] },
     }
     const { unmount } = renderInput({ modelSelection })
     expect(screen.queryByRole('button', { name: /^chat:composer.reasoningLabel/ })).toBeNull()

@@ -192,6 +192,20 @@ fn mismatch(path: &Path, want: &str, got: &str, src: &str) -> String {
 /// what failed and that the command was not run; it is also kept for
 /// [`last_refusal`]. Callers must treat `Err` as "do not run the command".
 pub fn verify(helper: &Path) -> Result<(), String> {
+    // Tests share the refusal slot below; serialize every verify call so one
+    // test's verdict cannot land in another's `last_refusal()` read.
+    #[cfg(test)]
+    let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
+    verify_unserialized(helper)
+}
+
+#[cfg(test)]
+fn test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn verify_unserialized(helper: &Path) -> Result<(), String> {
     let result = check(helper).map_err(|why| {
         format!("{why}. The command was not run: Flint will not run it outside the sandbox. Reinstall Flint to restore the helper.")
     });
@@ -218,8 +232,9 @@ mod tests {
 
     #[test]
     fn a_missing_helper_is_refused_and_says_not_run() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let dir = scratch("missing");
-        let err = verify(&dir.join("helper.exe")).unwrap_err();
+        let err = verify_unserialized(&dir.join("helper.exe")).unwrap_err();
         assert!(err.contains("missing or unreadable"), "{err}");
         assert!(err.contains("not run") && err.contains("outside the sandbox"), "{err}");
         assert_eq!(last_refusal().as_deref(), Some(err.as_str()));
@@ -228,57 +243,61 @@ mod tests {
 
     #[test]
     fn a_helper_that_differs_from_the_shipped_digest_is_refused() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let dir = scratch("sidecar");
         let exe = dir.join("helper.exe");
         std::fs::write(&exe, b"genuine").unwrap();
         std::fs::write(sidecar(&exe), format!("{}  helper.exe\n", sha(b"genuine"))).unwrap();
-        assert!(verify(&exe).is_ok());
+        assert!(verify_unserialized(&exe).is_ok());
         std::fs::write(&exe, b"tampered!").unwrap();
-        let err = verify(&exe).unwrap_err();
+        let err = verify_unserialized(&exe).unwrap_err();
         assert!(err.contains("does not match") && err.contains(".sha256"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_helper_replaced_after_first_use_is_refused_without_a_shipped_digest() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let dir = scratch("baseline");
         let exe = dir.join("helper.exe");
         std::fs::write(&exe, b"first").unwrap();
-        assert!(verify(&exe).is_ok());
-        assert!(verify(&exe).is_ok(), "cached pass");
+        assert!(verify_unserialized(&exe).is_ok());
+        assert!(verify_unserialized(&exe).is_ok(), "cached pass");
         std::fs::write(&exe, b"swapped-in").unwrap();
-        let err = verify(&exe).unwrap_err();
+        let err = verify_unserialized(&exe).unwrap_err();
         assert!(err.contains("when it started"), "{err}");
         // Restoring the original content passes again.
         std::fs::write(&exe, b"first").unwrap();
-        assert!(verify(&exe).is_ok());
+        assert!(verify_unserialized(&exe).is_ok());
         assert_eq!(last_refusal(), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_helper_swapped_together_with_its_sidecar_is_refused() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let dir = scratch("sidecar_swap");
         let exe = dir.join("helper.exe");
         std::fs::write(&exe, b"genuine").unwrap();
         std::fs::write(sidecar(&exe), sha(b"genuine")).unwrap();
-        assert!(verify(&exe).is_ok());
+        assert!(verify_unserialized(&exe).is_ok());
         std::fs::write(&exe, b"evil-helper").unwrap();
         std::fs::write(sidecar(&exe), sha(b"evil-helper")).unwrap();
-        let err = verify(&exe).unwrap_err();
+        let err = verify_unserialized(&exe).unwrap_err();
         assert!(err.contains("when it started"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_same_length_swap_with_its_mtime_reset_is_refused() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let dir = scratch("mtime_reset");
         let exe = dir.join("helper.exe");
         for (tag, len) in [("small", 100usize), ("large", 300 * 1024)] {
             let genuine = vec![b'g'; len];
             std::fs::write(&exe, &genuine).unwrap();
             let when = std::fs::metadata(&exe).unwrap().modified().unwrap();
-            assert!(verify(&exe).is_ok(), "{tag}");
+            assert!(verify_unserialized(&exe).is_ok(), "{tag}");
             let mut evil = genuine.clone();
             // A change at the start and at the end, same length.
             evil[0] = b'E';
@@ -286,7 +305,7 @@ mod tests {
             std::fs::write(&exe, &evil).unwrap();
             std::fs::OpenOptions::new().write(true).open(&exe).unwrap().set_modified(when).unwrap();
             assert_eq!(std::fs::metadata(&exe).unwrap().modified().unwrap(), when);
-            assert!(verify(&exe).is_err(), "{tag}: the cache let a same-stamp swap through");
+            assert!(verify_unserialized(&exe).is_err(), "{tag}: the cache let a same-stamp swap through");
             // Fresh state for the next size.
             state().lock().unwrap().remove(&exe);
         }
@@ -295,17 +314,19 @@ mod tests {
 
     #[test]
     fn a_malformed_shipped_digest_refuses_rather_than_skips_the_check() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let dir = scratch("badside");
         let exe = dir.join("helper.exe");
         std::fs::write(&exe, b"x").unwrap();
         std::fs::write(sidecar(&exe), "not a digest").unwrap();
-        let err = verify(&exe).unwrap_err();
+        let err = verify_unserialized(&exe).unwrap_err();
         assert!(err.contains("does not hold a SHA-256 digest"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn digest_parsing_accepts_sha256sum_lines_only() {
+        let _serial = test_lock().lock().unwrap_or_else(|p| p.into_inner());
         let d = sha(b"a");
         assert_eq!(parse_digest(&format!("{} *file", d.to_uppercase())), Some(d.clone()));
         assert_eq!(parse_digest(&d[..63]), None);

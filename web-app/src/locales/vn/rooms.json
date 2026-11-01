@@ -127,6 +127,8 @@
     "reasoningOff": "Tắt",
     "reasoningEffort": "Mức độ suy luận",
     "reasoningEffortDefault": "Mặc định",
+    "roomEffort": "Mức nỗ lực cho mọi mô hình",
+    "roomEffortHint": "Áp dụng cho mọi mô hình hỗ trợ mức nỗ lực, trừ khi cài đặt riêng của mô hình ghi đè.",
     "thinkingBudget": "Ngân sách suy nghĩ",
     "thinkingBudgetHint": "Một phần ngữ cảnh của mô hình, được tính khi gửi lượt và giới hạn để câu trả lời vẫn vừa.",
     "pricing": "Giá (tùy chọn)",
@@ -668,5 +670,5 @@
     "ranToolsDropped": "đầu ra của chúng đã bị loại bỏ để vừa với cửa sổ ngữ cảnh.",
     "ranToolsRetry": "sau đó nhà cung cấp gặp lỗi và yêu cầu đang được thử lại."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Xóa phòng thất bại"
 }

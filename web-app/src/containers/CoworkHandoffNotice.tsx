@@ -67,24 +67,27 @@ export function CoworkHandoffNotice({
       <p className="mb-1 font-medium text-foreground">
         {t('common:handoff.title')}
       </p>
-      <ul className="list-disc pl-4" role="status" aria-live="polite">
-        {items.map((item, i) => (
-          <li key={`${item.kind}-${i}`} data-testid={`handoff-item-${item.kind}`}>
-            {describeRestoreItem(item)}
-          </li>
-        ))}
-        {expected && folder && match && (
-          <li data-testid="handoff-folder-check">
-            {'error' in match
-              ? t('common:handoff.checkFailed', { error: match.error })
-              : match.matches
-                ? t('common:handoff.folderMatches', { name: expected.name })
-                : t('common:handoff.folderDiffers', {
-                    differences: match.differences.join('; '),
-                  })}
-          </li>
-        )}
-      </ul>
+      {/* The live region wraps the list: role=status on the ul took away its list semantics (CTA-030). */}
+      <div role="status" aria-live="polite">
+        <ul className="list-disc pl-4">
+          {items.map((item, i) => (
+            <li key={`${item.kind}-${i}`} data-testid={`handoff-item-${item.kind}`}>
+              {describeRestoreItem(item)}
+            </li>
+          ))}
+          {expected && folder && match && (
+            <li data-testid="handoff-folder-check">
+              {'error' in match
+                ? t('common:handoff.checkFailed', { error: match.error })
+                : match.matches
+                  ? t('common:handoff.folderMatches', { name: expected.name })
+                  : t('common:handoff.folderDiffers', {
+                      differences: match.differences.join('; '),
+                    })}
+            </li>
+          )}
+        </ul>
+      </div>
       <Button
         size="sm"
         variant="ghost"

@@ -301,36 +301,38 @@
     "stopGenerating": "Zastavit generování"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Zmenšit velikost kontextu (ctx-size)",
+    "oomDisableMtp": "Vypnout MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Snížit n-gpu-layers nebo přepnout na backend CPU",
+    "oomSmallerModel": "Použít menší / více kvantizovaný model",
+    "serverContext": "Kontextové okno tohoto modelu určuje jeho server, takže ho Flint nemůže zvětšit. Začněte nový chat, zkraťte konverzaci nebo zvyšte limit na serveru.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "Model vrátil prázdnou odpověď. Zkuste to znovu nebo přepněte model.",
+    "thinkingOnly": "Model dokončil přemýšlení, ale nedal odpověď. Pokračujte nebo odpověď vygenerujte znovu.",
+    "noReply": "Běh skončil bez odpovědi.",
+    "noReplyToolError": "Běh skončil bez odpovědi. Poslední chyba nástroje ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "Importovaný chat",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "Tento obrázek nelze uložit.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "savedPictures_few": "Saved {{count}} pictures",
-    "savedPictures_many": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
-  }
+    "savedPictures_one": "Uložen {{count}} obrázek",
+    "savedPictures_other": "Uloženo {{count}} obrázků",
+    "savedPictures_few": "Uloženy {{count}} obrázky",
+    "savedPictures_many": "Uloženo {{count}} obrázku",
+    "picturesMissing": "; {{count}} už není v galerii",
+    "picturesGone": "Obrázky už nejsou v galerii Studia.",
+    "tooLarge": "tento export má {{mb}} MB a limit je 50 MB; exportujte jednu zprávu nebo větev, nebo vynechte podrobnosti o nástrojích",
+    "untitled": "Nová konverzace",
+    "tooTall": "konverzace je na jeden obrázek příliš dlouhá (asi {{height}} tis. px, limit je {{limit}} tis.); exportujte ji jako PDF nebo Markdown, nebo exportujte jednu zprávu",
+    "pageNotDrawn": "stránku se nepodařilo vykreslit",
+    "noCanvas": "pro vykreslení obrázku není k dispozici žádné plátno",
+    "imageNotEncoded": "obrázek se nepodařilo zakódovat"
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

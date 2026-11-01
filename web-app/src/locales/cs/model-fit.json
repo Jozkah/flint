@@ -114,12 +114,12 @@
     "inUse": "Zde používáno: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "Přesun na GPU (toto načtení)",
+    "all": "Všech {{layers}} vrstev běží na GPU.",
+    "partial": "{{gpu}} z {{total}} vrstev běží na GPU; zbytek běží na CPU, což je pomalejší.",
+    "none": "Žádné vrstvy neběží na GPU: model běží na CPU.",
+    "unknown": "Engine neuvedl, kolik vrstev přesunul.",
+    "memory": "Váhy modelu: {{gpu}} na GPU, {{cpu}} v systémové paměti."
   },
   "metalBudget": {
     "warning": "Tento model může být pro GPU tohoto Macu příliš velký: potřebuje asi {{required}} a macOS ve výchozím stavu dovolí GPU použít asi {{budget}}. Může se načíst a pak selhat u první zprávy. Snižte velikost kontextu, přesuňte na GPU méně vrstev nebo zvolte menší kvantizaci."

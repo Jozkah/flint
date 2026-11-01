@@ -41,10 +41,10 @@
     "gitRemote": "Flint chce uruchomić {{command}}, co zmienia {{target}}",
     "gitDestructive": "Flint chce uruchomić {{command}}, co może spowodować utratę pracy",
     "approveCampaign": "Flint chce rozpocząć kampanię „{{title}}” (zadań: {{count}})",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint chce uruchomić przepływ pracy: agentów — {{agents}}, faz — {{phases}}",
+    "spawnWorktree": "Flint chce rozpocząć zagnieżdżony czat, który może zmieniać pliki w nowym worktree folderu {{folder}} (gałąź {{branch}})",
+    "spawnChat": "Flint chce rozpocząć zagnieżdżony czat o nazwie „{{title}}”",
+    "enterWorktree": "Flint chce przenieść dostęp zapisu tej sesji do worktree: {{folder}} (gałąź {{branch}}, oparta na {{base}})",
     "spendPause": "Flint chce kontynuować to uruchomienie po przekroczeniu progu wstrzymania wydatków",
     "changeFileOutside": "Flint chce zmienić {{target}}, który jest poza {{workspace}}",
     "changeManyFilesOutside": "Flint chce zmienić {{count}} plików, część poza {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Wysyła zmiany do zdalnego repozytorium, które mogą zobaczyć inni ludzie. Flint pyta za każdym razem, chyba że tymczasowo zezwolisz na zwykłe zdalne akcje Git w tej rozmowie.",
     "gitDestructive": "To, co usuwa lub nadpisuje, może nie dać się odzyskać.",
     "campaignPlan": "Uruchamia osobne sesje, każdą na własnym worktree branchu, które czytają i zmieniają pliki oraz równolegle zużywają limit Twojego modelu. Zatwierdzenie planu nie zatwierdza żadnego wywołania wykonywanego przez zadanie. Flint pyta za każdym razem.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Uruchamia tylu subagentów, faza po fazie, którzy odczytują i zmieniają pliki oraz zużywają limit Twojego modelu. Flint pyta za każdym razem o przepływ pracy tej wielkości.",
+    "spawnWorktree": "Zagnieżdżony czat odczytuje i zmienia pliki na własnej gałęzi tego projektu, zużywa limit Twojego modelu i działa dalej, gdy zajmujesz się czymś innym. Jego zmiany pozostają na tej gałęzi, dopóki ich nie scalisz. Flint pyta za każdym razem.",
+    "spawnChat": "Zagnieżdżony czat to nowa sesja, która zużywa limit Twojego modelu i działa dalej, gdy zajmujesz się czymś innym. Startuje bez dostępu do folderów. Flint pyta za każdym razem, ponieważ dla tej sesji włączono „Pytaj przed rozpoczęciem zagnieżdżonych czatów”.",
+    "enterWorktree": "Ta sesja może odczytywać i zmieniać pliki tylko w tym worktree na jego własnej gałęzi, a nie w folderze Twojego projektu. Jej zmiany pozostają na tej gałęzi, dopóki ich nie scalisz. Flint pyta za każdym razem.",
     "spendPause": "Uruchomienie nadal zużywa płatny limit modelu, aż się zakończy lub osiągnie pułap. Odmowa je zatrzymuje."
   },
   "repeat": {
@@ -401,11 +401,11 @@
     "session": "Zezwól dla tej rozmowy"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "Oczekiwanie na Twoje zatwierdzenie: {{tool}}",
+    "waitBody": "Uruchomienie jest wstrzymane od {{seconds}} s, dopóki go nie zezwolisz lub nie odrzucisz.",
+    "destructive": "Polecenie destrukcyjne: {{reason}}. Pytanie pojawia się, nawet jeśli to narzędzie jest poza tym dozwolone.",
+    "selfApproval": "{{tool}} sam zatwierdza polecenia na {{server}}. Tylko Ty możesz je zatwierdzić, więc pytanie pojawia się za każdym razem.",
+    "sensitive": "Wrażliwe wywołanie narzędzia: sprawdź jego działanie, zanim je zezwolisz.",
+    "autoPause": "Wywołań narzędzi bez pytania: {{count}}. Kontynuować?"
   }
 }

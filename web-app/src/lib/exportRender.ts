@@ -147,7 +147,9 @@ export function printDocument(
           resolve('unavailable')
         }
       }, PRINT_ANNOUNCE_MS)
-      window.setTimeout(cleanup, 120_000)
+      // Long enough for a print dialog left open a while: removing the frame
+      // under an open dialog cancels the print (LIBB-030).
+      window.setTimeout(cleanup, 30 * 60_000)
     }
     frame.srcdoc = renderHtmlPage(doc, options)
     document.body.appendChild(frame)

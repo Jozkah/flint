@@ -163,7 +163,21 @@ impl Backend {
         }
     }
 
-    fn args(self, model: &str) -> Vec<String> {
+    /// The CLI's own reasoning-effort flags for a level the request named, or
+    /// none. Only levels each CLI documents pass; anything else is dropped so
+    /// the CLI keeps its default. Gemini CLI has no such switch.
+    fn effort_args(self, effort: Option<&str>) -> Vec<String> {
+        let Some(level) = effort.filter(|l| matches!(*l, "low" | "medium" | "high" | "xhigh")) else {
+            return Vec::new();
+        };
+        match self {
+            Backend::Claude => vec!["--effort".to_string(), level.to_string()],
+            Backend::Codex => vec!["-c".to_string(), format!("model_reasoning_effort=\"{level}\"")],
+            Backend::Gemini => Vec::new(),
+        }
+    }
+
+    fn args(self, model: &str, effort: Option<&str>) -> Vec<String> {
         let own = |list: &[&str]| list.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
         match self {
             Backend::Claude => {
@@ -185,6 +199,7 @@ impl Backend {
                     "You are a helpful assistant inside another application. Follow the instructions in the message. Images attached to the message are visible to you.",
                 ]);
                 args.extend(own(&["--model", model]));
+                args.extend(self.effort_args(effort));
                 args
             }
             Backend::Codex => {
@@ -217,6 +232,7 @@ impl Backend {
                 ] {
                     args.extend(own(&["--disable", feature]));
                 }
+                args.extend(self.effort_args(effort));
                 args.extend(own(&["--model", model, "-"]));
                 args
             }
@@ -432,11 +448,12 @@ impl Drop for ImageFiles {
 pub async fn run(
     backend: Backend,
     model: &str,
+    effort: Option<&str>,
     mut stdin_text: String,
     images: Vec<Image>,
     events: mpsc::Sender<Event>,
 ) {
-    let mut args = backend.args(model);
+    let mut args = backend.args(model, effort);
     // Images reach each CLI its own way. Files live in a per-request folder
     // under the scratch directory and are removed when the request ends.
     let mut files = ImageFiles::default();
@@ -526,7 +543,13 @@ pub async fn run(
             }
             Ok(Ok(Some(line))) => {
                 for event in backend.parse_line(&line) {
-                    failed |= matches!(event, Event::Failed(_));
+                    // Codex reports a retried stream drop as an `error` event and
+                    // then finishes the turn; a completed turn wins over it.
+                    match event {
+                        Event::Failed(_) => failed = true,
+                        Event::Usage { .. } => failed = false,
+                        Event::Text(_) => {}
+                    }
                     if events.send(event).await.is_err() {
                         return; // caller went away; kill_on_drop ends the CLI
                     }
@@ -570,6 +593,9 @@ mod tests {
         assert_eq!(Backend::Codex.parse_line(message), vec![Event::Text("hi".into())]);
         let done = r#"{"type":"turn.completed","usage":{"input_tokens":7,"output_tokens":2}}"#;
         assert_eq!(Backend::Codex.parse_line(done), vec![Event::Usage { input: 7, output: 2 }]);
+        // Codex 0.5x: a stream drop it retries is an `error` event mid-turn.
+        let retrying = r#"{"type":"error","message":"Reconnecting... 1/5 (stream disconnected before completion)"}"#;
+        assert!(matches!(Backend::Codex.parse_line(retrying).as_slice(), [Event::Failed(_)]));
         let gemini = r#"{"type":"message","role":"assistant","content":"yo","delta":true}"#;
         assert_eq!(Backend::Gemini.parse_line(gemini), vec![Event::Text("yo".into())]);
         let user = r#"{"type":"message","role":"user","content":"q"}"#;
@@ -578,10 +604,27 @@ mod tests {
 
     #[test]
     fn claude_args_disable_tools_and_settings() {
-        let args = Backend::Claude.args("haiku");
+        let args = Backend::Claude.args("haiku", None);
         let joined = args.join(" ");
         assert!(joined.contains("--tools  --strict-mcp-config") || args.windows(2).any(|w| w == ["--tools", ""]));
         assert!(args.windows(2).any(|w| w == ["--setting-sources", ""]));
         assert!(args.windows(2).any(|w| w == ["--model", "haiku"]));
+    }
+
+    #[test]
+    fn effort_reaches_each_cli_its_own_way() {
+        let claude = Backend::Claude.args("claude-opus-4-7", Some("xhigh"));
+        assert!(claude.windows(2).any(|w| w == ["--effort", "xhigh"]));
+        let codex = Backend::Codex.args("gpt-6.1-sol", Some("high"));
+        assert!(codex.windows(2).any(|w| w == ["-c", "model_reasoning_effort=\"high\""]));
+        // The prompt marker stays last for Codex.
+        assert_eq!(codex.last().map(String::as_str), Some("-"));
+        let gemini = Backend::Gemini.args("gemini-2.5-pro", Some("high"));
+        assert!(!gemini.iter().any(|a| a.contains("effort")));
+        // No level, or one the CLI does not document: nothing is added.
+        for bad in [None, Some("max"), Some("--danger"), Some("unlimited")] {
+            let args = Backend::Claude.args("claude-opus-4-7", bad);
+            assert!(!args.iter().any(|a| a == "--effort"), "{bad:?}");
+        }
     }
 }

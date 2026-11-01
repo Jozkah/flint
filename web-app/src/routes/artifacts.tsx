@@ -1163,7 +1163,7 @@ function ArtifactInspector({
               {row.sessionTitle}
             </b>
             <small className="text-xs text-muted-foreground">
-              {row.studio ? 'Studio' : t('common:artifactCoworkSession')}
+              {row.studio ? t('common:shell.studio') : t('common:artifactCoworkSession')}
               {updated ? ` · ${updated}` : ''}
             </small>
           </div>

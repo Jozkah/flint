@@ -133,7 +133,9 @@
     "catchUpAllCapped": "逐个运行，最多 5 次",
     "enabled": "已启用",
     "save": "保存任务",
-    "saving": "正在保存"
+    "saving": "正在保存",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "此任务已关闭，因此在你开启之前不会运行。",

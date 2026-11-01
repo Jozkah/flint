@@ -11,7 +11,7 @@ import { TASK_TOOL_NAME, TEAM_TOOL_NAME, WORKFLOW_TOOL_NAME } from '@/lib/cowork
 export const NUDGE_AFTER = 4
 export const EXPLORATION_TOOLS: ReadonlySet<string> = new Set(['read', 'grep', 'ls', 'glob', 'find'])
 export const NUDGE_TEXT =
-  'Consider dispatching an explorer subagent for the rest of this survey.'
+  'If much reading is still left, consider dispatching an explorer subagent for it; otherwise carry on.'
 
 export class DelegationNudge {
   private streak = 0

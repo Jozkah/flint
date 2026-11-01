@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Ejecutar cada una, hasta 5",
     "enabled": "Activada",
     "save": "Guardar tarea",
-    "saving": "Guardando"
+    "saving": "Guardando",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Esta tarea está desactivada, así que no se ejecutará hasta que la actives.",

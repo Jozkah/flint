@@ -338,7 +338,8 @@ const threadDeletion = (
           persistThread(thread, state.threads[thread.id])
         }
       })
-      return { threads: updatedThreads }
+      // The search index holds thread copies; rebuild it from the new ones (HKS-012).
+      return { threads: updatedThreads, searchIndex: null }
     })
   },
 })
@@ -578,6 +579,8 @@ export const useThreads = create<ThreadState>()((set, get) => ({
           ...state.threads,
           [state.currentThreadId as string]: updatedThread,
         },
+        // Stale thread copies otherwise stay in search results (HKS-013).
+        searchIndex: null,
       }
     })
   },

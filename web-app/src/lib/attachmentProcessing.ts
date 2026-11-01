@@ -405,6 +405,9 @@ export const processAttachmentsForSend = async (
             ? { ...doc, injectionMode: 'inline' }
             : doc
         )
+        // Counted in the total, so it counts as done too, or the progress
+        // never reaches the end (LIBA-011).
+        if (documentsToProcess.includes(doc)) bumpIngest()
         continue
       }
 

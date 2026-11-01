@@ -123,6 +123,8 @@
     "reasoningOff": "オフ",
     "reasoningEffort": "推論の強度",
     "reasoningEffortDefault": "既定",
+    "roomEffort": "すべてのモデルの推論レベル",
+    "roomEffortHint": "推論レベルに対応するすべてのモデルで使われます。モデル個別の設定があればそちらが優先されます。",
     "thinkingBudget": "思考予算",
     "thinkingBudgetHint": "モデルのコンテキストに対する割合で、ターンの送信時に算出され、返信が収まるように上限が設けられます。",
     "pricing": "料金 (任意)",
@@ -647,5 +649,5 @@
     "ranToolsDropped": "それらの出力はコンテキストウィンドウに収めるため破棄されました。",
     "ranToolsRetry": "その後プロバイダーが失敗し、リクエストを再試行しています。"
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "ルームを削除できませんでした"
 }

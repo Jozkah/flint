@@ -108,6 +108,8 @@ export type RoomDraft = {
   objective: string
   mode: SpeakingMode
   compareRun: CompareRun
+  /** The room-wide effort ("same for all"); null: each model's default. */
+  reasoningEffort: NonNullable<Room['reasoningEffort']> | null
   moderator: ModeratorConfig
   limits: LimitDraft
   budget: BudgetDraft
@@ -138,6 +140,7 @@ export function draftFromRoom(room: Room, participants: Participant[]): RoomDraf
     objective: room.objective,
     mode: room.mode,
     compareRun: compareRunOf(room),
+    reasoningEffort: room.reasoningEffort ?? null,
     moderator: room.moderator,
     limits: toLimitDraft(room.limits),
     budget: toBudgetDraft(room.toolBudget),

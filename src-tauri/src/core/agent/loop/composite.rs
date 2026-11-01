@@ -2581,9 +2581,7 @@ impl CompositeToolInvoker {
                 on_complete
             };
         use tauri_plugin_agent_tools::tools::{
-            gate::{resolve_decision, with_secret_flag, Decision, PromptKind},
-            handlers::{execute_builtin_with_diff, preview_diff, secret_findings, stage_change},
-            is_builtin, lookup, Capability,
+            gate::Decision, handlers::execute_builtin_with_diff, is_builtin, lookup, Capability,
         };
         let mut out: Vec<ToolOutcome> = Vec::with_capacity(tool_calls.len());
         let mut mcp_calls: Vec<serde_json::Value> = Vec::new();
@@ -2647,202 +2645,18 @@ impl CompositeToolInvoker {
             // call is judged or put to the user, so the prompt shows exactly
             // what will be committed or posted.
             attribute_git_args(self.attribution.as_ref(), name, &mut args, &self.project_root);
-            // Plan mode: mutation-capable builtins (Write/Exec) are hard-denied
-            // BEFORE the normal gate, without a permission prompt, and auto-approval
-            // cannot override this (unlike the normal prompt suppression below).
-            // Read/Net/workspace-read tools fall through to the usual gate.
-            if self.run_mode == crate::core::agent::plan::RunMode::Plan
-                && matches!(tool.capability, Capability::Write | Capability::Exec)
-            {
-                out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
-                continue;
-            }
-            let snapshot = { self.grants.lock().unwrap().clone() };
-            let decision = resolve_decision(
-                tool,
-                &args,
-                &self.project_root,
-                Some(self.scratch_root.as_path()),
-                // The CLI works *in* the project, so it has no separate
-                // read-only root to attach.
-                &[],
-                &self.permissions,
-                &snapshot,
-                self.sandbox,
-                // The run's resolved `allow_network` and the project's domain
-                // lists, capped by the machine policy (Jozkah/jan#226): both
-                // surfaces go through the same gate so a rule cannot mean two
-                // things.
-                &NetworkPolicy {
-                    allowed: self.allow_network,
-                    allow_domains: self.allow_domains.clone(),
-                    deny_domains: self.deny_domains.clone(),
-                },
-                // AH-007. Not `MainAgent` unconditionally: a subagent dispatched
-                // under a name is judged as that name, so a project can grant
-                // its parent something and withhold it from the child.
-                &self.subject,
-            );
-            // Autonomous-mode safety classifier (findings F1), consulted only
-            // for the write/exec calls auto-approval would otherwise wave
-            // through, and only when a project opted in with `[auto_mode]`. It
-            // is a second layer over the gate below, not a replacement: a
-            // blocked class of action (force push, `curl | bash`, editing the
-            // agent's own config, ...) is refused before the auto-approval turns
-            // the prompt into a silent yes. Off by default -> `block_reason` is
-            // `None` and nothing here changes.
-            if self.auto_approve {
-                if let Decision::Prompt(PromptKind::Write | PromptKind::Exec) = decision {
-                    if let Some(block) =
-                        self.auto_mode.block_reason(name, tool.capability, &args)
-                    {
-                        out.push(ToolOutcome::plain(
-                            id.clone(),
-                            auto_mode_refusal_msg(name, &block),
-                        ));
+            let (decision, forced_reason, secret_findings) =
+                match self.gate_builtin(tool, name, &args).await {
+                    Gated::Refused(text) => {
+                        out.push(ToolOutcome::plain(id, text));
                         continue;
                     }
-                }
-            }
-            // Auto-approval suppresses the prompts for writes and commands inside
-            // the project, and still honors HardDeny, so the hidden `.jan`
-            // invariant (while the shell is sandboxed) and explicit agent.toml
-            // denies hold. R21: it never covers a read or write that escapes the
-            // project -- those reach host files no sandbox confines, gate.rs
-            // documents them as never auto-approved, and a headless run with
-            // nobody to ask them is refused.
-            //
-            // Two exceptions put the call to the user anyway, through the same
-            // prompt: a shell command that matches a destructive pattern
-            // (`rm -rf ~`, `git push --force`, ...), whatever grant or mode
-            // would otherwise allow it; and the call after a long streak of
-            // auto-approved ones, so an unattended run checks in periodically.
-            let git_destructive = (name == "git")
-                .then(|| tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args).ok())
-                .flatten()
-                .and_then(|p| p.destructive);
-            let destructive = git_destructive.filter(|_| !self.bypass).or_else(|| (name == "bash" && !self.bypass)
-                .then(|| args.get("command").and_then(|v| v.as_str()))
-                .flatten()
-                .and_then(|c| {
-                    // Inside the project or the run's own scratch directory is
-                    // ordinary work; both are resolved and canonicalised, so an
-                    // absolute path into either is not asked about.
-                    crate::core::agent::destructive::forced_prompt_reason(
-                        c,
-                        &crate::core::agent::destructive::Scope::new([
-                            &self.project_root,
-                            &self.scratch_root,
-                        ]),
-                    )
-                }));
-            // `[auto_mode] judge`: a second model looks at a call that is about
-            // to be put to the person or waved through by auto-approval. It can
-            // refuse the call; "ask", an error, a timeout or no judge at all
-            // leave it exactly where it was. Calls the gate already allows
-            // (reads, explicit allows) or denies never reach it.
-            if self.judge.is_some()
-                && (matches!(decision, Decision::Prompt(_))
-                    || (matches!(decision, Decision::Allow) && destructive.is_some()))
-            {
-                if let crate::core::agent::auto_mode::GateOutcome::Deny(block) =
-                    self.consult_judge(name, &args).await
-                {
-                    out.push(ToolOutcome::plain(id.clone(), judge_refusal_msg(name, &block)));
-                    continue;
-                }
-            }
-            // A scoped approval the user saved with "always" (a folder, a command
-            // prefix) answers a plain prompt for a call it covers. It sits here,
-            // after every deny, `[[tool_rules]]` and the judge, and only turns an
-            // ordinary prompt into an allow: asked-every-time calls and
-            // destructive commands are out of its reach.
-            let decision = if matches!(decision, Decision::Prompt(_)) && destructive.is_none() {
-                match self.record_to.as_deref() {
-                    Some(data) => tauri_plugin_agent_tools::scoped_rules::upgrade(
+                    Gated::Decided {
                         decision,
-                        data,
-                        &self.project_root,
-                        tool,
-                        &args,
-                    ),
-                    None => decision,
-                }
-            } else {
-                decision
-            };
-            // The credential scan, asked before the call runs instead of
-            // refused after it: a flagged write becomes a question the person
-            // can answer for this one write. Applied after saved rules and
-            // session grants so neither can answer it, and never for a call
-            // the gate already refused.
-            let secret_findings = if matches!(tool.name, "write" | "edit")
-                && !matches!(decision, Decision::HardDeny(_))
-            {
-                secret_findings(tool, &args, &self.tool_context()).await
-            } else {
-                Vec::new()
-            };
-            let decision = with_secret_flag(decision, !secret_findings.is_empty());
-            use std::sync::atomic::Ordering as StreakOrdering;
-            // Said in the prompt, so the person knows why a call that would
-            // otherwise have run on its own is in front of them. A forced prompt
-            // also offers no "always": it would record a grant this check
-            // overrides anyway.
-            let mut forced_reason: Option<String> = None;
-            let decision = match decision {
-                // Bypass answers every prompt a person could: writes outside
-                // the project, always-ask host tools, `ask` rules. Denials
-                // never reach this match.
-                Decision::Prompt(_) if self.bypass => Decision::Allow,
-                Decision::Prompt(PromptKind::Write | PromptKind::Exec)
-                    if self.auto_approve && destructive.is_none() =>
-                {
-                    let streak = self
-                        .auto_approved_streak
-                        .fetch_add(1, StreakOrdering::Relaxed)
-                        + 1;
-                    if self.auto_approve_limit > 0 && streak > self.auto_approve_limit {
-                        forced_reason = Some(format!(
-                            "Auto-approval paused: {} tool calls ran without asking. Allow this one to continue.",
-                            self.auto_approve_limit
-                        ));
-                        Decision::Prompt(PromptKind::Exec)
-                    } else {
-                        Decision::Allow
-                    }
-                }
-                Decision::Prompt(kind) if destructive.is_some() => {
-                    forced_reason = destructive
-                        .as_ref()
-                        .map(|d| format!("Destructive command: {d}."));
-                    Decision::Prompt(kind)
-                }
-                Decision::Allow if destructive.is_some() => {
-                    forced_reason = destructive
-                        .as_ref()
-                        .map(|d| format!("Destructive command: {d}."));
-                    Decision::Prompt(PromptKind::Exec)
-                }
-                // Changes the computer or reads something private: asked every
-                // time, so no "always" is offered for it.
-                Decision::Prompt(PromptKind::Ask)
-                    if tauri_plugin_agent_tools::tools::is_always_ask(name) =>
-                {
-                    forced_reason = Some("Asked every time: it changes this computer or reads something private.".to_string());
-                    Decision::Prompt(PromptKind::Ask)
-                }
-                // Asked every time, with what was found; no "always".
-                Decision::Prompt(PromptKind::Secret) => {
-                    forced_reason = Some(secret_prompt_text(&secret_findings));
-                    Decision::Prompt(PromptKind::Secret)
-                }
-                other => other,
-            };
-            if matches!(decision, Decision::Prompt(_)) {
-                // Someone is about to be asked: the streak starts over.
-                self.auto_approved_streak.store(0, StreakOrdering::Relaxed);
-            }
+                        forced_reason,
+                        secret_findings,
+                    } => (decision, forced_reason, secret_findings),
+                };
             // Read and Net tools are non-mutating and safe to run concurrently
             // once allowed: reads hit the filesystem, web tools do outbound HTTP.
             if matches!(decision, Decision::Allow)
@@ -2875,310 +2689,25 @@ impl CompositeToolInvoker {
                     (hard_deny_msg(name, reason, &self.project_root), None, None)
                 }
                 Decision::Prompt(kind) => {
-                    // Only a person can say "write anyway", and only now: it is
-                    // never put off to be answered later, and never refused as
-                    // if they had said no when nobody was asked.
-                    if kind == PromptKind::Secret && !self.can_prompt() {
-                        out.push(ToolOutcome::plain(id.clone(), secret_unattended_msg(name, &secret_findings)));
-                        continue;
-                    }
-                    // A question answered while this run was paused, or one to put
-                    // off now because nobody is here: see `approval_flow`.
-                    let early_digest = approval_digest(name, &args);
-                    let early = if kind == PromptKind::Secret {
-                        crate::core::agent::approval_flow::Settled::Ask
-                    } else {
-                        self.settle_deferred(name, &early_digest)
-                    };
-                    if let crate::core::agent::approval_flow::Settled::Refuse(message) = early {
-                        out.push(ToolOutcome::plain(id.clone(), message));
-                        continue;
-                    }
-                    let summary =
-                        crate::core::agent::approval_flow::call_summary(tool.name, tool.path_args, &args);
-                    if matches!(early, crate::core::agent::approval_flow::Settled::Ask) {
-                        if let Some(ttl) = self.approvals.defer_unattended.filter(|_| !self.can_prompt()) {
-                            let content = self.defer_content(tool, &args).await;
-                            if let Some(message) = self.defer_call(name, kind, &summary, &early_digest, ttl, &content) {
-                                out.push(ToolOutcome::plain(id.clone(), message));
-                                continue;
-                            }
-                        }
-                    }
-                    let request_id = next_permission_id();
-                    let (tx, rx) = tokio::sync::oneshot::channel();
-                    self.permission_requests
-                        .lock()
+                    match self
+                        .prompt_and_run(
+                            PromptCall {
+                                tc,
+                                tool,
+                                name,
+                                id: &id,
+                                args: &args,
+                                kind,
+                                forced_reason,
+                                secret_findings: &secret_findings,
+                                null_refusal: &null_refusal,
+                            },
+                            &mut out,
+                        )
                         .await
-                        .insert(request_id.clone(), tx);
-                    let capability = match tool.capability {
-                        Capability::Read => "read",
-                        Capability::Write => "write",
-                        Capability::Exec => "exec",
-                        // Net tools resolve to Allow in the gate and never reach
-                        // this prompt arm; label defensively for completeness.
-                        Capability::Net => "net",
-                    };
-                    let prompt_kind = match kind {
-                        PromptKind::ReadEscape => "read_escape",
-                        PromptKind::Write => "write",
-                        PromptKind::WriteEscape => "write_escape",
-                        PromptKind::Exec => "exec",
-                        PromptKind::Ask => "ask",
-                        PromptKind::Secret => "secret",
-                    };
-                    let path = tool
-                        .path_args
-                        .first()
-                        .and_then(|k| args.get(*k))
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
-                    let command = if name == "browser" {
-                        // What the browser will do, naming the element by what
-                        // the last snapshot called it, never the typed text.
-                        Some(tauri_plugin_agent_tools::tools::browser_tool::display(
-                            &args,
-                            &self.cancel_scope.run,
-                        ))
-                    } else if name == "git" {
-                        // The exact command line, so the prompt names what
-                        // will run rather than a blob of arguments.
-                        tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args)
-                            .ok()
-                            .map(|p| p.display())
-                    } else if tauri_plugin_agent_tools::tools::is_always_ask(name) {
-                        // What an always-asked host tool will do, in words,
-                        // so the prompt is not a bare tool name.
-                        use tauri_plugin_agent_tools::tools::{
-                            clipboard, host_action, host_build, host_package, host_powershell, host_ssh, host_wsl, open_path,
-                        };
-                        match name {
-                            "host_action" => host_action::plan(&args).ok().map(|a| host_action::summary(&a)),
-                            "host_build" => host_build::plan(&args).ok().map(|p| {
-                                format!(
-                                    "{} (in {})",
-                                    p.display(),
-                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
-                                )
-                            }),
-                            "clipboard" => clipboard::plan(&args).ok().map(|a| clipboard::summary(&a)),
-                            "open_path" => open_path::plan(&args).ok().map(|p| open_path::summary(&p)),
-                            "host_package" => host_package::plan(&args).ok().map(|p| host_package::summary(&p)),
-                            "host_ssh" => host_ssh::plan(&args).ok().map(|p| host_ssh::display(&p)),
-                            "host_wsl" => host_wsl::plan(&args).ok().map(|p| {
-                                format!(
-                                    "{} (from {})",
-                                    host_wsl::display(&p),
-                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
-                                )
-                            }),
-                            "host_powershell" => host_powershell::plan(&args).ok().map(|p| {
-                                format!(
-                                    "PowerShell (in {}):\n{}",
-                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder"),
-                                    host_powershell::display(&p)
-                                )
-                            }),
-                            "skill_write" | "memory_write" => {
-                                let what = if name == "skill_write" { "Save skill" } else { "Save memory" };
-                                let field = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                Some(format!("{what} '{}':
-{}", field("name"), field("content")))
-                            }
-                            _ => None,
-                        }
-                    } else {
-                        matches!(tool.capability, Capability::Exec)
-                            .then(|| args.get("command").and_then(|v| v.as_str()))
-                            .flatten()
-                            .map(String::from)
-                    };
-                    let diff = preview_diff(tool, &args, &self.tool_context()).await;
-                    // AH-146/AH-148. Staged against the file as it is at the
-                    // moment the question is asked. Kept until the answer comes
-                    // back, because the answer is only an answer about *that*
-                    // file.
-                    let staged = stage_change(tool, &args, &self.tool_context()).await;
-                    // The approval is about these exact arguments: path repair
-                    // and git attribution have already rewritten them above, so
-                    // what is hashed here is what the prompt shows and what
-                    // must run.
-                    let args_digest = approval_digest(name, &args);
-                    record_approval_digest(&request_id, &args_digest);
-                    let registered = self.call_token(&id);
-                    let waiting = registered.token().clone();
-                    let decision = match early {
-                        // Answered while the run was paused: no question to raise.
-                        crate::core::agent::approval_flow::Settled::Allow => PermissionDecision::AllowOnce,
-                        crate::core::agent::approval_flow::Settled::Deny => PermissionDecision::Deny,
-                        _ => {
-                            let _ = self.events.send(StreamEvent::PermissionRequest {
-                                request_id: request_id.clone(),
-                                tool_name: name.to_string(),
-                                capability: capability.to_string(),
-                                path,
-                                command,
-                                diff,
-                                patch: staged.as_ref().map(|(_, patch)| patch.view()),
-                                prompt_kind: prompt_kind.to_string(),
-                                offers_always: forced_reason.is_none(),
-                                reason: forced_reason.clone(),
-                                args_digest: Some(args_digest),
-                                call_id: Some(id.clone()),
-                            });
-                            // AH-023. The wait itself is cancellable: a run stopped
-                            // while someone is deciding must not sit here until they
-                            // answer, and the pending request must not outlive the call
-                            // that raised it. Waiting only on `rx` meant a cancelled run
-                            // stayed parked on a question nobody was going to answer.
-                            tokio::select! {
-                                answer = rx => answer.unwrap_or(PermissionDecision::Deny),
-                                _ = async {
-                                    while !waiting.is_stopped() {
-                                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                                    }
-                                } => PermissionDecision::Deny,
-                            }
-                        }
-                    };
-                    // Best-effort cleanup if the respond command didn't consume it.
-                    // Also the path that removes a pending request whose call was
-                    // cancelled, so the approval UI does not keep offering it.
-                    self.permission_requests.lock().await.remove(&request_id);
-                    // Taken whatever the answer, so it never outlives this
-                    // prompt; checked below against what is about to run.
-                    let approved_digest = take_approval_digest(&request_id);
-                    // The form's answer and the "answer later" mark belong to this
-                    // prompt alone; taken whatever the decision so neither outlives it.
-                    let chosen_scope = crate::core::agent::approval_flow::take_scope_choice(&request_id);
-                    let put_off = crate::core::agent::approval_flow::take_defer_mark(&request_id)
-                        && kind != PromptKind::Secret
-                        && matches!(decision, PermissionDecision::Deny)
-                        && matches!(early, crate::core::agent::approval_flow::Settled::Ask);
-
-                    // An answer that arrives for a call that has already been
-                    // stopped is stale: recorded, never acted on.
-                    if let Some(reason) = waiting.stopped() {
-                        // A reason typed for a prompt that was stopped is never read.
-                        let _ = take_deny_reason(&request_id);
-                        self.cancelled(&mut out, &id, name, reason);
-                        continue;
-                    }
-                    // "Write anyway" is for this one write: an "always" answer
-                    // (a client that offers none can still send one) is read as
-                    // once, and grants nothing.
-                    let decision = if kind == PromptKind::Secret && decision == PermissionDecision::AllowAlways {
-                        PermissionDecision::AllowOnce
-                    } else {
-                        decision
-                    };
-
-                    // AH-148. A prompt can stay open for minutes, and in that
-                    // time an editor, a formatter or another agent can write
-                    // the same file. Applying the approved change then would
-                    // overwrite work nobody reviewed -- for `write`, silently.
-                    // So an approval is checked against the file it was given
-                    // about, and refused with nothing written if that file has
-                    // moved on. A refusal, not a merge: the model re-reads and
-                    // proposes again against what is actually there.
-                    let stale = match (&staged, decision) {
-                        (Some((target, patch)), PermissionDecision::AllowOnce)
-                        | (Some((target, patch)), PermissionDecision::AllowAlways) => patch
-                            .check_base(
-                                tauri_plugin_agent_tools::patch::BaseStamp::read(target).await,
-                            )
-                            .err()
-                            .map(|refusal| refusal.message(&target.display().to_string())),
-                        _ => None,
-                    };
-                    // The approval is bound to the arguments it was shown:
-                    // whatever is about to run is hashed again, and anything
-                    // that no longer matches the prompt is refused unrun.
-                    let stale = stale.or_else(|| match decision {
-                        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
-                            approved_args_refusal(approved_digest.as_deref(), name, &args)
-                        }
-                        PermissionDecision::Deny => None,
-                    });
-                    if let Some(message) = stale {
-                        (message, None, None)
-                    } else {
-                        match decision {
-                            PermissionDecision::AllowOnce => {
-                                let secret = kind == PromptKind::Secret;
-                                if secret {
-                                    self.note_secret_decision(tc, "approved: write anyway (this one write)");
-                                }
-                                let ctx = self
-                                    .streaming_tool_context(&id)
-                                    .with_cancel(registered.token().clone())
-                                    .with_refusal_signal(null_refusal.clone())
-                                    .with_credential_override(secret);
-                                execute_builtin_with_diff(tool, &args, &ctx).await
-                            }
-                            PermissionDecision::AllowAlways => {
-                                // Thread-scoped only; never persisted to agent.toml.
-                                // An exec grant covers the exact command the user was
-                                // shown and nothing else (AH-037). Granting the base
-                                // instead let "allow always" for `git status` cover
-                                // `git push`, and made every chaining trick free:
-                                // `&&`, `|`, `;` and `$(...)` compose commands out of
-                                // separately-approved bases.
-                                //
-                                // With the form's answer (`approval_flow`) the grant is
-                                // as narrow as the scope picked: a folder or a command
-                                // prefix is saved as a rule, "once" grants nothing.
-                                if self.remember_choice(
-                                    chosen_scope.as_ref(),
-                                    forced_reason.is_none(),
-                                    tool,
-                                    kind,
-                                    &args,
-                                ) {
-                                    if matches!(tool.capability, Capability::Exec) {
-                                        let command =
-                                            args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                                        self.grants.lock().unwrap().grant_command(command);
-                                    } else {
-                                        self.grants.lock().unwrap().grant(kind);
-                                    }
-                                }
-                                let ctx = self
-                                    .streaming_tool_context(&id)
-                                    .with_cancel(registered.token().clone())
-                                    .with_refusal_signal(null_refusal.clone());
-                                execute_builtin_with_diff(tool, &args, &ctx).await
-                            }
-                            PermissionDecision::Deny => {
-                                let content = if put_off {
-                                    Some(self.defer_content(tool, &args).await)
-                                } else {
-                                    None
-                                };
-                                let deferred = content.and_then(|content| {
-                                    self.defer_call(
-                                        name,
-                                        kind,
-                                        &summary,
-                                        &early_digest,
-                                        self.approvals.defer_unattended.unwrap_or(0),
-                                        &content,
-                                    )
-                                });
-                                match deferred {
-                                    Some(message) => (message, None, None),
-                                    None if matches!(early, crate::core::agent::approval_flow::Settled::Deny) => (
-                                        format!("ERROR: tool '{name}' denied by user (answered while the run was paused)"),
-                                        None,
-                                        None,
-                                    ),
-                                    None if kind == PromptKind::Secret => {
-                                        (secret_denied_message(name, &request_id, &secret_findings), None, None)
-                                    }
-                                    None => (denied_by_user_message(name, &request_id), None, None),
-                                }
-                            }
-                        }
+                    {
+                        Some(result) => result,
+                        None => continue,
                     }
                 }
             };
@@ -3307,6 +2836,564 @@ impl CompositeToolInvoker {
         Ok(out)
     }
 
+    /// Every check a built-in call passes before it runs or is put to the
+    /// person, in its fixed order: Plan mode, the gate (`resolve_decision`),
+    /// the autonomous classifier, the destructive-command check, the judge,
+    /// saved scoped approvals, the credential scan, then the bypass /
+    /// auto-approval / forced-prompt rewrite. A refusal is the call's result.
+    pub(super) async fn gate_builtin(
+        &self,
+        tool: &'static tauri_plugin_agent_tools::tools::BuiltinTool,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Gated {
+        use tauri_plugin_agent_tools::tools::{
+            gate::{resolve_decision, with_secret_flag, Decision, PromptKind},
+            handlers::secret_findings,
+            Capability,
+        };
+        // Plan mode: mutation-capable builtins (Write/Exec) are hard-denied
+        // BEFORE the normal gate, without a permission prompt, and auto-approval
+        // cannot override this (unlike the normal prompt suppression below).
+        // Read/Net/workspace-read tools fall through to the usual gate.
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan
+            && matches!(tool.capability, Capability::Write | Capability::Exec)
+        {
+            return Gated::Refused(plan_mode_read_only_msg(name));
+        }
+        let snapshot = { self.grants.lock().unwrap().clone() };
+        let decision = resolve_decision(
+            tool,
+            args,
+            &self.project_root,
+            Some(self.scratch_root.as_path()),
+            // The CLI works *in* the project, so it has no separate
+            // read-only root to attach.
+            &[],
+            &self.permissions,
+            &snapshot,
+            self.sandbox,
+            // The run's resolved `allow_network` and the project's domain
+            // lists, capped by the machine policy (Jozkah/jan#226): both
+            // surfaces go through the same gate so a rule cannot mean two
+            // things.
+            &NetworkPolicy {
+                allowed: self.allow_network,
+                allow_domains: self.allow_domains.clone(),
+                deny_domains: self.deny_domains.clone(),
+            },
+            // AH-007. Not `MainAgent` unconditionally: a subagent dispatched
+            // under a name is judged as that name, so a project can grant
+            // its parent something and withhold it from the child.
+            &self.subject,
+        );
+        // Autonomous-mode safety classifier (findings F1), consulted only
+        // for the write/exec calls auto-approval would otherwise wave
+        // through, and only when a project opted in with `[auto_mode]`. It
+        // is a second layer over the gate below, not a replacement: a
+        // blocked class of action (force push, `curl | bash`, editing the
+        // agent's own config, ...) is refused before the auto-approval turns
+        // the prompt into a silent yes. Off by default -> `block_reason` is
+        // `None` and nothing here changes.
+        if self.auto_approve {
+            if let Decision::Prompt(PromptKind::Write | PromptKind::Exec) = decision {
+                if let Some(block) =
+                    self.auto_mode.block_reason(name, tool.capability, args)
+                {
+                    return Gated::Refused(auto_mode_refusal_msg(name, &block));
+                }
+            }
+        }
+        // Auto-approval suppresses the prompts for writes and commands inside
+        // the project, and still honors HardDeny, so the hidden `.jan`
+        // invariant (while the shell is sandboxed) and explicit agent.toml
+        // denies hold. R21: it never covers a read or write that escapes the
+        // project -- those reach host files no sandbox confines, gate.rs
+        // documents them as never auto-approved, and a headless run with
+        // nobody to ask them is refused.
+        //
+        // Two exceptions put the call to the user anyway, through the same
+        // prompt: a shell command that matches a destructive pattern
+        // (`rm -rf ~`, `git push --force`, ...), whatever grant or mode
+        // would otherwise allow it; and the call after a long streak of
+        // auto-approved ones, so an unattended run checks in periodically.
+        let git_destructive = (name == "git")
+            .then(|| tauri_plugin_agent_tools::tools::git_tool::plan_from_args(args).ok())
+            .flatten()
+            .and_then(|p| p.destructive);
+        let destructive = git_destructive.filter(|_| !self.bypass).or_else(|| (name == "bash" && !self.bypass)
+            .then(|| args.get("command").and_then(|v| v.as_str()))
+            .flatten()
+            .and_then(|c| {
+                // Inside the project or the run's own scratch directory is
+                // ordinary work; both are resolved and canonicalised, so an
+                // absolute path into either is not asked about.
+                crate::core::agent::destructive::forced_prompt_reason(
+                    c,
+                    &crate::core::agent::destructive::Scope::new([
+                        &self.project_root,
+                        &self.scratch_root,
+                    ]),
+                )
+            }));
+        // `[auto_mode] judge`: a second model looks at a call that is about
+        // to be put to the person or waved through by auto-approval. It can
+        // refuse the call; "ask", an error, a timeout or no judge at all
+        // leave it exactly where it was. Calls the gate already allows
+        // (reads, explicit allows) or denies never reach it.
+        if self.judge.is_some()
+            && (matches!(decision, Decision::Prompt(_))
+                || (matches!(decision, Decision::Allow) && destructive.is_some()))
+        {
+            if let crate::core::agent::auto_mode::GateOutcome::Deny(block) =
+                self.consult_judge(name, args).await
+            {
+                return Gated::Refused(judge_refusal_msg(name, &block));
+            }
+        }
+        // A scoped approval the user saved with "always" (a folder, a command
+        // prefix) answers a plain prompt for a call it covers. It sits here,
+        // after every deny, `[[tool_rules]]` and the judge, and only turns an
+        // ordinary prompt into an allow: asked-every-time calls and
+        // destructive commands are out of its reach.
+        let decision = if matches!(decision, Decision::Prompt(_)) && destructive.is_none() {
+            match self.record_to.as_deref() {
+                Some(data) => tauri_plugin_agent_tools::scoped_rules::upgrade(
+                    decision,
+                    data,
+                    &self.project_root,
+                    tool,
+                    args,
+                ),
+                None => decision,
+            }
+        } else {
+            decision
+        };
+        // The credential scan, asked before the call runs instead of
+        // refused after it: a flagged write becomes a question the person
+        // can answer for this one write. Applied after saved rules and
+        // session grants so neither can answer it, and never for a call
+        // the gate already refused.
+        let secret_findings = if matches!(tool.name, "write" | "edit")
+            && !matches!(decision, Decision::HardDeny(_))
+        {
+            secret_findings(tool, args, &self.tool_context()).await
+        } else {
+            Vec::new()
+        };
+        let decision = with_secret_flag(decision, !secret_findings.is_empty());
+        use std::sync::atomic::Ordering as StreakOrdering;
+        // Said in the prompt, so the person knows why a call that would
+        // otherwise have run on its own is in front of them. A forced prompt
+        // also offers no "always": it would record a grant this check
+        // overrides anyway.
+        let mut forced_reason: Option<String> = None;
+        let decision = match decision {
+            // Bypass answers every prompt a person could: writes outside
+            // the project, always-ask host tools, `ask` rules. Denials
+            // never reach this match.
+            Decision::Prompt(_) if self.bypass => Decision::Allow,
+            Decision::Prompt(PromptKind::Write | PromptKind::Exec)
+                if self.auto_approve && destructive.is_none() =>
+            {
+                let streak = self
+                    .auto_approved_streak
+                    .fetch_add(1, StreakOrdering::Relaxed)
+                    + 1;
+                if self.auto_approve_limit > 0 && streak > self.auto_approve_limit {
+                    forced_reason = Some(format!(
+                        "Auto-approval paused: {} tool calls ran without asking. Allow this one to continue.",
+                        self.auto_approve_limit
+                    ));
+                    Decision::Prompt(PromptKind::Exec)
+                } else {
+                    Decision::Allow
+                }
+            }
+            Decision::Prompt(kind) if destructive.is_some() => {
+                forced_reason = destructive
+                    .as_ref()
+                    .map(|d| format!("Destructive command: {d}."));
+                Decision::Prompt(kind)
+            }
+            Decision::Allow if destructive.is_some() => {
+                forced_reason = destructive
+                    .as_ref()
+                    .map(|d| format!("Destructive command: {d}."));
+                Decision::Prompt(PromptKind::Exec)
+            }
+            // Changes the computer or reads something private: asked every
+            // time, so no "always" is offered for it.
+            Decision::Prompt(PromptKind::Ask)
+                if tauri_plugin_agent_tools::tools::is_always_ask(name) =>
+            {
+                forced_reason = Some("Asked every time: it changes this computer or reads something private.".to_string());
+                Decision::Prompt(PromptKind::Ask)
+            }
+            // Asked every time, with what was found; no "always".
+            Decision::Prompt(PromptKind::Secret) => {
+                forced_reason = Some(secret_prompt_text(&secret_findings));
+                Decision::Prompt(PromptKind::Secret)
+            }
+            other => other,
+        };
+        if matches!(decision, Decision::Prompt(_)) {
+            // Someone is about to be asked: the streak starts over.
+            self.auto_approved_streak.store(0, StreakOrdering::Relaxed);
+        }
+        Gated::Decided {
+            decision,
+            forced_reason,
+            secret_findings,
+        }
+    }
+
+    /// A call the gate put to the person: deferred, answered early, or asked
+    /// now; then run, refused as stale, or reported as denied. `None` means
+    /// the result was already pushed to `out`.
+    pub(super) async fn prompt_and_run(
+        &self,
+        call: PromptCall<'_>,
+        out: &mut Vec<ToolOutcome>,
+    ) -> Option<(String, Option<String>, Option<Vec<tauri_plugin_agent_tools::tools::ImageContentPart>>)> {
+        use tauri_plugin_agent_tools::tools::{
+            gate::PromptKind,
+            handlers::{execute_builtin_with_diff, preview_diff, stage_change},
+            Capability,
+        };
+        let PromptCall {
+            tc,
+            tool,
+            name,
+            id,
+            args,
+            kind,
+            forced_reason,
+            secret_findings,
+            null_refusal,
+        } = call;
+        let secret_findings = secret_findings.to_vec();
+        // Only a person can say "write anyway", and only now: it is
+        // never put off to be answered later, and never refused as
+        // if they had said no when nobody was asked.
+        if kind == PromptKind::Secret && !self.can_prompt() {
+            out.push(ToolOutcome::plain(id.to_string(), secret_unattended_msg(name, &secret_findings)));
+            return None;
+        }
+        // A question answered while this run was paused, or one to put
+        // off now because nobody is here: see `approval_flow`.
+        let early_digest = approval_digest(name, args);
+        let early = if kind == PromptKind::Secret {
+            crate::core::agent::approval_flow::Settled::Ask
+        } else {
+            self.settle_deferred(name, &early_digest)
+        };
+        if let crate::core::agent::approval_flow::Settled::Refuse(message) = early {
+            out.push(ToolOutcome::plain(id.to_string(), message));
+            return None;
+        }
+        let summary =
+            crate::core::agent::approval_flow::call_summary(tool.name, tool.path_args, args);
+        if matches!(early, crate::core::agent::approval_flow::Settled::Ask) {
+            if let Some(ttl) = self.approvals.defer_unattended.filter(|_| !self.can_prompt()) {
+                let content = self.defer_content(tool, args).await;
+                if let Some(message) = self.defer_call(name, kind, &summary, &early_digest, ttl, &content) {
+                    out.push(ToolOutcome::plain(id.to_string(), message));
+                    return None;
+                }
+            }
+        }
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests
+            .lock()
+            .await
+            .insert(request_id.to_string(), tx);
+        let capability = match tool.capability {
+            Capability::Read => "read",
+            Capability::Write => "write",
+            Capability::Exec => "exec",
+            // Net tools resolve to Allow in the gate and never reach
+            // this prompt arm; label defensively for completeness.
+            Capability::Net => "net",
+        };
+        let prompt_kind = match kind {
+            PromptKind::ReadEscape => "read_escape",
+            PromptKind::Write => "write",
+            PromptKind::WriteEscape => "write_escape",
+            PromptKind::Exec => "exec",
+            PromptKind::Ask => "ask",
+            PromptKind::Secret => "secret",
+        };
+        let path = tool
+            .path_args
+            .first()
+            .and_then(|k| args.get(*k))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let command = self.prompt_command(tool, name, args);
+        let diff = preview_diff(tool, args, &self.tool_context()).await;
+        // AH-146/AH-148. Staged against the file as it is at the
+        // moment the question is asked. Kept until the answer comes
+        // back, because the answer is only an answer about *that*
+        // file.
+        let staged = stage_change(tool, args, &self.tool_context()).await;
+        // The approval is about these exact arguments: path repair
+        // and git attribution have already rewritten them above, so
+        // what is hashed here is what the prompt shows and what
+        // must run.
+        let args_digest = approval_digest(name, args);
+        record_approval_digest(&request_id, &args_digest);
+        let registered = self.call_token(id);
+        let waiting = registered.token().clone();
+        let decision = match early {
+            // Answered while the run was paused: no question to raise.
+            crate::core::agent::approval_flow::Settled::Allow => PermissionDecision::AllowOnce,
+            crate::core::agent::approval_flow::Settled::Deny => PermissionDecision::Deny,
+            _ => {
+                let _ = self.events.send(StreamEvent::PermissionRequest {
+                    request_id: request_id.to_string(),
+                    tool_name: name.to_string(),
+                    capability: capability.to_string(),
+                    path,
+                    command,
+                    diff,
+                    patch: staged.as_ref().map(|(_, patch)| patch.view()),
+                    prompt_kind: prompt_kind.to_string(),
+                    offers_always: forced_reason.is_none(),
+                    reason: forced_reason.clone(),
+                    args_digest: Some(args_digest),
+                    call_id: Some(id.to_string()),
+                });
+                // AH-023. The wait itself is cancellable: a run stopped
+                // while someone is deciding must not sit here until they
+                // answer, and the pending request must not outlive the call
+                // that raised it. Waiting only on `rx` meant a cancelled run
+                // stayed parked on a question nobody was going to answer.
+                tokio::select! {
+                    answer = rx => answer.unwrap_or(PermissionDecision::Deny),
+                    _ = async {
+                        while !waiting.is_stopped() {
+                            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                        }
+                    } => PermissionDecision::Deny,
+                }
+            }
+        };
+        // Best-effort cleanup if the respond command didn't consume it.
+        // Also the path that removes a pending request whose call was
+        // cancelled, so the approval UI does not keep offering it.
+        self.permission_requests.lock().await.remove(&request_id);
+        // Taken whatever the answer, so it never outlives this
+        // prompt; checked below against what is about to run.
+        let approved_digest = take_approval_digest(&request_id);
+        // The form's answer and the "answer later" mark belong to this
+        // prompt alone; taken whatever the decision so neither outlives it.
+        let chosen_scope = crate::core::agent::approval_flow::take_scope_choice(&request_id);
+        let put_off = crate::core::agent::approval_flow::take_defer_mark(&request_id)
+            && kind != PromptKind::Secret
+            && matches!(decision, PermissionDecision::Deny)
+            && matches!(early, crate::core::agent::approval_flow::Settled::Ask);
+
+        // An answer that arrives for a call that has already been
+        // stopped is stale: recorded, never acted on.
+        if let Some(reason) = waiting.stopped() {
+            // A reason typed for a prompt that was stopped is never read.
+            let _ = take_deny_reason(&request_id);
+            self.cancelled(out, id, name, reason);
+            return None;
+        }
+        // "Write anyway" is for this one write: an "always" answer
+        // (a client that offers none can still send one) is read as
+        // once, and grants nothing.
+        let decision = if kind == PromptKind::Secret && decision == PermissionDecision::AllowAlways {
+            PermissionDecision::AllowOnce
+        } else {
+            decision
+        };
+
+        // AH-148. A prompt can stay open for minutes, and in that
+        // time an editor, a formatter or another agent can write
+        // the same file. Applying the approved change then would
+        // overwrite work nobody reviewed -- for `write`, silently.
+        // So an approval is checked against the file it was given
+        // about, and refused with nothing written if that file has
+        // moved on. A refusal, not a merge: the model re-reads and
+        // proposes again against what is actually there.
+        let stale = match (&staged, decision) {
+            (Some((target, patch)), PermissionDecision::AllowOnce)
+            | (Some((target, patch)), PermissionDecision::AllowAlways) => patch
+                .check_base(
+                    tauri_plugin_agent_tools::patch::BaseStamp::read(target).await,
+                )
+                .err()
+                .map(|refusal| refusal.message(&target.display().to_string())),
+            _ => None,
+        };
+        // The approval is bound to the arguments it was shown:
+        // whatever is about to run is hashed again, and anything
+        // that no longer matches the prompt is refused unrun.
+        let stale = stale.or_else(|| match decision {
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
+                approved_args_refusal(approved_digest.as_deref(), name, args)
+            }
+            PermissionDecision::Deny => None,
+        });
+        Some(if let Some(message) = stale {
+            (message, None, None)
+        } else {
+            match decision {
+                PermissionDecision::AllowOnce => {
+                    let secret = kind == PromptKind::Secret;
+                    if secret {
+                        self.note_secret_decision(tc, "approved: write anyway (this one write)");
+                    }
+                    let ctx = self
+                        .streaming_tool_context(&id)
+                        .with_cancel(registered.token().clone())
+                        .with_refusal_signal(null_refusal.clone())
+                        .with_credential_override(secret);
+                    execute_builtin_with_diff(tool, args, &ctx).await
+                }
+                PermissionDecision::AllowAlways => {
+                    // Thread-scoped only; never persisted to agent.toml.
+                    // An exec grant covers the exact command the user was
+                    // shown and nothing else (AH-037). Granting the base
+                    // instead let "allow always" for `git status` cover
+                    // `git push`, and made every chaining trick free:
+                    // `&&`, `|`, `;` and `$(...)` compose commands out of
+                    // separately-approved bases.
+                    //
+                    // With the form's answer (`approval_flow`) the grant is
+                    // as narrow as the scope picked: a folder or a command
+                    // prefix is saved as a rule, "once" grants nothing.
+                    if self.remember_choice(
+                        chosen_scope.as_ref(),
+                        forced_reason.is_none(),
+                        tool,
+                        kind,
+                        args,
+                    ) {
+                        if matches!(tool.capability, Capability::Exec) {
+                            let command =
+                                args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                            self.grants.lock().unwrap().grant_command(command);
+                        } else {
+                            self.grants.lock().unwrap().grant(kind);
+                        }
+                    }
+                    let ctx = self
+                        .streaming_tool_context(&id)
+                        .with_cancel(registered.token().clone())
+                        .with_refusal_signal(null_refusal.clone());
+                    execute_builtin_with_diff(tool, args, &ctx).await
+                }
+                PermissionDecision::Deny => {
+                    let content = if put_off {
+                        Some(self.defer_content(tool, args).await)
+                    } else {
+                        None
+                    };
+                    let deferred = content.and_then(|content| {
+                        self.defer_call(
+                            name,
+                            kind,
+                            &summary,
+                            &early_digest,
+                            self.approvals.defer_unattended.unwrap_or(0),
+                            &content,
+                        )
+                    });
+                    match deferred {
+                        Some(message) => (message, None, None),
+                        None if matches!(early, crate::core::agent::approval_flow::Settled::Deny) => (
+                            format!("ERROR: tool '{name}' denied by user (answered while the run was paused)"),
+                            None,
+                            None,
+                        ),
+                        None if kind == PromptKind::Secret => {
+                            (secret_denied_message(name, &request_id, &secret_findings), None, None)
+                        }
+                        None => (denied_by_user_message(name, &request_id), None, None),
+                    }
+                }
+            }
+        })
+    }
+
+    /// What the permission prompt shows as the command: the browser action,
+    /// the git command line, an always-asked host tool's plan in words, or
+    /// an exec tool's command.
+    fn prompt_command(
+        &self,
+        tool: &tauri_plugin_agent_tools::tools::BuiltinTool,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Option<String> {
+        use tauri_plugin_agent_tools::tools::Capability;
+        if name == "browser" {
+            // What the browser will do, naming the element by what
+            // the last snapshot called it, never the typed text.
+            Some(tauri_plugin_agent_tools::tools::browser_tool::display(
+                args,
+                &self.cancel_scope.run,
+            ))
+        } else if name == "git" {
+            // The exact command line, so the prompt names what
+            // will run rather than a blob of arguments.
+            tauri_plugin_agent_tools::tools::git_tool::plan_from_args(args)
+                .ok()
+                .map(|p| p.display())
+        } else if tauri_plugin_agent_tools::tools::is_always_ask(name) {
+            // What an always-asked host tool will do, in words,
+            // so the prompt is not a bare tool name.
+            use tauri_plugin_agent_tools::tools::{
+                clipboard, host_action, host_build, host_package, host_powershell, host_ssh, host_wsl, open_path,
+            };
+            match name {
+                "host_action" => host_action::plan(args).ok().map(|a| host_action::summary(&a)),
+                "host_build" => host_build::plan(args).ok().map(|p| {
+                    format!(
+                        "{} (in {})",
+                        p.display(),
+                        args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
+                    )
+                }),
+                "clipboard" => clipboard::plan(args).ok().map(|a| clipboard::summary(&a)),
+                "open_path" => open_path::plan(args).ok().map(|p| open_path::summary(&p)),
+                "host_package" => host_package::plan(args).ok().map(|p| host_package::summary(&p)),
+                "host_ssh" => host_ssh::plan(args).ok().map(|p| host_ssh::display(&p)),
+                "host_wsl" => host_wsl::plan(args).ok().map(|p| {
+                    format!(
+                        "{} (from {})",
+                        host_wsl::display(&p),
+                        args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
+                    )
+                }),
+                "host_powershell" => host_powershell::plan(args).ok().map(|p| {
+                    format!(
+                        "PowerShell (in {}):\n{}",
+                        args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder"),
+                        host_powershell::display(&p)
+                    )
+                }),
+                "skill_write" | "memory_write" => {
+                    let what = if name == "skill_write" { "Save skill" } else { "Save memory" };
+                    let field = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    Some(format!("{what} '{}':
+{}", field("name"), field("content")))
+                }
+                _ => None,
+            }
+        } else {
+            matches!(tool.capability, Capability::Exec)
+                .then(|| args.get("command").and_then(|v| v.as_str()))
+                .flatten()
+                .map(String::from)
+        }
+    }
+
     /// AH-064. After a turn that changed files, tell the model what the
     /// project's own checker says about *those* files.
     ///
@@ -3382,4 +3469,30 @@ impl CompositeToolInvoker {
             last.content.push_str(&note);
         }
     }
+}
+
+/// What [`CompositeToolInvoker::gate_builtin`] made of a built-in call.
+pub(super) enum Gated {
+    /// Refused before anything ran; the text is the call's result.
+    Refused(String),
+    /// Allowed, refused by policy, or to be put to the person.
+    Decided {
+        decision: tauri_plugin_agent_tools::tools::gate::Decision,
+        /// Why a prompt is forced (and offers no "always").
+        forced_reason: Option<String>,
+        secret_findings: Vec<tauri_plugin_agent_tools::secrets::SecretFinding>,
+    },
+}
+
+/// One call on its way to the permission prompt.
+pub(super) struct PromptCall<'a> {
+    pub tc: &'a serde_json::Value,
+    pub tool: &'static tauri_plugin_agent_tools::tools::BuiltinTool,
+    pub name: &'a str,
+    pub id: &'a str,
+    pub args: &'a serde_json::Value,
+    pub kind: tauri_plugin_agent_tools::tools::gate::PromptKind,
+    pub forced_reason: Option<String>,
+    pub secret_findings: &'a [tauri_plugin_agent_tools::secrets::SecretFinding],
+    pub null_refusal: &'a tauri_plugin_agent_tools::unsandboxed_retry::RefusalSignal,
 }

@@ -41,10 +41,10 @@
     "gitRemote": "Flint, {{target}} hedefini değiştiren {{command}} komutunu çalıştırmak istiyor",
     "gitDestructive": "Flint, çalışma kaybına yol açabilecek {{command}} komutunu çalıştırmak istiyor",
     "approveCampaign": "Flint \"{{title}}\" kampanyasını başlatmak istiyor ({{count}} görev)",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint bir iş akışı çalıştırmak istiyor: {{phases}} aşamada {{agents}} ajan",
+    "spawnWorktree": "Flint, {{folder}} klasörünün yeni bir worktree'sinde (dal {{branch}}) dosyaları değiştirebilen iç içe bir sohbet başlatmak istiyor",
+    "spawnChat": "Flint \"{{title}}\" adlı iç içe bir sohbet başlatmak istiyor",
+    "enterWorktree": "Flint, bu oturumun yazma erişimini bir worktree'ye taşımak istiyor: {{folder}} (dal {{branch}}, taban {{base}})",
     "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor",
     "changeFileOutside": "Flint, {{workspace}} dışındaki {{target}} dosyasını değiştirmek istiyor",
     "changeManyFilesOutside": "Flint {{count}} dosyayı değiştirmek istiyor, bazıları {{workspace}} dışında"
@@ -67,10 +67,10 @@
     "gitRemote": "Başkalarının görebileceği uzak bir depoya değişiklik gönderir. Bu konuşma için sıradan uzak Git eylemlerine geçici olarak izin vermediyseniz Flint her seferinde sorar.",
     "gitDestructive": "Kaldırdığı veya üzerine yazdığı şeyler geri alınamayabilir.",
     "campaignPlan": "Her biri kendi worktree dalında olan, dosyaları okuyan ve değiştiren, model kotanızı paralel kullanan ayrı oturumlar başlatır. Planı onaylamak, bir görevin yaptığı hiçbir çağrıyı onaylamak anlamına gelmez. Flint her seferinde sorar.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Aşama aşama, dosyaları okuyan ve değiştiren ve model kotanızı kullanan o kadar alt ajan başlatır. Flint bu büyüklükte bir iş akışı için her seferinde sorar.",
+    "spawnWorktree": "İç içe sohbet, bu projenin kendi dalında dosyaları okur ve değiştirir, model kotanızı kullanır ve siz başka işler yaparken çalışmaya devam eder. Değişiklikleri siz birleştirene kadar o dalda kalır. Flint her seferinde sorar.",
+    "spawnChat": "İç içe sohbet, model kotanızı kullanan ve siz başka işler yaparken çalışmaya devam eden yeni bir oturumdur. Klasör erişimi olmadan başlar. Flint her seferinde sorar çünkü bu oturum için \"İç içe sohbetler başlamadan önce sor\" seçeneğini açtınız.",
+    "enterWorktree": "Bu oturum dosyaları yalnızca kendi dalındaki o worktree'de okuyabilir ve değiştirebilir, proje klasörünüzde değil. Değişiklikleri siz birleştirene kadar o dalda kalır. Flint her seferinde sorar.",
     "spendPause": "Çalıştırma, bitene veya üst sınırına ulaşana kadar ücretli model kotasını kullanmayı sürdürür. Reddetmek çalıştırmayı durdurur."
   },
   "repeat": {
@@ -397,11 +397,11 @@
     "session": "Bu sohbet için izin ver"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "Onayınız bekleniyor: {{tool}}",
+    "waitBody": "Siz izin verene veya reddedene kadar çalıştırma {{seconds}} sn duraklatıldı.",
+    "destructive": "Yıkıcı komut: {{reason}}. Bu araca başka türlü izin verilmiş olsa da sorulur.",
+    "selfApproval": "{{tool}}, {{server}} üzerindeki komutları kendisi onaylar. Yalnızca siz onaylayabilirsiniz, bu yüzden her seferinde sorulur.",
+    "sensitive": "Hassas araç çağrısı: izin vermeden önce eylemini inceleyin.",
+    "autoPause": "{{count}} araç çağrısı sormadan çalıştı. Devam edilsin mi?"
   }
 }
