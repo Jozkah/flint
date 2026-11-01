@@ -649,6 +649,56 @@ fn is_proxy_server_running<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool
         .unwrap_or(false)
 }
 
+/// What to do after a web-process crash, given recent crash times.
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq)]
+enum CrashAction {
+    Reload,
+    ReloadSafeEmoji,
+    GiveUp,
+}
+
+/// Records a crash at `now` and decides: plain reload for the first, safe-emoji
+/// mode (no COLRv1 colour glyphs) once it repeats within 60 s, stop after that
+/// fails too so the app never loops forever.
+#[allow(dead_code)]
+fn crash_action(history: &mut Vec<std::time::Instant>, now: std::time::Instant) -> CrashAction {
+    let window = std::time::Duration::from_secs(60);
+    history.retain(|t| now.duration_since(*t) < window);
+    history.push(now);
+    match history.len() {
+        0..=2 => CrashAction::Reload,
+        3 => CrashAction::ReloadSafeEmoji,
+        4 => CrashAction::Reload,
+        _ => CrashAction::GiveUp,
+    }
+}
+
+#[cfg(test)]
+mod crash_action_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn escalates_then_gives_up() {
+        let t0 = Instant::now();
+        let mut h = Vec::new();
+        let a: Vec<_> = (0..6).map(|i| crash_action(&mut h, t0 + Duration::from_secs(i * 10))).collect();
+        assert_eq!(a[0], CrashAction::Reload);
+        assert_eq!(a[2], CrashAction::ReloadSafeEmoji);
+        assert_eq!(a[4], CrashAction::GiveUp);
+    }
+
+    #[test]
+    fn old_crashes_expire() {
+        let t0 = Instant::now();
+        let mut h = Vec::new();
+        crash_action(&mut h, t0);
+        crash_action(&mut h, t0);
+        assert_eq!(crash_action(&mut h, t0 + Duration::from_secs(120)), CrashAction::Reload);
+    }
+}
+
 /// Reload the page when WebKitGTK's web process dies. Without this the window
 /// stays flat grey (GTK's background) with the app still running.
 #[cfg(all(not(feature = "cli"), target_os = "linux"))]
@@ -656,10 +706,30 @@ fn reload_on_web_process_crash(window: &tauri::WebviewWindow) {
     window
         .with_webview(|webview| {
             use webkit2gtk::{WebProcessTerminationReason as Reason, WebViewExt};
-            webview.inner().connect_web_process_terminated(|view, reason| {
+            let crashes = std::sync::Mutex::new(Vec::<std::time::Instant>::new());
+            webview.inner().connect_web_process_terminated(move |view, reason| {
                 log::error!("web process terminated ({reason:?})");
-                if matches!(reason, Reason::Crashed | Reason::ExceededMemoryLimit) {
-                    view.reload();
+                if !matches!(reason, Reason::Crashed | Reason::ExceededMemoryLimit) {
+                    return;
+                }
+                let action = {
+                    let mut c = crashes.lock().unwrap_or_else(|e| e.into_inner());
+                    crash_action(&mut c, std::time::Instant::now())
+                };
+                match action {
+                    CrashAction::Reload => view.reload(),
+                    CrashAction::ReloadSafeEmoji => {
+                        log::warn!("web process crashing repeatedly: reloading with safe-emoji mode");
+                        view.run_javascript(
+                            "try{localStorage.setItem('flint-safe-emoji','1')}catch(e){}",
+                            None::<&gtk::gio::Cancellable>,
+                            |_| {},
+                        );
+                        view.reload();
+                    }
+                    CrashAction::GiveUp => {
+                        log::error!("web process keeps crashing even in safe-emoji mode; not reloading");
+                    }
                 }
             });
         })

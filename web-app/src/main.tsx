@@ -12,10 +12,16 @@ import { bootMark } from '@/lib/bootMarks'
 import { noteBootError, startBootWatchdog } from '@/lib/bootWatchdog'
 import { routerDefaults } from '@/components/RoutePending'
 import { installWindowIdleMarker } from '@/lib/windowIdle'
+import { applySafeEmojiMode } from '@/lib/safeEmoji'
 import { noteLocation, setSettingsNavigator } from '@/lib/settingsReturn'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
+
+applySafeEmojiMode(
+  (() => { try { return window.localStorage } catch { return undefined } })(),
+  document.documentElement
+)
 
 // Mobile-specific viewport and styling setup
 const setupMobileViewport = () => {

@@ -134,3 +134,18 @@
   font-weight: 900;
   font-style: italic;
 }
+
+/* Safe-emoji mode (set by the shell after repeated web-process crashes):
+   route emoji code points to monochrome fonts so WebKit never paints COLRv1
+   colour glyphs, which abort Skia on some WebKitGTK builds. Missing local
+   fonts just drop the face and fall through. */
+@font-face {
+  font-family: 'Flint Mono Emoji';
+  src: local('Noto Sans Symbols 2'), local('Noto Sans Symbols'), local('Symbola'), local('DejaVu Sans');
+  unicode-range: U+2600-27BF, U+2B00-2BFF, U+1F000-1FAFF;
+}
+:root.safe-emoji {
+  font-variant-emoji: text;
+  --font-sans: 'Flint Mono Emoji', "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Flint Mono Emoji', ui-monospace, "Liberation Mono", monospace;
+}
