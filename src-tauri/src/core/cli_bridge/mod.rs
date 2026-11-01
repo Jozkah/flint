@@ -406,7 +406,7 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
         if !first.starts_with("data: ") {
             let _ = pump.await;
             return match serde_json::from_str::<Value>(&first) {
-                Ok(value) => failure_reply(value),
+                Ok(value) => failure_reply(backend, value),
                 Err(_) => error(StatusCode::BAD_GATEWAY, "the CLI returned no answer"),
             };
         }
@@ -426,7 +426,7 @@ Your previous reply used an unsupported tool syntax and was discarded. Call a to
     let payload = out_rx.recv().await.unwrap_or_default();
     let _ = pump.await;
     match serde_json::from_str::<Value>(&payload) {
-        Ok(value) if value.get("error").is_some() => failure_reply(value),
+        Ok(value) if value.get("error").is_some() => failure_reply(backend, value),
         Ok(value) => reply(StatusCode::OK, value),
         Err(_) => error(StatusCode::BAD_GATEWAY, "the CLI returned no answer"),
     }
@@ -466,9 +466,15 @@ fn failure_status(message: &str) -> (StatusCode, Option<u64>) {
     (StatusCode::BAD_GATEWAY, None)
 }
 
-fn failure_reply(value: Value) -> Response<Body> {
+fn failure_reply(backend: Backend, value: Value) -> Response<Body> {
     let message = value["error"]["message"].as_str().unwrap_or_default();
     let (status, retry_after) = failure_status(message);
+    let detail = backend::redact_and_truncate(message, 300);
+    if status.is_server_error() {
+        log::error!("cli_bridge: provider={} cli={} status={} message={:?}", backend.id(), backend.binary(), status.as_u16(), detail);
+    } else {
+        log::warn!("cli_bridge: provider={} cli={} status={} retry_after={:?} message={:?}", backend.id(), backend.binary(), status.as_u16(), retry_after, detail);
+    }
     let mut response = reply(status, value);
     if let Some(seconds) = retry_after {
         if let Ok(header) = hyper::header::HeaderValue::from_str(&seconds.to_string()) {
@@ -689,7 +695,7 @@ mod tests {
 
     #[test]
     fn failure_reply_carries_retry_after() {
-        let response = failure_reply(json!({"error": {"message": "usage limit reached", "type": "cli_bridge_error"}}));
+        let response = failure_reply(Backend::Claude, json!({"error": {"message": "usage limit reached", "type": "cli_bridge_error"}}));
         assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
         assert_eq!(response.headers()["retry-after"], "3600");
     }
