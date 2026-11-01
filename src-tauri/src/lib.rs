@@ -779,6 +779,7 @@ pub fn build_app() -> tauri::App {
     // A panic reaches the log, with where it happened, instead of a standard
     // error nobody sees.
     core::crash_trace::install_panic_hook();
+    install_async_runtime();
     let builder = tauri::Builder::default();
     // Phone builds: record what the webview loads, since there is no console to read.
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1328,7 +1329,6 @@ pub fn build_app() -> tauri::App {
     tauri::mobile_entry_point
 )]
 pub fn run() {
-    install_async_runtime();
     run_app(build_app());
 }
 
