@@ -52,11 +52,31 @@ function save(table: Table): void {
 export function listedEntryWindow(entry: unknown): number | null {
   if (!entry || typeof entry !== 'object') return null
   const e = entry as Record<string, unknown>
+  // llama-server puts the window it runs at under `meta.n_ctx` (beside
+  // `n_ctx_train`, the trained maximum, which is a different fact).
+  const meta =
+    e.meta && typeof e.meta === 'object' ? (e.meta as Record<string, unknown>) : null
   return (
     usableContextValue(e.max_model_len) ??
     usableContextValue(e.context_length) ??
-    usableContextValue(e.max_context_length)
+    usableContextValue(e.max_context_length) ??
+    usableContextValue(meta?.n_ctx)
   )
+}
+
+/** Remember one model's window, learned some other way (a `/props` probe). */
+export function rememberListedWindow(
+  baseUrl: string | null | undefined,
+  modelId: string | null | undefined,
+  tokens: number
+): void {
+  const value = usableContextValue(tokens)
+  if (!baseUrl || !modelId?.trim() || value == null) return
+  const table = load()
+  const key = keyOf(baseUrl, modelId.trim())
+  if (table[key] === value) return
+  table[key] = value
+  save(table)
 }
 
 /** Remember the windows a `/models` payload named. Entries naming none are skipped. */

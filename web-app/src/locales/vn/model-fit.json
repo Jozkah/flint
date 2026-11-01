@@ -114,12 +114,12 @@
     "inUse": "Đang dùng ở đây: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "Chuyển tải lên GPU (lần tải này)",
+    "all": "Tất cả {{layers}} lớp chạy trên GPU.",
+    "partial": "{{gpu}} trên {{total}} lớp chạy trên GPU; phần còn lại chạy trên CPU, chậm hơn.",
+    "none": "Không có lớp nào chạy trên GPU: mô hình đang chạy trên CPU.",
+    "unknown": "Engine không cho biết nó đã chuyển bao nhiêu lớp lên GPU.",
+    "memory": "Trọng số mô hình: {{gpu}} trên GPU, {{cpu}} trong bộ nhớ hệ thống."
   },
   "metalBudget": {
     "warning": "Mô hình này có thể quá lớn đối với GPU của máy Mac này: cần khoảng {{required}}, trong khi macOS mặc định chỉ cho GPU dùng khoảng {{budget}}. Mô hình có thể tải xong rồi lỗi ở tin nhắn đầu tiên. Hãy giảm kích thước ngữ cảnh, đưa ít lớp lên GPU hơn hoặc chọn bản lượng tử hóa nhỏ hơn."

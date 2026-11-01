@@ -1917,7 +1917,7 @@ impl ToolInvoker for CompositeToolInvoker {
             self.record_outcomes(tool_calls, outcomes);
             // `[[tool_rules]] max_failures` reads what failed here.
             if !self.tool_rules.is_empty() {
-                let mut log = self.call_log.lock().unwrap();
+                let mut log = self.call_log.lock().unwrap_or_else(|e| e.into_inner());
                 for name in crate::core::agent::failure_stats::failed_tools(tool_calls, outcomes) {
                     log.record_failure(&name);
                 }
@@ -6326,7 +6326,7 @@ Address it and continue."
             let invoked = tools
                 .invoke_streaming(&executable, &|outcome| {
                     let is_error = emit_tool_result(events, &tool_names, outcome);
-                    announced.lock().unwrap().insert(outcome.id.clone(), is_error);
+                    announced.lock().unwrap_or_else(|e| e.into_inner()).insert(outcome.id.clone(), is_error);
                 })
                 .await;
             match invoked {
@@ -6387,7 +6387,7 @@ Address it and continue."
             // (the default invoker never does; a call refused before execution
             // never reaches one). Either way `is_error` is the one the display
             // was given, so the mutation count agrees with it.
-            let is_error = match announced.lock().unwrap().get(&outcome.id).copied() {
+            let is_error = match announced.lock().unwrap_or_else(|e| e.into_inner()).get(&outcome.id).copied() {
                 Some(is_error) => is_error,
                 None => emit_tool_result(events, &tool_names, &outcome),
             };

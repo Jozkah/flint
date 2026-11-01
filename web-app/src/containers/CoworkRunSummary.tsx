@@ -545,7 +545,7 @@ function UnresolvedSection({
                   {item.message}
                 </div>
               ) : null}
-              {item.kind === 'failed' && item.detail ? (
+              {(item.kind === 'failed' || item.kind === 'refused') && item.detail ? (
                 <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
                   {item.detail}
                 </div>

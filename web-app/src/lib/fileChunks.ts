@@ -200,6 +200,7 @@ export function createChunkReader(src: ChunkSource, chunk = CHUNK_SIZE): ChunkRe
   let loaded = 0
   let done = false
   let binary = false
+  let inflight: Promise<void> | null = null
   return {
     get loaded() {
       return loaded
@@ -214,27 +215,38 @@ export function createChunkReader(src: ChunkSource, chunk = CHUNK_SIZE): ChunkRe
       return binary
     },
     state,
-    async next(signal) {
-      if (done) return
-      const part = await src.read(loaded, chunk, signal)
-      if (signal?.aborted) return
-      if (typeof part !== 'string' && loaded === 0 && looksBinary(part)) {
-        binary = true
-        done = true
-        return
+    // One read at a time: two overlapping calls read the same offset and
+    // pushed the chunk twice (LIBB-010).
+    next(signal) {
+      if (!inflight) {
+        inflight = readNext(signal).finally(() => {
+          inflight = null
+        })
       }
-      loaded += part.length
-      // A known size decides the end: servers may answer a range with less
-      // than asked (Tauri's asset protocol caps one response near 1 MB), and
-      // a short read there is not the end of the file. Without a size only an
-      // empty read is the end. In-memory text never comes back short.
-      done =
-        part.length === 0 ||
-        (src.size !== null ? loaded >= src.size : typeof part === 'string' && part.length < chunk)
-      const text =
-        typeof part === 'string' ? part : decoder.decode(part, { stream: !done })
-      pushText(state, text, done)
+      return inflight
     },
+  }
+
+  async function readNext(signal?: AbortSignal): Promise<void> {
+    if (done) return
+    const part = await src.read(loaded, chunk, signal)
+    if (signal?.aborted) return
+    if (typeof part !== 'string' && loaded === 0 && looksBinary(part)) {
+      binary = true
+      done = true
+      return
+    }
+    loaded += part.length
+    // A known size decides the end: servers may answer a range with less
+    // than asked (Tauri's asset protocol caps one response near 1 MB), and
+    // a short read there is not the end of the file. Without a size only an
+    // empty read is the end. In-memory text never comes back short.
+    done =
+      part.length === 0 ||
+      (src.size !== null ? loaded >= src.size : typeof part === 'string' && part.length < chunk)
+    const text =
+      typeof part === 'string' ? part : decoder.decode(part, { stream: !done })
+    pushText(state, text, done)
   }
 }
 

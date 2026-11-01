@@ -127,6 +127,8 @@
     "reasoningOff": "Desactivat",
     "reasoningEffort": "Esforç de raonament",
     "reasoningEffortDefault": "Per defecte",
+    "roomEffort": "Esforç per a tots els models",
+    "roomEffortHint": "L'utilitzen tots els models que admeten esforç, tret que la seva pròpia configuració el substitueixi.",
     "thinkingBudget": "Pressupost de pensament",
     "thinkingBudgetHint": "Una part del context del model, calculada quan s'envia el torn i limitada perquè la resposta encara hi càpiga.",
     "pricing": "Preus (opcional)",
@@ -668,5 +670,5 @@
     "ranToolsDropped": "la seva sortida s'ha descartat perquè càpiga a la finestra de context.",
     "ranToolsRetry": "el proveïdor ha fallat després i la sol·licitud es torna a intentar."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "No s'ha pogut eliminar la sala"
 }

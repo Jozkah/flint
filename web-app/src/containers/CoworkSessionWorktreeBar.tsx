@@ -3,6 +3,7 @@ import { Copy, FolderOpen, GitBranch, GitMerge, GitPullRequest, Info, Trash2, X 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { BarRow } from '@/components/ui/bar-row'
 import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -175,6 +176,9 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
         kind: 'merge',
         pending: await useCoworkWorktrees.getState().pending(record),
       })
+    } catch (e) {
+      // A rejection is shown, not left unhandled (F8x2-009).
+      toast.error(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -189,6 +193,9 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
         store.unmerged(record),
       ])
       setConfirm({ kind: 'discard', pending, unmerged })
+    } catch (e) {
+      // A rejection is shown, not left unhandled (F8x2-009).
+      toast.error(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -218,6 +225,9 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
       else if (o.fastForward)
         toast.success(t('common:coworkParallel.mergedFf', { base: o.target }))
       else toast.success(t('common:coworkParallel.merged', { base: o.target }))
+    } catch (e) {
+      // A rejection is shown, not left unhandled (F8x2-009).
+      toast.error(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -237,6 +247,9 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
       if (isCopy) useCoworkParallel.getState().setCopy(props.sessionId, null)
       toast.success(t('common:coworkParallel.discarded'))
       props.onDiscarded()
+    } catch (e) {
+      // A rejection is shown, not left unhandled (F8x2-009).
+      toast.error(errorText(e))
     } finally {
       setBusy(false)
     }

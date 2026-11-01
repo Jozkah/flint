@@ -25,40 +25,40 @@
   "limitsTitle": "Apa yang berjalan di mana",
   "limits": "Obrolan, ruang, model, dan tool berjalan di server. Sesi Cowork dan Campaign membutuhkan agen yang berjalan di komputer dengan Flint terbuka: jangkau komputer itu lewat Akses jarak jauh dan aplikasi ponsel. Server headless bisa menampilkan daftar campaign dan meninjau proposal, tetapi tidak menjalankan sesi.",
   "planApproval": {
-    "title": "Approve this plan to start it",
-    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
-    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "title": "Setujui rencana ini untuk memulainya",
+    "summary_one": "{{count}} tugas. Server menjalankannya sendiri, tanpa klien terhubung, dan bertanya lagi sebelum apa pun menyentuh folder Anda.",
+    "summary_other": "{{count}} tugas. Server menjalankannya sendiri, tanpa klien terhubung, dan bertanya lagi sebelum apa pun menyentuh folder Anda.",
+    "cost": "Perkiraan biaya: {{low}} hingga {{high}} token.",
     "after": "after {{deps}}",
-    "accessLabel": "How tasks work",
-    "accessWorktree": "Work on their own inside their own folder",
-    "accessAsk": "Ask for each action",
-    "approve": "Approve and start",
+    "accessLabel": "Cara kerja tugas",
+    "accessWorktree": "Bekerja sendiri di dalam folder mereka sendiri",
+    "accessAsk": "Tanya untuk setiap tindakan",
+    "approve": "Setujui dan mulai",
     "reject": "Reject",
-    "rejectReason": "the plan was not approved"
+    "rejectReason": "rencana tidak disetujui"
   },
   "worktree": {
     "state": {
       "ready": "ready",
-      "missing": "folder missing",
-      "corrupt": "not a worktree any more",
-      "branchMoved": "branch moved",
-      "identityChanged": "repository changed"
+      "missing": "folder hilang",
+      "corrupt": "bukan worktree lagi",
+      "branchMoved": "cabang berpindah",
+      "identityChanged": "repositori berubah"
     },
-    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "conflicts": "Tidak digabungkan: konflik di {{files}}. Tidak ada yang diubah.",
     "alreadyIn": "Already in {{target}}.",
-    "mergedFast": "Merged into {{target}} (fast-forward).",
-    "merged": "Merged into {{target}}.",
-    "discarded": "Discarded. This session cannot continue without its worktree.",
-    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "mergedFast": "Digabungkan ke {{target}} (fast-forward).",
+    "merged": "Digabungkan ke {{target}}.",
+    "discarded": "Dibuang. Sesi ini tidak dapat dilanjutkan tanpa worktree-nya.",
+    "counts": "{{pending}} belum di-commit, {{unmerged}} untuk digabung",
     "merging": "Merging...",
-    "mergeInto": "Merge into {{base}}",
+    "mergeInto": "Gabungkan ke {{base}}",
     "baseFallback": "base",
     "discard": "Discard",
-    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
-    "discardAnyway": "Discard anyway",
+    "discardWarning": "Menghapus checkout dan cabangnya, beserta {{pending}} file yang belum di-commit dan {{unmerged}} commit yang belum digabung.",
+    "discardAnyway": "Tetap buang",
     "keep": "Keep",
-    "notProposed": "Changes were not proposed: {{error}}",
-    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+    "notProposed": "Perubahan tidak diusulkan: {{error}}",
+    "filesChanged": "{{count}} file diubah: {{files}}{{more}}"
   }
 }

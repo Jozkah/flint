@@ -109,6 +109,7 @@
     "runId": "proses {{id}}",
     "turnId": "giliran {{id}}",
     "snapshotId": "snapshot {{id}}",
-    "noRequests": "belum ada permintaan yang tercatat"
+    "noRequests": "belum ada permintaan yang tercatat",
+    "id": "ID"
   }
 }

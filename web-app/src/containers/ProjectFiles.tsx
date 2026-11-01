@@ -591,11 +591,11 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         directory: false,
         filters: [
           {
-            name: 'Documents & Code',
+            name: t('chat:composer.filterDocuments'),
             extensions: SUPPORTED_EXTENSIONS,
           },
           {
-            name: 'All Files',
+            name: t('chat:composer.filterAll'),
             extensions: ['*'],
           },
         ],

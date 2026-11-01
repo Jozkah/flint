@@ -74,9 +74,8 @@ pub fn write_spec(store: &Store, spec: &RunSpec) -> Result<PathBuf, String> {
     let path = spec_path(store, &spec.run_id);
     std::fs::create_dir_all(specs_dir(store)).map_err(|e| format!("the specs folder could not be created: {e}"))?;
     let body = serde_json::to_vec_pretty(spec).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body).map_err(|e| format!("the run spec could not be written: {e}"))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("the run spec could not be written: {e}"))?;
+    crate::core::threads::helpers::write_file_atomically(&path, &body)
+        .map_err(|e| format!("the run spec could not be written: {e}"))?;
     Ok(path)
 }
 

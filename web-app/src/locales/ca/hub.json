@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "Hauria de funcionar sense problemes al teu dispositiu"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "Pot anar lent",
+      "detail": "Funcionarà però deixa poc marge de memòria"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "No hi cap",
+      "detail": "Probablement supera la memòria disponible"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "Compatibilitat desconeguda",
+      "detail": "No s'han pogut estimar els requisits de memòria"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "Compatibilitat del dispositiu: {{label}}",
+    "variantInfo": "Informació de la variant del model",
+    "modelInfo": "Informació del model",
+    "defaultQuantization": "Quantització per defecte",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "Compatibilitat del dispositiu",
+    "estimateNote": "Estimació basada en la mida del fitxer i el teu maquinari. El rendiment real depèn de la quantització i de la longitud del context.",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "Memòria del context llegida del fitxer del model.",
+      "fromSize": "Memòria del context estimada a partir de la mida del fitxer.",
+      "sizeEstimated": "Mida del fitxer estimada a partir dels paràmetres.",
+      "gpuOff": "Una GPU que has desactivat no es compta."
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "Precisió completa",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "Quantització desconeguda",
+      "full": "Màxima fidelitat, ocupació de memòria molt gran",
+      "q8": "Qualitat gairebé original, gran ocupació de memòria",
+      "q6": "Qualitat molt alta amb compressió moderada",
+      "q5": "Alta qualitat i un bon equilibri entre qualitat i mida",
+      "recommended": "Equilibri recomanat entre qualitat, velocitat i memòria per a la majoria de sistemes",
+      "q4": "Mida i qualitat equilibrades per a la inferència local del dia a dia",
+      "q3": "Més petit i ràpid, amb una pèrdua de qualitat notable",
+      "q2": "Ocupació molt reduïda amb la major pèrdua de qualitat",
+      "other": "Model GGUF quantitzat"
     }
   }
 }

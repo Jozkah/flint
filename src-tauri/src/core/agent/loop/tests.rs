@@ -9148,3 +9148,58 @@ fn thresholds_for_honours_the_chosen_compaction_percentage() {
     policy.compact_at_percent = 10;
     assert_eq!(thresholds_for(&policy, Some(100_000), None).unwrap().unwrap().compact_at, 50_000);
 }
+
+/// Q1-004: the gate order, pinned through `dispatch_calls`. A destructive
+/// command under auto-approval is put to the person with the destructive
+/// reason and no "always"; the prompt shows the command; a denial is the
+/// user's denial. Plan mode refuses the same call before any of that.
+#[tokio::test]
+async fn gate_order_destructive_bash_under_auto_approve_is_asked_with_its_reason() {
+    let root = unique_project_root();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+    let mut invoker = build_prompting_invoker(root.clone(), tx, permissions.clone());
+    invoker.auto_approve = true;
+    let answered = tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            if let StreamEvent::PermissionRequest {
+                request_id,
+                command,
+                reason,
+                offers_always,
+                prompt_kind,
+                ..
+            } = ev
+            {
+                if let Some(tx) = permissions.lock().await.remove(&request_id) {
+                    let _ = tx.send(PermissionDecision::Deny);
+                }
+                return Some((command, reason, offers_always, prompt_kind));
+            }
+        }
+        None
+    });
+    let call = json!({
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "bash", "arguments": json!({"command": "rm -rf ~"}).to_string()}
+    });
+    let out = invoker.invoke(std::slice::from_ref(&call)).await.unwrap();
+    drop(invoker);
+    let (command, reason, offers_always, prompt_kind) =
+        answered.await.unwrap().expect("a permission prompt");
+    assert_eq!(command.as_deref(), Some("rm -rf ~"));
+    assert!(reason.as_deref().unwrap_or("").starts_with("Destructive command:"), "{reason:?}");
+    assert!(!offers_always);
+    assert_eq!(prompt_kind, "ask");
+    assert_eq!(out.len(), 1);
+    assert!(out[0].content.contains("denied"), "{}", out[0].content);
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut planned = build_prompting_invoker(root.clone(), tx, PermissionRegistry::default());
+    planned.auto_approve = true;
+    planned.run_mode = crate::core::agent::plan::RunMode::Plan;
+    let out = planned.invoke(&[call]).await.unwrap();
+    assert!(out[0].content.contains("plan_mode_read_only"), "{}", out[0].content);
+    let _ = std::fs::remove_dir_all(&root);
+}

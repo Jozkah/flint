@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Executar cada uma, até 5",
     "enabled": "Ativada",
     "save": "Salvar tarefa",
-    "saving": "Salvando"
+    "saving": "Salvando",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Esta tarefa está desativada, então não será executada até você ativá-la.",

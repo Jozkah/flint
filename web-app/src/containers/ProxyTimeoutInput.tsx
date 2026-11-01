@@ -1,11 +1,17 @@
 import { Input } from '@/components/ui/input'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 export function ProxyTimeoutInput({ isServerRunning }: { isServerRunning?: boolean }) {
   const { proxyTimeout, setProxyTimeout } = useLocalApiServer()
+  const { t } = useTranslation()
   const [inputValue, setInputValue] = useState(proxyTimeout.toString())
+  // A change made elsewhere (a reset, another window) shows here too (F8x3-012/018).
+  useEffect(() => {
+    setInputValue(proxyTimeout.toString())
+  }, [proxyTimeout])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -31,6 +37,7 @@ export function ProxyTimeoutInput({ isServerRunning }: { isServerRunning?: boole
       min={0}
       max={86400}
       value={inputValue}
+      aria-label={t('settings:localApiServer.proxyTimeout')}
       onChange={handleChange}
       onBlur={handleBlur}
       disabled={isServerRunning}

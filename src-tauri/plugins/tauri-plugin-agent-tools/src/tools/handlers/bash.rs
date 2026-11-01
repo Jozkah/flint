@@ -48,318 +48,122 @@ pub(super) fn run_split_read_only<'a>(
     })
 }
 
-pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+mod outcome;
+mod policy;
+mod shell;
+
+pub(super) use outcome::*;
+pub(crate) use policy::{build_bash_policy, AnchoredRoots, BashPolicy};
+use shell::*;
+
+/// A `bash` call with no command: collect, inspect, cancel or list
+/// backgrounded jobs.
+pub(super) async fn bash_job_action(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let owner = ctx.job_owner;
-    let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
-    else {
-        let action = arg_str(args, "action").map(str::trim).unwrap_or("");
-        let job_id = arg_str(args, "job_id").map(str::trim).filter(|id| !id.is_empty());
-        return match (action, job_id) {
-            ("" | "await", Some(job_id)) => {
-                let out = await_bash_job(job_id, owner).await;
-                // AH-102: how it ended, on the record, so a listing after a
-                // restart says what became of it.
+    let action = arg_str(args, "action").map(str::trim).unwrap_or("");
+    let job_id = arg_str(args, "job_id").map(str::trim).filter(|id| !id.is_empty());
+    match (action, job_id) {
+        ("" | "await", Some(job_id)) => {
+            let out = await_bash_job(job_id, owner).await;
+            // AH-102: how it ended, on the record, so a listing after a
+            // restart says what became of it.
+            end_job_record(
+                ctx,
+                owner,
+                job_id,
+                match exit_code_of(&out) {
+                    Some(0) | None => crate::job_record::JobState::Completed,
+                    Some(_) => crate::job_record::JobState::Failed,
+                },
+                exit_code_of(&out),
+                "",
+            );
+            out
+        }
+        ("status", Some(job_id)) => bash_job_status_text(job_id, owner),
+        ("cancel", Some(job_id)) => {
+            let out = bash_job_cancel_text(job_id, owner);
+            if out.starts_with("Stopped job") {
                 end_job_record(
                     ctx,
                     owner,
                     job_id,
-                    match exit_code_of(&out) {
-                        Some(0) | None => crate::job_record::JobState::Completed,
-                        Some(_) => crate::job_record::JobState::Failed,
-                    },
-                    exit_code_of(&out),
-                    "",
+                    crate::job_record::JobState::Cancelled,
+                    None,
+                    "stopped on request, with every process it started",
                 );
-                out
             }
-            ("status", Some(job_id)) => bash_job_status_text(job_id, owner),
-            ("cancel", Some(job_id)) => {
-                let out = bash_job_cancel_text(job_id, owner);
-                if out.starts_with("Stopped job") {
-                    end_job_record(
-                        ctx,
-                        owner,
-                        job_id,
-                        crate::job_record::JobState::Cancelled,
-                        None,
-                        "stopped on request, with every process it started",
-                    );
-                }
-                out
-            }
-            ("list", _) => bash_job_list_text(owner),
-            (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel") => {
-                format!(
-                    "ERROR: unknown action '{other}'. Use \"list\", or \"await\", \"status\" or \
-                     \"cancel\" with a job_id."
-                )
-            }
-            _ => "ERROR: missing required argument 'command' (or 'job_id' to collect a \
-                  backgrounded job, or {\"action\": \"list\"})"
-                .to_string(),
-        };
-    };
-    // Opt-in: a command that outlives its deadline is terminated unless the
-    // caller explicitly asked for it to keep running and be polled by job_id.
+            out
+        }
+        ("list", _) => bash_job_list_text(owner),
+        (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel") => {
+            format!(
+                "ERROR: unknown action '{other}'. Use \"list\", or \"await\", \"status\" or \
+                 \"cancel\" with a job_id."
+            )
+        }
+        _ => "ERROR: missing required argument 'command' (or 'job_id' to collect a \
+              backgrounded job, or {\"action\": \"list\"})"
+            .to_string(),
+    }
+}
+
+/// `(background, timeout_secs)` for a call.
+///
+/// Opt-in: a command that outlives its deadline is terminated unless the
+/// caller explicitly asked for it to keep running and be polled by job_id.
+/// A command the caller *asked* to run in the background is backgrounded
+/// straight away rather than after an arbitrary wait. A timeout given with
+/// it still means "wait this long first". The schema caps a foreground wait
+/// at 120 s (the lifecycle watchdog stops it then anyway); a larger value is
+/// clamped rather than trusted. 0 keeps its meaning of "no wait". Background
+/// calls keep their own ceiling.
+pub(super) fn bash_timeout(args: &serde_json::Value) -> (bool, u64) {
     let background = arg_bool(args, "background");
-    // A command the caller *asked* to run in the background is backgrounded
-    // straight away rather than after an arbitrary wait. A timeout given with
-    // it still means "wait this long first".
     let timeout_secs = arg_u64(args, "timeout").unwrap_or(if background {
         0
     } else {
         DEFAULT_BASH_TIMEOUT_SECS
     });
-    // The schema caps a foreground wait at 120 s (the lifecycle watchdog stops
-    // it then anyway); a larger value is clamped rather than trusted. 0 keeps
-    // its meaning of "no wait". Background calls keep their own ceiling.
     let timeout_secs = if background {
         timeout_secs
     } else {
         timeout_secs.min(MAX_FOREGROUND_BASH_TIMEOUT_SECS)
     };
+    (background, timeout_secs)
+}
 
-    // Every path the sandbox is given is made absolute first. The confined
-    // helper runs with its working directory set to the workspace, so a
-    // relative path means somewhere else by the time the helper reads it, and
-    // Jan's data folder defaults to the relative `./data`. The shell then
-    // failed in the helper's setup ("workspace does not exist") on every
-    // command, even with a sandbox that works.
-    let root_abs = anchored(ctx.project_root);
-    let root = root_abs.as_path();
-    let mask_abs = ctx.mask_root.map(anchored);
-    let scratch_abs = ctx.scratch_root.map(anchored);
-    let read_abs: Vec<PathBuf> = ctx.read_roots.iter().map(|p| anchored(p)).collect();
-    let write_abs: Vec<PathBuf> = ctx.write_roots.iter().map(|p| anchored(p)).collect();
+pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
+    else {
+        return bash_job_action(args, ctx).await;
+    };
+    let (background, timeout_secs) = bash_timeout(args);
+
+    let roots = AnchoredRoots::from_ctx(ctx);
+    let root = roots.root.as_path();
     if !root.is_dir() {
         return format!(
             "ERROR: working directory does not exist: {}",
             root.display()
         );
     }
-
-    // The base hooks share (see `sandbox_shell::base_policy`), plus what only
-    // the bash tool has.
-    let mut policy = crate::tools::sandbox_shell::base_policy(
-        root,
-        ctx.allow_network,
-        ctx.home_readonly,
-        ctx.sandbox,
-        mask_abs.as_deref(),
-    );
-    if let Some(fs) = ctx.fs {
-        policy = policy.with_fs_config(fs.clone());
-    }
-    if let Some(scratch) = scratch_abs.as_deref() {
-        policy = policy.with_scratch_root(scratch);
-    }
-    if !read_abs.is_empty() {
-        policy = policy.with_read_roots(read_abs.clone());
-    }
-    // The same roots the file tools were granted. Refused outright where the
-    // backend cannot confine a shell to them, so `bash` is never the loose end
-    // that makes an access mode untrue: on such a platform the run keeps its
-    // sandbox-only shell and the mode is not offered in the first place.
-    // On AppContainer that means Jan-owned worktrees only: see
-    // [`jail::can_confine_write_roots`].
-    let owned = mask_abs.as_deref().map(crate::workspace::worktrees_dir);
-    let mut start = root.to_path_buf();
-    if !write_abs.is_empty()
-        && jail::can_confine_write_roots(jail::backend(), &write_abs, owned.as_deref())
-    {
-        policy = policy.with_write_roots(write_abs.clone());
-        if ctx.sandbox {
-            policy = hide_write_root_jans(policy, &write_abs);
-            // From the host, before the shell sees the hidden `.jan`: a
-            // tracked file there must not look deleted to the sandboxed git.
-            for wr in &write_abs {
-                if let Err(e) = crate::tools::git_native::skip_worktree_jan(wr) {
-                    eprintln!("could not mark {}/.jan skip-worktree: {e}", wr.display());
-                }
-            }
-        }
-        // #322: a run whose destination is a managed worktree starts its shell
-        // there, so `npm test` or `.\check.ps1` mean the project. See
-        // [`managed_worktree_start`] for when; the file tools follow through
-        // [`rebase_relative_paths`].
-        if let Some(wt) = managed_worktree_start(&write_abs, owned.as_deref()) {
-            policy = policy.with_start_dir(&wt);
-            start = policy.start_dir().to_path_buf();
-        }
-    }
-    if ctx.sandbox && policy.write_roots.is_empty() && !write_abs.is_empty() {
-        // Granted to the file tools, out of the shell's reach: named in
-        // failure notes only.
-        policy = policy.with_unreachable_grants(write_abs.clone());
-    }
-    if ctx.sandbox && jail::backend() == jail::Backend::AppContainer {
-        // The helper skips a read-only folder it will never grant (a drive
-        // root, the profile, a system folder): named in failure notes, so the
-        // model is not told to build from a folder its shell cannot open.
-        let refused: Vec<PathBuf> = read_abs
-            .iter()
-            .filter(|r| {
-                !policy.write_roots.contains(r)
-                    && crate::tools::appcontainer::grant_refusal(r).is_some()
-            })
-            .cloned()
-            .collect();
-        if !refused.is_empty() {
-            policy = policy.with_unreachable_read_grants(refused);
-        }
-    }
-    // An unconfined shell for an edit folder the sandbox cannot reach starts in
-    // that folder, so relative paths and `Set-Location` mean the project.
-    if !ctx.sandbox {
-        if let Some(dir) = ctx.direct_shell_start.as_deref().map(anchored) {
-            if dir.is_dir() {
-                policy = policy.with_start_dir(&dir);
-                start = dir;
-            }
-        }
-    }
-    let in_worktree = start.as_path() != root;
-    // With the sandbox off the shell is spawned bare, the way the user's own
-    // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
-    // a surface that opted in gets here (the CLI's `--sandbox`/`sandbox`
-    // setting); the desktop never does, so `bash` there is still confined or
-    // withheld. `policy` is still built either way -- it is what
+    // `policy` is built even for an unconfined shell: it is what
     // `denial_hint` reads, and an unconfined command can still hit a plain
     // filesystem permission error worth explaining.
+    let BashPolicy {
+        policy,
+        start,
+        in_worktree,
+    } = build_bash_policy(ctx, &roots);
     let shell = if ctx.sandbox {
-        // A program that opens NUL itself cannot run in a sandbox this
-        // machine's null device refuses. Not run only to fail (and perhaps
-        // half-run a chain): answered with the null-device refusal up front,
-        // so the surface asks the user to run it outside the sandbox now.
-        if jail::null_device_refuses_sandbox() {
-            if let Some(program) =
-                super::super::nul_programs::opens_null_device(command, ctx.nul_programs)
-            {
-                // Pure reading (`git status`, `git log`) needs no outside run:
-                // the git steps go to the host's git, the rest stays here.
-                if let Some(pieces) =
-                    super::super::nul_programs::split_for_host_git(command, ctx.nul_programs)
-                {
-                    return run_split_read_only(args, ctx, pieces).await;
-                }
-                ctx.null_refusal.set();
-                return super::super::nul_programs::not_run_refusal(&program);
-            }
-        }
-        // Which shell can be confined is decided by probing, not by assuming.
-        // A shell that starts fine on its own can still fail inside the
-        // sandbox: on Windows, Git Bash is built on the MSYS2 runtime, which
-        // cannot initialise inside an AppContainer however it was installed.
-        // No confinement available means no shell either: running unsandboxed
-        // would give the command the whole machine, which is never what the
-        // caller asked for.
-        // Probing launches the sandbox helper (and, the first time, sets up
-        // the container and its folder ACLs): seconds of blocking work that
-        // must not hold an async runtime thread.
-        let probe_policy = policy.clone();
-        let probed = tokio::task::spawn_blocking(move || jail::select_shell(&probe_policy))
-            .await
-            .unwrap_or_else(|e| Err(format!("the shell probe failed: {e}")));
-        let mut selected = match probed {
-            Ok(selected) => selected,
-            Err(detail) => {
-                return format!(
-                    "ERROR: bash is unavailable because no shell could be started in a                      sandbox on this system. Use the read/ls/find/grep tools instead.
-{detail}"
-                )
-            }
-        };
-        // cmd's `2>nul` in PowerShell writes to a file named `nul`, which the
-        // container refuses as `\\.\nul`. Refused before running: the fix is
-        // mechanical, and running it would half-execute a `;` chain.
-        if selected.report.cfg.flavor == proc::ShellFlavor::PowerShell {
-            let redirects = super::super::shell_diag::cmd_nul_redirects(command);
-            if !redirects.is_empty() {
-                return super::super::shell_diag::cmd_nul_refusal(&redirects);
-            }
-        }
-        // A command written for bash is refused rather than handed to PowerShell
-        // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
-        // something, just not what was asked for. A command that chains with
-        // `&&`/`||` is moved onto a shell that keeps their short-circuit
-        // semantics (see `sandbox_shell::fit_to_command`, shared with hooks).
-        let fit_policy = policy.clone();
-        let fit_command = command.to_string();
-        let fitted = tokio::task::spawn_blocking(move || {
-            crate::tools::sandbox_shell::fit_to_command(&fit_policy, selected, &fit_command)
-        })
-        .await;
-        let fitted = match fitted {
-            Ok(fitted) => fitted,
-            Err(e) => return format!("ERROR: the shell probe failed: {e}"),
-        };
-        selected = match fitted {
-            Ok(fitted) => fitted,
-            Err(crate::tools::sandbox_shell::Unfit::PosixOnly { construct, selected }) => {
-                let mut refusal = proc::posix_unavailable_error(
-                    construct,
-                    &selected.report.cfg,
-                    selected
-                        .posix_rejected
-                        .as_deref()
-                        .unwrap_or("no POSIX shell could be started in the sandbox"),
-                );
-                if let Some(hint) = proc::heredoc_script_hint(command) {
-                    refusal.push('\n');
-                    refusal.push_str(&hint);
-                }
-                return refusal;
-            }
-            // Unreachable in practice on Windows -- `cmd.exe` is always a
-            // candidate -- but if even it cannot be confined, refuse clearly
-            // rather than run a shell that cannot parse the command.
-            Err(crate::tools::sandbox_shell::Unfit::NoChaining { operator, selected }) => {
-                return proc::chaining_unavailable_error(operator, &selected.report.cfg);
-            }
-        };
-        selected.wrapped
+        select_sandboxed_shell(args, ctx, command, &policy).await
     } else {
-        // An approved null-device rerun keeps the shell the sandbox chose, so
-        // the command means what the model wrote it to mean (see
-        // `ToolContext::sandbox_shell_parity`). Everything else unconfined
-        // gets the host's preferred shell.
-        let parity = ctx.sandbox_shell_parity && (jail::backend().enforces() || cfg!(windows));
-        let sandbox_choice = if parity {
-            jail::select_shell(&policy)
-                .ok()
-                .map(|s| s.report.cfg)
-                // On Windows the model writes PowerShell for the sandbox. If
-                // the sandbox cannot say which shell it would use, the rerun
-                // still must not fall to Git Bash, where `Set-Location` and
-                // `Push-Location` do not exist.
-                .or_else(|| {
-                    if cfg!(windows) {
-                        proc::candidates()
-                            .into_iter()
-                            .find(|c| c.flavor != proc::ShellFlavor::Posix)
-                    } else {
-                        None
-                    }
-                })
-        } else {
-            None
-        };
-        match unsandboxed_shell(
-            command,
-            sandbox_choice,
-            || {
-                if parity {
-                    jail::select_chaining_capable(&policy).map(|s| s.report.cfg)
-                } else {
-                    None
-                }
-            },
-            proc::shell().clone(),
-            proc::candidates,
-        ) {
-            Ok(cfg) => cfg,
-            Err(refusal) => return refusal,
-        }
+        select_unsandboxed_shell(ctx, command, &policy)
+    };
+    let shell = match shell {
+        Ok(shell) => shell,
+        Err(text) => return text,
     };
 
     let sandbox_tmp = if ctx.sandbox {
@@ -367,35 +171,18 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
     } else {
         None
     };
-    let mut shell = shell;
-    // #9044: a POSIX shell can pass its sandbox probe and still fail to start
-    // for the real command. A native shell is retried in the same container
-    // before giving up, and the model is told which shell it got.
-    let mut fallback_note: Option<String> = None;
-    let child = match proc::spawn(&shell, command, &start, sandbox_tmp.as_deref()).await {
-        Ok(c) => c,
-        Err(e) if ctx.sandbox && shell.flavor == proc::ShellFlavor::Posix => {
-            match jail::select_native_fallback(&policy, command) {
-                Some(native) => {
-                    match proc::spawn(&native, command, &start, sandbox_tmp.as_deref()).await {
-                        Ok(c) => {
-                            fallback_note =
-                                Some(native_fallback_note(&e.to_string(), native.description));
-                            shell = native;
-                            c
-                        }
-                        Err(e2) => {
-                            return format!(
-                                "ERROR: failed to run command: {e}; the {} fallback could not start either: {e2}",
-                                native.description
-                            )
-                        }
-                    }
-                }
-                None => return format!("ERROR: failed to run command: {e}"),
-            }
-        }
-        Err(e) => return format!("ERROR: failed to run command: {e}"),
+    let (child, shell, fallback_note) = match spawn_with_fallback(
+        ctx.sandbox,
+        &policy,
+        shell,
+        command,
+        &start,
+        sandbox_tmp.as_deref(),
+    )
+    .await
+    {
+        Ok(spawned) => spawned,
+        Err(text) => return text,
     };
     let pid = child.id();
     // Owned by the call's cancellation token, so a Stop (or an outer timeout)
@@ -443,14 +230,22 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
         }))
     };
     let sandboxed = ctx.sandbox;
-    let null_refusal = ctx.null_refusal.clone();
     // The model writes POSIX commands by default, which `cmd` rejects. Surface
     // the resolved shell so it can adapt when the only shell on a Windows box
     // is cmd, instead of the tool silently presenting cmd as bash.
     let shell_description = shell.description;
     let shell_flavor = shell.flavor;
-    let command_text = command.to_string();
-    let cwd_display = start.display().to_string();
+    let notes = OutputNotes {
+        sandboxed,
+        policy,
+        command_text: command.to_string(),
+        shell_flavor,
+        shell_description,
+        cwd_display: start.display().to_string(),
+        in_worktree,
+        fallback_note,
+        null_refusal: ctx.null_refusal.clone(),
+    };
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
         // The retry tag is the harness's: a command that prints it must not
@@ -465,128 +260,7 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
         };
         drop(meter);
         crate::resources::record(measured_run.as_deref(), measured_call.as_deref(), used);
-        // Appended inside the task so a backgrounded job carries the hint too.
-        // `Permission denied` on its own tells the model nothing about *why*;
-        // without this it retries the same command until it gives up. Only when
-        // confined: unsandboxed, a denial is an ordinary filesystem permission
-        // and the hint would name limits that are not in force.
-        // Classified first: a denial the shell caused (PowerShell given cmd's
-        // `2>nul`) must not be reported as the sandbox's doing.
-        if shell_flavor == proc::ShellFlavor::PowerShell {
-            out = proc::strip_prologue(&out);
-        }
-        // Before the failure notes, and whatever the exit code: a command that
-        // ends in a successful statement still hit the wall.
-        let unreachable = if sandboxed {
-            jail::unreachable_grant_note(&policy, &out)
-        } else {
-            None
-        };
-        if bash_result_failed(&out) {
-            let class = super::super::shell_diag::classify(&command_text, &out, shell_flavor);
-            // PowerShell runs from a drive mounted on where the shell started
-            // (the workspace, or the managed worktree), and a script it starts
-            // can land elsewhere. A path the command could not find is most
-            // often a relative path aimed at the wrong place; say where
-            // relative paths actually go.
-            if shell_flavor == proc::ShellFlavor::PowerShell && cwd_note_applies(&class, &out) {
-                out.insert_str(0, &cwd_note(&cwd_display, in_worktree));
-            }
-            let hint = match class {
-                super::super::shell_diag::FailureClass::FileAccessDenied
-                | super::super::shell_diag::FailureClass::Network
-                    if !sandboxed =>
-                {
-                    None
-                }
-                ref c => jail::failure_hint(&policy, c, &out),
-            };
-            if let Some(hint) = hint {
-                if sandboxed && hint.contains(jail::NULL_DEVICE_RETRY_TAG) {
-                    null_refusal.set();
-                }
-                out.push_str(&hint);
-            }
-            // A program the sandbox cannot find may still be installed on the
-            // host, just not runnable from inside. Say where and why, so the
-            // model reports it rather than hunting for another copy to run.
-            // Not on the host either: say so just as firmly, or the model
-            // searches the profile, downloads an installer, or retries.
-            // The `py` launcher's own "no Python" exit codes are the same case.
-            let missing = if class == super::super::shell_diag::FailureClass::MissingCommand {
-                super::super::host_tools::missing_program(&out)
-            } else {
-                None
-            }
-            .or_else(|| super::super::host_tools::python_launcher_missing(&command_text, &out));
-            if class == super::super::shell_diag::FailureClass::MissingCommand {
-                if let Some(note) = super::super::host_tools::missing_path_note(
-                    &out,
-                    super::super::host_tools::current_profile().as_deref(),
-                ) {
-                    out.push_str(&note);
-                }
-            }
-            if sandboxed {
-                // An unquoted assignment value, not a missing program.
-                let quoting = missing
-                    .as_deref()
-                    .and_then(|name| super::super::host_tools::unquoted_assignment(&command_text, name));
-                if let Some(note) = quoting {
-                    out.push_str(&note);
-                } else if let Some(name) = missing {
-                    let host = std::env::var_os("PATH").unwrap_or_default();
-                    let pathext =
-                        std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
-                    match super::super::host_tools::locate_on_host(&name, &host, &pathext) {
-                        // The launcher itself exists when it reports 103/109;
-                        // what is missing is a Python behind it.
-                        Some(found) if name != "py" => {
-                            let profile =
-                                std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
-                            out.push_str(&super::super::host_tools::unavailable_hint(
-                                &name,
-                                &found,
-                                profile.as_deref(),
-                                super::super::host_tools::container_can_execute,
-                            ));
-                        }
-                        _ => out.push_str(&super::super::host_tools::not_installed_hint(&name)),
-                    }
-                }
-                if !policy.allow_network && super::super::host_tools::is_name_resolution_failure(&out) {
-                    out.push_str(super::super::host_tools::NO_NETWORK_HINT);
-                }
-            }
-            // Which shell ran it, on a failure only: that is when the model is
-            // about to write the next command and most needs the syntax.
-            if let Some(banner) = super::super::shell_diag::shell_banner(shell_flavor, shell_description)
-            {
-                out.insert_str(0, &banner);
-            }
-        }
-        if let Some(note) = unreachable {
-            out.push_str(&note);
-        }
-        if let Some(hint) = super::super::host_tools::go_flag_order_hint(&out) {
-            out.push_str(hint);
-        }
-        if shell_flavor == proc::ShellFlavor::PowerShell && !bash_result_failed(&out) {
-            if let Some((code, note)) = super::super::host_tools::masked_failure(&out) {
-                super::super::host_tools::set_exit_marker(&mut out, code);
-                out.push_str(&note);
-            }
-        }
-        if let Some(note) = &fallback_note {
-            out.insert_str(0, note);
-        } else if shell_description == "cmd" {
-            out.insert_str(
-                0,
-                "[shell: cmd.exe - no bash is installed. Write commands in cmd syntax \
-                 (e.g. `dir`, `type`, `set`, `mkdir`, `%VAR%` for variables), not \
-                 POSIX/bash. Alternatively install git-bash and this tool will use it.]\n",
-            );
-        }
+        let out = notes.annotate(out);
         if let Some(pid) = pid {
             proc::unregister(pid);
             if let Some(token) = owner_token.as_ref() {
@@ -606,119 +280,21 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
             // The timeout now terminates the process tree it owns.
             //
             // Backgrounding is still available, but only when the caller asks
-            // for it -- see the `background` argument below. A command the
-            // model did not ask to background does not get to survive its
-            // deadline.
-            if background && !make_room_for(owner) {
-                // Every job this conversation holds is still running. Refused
-                // rather than let the registry grow without bound -- and the
-                // command is stopped, since nothing would own it.
-                let stopped = match pid {
-                    Some(pid) => proc::kill_tree(pid).stopped(),
-                    None => true,
-                };
-                return format!(
-                    "ERROR: this conversation already has {MAX_JOBS_PER_OWNER} background commands \
-                     running, so this one was not backgrounded and was stopped{}. Collect or \
-                     cancel one first ({{\"action\": \"list\"}} shows them).",
-                    if stopped { "" } else { " (the process tree may not have terminated cleanly)" }
-                );
-            }
+            // for it -- see the `background` argument. A command the model
+            // did not ask to background does not get to survive its deadline.
             if background {
-                let job_id = format!(
-                    "bash-{}-{}",
-                    job_id_prefix(),
-                    BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
-                );
-                // AH-101/AH-102: a durable record, so a job that outlives the
-                // app is still a job somebody has a record of -- and one whose
-                // process is gone is honestly interrupted rather than
-                // eternally "running". Best effort: the note must never fail
-                // the job it describes.
-                if let (Some(data), Some(owner)) = (ctx.job_record_to, owner) {
-                    let identity = crate::job_record::ProcessIdentity {
-                        pid: pid.unwrap_or(0),
-                        created: pid.and_then(crate::job_record::creation_time_of).unwrap_or(0),
-                    };
-                    let record =
-                        crate::job_record::JobRecord::started(&job_id, owner, command, identity);
-                    // Dropped quietly on failure: the record is a witness, and
-                    // losing one must not fail the job it describes.
-                    let _ = crate::job_record::save(data, &record);
-                }
-                bash_jobs().lock().unwrap_or_else(|e| e.into_inner()).insert(
-                    job_id.clone(),
-                    BashJob {
-                        rx: Some(rx),
-                        output: None,
-                        command: command.to_string(),
-                        started: job_started,
-                        call_id: ctx.call_id.map(str::to_string),
-                        pid,
-                        collecting: false,
-                        owner: owner.map(str::to_string),
-                        started_at_ms: now_ms().saturating_sub(job_started.elapsed().as_millis() as u64),
-                        finished_at_ms: None,
-                        stopped_by_request: false,
-                        tail,
-                    },
-                );
-                // Both forms end in the same fixed sentence, which is what the
-                // desktop reads the job id from (`backgroundJobId`).
-                let waited = if timeout_secs == 0 {
-                    "Command was started as a background job and".to_string()
-                } else {
-                    format!("Command exceeded {timeout_secs}s and")
-                };
-                return format!(
-                    "{waited} is continuing in the background \
-                     (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
-                     command) to wait for and collect its output once it finishes, \
-                     {{\"job_id\": \"{job_id}\", \"action\": \"status\"}} to check on it without \
-                     waiting, or {{\"job_id\": \"{job_id}\", \"action\": \"cancel\"}} to stop it."
-                );
+                return register_background_job(ctx, command, pid, rx, tail, job_started, timeout_secs);
             }
-
-            let killed = match pid {
-                Some(pid) => proc::kill_tree(pid),
-                // No pid means the child never started; nothing is left running.
-                None => proc::KillOutcome::Gone,
-            };
-            // Whatever the command managed to print is still worth having, and
-            // the collector flushes it once the child is gone. Bounded, so a
-            // process that ignores the kill cannot hold the call open.
-            let partial = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
+            terminate_on_timeout(
+                command,
+                pid,
                 &mut rx,
+                timeout_secs,
+                sandboxed,
+                shell_flavor,
+                shell_description,
             )
             .await
-            .ok()
-            .and_then(|r| r.ok())
-            .unwrap_or_default();
-
-            let mut out = format!(
-                "ERROR: command timed out after {timeout_secs}s and was terminated. \
-                 This is a timeout, not a cancellation: the command was still running \
-                 when its deadline passed. Re-run it with a larger {{\"timeout\": N}}, \
-                 or with {{\"background\": true}} to let it continue and poll it by \
-                 job_id."
-            );
-            if !killed.stopped() {
-                // Fail loudly rather than claim a clean stop we did not achieve.
-                out.push_str(
-                    "\n[warning: the process tree may not have terminated cleanly]",
-                );
-            }
-            if let Some(note) =
-                super::super::node_runner::timeout_note(command, sandboxed, shell_flavor, shell_description)
-            {
-                out.push_str(&note);
-            }
-            if !partial.trim().is_empty() {
-                out.push_str("\n--- output before the timeout ---\n");
-                out.push_str(&partial);
-            }
-            out
         }
     }
 }

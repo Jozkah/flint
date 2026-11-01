@@ -24,12 +24,12 @@
     "description": "Gdy wyłączone, inne sesje dowiadują się, że ta nie przyjmuje wiadomości, a nic, co wyślą, do niej nie dotrze."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Pytaj przed dostarczeniem",
+    "description": "Gdy włączone, każda wiadomość z innej sesji czeka tutaj na Twoje zatwierdzenie lub odrzucenie. Nic nie jest dostarczane ani uruchamiane do czasu zatwierdzenia, a wiadomość, na którą nie odpowiesz w ciągu 5 minut, jest odrzucana, a jej nadawca zostaje o tym poinformowany. Tylko gdy wiadomości są przyjmowane."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Pytaj przed rozpoczęciem zagnieżdżonych czatów",
+    "description": "Gdy włączone, za każdym razem, gdy agent chce rozpocząć zagnieżdżony czat (spawn_session), najpierw Cię zapyta. Domyślnie wyłączone: zagnieżdżony czat bez worktree startuje bez dostępu do folderów i bez uprawnień tej sesji."
   },
   "subagentQuestion": {
     "title": "{{name}} pyta agenta",
@@ -96,14 +96,14 @@
   "waitingIn_many": "{{count}} wiadomości w {{session}}",
   "waitingIn_other": "{{count}} wiadomości w {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Wiadomości oczekujące na zatwierdzenie",
+    "banner": "Oczekuje na Twoje zatwierdzenie ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Powiadomienie o stanie",
+    "expires": "Wygasa za {{minutes}} min",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Zatwierdź wiadomość od {{name}}",
+    "denyLabel": "Odrzuć wiadomość od {{name}}"
   }
 }

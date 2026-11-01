@@ -1347,11 +1347,11 @@
     }
   },
   "connect": {
-    "title": "Connect to your computer",
-    "intro": "Turn on Remote access in Flint on your computer, then enter its address or paste the pairing link.",
-    "address": "Computer address",
+    "title": "お使いのコンピューターに接続",
+    "intro": "コンピューターの Flint でリモートアクセスをオンにし、そのアドレスを入力するか、ペアリングリンクを貼り付けてください。",
+    "address": "コンピューターのアドレス",
     "connecting": "Connecting…",
     "connect": "Connect",
-    "trustNew": "Trust this computer's new certificate"
+    "trustNew": "このコンピューターの新しい証明書を信頼する"
   }
 }

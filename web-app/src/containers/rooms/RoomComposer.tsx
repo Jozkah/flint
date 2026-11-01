@@ -115,7 +115,8 @@ export function RoomComposer({ room }: { room: Room }) {
     try {
       const body = await expand(typed)
       if (body === null) return
-      await api.controller.sendUserMessage(room.id, body, fromValue(to))
+      // The address shown, not a removed participant still held in `to` (F8-004).
+      await api.controller.sendUserMessage(room.id, body, fromValue(current.value))
       setText('')
     } catch (err) {
       setError(normalizeError(err))
@@ -136,7 +137,7 @@ export function RoomComposer({ room }: { room: Room }) {
         room.id,
         extendBy,
         body || undefined,
-        body ? fromValue(to) : undefined
+        body ? fromValue(current.value) : undefined
       )
       setText('')
     } catch (err) {

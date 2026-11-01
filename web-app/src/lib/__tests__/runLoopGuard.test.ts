@@ -17,6 +17,23 @@ const call = (over: Partial<ObservedCall> = {}): ObservedCall => ({
   ...over,
 })
 
+// One refused bash call that touched .jan is the model's to recover from: it
+// comes back as that call's error and the run keeps going.
+it('does not stop a run for one or two .jan refusals', () => {
+  const denied = call({
+    tool: 'bash',
+    input: { command: 'ls -la .jan; npm view next version' },
+    failed: true,
+    error:
+      "tool 'bash' is denied: .jan is the agent's own state directory and is hidden. This call was not run; the run continues.",
+  })
+  expect(detectLoop([denied])).toEqual({ tripped: false })
+  expect(
+    detectLoop([denied, call({ tool: 'bash', input: { command: 'npm view next version' } })])
+  ).toEqual({ tripped: false })
+  expect(detectLoop([denied, denied])).toEqual({ tripped: false })
+})
+
 it('lets ordinary work through', () => {
   expect(
     detectLoop([

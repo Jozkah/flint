@@ -21,7 +21,7 @@ import {
 } from '@/stores/message-queue-store'
 import { agentAttribution } from '@/lib/mailboxDelivery'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
+import { refuseUnrunnable } from '@/lib/cowork/run/refuseUnrunnable'
 import { assistantAnchorId } from '@/lib/coworkTurns'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
 import { useAssistant } from '@/hooks/useAssistant'
@@ -102,7 +102,6 @@ import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
 import {
   accessOf,
   effectiveAccess,
-  effectiveDowngradeKey,
   runCarries,
 } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
@@ -357,59 +356,19 @@ export async function runCoworkRequest(
       : resolveSkills(parseSkillRequestTriggers(text, skillNames), runRegistry)
   runSkillsRef.current[sid] = runSkills
   if (!text && !(current?.messages?.length ?? 0)) return
-  if (!selectedModel?.id) {
-    toast.error(
-      resolved.unavailable
-        ? t('common:sessionModelUnavailable', { model: resolved.unavailable.id })
-        : resolved.needsKey
-          ? t('common:selectModelNoKey', { provider: resolved.needsKey })
-          : t('common:selectModel')
-    )
-    onRefused?.()
+  if (
+    refuseUnrunnable({
+      resolved,
+      globalProvider,
+      access,
+      effective,
+      t,
+      onRefused,
+    }) ||
+    // Narrows the type; a missing model was refused just above.
+    !selectedModel
+  )
     return
-  }
-  // Without tool calling the transport drops the tool set silently, and the
-  // agent then narrates work it never did. Refusing up front is honest; a
-  // toolless "agent" run is worse than no run.
-  if (!selectedModel.capabilities?.includes('tools')) {
-    // A custom endpoint never reports capabilities, so the model can be fine
-    // and still look toolless. Offer the user's own override where the
-    // refusal is, the way a tool-call message offers it in chat.
-    const modelId = selectedModel.id
-    const providerId = resolved.choice?.provider ?? globalProvider
-    // Kept until dismissed: it is the only sign the send was refused, and
-    // its action is the fix (CW-002: a 4 s toast read as a silent no-op).
-    toast.error(t('common:modelNoTools', { model: modelId }), {
-      duration: Infinity,
-      action: providerId
-        ? {
-            label: t('common:modelCapability.enableAlways'),
-            onClick: () => {
-              const store = useModelProvider.getState()
-              const owner = store.getProviderByName(providerId)
-              if (!owner) return
-              store.updateProvider(providerId, {
-                ...owner,
-                models: enableModelCapabilities(owner.models, modelId, [
-                  'tools',
-                ]),
-              })
-            },
-          }
-        : undefined,
-    })
-    onRefused?.()
-    return
-  }
-  // A restored session may remember Managed worktree while its process-local
-  // grant is still being reissued. Do not start a Review run against the
-  // source folder: history would point at a worktree the run cannot read.
-  if (access === 'managed-worktree' && effective.destination !== 'managed') {
-    const key = effectiveDowngradeKey(effective)
-    if (key) toast.error(t(key))
-    onRefused?.()
-    return
-  }
   // Another session's message is not what this session is about.
   if (text && !from && !hidden && current?.title === DEFAULT_SESSION_TITLE) {
     // The prompt, cut short, until the model's own title arrives.

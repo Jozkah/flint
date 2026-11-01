@@ -109,6 +109,7 @@
     "runId": "execució {{id}}",
     "turnId": "torn {{id}}",
     "snapshotId": "instantània {{id}}",
-    "noRequests": "encara no hi ha cap sol·licitud registrada"
+    "noRequests": "encara no hi ha cap sol·licitud registrada",
+    "id": "ID"
   }
 }

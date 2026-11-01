@@ -876,6 +876,11 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
 /// character after the workspace path must be a separator or the end, so a
 /// sibling `...\sessions\abc` is not mistaken for `...\sessions\ab`);
 /// everything else, parameter names included, is passed to the real cmdlet as given.
+///
+/// Inside the container the same walk refused an attached project folder
+/// (`Set-Location C:\tmp\repo; npm test` -> "Access is denied", RQA-008), so an
+/// existing absolute folder outside the workspace is entered through a drive of
+/// its own as well.
 pub(crate) const POWERSHELL_WORKSPACE_CD: &str = "foreach ($__jc in 'Set-Location','Push-Location') { \
      Set-Item -Path \"Function:global:$__jc\" -Value ([scriptblock]::Create(\
      'for ($i = 0; $i -lt $args.Count; $i++) { $a = $args[$i]; \
@@ -883,7 +888,12 @@ pub(crate) const POWERSHELL_WORKSPACE_CD: &str = "foreach ($__jc in 'Set-Locatio
      if ($n.StartsWith($env:JAN_WORKSPACE, [StringComparison]::OrdinalIgnoreCase) -and \
      ($n.Length -eq $env:JAN_WORKSPACE.Length -or $n[$env:JAN_WORKSPACE.Length] -eq [char]92 \
      -or $env:JAN_WORKSPACE.EndsWith([string][char]92))) { \
-     $args[$i] = ''JanWorkspace:\\'' + $n.Substring($env:JAN_WORKSPACE.Length).TrimStart(''\\'') } } }; \
+     $args[$i] = ''JanWorkspace:\\'' + $n.Substring($env:JAN_WORKSPACE.Length).TrimStart(''\\'') } \
+     elseif ($env:FLINT_SANDBOX -eq ''appcontainer'' -and [IO.Path]::IsPathRooted($n) -and $n -notmatch ''^[A-Za-z]+:$'' -and [IO.Directory]::Exists($n)) { \
+     $d = ''JanDir'' + [Math]::Abs($n.ToLowerInvariant().GetHashCode()); \
+     if (-not (Get-PSDrive -Name $d -ErrorAction SilentlyContinue)) { \
+     $null = New-PSDrive -Name $d -PSProvider FileSystem -Root $n -Scope Global }; \
+     $args[$i] = $d + '':\\'' } } }; \
      Microsoft.PowerShell.Management\\' + $__jc + ' @args')) }";
 
 /// Makes the web commands a model reaches for behave in Windows PowerShell 5.1.
@@ -1210,6 +1220,41 @@ mod located_tests {
         assert_eq!(code, 0, "{out} / {err}");
         assert!(out.contains("JanWorkspace:\\"), "{out}");
         assert!(out.trim_end().ends_with("C:\\"), "{out}");
+    }
+
+    /// RQA-008: in the container an attached folder outside the workspace is
+    /// entered through a drive too, and a native program started there runs in
+    /// that folder. Outside the container nothing changes.
+    #[cfg(windows)]
+    #[test]
+    fn entering_an_outside_folder_in_the_container_uses_a_drive() {
+        let other = crate::test_temp_root().join(format!("jan-outside-{}", std::process::id()));
+        std::fs::create_dir_all(&other).unwrap();
+        let ws = crate::test_temp_root().join(format!("jan-ws-outside-{}", std::process::id()));
+        std::fs::create_dir_all(&ws).unwrap();
+        let shown = other.display().to_string();
+        let command = format!("Set-Location '{shown}'; (Get-Location).Path; cmd /c cd");
+        let run = |marker: bool| {
+            let mut cmd = std::process::Command::new("powershell");
+            cmd.args(["-NoProfile", "-NonInteractive", "-Command"])
+                .arg(located(ShellFlavor::PowerShell, &command, &ws))
+                .current_dir(&ws);
+            if marker {
+                cmd.env("FLINT_SANDBOX", "appcontainer");
+            } else {
+                cmd.env_remove("FLINT_SANDBOX");
+            }
+            let out = cmd.output().expect("powershell runs");
+            (out.status.code(), String::from_utf8_lossy(&out.stdout).to_string())
+        };
+        let (code, inside) = run(true);
+        let (_, outside) = run(false);
+        let _ = std::fs::remove_dir_all(&other);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert_eq!(code, Some(0), "{inside}");
+        assert!(inside.contains("JanDir"), "{inside}");
+        assert!(inside.to_lowercase().contains(&shown.to_lowercase()), "native cwd: {inside}");
+        assert!(!outside.contains("JanDir"), "{outside}");
     }
 
     /// A relative path given to Rename-Item, Remove-Item and Move-Item reaches

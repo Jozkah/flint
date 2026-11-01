@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. 그룹 폴더를 폴더 컨텍스트에 추가했습니다. 접근에는 여전히 승인이 필요합니다",
       "foldersAdded": "{{base}}. 항목 폴더를 그룹에 추가했습니다"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "제목 없는 그룹",
+    "folderNotInspected": "폴더를 검사할 수 없습니다"
   },
   "htmlArtifact": {
     "code": "코드",
@@ -334,7 +334,7 @@
       "threads": "대화"
     },
     "openItem": "{{item}} 열기",
-    "openStudio": "Open Studio"
+    "openStudio": "Studio 열기"
   },
   "searchGroup": {
     "pages": "페이지",
@@ -380,6 +380,8 @@
   "sharedFolder": {
     "others_one": "이 폴더에서 다른 세션 {{count}}개가 작업 중",
     "others_other": "이 폴더에서 다른 세션 {{count}}개가 작업 중",
+    "othersIdle_one": "이 폴더에 다른 세션 {{count}}개가 열려 있음(대기 중)",
+    "othersIdle_other": "이 폴더에 다른 세션 {{count}}개가 열려 있음(대기 중)",
     "waitingApproval_one": "다른 세션 {{count}}개가 승인 대기 중",
     "waitingApproval_other": "다른 세션 {{count}}개가 승인 대기 중",
     "waitingApprovalOne": "승인 대기 중",
@@ -678,7 +680,7 @@
       "pairedHint": "이 모델은 이미지 입력을 받을 수 있습니다. 프로젝터는 모델을 가져올 때 선택되며, 다른 프로젝터를 사용하려면 모델을 다시 가져오세요.",
       "noneHint": "비전 프로젝터가 없으면 이 모델은 이미지를 읽을 수 없습니다. 멀티모달을 켠 상태로 모델을 다시 가져오고 mmproj 파일을 선택하세요. 모델 파일 옆에 있는 프로젝터는 자동으로 찾습니다."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "자동 맞춤이 GPU 레이어를 선택하고 있습니다. 직접 설정하려면 자동 맞춤을 끄세요.",
     "samplingDefaults": {
       "title": "기본 샘플링 매개변수",
       "description": "이 모델의 기본 샘플러 설정입니다. 어시스턴트별 또는 요청별 값으로 재정의하지 않으면 사용됩니다."
@@ -889,8 +891,8 @@
         "failed": "페이지를 가져오지 못했습니다: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "이 프로젝트의 파일을 불러올 수 없습니다.",
+    "retryLoad": "다시 시도"
   },
   "attachmentsIngestion": {
     "title": "첨부 파일 수집 방식 선택",
@@ -1054,11 +1056,11 @@
     "chunksCount": "청크 {{count}}개"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp가 아직 작업 중입니다",
+    "description": "하나 이상의 모델이 제때 언로드되지 않았습니다. 강제 종료하면 llama.cpp가 종료되며 진행 중인 응답이 중단될 수 있습니다.",
+    "forceQuit": "강제 종료",
+    "forcing": "강제 종료 중…",
+    "shuttingDown": "종료 중…"
   },
   "duration": {
     "seconds": "{{count}}초",
@@ -1085,8 +1087,8 @@
     "thisChat": "이 채팅",
     "thisRoom": "이 룸",
     "thisSession": "이 세션",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "API 키가 없습니다",
+    "keyMissingDescription": "{{subject}}은(는) 아직 API 키가 없는 공급자를 사용합니다. 설정에서 키를 추가하거나 다른 모델을 선택해 계속하세요."
   },
   "skillsUsedCount_one": "스킬 {{count}}개 사용",
   "skillsUsedCount_other": "스킬 {{count}}개 사용",
@@ -1147,8 +1149,8 @@
     "alsoAttached": "함께 첨부됨",
     "addFolder": "폴더 추가",
     "removeFolder": "{{folder}} 제거",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "{{folder}}을(를) 읽기 전용으로 설정",
+    "makeEditable": "{{folder}}을(를) 편집 가능하게 설정",
     "readOnly": "읽기 전용",
     "editable": "편집 가능",
     "inWorktree": "worktree 사용",
@@ -1156,8 +1158,8 @@
     "footnoteWorktree": "Flint는 이 폴더의 git worktree를 변경하며, 폴더 자체는 절대 변경하지 않습니다.",
     "writesFolder": "첨부한 폴더",
     "writesFolderNote": "편집 내용이 편집 가능으로 표시된 폴더에 바로 반영됩니다.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "편집 가능으로 표시된 폴더",
+    "writesExtrasNote": "기본 폴더는 읽기 전용으로 유지됩니다. 편집 내용은 편집 가능으로 표시된 다른 폴더에만 반영됩니다.",
     "writesWorktree": "세션 worktree",
     "writesWorktreeNote": "편집 내용이 git worktree에 반영되며, 검토 후 병합할 수 있습니다.",
     "footnote": "에이전트는 이 폴더를 읽기만 합니다. 폴더 안의 어떤 것도 수정되지 않습니다.",
@@ -1239,10 +1241,10 @@
     "compactFailed": "아직 압축할 내용이 없습니다.",
     "newSession": "새 세션",
     "compactSuperseded": "압축하는 동안 대화가 바뀌어 아무것도 교체하지 않았습니다. 다시 압축하세요.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "압축 실패: {{reason}}. 대화는 변경되지 않았습니다.",
+    "compactDone": "압축했습니다. 요약은 {{model}}이(가) 작성했습니다.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "그 사이 대화가 진행되어 압축을 더 이상 되돌릴 수 없습니다.",
     "btwFailed": "곁다리 질문에 답하지 못했습니다."
   },
   "autoCompactNeedsWindow": "자동 압축에는 컨텍스트 크기가 필요한데, {{model}}에서 Flint가 찾을 수 있는 값이 없습니다. 긴 채팅이 가득 차기 전에 압축되도록 이 모델의 최대 컨텍스트 토큰을 설정하세요. 공급자가 길이 때문에 요청을 거부하면 Flint가 압축한 뒤 한 번 다시 시도합니다.",
@@ -1271,8 +1273,8 @@
     "interruptedNoReply_other": "완료된 단계 {{calls}}개를 유지했습니다.",
     "interruptedContinue": "계속",
     "interruptedDiscard": "미완료 답변을 버리고 계속",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "자리를 비운 동안:",
+    "recapDismiss": "요약 닫기"
   },
   "modelNoTools": "{{model}}은(는) 도구를 호출할 수 없어 에이전트로 동작할 수 없습니다. 도구 호출을 지원하는 모델을 선택하세요.",
   "sessionModelUnavailable": "{{model}}을(를) 더 이상 사용할 수 없습니다. 모델 메뉴에서 다른 모델을 선택하세요.",
@@ -1384,7 +1386,7 @@
     "chooseAgainAction": "다시 선택",
     "externalGone": "이 파일은 프로젝트 밖에서 열렸으며 해당 접근 권한이 유지되지 않았습니다. 다시 선택하여 여세요.",
     "oneFolderAtATime": "폴더는 한 번에 하나만 추가할 수 있습니다. \"{{name}}\"은(는) 추가되지 않았습니다.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "{{name}}을(를) 열 수 없습니다."
   },
   "settingsSearch": {
     "label": "설정 검색",
@@ -2152,29 +2154,29 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "컨텍스트 압축",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "백그라운드 작업",
+      "tokenUsage": "토큰 사용량",
+      "fellBack": "공급자 대체",
+      "fellBackDetail": "{{from}}이(가) 응답하지 않아 {{to}}을(를) 시도하는 중",
+      "theModel": "모델",
+      "nextProvider": "다음 공급자",
+      "requestFailed": "요청 실패",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "reasoningCharacters_one": "추론 {{count}}자",
+      "reasoningCharacters_other": "추론 {{count}}자",
+      "toolCalls_one": "도구 호출 {{count}}회",
+      "toolCalls_other": "도구 호출 {{count}}회",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "실행 시작됨",
+      "runEnded": "실행 종료됨",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "에이전트 종료됨",
+      "jobStarted": "백그라운드 작업 시작됨",
+      "jobEnded": "백그라운드 작업 종료됨"
     }
   },
   "appRail": {
@@ -2361,15 +2363,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "에이전트 브라우저",
+    "note": "에이전트 자체 임시 브라우저의 읽기 전용 보기입니다. Flint의 미리보기는 사용되지 않습니다.",
+    "lastAction": "마지막 동작: {{action}}",
+    "screenshotAlt": "에이전트 브라우저의 페이지",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "에이전트 브라우저 숨기기",
+    "tabs": "에이전트 브라우저 탭",
+    "waiting": "페이지의 첫 이미지를 기다리는 중…"
   },
   "browserVerify": {
     "title": "브라우저에서 확인",
@@ -2407,23 +2409,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "결정 모델",
+    "backendLabel": "응답 주체",
+    "backendExplained": "기본값은 Jev(TypeSafe)입니다. 또는 Flint에 이미 있는 오픈 모델을 선택할 수 있습니다. 로컬 llama.cpp 또는 MLX 모델, 혹은 자체 호스팅 오픈 웨이트 모델을 포함한 모든 OpenAI 호환 공급자가 가능합니다. 같은 제한된 선택지에 답하며, 그중 정확히 하나가 아닌 응답은 무시되고 Flint가 결정합니다.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "오픈 모델",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Von, Laya, Kev, Rizzo Flow 같은 소형 타입 결정 모델: 모델의 OpenAI 호환 엔드포인트를 공급자로 추가(또는 로컬에서 로드)한 다음 아래에서 선택하세요.",
+    "backendPresetMissing": "{{name}}은(는) 아직 구성되지 않았습니다. OpenAI 호환 엔드포인트를 공급자로 추가하거나 로컬에서 로드한 다음 아래에서 선택하세요. 그때까지는 Jev가 사용됩니다.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "모델 선택",
+    "backendModelSearch": "모델 검색",
+    "backendModelEmpty": "사용 가능한 모델이 없습니다. 먼저 공급자를 추가하거나 로컬 모델을 로드하세요.",
+    "backendModelEmptySearch": "\"{{query}}\"와(과) 일치하는 모델이 없습니다",
+    "backendNoModel": "선택한 모델이 없습니다. 선택할 때까지 Jev가 사용됩니다.",
+    "backendLocal": "이 컴퓨터 또는 로컬 네트워크에서 실행됩니다. 결정 텍스트는 TypeSafe나 어떤 클라우드 서비스로도 전송되지 않습니다.",
+    "backendRemote": "각 옵트인 아래에 나열된 동일한 텍스트가 TypeSafe 대신 {{provider}}(으)로 전송됩니다.",
     "automationTitle": "자동 선택",
     "routeToggle": "알맞은 어시스턴트로 연결",
     "routeExplained": "스킬 제안이 켜져 있으면, 아직 Flint에 있는 대화를 Jev가 새 메시지마다 Quartz, Coal, Blaze 또는 Redstone로 옮길 수 있습니다. 끄면 선택한 어시스턴트가 모든 메시지에 유지됩니다. 직접 선택한 어시스턴트는 어느 경우에도 바뀌지 않습니다.",
@@ -2520,9 +2522,9 @@
   "coworkParallel": {
     "settingTitle": "Git 폴더의 새 세션은 자체 worktree에서 작업",
     "settingDescription": "Git 저장소에 연결된 새 세션마다 자체 worktree와 브랜치(flint/<title>)가 생겨, 여러 세션이 서로나 내 체크아웃을 건드리지 않고 한 폴더에서 동시에 작업할 수 있습니다. 각 브랜치는 세션에서 검토, 병합 또는 폐기하세요.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "현재 브랜치에서 worktree 시작",
+    "baseDescription": "꺼짐(기본값): 새 worktree는 저장소의 기본 브랜치에서 시작합니다. 켜짐: 체크아웃한 커밋에서 시작하므로 푸시하지 않은 커밋도 포함됩니다. (예: 에이전트가) 명시적으로 지정한 브랜치가 항상 우선합니다.",
+    "resumeGone": "이 세션의 worktree에 다시 들어갈 수 없어서({{reason}}) 검토 전용으로 돌아갔습니다. 아무것도 다시 만들어지지 않았습니다.",
     "branchTitle": "이 세션은 자체 worktree에서 {{branch}} 브랜치로 작업합니다",
     "basedOn": "{{base}}에서",
     "openFolder": "폴더 열기",
@@ -2595,12 +2597,12 @@
     "noneForProvider": "이 공급자에는 조정 가능한 매개변수가 없습니다.",
     "maybeUnsupported": "{{providers}}에서 지원되지 않을 수 있습니다",
     "modelReports": "모델: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "재정의 없음 — 모델 기본값을 사용합니다.",
+    "unrecognized_one": "인식되지 않는 매개변수 {{count}}개 숨김: {{keys}}",
+    "unrecognized_other": "인식되지 않는 매개변수 {{count}}개 숨김: {{keys}}",
+    "notSupportedStripped": "지원되지 않음 — 전송 시 제거됩니다",
+    "mayBeIgnored": "이 공급자에서 무시될 수 있습니다",
+    "notSupportedSkipped": "지원되지 않음 — 건너뜁니다.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2620,72 +2622,72 @@
     "chooseNote": "확인하기 전에는 아무것도 복사되지 않습니다. JAN의 데이터는 수정되거나 삭제되지 않습니다.",
     "copyDescription": "아래에서 선택한 항목에 대해 JAN의 대화, 설정, 공급자 키를 Flint로 복사합니다. JAN 자체는 변경되거나 삭제되지 않습니다.",
     "freshDescription": "Flint를 빈 상태로 시작합니다. 공급자 키를 포함해 JAN에서 아무것도 읽거나 복사하지 않으며, 이후 실행에서도 마찬가지입니다. 설정의 데이터 폴더에서 언제든 가져올 수 있습니다.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "JAN에서 마이그레이션",
+    "descriptionNoLegacy": "기존 JAN 데이터를 Flint로 가져옵니다.",
+    "descriptionFound": "Flint가 기존 JAN 설치를 찾았습니다. 데이터를 가져올 방법을 선택하세요.",
+    "detecting": "기존 JAN 설치를 찾는 중…",
+    "noData": "이 컴퓨터에서 JAN 데이터를 찾을 수 없습니다. 마이그레이션할 항목이 없으므로 바로 Flint를 사용할 수 있습니다.",
+    "foundAt": "{{path}}에서 JAN 데이터를 찾았습니다({{size}}).",
+    "whatToBring": "가져올 항목",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Flint에 이미 항목이 있는 경우",
+    "conflictAria": "충돌 해결",
+    "resolveAria": "충돌 해결",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Flint로 복사"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "JAN 데이터 재사용",
+        "description": "기존 JAN 데이터를 복사하지 않고 그 위치 그대로 Flint가 사용하도록 합니다."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Flint로 이동",
+        "description": "Flint로 복사한 다음 모든 항목이 성공하면 JAN 원본을 삭제합니다. 롤백할 수 있도록 백업이 유지됩니다."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "새로 시작"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "대화 및 어시스턴트",
+      "models": "다운로드한 모델 및 엔진",
+      "configs": "구성 파일",
+      "settings": "설정 및 공급자 자격 증명",
+      "common": "확장 프로그램, 로그, 캐시",
+      "agent": "에이전트 작업 공간 및 룸"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "기존 Flint 항목 유지",
+      "use_jan": "JAN 항목으로 덮어쓰기",
+      "keep_both": "둘 다 유지(JAN 사본에는 접미사가 붙음)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "이 JAN 데이터는 이 Flint 빌드가 완전히 지원하지 않는 스키마를 보고합니다. 계속하기 전에 경고를 확인하세요.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "예상 크기",
+    "reusePath": "재사용 경로",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Flint 사본이 더 최신입니다(유지됨)",
+    "running": "데이터를 마이그레이션하는 중… Flint를 닫지 마세요.",
+    "complete": "마이그레이션이 완료되었습니다.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "JAN 데이터의 백업을 {{path}}에 보관했습니다.",
+    "restartNeeded": "이 데이터를 사용하려면 Flint를 다시 시작하세요.",
+    "reuseInPlace": "Flint가 {{path}}의 JAN 데이터를 그대로 사용하고 있습니다.",
+    "failed": "마이그레이션이 완료되지 않았습니다.",
+    "unknownError": "알 수 없는 오류가 발생했습니다.",
+    "rolledBackNote": "데이터가 이전 상태로 롤백되었습니다.",
+    "quarantined": "일부 데이터를 {{path}}에 격리했습니다.",
+    "notNow": "나중에",
+    "dontAskAgain": "다시 묻지 않기",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "새로 시작",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2929,27 +2931,27 @@
     "openProvider": "제공업체 설정 열기",
     "errorDetails": "자세히",
     "pasteHint": "클립보드 접근이 차단되었습니다. 텍스트 상자를 클릭하고 {{keys}}를 누르세요.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "긴 텍스트는 모델에 맞지 않을 수 있습니다. 번역이 실패하거나 중간에 멈추면 텍스트를 나누세요.",
     "swapNeedsSource": "바꾸려면 원본 언어를 선택하세요"
   },
   "markdownImage": {
     "load": "{{host}}에서 이미지 불러오기"
   },
   "messageSaveFailed": "메시지를 저장하지 못했습니다. 다시 시작하면 사라질 수 있습니다.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "시크릿을 시스템 키링에 저장할 수 없습니다. 변경 사항이 되돌려졌습니다.",
+  "keptChat": "유지한 채팅",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "동영상이 준비되었습니다",
+    "imageReady": "이미지가 준비되었습니다",
+    "stoppedWaiting": "대기를 중단했습니다. {{provider}}이(가) 계속 렌더링 중일 수 있으며, 완료될 때까지 새 요청이 거부될 수 있습니다.",
+    "providerFallback": "공급자",
+    "pictureInChat": "이 이미지는 채팅에서 사용 중입니다. 채팅에서 더 이상 이 이미지를 보거나 편집할 수 없습니다."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "앱 로그 - Flint",
+    "systemMonitor": "시스템 모니터 - Flint",
+    "localApiServerLogs": "로컬 API 서버 로그 - Flint"
   },
   "threadSaveFailed": "이 스레드의 변경 사항을 저장하지 못해 되돌렸습니다.",
   "attachmentsProcessFailed": "첨부 파일을 준비하지 못해 메시지를 보내지 않았습니다",
@@ -3236,89 +3238,89 @@
   "chatRules": "규칙",
   "chatRuleForThisChat": "이 채팅에서 이 규칙 사용",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "다른 컴퓨터로 인계…",
+    "saved": "인계 내용을 저장했습니다. 자격 증명 {{count}}개는 제외되었으며, 폴더는 위치가 아닌 이름으로 지정됩니다.",
+    "failed": "인계 내용을 저장할 수 없습니다: {{message}}",
+    "label": "다른 컴퓨터에서 인계됨",
+    "title": "이 세션은 다른 컴퓨터에서 인계되었습니다.",
+    "checkFailed": "첨부한 폴더를 확인할 수 없습니다: {{error}}",
+    "folderMatches": "첨부한 폴더가 세션이 작업하던 폴더({{name}})와 일치합니다.",
+    "folderDiffers": "첨부한 폴더가 세션이 작업하던 폴더가 아닙니다: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "브랜치 {{branch}}, 커밋 {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "이 세션은 {{name}}(이)라는 폴더에서 작업했습니다. 계속하려면 이 컴퓨터에서 해당 폴더를 첨부하세요.",
+      "folderAt": "이 세션은 {{name}}(이)라는 폴더({{at}})에서 작업했습니다. 계속하려면 이 컴퓨터에서 해당 폴더를 첨부하세요.",
+      "provider": "공급자 {{provider}}이(가) 이 컴퓨터에 설정되어 있지 않아 세션의 모델을 사용할 수 없습니다. 계속하려면 다른 모델을 선택하세요.",
+      "model": "모델 {{id}}은(는) 이 컴퓨터의 {{provider}}에서 사용할 수 없습니다. 계속하려면 다른 모델을 선택하세요."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "이름이 {{expected}}이(가) 아니라 {{actual}}입니다",
+      "branch": "{{expected}}이(가) 아니라 {{actual}} 브랜치에 있습니다",
+      "noBranch": "브랜치가 없으며 {{expected}}이(가) 아닙니다",
+      "head": "{{expected}}이(가) 아니라 {{actual}} 커밋에 있습니다",
+      "noHead": "커밋이 없으며 {{expected}}이(가) 아닙니다"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "이 이미지를 불러올 수 없습니다.",
+  "attachedImage": "첨부 이미지 {{n}}",
+  "saveChanges": "변경 사항 저장",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "모델 불러오는 중…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "실패까지 걸린 시간"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "웹 검색",
+    "embeddings": "임베딩 모델(RAG/벡터용, 채팅용 아님)",
+    "raw_completion": "원시 완성(입력한 텍스트를 이어서 생성하며 채팅이나 도구는 사용하지 않음)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "어시스턴트 전환({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "리버스 엔지니어링",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "같은 파일",
+      "nested": "폴더와 그 안의 항목",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "재생성되는 파일"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "{{id}}이(가) 변경할 수 있는 항목(쉼표로 구분)",
+    "bothChange": "{{a}}와(과) {{b}}이(가) 둘 다 변경하는 항목:",
+    "legend": "{{a}}와(과) {{b}}에 대한 조치",
+    "serializeAb": "{{a}}을(를) 먼저 실행한 후 {{b}} 실행",
+    "serializeBa": "{{b}}을(를) 먼저 실행한 후 {{a}} 실행",
+    "revise": "{{id}}이(가) 변경할 수 있는 항목 수정",
+    "parallel": "그래도 나란히 실행(기록됨, 각 변경은 적용 전에 여전히 검토 및 확인됨)",
+    "region": "겹치는 팀 작업",
+    "headline": "이 작업들은 순서 지정 없이 같은 경로를 변경합니다. 아직 아무것도 실행되지 않았습니다.",
+    "caveat": "코드를 읽은 것이 아니라 각 작업이 선언한 경로로 비교한 것입니다. 여기서 겹치지 않는다고 해서 변경 사항이 서로 맞는다는 뜻은 아닙니다.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "이 작업을 실행하지 않음"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "toggleSnippet": "스니펫 전환",
+    "documents_one": "문서 인용 {{count}}개",
+    "documents_other": "문서 인용 {{count}}개",
+    "web_one": "웹 출처 {{count}}개",
+    "web_other": "웹 출처 {{count}}개",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "{{files}}의 일부만 메시지 하나에 들어갑니다.",
+    "readFailed": "{{name}}을(를) 읽을 수 없습니다: {{error}}",
+    "remoteImagesOnly": "서버 세션에는 이미지만 보낼 수 있습니다. 다른 미디어 파일은 제거하세요."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3327,37 +3329,37 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "filesChanged_one": "파일 {{count}}개 변경됨",
+    "filesChanged_other": "파일 {{count}}개 변경됨",
+    "mediaFiles_one": "미디어 파일 {{count}}개",
+    "mediaFiles_other": "미디어 파일 {{count}}개",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "이 세션에 선택된 모델이 없습니다.",
+    "toolsFailed": "{{date}}에 이 모델의 도구 호출 테스트가 실패했습니다.",
+    "toolsFailedDetail": "{{date}}에 이 모델의 도구 호출 테스트가 실패했습니다: {{detail}}.",
+    "noToolSupport": "선택한 모델은 도구를 호출할 수 없으므로 Cowork에서는 채팅만 할 수 있습니다.",
+    "modelToolsWorked": "모델이 선택되었습니다. {{date}} 테스트에서 도구 호출이 동작했습니다. 이는 한 번의 확인일 뿐 모든 작업을 보장하지는 않습니다.",
+    "modelSelected": "모델이 선택되었습니다. 공급자가 응답하는지는 실행이 시작될 때 확인됩니다.",
+    "contextWindow": "컨텍스트 창: {{tokens}}토큰.",
+    "contextUnknown": "이 모델의 컨텍스트 창을 찾을 수 없어 가득 차기 전에 Flint가 경고할 수 없습니다.",
+    "mcpOffered_one": "설정의 MCP 서버 {{count}}개가 Cowork 실행에 제공되며 메시지를 보낼 때 연결됩니다.",
+    "mcpOffered_other": "설정의 MCP 서버 {{count}}개가 Cowork 실행에 제공되며 메시지를 보낼 때 연결됩니다.",
+    "mcpNone": "구성된 MCP 서버가 없습니다.",
+    "localReady": "로컬 런타임은 실행에서 모델이 필요할 때 시작됩니다.",
+    "localAbsent": "선택한 모델은 로컬에서 실행되지 않습니다."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "메모리 저장 중",
+    "readingMemory": "메모리 읽는 중",
+    "readingSkill": "스킬 읽는 중",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "사용한 스킬",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "하위 에이전트 {{count}}개 작업 중",
+    "subagentsWorking_other": "하위 에이전트 {{count}}개 작업 중",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3378,20 +3380,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "이 ID의 세션이 이미 있습니다",
+    "assistantExists": "이 ID의 어시스턴트가 이미 있습니다"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "이 프로젝트 설명",
+    "continue": "FLINT.md 초안 계속하기",
+    "description": "Flint는 폴더의 매니페스트와 구조를 읽었으며 아무것도 실행하지 않았습니다. 설명을 편집하세요. 수락할 때만 폴더의 FLINT.md가 됩니다.",
+    "surveying": "폴더 조사 중…",
+    "surveyed": "파일 {{seen}}개를 조사하고 {{read}}개를 읽었습니다. 아무것도 기록되지 않았습니다.",
+    "wrote": "FLINT.md를 기록했습니다",
+    "discarded": "초안을 삭제했습니다. 아무것도 기록되지 않았습니다.",
+    "notRead": "조사에서 읽지 않은 항목",
+    "discard": "초안 삭제",
+    "resurvey": "다시 조사",
+    "accept": "수락하고 FLINT.md 기록"
   }
 }

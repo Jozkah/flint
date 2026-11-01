@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. S'han afegit les carpetes del grup al context de carpetes; l'accés encara requereix aprovació",
       "foldersAdded": "{{base}}. S'han afegit les carpetes de l'element al grup"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Grup sense títol",
+    "folderNotInspected": "No s'ha pogut inspeccionar la carpeta"
   },
   "htmlArtifact": {
     "code": "Codi",
@@ -336,7 +336,7 @@
       "threads": "Converses"
     },
     "openItem": "Obre {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "Obre Studio"
   },
   "searchGroup": {
     "pages": "Pàgines",
@@ -383,6 +383,9 @@
     "others_one": "{{count}} altra sessió treballa en aquesta carpeta",
     "others_other": "{{count}} altres sessions treballen en aquesta carpeta",
     "others_many": "{{count}} altres sessions treballen en aquesta carpeta",
+    "othersIdle_one": "{{count}} altra sessió oberta en aquesta carpeta, inactiva",
+    "othersIdle_other": "{{count}} altres sessions obertes en aquesta carpeta, inactives",
+    "othersIdle_many": "{{count}} altres sessions obertes en aquesta carpeta, inactives",
     "waitingApproval_one": "{{count}} altra sessió espera aprovació",
     "waitingApproval_other": "{{count}} altres sessions esperen aprovació",
     "waitingApproval_many": "{{count}} altres sessions esperen aprovació",
@@ -686,7 +689,7 @@
       "pairedHint": "Aquest model pot rebre imatges com a entrada. El projector es tria en importar el model; torna'l a importar per usar-ne un de diferent.",
       "noneHint": "Sense un projector de visió, aquest model no pot llegir imatges. Torna a importar el model amb Multimodal activat i tria el seu fitxer mmproj; un projector al costat del fitxer del model es troba automàticament."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "Auto-fit està triant les capes de GPU. Desactiva Auto-fit per definir-les manualment.",
     "samplingDefaults": {
       "title": "Paràmetres de mostreig per defecte",
       "description": "Configuració del mostrejador per defecte per a aquest model. S'utilitza tret que la substitueixin valors per assistent o per petició."
@@ -898,8 +901,8 @@
         "failed": "No s'ha pogut obtenir la pàgina: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "No s'han pogut carregar els fitxers d'aquest projecte.",
+    "retryLoad": "Torna-ho a provar"
   },
   "attachmentsIngestion": {
     "title": "Tria com ingerir els adjunts",
@@ -1063,11 +1066,11 @@
     "chunksCount": "{{count}} fragments"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp encara està ocupat",
+    "description": "Un o més models no s'han descarregat a temps. Si força la sortida, llama.cpp es tancarà i les respostes en curs es poden interrompre.",
+    "forceQuit": "Força la sortida",
+    "forcing": "S'està forçant la sortida…",
+    "shuttingDown": "S'està aturant…"
   },
   "duration": {
     "seconds": "{{count}} s",
@@ -1095,8 +1098,8 @@
     "thisChat": "Aquest xat",
     "thisRoom": "Aquesta sala",
     "thisSession": "Aquesta sessió",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "Falta una clau API",
+    "keyMissingDescription": "{{subject}} utilitza un proveïdor que encara no té cap clau API. Afegeix la clau a Configuració o tria un altre model per continuar."
   },
   "skillsUsedCount_one": "S'ha utilitzat {{count}} habilitat",
   "skillsUsedCount_many": "S'han utilitzat {{count}} d'habilitats",
@@ -1161,8 +1164,8 @@
     "alsoAttached": "També adjuntes",
     "addFolder": "Afegeix una altra carpeta",
     "removeFolder": "Treu {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "Fes que {{folder}} sigui de només lectura",
+    "makeEditable": "Fes que {{folder}} sigui editable",
     "readOnly": "només lectura",
     "editable": "editable",
     "inWorktree": "mitjançant worktree",
@@ -1170,8 +1173,8 @@
     "footnoteWorktree": "Flint canvia un worktree de Git d'aquesta carpeta, mai la carpeta mateixa.",
     "writesFolder": "Les carpetes adjuntes",
     "writesFolderNote": "Les edicions s'apliquen directament a les carpetes marcades com a editables.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Les carpetes marcades com a editables",
+    "writesExtrasNote": "La carpeta principal continua sent de només lectura; els canvis només s'escriuen a les altres carpetes marcades com a editables.",
     "writesWorktree": "Worktree de la sessió",
     "writesWorktreeNote": "Les edicions es fan en un worktree de Git perquè les revisis i les fusionis.",
     "footnote": "L'agent només llegeix aquesta carpeta. Res del que hi ha dins es modifica mai.",
@@ -1253,10 +1256,10 @@
     "compactFailed": "Encara no hi ha res a compactar.",
     "newSession": "Sessió nova",
     "compactSuperseded": "La conversa ha canviat mentre es compactava, així que no s'ha substituït res. Torna-la a compactar.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "La compactació ha fallat: {{reason}}. La conversa no ha canviat.",
+    "compactDone": "Compactat. Resum escrit per {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "La conversa ha continuat des d'aleshores, de manera que la compactació ja no es pot desfer.",
     "btwFailed": "No s'ha pogut respondre la pregunta lateral."
   },
   "autoCompactNeedsWindow": "La compactació automàtica necessita una mida de context, i {{model}} no en té cap que Flint pugui trobar. Estableix el màxim de tokens de context per a aquest model perquè els xats llargs es compactin abans d'omplir-lo. Si el proveïdor rebutja una petició per la seva longitud, Flint compacta i ho torna a provar una vegada.",
@@ -1288,8 +1291,8 @@
     "interruptedNoReply_other": "{{calls}} passos completats conservats.",
     "interruptedContinue": "Continua",
     "interruptedDiscard": "Descarta la resposta inacabada i continua",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Mentre eres fora:",
+    "recapDismiss": "Descarta el resum"
   },
   "modelNoTools": "{{model}} no pot cridar eines, així que no pot actuar com a agent. Tria un model que cridi eines.",
   "sessionModelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models.",
@@ -1401,7 +1404,7 @@
     "chooseAgainAction": "Tria de nou",
     "externalGone": "Aquest fitxer es va obrir des de fora del projecte i aquest accés no s'ha conservat. Tria'l de nou per reobrir-lo.",
     "oneFolderAtATime": "Només una carpeta alhora. «{{name}}» no s'ha afegit.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "No s'ha pogut obrir {{name}}."
   },
   "settingsSearch": {
     "label": "Cerca a la configuració",
@@ -2186,32 +2189,32 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Compactació del context",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Tasca en segon pla",
+      "tokenUsage": "Ús de tokens",
+      "fellBack": "El proveïdor ha passat a un altre",
+      "fellBackDetail": "{{from}} no ha respost; es prova {{to}}",
+      "theModel": "el model",
+      "nextProvider": "el proveïdor següent",
+      "requestFailed": "La sol·licitud ha fallat",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
       "characters_many": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
+      "reasoningCharacters_one": "{{count}} caràcter de raonament",
+      "reasoningCharacters_other": "{{count}} caràcters de raonament",
       "reasoningCharacters_many": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "toolCalls_one": "{{count}} crida a eina",
+      "toolCalls_other": "{{count}} crides a eines",
       "toolCalls_many": "{{count}} tool calls",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Execució iniciada",
+      "runEnded": "Execució acabada",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Agent acabat",
+      "jobStarted": "Tasca en segon pla iniciada",
+      "jobEnded": "Tasca en segon pla acabada"
     }
   },
   "appRail": {
@@ -2403,15 +2406,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Navegador de l'agent",
+    "note": "Vista de només lectura del navegador temporal de l'agent. No s'utilitza la previsualització de Flint.",
+    "lastAction": "Última acció: {{action}}",
+    "screenshotAlt": "La pàgina al navegador de l'agent",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Amaga el navegador de l'agent",
+    "tabs": "Pestanyes del navegador de l'agent",
+    "waiting": "S'està esperant la primera imatge de la pàgina…"
   },
   "browserVerify": {
     "title": "Verifica al navegador",
@@ -2451,23 +2454,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Model de decisió",
+    "backendLabel": "Qui respon",
+    "backendExplained": "Jev (TypeSafe) és el valor per defecte. O tria un model obert que ja tinguis a Flint: un model local de llama.cpp o MLX, o qualsevol proveïdor compatible amb OpenAI, inclosos els models open-weight autoallotjats. Respon les mateixes opcions acotades; tot el que no sigui exactament una d'elles s'ignora i Flint decideix.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Model obert",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Models petits de decisió tipada com Von, Laya, Kev o Rizzo Flow: afegeix l'endpoint compatible amb OpenAI del model com a proveïdor (o carrega'l en local) i després tria'l a sota.",
+    "backendPresetMissing": "{{name}} encara no està configurat. Afegeix el seu endpoint compatible amb OpenAI com a proveïdor, o carrega'l en local, i després tria'l a sota. Mentrestant s'utilitza Jev.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Tria un model",
+    "backendModelSearch": "Cerca models",
+    "backendModelEmpty": "No hi ha cap model disponible. Primer afegeix un proveïdor o carrega un model local.",
+    "backendModelEmptySearch": "Cap model coincideix amb \"{{query}}\"",
+    "backendNoModel": "Cap model triat: s'utilitza Jev fins que en triïs un.",
+    "backendLocal": "S'executa en aquest ordinador o a la teva xarxa local: el text de la decisió no va a TypeSafe ni a cap servei al núvol.",
+    "backendRemote": "El mateix text que s'indica a sota per a cada opció activada s'envia a {{provider}} en lloc de TypeSafe.",
     "automationTitle": "Eleccions automàtiques",
     "routeToggle": "Deriva a l'assistent adequat",
     "routeExplained": "Quan el Suggeriment d'habilitats està activat, Jev pot moure una conversa que encara és a Flint a Quartz, Coal, Blaze o Redstone a cada missatge nou. Si està desactivat, l'assistent que has triat es manté a cada missatge. Un assistent que has triat tu mateix no es canvia mai, tant si està activat com desactivat.",
@@ -2567,9 +2570,9 @@
   "coworkParallel": {
     "settingTitle": "Les sessions noves en una carpeta Git treballen en el seu propi worktree",
     "settingDescription": "Cada sessió nova en un repositori Git obté el seu propi worktree i branca (flint/<title>), perquè moltes sessions treballin alhora a la mateixa carpeta sense tocar-se entre elles ni tocar la teva còpia de treball. Revisa, fusiona o descarta cada branca des de la sessió.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Inicia els worktrees des de la meva branca actual",
+    "baseDescription": "Desactivat (per defecte): un worktree nou comença des de la branca per defecte del repositori. Activat: comença des del commit que has activat, de manera que inclou els commits que encara no has pujat. Una branca indicada explícitament (per exemple per l'agent) sempre preval.",
+    "resumeGone": "No s'ha pogut tornar a entrar al worktree d'aquesta sessió ({{reason}}), de manera que ha tornat a només revisió. No s'ha recreat res.",
     "branchTitle": "Aquesta sessió treballa a la branca {{branch}}, en el seu propi worktree",
     "basedOn": "des de {{base}}",
     "openFolder": "Obre la carpeta",
@@ -2642,13 +2645,13 @@
     "noneForProvider": "Aquest proveïdor no té paràmetres ajustables.",
     "maybeUnsupported": "Pot ser que {{providers}} no ho admeti",
     "modelReports": "Model: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "noOverrides": "Sense substitucions: s'utilitzen els valors per defecte del model.",
+    "unrecognized_one": "{{count}} paràmetre no reconegut amagat: {{keys}}",
+    "unrecognized_other": "{{count}} paràmetres no reconeguts amagats: {{keys}}",
     "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "notSupportedStripped": "No compatible: se suprimirà en enviar",
+    "mayBeIgnored": "Aquest proveïdor podria ignorar-lo",
+    "notSupportedSkipped": "No compatible: s'ometrà.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2668,74 +2671,74 @@
     "chooseNote": "No es copia res fins que confirmis. Les dades de JAN mai es modifiquen ni s'esborren.",
     "copyDescription": "Copia les teves converses, la configuració i les claus de proveïdors de JAN a Flint, per als elements marcats a sota. JAN mai no es canvia ni s'esborra.",
     "freshDescription": "Inicia Flint buit. No es llegeix ni es copia res de JAN, ni tan sols les seves claus de proveïdors, ara ni en inicis posteriors. Sempre pots importar des de Configuració, Carpeta de dades.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "Migra des de JAN",
+    "descriptionNoLegacy": "Porta a Flint les teves dades de JAN existents.",
+    "descriptionFound": "Flint ha trobat una instal·lació de JAN existent. Tria com vols traspassar les teves dades.",
+    "detecting": "S'està cercant una instal·lació de JAN existent…",
+    "noData": "No s'han trobat dades de JAN en aquest ordinador. No hi ha res a migrar: pots començar a utilitzar Flint ara mateix.",
+    "foundAt": "S'han trobat dades de JAN a {{path}} ({{size}}).",
+    "whatToBring": "Què s'ha de traspassar",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
     "fileCount_many": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Si un element ja existeix a Flint",
+    "conflictAria": "Resolució de conflictes",
+    "resolveAria": "Resol els conflictes",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Copia a Flint"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "Reutilitza les dades de JAN",
+        "description": "Fes que Flint utilitzi les teves dades de JAN existents allà on són, sense copiar-les."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Mou a Flint",
+        "description": "Copia a Flint i després elimina l'origen de JAN quan cada element s'hagi completat. Es conserva una còpia de seguretat per poder tornar enrere."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Comença de zero"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Converses i assistents",
+      "models": "Models i motors descarregats",
+      "configs": "Fitxers de configuració",
+      "settings": "Configuració i credencials dels proveïdors",
+      "common": "Extensions, registres i cachés",
+      "agent": "Espai de treball i sales de l'agent"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Conserva l'element existent de Flint",
+      "use_jan": "Sobreescriu amb l'element de JAN",
+      "keep_both": "Conserva'ls tots dos (la còpia de JAN rep un sufix)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "Les dades de JAN indiquen un esquema que aquesta versió de Flint no admet del tot. Revisa els avisos abans de continuar.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Mida estimada",
+    "reusePath": "Camí reutilitzat",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
     "conflictCount_many": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "La còpia de Flint és més recent (conservada)",
+    "running": "S'estan migrant les dades… no tanquis Flint.",
+    "complete": "Migració completada.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "S'ha conservat una còpia de seguretat de les dades de JAN a {{path}}.",
+    "restartNeeded": "Reinicia Flint per començar a utilitzar aquestes dades.",
+    "reuseInPlace": "Flint ara utilitza les teves dades de JAN al seu lloc, a {{path}}.",
+    "failed": "La migració no s'ha completat.",
+    "unknownError": "S'ha produït un error desconegut.",
+    "rolledBackNote": "Les teves dades s'han restaurat a l'estat anterior.",
+    "quarantined": "Les dades parcials s'han posat en quarantena a {{path}}.",
+    "notNow": "Ara no",
+    "dontAskAgain": "No ho tornis a preguntar",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Comença de zero",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2992,27 +2995,27 @@
     "openProvider": "Obre la configuració del proveïdor",
     "errorDetails": "Detalls",
     "pasteHint": "L'accés al porta-retalls s'ha bloquejat. Fes clic al quadre de text i prem {{keys}}.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Un text llarg pot no cabre al model. Divideix-lo si la traducció falla o s'atura abans d'hora.",
     "swapNeedsSource": "Tria una llengua d'origen per intercanviar"
   },
   "markdownImage": {
     "load": "Carrega la imatge de {{host}}"
   },
   "messageSaveFailed": "No s'ha pogut desar el missatge. Es pot perdre després de reiniciar.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "No s'ha pogut desar el secret al clauer del sistema. El canvi s'ha revertit.",
+  "keptChat": "Xat conservat",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "El teu vídeo és a punt",
+    "imageReady": "La teva imatge és a punt",
+    "stoppedWaiting": "S'ha deixat d'esperar. {{provider}} pot continuar renderitzant i una sol·licitud nova es pot rebutjar fins que acabi.",
+    "providerFallback": "El proveïdor",
+    "pictureInChat": "Aquesta imatge s'utilitza en un xat. El xat ja no la pot veure ni editar."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Registres de l'aplicació - Flint",
+    "systemMonitor": "Monitor del sistema - Flint",
+    "localApiServerLogs": "Registres del servidor API local - Flint"
   },
   "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit.",
   "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat",
@@ -3324,91 +3327,91 @@
   "chatRules": "Regles",
   "chatRuleForThisChat": "Fes servir aquesta regla en aquest xat",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Traspassa a un altre ordinador…",
+    "saved": "Traspàs desat. {{count}} credencial(s) s'han deixat fora, i la carpeta s'indica pel nom, no per la ubicació.",
+    "failed": "No s'ha pogut desar el traspàs: {{message}}",
+    "label": "Traspassada des d'un altre ordinador",
+    "title": "Aquesta sessió s'ha traspassat des d'un altre ordinador.",
+    "checkFailed": "No s'ha pogut comprovar la carpeta adjunta: {{error}}",
+    "folderMatches": "La carpeta adjunta coincideix amb aquella en què treballava la sessió ({{name}}).",
+    "folderDiffers": "La carpeta adjunta no és aquella en què treballava la sessió: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "branca {{branch}} al commit {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Aquesta sessió treballava en una carpeta anomenada {{name}}. Adjunta aquesta carpeta en aquest ordinador per continuar.",
+      "folderAt": "Aquesta sessió treballava en una carpeta anomenada {{name}} ({{at}}). Adjunta aquesta carpeta en aquest ordinador per continuar.",
+      "provider": "El proveïdor {{provider}} no està configurat en aquest ordinador, de manera que no es pot utilitzar el model de la sessió. Tria un altre model per continuar.",
+      "model": "El model {{id}} no està disponible des de {{provider}} en aquest ordinador. Tria un altre model per continuar."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "es diu {{actual}}, no {{expected}}",
+      "branch": "és a la branca {{actual}}, no {{expected}}",
+      "noBranch": "no és a cap branca, no {{expected}}",
+      "head": "és al commit {{actual}}, no {{expected}}",
+      "noHead": "no és a cap commit, no {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "No s'ha pogut carregar aquesta imatge.",
+  "attachedImage": "Imatge adjunta {{n}}",
+  "saveChanges": "Desa els canvis",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "S'està carregant el model…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Ha fallat després de"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Cerca al web",
+    "embeddings": "Model d'embedding (per a RAG/vectors, no per al xat)",
+    "raw_completion": "Completació en brut (continua el teu text, sense xat ni eines)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Canvia d'assistent ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Enginyeria inversa",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "mateix fitxer",
+      "nested": "una carpeta i alguna cosa al seu interior",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "un fitxer regenerat"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "Què pot canviar {{id}} (separat per comes)",
+    "bothChange": "{{a}} i {{b}} canviarien tots dos:",
+    "legend": "Què fer amb {{a}} i {{b}}",
+    "serializeAb": "Executa primer {{a}} i després {{b}}",
+    "serializeBa": "Executa primer {{b}} i després {{a}}",
+    "revise": "Canvia què pot canviar {{id}}",
+    "parallel": "Executa'ls en paral·lel igualment (queda registrat; cada canvi continua sent revisat i comprovat abans d'aplicar-se)",
+    "region": "Tasques d'equip superposades",
+    "headline": "Aquestes tasques canviarien els mateixos camins sense cap ordre entre elles. Encara no s'ha executat res.",
+    "caveat": "La comparació es basa en els camins que declara cada tasca, no en la lectura del codi: que aquí no hi hagi superposició no vol dir que els canvis encaixin.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "No executis aquestes tasques"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
+    "toggleSnippet": "Mostra/amaga el fragment",
+    "documents_one": "{{count}} citació de document",
+    "documents_other": "{{count}} citacions de documents",
     "documents_many": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "web_one": "{{count}} font web",
+    "web_other": "{{count}} fonts web",
     "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "Només una part de {{files}} cap en un missatge.",
+    "readFailed": "No s'ha pogut llegir {{name}}: {{error}}",
+    "remoteImagesOnly": "A una sessió del servidor només es poden enviar imatges; elimina els altres fitxers multimèdia."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3417,40 +3420,40 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
+    "filesChanged_one": "{{count}} fitxer modificat",
+    "filesChanged_other": "{{count}} fitxers modificats",
     "filesChanged_many": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "mediaFiles_one": "{{count}} fitxer multimèdia",
+    "mediaFiles_other": "{{count}} fitxers multimèdia",
     "mediaFiles_many": "{{count}} media files",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
+    "noModel": "No hi ha cap model seleccionat per a aquesta sessió.",
+    "toolsFailed": "Les crides a eines han fallat en una prova d'aquest model el {{date}}.",
+    "toolsFailedDetail": "Les crides a eines han fallat en una prova d'aquest model el {{date}}: {{detail}}.",
+    "noToolSupport": "El model seleccionat no pot cridar eines, de manera que Cowork només hi pot xatejar.",
+    "modelToolsWorked": "S'ha seleccionat un model. Les crides a eines han funcionat en una prova el {{date}}; és una sola comprovació, no una garantia per a totes les tasques.",
+    "modelSelected": "S'ha seleccionat un model. Si el proveïdor respon es comprova quan s'inicia una execució.",
+    "contextWindow": "Finestra de context: {{tokens}} tokens.",
+    "contextUnknown": "No s'ha pogut trobar la finestra de context d'aquest model, de manera que Flint no pot avisar abans que s'ompli.",
+    "mcpOffered_one": "{{count}} servidor MCP de Configuració s'ofereix a les execucions de Cowork i es connecta quan s'envia un missatge.",
+    "mcpOffered_other": "{{count}} servidors MCP de Configuració s'ofereixen a les execucions de Cowork i es connecten quan s'envia un missatge.",
     "mcpOffered_many": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "mcpNone": "No hi ha cap servidor MCP configurat.",
+    "localReady": "El runtime local s'inicia quan una execució necessita el model.",
+    "localAbsent": "El model seleccionat no s'executa en local."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Desant la memòria",
+    "readingMemory": "Llegint la memòria",
+    "readingSkill": "Llegint la skill",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Skill utilitzada",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} subagent treballant",
+    "subagentsWorking_other": "{{count}} subagents treballant",
     "subagentsWorking_many": "{{count}} subagents working",
     "verb": {
       "write": "Writing",
@@ -3472,20 +3475,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Ja existeix una sessió amb aquest id",
+    "assistantExists": "Ja existeix un assistent amb aquest id"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Descriu aquest projecte",
+    "continue": "Continua l'esborrany de FLINT.md",
+    "description": "Flint ha llegit els manifests i l'estructura de la carpeta i no ha executat res. Edita la descripció: només esdevé el FLINT.md de la carpeta quan l'acceptes.",
+    "surveying": "S'està analitzant la carpeta…",
+    "surveyed": "S'han analitzat {{seen}} fitxers i se n'han llegit {{read}}. No s'ha escrit res.",
+    "wrote": "FLINT.md escrit",
+    "discarded": "Esborrany descartat. No s'ha escrit res.",
+    "notRead": "Què no ha llegit l'anàlisi",
+    "discard": "Descarta l'esborrany",
+    "resurvey": "Torna a analitzar",
+    "accept": "Accepta i escriu FLINT.md"
   }
 }

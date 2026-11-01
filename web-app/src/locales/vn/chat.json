@@ -287,35 +287,37 @@
     "stopGenerating": "Dừng tạo"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Giảm kích thước ngữ cảnh (ctx-size)",
+    "oomDisableMtp": "Tắt MTP (dự đoán nhiều token)",
+    "oomLowerGpuLayers": "Giảm n-gpu-layers hoặc chuyển sang backend CPU",
+    "oomSmallerModel": "Dùng mô hình nhỏ hơn / lượng tử hóa nhiều hơn",
+    "serverContext": "Cửa sổ ngữ cảnh của mô hình này do máy chủ của nó đặt, nên Flint không thể mở rộng. Hãy bắt đầu cuộc trò chuyện mới, rút ngắn cuộc trò chuyện hoặc nâng giới hạn trên máy chủ.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "Mô hình trả về phản hồi trống. Hãy thử lại hoặc đổi mô hình.",
+    "thinkingOnly": "Mô hình đã suy nghĩ xong nhưng không đưa ra câu trả lời. Hãy tiếp tục hoặc tạo lại để thử lần nữa.",
+    "noReply": "Lượt chạy kết thúc mà không có phản hồi.",
+    "noReplyToolError": "Lượt chạy kết thúc mà không có phản hồi. Lỗi công cụ gần nhất ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "Cuộc trò chuyện đã nhập",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "Không thể lưu hình ảnh này.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
+    "savedPictures_one": "Đã lưu {{count}} hình ảnh",
+    "savedPictures_other": "Đã lưu {{count}} hình ảnh",
     "savedPictures_many": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
-  }
+    "picturesMissing": "; {{count}} không còn trong thư viện",
+    "picturesGone": "Các hình ảnh không còn trong thư viện Studio.",
+    "tooLarge": "bản xuất này nặng {{mb}} MB và giới hạn là 50 MB; hãy xuất một tin nhắn hoặc một nhánh, hoặc bỏ chi tiết công cụ",
+    "untitled": "Cuộc trò chuyện mới",
+    "tooTall": "cuộc trò chuyện quá dài để xuất thành một ảnh (khoảng {{height}}k px, giới hạn là {{limit}}k); hãy xuất dưới dạng PDF hoặc Markdown, hoặc xuất một tin nhắn",
+    "pageNotDrawn": "không thể vẽ trang",
+    "noCanvas": "không có canvas để vẽ ảnh",
+    "imageNotEncoded": "không thể mã hóa ảnh"
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

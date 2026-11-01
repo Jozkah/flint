@@ -24,12 +24,12 @@
     "description": "बंद होने पर, अन्य सत्रों को बताया जाता है कि यह संदेश नहीं लेता, और वे जो भेजें वह इस तक नहीं पहुँचता।"
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "भेजने से पहले मुझसे पूछें",
+    "description": "चालू होने पर, दूसरे सत्र से आया हर संदेश यहाँ आपकी स्वीकृति या अस्वीकृति की प्रतीक्षा करता है। आपके स्वीकार करने तक कुछ भी भेजा या शुरू नहीं होता, और जिस संदेश का आप 5 मिनट में उत्तर नहीं देते वह हटा दिया जाता है और भेजने वाले को बता दिया जाता है। केवल तब जब संदेश स्वीकार किए जा रहे हों।"
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "नेस्टेड चैट शुरू होने से पहले मुझसे पूछें",
+    "description": "चालू होने पर, जब भी एजेंट नेस्टेड चैट (spawn_session) शुरू करना चाहता है तो पहले आपसे पूछता है। डिफ़ॉल्ट रूप से बंद: वर्कट्री के बिना नेस्टेड चैट बिना फ़ोल्डर एक्सेस और इस सत्र की किसी अनुमति के शुरू होती है।"
   },
   "subagentQuestion": {
     "title": "{{name}} एजेंट से पूछता है",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{session}} में {{count}} संदेश",
   "waitingIn_other": "{{session}} में {{count}} संदेश",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "स्वीकृति की प्रतीक्षा में संदेश",
+    "banner": "आपकी स्वीकृति की प्रतीक्षा है ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "स्थिति सूचना",
+    "expires": "{{minutes}} मिनट में समाप्त",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "{{name}} का संदेश स्वीकार करें",
+    "denyLabel": "{{name}} का संदेश अस्वीकार करें"
   }
 }

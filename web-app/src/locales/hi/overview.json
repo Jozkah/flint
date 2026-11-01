@@ -60,5 +60,8 @@
   "resumeSub": "कुछ नया शुरू करें या जहाँ छोड़ा था वहीं से आगे बढ़ें।",
   "startChat": "कुछ पूछें",
   "startFiles": "Cowork",
-  "usage": "उपयोग"
+  "usage": "उपयोग",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

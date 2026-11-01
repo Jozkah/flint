@@ -1,5 +1,6 @@
 import { syncListedModels } from '@/lib/providerModelSync'
 import { listedCapabilities } from '@/lib/listedCapabilities'
+import { initialModelCapabilities } from '@/lib/models'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { getProviderTitle } from '@/lib/utils'
@@ -72,10 +73,11 @@ export function useProviderModelActions({
         id,
         model: id,
         name: id,
-        capabilities: [
-          'completion',
-          ...(listedCapabilities(provider.base_url, id) ?? []),
-        ],
+        capabilities: initialModelCapabilities(
+          provider.provider,
+          id,
+          listedCapabilities(provider.base_url, id)
+        ),
         version: '1.0',
       }))
 

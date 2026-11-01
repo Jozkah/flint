@@ -133,7 +133,9 @@
     "catchUpAllCapped": "それぞれ実行 (最大 5 回)",
     "enabled": "有効",
     "save": "タスクを保存",
-    "saving": "保存中"
+    "saving": "保存中",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "このタスクはオフになっているため、オンにするまで実行されません。",

@@ -109,6 +109,7 @@
     "runId": "běh {{id}}",
     "turnId": "tah {{id}}",
     "snapshotId": "snímek {{id}}",
-    "noRequests": "zatím žádný zaznamenaný požadavek"
+    "noRequests": "zatím žádný zaznamenaný požadavek",
+    "id": "ID"
   }
 }

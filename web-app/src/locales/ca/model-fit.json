@@ -114,12 +114,12 @@
     "inUse": "En ús aquí: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "Descàrrega a la GPU (aquesta càrrega)",
+    "all": "Les {{layers}} capes s'executen a la GPU.",
+    "partial": "{{gpu}} de {{total}} capes s'executen a la GPU; la resta, a la CPU, que és més lenta.",
+    "none": "Cap capa s'executa a la GPU: el model s'executa a la CPU.",
+    "unknown": "El motor no ha indicat quantes capes ha descarregat.",
+    "memory": "Pesos del model: {{gpu}} a la GPU, {{cpu}} a la memòria del sistema."
   },
   "metalBudget": {
     "warning": "Aquest model pot ser massa gran per a la GPU d'aquest Mac: necessita uns {{required}} i macOS deixa que la GPU en faci servir uns {{budget}} per defecte. Pot carregar-se i fallar al primer missatge. Reduïu la mida del context, descarregueu menys capes a la GPU o trieu una quantització més petita."
