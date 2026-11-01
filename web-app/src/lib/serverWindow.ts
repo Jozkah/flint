@@ -18,6 +18,7 @@
 import { providerFetch } from '@/lib/providerFetch'
 import { endpointScope } from '@/lib/endpointDiagnostics'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import { listedEntryWindow } from '@/lib/listedWindows'
 import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
 import { applyCustomHeaders } from '@/lib/customHeaders'
 import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
@@ -103,11 +104,7 @@ export function parseModelsWindow(
     entries.find((e) => modelId && e.id === modelId) ??
     (entries.length === 1 ? entries[0] : undefined)
   if (!entry) return null
-  return (
-    usableContextValue(entry.max_model_len) ??
-    usableContextValue(entry.context_length) ??
-    usableContextValue(entry.max_context_length)
-  )
+  return listedEntryWindow(entry)
 }
 
 const TTL_MS = 60_000
