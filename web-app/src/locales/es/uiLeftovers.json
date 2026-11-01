@@ -109,6 +109,7 @@
     "runId": "ejecución {{id}}",
     "turnId": "turno {{id}}",
     "snapshotId": "instantánea {{id}}",
-    "noRequests": "aún no hay ninguna solicitud registrada"
+    "noRequests": "aún no hay ninguna solicitud registrada",
+    "id": "ID"
   }
 }

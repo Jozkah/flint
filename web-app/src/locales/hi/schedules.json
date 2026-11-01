@@ -133,7 +133,9 @@
     "catchUpAllCapped": "हर एक चलाएँ, अधिकतम 5 तक",
     "enabled": "चालू",
     "save": "काम सहेजें",
-    "saving": "सहेजा जा रहा है"
+    "saving": "सहेजा जा रहा है",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "यह काम बंद है, इसलिए जब तक आप इसे चालू नहीं करते यह नहीं चलेगा।",

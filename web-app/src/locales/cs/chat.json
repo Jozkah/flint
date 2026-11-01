@@ -332,5 +332,7 @@
     "pageNotDrawn": "stránku se nepodařilo vykreslit",
     "noCanvas": "pro vykreslení obrázku není k dispozici žádné plátno",
     "imageNotEncoded": "obrázek se nepodařilo zakódovat"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

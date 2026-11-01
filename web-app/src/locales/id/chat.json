@@ -288,5 +288,7 @@
     "pageNotDrawn": "halaman tidak dapat digambar",
     "noCanvas": "tidak ada kanvas yang tersedia untuk menggambar gambar",
     "imageNotEncoded": "gambar tidak dapat dienkode"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

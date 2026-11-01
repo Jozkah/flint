@@ -133,7 +133,9 @@
     "catchUpAllCapped": "각각 실행(최대 5개)",
     "enabled": "사용",
     "save": "작업 저장",
-    "saving": "저장하는 중"
+    "saving": "저장하는 중",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "이 작업은 꺼져 있어 켤 때까지 실행되지 않습니다.",

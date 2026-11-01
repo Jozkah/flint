@@ -219,7 +219,12 @@ export function appActions(navigate: Navigate): RemoteActions {
 
     sendViaComposer: async (kind, id, text, files) => {
       const entry = await waitForComposer(kind, id)
-      if (!entry) return false
+      if (!entry) {
+        // No composer to send through: what the phone staged must not ride
+        // along on the user's next send (P2D-016).
+        unstageComposerDocs(kind, id)
+        return false
+      }
       // Unstaged even when the send throws, or the staged documents ride
       // along on the next, unrelated send.
       try {

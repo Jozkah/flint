@@ -302,5 +302,7 @@
     "pageNotDrawn": "sayfa çizilemedi",
     "noCanvas": "görseli çizmek için kullanılabilir bir tuval yok",
     "imageNotEncoded": "görsel kodlanamadı"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

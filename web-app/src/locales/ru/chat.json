@@ -332,5 +332,7 @@
     "pageNotDrawn": "не удалось отрисовать страницу",
     "noCanvas": "нет доступного canvas для отрисовки изображения",
     "imageNotEncoded": "не удалось закодировать изображение"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

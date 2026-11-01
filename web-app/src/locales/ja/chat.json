@@ -297,5 +297,7 @@
     "pageNotDrawn": "ページを描画できませんでした",
     "noCanvas": "画像を描画するためのキャンバスが利用できません",
     "imageNotEncoded": "画像をエンコードできませんでした"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

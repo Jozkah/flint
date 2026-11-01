@@ -191,17 +191,31 @@ export function stripPromptReferences(
     // A skill or agent reference is an instruction, read from the text by
     // what acts on it, so it stays. An alias is replaced by what it names.
     const typed = typedReference(raw)
-    if (typed) return typed.kind === 'alias' ? pre : match
+    if (typed) return typed.kind === 'alias' ? pre + REMOVED_MARK : match
     // An excerpt reference stays in the text: the surface that emitted it
     // expands it downstream, and it is the only trace of what was selected.
     if (keep?.has(raw)) return match
-    return !lineRangeOf(raw) && isReferenceToken(raw) ? pre : match
+    return !lineRangeOf(raw) && isReferenceToken(raw) ? pre + REMOVED_MARK : match
     }
   )
-  // Only the gaps a removed token leaves: line breaks and indentation in
-  // pasted code, lists and stack traces stay as written.
-  return cleaned.replace(/(\S)[ \t]{2,}/g, '$1 ').replace(/[ \t]+$/gm, '').trim()
+  // Only the gaps a removed token leaves are closed: runs of spaces the user
+  // typed (aligned columns, pasted code, indentation) stay as written (LIBC-018).
+  return cleaned
+    .replace(REMOVED_GAP, (gap: string, offset: number, all: string) => {
+      const atLineStart = offset === 0 || all[offset - 1] === '\n'
+      const end = offset + gap.length
+      const atLineEnd = end >= all.length || all[end] === '\n' || all[end] === '\r'
+      // Keep a line's indentation; drop the gap at either end of a line.
+      if (atLineStart) return atLineEnd ? '' : gap.slice(0, gap.indexOf(REMOVED_MARK))
+      return atLineEnd ? '' : ' '
+    })
+    .replace(/[ \t]+$/gm, '')
+    .trim()
 }
+
+/** Stands in for a removed reference until the gap it left is closed. */
+const REMOVED_MARK = ''
+const REMOVED_GAP = /[ \t]*(?:[ \t]*)+/g
 
 /**
  * Format a path as a @reference text for insertion into the prompt.

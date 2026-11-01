@@ -302,5 +302,7 @@
     "pageNotDrawn": "die Seite konnte nicht gezeichnet werden",
     "noCanvas": "keine Zeichenfläche zum Zeichnen des Bildes verfügbar",
     "imageNotEncoded": "das Bild konnte nicht kodiert werden"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

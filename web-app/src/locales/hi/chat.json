@@ -302,5 +302,7 @@
     "pageNotDrawn": "पेज बनाया नहीं जा सका",
     "noCanvas": "चित्र बनाने के लिए कोई कैनवास उपलब्ध नहीं है",
     "imageNotEncoded": "चित्र एन्कोड नहीं किया जा सका"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

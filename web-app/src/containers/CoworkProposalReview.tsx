@@ -317,8 +317,13 @@ export function CoworkProposalReview({
         }
       : null
 
+  // Bumped on every load: a slow list for the previous worktree must not
+  // overwrite this one's state when it lands late (F8x2-004).
+  const loadGeneration = useRef(0)
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current
     const all = await listProposals(worktree.sourceRoot)
+    if (generation !== loadGeneration.current) return
     const pending =
       all.find(
         (p) => p.state === 'pending' && p.scope.worktree === worktree.path

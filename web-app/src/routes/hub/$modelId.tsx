@@ -27,6 +27,7 @@ import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { route } from '@/constants/routes'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useFitContext } from '@/hooks/useFitContext'
 import {
@@ -53,7 +54,8 @@ import { fitSummary } from '@/lib/hubFitSummary'
 import type { KvArchitecture } from '@/lib/modelCompatibility'
 
 export const Route = createFileRoute(route.hub.model)({
-  component: HuggingFaceModelDetail,
+  // Like the Hub list: a browser served by `flint serve` gets the notice (F10b-004).
+  component: desktopOnlyRoute(HuggingFaceModelDetail, 'common:shell.discover'),
   validateSearch: (search: Record<string, unknown>) => ({
     repo: typeof search.repo === 'string' ? search.repo : '',
   }),

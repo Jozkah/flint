@@ -314,9 +314,15 @@ export function StudioDiscover({
 
               {opened && (
                 <div className="border-t border-border bg-muted/40 p-3 motion-safe:animate-rise-in">
-                  <label className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {t('studio:discover.whatKind')}
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <label htmlFor={`studio-family-${model.id}`}>
+                      {t('studio:discover.whatKind')}
+                    </label>
                     <Select
+                      id={`studio-family-${model.id}`}
+                      aria-describedby={
+                        family[model.id] ? `studio-family-desc-${model.id}` : undefined
+                      }
                       className={SELECT}
                       value={family[model.id] ?? ''}
                       onChange={(e) =>
@@ -325,7 +331,6 @@ export function StudioDiscover({
                           [model.id]: e.target.value,
                         }))
                       }
-                      aria-label={t('studio:discover.modelFamily')}
                     >
                       <option value="">{t('studio:discover.pickOne')}</option>
                       {families.map((f) => (
@@ -335,14 +340,14 @@ export function StudioDiscover({
                       ))}
                     </Select>
                     {family[model.id] && (
-                      <span>
+                      <span id={`studio-family-desc-${model.id}`}>
                         {
                           families.find((f) => f.id === family[model.id])
                             ?.description
                         }
                       </span>
                     )}
-                  </label>
+                  </div>
                   {filesError[model.id] && list.length === 0 ? (
                     <div
                       role="alert"

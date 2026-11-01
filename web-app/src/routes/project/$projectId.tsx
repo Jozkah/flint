@@ -179,7 +179,7 @@ function ProjectPageContent() {
                           className="pointer-coarse:size-11"
                         >
                           <MoreHorizontal className="size-4" />
-                          <span className="sr-only">More options</span>
+                          <span className="sr-only">{t('tools:toolApproval.moreOptions')}</span>
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent side="right" align="start">

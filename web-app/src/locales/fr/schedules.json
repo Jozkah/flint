@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Exécuter chacune, jusqu'à 5",
     "enabled": "Activée",
     "save": "Enregistrer la tâche",
-    "saving": "Enregistrement"
+    "saving": "Enregistrement",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Cette tâche est désactivée, elle ne s'exécutera donc pas tant que vous ne l'activerez pas.",

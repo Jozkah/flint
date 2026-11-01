@@ -317,5 +317,7 @@
     "pageNotDrawn": "không thể vẽ trang",
     "noCanvas": "không có canvas để vẽ ảnh",
     "imageNotEncoded": "không thể mã hóa ảnh"
-  }
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

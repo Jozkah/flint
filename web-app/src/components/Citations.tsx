@@ -177,7 +177,8 @@ export const Citations = memo(
       ? payload.scope === 'project'
         ? payload.projectId
         : payload.threadId
-      : undefined
+      : undefined,
+    payload.kind === 'rag' ? payload.citations.map((c) => c.file_id) : undefined
   )
 
   const items = useMemo(() => {
