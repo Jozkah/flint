@@ -41,10 +41,10 @@
     "gitRemote": "Flint が {{command}} を実行しようとしています。これにより {{target}} が変更されます",
     "gitDestructive": "Flint が {{command}} を実行しようとしています。作業内容が失われる可能性があります",
     "approveCampaign": "Flint がキャンペーン「{{title}}」({{count}} 件のタスク) を開始しようとしています",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint がワークフローを実行しようとしています:{{agents}} エージェント、{{phases}} フェーズ",
+    "spawnWorktree": "Flint が、{{folder}} の新しい worktree(ブランチ {{branch}})でファイルを変更できるネストされたチャットを開始しようとしています",
+    "spawnChat": "Flint が「{{title}}」というネストされたチャットを開始しようとしています",
+    "enterWorktree": "Flint がこのセッションの書き込みアクセスを worktree に移そうとしています:{{folder}}(ブランチ {{branch}}、ベース {{base}})",
     "spendPause": "Flint は、支出の一時停止を超えてこの実行を続けようとしています",
     "changeFileOutside": "Flint は {{workspace}} の外にある {{target}} を変更しようとしています",
     "changeManyFilesOutside": "Flint は {{count}} 個のファイルを変更しようとしています(一部は {{workspace}} の外)"
@@ -67,10 +67,10 @@
     "gitRemote": "他の人が見られるリモートリポジトリに変更を送信します。この会話で通常のリモート Git 操作を一時的に許可しない限り、Flint は毎回確認します。",
     "gitDestructive": "削除または上書きされたものは、復元できない可能性があります。",
     "campaignPlan": "それぞれ専用のワークツリーのブランチで別々のセッションが開始され、ファイルを読み取り・変更し、モデルの利用枠を並行して使用します。計画を承認しても、タスクが行う個々の呼び出しが承認されるわけではありません。Flint はそのたびに確認します。",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "その数のサブエージェントがフェーズごとに起動し、ファイルを読み書きし、モデルのクォータを消費します。この規模のワークフローでは、Flint は毎回確認します。",
+    "spawnWorktree": "ネストされたチャットは、このプロジェクトの専用ブランチ上でファイルを読み書きし、モデルのクォータを消費し、他の作業中も実行され続けます。変更はマージするまでそのブランチに留まります。Flint は毎回確認します。",
+    "spawnChat": "ネストされたチャットは新しいセッションで、モデルのクォータを消費し、他の作業中も実行され続けます。フォルダーへのアクセス権なしで開始します。このセッションで「ネストされたチャットの開始前に確認する」をオンにしているため、Flint は毎回確認します。",
+    "enterWorktree": "このセッションは、専用ブランチ上のその worktree 内でのみファイルを読み書きでき、プロジェクトフォルダー内ではできません。変更はマージするまでそのブランチに留まります。Flint は毎回確認します。",
     "spendPause": "実行は、完了するか上限に達するまで、有料のモデル枠を使い続けます。拒否すると実行は停止します。"
   },
   "repeat": {
@@ -396,11 +396,11 @@
     "session": "この会話で許可"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "承認待ち:{{tool}}",
+    "waitBody": "許可または拒否するまで、実行は {{seconds}} 秒間一時停止しています。",
+    "destructive": "破壊的なコマンド:{{reason}}。このツールは通常許可されていますが、確認します。",
+    "selfApproval": "{{tool}} は {{server}} 上のコマンドを自ら承認します。承認できるのはあなただけなので、毎回確認します。",
+    "sensitive": "機密性の高いツール呼び出し:許可する前に、その操作を確認してください。",
+    "autoPause": "{{count}} 件のツール呼び出しが確認なしで実行されました。続行しますか?"
   }
 }

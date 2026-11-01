@@ -123,6 +123,8 @@
     "reasoningOff": "Mati",
     "reasoningEffort": "Upaya penalaran",
     "reasoningEffortDefault": "Default",
+    "roomEffort": "Upaya untuk semua model",
+    "roomEffortHint": "Dipakai setiap model yang mendukung upaya, kecuali pengaturannya sendiri menggantikannya.",
     "thinkingBudget": "Anggaran Berpikir",
     "thinkingBudgetHint": "Porsi konteks model, dihitung saat giliran dikirim dan dibatasi agar balasan tetap muat.",
     "pricing": "Harga (opsional)",
@@ -301,7 +303,7 @@
     "title": "Jendela konteks tidak diketahui",
     "description": "{{subject}} memakai model yang jendela konteksnya tidak dapat ditentukan Flint. Atur Max Context Tokens untuk masing-masing, atau pakai default aman {{window}} token, yang membuat diskusi panjang dipadatkan lebih awal.",
     "usedBy": "Dipakai oleh: {{names}}",
-    "placeholder": "Max Context Tokens",
+    "placeholder": "Maks Token Konteks",
     "useDefault": "Pakai {{window}} (default aman)",
     "continue": "Lanjutkan",
     "cancel": "Batal"
@@ -647,5 +649,5 @@
     "ranToolsDropped": "keluarannya dibuang agar muat di jendela konteks.",
     "ranToolsRetry": "penyedia kemudian gagal dan permintaan sedang dicoba ulang."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Gagal menghapus ruang obrolan"
 }

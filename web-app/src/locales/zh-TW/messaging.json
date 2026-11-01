@@ -24,12 +24,12 @@
     "description": "關閉後，其他工作階段會被告知此工作階段不接收訊息，它們傳送的任何內容都不會送達。"
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "傳送前先詢問我",
+    "description": "開啟後，來自其他工作階段的每則訊息都會在此等待你核准或拒絕。在你核准之前不會遞送或啟動任何內容，5 分鐘內未回覆的訊息會被捨棄，並通知傳送者。僅在接受訊息時有效。"
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "巢狀聊天啟動前先詢問我",
+    "description": "開啟後，每當代理程式想要啟動巢狀聊天 (spawn_session) 時，都會先詢問你。預設為關閉：沒有工作樹的巢狀聊天啟動時沒有資料夾存取權，也不具備此工作階段的任何授權。"
   },
   "subagentQuestion": {
     "title": "{{name}} 詢問代理程式",
@@ -90,14 +90,14 @@
   "waitingIn_one": "{{session}} 中有 {{count}} 則訊息",
   "waitingIn_other": "{{session}} 中有 {{count}} 則訊息",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "等待核准的訊息",
+    "banner": "等待你的核准（{{count}}）",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "狀態通知",
+    "expires": "{{minutes}} 分鐘後到期",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "核准來自 {{name}} 的訊息",
+    "denyLabel": "拒絕來自 {{name}} 的訊息"
   }
 }

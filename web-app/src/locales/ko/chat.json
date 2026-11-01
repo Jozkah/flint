@@ -268,34 +268,36 @@
     "stopGenerating": "생성 중지"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "컨텍스트 크기(ctx-size) 줄이기",
+    "oomDisableMtp": "MTP(멀티 토큰 예측) 끄기",
+    "oomLowerGpuLayers": "n-gpu-layers를 낮추거나 CPU 백엔드로 전환",
+    "oomSmallerModel": "더 작거나 양자화가 더 강한 모델 사용",
+    "serverContext": "이 모델의 컨텍스트 창은 서버에서 설정되므로 Flint에서 늘릴 수 없습니다. 새 채팅을 시작하거나, 대화를 줄이거나, 서버의 한도를 높이세요.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "모델이 빈 응답을 반환했습니다. 다시 시도하거나 모델을 전환하세요.",
+    "thinkingOnly": "모델이 답변 없이 생각을 마쳤습니다. 계속하거나 다시 생성해 보세요.",
+    "noReply": "응답 없이 실행이 종료되었습니다.",
+    "noReplyToolError": "응답 없이 실행이 종료되었습니다. 마지막 도구 오류({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "가져온 채팅",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "이 이미지는 저장할 수 없습니다.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
-  }
+    "savedPictures_one": "이미지 {{count}}개를 저장했습니다",
+    "savedPictures_other": "이미지 {{count}}개를 저장했습니다",
+    "picturesMissing": "; {{count}}개는 더 이상 갤러리에 없습니다",
+    "picturesGone": "이미지가 더 이상 Studio 갤러리에 없습니다.",
+    "tooLarge": "이 내보내기는 {{mb}} MB이며 한도는 50 MB입니다. 메시지 하나 또는 브랜치 하나만 내보내거나 도구 세부 정보를 제외하세요",
+    "untitled": "새 대화",
+    "tooTall": "대화가 너무 길어 이미지 한 장으로 만들 수 없습니다(약 {{height}}k px, 한도 {{limit}}k). PDF 또는 Markdown으로 내보내거나 메시지 하나만 내보내세요",
+    "pageNotDrawn": "페이지를 그릴 수 없었습니다",
+    "noCanvas": "이미지를 그릴 캔버스를 사용할 수 없습니다",
+    "imageNotEncoded": "이미지를 인코딩할 수 없었습니다"
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

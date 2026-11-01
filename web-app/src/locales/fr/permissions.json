@@ -41,10 +41,10 @@
     "gitRemote": "Flint veut exécuter {{command}}, ce qui modifie {{target}}",
     "gitDestructive": "Flint veut exécuter {{command}}, ce qui peut entraîner une perte de travail",
     "approveCampaign": "Flint veut lancer la campagne « {{title}} » ({{count}} tâches)",
-    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
-    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
-    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
-    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
+    "runWorkflow": "Flint souhaite exécuter un workflow : {{agents}} agents en {{phases}} phases",
+    "spawnWorktree": "Flint souhaite démarrer un chat imbriqué pouvant modifier des fichiers dans un nouveau worktree de {{folder}} (branche {{branch}})",
+    "spawnChat": "Flint souhaite démarrer un chat imbriqué nommé « {{title}} »",
+    "enterWorktree": "Flint souhaite déplacer l’accès en écriture de cette session vers un worktree : {{folder}} (branche {{branch}}, basée sur {{base}})",
     "spendPause": "Flint veut poursuivre cette exécution au-delà de sa pause de dépense",
     "changeFileOutside": "Flint veut modifier {{target}}, qui se trouve en dehors de {{workspace}}",
     "changeManyFilesOutside": "Flint veut modifier {{count}} fichiers, dont certains en dehors de {{workspace}}"
@@ -67,10 +67,10 @@
     "gitRemote": "Elle envoie des modifications vers un dépôt distant que d'autres personnes peuvent voir. Flint demande à chaque fois, sauf si vous autorisez temporairement les actions Git distantes ordinaires pour cette conversation.",
     "gitDestructive": "Ce qu'elle supprime ou écrase peut ne pas être récupérable.",
     "campaignPlan": "Elle lance des sessions séparées, chacune sur sa propre branche worktree, qui lisent et modifient des fichiers et consomment en parallèle le quota de votre modèle. Approuver le plan n'approuve aucun appel effectué par une tâche. Flint demande à chaque fois.",
-    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
-    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
-    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
-    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "workflow": "Cela démarre autant de sous-agents, phase par phase, qui lisent et modifient des fichiers et consomment votre quota de modèle. Flint demande à chaque fois pour un workflow de cette taille.",
+    "spawnWorktree": "Le chat imbriqué lit et modifie des fichiers sur sa propre branche de ce projet, consomme votre quota de modèle et continue de s’exécuter pendant que vous faites autre chose. Ses modifications restent sur cette branche jusqu’à ce que vous les fusionniez. Flint demande à chaque fois.",
+    "spawnChat": "Le chat imbriqué est une nouvelle session qui consomme votre quota de modèle et continue de s’exécuter pendant que vous faites autre chose. Il démarre sans accès aux dossiers. Flint demande à chaque fois parce que vous avez activé « Demander avant le démarrage de chats imbriqués » pour cette session.",
+    "enterWorktree": "Cette session peut lire et modifier des fichiers uniquement dans ce worktree, sur sa propre branche, et non dans votre dossier de projet. Ses modifications restent sur cette branche jusqu’à ce que vous les fusionniez. Flint demande à chaque fois.",
     "spendPause": "L'exécution continue de consommer du quota de modèle payant jusqu'à sa fin ou son plafond. Refuser l'arrête."
   },
   "repeat": {
@@ -399,11 +399,11 @@
     "session": "Autoriser pour cette conversation"
   },
   "approvalText": {
-    "waitTitle": "Waiting for your approval: {{tool}}",
-    "waitBody": "The run has been paused for {{seconds}} s until you allow or deny it.",
-    "destructive": "Destructive command: {{reason}}. Asked even though this tool is otherwise allowed.",
-    "selfApproval": "{{tool}} approves commands on {{server}} itself. Only you can approve them, so it is asked about every time.",
-    "sensitive": "Sensitive tool call: review its action before allowing it.",
-    "autoPause": "{{count}} tool calls ran without asking. Continue?"
+    "waitTitle": "En attente de votre approbation : {{tool}}",
+    "waitBody": "L’exécution est en pause depuis {{seconds}} s, jusqu’à ce que vous l’autorisiez ou la refusiez.",
+    "destructive": "Commande destructrice : {{reason}}. Confirmation demandée même si cet outil est autorisé par ailleurs.",
+    "selfApproval": "{{tool}} approuve lui-même les commandes sur {{server}}. Vous seul pouvez les approuver, la confirmation est donc demandée à chaque fois.",
+    "sensitive": "Appel d’outil sensible : examinez son action avant de l’autoriser.",
+    "autoPause": "{{count}} appels d’outils ont été exécutés sans confirmation. Continuer ?"
   }
 }

@@ -140,7 +140,8 @@ export class DictationSession {
         this.committed = appendSegment(this.committed, text)
         this.handlers.onTranscript?.(this.committed)
       } catch (error) {
-        if (this.cancelled) return
+        // A failure that lands after stop() is no longer this run's (P2D-008).
+        if (this.cancelled || this.ended) return
         if (this.deps.isModelMissing?.(error)) {
           this.fail({
             kind: 'model-missing',

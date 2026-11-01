@@ -163,7 +163,8 @@ export function createExtraHandlers(x?: RemoteExtras): Pick<RemoteHandlers, Extr
     'hf.download': async (params) => {
       const p = rec(params)
       const repo = str(p.repo)
-      if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new RemoteRpcError('bad_params', 'repo must be owner/name')
+      // Each half starts with a letter or digit, so `..` cannot be a segment (F7x3-004).
+      if (!/^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/.test(repo)) throw new RemoteRpcError('bad_params', 'repo must be owner/name')
       return { ok: true, id: await need().hfDownload(repo, str(p.quant) || undefined) }
     },
     'models.downloads': () => ({ tasks: need().downloads() }),

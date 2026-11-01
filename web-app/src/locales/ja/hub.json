@@ -65,34 +65,34 @@
   "fit": {
     "green": {
       "label": "Fits",
-      "detail": "Should run comfortably on your device"
+      "detail": "お使いのデバイスで快適に動作するはずです"
     },
     "yellow": {
-      "label": "May be slow",
-      "detail": "Will run but leaves little memory headroom"
+      "label": "動作が遅い可能性",
+      "detail": "動作はしますが、メモリの余裕がほとんど残りません"
     },
     "red": {
-      "label": "Won't fit",
-      "detail": "Likely exceeds your available memory"
+      "label": "収まりません",
+      "detail": "利用可能なメモリを超える可能性があります"
     },
     "unknown": {
-      "label": "Fit unknown",
-      "detail": "Could not estimate memory requirements"
+      "label": "適合性は不明",
+      "detail": "メモリ要件を推定できませんでした"
     },
-    "ariaLabel": "Device compatibility: {{label}}",
-    "variantInfo": "Model Variant Information",
-    "modelInfo": "Model Information",
-    "defaultQuantization": "Default Quantization",
+    "ariaLabel": "デバイス互換性:{{label}}",
+    "variantInfo": "モデルバリアント情報",
+    "modelInfo": "モデル情報",
+    "defaultQuantization": "既定の量子化",
     "quantization": "Quantization",
-    "deviceCompatibility": "Device compatibility",
-    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "deviceCompatibility": "デバイス互換性",
+    "estimateNote": "ファイルサイズとお使いのハードウェアから推定しています。実際の性能は量子化とコンテキスト長によって異なります。",
     "features": "Features",
     "notAvailable": "N/A",
     "basis": {
-      "fromFile": "Context memory read from the model file.",
-      "fromSize": "Context memory estimated from the file size.",
-      "sizeEstimated": "File size estimated from parameters.",
-      "gpuOff": "A GPU you turned off is not counted."
+      "fromFile": "コンテキストメモリはモデルファイルから読み取りました。",
+      "fromSize": "コンテキストメモリはファイルサイズから推定しました。",
+      "sizeEstimated": "ファイルサイズはパラメーター数から推定しました。",
+      "gpuOff": "オフにした GPU は計算に含まれていません。"
     }
   },
   "etaLeft": "{{eta}} left",
@@ -100,22 +100,22 @@
   "downloadVerifying": "Verifying…",
   "quant": {
     "family": {
-      "full": "Full precision",
+      "full": "フル精度",
       "compact": "Compact (IQ)",
       "bits": "{{bits}}-bit",
       "other": "Other"
     },
     "explain": {
-      "unknown": "Unknown quantization",
-      "full": "Highest fidelity, very large memory footprint",
-      "q8": "Near-original quality, large memory footprint",
-      "q6": "Very high quality with moderate compression",
-      "q5": "High quality and a strong quality/size trade-off",
-      "recommended": "Recommended balance of quality, speed, and memory for most systems",
-      "q4": "Balanced size and quality for everyday local inference",
-      "q3": "Smaller and faster, with a noticeable quality trade-off",
-      "q2": "Very small footprint with the largest quality trade-off",
-      "other": "Quantized GGUF model"
+      "unknown": "不明な量子化",
+      "full": "最高の忠実度、非常に大きなメモリ使用量",
+      "q8": "元に近い品質、大きなメモリ使用量",
+      "q6": "中程度の圧縮で非常に高い品質",
+      "q5": "高品質で、品質とサイズのバランスに優れる",
+      "recommended": "ほとんどのシステムに推奨される、品質・速度・メモリのバランス",
+      "q4": "日常的なローカル推論に適したサイズと品質のバランス",
+      "q3": "より小さく高速だが、品質の低下がはっきりある",
+      "q2": "非常に小さい使用量で、品質の低下は最大",
+      "other": "量子化 GGUF モデル"
     }
   }
 }

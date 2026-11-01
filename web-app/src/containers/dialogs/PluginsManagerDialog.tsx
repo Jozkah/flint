@@ -157,16 +157,16 @@ function PluginListRow({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <Globe size={14} />
-              <span>Scope</span>
+              <span>{t('uiLeftovers:scope')}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem onSelect={() => onScopeChange('workspace')}>
                 {scope === 'workspace' && <Check size={14} />}
-                <span>Workspace only</span>
+                <span>{t('uiLeftovers:extensions.workspaceOnly')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onScopeChange('global')}>
                 {scope === 'global' && <Check size={14} />}
-                <span>Global (all workspaces)</span>
+                <span>{t('uiLeftovers:extensions.globalAll')}</span>
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>

@@ -262,7 +262,7 @@
     "perModelDefaultAuto": "默认（来自设置：自动）"
   },
   "agent_slots": {
-    "title": "Agent Slots",
-    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+    "title": "智能体槽位",
+    "description": "为子智能体、工作流智能体以及未指定槽位的其他请求提供额外槽位，使并行智能体不会挤占你的聊天或 Cowork 的 KV 缓存。它们共享同一个 KV 池，因此一个槽位占用的内存很少（混合模型还会为每个槽位保留循环状态）。0 表示关闭。需要开启“预留后台槽位”。会重新加载模型。"
   }
 }

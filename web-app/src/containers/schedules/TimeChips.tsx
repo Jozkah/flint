@@ -16,14 +16,25 @@ type Props = {
 export function TimeChips({ id, times, onChange, invalid }: Props) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState('12:00')
+  // Why the last Add did nothing, so the click is never silently ignored (P2E-026).
+  const [problem, setProblem] = useState<string | null>(null)
 
   const add = () => {
     const parsed = parseTime(draft)
-    if (!parsed) return
+    if (!parsed) {
+      setProblem(t('schedules:editor.timeInvalid'))
+      return
+    }
     const text = formatTime(parsed)
-    if (times.includes(text)) return
+    if (times.includes(text)) {
+      setProblem(t('schedules:editor.timeDuplicate', { time: text }))
+      return
+    }
+    setProblem(null)
     onChange([...times, text].sort())
   }
+
+  const problemId = `${id}-problem`
 
   return (
     <div className="flex flex-col gap-2">
@@ -52,14 +63,23 @@ export function TimeChips({ id, times, onChange, invalid }: Props) {
           step={60}
           value={draft}
           aria-label={t('schedules:editor.timeLabel')}
-          aria-invalid={invalid || undefined}
+          aria-invalid={invalid || problem !== null || undefined}
+          aria-describedby={problem ? problemId : undefined}
           className="w-32"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setProblem(null)
+          }}
         />
         <Button type="button" variant="outline" size="sm" onClick={add}>
           {t('schedules:editor.addTime')}
         </Button>
       </div>
+      {problem && (
+        <p id={problemId} role="alert" className="text-xs text-destructive">
+          {problem}
+        </p>
+      )}
     </div>
   )
 }

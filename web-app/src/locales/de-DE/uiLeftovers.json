@@ -109,6 +109,7 @@
     "runId": "Lauf {{id}}",
     "turnId": "Durchgang {{id}}",
     "snapshotId": "Snapshot {{id}}",
-    "noRequests": "noch keine Anfrage erfasst"
+    "noRequests": "noch keine Anfrage erfasst",
+    "id": "ID"
   }
 }

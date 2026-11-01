@@ -8,6 +8,7 @@ import {
   forgetAllServerLimits,
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
+import { recordListedWindows, resetListedWindows } from '@/lib/listedWindows'
 
 const customProvider = { provider: 'my-vllm', base_url: 'http://127.0.0.1:8000/v1' }
 
@@ -48,6 +49,17 @@ describe('knownContextWindow', () => {
       { contextTokens: 8192, requestTokens: 9000, via: 'structured-field' }
     )
     expect(knownContextWindow({ id: 'custom-model' }, customProvider)).toBeNull()
+  })
+
+  it("uses llama-server's meta.n_ctx from the endpoint's model list (RQA-014)", () => {
+    recordListedWindows(customProvider.base_url, {
+      data: [{ id: 'deepseek', meta: { n_ctx: 32768, n_ctx_train: 163840 } }],
+    })
+    try {
+      expect(knownContextWindow({ id: 'deepseek' }, customProvider)).toBe(32768)
+    } finally {
+      resetListedWindows()
+    }
   })
 
   it('has nothing to say without a model', () => {

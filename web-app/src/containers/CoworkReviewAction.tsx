@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Search, Wrench } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,8 @@ export function CoworkReviewAction({
   >({ kind: 'idle' })
   const [fixNotice, setFixNotice] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Leaving the panel stops a review still running (F8x2-006).
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const run = async () => {
     abortRef.current?.abort()
@@ -65,8 +67,12 @@ export function CoworkReviewAction({
   }
 
   const fix = async (result: DiffReviewResult) => {
-    const sent = onFix(await reviewFixTask(result.findings))
-    setFixNotice(sent ? null : t('common:diffReview.fixBusy'))
+    try {
+      const sent = onFix(await reviewFixTask(result.findings))
+      setFixNotice(sent ? null : t('common:diffReview.fixBusy'))
+    } catch (e) {
+      setFixNotice(errorText(e))
+    }
   }
 
   const running = state.kind === 'running'

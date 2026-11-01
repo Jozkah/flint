@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. Các thư mục của nhóm đã được thêm vào ngữ cảnh thư mục; quyền truy cập vẫn cần được phê duyệt",
       "foldersAdded": "{{base}}. Các thư mục của mục đã được thêm vào nhóm"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Nhóm chưa đặt tên",
+    "folderNotInspected": "Không thể kiểm tra thư mục"
   },
   "htmlArtifact": {
     "code": "Mã",
@@ -145,7 +145,7 @@
   "modelProviders": "Nhà cung cấp Mô hình",
   "localProviders": "Cục bộ",
   "remoteProviders": "Từ xa",
-  "manageProviders": "Manage providers",
+  "manageProviders": "Quản lý nhà cung cấp",
   "hiddenProviders": "{{count}} disabled",
   "hideProvider": "Ẩn nhà cung cấp",
   "showProvider": "Hiện nhà cung cấp",
@@ -336,7 +336,7 @@
       "threads": "Cuộc trò chuyện"
     },
     "openItem": "Mở {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "Mở Studio"
   },
   "searchGroup": {
     "pages": "Trang",
@@ -383,6 +383,9 @@
     "others_other": "{{count}} phiên khác đang làm việc trong thư mục này",
     "others_one": "{{count}} phiên khác đang làm việc trong thư mục này",
     "others_many": "{{count}} phiên khác đang làm việc trong thư mục này",
+    "othersIdle_other": "{{count}} phiên khác đang mở trong thư mục này, không hoạt động",
+    "othersIdle_one": "{{count}} phiên khác đang mở trong thư mục này, không hoạt động",
+    "othersIdle_many": "{{count}} phiên khác đang mở trong thư mục này, không hoạt động",
     "waitingApproval_other": "{{count}} phiên khác đang chờ phê duyệt",
     "waitingApproval_one": "{{count}} phiên khác đang chờ phê duyệt",
     "waitingApproval_many": "{{count}} phiên khác đang chờ phê duyệt",
@@ -686,7 +689,7 @@
       "pairedHint": "Mô hình này có thể nhận ảnh làm đầu vào. Bộ chiếu được chọn khi nhập mô hình; hãy nhập lại để dùng bộ chiếu khác.",
       "noneHint": "Không có bộ chiếu thị giác, mô hình này không thể đọc ảnh. Hãy nhập lại mô hình với tùy chọn Đa phương thức được bật và chọn tệp mmproj; bộ chiếu nằm cạnh tệp mô hình sẽ được tìm thấy tự động."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "Tự động chọn số lớp GPU đang bật. Hãy tắt Tự động khớp để đặt thủ công.",
     "samplingDefaults": {
       "title": "Tham số lấy mẫu mặc định",
       "description": "Cài đặt bộ lấy mẫu mặc định cho mô hình này. Được dùng trừ khi bị ghi đè bởi giá trị theo từng trợ lý hoặc từng yêu cầu."
@@ -899,8 +902,8 @@
         "failed": "Không thể tải trang: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "Không thể tải các tệp của dự án này.",
+    "retryLoad": "Thử lại"
   },
   "attachmentsIngestion": {
     "title": "Chọn cách nạp tệp đính kèm",
@@ -1064,11 +1067,11 @@
     "chunksCount": "{{count}} đoạn"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp vẫn đang bận",
+    "description": "Một hoặc nhiều mô hình chưa được gỡ tải kịp thời. Buộc thoát sẽ chấm dứt llama.cpp và có thể làm gián đoạn các phản hồi đang chạy.",
+    "forceQuit": "Buộc thoát",
+    "forcing": "Đang buộc thoát…",
+    "shuttingDown": "Đang tắt…"
   },
   "duration": {
     "seconds": "{{count}} giây",
@@ -1096,8 +1099,8 @@
     "thisChat": "Cuộc trò chuyện này",
     "thisRoom": "Phòng này",
     "thisSession": "Phiên này",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "Thiếu khóa API",
+    "keyMissingDescription": "{{subject}} dùng một nhà cung cấp chưa có khóa API. Hãy thêm khóa trong Cài đặt, hoặc chọn mô hình khác để tiếp tục."
   },
   "skillsUsedCount_one": "Đã dùng {{count}} kỹ năng",
   "skillsUsedCount_other": "Đã dùng {{count}} kỹ năng",
@@ -1162,8 +1165,8 @@
     "alsoAttached": "Cũng được đính kèm",
     "addFolder": "Thêm thư mục khác",
     "removeFolder": "Gỡ {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "Đặt {{folder}} ở chế độ chỉ đọc",
+    "makeEditable": "Cho phép chỉnh sửa {{folder}}",
     "readOnly": "chỉ đọc",
     "editable": "có thể sửa",
     "inWorktree": "qua worktree",
@@ -1171,8 +1174,8 @@
     "footnoteWorktree": "Flint thay đổi một git worktree của thư mục này, không bao giờ thay đổi chính thư mục.",
     "writesFolder": "Các thư mục đính kèm",
     "writesFolderNote": "Các chỉnh sửa được ghi thẳng vào những thư mục được đánh dấu có thể sửa.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Các thư mục được đánh dấu có thể chỉnh sửa",
+    "writesExtrasNote": "Thư mục chính vẫn ở chế độ chỉ đọc; chỉnh sửa chỉ được ghi vào các thư mục khác được đánh dấu có thể chỉnh sửa.",
     "writesWorktree": "Worktree của phiên",
     "writesWorktreeNote": "Các chỉnh sửa được ghi vào một git worktree để bạn xem lại và hợp nhất.",
     "footnote": "Tác tử chỉ đọc thư mục này. Không có gì bên trong bị sửa đổi.",
@@ -1254,10 +1257,10 @@
     "compactFailed": "Chưa có gì để nén.",
     "newSession": "Phiên mới",
     "compactSuperseded": "Cuộc trò chuyện đã thay đổi trong lúc nén nên không có gì bị thay thế. Hãy nén lại.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "Nén thất bại: {{reason}}. Cuộc trò chuyện của bạn không thay đổi.",
+    "compactDone": "Đã nén. Bản tóm tắt do {{model}} viết.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "Cuộc trò chuyện đã tiếp diễn kể từ đó, nên không thể hoàn tác việc nén nữa.",
     "btwFailed": "Không thể trả lời câu hỏi phụ."
   },
   "autoCompactNeedsWindow": "Tự động nén cần kích thước ngữ cảnh, và {{model}} không có kích thước nào Flint tìm được. Hãy đặt Số token ngữ cảnh tối đa cho mô hình này để các cuộc trò chuyện dài được nén trước khi đầy. Nếu nhà cung cấp từ chối một yêu cầu vì độ dài, Flint nén và thử lại một lần.",
@@ -1289,8 +1292,8 @@
     "interruptedNoReply_many": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedContinue": "Tiếp tục",
     "interruptedDiscard": "Bỏ câu trả lời dở dang và tiếp tục",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Trong lúc bạn vắng mặt:",
+    "recapDismiss": "Đóng bản tóm tắt"
   },
   "modelNoTools": "{{model}} không thể gọi công cụ, nên không thể hoạt động như tác tử. Hãy chọn mô hình có gọi công cụ.",
   "sessionModelUnavailable": "{{model}} không còn khả dụng. Hãy chọn mô hình khác trong menu mô hình.",
@@ -1402,7 +1405,7 @@
     "chooseAgainAction": "Chọn lại",
     "externalGone": "Tệp này được mở từ bên ngoài dự án, và quyền truy cập đó không còn. Hãy chọn lại để mở lại.",
     "oneFolderAtATime": "Chỉ thêm được một thư mục mỗi lần. \"{{name}}\" chưa được thêm.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "Không thể mở {{name}}."
   },
   "settingsSearch": {
     "label": "Tìm cài đặt",
@@ -2192,32 +2195,32 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Nén ngữ cảnh",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Tác vụ nền",
+      "tokenUsage": "Mức dùng token",
+      "fellBack": "Nhà cung cấp đã chuyển dự phòng",
+      "fellBackDetail": "{{from}} không trả lời; đang thử {{to}}",
+      "theModel": "mô hình",
+      "nextProvider": "nhà cung cấp tiếp theo",
+      "requestFailed": "Yêu cầu thất bại",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
       "characters_many": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
+      "reasoningCharacters_one": "{{count}} ký tự suy luận",
+      "reasoningCharacters_other": "{{count}} ký tự suy luận",
       "reasoningCharacters_many": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
+      "toolCalls_one": "{{count}} lệnh gọi công cụ",
+      "toolCalls_other": "{{count}} lệnh gọi công cụ",
       "toolCalls_many": "{{count}} tool calls",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Đã bắt đầu lượt chạy",
+      "runEnded": "Đã kết thúc lượt chạy",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Tác tử đã kết thúc",
+      "jobStarted": "Đã bắt đầu tác vụ nền",
+      "jobEnded": "Đã kết thúc tác vụ nền"
     }
   },
   "appRail": {
@@ -2409,15 +2412,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Trình duyệt của tác tử",
+    "note": "Chế độ xem chỉ đọc của trình duyệt tạm thời riêng của tác tử. Bản xem trước của Flint không được dùng.",
+    "lastAction": "Hành động gần nhất: {{action}}",
+    "screenshotAlt": "Trang trong trình duyệt của tác tử",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Ẩn trình duyệt của tác tử",
+    "tabs": "Các tab trình duyệt của tác tử",
+    "waiting": "Đang chờ ảnh đầu tiên của trang…"
   },
   "browserVerify": {
     "title": "Xác minh trong trình duyệt",
@@ -2457,23 +2460,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Mô hình quyết định",
+    "backendLabel": "Ai trả lời",
+    "backendExplained": "Jev (TypeSafe) là mặc định. Hoặc chọn một mô hình mở bạn đã có trong Flint: mô hình llama.cpp hoặc MLX cục bộ, hay bất kỳ nhà cung cấp tương thích OpenAI nào, kể cả các mô hình trọng số mở tự lưu trữ. Nó trả lời cùng các lựa chọn giới hạn đó; bất cứ thứ gì không đúng là một trong số đó sẽ bị bỏ qua và Flint tự quyết định.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Mô hình mở",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Các mô hình quyết định có kiểu nhỏ như Von, Laya, Kev hoặc Rizzo Flow: thêm endpoint tương thích OpenAI của mô hình làm nhà cung cấp (hoặc tải cục bộ), rồi chọn nó bên dưới.",
+    "backendPresetMissing": "{{name}} chưa được cấu hình. Hãy thêm endpoint tương thích OpenAI của nó làm nhà cung cấp, hoặc tải cục bộ, rồi chọn nó bên dưới. Cho đến lúc đó sẽ dùng Jev.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Chọn mô hình",
+    "backendModelSearch": "Tìm mô hình",
+    "backendModelEmpty": "Không có mô hình nào. Hãy thêm nhà cung cấp hoặc tải một mô hình cục bộ trước.",
+    "backendModelEmptySearch": "Không có mô hình nào khớp với \"{{query}}\"",
+    "backendNoModel": "Chưa chọn mô hình: sẽ dùng Jev cho đến khi bạn chọn.",
+    "backendLocal": "Chạy trên máy này hoặc mạng cục bộ của bạn: văn bản quyết định không được gửi đến TypeSafe hay bất kỳ dịch vụ đám mây nào.",
+    "backendRemote": "Cùng văn bản được liệt kê bên dưới cho từng tùy chọn bật sẽ được gửi đến {{provider}} thay vì TypeSafe.",
     "automationTitle": "Lựa chọn tự động",
     "routeToggle": "Chuyển đến đúng trợ lý",
     "routeExplained": "Khi Gợi ý kỹ năng Bật, Jev có thể chuyển một cuộc trò chuyện còn ở Flint sang Quartz, Coal, Blaze hoặc Redstone cho mỗi tin nhắn mới. Khi Tắt, trợ lý bạn chọn được giữ cho mọi tin nhắn. Trợ lý do chính bạn chọn không bao giờ bị đổi dù thế nào.",
@@ -2573,9 +2576,9 @@
   "coworkParallel": {
     "settingTitle": "Phiên mới trong thư mục Git làm việc trong worktree riêng",
     "settingDescription": "Mỗi phiên mới gắn với một kho Git có worktree và nhánh riêng (flint/<title>), để nhiều phiên có thể làm việc cùng lúc trong một thư mục mà không đụng vào nhau hay vào bản checkout của bạn. Xem lại, hợp nhất hoặc bỏ từng nhánh ngay trong phiên.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Bắt đầu worktree từ nhánh hiện tại của tôi",
+    "baseDescription": "Tắt (mặc định): worktree mới bắt đầu từ nhánh mặc định của kho lưu trữ. Bật: bắt đầu từ commit bạn đang checkout, nên mang theo các commit chưa được đẩy lên. Nhánh được chỉ định rõ ràng (ví dụ bởi tác tử) luôn được ưu tiên.",
+    "resumeGone": "Không thể vào lại worktree của phiên này ({{reason}}), nên nó quay về chế độ chỉ xem lại. Không có gì được tạo lại.",
     "branchTitle": "Phiên này làm việc trên nhánh {{branch}}, trong worktree riêng",
     "basedOn": "từ {{base}}",
     "openFolder": "Mở thư mục",
@@ -2648,13 +2651,13 @@
     "noneForProvider": "Nhà cung cấp này không có tham số điều chỉnh được.",
     "maybeUnsupported": "Có thể không được {{providers}} hỗ trợ",
     "modelReports": "Mô hình: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "noOverrides": "Không có ghi đè — dùng mặc định của mô hình.",
+    "unrecognized_one": "Đã ẩn {{count}} tham số không nhận dạng được: {{keys}}",
+    "unrecognized_other": "Đã ẩn {{count}} tham số không nhận dạng được: {{keys}}",
     "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "notSupportedStripped": "Không được hỗ trợ — sẽ bị loại bỏ khi gửi",
+    "mayBeIgnored": "Nhà cung cấp này có thể bỏ qua",
+    "notSupportedSkipped": "Không được hỗ trợ — sẽ bị bỏ qua.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2674,74 +2677,74 @@
     "chooseNote": "Không có gì được sao chép cho đến khi bạn xác nhận. Dữ liệu của JAN không bao giờ bị sửa đổi hoặc xóa.",
     "copyDescription": "Sao chép các cuộc trò chuyện, cài đặt và khóa nhà cung cấp của JAN vào Flint, cho các mục bạn chọn bên dưới. Bản thân JAN không bao giờ bị thay đổi hoặc xóa.",
     "freshDescription": "Khởi động Flint trống. Không có gì được đọc hoặc sao chép từ JAN, kể cả khóa nhà cung cấp, bây giờ hay ở các lần khởi chạy sau. Bạn vẫn có thể nhập từ Cài đặt, Thư mục dữ liệu bất cứ lúc nào.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "Di chuyển từ JAN",
+    "descriptionNoLegacy": "Đưa dữ liệu JAN hiện có của bạn vào Flint.",
+    "descriptionFound": "Flint đã tìm thấy một bản cài đặt JAN hiện có. Hãy chọn cách chuyển dữ liệu của bạn sang.",
+    "detecting": "Đang tìm bản cài đặt JAN hiện có…",
+    "noData": "Không tìm thấy dữ liệu JAN nào trên máy này. Không có gì để di chuyển — bạn có thể bắt đầu dùng Flint ngay.",
+    "foundAt": "Đã tìm thấy dữ liệu JAN tại {{path}} ({{size}}).",
+    "whatToBring": "Những gì cần chuyển sang",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
     "fileCount_many": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Nếu một mục đã tồn tại trong Flint",
+    "conflictAria": "Giải quyết xung đột",
+    "resolveAria": "Giải quyết các xung đột",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Sao chép sang Flint"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "Dùng lại dữ liệu JAN",
+        "description": "Trỏ Flint tới dữ liệu JAN hiện có của bạn ngay tại chỗ, không sao chép."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Chuyển sang Flint",
+        "description": "Sao chép vào Flint, rồi xóa nguồn JAN sau khi mọi mục thành công. Một bản sao lưu được giữ lại để bạn có thể khôi phục."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Bắt đầu mới"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Cuộc trò chuyện & trợ lý",
+      "models": "Mô hình & engine đã tải xuống",
+      "configs": "Tệp cấu hình",
+      "settings": "Cài đặt & thông tin xác thực nhà cung cấp",
+      "common": "Tiện ích mở rộng, nhật ký & bộ nhớ đệm",
+      "agent": "Không gian làm việc & phòng của tác tử"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Giữ mục Flint hiện có",
+      "use_jan": "Ghi đè bằng mục JAN",
+      "keep_both": "Giữ cả hai (bản sao JAN được thêm hậu tố)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "Dữ liệu JAN báo cáo một lược đồ mà bản Flint này chưa hỗ trợ đầy đủ. Hãy xem lại các cảnh báo trước khi tiếp tục.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Dung lượng ước tính",
+    "reusePath": "Đường dẫn dùng lại",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
     "conflictCount_many": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Bản Flint mới hơn (được giữ)",
+    "running": "Đang di chuyển dữ liệu của bạn… đừng đóng Flint.",
+    "complete": "Di chuyển hoàn tất.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "Một bản sao lưu dữ liệu JAN của bạn đã được giữ tại {{path}}.",
+    "restartNeeded": "Hãy khởi động lại Flint để bắt đầu dùng dữ liệu này.",
+    "reuseInPlace": "Flint hiện đang dùng dữ liệu JAN của bạn ngay tại {{path}}.",
+    "failed": "Di chuyển chưa hoàn tất.",
+    "unknownError": "Đã xảy ra lỗi không xác định.",
+    "rolledBackNote": "Dữ liệu của bạn đã được khôi phục về trạng thái trước đó.",
+    "quarantined": "Dữ liệu một phần đã được cách ly tại {{path}}.",
+    "notNow": "Để sau",
+    "dontAskAgain": "Không hỏi lại",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Bắt đầu mới",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -2993,27 +2996,27 @@
     "openProvider": "Mở cài đặt nhà cung cấp",
     "errorDetails": "Chi tiết",
     "pasteHint": "Quyền truy cập bảng nhớ tạm đã bị chặn. Nhấp vào ô văn bản và nhấn {{keys}}.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Văn bản dài có thể không vừa với mô hình. Hãy chia nhỏ nếu bản dịch thất bại hoặc dừng sớm.",
     "swapNeedsSource": "Chọn ngôn ngữ nguồn để hoán đổi"
   },
   "markdownImage": {
     "load": "Tải hình ảnh từ {{host}}"
   },
   "messageSaveFailed": "Không thể lưu tin nhắn. Tin nhắn có thể bị mất sau khi khởi động lại.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "Không thể lưu bí mật vào keyring hệ thống. Thay đổi đã được hoàn tác.",
+  "keptChat": "Cuộc trò chuyện đã giữ",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "Video của bạn đã sẵn sàng",
+    "imageReady": "Hình ảnh của bạn đã sẵn sàng",
+    "stoppedWaiting": "Đã ngừng chờ. {{provider}} có thể vẫn tiếp tục kết xuất, và yêu cầu mới có thể bị từ chối cho đến khi nó xong.",
+    "providerFallback": "Nhà cung cấp",
+    "pictureInChat": "Hình ảnh đó đang được dùng trong một cuộc trò chuyện. Cuộc trò chuyện không thể xem hoặc chỉnh sửa nó nữa."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Nhật ký ứng dụng - Flint",
+    "systemMonitor": "Giám sát hệ thống - Flint",
+    "localApiServerLogs": "Nhật ký máy chủ API cục bộ - Flint"
   },
   "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác.",
   "attachmentsProcessFailed": "Không thể chuẩn bị tệp đính kèm nên tin nhắn chưa được gửi",
@@ -3325,91 +3328,91 @@
   "chatRules": "Quy tắc",
   "chatRuleForThisChat": "Dùng quy tắc này trong cuộc trò chuyện này",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Chuyển giao sang máy tính khác…",
+    "saved": "Đã lưu bản chuyển giao. {{count}} thông tin xác thực đã bị bỏ qua, và thư mục chỉ được nêu tên chứ không có vị trí.",
+    "failed": "Không thể lưu bản chuyển giao: {{message}}",
+    "label": "Được chuyển giao từ máy tính khác",
+    "title": "Phiên này được chuyển giao từ một máy tính khác.",
+    "checkFailed": "Không thể kiểm tra thư mục đã đính kèm: {{error}}",
+    "folderMatches": "Thư mục đã đính kèm khớp với thư mục mà phiên đã làm việc ({{name}}).",
+    "folderDiffers": "Thư mục đã đính kèm không phải thư mục mà phiên đã làm việc: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "nhánh {{branch}} tại commit {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Phiên này đã làm việc trong một thư mục tên {{name}}. Hãy đính kèm thư mục đó trên máy tính này để tiếp tục.",
+      "folderAt": "Phiên này đã làm việc trong một thư mục tên {{name}} ({{at}}). Hãy đính kèm thư mục đó trên máy tính này để tiếp tục.",
+      "provider": "Nhà cung cấp {{provider}} chưa được thiết lập trên máy tính này, nên không thể dùng mô hình của phiên. Hãy chọn mô hình khác để tiếp tục.",
+      "model": "Mô hình {{id}} không có sẵn từ {{provider}} trên máy tính này. Hãy chọn mô hình khác để tiếp tục."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "nó tên là {{actual}}, không phải {{expected}}",
+      "branch": "nó ở nhánh {{actual}}, không phải {{expected}}",
+      "noBranch": "nó không ở nhánh nào, không phải {{expected}}",
+      "head": "nó ở commit {{actual}}, không phải {{expected}}",
+      "noHead": "nó không ở commit nào, không phải {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "Không thể tải hình ảnh này.",
+  "attachedImage": "Hình ảnh đính kèm {{n}}",
+  "saveChanges": "Lưu thay đổi",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "Đang tải mô hình…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Thất bại sau"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Tìm kiếm web",
+    "embeddings": "Mô hình embedding (cho RAG/vector, không dùng để trò chuyện)",
+    "raw_completion": "Hoàn thành thô (viết tiếp văn bản của bạn, không trò chuyện hay dùng công cụ)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Chuyển trợ lý ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Dịch ngược",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "cùng một tệp",
+      "nested": "một thư mục và thứ nằm bên trong nó",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "một tệp được tạo lại"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "{{id}} được phép thay đổi những gì (phân tách bằng dấu phẩy)",
+    "bothChange": "{{a}} và {{b}} đều sẽ thay đổi:",
+    "legend": "Cách xử lý {{a}} và {{b}}",
+    "serializeAb": "Chạy {{a}} trước, rồi {{b}}",
+    "serializeBa": "Chạy {{b}} trước, rồi {{a}}",
+    "revise": "Thay đổi những gì {{id}} được phép thay đổi",
+    "parallel": "Vẫn chạy song song (được ghi lại; mỗi thay đổi vẫn được xem xét và kiểm tra trước khi áp dụng)",
+    "region": "Các tác vụ nhóm chồng chéo",
+    "headline": "Các tác vụ này sẽ thay đổi cùng những đường dẫn mà không có thứ tự nào giữa chúng. Chưa có gì được chạy.",
+    "caveat": "So sánh theo các đường dẫn mà mỗi tác vụ khai báo, không phải bằng cách đọc mã: không có chồng chéo ở đây không có nghĩa là các thay đổi khớp với nhau.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "Không chạy các tác vụ này"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
+    "toggleSnippet": "Bật/tắt đoạn trích",
+    "documents_one": "{{count}} trích dẫn tài liệu",
+    "documents_other": "{{count}} trích dẫn tài liệu",
     "documents_many": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
+    "web_one": "{{count}} nguồn web",
+    "web_other": "{{count}} nguồn web",
     "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "Chỉ một phần của {{files}} vừa trong một tin nhắn.",
+    "readFailed": "Không thể đọc {{name}}: {{error}}",
+    "remoteImagesOnly": "Chỉ có thể gửi hình ảnh đến phiên trên máy chủ; hãy xóa các tệp phương tiện khác."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3418,40 +3421,40 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
+    "filesChanged_one": "{{count}} tệp đã thay đổi",
+    "filesChanged_other": "{{count}} tệp đã thay đổi",
     "filesChanged_many": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
+    "mediaFiles_one": "{{count}} tệp phương tiện",
+    "mediaFiles_other": "{{count}} tệp phương tiện",
     "mediaFiles_many": "{{count}} media files",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
+    "noModel": "Chưa chọn mô hình nào cho phiên này.",
+    "toolsFailed": "Lệnh gọi công cụ đã thất bại trong một lần kiểm tra mô hình này vào {{date}}.",
+    "toolsFailedDetail": "Lệnh gọi công cụ đã thất bại trong một lần kiểm tra mô hình này vào {{date}}: {{detail}}.",
+    "noToolSupport": "Mô hình đã chọn không thể gọi công cụ, nên Cowork chỉ có thể trò chuyện với nó.",
+    "modelToolsWorked": "Đã chọn mô hình. Lệnh gọi công cụ hoạt động trong một lần kiểm tra vào {{date}}; đó chỉ là một lần thăm dò, không phải đảm bảo cho mọi tác vụ.",
+    "modelSelected": "Đã chọn mô hình. Việc nhà cung cấp có trả lời hay không sẽ được kiểm tra khi lượt chạy bắt đầu.",
+    "contextWindow": "Cửa sổ ngữ cảnh: {{tokens}} token.",
+    "contextUnknown": "Không tìm thấy cửa sổ ngữ cảnh của mô hình này, nên Flint không thể cảnh báo trước khi nó đầy.",
+    "mcpOffered_one": "{{count}} máy chủ MCP từ Cài đặt được cung cấp cho các lượt chạy Cowork và kết nối khi gửi tin nhắn.",
+    "mcpOffered_other": "{{count}} máy chủ MCP từ Cài đặt được cung cấp cho các lượt chạy Cowork và kết nối khi gửi tin nhắn.",
     "mcpOffered_many": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "mcpNone": "Chưa cấu hình máy chủ MCP nào.",
+    "localReady": "Runtime cục bộ được khởi động khi một lượt chạy cần mô hình.",
+    "localAbsent": "Mô hình đã chọn không chạy cục bộ."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Đang lưu bộ nhớ",
+    "readingMemory": "Đang đọc bộ nhớ",
+    "readingSkill": "Đang đọc kỹ năng",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Đã dùng kỹ năng",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
+    "subagentsWorking_one": "{{count}} tác tử con đang làm việc",
+    "subagentsWorking_other": "{{count}} tác tử con đang làm việc",
     "subagentsWorking_many": "{{count}} subagents working",
     "verb": {
       "write": "Writing",
@@ -3473,20 +3476,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Đã có một phiên với id này",
+    "assistantExists": "Đã có một trợ lý với id này"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Mô tả dự án này",
+    "continue": "Tiếp tục bản nháp FLINT.md",
+    "description": "Flint đã đọc các tệp kê khai và bố cục của thư mục và không chạy gì. Hãy chỉnh sửa mô tả; nó chỉ trở thành FLINT.md của thư mục khi bạn chấp nhận.",
+    "surveying": "Đang khảo sát thư mục…",
+    "surveyed": "Đã khảo sát {{seen}} tệp và đọc {{read}}. Chưa có gì được ghi.",
+    "wrote": "Đã ghi FLINT.md",
+    "discarded": "Đã hủy bản nháp. Chưa có gì được ghi.",
+    "notRead": "Những gì khảo sát chưa đọc",
+    "discard": "Hủy bản nháp",
+    "resurvey": "Khảo sát lại",
+    "accept": "Chấp nhận và ghi FLINT.md"
   }
 }

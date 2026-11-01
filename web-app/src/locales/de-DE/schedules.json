@@ -133,7 +133,9 @@
     "catchUpAllCapped": "Jeden ausführen, bis zu 5",
     "enabled": "Aktiviert",
     "save": "Aufgabe speichern",
-    "saving": "Wird gespeichert"
+    "saving": "Wird gespeichert",
+    "timeInvalid": "Enter a time of day.",
+    "timeDuplicate": "{{time}} is already on the list."
   },
   "warnings": {
     "disabled": "Diese Aufgabe ist ausgeschaltet und läuft daher nicht, bis du sie einschaltest.",

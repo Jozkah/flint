@@ -57,5 +57,8 @@
   "resumeSub": "Mulai sesuatu yang baru atau lanjutkan dari terakhir kali.",
   "startChat": "Tanya sesuatu",
   "startFiles": "Cowork",
-  "usage": "Penggunaan"
+  "usage": "Penggunaan",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

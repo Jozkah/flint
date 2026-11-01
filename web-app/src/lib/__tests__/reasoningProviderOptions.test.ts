@@ -225,3 +225,115 @@ describe('buildReasoningBodyParams', () => {
     }
   })
 })
+
+describe('effort per provider', () => {
+  const both = (level: string, mode?: string) => ({
+    ...budget(level),
+    ...(mode ? reasoning(mode) : {}),
+  })
+
+  it('sends Anthropic adaptive models the effort option, clamped', () => {
+    expect(
+      buildReasoningProviderOptions(
+        'anthropic',
+        modelWith(budget('xhigh'), 'claude-opus-4-7')
+      )
+    ).toEqual({
+      anthropic: {
+        thinking: { type: 'adaptive', display: 'summarized' },
+        effort: 'xhigh',
+      },
+    })
+    // Sonnet 4.6 tops out at high.
+    expect(
+      buildReasoningProviderOptions(
+        'anthropic',
+        modelWith(budget('xhigh'), 'claude-sonnet-4-6')
+      )
+    ).toEqual({ anthropic: { thinking: { type: 'adaptive' }, effort: 'high' } })
+    // Off still wins over a stored level.
+    expect(
+      buildReasoningProviderOptions(
+        'anthropic',
+        modelWith(both('high', 'off'), 'claude-opus-4-7')
+      )
+    ).toEqual({ anthropic: { thinking: { type: 'disabled' } } })
+    // A model with no effort row keeps plain adaptive thinking.
+    expect(
+      buildReasoningProviderOptions(
+        'anthropic',
+        modelWith(budget('high'), 'claude-haiku-5-5')
+      )
+    ).toEqual({
+      anthropic: { thinking: { type: 'adaptive', display: 'summarized' } },
+    })
+  })
+
+  it('sends Gemini 3 a thinking level and Gemini 2.5 a budget', () => {
+    expect(
+      buildReasoningProviderOptions('google', modelWith(budget('low'), 'gemini-3-pro'))
+    ).toEqual({
+      google: { thinkingConfig: { thinkingLevel: 'low', includeThoughts: true } },
+    })
+    // Pro has no medium: the nearest below.
+    expect(
+      buildReasoningProviderOptions(
+        'gemini',
+        modelWith(budget('medium'), 'gemini-3.1-pro-preview')
+      )
+    ).toEqual({
+      google: { thinkingConfig: { thinkingLevel: 'low', includeThoughts: true } },
+    })
+    expect(
+      buildReasoningProviderOptions(
+        'google',
+        modelWith(budget('medium'), 'gemini-2.5-flash')
+      )
+    ).toEqual({
+      google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } },
+    })
+    expect(
+      buildReasoningProviderOptions(
+        'google',
+        modelWith(budget('xhigh'), 'gemini-2.5-pro')
+      )
+    ).toEqual({
+      google: { thinkingConfig: { thinkingBudget: 32768, includeThoughts: true } },
+    })
+    // Off still wins.
+    expect(
+      buildReasoningProviderOptions(
+        'google',
+        modelWith(both('high', 'off'), 'gemini-3-pro')
+      )
+    ).toEqual({ google: { thinkingConfig: { thinkingBudget: 0 } } })
+  })
+
+  it('sends the subscription bridge reasoning_effort where its CLI takes one', () => {
+    expect(
+      buildReasoningBodyParams(
+        'claude-cli',
+        modelWith(budget('xhigh'), 'claude-opus-5-5')
+      )
+    ).toEqual({ reasoning_effort: 'xhigh' })
+    expect(
+      buildReasoningBodyParams(
+        'claude-cli',
+        modelWith(budget('xhigh'), 'claude-sonnet-5-5')
+      )
+    ).toEqual({ reasoning_effort: 'high' })
+    expect(
+      buildReasoningBodyParams('codex-cli', modelWith(budget('low'), 'gpt-6.1-sol'))
+    ).toEqual({ reasoning_effort: 'low' })
+    // No CLI switch for Gemini, none for Haiku, nothing when unset.
+    expect(
+      buildReasoningBodyParams('gemini-cli', modelWith(budget('high'), 'gemini-2.5-pro'))
+    ).toBeUndefined()
+    expect(
+      buildReasoningBodyParams('claude-cli', modelWith(budget('high'), 'claude-haiku-4-5'))
+    ).toBeUndefined()
+    expect(
+      buildReasoningBodyParams('claude-cli', modelWith({}, 'claude-opus-5-5'))
+    ).toBeUndefined()
+  })
+})

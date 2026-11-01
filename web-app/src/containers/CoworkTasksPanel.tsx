@@ -36,6 +36,7 @@ import type { CoworkTurn } from '@/types/coworkSession'
 import { describeTokenUsage, fromCoworkUsage } from '@/lib/tokenUsage'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import { redactSecrets } from '@/lib/redact'
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 
 /** Output lines kept in view. A build log can be megabytes; the tail is the
  * part that says what happened, and the rest would freeze the panel. */
@@ -982,7 +983,7 @@ function TaskItem({
  */
 function TaskOutput({ task }: { task: ActivityTask }) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag()
   // Masked as the Background panel masks it: `env` or `cat .env` output
   // must not put keys on screen or on the clipboard.
   const output = task.output ? redactSecrets(task.output) : task.output
@@ -1005,7 +1006,6 @@ function TaskOutput({ task }: { task: ActivityTask }) {
     void navigator.clipboard?.writeText(output).then(
       () => {
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
       },
       () => setCopied(false)
     )

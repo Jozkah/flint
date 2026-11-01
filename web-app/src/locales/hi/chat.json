@@ -273,34 +273,36 @@
     "stopGenerating": "जनरेशन रोकें"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "कॉन्टेक्स्ट आकार घटाएँ (ctx-size)",
+    "oomDisableMtp": "MTP (Multi-Token Prediction) बंद करें",
+    "oomLowerGpuLayers": "n-gpu-layers घटाएँ या CPU बैकएंड पर स्विच करें",
+    "oomSmallerModel": "छोटा / अधिक क्वांटाइज़्ड मॉडल उपयोग करें",
+    "serverContext": "इस मॉडल की कॉन्टेक्स्ट विंडो उसके सर्वर द्वारा तय होती है, इसलिए Flint इसे बड़ा नहीं कर सकता। नई चैट शुरू करें, बातचीत छोटी करें, या सर्वर पर सीमा बढ़ाएँ।",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "मॉडल ने खाली उत्तर लौटाया। फिर कोशिश करें या मॉडल बदलें।",
+    "thinkingOnly": "मॉडल ने बिना उत्तर दिए सोचना पूरा कर लिया। फिर कोशिश करने के लिए जारी रखें या दोबारा जनरेट करें।",
+    "noReply": "रन बिना उत्तर के समाप्त हो गया।",
+    "noReplyToolError": "रन बिना उत्तर के समाप्त हो गया। अंतिम टूल त्रुटि ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "इम्पोर्ट की गई चैट",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "यह चित्र सहेजा नहीं जा सकता।",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
-  }
+    "savedPictures_one": "{{count}} चित्र सहेजा गया",
+    "savedPictures_other": "{{count}} चित्र सहेजे गए",
+    "picturesMissing": "; {{count}} अब गैलरी में नहीं हैं",
+    "picturesGone": "चित्र अब Studio गैलरी में नहीं हैं।",
+    "tooLarge": "यह एक्सपोर्ट {{mb}} MB का है और सीमा 50 MB है; किसी एक संदेश या ब्रांच को एक्सपोर्ट करें, या टूल विवरण छोड़ दें",
+    "untitled": "नई बातचीत",
+    "tooTall": "बातचीत एक चित्र के लिए बहुत लंबी है (लगभग {{height}}k px, सीमा {{limit}}k है); इसे PDF या Markdown के रूप में एक्सपोर्ट करें, या कोई एक संदेश एक्सपोर्ट करें",
+    "pageNotDrawn": "पेज बनाया नहीं जा सका",
+    "noCanvas": "चित्र बनाने के लिए कोई कैनवास उपलब्ध नहीं है",
+    "imageNotEncoded": "चित्र एन्कोड नहीं किया जा सका"
+  },
+  "growingTheMind": "Growing the Mind...",
+  "copyMessageFailed": "Could not copy the message."
 }

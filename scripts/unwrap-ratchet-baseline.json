@@ -18,7 +18,7 @@
   "src-tauri/src/core/agent/github_pr.rs": 1,
   "src-tauri/src/core/agent/interaction.rs": 1,
   "src-tauri/src/core/agent/learned_window.rs": 2,
-  "src-tauri/src/core/agent/loop.rs": 2,
+  "src-tauri/src/core/agent/loop.rs": 1,
   "src-tauri/src/core/agent/loop/approvals.rs": 2,
   "src-tauri/src/core/agent/loop/composite.rs": 11,
   "src-tauri/src/core/agent/lsp.rs": 3,

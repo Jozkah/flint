@@ -37,6 +37,7 @@ if (($__a -contains '--test') -and -not @($__a | Where-Object { "$_" -match '^--
   if ($__flag) { $__a = @($__flag) + $__a }
 }
 & $__real @__a
+if ($LASTEXITCODE) { $global:LASTEXITCODE = $LASTEXITCODE; Write-Error "node exited with code $LASTEXITCODE" }
 '@)) } }"##;
 
 /// True for a command that starts Node's test runner: `node --test ...`,
@@ -167,7 +168,17 @@ mod tests {
         let inside = run(true, kind);
         let outside = run(false, kind);
         let ran = run(true, "node --test a.test.js; \"code=$LASTEXITCODE\"");
+        // RQA-009: a failing run through the wrapper is not reported as exit 0.
+        std::fs::write(dir.join("b.test.js"), "require('node:test')('bad',()=>{throw new Error('x')});").unwrap();
+        let failed = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(super::super::proc::located(ShellFlavor::PowerShell, "node --test b.test.js", &dir))
+            .current_dir(&dir)
+            .env("FLINT_SANDBOX", "appcontainer")
+            .output()
+            .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+        assert_ne!(failed.status.code(), Some(0), "{}", String::from_utf8_lossy(&failed.stdout));
         assert!(inside.trim().ends_with("Function"), "inside: {inside}");
         assert!(outside.trim().ends_with("Application"), "outside: {outside}");
         assert!(ran.contains("code=0"), "ran: {ran}");

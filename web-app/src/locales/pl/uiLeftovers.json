@@ -109,6 +109,7 @@
     "runId": "uruchomienie {{id}}",
     "turnId": "tura {{id}}",
     "snapshotId": "migawka {{id}}",
-    "noRequests": "brak jeszcze zapisanych żądań"
+    "noRequests": "brak jeszcze zapisanych żądań",
+    "id": "ID"
   }
 }

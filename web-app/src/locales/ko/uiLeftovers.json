@@ -109,6 +109,7 @@
     "runId": "실행 {{id}}",
     "turnId": "턴 {{id}}",
     "snapshotId": "스냅샷 {{id}}",
-    "noRequests": "기록된 요청이 아직 없습니다"
+    "noRequests": "기록된 요청이 아직 없습니다",
+    "id": "ID"
   }
 }

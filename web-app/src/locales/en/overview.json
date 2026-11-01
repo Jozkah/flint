@@ -1,4 +1,7 @@
 {
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded",
   "title": "Overview",
   "morning": "Good morning",
   "afternoon": "Good afternoon",

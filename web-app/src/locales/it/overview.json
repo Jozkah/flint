@@ -63,5 +63,8 @@
   "resumeSub": "Inizia qualcosa di nuovo o riprendi da dove avevi lasciato.",
   "startChat": "Chiedi qualcosa",
   "startFiles": "Cowork",
-  "usage": "Utilizzo"
+  "usage": "Utilizzo",
+  "activityModelSwapped": "Model swapped",
+  "activitySwapDetail": "{{from}} to {{to}}",
+  "activityModelLoaded": "Model loaded"
 }

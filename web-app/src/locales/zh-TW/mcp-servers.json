@@ -272,13 +272,13 @@
   "autoApproveServerHint": "僅自動核准此伺服器的工具。所有 MCP 工具的開關在設定 > 權限中。",
   "allowAllMoved": "允許所有 MCP 工具不經詢問直接執行的開關在設定 > 權限中。",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} 需要你的輸入",
+    "urlTitle": "{{server}} 想要開啟一個頁面",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "隱藏欄位只會傳送給 {{server}}，不會顯示在聊天中。",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "開啟頁面"
   }
 }
