@@ -244,13 +244,13 @@
   },
   "breakdown": {
     "messages": "Messages",
-    "systemTools": "System tools",
-    "mcpTools": "MCP tools",
+    "systemTools": "सिस्टम टूल",
+    "mcpTools": "MCP टूल",
     "skills": "Skills",
-    "memory": "Memory files",
-    "systemPrompt": "System prompt",
+    "memory": "मेमोरी फ़ाइलें",
+    "systemPrompt": "सिस्टम प्रॉम्प्ट",
     "unmeasured": "Unmeasured",
     "more": "{{count}} more",
-    "windowUnknown": "{{used}} tokens (window unknown)"
+    "windowUnknown": "{{used}} टोकन (विंडो अज्ञात)"
   }
 }

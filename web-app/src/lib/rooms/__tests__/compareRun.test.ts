@@ -229,6 +229,8 @@ describe('compare-run command', () => {
     })
     expect(calls).toHaveLength(2)
     expect(calls.every((c) => nameOf(c) === 'Carol')).toBe(true)
+    // The header's "Questions n / max": both questions now have answers (RQA-013).
+    expect(room.usage.rounds).toBe(2)
     // First replay: only Q one, nothing from the others.
     const first = calls[0].messages.map((m) => m.content).join('\n')
     expect(first).toContain('Q one')

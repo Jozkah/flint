@@ -213,6 +213,34 @@ describe('room editor', () => {
     expect(cleared.participants[0].reasoning).toBeUndefined()
   })
 
+  it('a room-wide effort reaches every participant unless its own level overrides it', async () => {
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl)
+    const alice = room.participants[0].id
+    const updated = await ctl.updateRoomSettings(room, {
+      reasoningEffort: 'low',
+      participants: [{ id: alice, reasoning: { mode: 'on', level: 'high' } }],
+    })
+    expect(updated.reasoningEffort).toBe('low')
+    expect(persistence.rooms.get(room.id)!.reasoningEffort).toBe('low')
+
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    expect(calls.map(speakerOf)).toEqual(['Alice', 'Bob'])
+    expect(calls[0].reasoning).toEqual({ mode: 'on', level: 'high' })
+    expect(calls[1].reasoning).toEqual({ level: 'low' })
+
+    // Unmentioned keeps it; junk and null clear it.
+    const kept = await ctl.updateRoomSettings(persistence.rooms.get(room.id)!, { title: 'T' })
+    expect(kept.reasoningEffort).toBe('low')
+    const junk = await ctl.updateRoomSettings(kept, { reasoningEffort: 'huge' as never })
+    expect(junk.reasoningEffort).toBeUndefined()
+    const set = await ctl.updateRoomSettings(junk, { reasoningEffort: 'xhigh' })
+    const cleared = await ctl.updateRoomSettings(set, { reasoningEffort: null })
+    expect(cleared.reasoningEffort).toBeUndefined()
+  })
+
   it('back-to-back edits from the same rendered room all land (no stale_revision)', async () => {
     const { ctl, persistence } = setup(scriptedStream(() => ({ text: 'x' })).fn)
     const room = await createDefault(ctl)

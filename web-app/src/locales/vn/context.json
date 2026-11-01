@@ -248,13 +248,13 @@
   },
   "breakdown": {
     "messages": "Messages",
-    "systemTools": "System tools",
-    "mcpTools": "MCP tools",
+    "systemTools": "Công cụ hệ thống",
+    "mcpTools": "Công cụ MCP",
     "skills": "Skills",
-    "memory": "Memory files",
-    "systemPrompt": "System prompt",
+    "memory": "Tệp bộ nhớ",
+    "systemPrompt": "Lời nhắc hệ thống",
     "unmeasured": "Unmeasured",
     "more": "{{count}} more",
-    "windowUnknown": "{{used}} tokens (window unknown)"
+    "windowUnknown": "{{used}} token (chưa rõ cửa sổ)"
   }
 }

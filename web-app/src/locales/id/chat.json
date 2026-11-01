@@ -259,35 +259,35 @@
     "stopGenerating": "Hentikan pembuatan"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Kurangi ukuran konteks (ctx-size)",
+    "oomDisableMtp": "Nonaktifkan MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Turunkan n-gpu-layers atau beralih ke backend CPU",
+    "oomSmallerModel": "Gunakan model yang lebih kecil / lebih terkuantisasi",
+    "serverContext": "Jendela konteks model ini ditentukan oleh servernya, jadi Flint tidak dapat memperbesarnya. Mulai obrolan baru, persingkat percakapan, atau naikkan batas di server.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "Model mengembalikan balasan kosong. Coba lagi atau ganti model.",
+    "thinkingOnly": "Model selesai berpikir tanpa memberikan jawaban. Lanjutkan atau buat ulang untuk mencoba lagi.",
+    "noReply": "Proses berakhir tanpa balasan.",
+    "noReplyToolError": "Proses berakhir tanpa balasan. Kesalahan alat terakhir ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "Obrolan yang diimpor",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "Gambar ini tidak dapat disimpan.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "savedPictures_one": "{{count}} gambar disimpan",
+    "savedPictures_other": "{{count}} gambar disimpan",
+    "picturesMissing": "; {{count}} sudah tidak ada di galeri",
+    "picturesGone": "Gambar sudah tidak ada di galeri Studio.",
+    "tooLarge": "ekspor ini berukuran {{mb}} MB dan batasnya 50 MB; ekspor satu pesan atau cabang, atau hilangkan detail alat",
+    "untitled": "Percakapan baru",
+    "tooTall": "percakapan terlalu panjang untuk satu gambar (sekitar {{height}}k px, batasnya {{limit}}k); ekspor sebagai PDF atau Markdown, atau ekspor satu pesan",
+    "pageNotDrawn": "halaman tidak dapat digambar",
+    "noCanvas": "tidak ada kanvas yang tersedia untuk menggambar gambar",
+    "imageNotEncoded": "gambar tidak dapat dienkode"
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message."

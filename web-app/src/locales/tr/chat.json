@@ -273,35 +273,35 @@
     "stopGenerating": "Üretimi durdur"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Bağlam boyutunu küçült (ctx-size)",
+    "oomDisableMtp": "MTP'yi (Multi-Token Prediction) devre dışı bırak",
+    "oomLowerGpuLayers": "n-gpu-layers değerini düşür veya CPU arka ucuna geç",
+    "oomSmallerModel": "Daha küçük / daha fazla nicemlenmiş bir model kullan",
+    "serverContext": "Bu modelin bağlam penceresini sunucusu belirler, bu yüzden Flint onu büyütemez. Yeni bir sohbet başlatın, konuşmayı kısaltın veya sunucudaki sınırı yükseltin.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "Model boş bir yanıt döndürdü. Tekrar deneyin veya modeli değiştirin.",
+    "thinkingOnly": "Model yanıt vermeden düşünmeyi bitirdi. Tekrar denemek için devam edin veya yeniden oluşturun.",
+    "noReply": "Çalıştırma yanıt vermeden sona erdi.",
+    "noReplyToolError": "Çalıştırma yanıt vermeden sona erdi. Son araç hatası ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "İçe aktarılan sohbet",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "Bu resim kaydedilemiyor.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "savedPictures_one": "{{count}} resim kaydedildi",
+    "savedPictures_other": "{{count}} resim kaydedildi",
+    "picturesMissing": "; {{count}} tanesi artık galeride değil",
+    "picturesGone": "Resimler artık Studio galerisinde değil.",
+    "tooLarge": "bu dışa aktarma {{mb}} MB ve sınır 50 MB; tek bir mesajı veya dalı dışa aktarın ya da araç ayrıntılarını dışarıda bırakın",
+    "untitled": "Yeni konuşma",
+    "tooTall": "konuşma tek bir görsel için çok uzun (yaklaşık {{height}}k px, sınır {{limit}}k); PDF veya Markdown olarak dışa aktarın ya da tek bir mesajı dışa aktarın",
+    "pageNotDrawn": "sayfa çizilemedi",
+    "noCanvas": "görseli çizmek için kullanılabilir bir tuval yok",
+    "imageNotEncoded": "görsel kodlanamadı"
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message."

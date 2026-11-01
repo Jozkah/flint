@@ -125,6 +125,8 @@
     "reasoningOff": "Kapalı",
     "reasoningEffort": "Akıl yürütme çabası",
     "reasoningEffortDefault": "Varsayılan",
+    "roomEffort": "Tüm modeller için çaba",
+    "roomEffortHint": "Çaba destekleyen her model bunu kullanır; modelin kendi ayarı varsa o geçerli olur.",
     "thinkingBudget": "Düşünme bütçesi",
     "thinkingBudgetHint": "Modelin bağlamının bir payı; tur gönderilirken hesaplanır ve yanıtın hâlâ sığması için sınırlandırılır.",
     "pricing": "Fiyatlandırma (isteğe bağlı)",
@@ -653,5 +655,5 @@
     "ranToolsDropped": "çıktıları bağlam penceresine sığması için atıldı.",
     "ranToolsRetry": "ardından sağlayıcı hata verdi ve istek yeniden deneniyor."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Oda silinemedi"
 }

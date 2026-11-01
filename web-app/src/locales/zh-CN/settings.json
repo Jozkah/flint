@@ -25,10 +25,10 @@
     "advanced": "高级：按角色设置",
     "overridden_one": "已设置 {{count}} 个角色",
     "overridden_other": "已设置 {{count}} 个角色",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "同时运行的子智能体数",
+    "maxConcurrentDesc": "同时运行的子智能体上限（1 到 16）。其余的依次等待。",
+    "maxDepth": "子智能体深度",
+    "maxDepthDesc": "1：子智能体不能启动子智能体。2 或 3 允许它们向下交接相应层数的工作，受相同的限制和审批约束。"
   },
   "autoDownload": "自动下载新更新",
   "checkForUpdates": "检查更新",
@@ -127,7 +127,7 @@
     "previousPaneDesc": "切换到分屏视图中的上一个窗格。",
     "findInChat": "在聊天中查找",
     "findInChatDesc": "搜索屏幕上的对话。",
-    "notSet": "Not set"
+    "notSet": "未设置"
   },
   "interface": {
     "title": "外观",
@@ -290,7 +290,7 @@
     "enableDesc": "向支持工具调用的模型提供 web_search 和 web_fetch 工具。开箱即用，无需 API key。",
     "provider": "搜索提供商",
     "providerDesc": "选择响应 web_search 和 web_fetch 的后端。",
-    "apiKey": "{{provider}} API Key",
+    "apiKey": "{{provider}} API 密钥",
     "apiKeyOptional": "可选。提供 {{provider}} API key 可获得更高的速率限制和结构化结果。留空则使用免费的免密钥端点。",
     "apiKeyRequired": "必填。{{provider}} 需要 API key 才能返回结果。",
     "apiKeyPlaceholder": "输入你的 {{provider}} API key",
@@ -438,7 +438,7 @@
     "swaggerDocsDesc": "查看交互式 API 文档（Swagger UI）。",
     "openDocs": "打开文档",
     "startupConfiguration": "启动配置",
-    "runOnStartup": "Auto start",
+    "runOnStartup": "自动启动",
     "runOnStartupDesc": "应用程序启动时自动启动本地 API 服务器。使用上次使用的模型，如果不可用则选择第一个可用模型。",
     "runInBackground": "在后台运行",
     "runInBackgroundDesc": "关闭窗口时，让服务器继续在系统托盘中运行。关闭此选项后，关闭窗口将退出 Flint 并停止服务器。",
@@ -475,8 +475,8 @@
     "stopServerToEdit": "停止服务器后才能编辑",
     "trustedHostsInvalid": "无效的主机：{{hosts}}。请使用主机或 主机:端口，例如 example.com 或 192.168.1.5:3000。",
     "trustedHostsUnsaved": "未保存。按 Enter 保存，按 Escape 撤销。",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "在服务器上执行工具",
+    "serverToolsDesc": "为聊天端点在服务器端运行工具。"
   },
   "privacy": {
     "analytics": "分析",
@@ -551,10 +551,10 @@
     "revealLogs": "显示日志",
     "factoryResetTitle": "重置为出厂设置",
     "factoryResetDesc": "这将重置所有应用设置为默认值。此操作无法撤销。我们只建议在应用损坏时使用。",
-    "keepAppData": "Keep application data",
-    "keepAppDataDesc": "Your chat history and conversations will be preserved.",
-    "keepModelsAndConfigs": "Keep all models and configurations",
-    "keepModelsAndConfigsDesc": "Downloaded models, engine settings, and MCP configurations will be preserved.",
+    "keepAppData": "保留应用程序数据",
+    "keepAppDataDesc": "你的聊天记录和对话将被保留。",
+    "keepModelsAndConfigs": "保留所有模型和配置",
+    "keepModelsAndConfigsDesc": "已下载的模型、引擎设置和 MCP 配置将被保留。",
     "clearWebData": "清除缓存的界面数据",
     "clearWebDataDesc": "删除应用窗口保留的本地存储缓存和界面偏好设置。界面将重置为默认状态。",
     "cancel": "取消",
@@ -619,28 +619,28 @@
       "uninstall": "卸载",
       "uninstalling": "正在卸载…",
       "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安装。在此安装即可使用本份的 CLI。",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI 已安装到 {{path}}",
+      "installFailed": "安装失败",
+      "uninstalledToast": "Flint CLI 已卸载",
+      "uninstallFailed": "卸载失败"
     },
     "startupGroup": "启动与托盘",
     "cliGroup": "命令行",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "运行期间保持计算机唤醒",
+    "keepAwakeDesc": "在智能体运行期间，阻止 Windows 进入睡眠。屏幕仍可能关闭。",
+    "siteIcons": "加载网站图标",
+    "siteIconsDesc": "在搜索结果和引用中，在名称旁显示各网站自己的图标。获取图标会让该网站知道你查看过它。关闭后将显示字母。",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "请输入要验证的 Hugging Face 令牌",
+      "valid": "令牌有效",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "你的 Hugging Face 令牌有效。",
+      "invalid": "令牌无效",
+      "invalidDesc": "提供的 Hugging Face 令牌无效。请检查令牌后重试。",
+      "timedOut": "验证超时",
+      "timedOutDesc": "验证请求超时。请检查网络连接后重试。",
+      "failed": "验证失败",
+      "failedDesc": "验证令牌时发生网络错误。请检查你的互联网连接。"
     }
   },
   "extensions": {
@@ -1463,7 +1463,7 @@
       "settleFailed": "无法解决该冲突",
       "forgotten": "已忘记记忆",
       "forgetFailed": "无法忘记该记忆",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "无法恢复该记忆",
       "changeFailed": "无法更改该记忆",
       "updated": "记忆已更新",
       "updateFailed": "无法更新该记忆",
@@ -1592,15 +1592,15 @@
     "title": "默认值"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "按项目统计用量",
+    "description": "过去 {{window}} 内的调用次数和子智能体 token，来自会话日志。",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "此时间段内没有记录。",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "MCP 服务器",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "已配置但从未使用",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

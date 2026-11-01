@@ -419,6 +419,8 @@
   "sharedFolder": {
     "others_one": "{{count}} other session is working in this folder",
     "others_other": "{{count}} other sessions are working in this folder",
+    "othersIdle_one": "{{count}} other session is open in this folder, idle",
+    "othersIdle_other": "{{count}} other sessions are open in this folder, idle",
     "waitingApproval_one": "{{count}} other session is waiting for approval",
     "waitingApproval_other": "{{count}} other sessions are waiting for approval",
     "waitingApprovalOne": "Waiting for approval",

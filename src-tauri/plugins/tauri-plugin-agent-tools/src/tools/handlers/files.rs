@@ -769,7 +769,8 @@ pub(super) async fn find(
     read_roots: &[PathBuf],
     write_roots: &[PathBuf],
 ) -> String {
-    let pattern = arg_str(args, "pattern").map(String::from);
+    // RQA-004: `query`/`regex`/`search` are common names models use for it.
+    let pattern = ["pattern", "query", "regex", "search"].iter().find_map(|k| arg_str(args, k)).map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
     // Clamped like the sibling tools' limits (Jozkah/jan#251): a model-chosen
     // million would otherwise walk the whole tree into one result.
@@ -861,7 +862,8 @@ pub(super) async fn grep(
     read_roots: &[PathBuf],
     write_roots: &[PathBuf],
 ) -> String {
-    let pattern = arg_str(args, "pattern").map(String::from);
+    // RQA-004: `query`/`regex`/`search` are common names models use for it.
+    let pattern = ["pattern", "query", "regex", "search"].iter().find_map(|k| arg_str(args, k)).map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
     let glob_filter = arg_str(args, "glob").map(String::from);
     let ignore_case = arg_bool(args, "ignore_case");

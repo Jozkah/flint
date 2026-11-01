@@ -127,6 +127,8 @@
     "reasoningOff": "Desativado",
     "reasoningEffort": "Esforço de raciocínio",
     "reasoningEffortDefault": "Padrão",
+    "roomEffort": "Esforço para todos os modelos",
+    "roomEffortHint": "Usado por todo modelo que aceita esforço, a menos que a configuração dele o substitua.",
     "thinkingBudget": "Orçamento de raciocínio",
     "thinkingBudgetHint": "Uma parte do contexto do modelo, calculada quando o turno é enviado e limitada para que a resposta ainda caiba.",
     "pricing": "Preços (opcional)",
@@ -668,5 +670,5 @@
     "ranToolsDropped": "a saída delas foi descartada para caber na janela de contexto.",
     "ranToolsRetry": "depois o provedor falhou e a solicitação está sendo repetida."
   },
-  "deleteFailed": "Failed to delete room"
+  "deleteFailed": "Falha ao excluir a sala"
 }

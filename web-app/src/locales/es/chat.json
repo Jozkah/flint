@@ -287,36 +287,36 @@
     "stopGenerating": "Detener generación"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Reducir el tamaño de contexto (ctx-size)",
+    "oomDisableMtp": "Desactivar MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Reducir n-gpu-layers o cambiar a un backend de CPU",
+    "oomSmallerModel": "Usar un modelo más pequeño o más cuantizado",
+    "serverContext": "La ventana de contexto de este modelo la define su servidor, así que Flint no puede ampliarla. Inicie un chat nuevo, acorte la conversación o aumente el límite en el servidor.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "El modelo devolvió una respuesta vacía. Inténtelo de nuevo o cambie de modelo.",
+    "thinkingOnly": "El modelo terminó de pensar sin dar una respuesta. Continúe o regenere para intentarlo de nuevo.",
+    "noReply": "La ejecución terminó sin respuesta.",
+    "noReplyToolError": "La ejecución terminó sin respuesta. Último error de herramienta ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "Chat importado",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "No se puede guardar esta imagen.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
+    "savedPictures_one": "{{count}} imagen guardada",
+    "savedPictures_other": "{{count}} imágenes guardadas",
     "savedPictures_many": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "picturesMissing": "; {{count}} ya no están en la galería",
+    "picturesGone": "Las imágenes ya no están en la galería de Studio.",
+    "tooLarge": "esta exportación pesa {{mb}} MB y el límite es de 50 MB; exporte un solo mensaje o rama, o excluya los detalles de las herramientas",
+    "untitled": "Conversación nueva",
+    "tooTall": "la conversación es demasiado larga para una sola imagen (unos {{height}}k px, el límite es {{limit}}k); expórtela como PDF o Markdown, o exporte un solo mensaje",
+    "pageNotDrawn": "no se pudo dibujar la página",
+    "noCanvas": "no hay ningún lienzo disponible para dibujar la imagen",
+    "imageNotEncoded": "no se pudo codificar la imagen"
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message."

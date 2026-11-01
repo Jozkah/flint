@@ -278,13 +278,13 @@
   "autoApproveServerHint": "Automatycznie zatwierdza tylko narzędzia tego serwera. Przełącznik dla wszystkich narzędzi MCP znajdziesz w Ustawienia > Uprawnienia.",
   "allowAllMoved": "Przełącznik, który pozwala uruchamiać wszystkie narzędzia MCP bez pytania, znajdziesz w Ustawienia > Uprawnienia.",
   "elicitation": {
-    "title": "{{server}} needs your input",
-    "urlTitle": "{{server}} wants to open a page",
+    "title": "{{server}} potrzebuje Twoich danych",
+    "urlTitle": "{{server}} chce otworzyć stronę",
     "urlHost": "Opens {{host}}",
-    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "secretNote": "Ukryte pola trafiają tylko do {{server}}. Nie są pokazywane w czacie.",
     "submit": "Submit",
     "decline": "Decline",
     "cancel": "Cancel",
-    "openPage": "Open page"
+    "openPage": "Otwórz stronę"
   }
 }

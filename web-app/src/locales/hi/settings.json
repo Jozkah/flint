@@ -25,10 +25,10 @@
     "advanced": "उन्नत: भूमिका-वार सेटिंग",
     "overridden_one": "{{count}} भूमिका सेट है",
     "overridden_other": "{{count}} भूमिकाएँ सेट हैं",
-    "maxConcurrent": "Subagents at once",
-    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
-    "maxDepth": "Subagent depth",
-    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
+    "maxConcurrent": "एक साथ सबएजेंट",
+    "maxConcurrentDesc": "एक ही समय में चलने वाले अधिकतम सबएजेंट (1 से 16)। बाकी अपनी बारी का इंतज़ार करते हैं।",
+    "maxDepth": "सबएजेंट गहराई",
+    "maxDepthDesc": "1: सबएजेंट सबएजेंट शुरू नहीं कर सकते। 2 या 3 उन्हें उतने स्तर नीचे तक काम सौंपने देता है, उन्हीं सीमाओं और स्वीकृतियों के तहत।"
   },
   "autoDownload": "अपडेट्स स्वचालित रूप से डाउनलोड करें",
   "checkForUpdates": "अपडेट्स जांचें",
@@ -127,7 +127,7 @@
     "previousPaneDesc": "स्प्लिट व्यू में पिछले पैन पर जाएँ।",
     "findInChat": "चैट में खोजें",
     "findInChatDesc": "स्क्रीन पर दिख रही बातचीत में खोजें।",
-    "notSet": "Not set"
+    "notSet": "सेट नहीं है"
   },
   "interface": {
     "title": "इंटरफ़ेस",
@@ -475,8 +475,8 @@
     "stopServerToEdit": "संपादित करने के लिए सर्वर बंद करें",
     "trustedHostsInvalid": "मान्य होस्ट नहीं: {{hosts}}. होस्ट या होस्ट:पोर्ट लिखें, जैसे example.com या 192.168.1.5:3000.",
     "trustedHostsUnsaved": "सहेजा नहीं गया। सहेजने के लिए Enter, पूर्ववत करने के लिए Escape दबाएँ।",
-    "serverTools": "Execute tools on server",
-    "serverToolsDesc": "Run tools server-side for chat endpoints."
+    "serverTools": "सर्वर पर टूल चलाएँ",
+    "serverToolsDesc": "चैट एंडपॉइंट के लिए टूल सर्वर-साइड चलाएँ।"
   },
   "privacy": {
     "analytics": "विश्लेषण",
@@ -619,28 +619,28 @@
       "uninstall": "अनइंस्टॉल करें",
       "uninstalling": "अनइंस्टॉल हो रहा है…",
       "foreignDesc": "{{path}} पर मिला, Flint की किसी दूसरी कॉपी ने इंस्टॉल किया है। इस कॉपी का CLI इस्तेमाल करने के लिए यहाँ इंस्टॉल करें।",
-      "installedToast": "Flint CLI installed to {{path}}",
-      "installFailed": "Install failed",
-      "uninstalledToast": "Flint CLI uninstalled",
-      "uninstallFailed": "Uninstall failed"
+      "installedToast": "Flint CLI {{path}} में इंस्टॉल हुआ",
+      "installFailed": "इंस्टॉल विफल रहा",
+      "uninstalledToast": "Flint CLI अनइंस्टॉल हुआ",
+      "uninstallFailed": "अनइंस्टॉल विफल रहा"
     },
     "startupGroup": "स्टार्टअप और ट्रे",
     "cliGroup": "कमांड लाइन",
-    "keepAwake": "Keep the computer awake during runs",
-    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off.",
-    "siteIcons": "Load site icons",
-    "siteIconsDesc": "Shows each website's own icon next to its name in search results and citations. Fetching an icon tells that site you looked at it. Off shows a letter instead.",
+    "keepAwake": "रन के दौरान कंप्यूटर को जागा रखें",
+    "keepAwakeDesc": "एजेंट रन चलने के दौरान Windows को स्लीप में जाने से रोकता है। स्क्रीन फिर भी बंद हो सकती है।",
+    "siteIcons": "साइट आइकन लोड करें",
+    "siteIconsDesc": "खोज परिणामों और उद्धरणों में हर वेबसाइट के नाम के बगल में उसका अपना आइकन दिखाता है। आइकन लाने से उस साइट को पता चलता है कि आपने उसे देखा। बंद होने पर अक्षर दिखता है।",
     "hfToken": {
-      "empty": "Please enter a Hugging Face token to validate",
-      "valid": "Token is valid",
+      "empty": "सत्यापित करने के लिए कृपया Hugging Face टोकन दर्ज करें",
+      "valid": "टोकन मान्य है",
       "signedInAs": "Signed in as {{name}}",
-      "validDesc": "Your Hugging Face token is valid.",
-      "invalid": "Token invalid",
-      "invalidDesc": "The provided Hugging Face token is invalid. Please check your token and try again.",
-      "timedOut": "Validation timed out",
-      "timedOutDesc": "The validation request timed out. Please check your network connection and try again.",
-      "failed": "Validation failed",
-      "failedDesc": "A network error occurred while validating the token. Please check your internet connection."
+      "validDesc": "आपका Hugging Face टोकन मान्य है।",
+      "invalid": "टोकन अमान्य",
+      "invalidDesc": "दिया गया Hugging Face टोकन अमान्य है। कृपया अपना टोकन जाँचें और फिर कोशिश करें।",
+      "timedOut": "सत्यापन का समय समाप्त",
+      "timedOutDesc": "सत्यापन अनुरोध का समय समाप्त हो गया। कृपया अपना नेटवर्क कनेक्शन जाँचें और फिर कोशिश करें।",
+      "failed": "सत्यापन विफल",
+      "failedDesc": "टोकन सत्यापित करते समय नेटवर्क त्रुटि हुई। कृपया अपना इंटरनेट कनेक्शन जाँचें।"
     }
   },
   "extensions": {
@@ -1636,7 +1636,7 @@
       "settleFailed": "यह टकराव सुलझाया नहीं जा सका",
       "forgotten": "याद भुला दी गई",
       "forgetFailed": "यह याद भुलाई नहीं जा सकी",
-      "restoreFailed": "Could not restore that memory",
+      "restoreFailed": "वह मेमोरी बहाल नहीं की जा सकी",
       "changeFailed": "यह याद बदली नहीं जा सकी",
       "updated": "याद अपडेट की गई",
       "updateFailed": "यह याद अपडेट नहीं हो सकी",
@@ -1771,15 +1771,15 @@
     "title": "डिफ़ॉल्ट"
   },
   "usageAttribution": {
-    "title": "Usage by item",
-    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "title": "आइटम के अनुसार उपयोग",
+    "description": "पिछले {{window}} में कॉल और सबएजेंट टोकन, सत्र लॉग से।",
     "calls": "{{count}}×",
-    "empty": "Nothing recorded in this window.",
+    "empty": "इस अवधि में कुछ दर्ज नहीं हुआ।",
     "subagents": "Subagents",
     "skills": "Skills",
-    "mcp": "MCP servers",
+    "mcp": "MCP सर्वर",
     "plugins": "Plugins",
-    "unused": "Configured but never used",
+    "unused": "कॉन्फ़िगर किए गए पर कभी उपयोग नहीं हुए",
     "approxTokens": "~{{n}} tok",
     "inOut": "{{in}} in / {{out}} out"
   }

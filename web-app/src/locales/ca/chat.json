@@ -287,36 +287,36 @@
     "stopGenerating": "Atura la generació"
   },
   "errorBanner": {
-    "oomReduceContext": "Reduce context size (ctx-size)",
-    "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
-    "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",
-    "oomSmallerModel": "Use a smaller / more quantized model",
-    "serverContext": "This model's context window is set by its server, so Flint cannot enlarge it. Start a new chat, shorten the conversation, or raise the limit on the server.",
+    "oomReduceContext": "Redueix la mida del context (ctx-size)",
+    "oomDisableMtp": "Desactiva MTP (Multi-Token Prediction)",
+    "oomLowerGpuLayers": "Redueix n-gpu-layers o canvia a un backend de CPU",
+    "oomSmallerModel": "Utilitza un model més petit / més quantitzat",
+    "serverContext": "La finestra de context d'aquest model la defineix el seu servidor, de manera que Flint no la pot ampliar. Inicia un xat nou, escurça la conversa o augmenta el límit al servidor.",
     "regenerate": "Regenerate",
     "reload": "Reload"
   },
   "emptyRun": {
-    "emptyReply": "The model returned an empty reply. Try again or switch model.",
-    "thinkingOnly": "The model finished thinking without giving an answer. Continue or regenerate to try again.",
-    "noReply": "The run ended without a reply.",
-    "noReplyToolError": "The run ended without a reply. Last tool error ({{tool}}): {{error}}"
+    "emptyReply": "El model ha retornat una resposta buida. Torna-ho a provar o canvia de model.",
+    "thinkingOnly": "El model ha acabat de raonar sense donar cap resposta. Continua o regenera per tornar-ho a provar.",
+    "noReply": "L'execució ha acabat sense cap resposta.",
+    "noReplyToolError": "L'execució ha acabat sense cap resposta. Últim error de l'eina ({{tool}}): {{error}}"
   },
   "continuedTitleSuffix": " (continued)",
-  "importedChatTitle": "Imported chat",
+  "importedChatTitle": "Xat importat",
   "export": {
-    "pictureCannotBeSaved": "This picture cannot be saved.",
+    "pictureCannotBeSaved": "No es pot desar aquesta imatge.",
     "saved": "Saved {{path}}",
-    "savedPictures_one": "Saved {{count}} picture",
-    "savedPictures_other": "Saved {{count}} pictures",
+    "savedPictures_one": "S'ha desat {{count}} imatge",
+    "savedPictures_other": "S'han desat {{count}} imatges",
     "savedPictures_many": "Saved {{count}} pictures",
-    "picturesMissing": "; {{count}} no longer in the gallery",
-    "picturesGone": "The pictures are no longer in the Studio gallery.",
-    "tooLarge": "this export is {{mb}} MB and the limit is 50 MB; export a single message or branch, or leave out tool details",
-    "untitled": "New conversation",
-    "tooTall": "the conversation is too tall for one image (about {{height}}k px, the limit is {{limit}}k); export it as PDF or Markdown, or export a single message",
-    "pageNotDrawn": "the page could not be drawn",
-    "noCanvas": "no canvas is available to draw the image",
-    "imageNotEncoded": "the image could not be encoded"
+    "picturesMissing": "; {{count}} ja no és a la galeria",
+    "picturesGone": "Les imatges ja no són a la galeria d'Studio.",
+    "tooLarge": "aquesta exportació fa {{mb}} MB i el límit és de 50 MB; exporta un sol missatge o branca, o omet els detalls de les eines",
+    "untitled": "Conversa nova",
+    "tooTall": "la conversa és massa llarga per a una sola imatge (uns {{height}}k px, el límit és de {{limit}}k); exporta-la com a PDF o Markdown, o exporta un sol missatge",
+    "pageNotDrawn": "no s'ha pogut dibuixar la pàgina",
+    "noCanvas": "no hi ha cap canvas disponible per dibuixar la imatge",
+    "imageNotEncoded": "no s'ha pogut codificar la imatge"
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message."

@@ -24,12 +24,12 @@
     "description": "Se disattivo, alle altre sessioni viene detto che questa non accetta messaggi, e nulla di ciò che inviano la raggiunge."
   },
   "hold": {
-    "label": "Ask me before delivering",
-    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+    "label": "Chiedimi prima di consegnare",
+    "description": "Se attivo, ogni messaggio di un'altra sessione resta qui in attesa che tu lo approvi o lo rifiuti. Nulla viene consegnato o avviato finché non approvi, e un messaggio a cui non rispondi entro 5 minuti viene scartato e il mittente ne viene informato. Solo mentre i messaggi sono accettati."
   },
   "askNested": {
-    "label": "Ask me before nested chats start",
-    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+    "label": "Chiedimi prima di avviare chat annidate",
+    "description": "Se attivo, ogni volta che l'agente vuole avviare una chat annidata (spawn_session) te lo chiede prima. Disattivato per impostazione predefinita: una chat annidata senza worktree parte senza accesso alle cartelle e senza nessuna delle autorizzazioni di questa sessione."
   },
   "subagentQuestion": {
     "title": "{{name}} chiede all'agente",
@@ -93,14 +93,14 @@
   "waitingIn_other": "{{count}} messaggi in {{session}}",
   "waitingIn_many": "{{count}} messaggi in {{session}}",
   "held": {
-    "title": "Messages waiting for approval",
-    "banner": "Waiting for your approval ({{count}})",
+    "title": "Messaggi in attesa di approvazione",
+    "banner": "In attesa della tua approvazione ({{count}})",
     "from": "From {{name}}",
-    "notice": "Status notice",
-    "expires": "Expires in {{minutes}} min",
+    "notice": "Avviso di stato",
+    "expires": "Scade tra {{minutes}} min",
     "approve": "Approve",
     "deny": "Deny",
-    "approveLabel": "Approve the message from {{name}}",
-    "denyLabel": "Deny the message from {{name}}"
+    "approveLabel": "Approva il messaggio di {{name}}",
+    "denyLabel": "Rifiuta il messaggio di {{name}}"
   }
 }

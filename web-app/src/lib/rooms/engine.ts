@@ -991,6 +991,10 @@ class RoomRun {
           // Writers read only in compare mode unless isolated (see
           // turnToolAccess).
           access: turnToolAccess(this.room, participant.toolAccess, workspace !== null),
+          // The step budget follows what the user gave, not the compare
+          // downgrade: a full-access participant kept 30 steps elsewhere but
+          // got 8 here, and hit "reached its step budget" on routine work.
+          budgetAccess: participant.toolAccess,
           participantName: participant.name,
           participantId: participant.id,
           ...(this.room.toolBudget ? { budget: this.room.toolBudget } : {}),
@@ -1028,8 +1032,19 @@ class RoomRun {
     }
     const res = await this.deps.streamReply({
       model: args.model,
-      ...(args.participant?.reasoning
-        ? { reasoning: args.participant.reasoning }
+      ...(args.participant &&
+      (args.participant.reasoning || this.room.reasoningEffort)
+        ? {
+            // The participant's own level wins; the room-wide "same for all"
+            // effort fills in where it has none.
+            reasoning:
+              this.room.reasoningEffort && !args.participant.reasoning?.level
+                ? {
+                    ...(args.participant.reasoning ?? {}),
+                    level: this.room.reasoningEffort,
+                  }
+                : args.participant.reasoning,
+          }
         : {}),
       ...(args.participant && participantSampling(args.participant)
         ? { sampling: participantSampling(args.participant) }
@@ -1655,13 +1670,30 @@ class RoomRun {
     try {
       await this.runCompareJobs(jobs)
     } catch (e) {
+      this.countAnsweredQuestions()
       if (e instanceof LimitStop) {
         await this.stopForLimit(e.limit)
         return false
       }
       throw e
     }
+    this.countAnsweredQuestions()
     return true
+  }
+
+  /**
+   * A compare room spends one round per question, and its header reads
+   * `usage.rounds` as "Questions n / max". Answers given from the Run panel
+   * (outside a round) never closed one, so the header stayed at 0 after a
+   * question both participants had answered (RQA-013). Count the questions
+   * that have an answer instead; never lower what rounds already counted.
+   */
+  private countAnsweredQuestions() {
+    const grid = compareGrid(this.messages)
+    const answered = grid.questions.filter((q) => (grid.answers.get(q.id) ?? []).length > 0).length
+    if (answered > this.room.usage.rounds) {
+      this.room = { ...this.room, usage: { ...this.room.usage, rounds: answered } }
+    }
   }
 
   // ---- closing -------------------------------------------------------------

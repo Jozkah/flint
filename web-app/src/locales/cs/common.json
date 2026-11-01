@@ -90,8 +90,8 @@
       "ctxMerged": "{{base}}. Složky skupiny byly přidány do kontextu složek; přístup stále vyžaduje schválení",
       "foldersAdded": "{{base}}. Složky položky byly přidány do skupiny"
     },
-    "untitled": "Untitled group",
-    "folderNotInspected": "Folder could not be inspected"
+    "untitled": "Skupina bez názvu",
+    "folderNotInspected": "Složku se nepodařilo zkontrolovat"
   },
   "htmlArtifact": {
     "code": "Kód",
@@ -129,7 +129,7 @@
   "integrations": "Integrace",
   "experimental": "Experimentální",
   "claude_code": "Claude Code",
-  "https_proxy": "HTTPS Proxy",
+  "https_proxy": "Proxy HTTPS",
   "network_proxy": "Síťový proxy",
   "settingsChat": "Chat",
   "settingsData": "Data a úložiště",
@@ -146,7 +146,7 @@
   "modelProviders": "Poskytovatelé modelů",
   "localProviders": "Lokální",
   "remoteProviders": "Vzdálené",
-  "manageProviders": "Manage providers",
+  "manageProviders": "Spravovat poskytovatele",
   "hiddenProviders": "{{count}} disabled",
   "hideProvider": "Skrýt poskytovatele",
   "showProvider": "Zobrazit poskytovatele",
@@ -338,7 +338,7 @@
       "threads": "Konverzace"
     },
     "openItem": "Otevřít {{item}}",
-    "openStudio": "Open Studio"
+    "openStudio": "Otevřít Studio"
   },
   "searchGroup": {
     "pages": "Stránky",
@@ -386,6 +386,10 @@
     "others_few": "{{count}} další relace pracují v této složce",
     "others_many": "{{count}} další relace pracuje v této složce",
     "others_other": "{{count}} dalších relací pracuje v této složce",
+    "othersIdle_one": "{{count}} další relace je v této složce otevřená, nečinná",
+    "othersIdle_few": "{{count}} další relace jsou v této složce otevřené, nečinné",
+    "othersIdle_many": "{{count}} další relace je v této složce otevřená, nečinná",
+    "othersIdle_other": "{{count}} dalších relací je v této složce otevřených, nečinných",
     "waitingApproval_one": "{{count}} další relace čeká na schválení",
     "waitingApproval_few": "{{count}} další relace čekají na schválení",
     "waitingApproval_many": "{{count}} další relace čeká na schválení",
@@ -694,7 +698,7 @@
       "pairedHint": "Tento model umí přijímat obrázky. Projektor se vybírá při importu modelu; chcete-li použít jiný, importujte model znovu.",
       "noneHint": "Bez vizuálního projektoru tento model nedokáže číst obrázky. Importujte model znovu se zapnutou funkcí Multimodální a vyberte jeho soubor mmproj; projektor uložený vedle souboru modelu se najde automaticky."
     },
-    "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
+    "nglDisabledByFit": "Automatické přizpůsobení vybírá vrstvy GPU. Chcete-li to nastavit ručně, vypněte automatické přizpůsobení.",
     "samplingDefaults": {
       "title": "Výchozí parametry vzorkování",
       "description": "Výchozí nastavení vzorkovače pro tento model. Použije se, pokud ho nepřepíšou hodnoty pro asistenta nebo pro požadavek."
@@ -906,8 +910,8 @@
         "failed": "Stránku se nepodařilo stáhnout: {{message}}"
       }
     },
-    "filesLoadFailed": "Could not load this project's files.",
-    "retryLoad": "Try again"
+    "filesLoadFailed": "Soubory tohoto projektu se nepodařilo načíst.",
+    "retryLoad": "Zkusit znovu"
   },
   "attachmentsIngestion": {
     "title": "Zvolte, jak zpracovat přílohy",
@@ -1071,11 +1075,11 @@
     "chunksCount": "Počet bloků: {{count}}"
   },
   "llamacppBusyOnExit": {
-    "title": "llama.cpp is still busy",
-    "description": "One or more models did not unload in time. Force-quitting will terminate llama.cpp and may interrupt active responses.",
-    "forceQuit": "Force quit",
-    "forcing": "Force quitting…",
-    "shuttingDown": "Shutting down…"
+    "title": "llama.cpp je stále zaneprázdněn",
+    "description": "Jeden nebo více modelů se včas neuvolnilo. Vynucené ukončení ukončí llama.cpp a může přerušit probíhající odpovědi.",
+    "forceQuit": "Vynutit ukončení",
+    "forcing": "Vynucuje se ukončení…",
+    "shuttingDown": "Ukončování…"
   },
   "duration": {
     "seconds": "{{count}} s",
@@ -1104,8 +1108,8 @@
     "thisChat": "Tento chat",
     "thisRoom": "Tato místnost",
     "thisSession": "Tato relace",
-    "keyMissingTitle": "An API key is missing",
-    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
+    "keyMissingTitle": "Chybí klíč API",
+    "keyMissingDescription": "{{subject}} používá poskytovatele, který zatím nemá klíč API. Přidejte klíč v Nastavení nebo pro pokračování vyberte jiný model."
   },
   "skillsUsedCount_one": "Použita {{count}} dovednost",
   "skillsUsedCount_few": "Použity {{count}} dovednosti",
@@ -1174,8 +1178,8 @@
     "alsoAttached": "Také připojeno",
     "addFolder": "Přidat další složku",
     "removeFolder": "Odebrat {{folder}}",
-    "makeReadOnly": "Make {{folder}} read-only",
-    "makeEditable": "Make {{folder}} editable",
+    "makeReadOnly": "Nastavit {{folder}} jen pro čtení",
+    "makeEditable": "Nastavit {{folder}} jako upravitelnou",
     "readOnly": "jen pro čtení",
     "editable": "upravitelné",
     "inWorktree": "přes worktree",
@@ -1183,8 +1187,8 @@
     "footnoteWorktree": "Flint mění git worktree této složky, nikdy složku samotnou.",
     "writesFolder": "Připojené složky",
     "writesFolderNote": "Úpravy se zapisují přímo do složek označených jako upravitelné.",
-    "writesExtras": "The folders marked editable",
-    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
+    "writesExtras": "Složky označené jako upravitelné",
+    "writesExtrasNote": "Hlavní složka zůstává jen pro čtení; úpravy se zapisují pouze do ostatních složek označených jako upravitelné.",
     "writesWorktree": "Worktree relace",
     "writesWorktreeNote": "Úpravy se zapisují do git worktree, který si zkontrolujete a sloučíte.",
     "footnote": "Agent tuto složku pouze čte. Nic v ní se nikdy nemění.",
@@ -1266,10 +1270,10 @@
     "compactFailed": "Zatím není co zhustit.",
     "newSession": "Nová relace",
     "compactSuperseded": "Konverzace se během zhušťování změnila, nic proto nebylo nahrazeno. Zhušťte ji znovu.",
-    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
-    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactFailedReason": "Komprese selhala: {{reason}}. Vaše konverzace zůstala beze změny.",
+    "compactDone": "Zkomprimováno. Shrnutí napsal model {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "compactUndoStale": "Konverzace se od té doby posunula, takže kompresi už nelze vrátit zpět.",
     "btwFailed": "Na vedlejší otázku se nepodařilo odpovědět."
   },
   "autoCompactNeedsWindow": "Automatické zhušťování potřebuje velikost kontextu a pro {{model}} žádnou Flint nenašel. Nastavte pro tento model Max. počet tokenů kontextu, aby se dlouhé chaty zhustily dřív, než ho zaplní. Pokud poskytovatel odmítne požadavek kvůli jeho délce, Flint zhustí a zkusí to jednou znovu.",
@@ -1304,8 +1308,8 @@
     "interruptedNoReply_other": "Zachováno {{calls}} dokončených kroků.",
     "interruptedContinue": "Pokračovat",
     "interruptedDiscard": "Zahodit nedokončenou odpověď a pokračovat",
-    "recap": "While you were away:",
-    "recapDismiss": "Dismiss recap"
+    "recap": "Zatímco jste byli pryč:",
+    "recapDismiss": "Zavřít shrnutí"
   },
   "modelNoTools": "{{model}} neumí volat nástroje, takže nemůže fungovat jako agent. Vyberte model, který nástroje volat umí.",
   "sessionModelUnavailable": "{{model}} už není k dispozici. Vyberte jiný model v nabídce modelů.",
@@ -1417,7 +1421,7 @@
     "chooseAgainAction": "Vybrat znovu",
     "externalGone": "Tento soubor byl otevřen zvenčí projektu a tento přístup nepřetrval. Vyberte ho znovu, abyste ho otevřeli.",
     "oneFolderAtATime": "Najednou lze přidat jen jednu složku. „{{name}}“ nebyla přidána.",
-    "openFailed": "Could not open {{name}}."
+    "openFailed": "Nepodařilo se otevřít {{name}}."
   },
   "settingsSearch": {
     "label": "Hledat v nastavení",
@@ -2224,35 +2228,35 @@
     },
     "row": {
       "steering": "Steering",
-      "compaction": "Context compaction",
+      "compaction": "Komprese kontextu",
       "subagent": "Subagent",
-      "backgroundJob": "Background job",
-      "tokenUsage": "Token usage",
-      "fellBack": "Provider fell back",
-      "fellBackDetail": "{{from}} did not answer; trying {{to}}",
-      "theModel": "the model",
-      "nextProvider": "the next provider",
-      "requestFailed": "Request failed",
+      "backgroundJob": "Úloha na pozadí",
+      "tokenUsage": "Využití tokenů",
+      "fellBack": "Poskytovatel přešel na záložní",
+      "fellBackDetail": "{{from}} neodpověděl; zkouší se {{to}}",
+      "theModel": "model",
+      "nextProvider": "další poskytovatel",
+      "requestFailed": "Požadavek selhal",
       "characters_one": "{{count}} character",
       "characters_other": "{{count}} characters",
       "characters_few": "{{count}} characters",
       "characters_many": "{{count}} characters",
-      "reasoningCharacters_one": "{{count}} character of reasoning",
-      "reasoningCharacters_other": "{{count}} characters of reasoning",
-      "reasoningCharacters_few": "{{count}} characters of reasoning",
-      "reasoningCharacters_many": "{{count}} characters of reasoning",
-      "toolCalls_one": "{{count}} tool call",
-      "toolCalls_other": "{{count}} tool calls",
-      "toolCalls_few": "{{count}} tool calls",
-      "toolCalls_many": "{{count}} tool calls",
+      "reasoningCharacters_one": "{{count}} znak uvažování",
+      "reasoningCharacters_other": "{{count}} znaků uvažování",
+      "reasoningCharacters_few": "{{count}} znaky uvažování",
+      "reasoningCharacters_many": "{{count}} znaku uvažování",
+      "toolCalls_one": "{{count}} volání nástroje",
+      "toolCalls_other": "{{count}} volání nástrojů",
+      "toolCalls_few": "{{count}} volání nástrojů",
+      "toolCalls_many": "{{count}} volání nástrojů",
       "response": "Response",
-      "runStarted": "Run started",
-      "runEnded": "Run ended",
+      "runStarted": "Běh zahájen",
+      "runEnded": "Běh skončil",
       "dispatched": "Dispatched {{agent}}",
       "anAgent": "an agent",
-      "agentEnded": "Agent ended",
-      "jobStarted": "Background job started",
-      "jobEnded": "Background job ended"
+      "agentEnded": "Agent skončil",
+      "jobStarted": "Úloha na pozadí zahájena",
+      "jobEnded": "Úloha na pozadí skončila"
     }
   },
   "appRail": {
@@ -2449,15 +2453,15 @@
     }
   },
   "browserToolMirror": {
-    "title": "Agent browser",
-    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
-    "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser",
+    "title": "Prohlížeč agenta",
+    "note": "Pohled jen pro čtení na dočasný prohlížeč samotného agenta. Náhled Flintu se nepoužívá.",
+    "lastAction": "Poslední akce: {{action}}",
+    "screenshotAlt": "Stránka v prohlížeči agenta",
     "live": "Live",
     "idle": "Idle",
-    "hide": "Hide agent browser",
-    "tabs": "Agent browser tabs",
-    "waiting": "Waiting for the first picture of the page…"
+    "hide": "Skrýt prohlížeč agenta",
+    "tabs": "Karty prohlížeče agenta",
+    "waiting": "Čeká se na první snímek stránky…"
   },
   "browserVerify": {
     "title": "Ověřit v prohlížeči",
@@ -2499,23 +2503,23 @@
     }
   },
   "jev": {
-    "backendTitle": "Decision model",
-    "backendLabel": "Who answers",
-    "backendExplained": "Jev (TypeSafe) is the default. Or pick an open model you already have in Flint: a local llama.cpp or MLX model, or any OpenAI-compatible provider, including self-hosted open-weight models. It answers the same bounded choices; anything that is not exactly one of them is ignored and Flint decides.",
+    "backendTitle": "Rozhodovací model",
+    "backendLabel": "Kdo odpovídá",
+    "backendExplained": "Výchozí je Jev (TypeSafe). Nebo vyberte otevřený model, který už ve Flintu máte: místní model llama.cpp nebo MLX či libovolného poskytovatele kompatibilního s OpenAI, včetně vlastních hostovaných modelů s otevřenými váhami. Odpovídá na stejné omezené volby; cokoli, co není přesně jednou z nich, se ignoruje a rozhodne Flint.",
     "backendJev": "Jev",
-    "backendOpen": "Open model",
+    "backendOpen": "Otevřený model",
     "backendPreset": "Preset",
     "backendPresetCustom": "Custom",
-    "backendPresetExplained": "Small typed-decision models such as Von, Laya, Kev or Rizzo Flow: add the model's OpenAI-compatible endpoint as a provider (or load it locally), then pick it below.",
-    "backendPresetMissing": "{{name}} is not configured yet. Add its OpenAI-compatible endpoint as a provider, or load it locally, then pick it below. Until then Jev is used.",
+    "backendPresetExplained": "Malé modely s typovaným rozhodováním, například Von, Laya, Kev nebo Rizzo Flow: přidejte koncový bod modelu kompatibilní s OpenAI jako poskytovatele (nebo ho načtěte lokálně) a vyberte ho níže.",
+    "backendPresetMissing": "{{name}} zatím není nastaven. Přidejte jeho koncový bod kompatibilní s OpenAI jako poskytovatele nebo ho načtěte lokálně a vyberte ho níže. Do té doby se používá Jev.",
     "backendModel": "Model",
-    "backendModelPlaceholder": "Choose a model",
-    "backendModelSearch": "Search models",
-    "backendModelEmpty": "No models available. Add a provider or load a local model first.",
-    "backendModelEmptySearch": "No models match \"{{query}}\"",
-    "backendNoModel": "No model chosen: Jev is used until you pick one.",
-    "backendLocal": "Runs on this machine or your local network: the decision text does not go to TypeSafe or any cloud service.",
-    "backendRemote": "The same text listed below for each opt-in is sent to {{provider}} instead of TypeSafe.",
+    "backendModelPlaceholder": "Vyberte model",
+    "backendModelSearch": "Hledat modely",
+    "backendModelEmpty": "Žádné dostupné modely. Nejprve přidejte poskytovatele nebo načtěte místní model.",
+    "backendModelEmptySearch": "Žádný model neodpovídá „{{query}}“",
+    "backendNoModel": "Nevybrán žádný model: používá se Jev, dokud nějaký nevyberete.",
+    "backendLocal": "Běží na tomto počítači nebo ve vaší místní síti: text rozhodnutí se neposílá do TypeSafe ani do žádné cloudové služby.",
+    "backendRemote": "Stejný text uvedený níže u každé volitelné možnosti se místo do TypeSafe posílá poskytovateli {{provider}}.",
     "automationTitle": "Automatické volby",
     "routeToggle": "Směrovat ke správnému asistentovi",
     "routeExplained": "Když je Návrh dovednosti zapnutý, Jev může u každé nové zprávy přesunout konverzaci, která je stále u Flintu, ke Quartz, Coal, Blaze nebo Redstone. Když je vypnutý, zůstane u každé zprávy asistent, kterého jste vybrali. Asistent, kterého jste vybrali sami, se nezmění nikdy, ať je to zapnuto, nebo ne.",
@@ -2618,9 +2622,9 @@
   "coworkParallel": {
     "settingTitle": "Nové relace ve složce Git pracují ve vlastním worktree",
     "settingDescription": "Každá nová relace v repozitáři Git dostane vlastní worktree a větev (flint/<title>), takže více relací může pracovat v jedné složce najednou, aniž by se ovlivňovaly navzájem nebo tvůj checkout. Každou větev zkontroluj, slouč nebo zahoď přímo z relace.",
-    "baseTitle": "Start worktrees from my current branch",
-    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
-    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
+    "baseTitle": "Zakládat worktrees z mé aktuální větve",
+    "baseDescription": "Vypnuto (výchozí): nový worktree vychází z výchozí větve repozitáře. Zapnuto: vychází z commitu, který máte právě načtený, takže obsahuje i commity, které jste neodeslali. Explicitně zadaná větev (například agentem) má vždy přednost.",
+    "resumeGone": "Do worktree této relace se nepodařilo znovu vstoupit ({{reason}}), proto se vrátila do režimu jen pro kontrolu. Nic nebylo znovu vytvořeno.",
     "branchTitle": "Tato relace pracuje na větvi {{branch}} ve vlastním worktree",
     "basedOn": "z {{base}}",
     "openFolder": "Otevřít složku",
@@ -2693,14 +2697,14 @@
     "noneForProvider": "Tento poskytovatel nemá žádné nastavitelné parametry.",
     "maybeUnsupported": "Nemusí být podporováno poskytovatelem {{providers}}",
     "modelReports": "Model: {{value}}",
-    "noOverrides": "No overrides — using model defaults.",
-    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
-    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "unrecognized_few": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
-    "notSupportedStripped": "Not supported — will be stripped on send",
-    "mayBeIgnored": "May be ignored by this provider",
-    "notSupportedSkipped": "Not supported — will be skipped.",
+    "noOverrides": "Žádná přepsání — používají se výchozí hodnoty modelu.",
+    "unrecognized_one": "{{count}} nerozpoznaný parametr skryt: {{keys}}",
+    "unrecognized_other": "{{count}} nerozpoznaných parametrů skryto: {{keys}}",
+    "unrecognized_few": "{{count}} nerozpoznané parametry skryty: {{keys}}",
+    "unrecognized_many": "{{count}} nerozpoznaného parametru skryto: {{keys}}",
+    "notSupportedStripped": "Nepodporováno — při odeslání bude odstraněno",
+    "mayBeIgnored": "Tento poskytovatel to může ignorovat",
+    "notSupportedSkipped": "Nepodporováno — bude přeskočeno.",
     "removeParam": "Remove {{name}}"
   },
   "progressPin": {
@@ -2720,76 +2724,76 @@
     "chooseNote": "Nic se nekopíruje, dokud nepotvrdíte. Data JAN se nikdy neupravují ani nemažou.",
     "copyDescription": "Zkopíruje vaše konverzace, nastavení a klíče poskytovatelů z JAN do Flintu, pro položky zvolené níže. JAN samotný se nikdy nemění ani nemaže.",
     "freshDescription": "Spustí Flint prázdný. Z JAN se nic nečte ani nekopíruje, včetně klíčů poskytovatelů, teď ani při dalších spuštěních. Importovat můžete kdykoli v Nastavení, Složka dat.",
-    "title": "Migrate from JAN",
-    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
-    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
-    "detecting": "Looking for an existing JAN installation…",
-    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
-    "foundAt": "Found JAN data at {{path}} ({{size}}).",
-    "whatToBring": "What to bring across",
+    "title": "Migrace z JAN",
+    "descriptionNoLegacy": "Přeneste svá stávající data JAN do Flintu.",
+    "descriptionFound": "Flint našel existující instalaci JAN. Vyberte, jak data přenést.",
+    "detecting": "Hledání existující instalace JAN…",
+    "noData": "V tomto počítači nebyla nalezena žádná data JAN. Není co migrovat — Flint můžete začít používat hned.",
+    "foundAt": "Data JAN nalezena v {{path}} ({{size}}).",
+    "whatToBring": "Co přenést",
     "fileCount_one": "{{count}} file",
     "fileCount_other": "{{count}} files",
     "fileCount_few": "{{count}} files",
     "fileCount_many": "{{count}} files",
-    "existsInFlint": "If an item already exists in Flint",
-    "conflictAria": "Conflict resolution",
-    "resolveAria": "Resolve conflicts",
+    "existsInFlint": "Pokud položka už ve Flintu existuje",
+    "conflictAria": "Řešení konfliktů",
+    "resolveAria": "Vyřešit konflikty",
     "modes": {
       "copy": {
-        "label": "Copy to Flint"
+        "label": "Kopírovat do Flintu"
       },
       "reuse": {
-        "label": "Reuse JAN data",
-        "description": "Point Flint at your existing JAN data in place, without copying it."
+        "label": "Znovu použít data JAN",
+        "description": "Nasměrovat Flint na vaše stávající data JAN přímo na místě, bez kopírování."
       },
       "move": {
-        "label": "Move to Flint",
-        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+        "label": "Přesunout do Flintu",
+        "description": "Zkopírovat do Flintu a po úspěšném přenosu všech položek odstranit zdroj JAN. Záloha se ponechá, abyste se mohli vrátit."
       },
       "fresh": {
-        "label": "Start fresh"
+        "label": "Začít načisto"
       }
     },
     "categories": {
-      "conversations": "Conversations & assistants",
-      "models": "Downloaded models & engines",
-      "configs": "Configuration files",
-      "settings": "Settings & provider credentials",
-      "common": "Extensions, logs & caches",
-      "agent": "Agent workspace & rooms"
+      "conversations": "Konverzace a asistenti",
+      "models": "Stažené modely a enginy",
+      "configs": "Konfigurační soubory",
+      "settings": "Nastavení a přihlašovací údaje poskytovatelů",
+      "common": "Rozšíření, protokoly a mezipaměti",
+      "agent": "Pracovní prostor agenta a místnosti"
     },
     "conflicts": {
-      "keep_flint": "Keep the existing Flint item",
-      "use_jan": "Overwrite with the JAN item",
-      "keep_both": "Keep both (JAN copy is suffixed)"
+      "keep_flint": "Ponechat stávající položku ve Flintu",
+      "use_jan": "Přepsat položkou z JAN",
+      "keep_both": "Ponechat obě (kopie z JAN dostane příponu)"
     },
-    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "incompatible": "Data JAN hlásí schéma, které tato verze Flintu plně nepodporuje. Před pokračováním si projděte varování.",
     "mode": "Mode",
     "items": "Items",
-    "estimatedSize": "Estimated size",
-    "reusePath": "Reuse path",
+    "estimatedSize": "Odhadovaná velikost",
+    "reusePath": "Cesta k opětovnému použití",
     "conflictCount_one": "{{count}} conflict",
     "conflictCount_other": "{{count}} conflicts",
     "conflictCount_few": "{{count}} conflicts",
     "conflictCount_many": "{{count}} conflicts",
-    "flintIsNewer": "Flint copy is newer (kept)",
-    "running": "Migrating your data… do not close Flint.",
-    "complete": "Migration complete.",
+    "flintIsNewer": "Kopie ve Flintu je novější (ponechána)",
+    "running": "Migrace dat… nezavírejte Flint.",
+    "complete": "Migrace dokončena.",
     "categoryOk": "{{name}}: {{count}} ok",
     "categorySkipped": "{{count}} skipped",
     "categoryFailed": "{{count}} failed",
-    "backupKept": "A backup of your JAN data was kept at {{path}}.",
-    "restartNeeded": "Restart Flint to start using this data.",
-    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
-    "failed": "Migration did not complete.",
-    "unknownError": "An unknown error occurred.",
-    "rolledBackNote": "Your data was rolled back to its previous state.",
-    "quarantined": "Partial data was quarantined at {{path}}.",
-    "notNow": "Not now",
-    "dontAskAgain": "Don't ask again",
+    "backupKept": "Záloha vašich dat JAN byla ponechána v {{path}}.",
+    "restartNeeded": "Chcete-li tato data začít používat, restartujte Flint.",
+    "reuseInPlace": "Flint nyní používá vaše data JAN přímo na místě v {{path}}.",
+    "failed": "Migrace nebyla dokončena.",
+    "unknownError": "Došlo k neznámé chybě.",
+    "rolledBackNote": "Vaše data byla vrácena do předchozího stavu.",
+    "quarantined": "Částečná data byla umístěna do karantény v {{path}}.",
+    "notNow": "Teď ne",
+    "dontAskAgain": "Znovu se neptat",
     "back": "Back",
     "close": "Close",
-    "startFresh": "Start fresh",
+    "startFresh": "Začít načisto",
     "continue": "Continue"
   },
   "imageViewer": {
@@ -3051,27 +3055,27 @@
     "openProvider": "Otevřít nastavení poskytovatele",
     "errorDetails": "Podrobnosti",
     "pasteHint": "Přístup ke schránce byl zablokován. Klikněte do textového pole a stiskněte {{keys}}.",
-    "longInput": "Long text may not fit the model. Split it if the translation fails or stops early.",
+    "longInput": "Dlouhý text se do modelu nemusí vejít. Pokud překlad selže nebo se předčasně zastaví, rozdělte ho.",
     "swapNeedsSource": "Pro prohození vyberte zdrojový jazyk"
   },
   "markdownImage": {
     "load": "Načíst obrázek z {{host}}"
   },
   "messageSaveFailed": "Zprávu se nepodařilo uložit. Po restartu může být ztracena.",
-  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
-  "keptChat": "Kept chat",
+  "keyringSaveFailed": "Tajný údaj se nepodařilo uložit do systémové klíčenky. Změna byla vrácena.",
+  "keptChat": "Ponechaný chat",
   "studioToast": {
     "modelDownloaded": "{{name}} is downloaded",
-    "videoReady": "Your video is ready",
-    "imageReady": "Your image is ready",
-    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
-    "providerFallback": "The provider",
-    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+    "videoReady": "Vaše video je hotové",
+    "imageReady": "Váš obrázek je hotový",
+    "stoppedWaiting": "Čekání ukončeno. {{provider}} může dál renderovat a nový požadavek může být odmítnut, dokud renderování neskončí.",
+    "providerFallback": "Poskytovatel",
+    "pictureInChat": "Tento obrázek se používá v chatu. Chat ho už nemůže zobrazit ani upravit."
   },
   "windowTitles": {
-    "appLogs": "App Logs - Flint",
-    "systemMonitor": "System Monitor - Flint",
-    "localApiServerLogs": "Local API Server Logs - Flint"
+    "appLogs": "Protokoly aplikace - Flint",
+    "systemMonitor": "Monitor systému - Flint",
+    "localApiServerLogs": "Protokoly místního serveru API - Flint"
   },
   "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena.",
   "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána",
@@ -3396,93 +3400,93 @@
   "chatRules": "Pravidla",
   "chatRuleForThisChat": "Použít toto pravidlo v tomto chatu",
   "handoff": {
-    "menu": "Hand off to another computer…",
-    "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}",
-    "label": "Handed off from another computer",
-    "title": "This session was handed off from another computer.",
-    "checkFailed": "The attached folder could not be checked: {{error}}",
-    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
-    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "menu": "Předat jinému počítači…",
+    "saved": "Předání uloženo. Přihlašovací údaje ({{count}}) byly vynechány a složka je pojmenována, ne lokalizována.",
+    "failed": "Předání se nepodařilo uložit: {{message}}",
+    "label": "Předáno z jiného počítače",
+    "title": "Tato relace byla předána z jiného počítače.",
+    "checkFailed": "Připojenou složku se nepodařilo zkontrolovat: {{error}}",
+    "folderMatches": "Připojená složka odpovídá té, ve které relace pracovala ({{name}}).",
+    "folderDiffers": "Připojená složka není ta, ve které relace pracovala: {{differences}}.",
     "dismiss": "Dismiss",
     "restore": {
-      "atBranchCommit": "branch {{branch}} at commit {{commit}}",
+      "atBranchCommit": "větev {{branch}} na commitu {{commit}}",
       "atBranch": "branch {{branch}}",
       "atCommit": "commit {{commit}}",
-      "folder": "This session worked in a folder named {{name}}. Attach that folder on this computer to continue.",
-      "folderAt": "This session worked in a folder named {{name}} ({{at}}). Attach that folder on this computer to continue.",
-      "provider": "The provider {{provider}} is not set up on this computer, so the session's model cannot be used. Choose another model to continue.",
-      "model": "The model {{id}} is not available from {{provider}} on this computer. Choose another model to continue."
+      "folder": "Tato relace pracovala ve složce s názvem {{name}}. Pro pokračování připojte tuto složku na tomto počítači.",
+      "folderAt": "Tato relace pracovala ve složce s názvem {{name}} ({{at}}). Pro pokračování připojte tuto složku na tomto počítači.",
+      "provider": "Poskytovatel {{provider}} není na tomto počítači nastaven, takže model relace nelze použít. Pro pokračování vyberte jiný model.",
+      "model": "Model {{id}} není na tomto počítači od poskytovatele {{provider}} dostupný. Pro pokračování vyberte jiný model."
     },
     "differs": {
-      "name": "it is named {{actual}}, not {{expected}}",
-      "branch": "it is on branch {{actual}}, not {{expected}}",
-      "noBranch": "it is on no branch, not {{expected}}",
-      "head": "it is at commit {{actual}}, not {{expected}}",
-      "noHead": "it is at no commit, not {{expected}}"
+      "name": "jmenuje se {{actual}}, ne {{expected}}",
+      "branch": "je na větvi {{actual}}, ne {{expected}}",
+      "noBranch": "není na žádné větvi, ne {{expected}}",
+      "head": "je na commitu {{actual}}, ne {{expected}}",
+      "noHead": "není na žádném commitu, ne {{expected}}"
     }
   },
-  "imageLoadFailed": "This image could not be loaded.",
-  "attachedImage": "Attached image {{n}}",
-  "saveChanges": "Save changes",
+  "imageLoadFailed": "Tento obrázek se nepodařilo načíst.",
+  "attachedImage": "Připojený obrázek {{n}}",
+  "saveChanges": "Uložit změny",
   "savingEllipsis": "Saving…",
   "modelLoader": {
-    "loading": "Loading model…",
+    "loading": "Načítání modelu…",
     "done": "Loaded in",
-    "failed": "Failed after"
+    "failed": "Selhalo po"
   },
   "capabilityTips": {
-    "web_search": "Web Search",
-    "embeddings": "Embedding Model (for RAG/vectors, not chat)",
-    "raw_completion": "Raw completion (continues your text, no chat or tools)"
+    "web_search": "Vyhledávání na webu",
+    "embeddings": "Embedding model (pro RAG/vektory, ne pro chat)",
+    "raw_completion": "Surové dokončování (pokračuje ve vašem textu, bez chatu a nástrojů)"
   },
-  "switchAssistant": "Switch assistant ({{shortcut}})",
+  "switchAssistant": "Přepnout asistenta ({{shortcut}})",
   "workProfileLabels": {
     "execute": "Execute",
     "review": "Review",
     "plan": "Plan",
     "refactor": "Refactor",
     "debug": "Debug",
-    "reverse-engineer": "Reverse-engineer",
+    "reverse-engineer": "Reverzní inženýrství",
     "explain": "Explain"
   },
   "teamConflicts": {
     "kind": {
-      "same-file": "same file",
-      "nested": "a folder and something inside it",
+      "same-file": "stejný soubor",
+      "nested": "složka a něco uvnitř ní",
       "rename": "a move",
       "delete": "a delete",
-      "generated": "a regenerated file"
+      "generated": "znovu vygenerovaný soubor"
     },
-    "scopeLabel": "What {{id}} may change (comma-separated)",
-    "bothChange": "{{a}} and {{b}} would both change:",
-    "legend": "What to do about {{a}} and {{b}}",
-    "serializeAb": "Run {{a}} first, then {{b}}",
-    "serializeBa": "Run {{b}} first, then {{a}}",
-    "revise": "Change what {{id}} may change",
-    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
-    "region": "Overlapping team tasks",
-    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
-    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "scopeLabel": "Co smí {{id}} měnit (oddělené čárkami)",
+    "bothChange": "{{a}} a {{b}} by obě změnily:",
+    "legend": "Co dělat s {{a}} a {{b}}",
+    "serializeAb": "Spustit nejdřív {{a}}, potom {{b}}",
+    "serializeBa": "Spustit nejdřív {{b}}, potom {{a}}",
+    "revise": "Změnit, co smí měnit {{id}}",
+    "parallel": "Přesto je spustit souběžně (zaznamená se; každá změna se před použitím stále kontroluje a ověřuje)",
+    "region": "Překrývající se úlohy týmu",
+    "headline": "Tyto úlohy by změnily stejné cesty a nic jim neurčuje pořadí. Zatím nic neběželo.",
+    "caveat": "Porovnáno podle cest, které každá úloha uvedla, ne podle čtení kódu: žádný překryv zde neznamená, že na sebe změny navazují.",
     "continue": "Continue",
-    "cancel": "Don’t run these tasks"
+    "cancel": "Tyto úlohy nespouštět"
   },
   "citations": {
-    "toggleSnippet": "Toggle snippet",
-    "documents_one": "{{count}} document citation",
-    "documents_other": "{{count}} document citations",
-    "documents_few": "{{count}} document citations",
-    "documents_many": "{{count}} document citations",
-    "web_one": "{{count}} web source",
-    "web_other": "{{count}} web sources",
-    "web_few": "{{count}} web sources",
-    "web_many": "{{count}} web sources",
+    "toggleSnippet": "Přepnout úryvek",
+    "documents_one": "{{count}} citace dokumentu",
+    "documents_other": "{{count}} citací dokumentů",
+    "documents_few": "{{count}} citace dokumentů",
+    "documents_many": "{{count}} citace dokumentů",
+    "web_one": "{{count}} webový zdroj",
+    "web_other": "{{count}} webových zdrojů",
+    "web_few": "{{count}} webové zdroje",
+    "web_many": "{{count}} webového zdroje",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {
-    "partFits": "Only part of {{files}} fits in one message.",
-    "readFailed": "Could not read {{name}}: {{error}}",
-    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
+    "partFits": "Do jedné zprávy se vejde jen část {{files}}.",
+    "readFailed": "Nepodařilo se přečíst {{name}}: {{error}}",
+    "remoteImagesOnly": "Do relace na serveru lze poslat jen obrázky; odeberte ostatní mediální soubory."
   },
   "eta": {
     "seconds": "{{n}} s",
@@ -3491,45 +3495,45 @@
     "hoursMinutes": "{{hours}} h {{minutes}} min"
   },
   "coworkHelpers": {
-    "filesChanged_one": "{{count}} file changed",
-    "filesChanged_other": "{{count}} files changed",
-    "filesChanged_few": "{{count}} files changed",
-    "filesChanged_many": "{{count}} files changed",
-    "mediaFiles_one": "{{count}} media file",
-    "mediaFiles_other": "{{count}} media files",
-    "mediaFiles_few": "{{count}} media files",
-    "mediaFiles_many": "{{count}} media files",
+    "filesChanged_one": "Změněn {{count}} soubor",
+    "filesChanged_other": "Změněno {{count}} souborů",
+    "filesChanged_few": "Změněny {{count}} soubory",
+    "filesChanged_many": "Změněno {{count}} souboru",
+    "mediaFiles_one": "{{count}} mediální soubor",
+    "mediaFiles_other": "{{count}} mediálních souborů",
+    "mediaFiles_few": "{{count}} mediální soubory",
+    "mediaFiles_many": "{{count}} mediálního souboru",
     "attached": "Attached: {{names}}"
   },
   "coworkReadiness": {
-    "noModel": "No model is selected for this session.",
-    "toolsFailed": "Tool calls failed a test of this model on {{date}}.",
-    "toolsFailedDetail": "Tool calls failed a test of this model on {{date}}: {{detail}}.",
-    "noToolSupport": "The selected model cannot call tools, so Cowork can only chat with it.",
-    "modelToolsWorked": "A model is selected. Tool calls worked in a test on {{date}}; that is one probe, not a guarantee for every task.",
-    "modelSelected": "A model is selected. Whether the provider answers is checked when a run starts.",
-    "contextWindow": "Context window: {{tokens}} tokens.",
-    "contextUnknown": "The context window could not be found for this model, so Flint cannot warn before it fills up.",
-    "mcpOffered_one": "{{count}} MCP server from Settings is offered to Cowork runs and connects when a message is sent.",
-    "mcpOffered_other": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpOffered_few": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpOffered_many": "{{count}} MCP servers from Settings are offered to Cowork runs and connect when a message is sent.",
-    "mcpNone": "No MCP servers are configured.",
-    "localReady": "The local runtime is started when a run needs the model.",
-    "localAbsent": "The selected model is not run locally."
+    "noModel": "Pro tuto relaci není vybrán žádný model.",
+    "toolsFailed": "Volání nástrojů selhala při testu tohoto modelu dne {{date}}.",
+    "toolsFailedDetail": "Volání nástrojů selhala při testu tohoto modelu dne {{date}}: {{detail}}.",
+    "noToolSupport": "Vybraný model nemůže volat nástroje, takže s ním Cowork může jen chatovat.",
+    "modelToolsWorked": "Model je vybrán. Volání nástrojů fungovala při testu dne {{date}}; je to jedna zkouška, ne záruka pro každý úkol.",
+    "modelSelected": "Model je vybrán. Zda poskytovatel odpovídá, se ověří při spuštění běhu.",
+    "contextWindow": "Kontextové okno: {{tokens}} tokenů.",
+    "contextUnknown": "Kontextové okno tohoto modelu se nepodařilo zjistit, takže Flint nemůže upozornit před jeho zaplněním.",
+    "mcpOffered_one": "{{count}} server MCP z Nastavení je nabídnut běhům Cowork a připojí se při odeslání zprávy.",
+    "mcpOffered_other": "{{count}} serverů MCP z Nastavení je nabídnuto běhům Cowork a připojí se při odeslání zprávy.",
+    "mcpOffered_few": "{{count}} servery MCP z Nastavení jsou nabídnuty běhům Cowork a připojí se při odeslání zprávy.",
+    "mcpOffered_many": "{{count}} serveru MCP z Nastavení je nabídnuto běhům Cowork a připojí se při odeslání zprávy.",
+    "mcpNone": "Nejsou nakonfigurovány žádné servery MCP.",
+    "localReady": "Místní runtime se spustí, když běh potřebuje model.",
+    "localAbsent": "Vybraný model se nespouští lokálně."
   },
   "activity": {
-    "savingMemory": "Saving memory",
-    "readingMemory": "Reading memory",
-    "readingSkill": "Reading skill",
+    "savingMemory": "Ukládání paměti",
+    "readingMemory": "Čtení paměti",
+    "readingSkill": "Čtení dovednosti",
     "readingSkillNamed": "Reading {{name}}",
-    "usedSkill": "Used skill",
+    "usedSkill": "Použitá dovednost",
     "usedSkillNamed": "Used {{name}}",
     "working": "working",
-    "subagentsWorking_one": "{{count}} subagent working",
-    "subagentsWorking_other": "{{count}} subagents working",
-    "subagentsWorking_few": "{{count}} subagents working",
-    "subagentsWorking_many": "{{count}} subagents working",
+    "subagentsWorking_one": "Pracuje {{count}} podagent",
+    "subagentsWorking_other": "Pracuje {{count}} podagentů",
+    "subagentsWorking_few": "Pracují {{count}} podagenti",
+    "subagentsWorking_many": "Pracuje {{count}} podagenta",
     "verb": {
       "write": "Writing",
       "edit": "Editing",
@@ -3550,20 +3554,20 @@
     }
   },
   "archiveRestore": {
-    "sessionExists": "A session with this id already exists",
-    "assistantExists": "An assistant with this id already exists"
+    "sessionExists": "Relace s tímto ID již existuje",
+    "assistantExists": "Asistent s tímto ID již existuje"
   },
   "projectInit": {
-    "title": "Describe this project",
-    "continue": "Continue the FLINT.md draft",
-    "description": "Flint read the folder's manifests and layout and ran nothing. Edit the description; it becomes the folder's FLINT.md only when you accept it.",
-    "surveying": "Surveying the folder…",
-    "surveyed": "Surveyed {{seen}} files and read {{read}}. Nothing has been written.",
-    "wrote": "Wrote FLINT.md",
-    "discarded": "Draft discarded. Nothing was written.",
-    "notRead": "What the survey did not read",
-    "discard": "Discard draft",
-    "resurvey": "Survey again",
-    "accept": "Accept and write FLINT.md"
+    "title": "Popsat tento projekt",
+    "continue": "Pokračovat v konceptu FLINT.md",
+    "description": "Flint přečetl manifesty a strukturu složky a nic nespustil. Upravte popis; do FLINT.md složky se stane, až ho přijmete.",
+    "surveying": "Prohlíží se složka…",
+    "surveyed": "Prohlédnuto {{seen}} souborů, přečteno {{read}}. Nic nebylo zapsáno.",
+    "wrote": "FLINT.md zapsán",
+    "discarded": "Koncept zahozen. Nic nebylo zapsáno.",
+    "notRead": "Co průzkum nepřečetl",
+    "discard": "Zahodit koncept",
+    "resurvey": "Prohlédnout znovu",
+    "accept": "Přijmout a zapsat FLINT.md"
   }
 }

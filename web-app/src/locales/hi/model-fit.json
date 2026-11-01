@@ -114,12 +114,12 @@
     "inUse": "यहाँ इस्तेमाल में: {{model}} · {{provider}}"
   },
   "offload": {
-    "heading": "GPU offload (this load)",
-    "all": "All {{layers}} layers run on the GPU.",
-    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
-    "none": "No layers run on the GPU: the model is running on the CPU.",
-    "unknown": "The engine did not say how many layers it offloaded.",
-    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+    "heading": "GPU ऑफ़लोड (यह लोड)",
+    "all": "सभी {{layers}} लेयर GPU पर चलती हैं।",
+    "partial": "{{total}} में से {{gpu}} लेयर GPU पर चलती हैं; बाकी CPU पर चलती हैं, जो धीमा है।",
+    "none": "कोई लेयर GPU पर नहीं चलती: मॉडल CPU पर चल रहा है।",
+    "unknown": "इंजन ने नहीं बताया कि कितनी लेयर ऑफ़लोड कीं।",
+    "memory": "मॉडल वेट: GPU पर {{gpu}}, सिस्टम मेमोरी में {{cpu}}।"
   },
   "metalBudget": {
     "warning": "यह मॉडल इस Mac के GPU के लिए बहुत बड़ा हो सकता है: इसे लगभग {{required}} चाहिए, और macOS डिफ़ॉल्ट रूप से GPU को लगभग {{budget}} उपयोग करने देता है। यह लोड होकर पहले संदेश पर विफल हो सकता है। कॉन्टेक्स्ट आकार घटाएँ, GPU पर कम लेयर ऑफ़लोड करें, या छोटा क्वांटाइज़ेशन चुनें।"
