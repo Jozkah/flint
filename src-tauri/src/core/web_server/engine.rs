@@ -150,6 +150,9 @@ pub async fn start(
     request: StartRequest,
 ) -> Result<Info, String> {
     let preset = confine_preset(data_folder, &request.preset_path)?;
+    // Checked before the running-worker shortcut so a bad env is rejected the
+    // same way on a warm and a cold start.
+    let envs = clean_envs(request.envs)?;
     let mut guard = supervisor.state.engine.lock().await;
     if let Some(existing) = guard.as_mut() {
         if existing.exited().is_none() {
@@ -164,7 +167,6 @@ pub async fn start(
         }
         *guard = None;
     }
-    let envs = clean_envs(request.envs)?;
     let exe = resolve_exe(supervisor)?;
     *supervisor.fault.lock().unwrap() = None;
     let fault = supervisor.fault.clone();
