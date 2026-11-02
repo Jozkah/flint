@@ -338,7 +338,7 @@ mod tests {
         let mut writer = zip::ZipWriter::new(file.reopen().unwrap());
         for (name, data) in entries {
             writer
-                .start_file(*name, zip::write::FileOptions::default())
+                .start_file(*name, zip::write::SimpleFileOptions::default())
                 .unwrap();
             writer.write_all(data).unwrap();
         }

@@ -55,7 +55,7 @@ enum Entry<'a> {
 fn write_zip(path: &Path, manifest: &[u8], sig: &str, entries: &[Entry]) {
     let file = fs::File::create(path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
-    let opts = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     zip.start_file(MANIFEST_FILE, opts).unwrap();
     zip.write_all(manifest).unwrap();
     zip.start_file(SIGNATURE_FILE, opts).unwrap();
@@ -190,6 +190,17 @@ fn eligibility_table() {
     for (name, facts, want) in cases {
         assert_eq!(eligibility(&facts, 580, 75), want, "{name}");
     }
+}
+
+#[test]
+fn cuda_visible_devices_hides_only_unsupported_gpus() {
+    let g = |v: &[(&str, u32)]| v.iter().map(|(u, c)| (u.to_string(), *c)).collect::<Vec<_>>();
+    assert_eq!(cuda_visible_devices(&g(&[("a", 89), ("b", 120)]), 75), None);
+    assert_eq!(cuda_visible_devices(&g(&[]), 75), None);
+    // janhq/jan#9501: a Quadro P2000 (6.1) beside an RTX card.
+    assert_eq!(cuda_visible_devices(&g(&[("p", 61), ("r", 89)]), 75).as_deref(), Some("GPU-r"));
+    assert_eq!(cuda_visible_devices(&g(&[("r1", 75), ("p", 61), ("r2", 86)]), 75).as_deref(), Some("GPU-r1,GPU-r2"));
+    assert_eq!(cuda_visible_devices(&g(&[("p", 61)]), 75).as_deref(), Some("-1"));
 }
 
 #[test]

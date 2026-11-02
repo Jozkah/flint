@@ -91,6 +91,14 @@ fn arg_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
     args.get(key).and_then(|v| v.as_str())
 }
 
+/// An optional text argument, where the exact empty string means "not given".
+/// Models fill optional fields with `""`; for a filter or a directory that has
+/// one deterministic reading (no filter, the default directory), so refusing or
+/// acting on it only costs a retry. Whitespace-only text is still a value.
+fn arg_str_set<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    arg_str(args, key).filter(|s| !s.is_empty())
+}
+
 fn arg_u64(args: &serde_json::Value, key: &str) -> Option<u64> {
     args.get(key).and_then(|v| v.as_u64())
 }

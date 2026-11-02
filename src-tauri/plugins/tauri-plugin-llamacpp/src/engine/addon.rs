@@ -512,6 +512,28 @@ pub fn eligibility(host: &HostFacts, min_driver: u32, min_compute: u32) -> Eligi
     }
 }
 
+/// Environment variable that limits which GPUs the CUDA runtime enumerates.
+pub const CUDA_VISIBLE_DEVICES: &str = "CUDA_VISIBLE_DEVICES";
+
+/// The `CUDA_VISIBLE_DEVICES` value that keeps GPUs the pack has no kernels for
+/// out of its sight, given each NVIDIA GPU's NVML UUID (without the `GPU-`
+/// prefix) and compute capability. A Pascal card next to an RTX card would
+/// otherwise abort every load with "no kernel image is available"
+/// (janhq/jan#9501), while Vulkan still drives it. UUIDs, not indices: CUDA
+/// orders devices fastest first, NVML by PCI bus. `None` when every GPU is
+/// supported; `-1` hides them all when none is.
+pub fn cuda_visible_devices(gpus: &[(String, u32)], min_compute: u32) -> Option<String> {
+    if gpus.iter().all(|(_, cc)| *cc >= min_compute) {
+        return None;
+    }
+    let keep: Vec<String> = gpus
+        .iter()
+        .filter(|(_, cc)| *cc >= min_compute)
+        .map(|(uuid, _)| format!("GPU-{uuid}"))
+        .collect();
+    Some(if keep.is_empty() { "-1".into() } else { keep.join(",") })
+}
+
 // ---------------------------------------------------------------------------
 // Installed add-ons
 
@@ -670,7 +692,10 @@ pub fn extract_pack(
         let mut entry = zip
             .by_index(i)
             .map_err(|e| AddonError::UnsafeArchive(e.to_string()))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| AddonError::UnsafeArchive(e.to_string()))?
+            .into_owned();
         if name == MANIFEST_FILE || name == SIGNATURE_FILE {
             continue;
         }

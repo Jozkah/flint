@@ -292,10 +292,53 @@ fn test_unpack_archive_rejects_unknown_extension() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn test_unpack_archive_zip() {
+    let dir = unique_test_dir("unpack-zip");
+    fs::create_dir_all(&dir).unwrap();
+    let archive_path = dir.join("backend.zip");
+    {
+        let mut zw = zip::ZipWriter::new(File::create(&archive_path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        zw.add_directory("build/", opts).unwrap();
+        zw.start_file("build/bin/llama-server", opts).unwrap();
+        zw.write_all(b"binary").unwrap();
+        zw.start_file("top.txt", opts).unwrap();
+        zw.write_all(b"top").unwrap();
+        zw.finish().unwrap();
+    }
+
+    let out = dir.join("out");
+    unpack_archive(&archive_path, &out).unwrap();
+    assert!(out.join("build").is_dir());
+    assert_eq!(
+        fs::read_to_string(out.join("build/bin/llama-server")).unwrap(),
+        "binary"
+    );
+    assert_eq!(fs::read_to_string(out.join("top.txt")).unwrap(), "top");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_unpack_archive_zip_rejects_entries_that_escape_the_output_dir() {
+    let dir = unique_test_dir("unpack-zip-slip");
+    fs::create_dir_all(&dir).unwrap();
+    let archive_path = dir.join("evil.zip");
+    write_zip(&archive_path, &[("../escaped.txt", b"pwned".to_vec())]);
+
+    let out = dir.join("out");
+    assert!(unpack_archive(&archive_path, &out).is_err());
+    assert!(!dir.join("escaped.txt").exists());
+    assert!(!out.join("escaped.txt").exists());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 fn write_zip(path: &std::path::Path, files: &[(&str, Vec<u8>)]) {
     let mut zip = zip::ZipWriter::new(File::create(path).unwrap());
     for (name, body) in files {
-        zip.start_file(*name, zip::write::FileOptions::default()).unwrap();
+        zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
         zip.write_all(body).unwrap();
     }
     zip.finish().unwrap();
