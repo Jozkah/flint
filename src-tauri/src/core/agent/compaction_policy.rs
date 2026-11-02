@@ -387,48 +387,6 @@ impl Offloader {
     }
 }
 
-/// A fresh result longer than this (chars, about 6K tokens) is spilled: the
-/// model gets a preview and a file for the rest. Stale results are handled by
-/// [`microcompact_offloading`]; this is for one that arrives too big to keep.
-pub const SPILL_THRESHOLD_CHARS: usize = 24_000;
-const SPILL_HEAD_CHARS: usize = 6_000;
-const SPILL_TAIL_CHARS: usize = 2_000;
-
-/// Keep a head and tail of `text` and save the whole of it under `scratch`,
-/// naming the file, when a tool result is too big to sit in context whole.
-/// Returns `text` unchanged for the tools that already spill or page (`bash`,
-/// `read`), for failures (what the model most needs in front of it), for
-/// results under the threshold, and when the file cannot be written.
-pub fn spill_large_result(
-    scratch: &std::path::Path,
-    tool: &str,
-    call_id: &str,
-    text: String,
-) -> String {
-    if matches!(tool, "bash" | "read") || is_error_result(tool, &text) {
-        return text;
-    }
-    let total = text.chars().count();
-    if total <= SPILL_THRESHOLD_CHARS {
-        return text;
-    }
-    let Some(pointer) = Offloader::new(scratch).offload(call_id, tool, &text) else {
-        return text;
-    };
-    let head: String = text.chars().take(SPILL_HEAD_CHARS).collect();
-    let tail: String = text.chars().skip(total - SPILL_TAIL_CHARS).collect();
-    format!(
-        "{head}
-
-[... {} chars omitted ...]
-
-{tail}
-
-{pointer}",
-        total - SPILL_HEAD_CHARS - SPILL_TAIL_CHARS
-    )
-}
-
 fn is_pointer(content: &str) -> bool {
     content.starts_with(POINTER_PREFIX) && content.ends_with(POINTER_SUFFIX)
 }
@@ -902,32 +860,6 @@ mod tests {
         assert!(!should_compact(&small, &t));
         let big = vec![json!({ "role": "user", "content": "x".repeat(1_000) })];
         assert!(should_compact(&big, &t));
-    }
-
-    // --- spilling a fresh large result ---
-
-    #[test]
-    fn a_large_fresh_result_keeps_head_and_tail_and_names_the_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let body = format!("HEAD{}TAIL", "m".repeat(40_000));
-        let out = spill_large_result(dir.path(), "grep", "call-1", body.clone());
-        assert!(out.starts_with("HEAD") && out.contains("TAIL"), "head and tail kept");
-        assert!(out.chars().count() < 10_000, "the middle is gone from context");
-        assert!(out.contains("chars omitted") && out.contains("saved to"), "{}", &out[out.len() - 200..]);
-        let saved = std::fs::read_to_string(dir.path().join(OFFLOAD_DIR).join("call-1.txt")).unwrap();
-        assert_eq!(saved, body, "the file holds all of it");
-    }
-
-    #[test]
-    fn spill_leaves_small_results_errors_and_self_paging_tools_alone() {
-        let dir = tempfile::tempdir().unwrap();
-        let big = "x".repeat(30_000);
-        assert_eq!(spill_large_result(dir.path(), "grep", "a", "small".into()), "small");
-        assert_eq!(spill_large_result(dir.path(), "read", "b", big.clone()), big, "read pages itself");
-        assert_eq!(spill_large_result(dir.path(), "bash", "c", big.clone()), big, "bash spills itself");
-        let err = format!("ERROR: {big}");
-        assert_eq!(spill_large_result(dir.path(), "grep", "d", err.clone()), err);
-        assert!(!dir.path().join(OFFLOAD_DIR).exists(), "nothing written");
     }
 
     // --- microcompaction ---
