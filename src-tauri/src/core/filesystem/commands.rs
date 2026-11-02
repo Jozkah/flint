@@ -380,7 +380,7 @@ fn unpack_into(
                     .ok_or_else(|| "Invalid zip entry path".to_string())?,
             );
 
-            if entry.name().ends_with('/') {
+            if entry.is_dir() {
                 std::fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
             } else {
                 if let Some(parent) = outpath.parent() {

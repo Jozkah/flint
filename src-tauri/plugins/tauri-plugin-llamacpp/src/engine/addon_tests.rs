@@ -55,7 +55,7 @@ enum Entry<'a> {
 fn write_zip(path: &Path, manifest: &[u8], sig: &str, entries: &[Entry]) {
     let file = fs::File::create(path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
-    let opts = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     zip.start_file(MANIFEST_FILE, opts).unwrap();
     zip.write_all(manifest).unwrap();
     zip.start_file(SIGNATURE_FILE, opts).unwrap();
