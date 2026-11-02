@@ -26,6 +26,7 @@ pub fn capture_note(width: u32, height: u32) -> String {
     let scale = width as f64 / bounds.size.width;
     format!("Captured the primary display at {width} × {height} image pixels. Desktop coordinates use logical points: divide image x and y by {scale}, then add origin ({}, {}). Verify the target before acting.", bounds.origin.x, bounds.origin.y)
 }
+// SAFETY: callers must pass an event from a CGEventCreate* call; ownership is consumed (released) here, and null is rejected first.
 unsafe fn post(event: Event) -> Result<(), String> {
     if event.is_null() { return Err("macOS could not create an input event".into()); }
     CGEventPost(0, event);
@@ -40,6 +41,7 @@ fn keycode(key: &str) -> u16 {
         _=>unreachable!("validated key"),
     }
 }
+// SAFETY: callers must run this on a thread where posting CoreGraphics events is allowed; it only calls CG/AX C functions with values it builds itself.
 unsafe fn input(action: &Action, cancel: Option<&crate::lifecycle::Token>) -> Result<(), String> {
     if cancel.is_some_and(|t| t.is_stopped()) { return Err("desktop input cancelled".into()); }
     if !AXIsProcessTrusted() { return Err("Allow Flint in System Settings → Privacy & Security → Accessibility before using desktop input".into()); }
