@@ -1452,9 +1452,9 @@ async fn announced_results_are_shown_once_and_keep_transcript_order_and_the_nudg
     );
 }
 
-/// The composite invoker announces each outcome once, in completion order
-/// (the sequential pass first, the concurrent reads after), and the batch
-/// still comes back in call order.
+/// The composite invoker announces each outcome once as it completes (a read
+/// listed before an edit settles before it; reads after the last such call
+/// settle at the end), and the batch comes back in call order.
 #[tokio::test]
 async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
     let root = std::env::temp_dir().join(format!(
@@ -1501,7 +1501,7 @@ async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
         .unwrap();
     let returned: Vec<&str> = out.iter().map(|o| o.id.as_str()).collect();
     assert_eq!(returned, ["r", "e"], "call order, not completion order");
-    assert_eq!(*heard.lock().unwrap(), ["e", "r"], "the edit finished first");
+    assert_eq!(*heard.lock().unwrap(), ["r", "e"], "the read listed first settled before the edit");
     assert!(!out[1].content.starts_with("ERROR"), "{}", out[1].content);
     assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap().trim(), "two");
     // The plain entry point announces nothing and returns the same batch.
