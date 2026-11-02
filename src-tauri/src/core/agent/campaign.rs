@@ -1756,6 +1756,27 @@ const MAX_CONTEXT_DECISIONS: usize = 16_000;
 const MAX_CONTEXT_HANDOFF: usize = 12_000;
 const MAX_CONTEXT_RESOLUTION: usize = 48_000;
 
+/// The last `max_bytes` of a file, decoded lossily, without reading the rest.
+/// A missing or unreadable file is empty. A multi-byte character cut at the
+/// start becomes a replacement character, which callers trimming to fewer
+/// characters than `max_bytes` never keep.
+fn read_tail_lossy(path: &Path, max_bytes: usize) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let start = len.saturating_sub(max_bytes as u64);
+    if start > 0 && file.seek(SeekFrom::Start(start)).is_err() {
+        return String::new();
+    }
+    let mut buf = Vec::new();
+    if file.read_to_end(&mut buf).is_err() {
+        return String::new();
+    }
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
 fn tail_chars(text: &str, n: usize) -> String {
     let count = text.chars().count();
     if count <= n {
@@ -1771,7 +1792,7 @@ pub fn context(data_folder: &Path, id: &str, task_ids: &[String]) -> Result<Camp
     if !dir.join("campaign.json").exists() {
         return Err(CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded")));
     }
-    let decisions = std::fs::read_to_string(dir.join("decisions.md")).unwrap_or_default();
+    let decisions = read_tail_lossy(&dir.join("decisions.md"), MAX_CONTEXT_DECISIONS * 4);
     let mut handoffs = Vec::new();
     let mut resolutions = Vec::new();
     for task_id in task_ids {
@@ -2987,6 +3008,18 @@ pub(crate) mod tests {
         assert_eq!((c.base_branch.as_str(), c.base_sha.as_str()), ("main", "abc123"));
         assert_eq!(get(&d, "c").unwrap().integration_worktree, "/w/c");
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn read_tail_lossy_reads_only_the_end() {
+        let p = std::env::temp_dir().join(format!("flint-tail-{}.md", std::process::id()));
+        std::fs::write(&p, "é".repeat(100)).unwrap();
+        let tail = read_tail_lossy(&p, 11);
+        assert!(tail.ends_with("éé"), "{tail:?}");
+        assert!(tail.chars().count() <= 6);
+        assert_eq!(read_tail_lossy(&p, 10_000).chars().count(), 100);
+        assert_eq!(read_tail_lossy(&p.with_extension("none"), 10), "");
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

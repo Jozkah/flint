@@ -1021,8 +1021,16 @@ pub async fn agent_copy_discard(data_folder: String, path: String, force: bool) 
 /// Flint's worktree folder, absolute. See [`worktree::absolute`]: a relative
 /// data folder -- the configured default is `./data` -- would otherwise be
 /// resolved one way by git and another by everything else.
-fn owned_worktrees_root(data_folder: &str) -> Result<std::path::PathBuf, String> {
-    worktree::absolute(&workspace::worktrees_dir(std::path::Path::new(data_folder)))
+///
+/// The folder is Flint's own, never the caller's: the `data_folder` argument the
+/// webview still sends is ignored here, or the ownership check would compare a
+/// record against a root the caller chose (XCUT-002).
+fn owned_worktrees_root(_claimed_data_folder: &str) -> Result<std::path::PathBuf, String> {
+    owned_worktrees_root_in(&crate::core::app::commands::resolve_jan_data_folder())
+}
+
+fn owned_worktrees_root_in(data_folder: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    worktree::absolute(&workspace::worktrees_dir(data_folder))
 }
 
 /// What state a recorded worktree is actually in.
@@ -1047,6 +1055,14 @@ fn is_under_root(path: &std::path::Path, root: &std::path::Path) -> bool {
 mod under_root_tests {
     use super::is_under_root;
     use std::path::Path;
+
+    #[test]
+    fn owned_root_ignores_the_caller_supplied_data_folder() {
+        let foreign = std::env::temp_dir().join("flint-xcut-002-foreign");
+        let got = super::owned_worktrees_root(&foreign.to_string_lossy()).unwrap();
+        assert!(!got.starts_with(&foreign), "{got:?}");
+        assert_eq!(got, super::owned_worktrees_root("anything-else").unwrap());
+    }
 
     #[test]
     fn parent_dir_escapes_are_refused() {

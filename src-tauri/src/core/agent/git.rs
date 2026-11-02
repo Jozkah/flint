@@ -377,7 +377,24 @@ pub(crate) fn update_ref(repo: &Path, thread_id: &str, sha: &str) -> Result<(), 
 /// here: these are real commit objects, and diffing them is what makes the
 /// patch exact rather than reconstructed from the working tree.
 pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, String> {
-    run(repo, None, &["diff", "--no-ext-diff", "--no-textconv", from, to])
+    ensure_commit_id(from)?;
+    ensure_commit_id(to)?;
+    run(
+        repo,
+        None,
+        &["diff", "--no-ext-diff", "--no-textconv", "--end-of-options", from, to],
+    )
+}
+
+/// A revision that reaches git must be a 7..=64 digit hex object id. Anything
+/// else (`--output=...`, a ref name) could be read as an option or resolve to
+/// something the caller did not mean.
+pub(crate) fn ensure_commit_id(rev: &str) -> Result<(), String> {
+    if (7..=64).contains(&rev.len()) && rev.chars().all(|c| c.is_ascii_hexdigit()) {
+        Ok(())
+    } else {
+        Err("not a commit id".to_string())
+    }
 }
 
 /// The change that would take the working tree as it stands back to `commit`,
@@ -503,6 +520,8 @@ fn parse_raw_z(out: &str) -> Vec<RawChange> {
 // Only the TUI's restore, built with the `cli` feature, compares two snapshots.
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 fn tree_changes(repo: &Path, from: &str, to: &str) -> Result<Vec<RawChange>, String> {
+    ensure_commit_id(from)?;
+    ensure_commit_id(to)?;
     let out = run_untrimmed(
         repo,
         None,
@@ -516,6 +535,7 @@ fn tree_changes(repo: &Path, from: &str, to: &str) -> Result<Vec<RawChange>, Str
 /// `A` is on disk but not in `commit`, `D` is in `commit` but missing on disk,
 /// `M`/`T` differ in content or type. Ignored files never appear.
 fn worktree_changes(repo: &Path, idx: &Path, commit: &str) -> Result<Vec<RawChange>, String> {
+    ensure_commit_id(commit)?;
     stage_worktree(repo, idx, commit)?;
     let out = run_untrimmed(
         repo,
@@ -1578,6 +1598,17 @@ mod review_tests {
         ] {
             assert_eq!(parse_github_remote(remote), None, "{remote}");
         }
+    }
+
+    #[test]
+    fn revisions_must_be_hex_commit_ids() {
+        assert!(ensure_commit_id("abcdef1").is_ok());
+        assert!(ensure_commit_id(&"a".repeat(40)).is_ok());
+        for bad in ["--output=C:/x", "HEAD", "abc", "abcdef1 ", "", "-abcdef1"] {
+            assert!(ensure_commit_id(bad).is_err(), "{bad}");
+        }
+        let repo = std::path::Path::new(".");
+        assert!(diff_between(repo, "--output=C:/x", "abcdef1").is_err());
     }
 
     #[test]

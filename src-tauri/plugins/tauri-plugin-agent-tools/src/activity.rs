@@ -683,14 +683,28 @@ fn read_legacy_for(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivit
         return Vec::new();
     };
     let needle = session.and_then(|s| serde_json::to_string(s).ok());
-    std::io::BufReader::new(file)
-        .lines()
-        .map_while(Result::ok)
+    lossy_lines(std::io::BufReader::new(file))
+        .into_iter()
         .filter(|l| !l.trim().is_empty())
         .filter(|l| needle.as_deref().is_none_or(|n| l.contains(n)))
         .filter_map(|l| serde_json::from_str::<ToolActivityEvent>(&l).ok())
         .filter(|e| session.is_none_or(|s| e.session == s))
         .collect()
+}
+
+/// Every line of `reader`, decoded lossily. A line with invalid UTF-8 (a torn
+/// append) costs that line only; `lines()` would stop the whole read there.
+fn lossy_lines(mut reader: impl std::io::BufRead) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => out.push(String::from_utf8_lossy(&buf).trim_end_matches(['\n', '\r']).to_string()),
+        }
+    }
+    out
 }
 
 /// An activity event read back from its envelope, or `None` for an envelope
@@ -1098,6 +1112,16 @@ pub fn export(data_folder: &Path, session: Option<&str>) -> AuditExport {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn lossy_lines_survive_invalid_utf8() {
+        let bytes: &[u8] = b"one\n\xff\xfe broken\ntwo\r\nthree";
+        let lines = lossy_lines(bytes);
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[0], "one");
+        assert_eq!(lines[2], "two");
+        assert_eq!(lines[3], "three");
+    }
 
     fn scratch() -> PathBuf {
         static N: AtomicUsize = AtomicUsize::new(0);
