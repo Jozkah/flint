@@ -103,6 +103,7 @@ pub(crate) enum Composer {
     ToolSchemas,
     PromptSubmitHooks,
     TodoUpkeep,
+    MemoryChanges,
 }
 
 impl Composer {
@@ -128,6 +129,7 @@ impl Composer {
         Composer::ToolSchemas,
         Composer::PromptSubmitHooks,
         Composer::TodoUpkeep,
+        Composer::MemoryChanges,
     ];
 
     /// The stable id `[prompt]` names and `agent status` prints.
@@ -153,6 +155,7 @@ impl Composer {
             Composer::ToolSchemas => "tool_schemas",
             Composer::PromptSubmitHooks => "prompt_submit_hooks",
             Composer::TodoUpkeep => "todo_upkeep",
+            Composer::MemoryChanges => "memory_changes",
         }
     }
 
@@ -184,13 +187,16 @@ impl Composer {
             Composer::ToolSchemas => "the advertised tool array (a request field)",
             Composer::PromptSubmitHooks => "output of the imported UserPromptSubmit hooks",
             Composer::TodoUpkeep => "the nudge to keep the todo list current",
+            Composer::MemoryChanges => "memory notes changed since the session started",
         }
     }
 
     pub(crate) fn source(self) -> Source {
         match self {
             Composer::ToolSchemas => Source::RequestField,
-            Composer::PromptSubmitHooks | Composer::TodoUpkeep => Source::Reminder,
+            Composer::PromptSubmitHooks | Composer::TodoUpkeep | Composer::MemoryChanges => {
+                Source::Reminder
+            }
             _ => Source::PromptBlock,
         }
     }
@@ -225,7 +231,7 @@ impl Composer {
             | Composer::PlanAddendum
             | Composer::EagerTodoAddendum
             | Composer::ToolSchemas => true,
-            Composer::PromptSubmitHooks | Composer::TodoUpkeep => false,
+            Composer::PromptSubmitHooks | Composer::TodoUpkeep | Composer::MemoryChanges => false,
         }
     }
 
