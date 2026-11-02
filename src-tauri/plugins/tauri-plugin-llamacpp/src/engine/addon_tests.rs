@@ -193,6 +193,17 @@ fn eligibility_table() {
 }
 
 #[test]
+fn cuda_visible_devices_hides_only_unsupported_gpus() {
+    let g = |v: &[(&str, u32)]| v.iter().map(|(u, c)| (u.to_string(), *c)).collect::<Vec<_>>();
+    assert_eq!(cuda_visible_devices(&g(&[("a", 89), ("b", 120)]), 75), None);
+    assert_eq!(cuda_visible_devices(&g(&[]), 75), None);
+    // janhq/jan#9501: a Quadro P2000 (6.1) beside an RTX card.
+    assert_eq!(cuda_visible_devices(&g(&[("p", 61), ("r", 89)]), 75).as_deref(), Some("GPU-r"));
+    assert_eq!(cuda_visible_devices(&g(&[("r1", 75), ("p", 61), ("r2", 86)]), 75).as_deref(), Some("GPU-r1,GPU-r2"));
+    assert_eq!(cuda_visible_devices(&g(&[("p", 61)]), 75).as_deref(), Some("-1"));
+}
+
+#[test]
 fn driver_and_compute_strings_parse() {
     assert_eq!(parse_driver_branch("617.12"), Some(617));
     assert_eq!(parse_driver_branch("580.95.05"), Some(580));

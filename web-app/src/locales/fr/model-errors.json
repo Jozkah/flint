@@ -16,6 +16,7 @@
     "MODEL_LOAD_TIMED_OUT": "Le chargement du modèle a pris trop de temps et a été interrompu. Un modèle plus petit ou une taille de contexte plus petite aide généralement.",
     "MISSING_SHARED_LIBRARY": "Une bibliothèque dont le moteur a besoin est manquante, il ne peut donc pas démarrer.",
     "GPU_DRIVER_TOO_OLD": "Votre pilote GPU est trop ancien pour ce moteur. Mettre à jour le pilote, ou passer au moteur CPU dans les Paramètres, résoudra ce problème.",
+    "GPU_NOT_SUPPORTED": "Ce GPU NVIDIA est trop ancien pour le module CUDA du moteur, qui exige une capacité de calcul 7.5 (GeForce RTX série 20) ou plus récente. Supprimez le module CUDA dans Modules du moteur, dans les Paramètres, pour utiliser Vulkan à la place.",
     "CPU_NOT_SUPPORTED": "Le processeur de cet ordinateur ne dispose pas des instructions dont le moteur a besoin (un processeur x86 avec AVX est requis) ; le moteur a donc planté. Flint a déjà réessayé le modèle une fois sur le processeur seul ; si vous voyez encore ce message, cet essai a aussi planté, ou le moteur était déjà réglé sur le processeur seul.",
     "OS_VERSION_UNSUPPORTED": "Cette version de macOS est trop ancienne pour le moteur. Mettre à jour macOS résoudra le problème.",
     "MODEL_QUANT_NOT_SUPPORTED": "Ce modèle utilise un type de quantification que le backend GPU ne peut pas exécuter. Téléchargez une autre quantification, comme Q4_K_M, ou désactivez le déchargement sur le GPU.",
