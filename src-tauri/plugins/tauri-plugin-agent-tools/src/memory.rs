@@ -127,6 +127,45 @@ pub fn catalog(store: &Path) -> Vec<(String, String)> {
     notes
 }
 
+/// [`catalog`] ordered by recency: most recently written note first, ties by
+/// name. What a capped index keeps when the store outgrows its budget.
+pub fn catalog_by_recency(store: &Path) -> Vec<(String, String)> {
+    let dir = memory_dir(store);
+    let modified = |name: &str| {
+        std::fs::metadata(dir.join(format!("{name}.md")))
+            .and_then(|m| m.modified())
+            .ok()
+    };
+    let mut notes: Vec<_> = catalog(store)
+        .into_iter()
+        .map(|(name, description)| (modified(&name), name, description))
+        .collect();
+    notes.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    notes.into_iter().map(|(_, name, description)| (name, description)).collect()
+}
+
+/// Content hash per note, keyed by name: what a session-start snapshot is
+/// compared against to report notes added, changed or deleted since.
+pub fn fingerprint(store: &Path) -> std::collections::BTreeMap<String, u64> {
+    use std::hash::{Hash, Hasher};
+    let Ok(rd) = std::fs::read_dir(memory_dir(store)) else {
+        return Default::default();
+    };
+    rd.filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("md") {
+                return None;
+            }
+            let name = path.file_stem()?.to_str()?.to_string();
+            let body = std::fs::read(&path).ok()?;
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            body.hash(&mut h);
+            Some((name, h.finish()))
+        })
+        .collect()
+}
+
 /// Create or overwrite a note. Returns the filename written, so callers can
 /// phrase their own result message. Parent directories are created as needed.
 pub async fn write(store: &Path, name: &str, content: &str) -> Result<String, String> {
@@ -189,6 +228,29 @@ mod tests {
         std::fs::write(memory_dir(&root).join("notes.txt"), "ignored").unwrap();
 
         assert_eq!(list(&root).await, vec!["a", "b"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn catalog_by_recency_lists_the_newest_note_first() {
+        let root = unique_root();
+        for name in ["a", "b", "c"] {
+            write(&root, name, &format!("{name} body")).await.unwrap();
+        }
+        let base = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for (name, age) in [("a", 10), ("b", 30), ("c", 20)] {
+            let file = std::fs::File::options().write(true).open(memory_dir(&root).join(format!("{name}.md"))).unwrap();
+            file.set_modified(base - std::time::Duration::from_secs(age)).unwrap();
+        }
+        let names: Vec<String> = catalog_by_recency(&root).into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["a", "c", "b"]);
+
+        let before = fingerprint(&root);
+        assert_eq!(before.len(), 3);
+        write(&root, "b", "changed").await.unwrap();
+        let after = fingerprint(&root);
+        assert_ne!(before["b"], after["b"]);
+        assert_eq!(before["a"], after["a"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
