@@ -32,9 +32,8 @@ describe('faviconCandidates for hosts off the public internet', () => {
     'https://db.internal/',
     'http://intranet/',
   ])('returns nothing for %s', async (url) => {
-    const { faviconCandidates, faviconUrl } = await import('../webUrl')
+    const { faviconCandidates } = await import('../webUrl')
     expect(faviconCandidates(url)).toEqual([])
-    expect(faviconUrl(url)).toBeNull()
   })
 
   it.each([

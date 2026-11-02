@@ -58,6 +58,16 @@ describe('useMessageQueue', () => {
       expect(getQueue('thread-1')[0].text).toBe('second')
     })
 
+    it('skips held messages', () => {
+      const { enqueue, dequeue, hold, getQueue } = useMessageQueue.getState()
+      enqueue('thread-1', makeMessage('m1', 'first'))
+      enqueue('thread-1', makeMessage('m2', 'second'))
+      hold('thread-1', 'm1')
+      expect(dequeue('thread-1')?.text).toBe('second')
+      expect(getQueue('thread-1').map((m) => m.id)).toEqual(['m1'])
+      expect(dequeue('thread-1')).toBeUndefined()
+    })
+
     it('returns undefined when the queue is empty', () => {
       const { dequeue } = useMessageQueue.getState()
       expect(dequeue('thread-1')).toBeUndefined()

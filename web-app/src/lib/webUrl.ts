@@ -50,11 +50,6 @@ const SECOND_LEVEL: ReadonlySet<string> = new Set([
 ])
 
 /**
- * The site's own favicon, fetched from the site itself (never a third-party
- * favicon service, which would see every domain a search returned). Null for
- * anything that is not http(s).
- */
-/**
  * The addresses a site's icon is tried at, in order, all on its own origin.
  * `/favicon.ico` is the convention, but many sites serve an SVG or PNG instead.
  */
@@ -114,17 +109,6 @@ export const faviconCandidates = (url: string): string[] => {
     return FAVICON_PATHS.map((p) => `${u.origin}${p}`)
   } catch {
     return []
-  }
-}
-
-export const faviconUrl = (url: string): string | null => {
-  try {
-    const u = new URL(url)
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
-    if (isNonPublicHost(u.hostname)) return null
-    return `${u.origin}/favicon.ico`
-  } catch {
-    return null
   }
 }
 

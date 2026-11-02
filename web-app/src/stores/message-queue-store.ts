@@ -105,16 +105,18 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
     }))
   },
 
-  // Atomically removes and returns the first message from the queue.
+  // Atomically removes and returns the first message that is not held.
   // The entire read-and-mutate happens inside set() to avoid stale-closure races.
   dequeue: (threadId) => {
     let first: QueuedMessage | undefined
     set((state) => {
       const queue = state.queues[threadId]
-      if (!queue || queue.length === 0) return state
-      const [head, ...rest] = queue
-      first = head
-      return { queues: { ...state.queues, [threadId]: rest } }
+      const index = queue?.findIndex((m) => !m.held) ?? -1
+      if (!queue || index < 0) return state
+      first = queue[index]
+      return {
+        queues: { ...state.queues, [threadId]: queue.filter((_, i) => i !== index) },
+      }
     })
     return first
   },
