@@ -260,10 +260,9 @@ pub(super) fn confined_mcp_command(
         use jan_process::CommandConsole;
         confined.background();
     }
+    // Own session (pgid == pid, no controlling terminal): janhq/jan#9517.
     #[cfg(unix)]
-    {
-        confined.process_group(0);
-    }
+    tauri_plugin_agent_tools::tools::proc::detach_from_terminal(&mut confined);
     confined.kill_on_drop(true);
 
     // Nothing inherited. Only the names the user approved, and only where the
