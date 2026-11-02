@@ -8075,11 +8075,12 @@ fn stuck_detector_flags_identical_calls_and_error_streaks() {
     );
 
     let mut d = StuckDetector::default();
-    assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
-    assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+    for _ in 1..REPEATED_CALLS_LIMIT {
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+    }
     assert!(matches!(
         d.observe(sig(call("{\"p\":1}")), false, ""),
-        Some(StuckReason::RepeatedCalls { count: 3, .. })
+        Some(StuckReason::RepeatedCalls { count: REPEATED_CALLS_LIMIT, .. })
     ));
 
     let mut d = StuckDetector::default();
@@ -8145,9 +8146,53 @@ async fn identical_calls_without_ui_stop_the_run() {
         tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
         "{err}"
     );
-    assert!(err.message().contains("same tool call 3 times"), "{err}");
-    assert_eq!(*calls.lock().unwrap(), STUCK_TURN_LIMIT);
-    assert_eq!(tool.calls.lock().unwrap().len(), STUCK_TURN_LIMIT);
+    assert!(err.message().contains("same tool call 8 times"), "{err}");
+    assert_eq!(*calls.lock().unwrap(), REPEATED_CALLS_LIMIT);
+    assert_eq!(tool.calls.lock().unwrap().len(), REPEATED_CALLS_LIMIT);
+}
+
+/// The model is reminded, not stopped, on the way to the limit; the first
+/// reminder is brief and the second names the repeated call.
+#[test]
+fn stuck_detector_reminds_before_it_stops() {
+    let call = |name: &str| json!([{ "id": "x", "function": { "name": name, "arguments": "{}" } }]);
+    let sig = |v: serde_json::Value| StuckDetector::signature(v.as_array().unwrap());
+    let mut d = StuckDetector::default();
+    let mut reminders = Vec::new();
+    for n in 1..REPEATED_CALLS_LIMIT {
+        assert_eq!(d.observe(sig(call("read")), false, ""), None);
+        if let Some(text) = d.take_reminder() {
+            reminders.push((n, text));
+        }
+        assert_eq!(d.take_reminder(), None, "a reminder is taken once");
+    }
+    assert_eq!(reminders.len(), 2, "{reminders:?}");
+    assert_eq!((reminders[0].0, reminders[1].0), (3, 5));
+    assert!(!reminders[0].1.contains("read("));
+    assert!(reminders[1].1.contains("read({})"), "{}", reminders[1].1);
+}
+
+/// `todo` calls neither count as a repeat nor break the chain, so interleaving
+/// them cannot hide a loop.
+#[test]
+fn stuck_detector_ignores_bookkeeping_calls() {
+    let calls = |names: &[&str]| {
+        let v: Vec<serde_json::Value> = names
+            .iter()
+            .map(|n| json!({ "id": "x", "function": { "name": n, "arguments": "{}" } }))
+            .collect();
+        StuckDetector::signature(&v)
+    };
+    assert_eq!(calls(&["read", "todo"]), calls(&["read"]));
+    assert_eq!(calls(&["todo"]), "");
+    let mut d = StuckDetector::default();
+    d.observe(calls(&["read"]), false, "");
+    d.observe(calls(&["todo"]), false, "");
+    d.observe(calls(&["read", "todo"]), false, "");
+    assert_eq!(d.repeats, 2, "the todo-only turn is transparent");
+    assert!(d.take_reminder().is_none());
+    d.observe(calls(&["read"]), false, "");
+    assert!(d.take_reminder().is_some(), "third read reminds");
 }
 
 /// A tool invoker with a UI: answers the stuck question with fixed text.
@@ -8179,13 +8224,10 @@ async fn identical_calls_with_ui_ask_the_user_and_continue() {
     let call = || tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}");
     let model = RecordingQueueModel {
         replies: StdMutex::new(
-            vec![
-                call(),
-                call(),
-                call(),
-                json!({ "choices": [{ "message": { "content": "done" } }] }),
-            ]
-            .into(),
+            (0..REPEATED_CALLS_LIMIT)
+                .map(|_| call())
+                .chain([json!({ "choices": [{ "message": { "content": "done" } }] })])
+                .collect(),
         ),
         requests: StdMutex::new(Vec::new()),
     };
@@ -8218,6 +8260,10 @@ async fn identical_calls_with_ui_ask_the_user_and_continue() {
     let requests = model.requests.lock().unwrap();
     let last = requests.last().unwrap().to_string();
     assert!(last.contains("look in b.txt instead"), "{last}");
+    assert!(
+        last.contains("same tool call several times"),
+        "the model was reminded on the way to the limit: {last}"
+    );
 }
 
 /// The user choosing to stop ends the run as cancelled.

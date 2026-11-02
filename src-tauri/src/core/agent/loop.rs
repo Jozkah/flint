@@ -41,10 +41,14 @@ const MAX_REPEATED_BROKEN_TOOL_TURNS: usize = 5;
 /// Hard ceiling on consecutive turns with nothing executable, however the
 /// broken calls vary, so a run can never loop forever on malformed calls.
 const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
-/// Consecutive turns issuing the identical set of tool calls (same names and
-/// arguments), or consecutive turns whose every tool call failed, after which
-/// the run is considered stuck and the user is asked for guidance.
+/// Consecutive turns whose every tool call failed, after which the run is
+/// considered stuck and the user is asked for guidance.
 pub(crate) const STUCK_TURN_LIMIT: usize = 3;
+/// Consecutive turns issuing the identical set of tool calls (same names and
+/// arguments), after which the run is considered stuck. The model is reminded
+/// on the way there (`stuck::REPEAT_REMINDER_AT`), so a legitimate poll or
+/// re-run is not cut off at the first repeats.
+pub(crate) const REPEATED_CALLS_LIMIT: usize = 8;
 
 /// A stalled local read or web request must not hold the entire tool batch open.
 const READ_ONLY_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
@@ -6206,6 +6210,9 @@ Address it and continue."
             )
         };
 
+        if let Some(text) = stuck.take_reminder() {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+        }
         let mut todo_touched_this_batch = false;
         let mut ledger_failed: HashMap<String, bool> = HashMap::new();
         for outcome in tool_results {
