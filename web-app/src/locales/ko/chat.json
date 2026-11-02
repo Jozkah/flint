@@ -268,13 +268,16 @@
     "stopGenerating": "생성 중지"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp 메모리가 부족합니다",
+    "backendTitle": "GGML 백엔드에서 오류가 발생했습니다",
+    "contextTitle": "모델의 컨텍스트 크기를 초과했습니다",
     "oomReduceContext": "컨텍스트 크기(ctx-size) 줄이기",
     "oomDisableMtp": "MTP(멀티 토큰 예측) 끄기",
     "oomLowerGpuLayers": "n-gpu-layers를 낮추거나 CPU 백엔드로 전환",
     "oomSmallerModel": "더 작거나 양자화가 더 강한 모델 사용",
     "serverContext": "이 모델의 컨텍스트 창은 서버에서 설정되므로 Flint에서 늘릴 수 없습니다. 새 채팅을 시작하거나, 대화를 줄이거나, 서버의 한도를 높이세요.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "다시 생성",
+    "reload": "다시 불러오기"
   },
   "emptyRun": {
     "emptyReply": "모델이 빈 응답을 반환했습니다. 다시 시도하거나 모델을 전환하세요.",

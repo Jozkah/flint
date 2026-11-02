@@ -76,6 +76,7 @@
     "stopped": "Остановлен"
   },
   "toolOutputAlt": "Вывод инструмента",
+  "toolOutputImageFailed": "Не удалось показать изображение",
   "memory": {
     "exportFilter": "Экспорт памяти Flint",
     "why": "Почему Flint это помнит",

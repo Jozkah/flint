@@ -231,6 +231,7 @@
   "transcript": {
     "label": "討論記錄",
     "empty": "目前還沒有人發言。",
+    "loadEarlier": "載入較早的訊息",
     "you": "你",
     "system": "系統",
     "moderator": "主持人",

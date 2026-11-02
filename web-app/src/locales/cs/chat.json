@@ -301,13 +301,16 @@
     "stopGenerating": "Zastavit generování"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp došla paměť",
+    "backendTitle": "Backend GGML narazil na chybu",
+    "contextTitle": "Modelu došla velikost kontextu",
     "oomReduceContext": "Zmenšit velikost kontextu (ctx-size)",
     "oomDisableMtp": "Vypnout MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Snížit n-gpu-layers nebo přepnout na backend CPU",
     "oomSmallerModel": "Použít menší / více kvantizovaný model",
     "serverContext": "Kontextové okno tohoto modelu určuje jeho server, takže ho Flint nemůže zvětšit. Začněte nový chat, zkraťte konverzaci nebo zvyšte limit na serveru.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Vygenerovat znovu",
+    "reload": "Načíst znovu"
   },
   "emptyRun": {
     "emptyReply": "Model vrátil prázdnou odpověď. Zkuste to znovu nebo přepněte model.",

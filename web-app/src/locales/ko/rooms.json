@@ -231,6 +231,7 @@
   "transcript": {
     "label": "토론 기록",
     "empty": "아직 발언이 없습니다.",
+    "loadEarlier": "이전 메시지 불러오기",
     "you": "나",
     "system": "시스템",
     "moderator": "사회자",
