@@ -1299,9 +1299,7 @@ async fn blocking_with_cancel<T: Send + 'static>(
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let watcher = cancelled.clone();
     let mirror = tokio::spawn(async move {
-        while !token.is_stopped() {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        token.stopped_signal().await;
         watcher.store(true, std::sync::atomic::Ordering::Relaxed);
     });
     let result = tokio::task::spawn_blocking(move || work(&cancelled)).await;
