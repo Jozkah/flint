@@ -49,6 +49,38 @@ describe('ToolImage', () => {
     )
   })
 
+  // janhq/jan#9547: an MCP image result carries its type beside the payload.
+  it('builds the data url from the result mimeType', () => {
+    const { container } = render(
+      <ToolImage data="/9j/4AAQ" mimeType="image/jpeg" index={0} />
+    )
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      'data:image/jpeg;base64,/9j/4AAQ'
+    )
+  })
+
+  it('falls back to png for a mimeType that is not an image type', () => {
+    const { container } = render(
+      <ToolImage data="AAAA" mimeType="text/html;x" index={0} />
+    )
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      'data:image/png;base64,AAAA'
+    )
+  })
+
+  it('shows a placeholder when the image fails to load', () => {
+    const { container } = render(
+      <ToolImage data="not-an-image" mimeType="image/png" index={0} />
+    )
+    fireEvent.error(container.querySelector('img')!)
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByTestId('tool-image-failed')).toHaveTextContent(
+      'uiLeftovers:toolOutputImageFailed'
+    )
+  })
+
   it('rejects javascript: scheme', () => {
     const { container } = render(
       <ToolImage data="javascript:alert(1)" index={0} />

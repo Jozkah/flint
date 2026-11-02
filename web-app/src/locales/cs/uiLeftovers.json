@@ -76,6 +76,7 @@
     "stopped": "Zastaveno"
   },
   "toolOutputAlt": "Výstup nástroje",
+  "toolOutputImageFailed": "Obrázek nelze zobrazit",
   "memory": {
     "exportFilter": "Export paměti Flintu",
     "why": "Proč si to Flint pamatuje",
