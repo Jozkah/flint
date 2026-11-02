@@ -5,6 +5,9 @@
   "description": "How can I help you today?",
   "startedAt": "Started {{time}}",
   "errorBanner": {
+    "oomTitle": "llama.cpp ran out of memory",
+    "backendTitle": "GGML backend encountered an error",
+    "contextTitle": "Model ran out of context size",
     "oomReduceContext": "Reduce context size (ctx-size)",
     "oomDisableMtp": "Disable MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Lower n-gpu-layers or switch to a CPU backend",

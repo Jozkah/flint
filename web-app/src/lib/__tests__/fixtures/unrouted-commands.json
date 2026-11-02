@@ -1188,6 +1188,7 @@
     "web-app/src/lib/settings-backup-io.ts"
   ],
   "export_redacted_logs": [
+    "web-app/src/lib/previousRunNotice.ts",
     "web-app/src/services/app/tauri.ts"
   ],
   "export_save_file": [
@@ -1318,6 +1319,7 @@
     "web-app/src/lib/grandfatherFolderTrust.ts (via useThreads)",
     "web-app/src/lib/groups/homeMirror.ts (via useThreads)",
     "web-app/src/lib/nestPrune.ts (via useThreads)",
+    "web-app/src/lib/persistInterruptedReplies.ts (via useThreads)",
     "web-app/src/lib/projectMcpServers.ts (via useThreads)",
     "web-app/src/lib/regenerateTitle.ts (via useThreads)",
     "web-app/src/lib/remote/appActions.ts (via useThreads)",
@@ -2555,6 +2557,9 @@
   ],
   "take_pending_webdata_reset": [
     "web-app/src/main.tsx"
+  ],
+  "take_previous_run_notice": [
+    "web-app/src/lib/previousRunNotice.ts"
   ],
   "take_settings_recovery_notice": [
     "web-app/src/lib/settingsRecoveryNotice.ts"

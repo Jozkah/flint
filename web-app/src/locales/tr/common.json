@@ -2963,6 +2963,11 @@
     "title": "Sıfırlama tamamlanmadı",
     "description": "{{count}} öğe silinemedi ve hâlâ diskte duruyor:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint geçen sefer beklenmedik şekilde kapandı",
+    "description": "Önceki oturum düzgün kapanmadı. Hata raporuna eklemek için gizlenmiş bir günlük dışa aktarabilirsiniz. Hiçbir yere bir şey gönderilmez.",
+    "export": "Günlüğü dışa aktar"
+  },
   "settingsRecovered": {
     "title": "Ayar dosyası okunamadı",
     "withBackup": "{{file}} bozulmuştu, bu yüzden Flint varsayılan ayarlarla başladı. Bozuk dosya {{backup}} olarak saklandı.",

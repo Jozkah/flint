@@ -312,6 +312,23 @@ const CHAT_STATUS = {
   SUBMITTED: 'submitted',
 } as const
 
+/** The text and reasoning a reply generated so far. */
+type PartialContent = { text: string; reasoning: string }
+
+// What a resume replays as the assistant prefill, so a thinking model keeps
+// its reasoning and not just its text.
+const partialOf = (message: UIMessage): PartialContent => {
+  const collect = (type: 'text' | 'reasoning') =>
+    message.parts
+      .filter((p) => p.type === type)
+      .map((p) => (p as { text: string }).text)
+      .join('')
+  return { text: collect('text'), reasoning: collect('reasoning') }
+}
+
+const hasPartial = (content: PartialContent) =>
+  !!(content.text || content.reasoning)
+
 type ThreadModel = {
   id: string
   provider: string
@@ -580,11 +597,11 @@ export function ThreadConversation({
   // Compacts and continues a reply that stopped because the window filled;
   // resolves false when it could not, and the banner is shown instead.
   const recoverContextLimitRef = useRef<
-    ((message: UIMessage, partial: string) => Promise<boolean>) | null
+    ((message: UIMessage, partial: PartialContent) => Promise<boolean>) | null
   >(null)
-  const setContinueFromContentRef = useRef<((content: string) => void) | null>(
-    null
-  )
+  const setContinueFromContentRef = useRef<
+    ((content: PartialContent) => void) | null
+  >(null)
   const setChatMessagesRef = useRef<
     ((updater: (prev: UIMessage[]) => UIMessage[]) => void) | null
   >(null)
@@ -594,7 +611,7 @@ export function ThreadConversation({
   // stopped rather than regenerating from scratch.
   const pendingContinuationRef = useRef<{
     message: UIMessage
-    text: string
+    content: PartialContent
   } | null>(null)
   // Set before a generation when the resulting assistant message should be
   // linked to a specific parent (versioning). Consumed once in onFinish.
@@ -671,13 +688,12 @@ export function ThreadConversation({
           // Stash the partial so the manual "Increase Context Size" button can
           // resume from here. Surface the standard banner with the manual
           // button — auto-increase was removed; the user explicitly opts in.
-          const partialText = message.parts
-            .filter((p) => p.type === 'text')
-            .map((p) => (p as { type: 'text'; text: string }).text)
-            .join('')
+          // Reasoning too: a thinking model can fill the window before it
+          // writes any text, and its reasoning is what to resume from.
+          const partial = partialOf(message)
           const showBanner = () => {
-            if (partialText) {
-              pendingContinuationRef.current = { message, text: partialText }
+            if (hasPartial(partial)) {
+              pendingContinuationRef.current = { message, content: partial }
             }
             stampContextErrorOnThread(threadId)
             setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
@@ -687,7 +703,7 @@ export function ThreadConversation({
           // banner is for when that cannot be done.
           const recover = recoverContextLimitRef.current
           if (recover) {
-            void recover(message, partialText).then((recovered) => {
+            void recover(message, partial).then((recovered) => {
               if (recovered) return
               showBanner()
               // Nothing carried the reply on, so keep what the model wrote:
@@ -2515,15 +2531,9 @@ export function ThreadConversation({
     (messageId: string) => {
       const msg = chatMessagesRef.current.find((m) => m.id === messageId)
       if (!msg) return
-      const collect = (type: 'text' | 'reasoning') =>
-        msg.parts
-          .filter((p) => p.type === type)
-          .map((p) => (p as { text: string }).text)
-          .join('')
-      const text = collect('text')
-      const reasoning = collect('reasoning')
-      if (!text && !reasoning) return
-      setContinueFromContent({ text, reasoning })
+      const content = partialOf(msg)
+      if (!hasPartial(content)) return
+      setContinueFromContent(content)
       continueReplaceIdRef.current = messageId
       handleRegenerate(messageId)
     },
@@ -2606,6 +2616,21 @@ export function ThreadConversation({
   // Handler for increasing context size
   const handleContextSizeIncrease = useCallback(async () => {
     if (!selectedModel) return
+
+    // The reply this click resumes when the turn that stopped left nothing in
+    // pendingContinuationRef (a restart or a remount empties it): the stored
+    // partial, marked `stopped`, that hydration restored. Read before the
+    // awaits below, while the transcript is still this thread's.
+    const lastMessage = chatMessagesRef.current.at(-1)
+    const storedContent =
+      lastMessage?.role === 'assistant' &&
+      (lastMessage.metadata as { stopped?: boolean } | undefined)?.stopped
+        ? partialOf(lastMessage)
+        : undefined
+    const storedPartial =
+      lastMessage && storedContent && hasPartial(storedContent)
+        ? { message: lastMessage, content: storedContent }
+        : null
 
     const updateProvider = useModelProvider.getState().updateProvider
     const provider = getProviderByName(selectedProvider)
@@ -2690,13 +2715,14 @@ export function ThreadConversation({
       )
     }
 
-    // Consume any pending partial captured at the `finishReason === 'length'`
-    // event so the regenerate resumes from where the stream stopped, and the
-    // "Growing the Mind…" shimmer renders while the model reloads.
-    const pending = pendingContinuationRef.current
+    // Resume from the partial the reply stopped at: the one captured at the
+    // `finishReason === 'length'` event, or, when none was, the stored reply
+    // read above. The regenerate then continues it, and the "Growing the
+    // Mind…" shimmer renders while the model reloads.
+    const pending = pendingContinuationRef.current ?? storedPartial
     pendingContinuationRef.current = null
     if (pending) {
-      setContinueFromContentRef.current?.(pending.text)
+      setContinueFromContentRef.current?.(pending.content)
       setPendingContinueMessage(pending.message)
       // The partial is stored (see onFinish), so the resumed reply replaces it
       // in place rather than forking a second version of the same answer.
@@ -2796,7 +2822,7 @@ export function ThreadConversation({
         chatMessagesRef.current.filter((m) => m.id !== message.id)
       )
       if (!record) return false
-      if (partial) {
+      if (hasPartial(partial)) {
         setContinueFromContentRef.current?.(partial)
         setPendingContinueMessage(message)
       }
@@ -3506,10 +3532,10 @@ export function ThreadConversation({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-destructive mb-1">
                         {oomError
-                          ? 'llama.cpp ran out of memory'
+                          ? t('chat:errorBanner.oomTitle')
                           : backendError
-                            ? 'GGML backend encountered an error'
-                            : 'Model ran out of context size'}
+                            ? t('chat:errorBanner.backendTitle')
+                            : t('chat:errorBanner.contextTitle')}
                       </p>
                       <div className="table table-fixed w-full">
                         <span

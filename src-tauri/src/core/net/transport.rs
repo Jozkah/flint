@@ -509,6 +509,7 @@ fn unattributed(req: &ProviderRequest) -> Unattributed {
 /// the only one every provider call passes through -- which is exactly what a
 /// prompt snapshot has to be taken at. A request with no session is not a
 /// dispatch (discovery, a health check) and is not recorded.
+#[cfg(test)]
 fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
     capture_snapshot_into(req, &resolve_jan_data_folder())
 }

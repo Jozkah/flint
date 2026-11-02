@@ -1457,14 +1457,15 @@ impl AnthropicMessagesConverter {
 
 fn map_anthropic_finish(reason: &str, saw_tool: bool) -> &'static str {
     // A cut-off turn beats a tool call: the call's arguments may be truncated.
-    if reason == "max_tokens" {
+    // `model_context_window_exceeded` is a cut-off too: the output ran into the
+    // model's context window rather than the request's `max_tokens`.
+    if matches!(reason, "max_tokens" | "model_context_window_exceeded") {
         return "length";
     }
     if saw_tool {
         return "tool_calls";
     }
     match reason {
-        "max_tokens" => "length",
         "tool_use" => "tool_calls",
         "refusal" => "content_filter",
         _ => "stop",
@@ -3839,6 +3840,15 @@ mod anthropic_messages_tests {
             unmapped_params(&body, ANTHROPIC_MAPPED),
             vec!["n", "seed", "response_format"]
         );
+    }
+
+    #[test]
+    fn anthropic_context_window_exceeded_maps_to_length() {
+        assert_eq!(map_anthropic_finish("model_context_window_exceeded", false), "length");
+        // Like `max_tokens`, it beats a tool call whose arguments may be cut off.
+        assert_eq!(map_anthropic_finish("model_context_window_exceeded", true), "length");
+        assert_eq!(map_anthropic_finish("max_tokens", false), "length");
+        assert_eq!(map_anthropic_finish("end_turn", false), "stop");
     }
 }
 

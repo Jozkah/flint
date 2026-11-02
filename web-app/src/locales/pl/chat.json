@@ -301,13 +301,16 @@
     "stopGenerating": "Zatrzymaj generowanie"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp zabrakło pamięci",
+    "backendTitle": "Backend GGML napotkał błąd",
+    "contextTitle": "Modelowi zabrakło rozmiaru kontekstu",
     "oomReduceContext": "Zmniejsz rozmiar kontekstu (ctx-size)",
     "oomDisableMtp": "Wyłącz MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Zmniejsz n-gpu-layers lub przełącz się na backend CPU",
     "oomSmallerModel": "Użyj mniejszego / mocniej skwantyzowanego modelu",
     "serverContext": "Okno kontekstu tego modelu jest ustawiane przez jego serwer, więc Flint nie może go powiększyć. Rozpocznij nowy czat, skróć rozmowę lub zwiększ limit na serwerze.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Wygeneruj ponownie",
+    "reload": "Wczytaj ponownie"
   },
   "emptyRun": {
     "emptyReply": "Model zwrócił pustą odpowiedź. Spróbuj ponownie lub zmień model.",

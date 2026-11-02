@@ -235,6 +235,7 @@
   "transcript": {
     "label": "Transcripció del debat",
     "empty": "Encara no s'ha dit res.",
+    "loadEarlier": "Carrega els missatges anteriors",
     "you": "Tu",
     "system": "Sistema",
     "moderator": "Moderador",

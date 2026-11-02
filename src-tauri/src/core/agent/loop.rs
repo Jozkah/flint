@@ -3724,6 +3724,16 @@ async fn orchestrate_inner(
             crate::core::agent::reminder::attach(&mut conversation_messages, upkeep);
         }
     }
+    // The memory index in the prompt is the session-start snapshot, so notes
+    // written since are reported here, after the conversation, where a change
+    // does not resend the system prompt (janhq/jan#9497).
+    if offered.contains("memory_read") {
+        if let (Some(root), Some(sid)) = (project_root.as_deref(), session_id.as_deref()) {
+            if let Some(changes) = crate::core::agent::context::memory_changes_reminder(root, sid) {
+                crate::core::agent::reminder::attach(&mut conversation_messages, &changes);
+            }
+        }
+    }
     // Paired with the addendum above: force the model's very first tool call
     // to actually be `todo` rather than leaving compliance up to a prompt it
     // could silently ignore.
@@ -5901,96 +5911,14 @@ Address it and continue."
                 }
             }
 
-            // Every turn is finished and the run passed its token ceiling, so
-            // the conversation is both complete and oversized. Compact it here,
-            // while nothing is waiting on the result: the ceiling no longer
-            // stops a run, so without this the thread only grows, and the next
-            // run resumes it by sending the whole oversized history upstream.
-            // The reactive path above cannot help with that -- it only fires
-            // once an upstream has already rejected a request.
-            //
-            // Only when it actually shrinks: `compact_conversation` returns the
-            // input untouched when there is too little to drop, and publishing
-            // an unchanged history would spend a summarizer call for nothing.
-            if budget.exhausted() {
-                if let Some(record) = record {
-                    record.note(
-                        "compaction.started",
-                        serde_json::json!({
-                            "reason": "budget-exhausted",
-                            "messages": conversation_messages.len(),
-                        }),
-                    );
-                }
-                report_compaction(
-                    events,
-                    CompactionPhase::Started,
-                    CompactionReason::SessionBudget,
-                    None,
-                );
-                tools.observe_compaction(HookEvent::PreCompact);
-                match crate::core::agent::compaction::compact_conversation_with(
-                    &conversation_messages,
-                    model_id,
-                    model,
-                    &crate::core::agent::compaction::CompactOptions::from_body(json_body),
-                )
-                .await
-                {
-                    Ok(compacted) if compacted.len() < conversation_messages.len() => {
-                        report_compaction(
-                            events,
-                            CompactionPhase::Finished,
-                            CompactionReason::SessionBudget,
-                            Some(conversation_messages.len() - compacted.len()),
-                        );
-                        tools.observe_compaction(HookEvent::PostCompact);
-                        log::info!(
-                            "agent: budget exhausted at end of run, compacted {} -> {} messages",
-                            conversation_messages.len(),
-                            compacted.len()
-                        );
-                        if let Some(record) = record {
-                            record.note(
-                                "compaction.succeeded",
-                                serde_json::json!({
-                                    "reason": "budget-exhausted",
-                                    "from": conversation_messages.len(),
-                                    "to": compacted.len(),
-                                }),
-                            );
-                        }
-                        conversation_messages = compacted;
-                    }
-                    // Too little to drop: not a failure, and not a compaction
-                    // either, so the record says nothing happened. The event
-                    // still closes the `Started` a consumer is showing.
-                    Ok(_) => report_compaction(
-                        events,
-                        CompactionPhase::Failed,
-                        CompactionReason::SessionBudget,
-                        None,
-                    ),
-                    Err(error) => {
-                        report_compaction(
-                            events,
-                            CompactionPhase::Failed,
-                            CompactionReason::SessionBudget,
-                            None,
-                        );
-                        log::warn!("agent: budget exhausted but compaction failed: {error}");
-                        if let Some(record) = record {
-                            record.note(
-                                "compaction.failed",
-                                serde_json::json!({
-                                    "reason": "budget-exhausted",
-                                    "detail": bound_detail(error.message()),
-                                }),
-                            );
-                        }
-                    }
-                }
-            }
+            // A spent token ceiling does not compact here. Spend is not context
+            // size: every completion is charged in full, but thinking is not
+            // resent, so a long run on a reasoning model passes a window-sized
+            // ceiling while its prompt is a fraction of the window. Compacting
+            // then throws away live context and saves no spend. A history that
+            // really is oversized is compacted by the preflight above, on the
+            // next request that would carry it, and the overflow path covers a
+            // route with no known window once a provider rejects a request.
             let _ = events.send(StreamEvent::MessagesUpdated {
                 messages: conversation_messages.clone(),
             });

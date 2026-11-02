@@ -3024,6 +3024,11 @@
     "title": "Restabliment incomplet",
     "description": "No s'han pogut eliminar {{count}} element(s); encara són al disc:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint es va tancar de manera inesperada la darrera vegada",
+    "description": "L'execució anterior no es va tancar correctament. Pots exportar un registre amb dades ocultes per adjuntar-lo a un informe d'error. No s'envia res enlloc.",
+    "export": "Exporta el registre"
+  },
   "settingsRecovered": {
     "title": "No s'ha pogut llegir el fitxer de configuració",
     "withBackup": "{{file}} estava malmès, així que Flint ha començat amb la configuració per defecte. El fitxer malmès s'ha conservat com a {{backup}}.",
