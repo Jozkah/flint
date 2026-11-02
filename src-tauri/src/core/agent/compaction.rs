@@ -246,6 +246,14 @@ pub(crate) async fn compact_conversation_with(
     } else {
         pinned_messages(&rest[..cut])
     };
+    // The user's own task is kept apart from the span (pinned), so the
+    // summarizer would otherwise never see it and invent an intent from the
+    // last tool call. Give it as context, not as something to repeat.
+    let task_context: Option<String> = pins
+        .iter()
+        .find(|(_, label)| label.contains("opening user message"))
+        .map(|(i, _)| cap_pinned(&content_text(&rest[*i]), TASK_CONTEXT_MAX_CHARS))
+        .or_else(|| first_pinned_text(&prior.pinned));
     let dropped: Vec<Value> = rest[..cut]
         .iter()
         .enumerate()
@@ -267,6 +275,7 @@ pub(crate) async fn compact_conversation_with(
             options.summary_max_tokens,
             options.focus.as_deref(),
             prior.brief.as_deref(),
+            task_context.as_deref(),
         )
         .await?;
         if written == FALLBACK_NOTE {
@@ -296,6 +305,22 @@ pub(crate) async fn compact_conversation_with(
     out.extend_from_slice(kept);
     Ok(out)
 }
+
+/// The text of the first pinned block in a summary's carried-on pins (the
+/// opening user message), without its header line.
+fn first_pinned_text(pinned: &str) -> Option<String> {
+    let body = pinned.trim().strip_prefix(PIN_HEADER)?;
+    let (_, text) = body.split_once("]
+")?;
+    let text = text.split(&format!("
+
+{PIN_HEADER}")).next().unwrap_or(text);
+    let text = text.trim();
+    (!text.is_empty()).then(|| cap_pinned(text, TASK_CONTEXT_MAX_CHARS))
+}
+
+/// The most of the user's task shown to the summarizer as context.
+const TASK_CONTEXT_MAX_CHARS: usize = 3_000;
 
 /// Added to the summarizer's prompt when it is handed an earlier summary.
 const MERGE_INSTRUCTION: &str = "The transcript opens with a PRIOR CHECKPOINT. Write one summary that merges it with the conversation since: keep what is still true and still needed, update what the new conversation changed, and drop what it superseded or finished. Do not repeat the checkpoint's wording for its own sake.";
@@ -499,6 +524,7 @@ async fn summarize(
     max_tokens: u64,
     focus: Option<&str>,
     prior: Option<&str>,
+    task: Option<&str>,
 ) -> Result<String, HarnessError> {
     let system_prompt = match focus {
         Some(f) => format!(
@@ -523,6 +549,17 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
     } else {
         system_prompt
     };
+    // The user's task leads everything, so the summary says what has been done
+    // toward it and what remains instead of guessing the goal. In the user turn
+    // only: the system prompt stays the same constant whether or not there is one.
+    if let Some(task) = task {
+        full_transcript = format!(
+            "THE USER'S ORIGINAL TASK (kept in full elsewhere; do not copy it, use it to say how far the work has got toward it, which parts remain, and the next step):
+{task}
+
+{full_transcript}"
+        );
+    }
     // Character counts are only a rough proxy for tokens. Token-dense tool
     // output can make even the clamped request overflow a small local window.
     // Retry with less transcript, preserving its beginning and end each time.
@@ -665,7 +702,9 @@ mod tests {
         let sys = requests[0]["messages"][0]["content"].as_str().unwrap();
         let user = requests[0]["messages"][1]["content"].as_str().unwrap();
         assert!(sys.contains("PRIOR CHECKPOINT"), "{sys}");
-        assert!(user.starts_with("PRIOR CHECKPOINT") && user.contains("FIRST BRIEF") && user.contains("later0"), "{user}");
+        // The pinned task leads the input, so the summary can say what remains of it.
+        assert!(user.starts_with("THE USER'S ORIGINAL TASK") && user.contains("msg0"), "{user}");
+        assert!(user.contains("PRIOR CHECKPOINT") && user.contains("FIRST BRIEF") && user.contains("later0"), "{user}");
         // A pass that writes nothing keeps what the run already knew.
         let kept = compact_conversation_with(&grown, "m", &FailingModel, &opts).await.unwrap();
         let note = kept.iter().find(|m| is_compaction_summary(m)).map(content_text).unwrap();
@@ -829,7 +868,11 @@ mod tests {
         assert_eq!(messages[1]["role"], "user");
         let transcript = messages[1]["content"].as_str().unwrap();
         // msg0 is the opening user message: pinned, so never summarized.
-        assert!(!transcript.contains("msg0"), "the pinned task is not re-sent");
+        // The pinned task is not part of the span, but it is shown once, labelled,
+        // as context: without it a small model invents the intent from the last
+        // tool call (seen against a real 4B model).
+        assert!(transcript.starts_with("THE USER'S ORIGINAL TASK"), "{transcript}");
+        assert_eq!(transcript.matches("msg0").count(), 1, "shown once, as context");
         assert!(transcript.contains("msg1"), "dropped span is summarized");
         assert!(transcript.contains("msg15"), "dropped span runs to the cut");
         for kept in ["msg16", "msg17", "msg18", "msg19"] {
