@@ -28,6 +28,7 @@ import { parseBashOutput } from '@/lib/toolPresentation'
 import { describeToolCall, toolCallFailed } from '@/lib/activityDetail'
 import { cn } from '@/lib/utils'
 import { formatMessageTime } from '@/utils/formatMessageTime'
+import { basename } from '@/lib/path'
 
 type ToolPart = {
   type: string
@@ -47,7 +48,7 @@ const arg = (input: unknown, key: string): string => {
   return typeof value === 'string' ? value : ''
 }
 
-const baseName = (path: string) => path.split(/[\\/]/).pop() || path
+const baseName = basename
 
 const EDIT_TOOLS = new Set(['edit', 'write', 'edit_file', 'write_file'])
 const READ_TOOLS = new Set(['read', 'read_file'])

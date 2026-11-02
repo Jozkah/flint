@@ -1,3 +1,4 @@
+import { basename } from './path'
 /**
  * Find the vision projector that sits next to a model file.
  *
@@ -11,9 +12,7 @@
 const MMPROJ = /mmproj.*\.gguf$/i
 const QUANT_SUFFIX = /[-_.](?:i?q\d\w*|f16|bf16|f32)$/i
 
-function baseName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path
-}
+const baseName = basename
 
 /** The model's name without extension, quantisation or `mmproj` markers. */
 function stem(fileName: string): string {

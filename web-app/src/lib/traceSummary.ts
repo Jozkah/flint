@@ -7,6 +7,7 @@
  */
 import { toolKind } from '@/lib/toolKind'
 import { parseBashOutput } from '@/lib/toolPresentation'
+import { basename } from './path'
 
 export type TraceSummaryPart = {
   type: string
@@ -310,8 +311,6 @@ export function summaryDetails(parts: TraceSummaryPart[]): string {
     .join('\n')
 }
 
-const basename = (p: string): string =>
-  p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p
 
 const clip = (text: string, max = 80): string => {
   const one = text.replace(/\s+/g, ' ').trim()

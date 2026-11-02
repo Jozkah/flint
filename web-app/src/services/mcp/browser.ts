@@ -20,12 +20,12 @@ import type {
   ServerSummary,
   ToolCallWithCancellationResult,
 } from './types'
+import { isRecord } from '@/lib/typeGuards'
 
 const base = '/api/v1/mcp'
 const server = (name: string) => `${base}/servers/${encodeURIComponent(name)}`
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+const isPlainObject = isRecord
 
 type CallArgs = {
   toolName: string

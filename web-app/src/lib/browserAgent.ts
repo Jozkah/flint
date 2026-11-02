@@ -17,6 +17,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useWebPreview } from '@/hooks/useWebPreview'
 import { useBrowserShots } from '@/hooks/useBrowserShots'
+import { errorText } from './errorText'
 
 export const BROWSER_TOOL_NAMES = new Set([
   'browser_open',
@@ -277,8 +278,7 @@ export async function applyAnswer(
   return true
 }
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+const messageOf = errorText
 
 /**
  * Run one browser tool. Returns what the model should see.

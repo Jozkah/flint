@@ -33,6 +33,7 @@ import type {
   SessionSummary,
   ThreadMessagesParams,
 } from './protocol'
+import { basename } from '../path'
 
 export type ChatSource = {
   id: string
@@ -106,7 +107,6 @@ export const DEFAULT_PAGE = 50
 export const MAX_PAGE = 200
 
 const toMs = (t: number) => (t < 1e12 ? Math.round(t * 1000) : t)
-const basename = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 
 export function roomStatus(s: string): SessionStatus {
   switch (s) {

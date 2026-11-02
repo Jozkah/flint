@@ -17,6 +17,7 @@ import type {
 } from './types'
 import { DefaultMCPService } from './default'
 import { recordToolCall } from '@/stores/engine-activity-store'
+import { isRecord } from '@/lib/typeGuards'
 
 /**
  * Counts a finished call for the Tools & MCP page's per-server charts. The
@@ -275,6 +276,4 @@ export class TauriMCPService extends DefaultMCPService {
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+const isPlainObject = isRecord
