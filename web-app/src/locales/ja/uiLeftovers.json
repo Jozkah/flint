@@ -76,6 +76,7 @@
     "stopped": "停止中"
   },
   "toolOutputAlt": "ツールの出力",
+  "toolOutputImageFailed": "画像を表示できませんでした",
   "memory": {
     "exportFilter": "Flint メモリのエクスポート",
     "why": "Flint がこれを覚えている理由",

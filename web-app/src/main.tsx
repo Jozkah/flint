@@ -187,6 +187,9 @@ const boot = async () => {
       void import('@/lib/factoryResetReport').then((m) =>
         m.showFactoryResetReport()
       )
+      void import('@/lib/previousRunNotice').then((m) =>
+        m.showPreviousRunNotice()
+      )
     }, 1500)
   }
 }

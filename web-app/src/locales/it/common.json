@@ -3024,6 +3024,11 @@
     "title": "Ripristino incompleto",
     "description": "{{count}} elemento/i non sono stati rimossi e sono ancora sul disco:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint si è chiuso in modo imprevisto l'ultima volta",
+    "description": "L'esecuzione precedente non si è chiusa correttamente. Puoi esportare un log con i dati oscurati da allegare a una segnalazione di bug. Non viene inviato nulla.",
+    "export": "Esporta il log"
+  },
   "settingsRecovered": {
     "title": "Impossibile leggere il file delle impostazioni",
     "withBackup": "{{file}} era danneggiato, quindi Flint è partito con le impostazioni predefinite. Il file danneggiato è stato conservato come {{backup}}.",

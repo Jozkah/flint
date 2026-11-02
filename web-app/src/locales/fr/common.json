@@ -3024,6 +3024,11 @@
     "title": "Réinitialisation incomplète",
     "description": "{{count}} élément(s) n'ont pas pu être supprimés et sont toujours sur le disque :\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint s'est fermé de façon inattendue la dernière fois",
+    "description": "L'exécution précédente ne s'est pas arrêtée proprement. Vous pouvez exporter un journal expurgé à joindre à un rapport de bogue. Rien n'est envoyé.",
+    "export": "Exporter le journal"
+  },
   "settingsRecovered": {
     "title": "Le fichier de paramètres n'a pas pu être lu",
     "withBackup": "{{file}} était endommagé, donc Flint a démarré avec les paramètres par défaut. Le fichier endommagé a été conservé sous le nom {{backup}}.",

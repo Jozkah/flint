@@ -287,13 +287,16 @@
     "stopGenerating": "Dừng tạo"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp đã hết bộ nhớ",
+    "backendTitle": "Backend GGML gặp lỗi",
+    "contextTitle": "Mô hình đã vượt quá kích thước ngữ cảnh",
     "oomReduceContext": "Giảm kích thước ngữ cảnh (ctx-size)",
     "oomDisableMtp": "Tắt MTP (dự đoán nhiều token)",
     "oomLowerGpuLayers": "Giảm n-gpu-layers hoặc chuyển sang backend CPU",
     "oomSmallerModel": "Dùng mô hình nhỏ hơn / lượng tử hóa nhiều hơn",
     "serverContext": "Cửa sổ ngữ cảnh của mô hình này do máy chủ của nó đặt, nên Flint không thể mở rộng. Hãy bắt đầu cuộc trò chuyện mới, rút ngắn cuộc trò chuyện hoặc nâng giới hạn trên máy chủ.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Tạo lại",
+    "reload": "Tải lại"
   },
   "emptyRun": {
     "emptyReply": "Mô hình trả về phản hồi trống. Hãy thử lại hoặc đổi mô hình.",

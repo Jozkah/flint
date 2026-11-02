@@ -3024,6 +3024,11 @@
     "title": "Redefinição incompleta",
     "description": "{{count}} item(ns) não puderam ser removidos e continuam no disco:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "O Flint foi encerrado inesperadamente da última vez",
+    "description": "A execução anterior não terminou corretamente. Você pode exportar um registro com dados ocultados para anexar a um relatório de bug. Nada é enviado a lugar nenhum.",
+    "export": "Exportar registro"
+  },
   "settingsRecovered": {
     "title": "Não foi possível ler o arquivo de configurações",
     "withBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. O arquivo danificado foi mantido como {{backup}}.",

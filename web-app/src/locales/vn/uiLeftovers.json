@@ -76,6 +76,7 @@
     "stopped": "Đã dừng"
   },
   "toolOutputAlt": "Kết quả công cụ",
+  "toolOutputImageFailed": "Không thể hiển thị hình ảnh",
   "memory": {
     "exportFilter": "Bản xuất bộ nhớ Flint",
     "why": "Vì sao Flint nhớ điều này",

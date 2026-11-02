@@ -231,6 +231,7 @@
   "transcript": {
     "label": "讨论记录",
     "empty": "目前还没有人发言。",
+    "loadEarlier": "加载更早的消息",
     "you": "你",
     "system": "系统",
     "moderator": "主持人",
