@@ -236,31 +236,31 @@ pub(crate) async fn compact_conversation_with(
     model: &dyn ModelInvoker,
     options: &CompactOptions,
 ) -> Result<Vec<Value>, HarnessError> {
-    let keep_recent = options.keep_recent;
     let sys_end = messages.iter().take_while(|m| role(m) == "system").count();
     let (system_msgs, rest) = messages.split_at(sys_end);
+
+    // Cap the tail by what it costs, not only by how many messages it has. Done
+    // before anything else: in a small window a handful of large messages is
+    // already past the budget, and a conversation of fewer messages than the
+    // count would otherwise be left whole however full the window is.
+    let mut keep_recent = options.keep_recent;
+    if let Some(budget) = options.retain_tokens {
+        while keep_recent > MIN_TAIL_MESSAGES
+            && crate::core::agent::compaction_policy::estimate_tokens(
+                &rest[rest.len().saturating_sub(keep_recent)..],
+            ) > budget
+        {
+            keep_recent -= 1;
+        }
+    }
 
     if rest.len() <= keep_recent {
         return Ok(messages.to_vec());
     }
 
-    let Some(mut cut) = tail_start(rest, rest.len() - keep_recent) else {
+    let Some(cut) = tail_start(rest, rest.len() - keep_recent) else {
         return Ok(messages.to_vec());
     };
-    // Cap the tail by what it costs, not only by how many messages it has.
-    if let Some(budget) = options.retain_tokens {
-        let mut keep = keep_recent;
-        while keep > MIN_TAIL_MESSAGES
-            && crate::core::agent::compaction_policy::estimate_tokens(&rest[cut..]) > budget
-        {
-            keep -= 1;
-            match tail_start(rest, rest.len() - keep) {
-                Some(next) if next > cut => cut = next,
-                Some(_) => {}
-                None => break,
-            }
-        }
-    }
 
     let kept = &rest[cut..];
     // The opening instruction survives verbatim: pinned messages leave the
@@ -617,6 +617,11 @@ mod tests {
         assert!(capped.len() >= 2 + MIN_TAIL_MESSAGES, "never below the floor");
         // The newest message always survives.
         assert!(content_text(capped.last().unwrap()).starts_with("19 "));
+        // Fewer messages than the count, but over the budget: still compacted.
+        let short: Vec<Value> = convo.iter().take(8).cloned().collect(); // system + 7
+        let over = compact_conversation_with(&short, "m", &ok(), &CompactOptions { keep_recent: 8, retain_tokens: Some(3_000), ..CompactOptions::default() }).await.unwrap();
+        assert!(over.len() < short.len() + 1, "{} vs {}", over.len(), short.len());
+        assert!(over.iter().any(is_compaction_summary), "a summary replaced the older messages");
         // A generous budget changes nothing.
         let roomy = compact_conversation_with(&convo, "m", &ok(), &CompactOptions { keep_recent: 8, retain_tokens: Some(1_000_000), ..CompactOptions::default() }).await.unwrap();
         assert_eq!(roomy.len(), by_count.len());
