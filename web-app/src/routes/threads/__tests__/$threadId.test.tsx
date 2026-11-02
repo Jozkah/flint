@@ -334,7 +334,9 @@ vi.mock('@/lib/messages', () => ({
       .filter((p: any) => p.type === 'text')
       .map((p: any) => ({ type: 'text', text: { value: p.text, annotations: [] } })),
   uiMessageHasMeaningfulContent: (msg: any) =>
-    !!msg?.parts?.some((p: any) => p.type === 'text' && p.text?.trim()),
+    !!msg?.parts?.some(
+      (p: any) => (p.type === 'text' || p.type === 'reasoning') && p.text?.trim()
+    ),
 }))
 
 vi.mock('@/lib/completion', () => ({
@@ -1252,6 +1254,138 @@ describe('ThreadDetail route', () => {
     } finally {
       delete h.messagesState.messages
     }
+  })
+
+  // janhq/jan#9393: a reply that fills a local model's context is resumed by
+  // Increase Context Size from everything it generated, reasoning included,
+  // and from the stored partial when nothing is held in memory.
+  describe('Increase Context Size resumes the partial reply', () => {
+    const increaseLabel =
+      /^(Increase Context Size|common:outOfContextError\.increaseContextSize)$/
+
+    // Clicks Increase Context Size and lets its delayed regenerate fire.
+    const increaseContext = async () => {
+      const realModels = hub.models as () => Record<string, unknown>
+      hub.models = () => ({
+        ...realModels(),
+        updateModelSettings: vi.fn().mockResolvedValue(undefined),
+      })
+      vi.useFakeTimers()
+      try {
+        await act(async () => {
+          screen.getByText(increaseLabel).click()
+        })
+        await act(async () => {
+          vi.advanceTimersByTime(1000)
+        })
+      } finally {
+        vi.clearAllTimers()
+        vi.useRealTimers()
+        hub.models = realModels
+      }
+    }
+
+    // A thinking model can fill the window while still reasoning: there is no
+    // text yet, and the reasoning is what to resume from.
+    it('replays the reasoning of a reply that filled the window', async () => {
+      h.modelProviderState.selectedProvider = 'llamacpp'
+      renderComponent()
+      act(() => {
+        ;(h as any).capturedOnFinish({
+          message: {
+            id: 'a-len',
+            role: 'assistant',
+            parts: [{ type: 'reasoning', text: 'still thinking' }],
+            metadata: {
+              finishReason: 'length',
+              usage: { inputTokens: 3000, outputTokens: 1096 },
+            },
+          },
+          isAbort: false,
+          isError: false,
+        })
+      })
+      await waitFor(() =>
+        expect(screen.getByText(increaseLabel)).toBeInTheDocument()
+      )
+      // The partial is kept as a stopped reply, not dropped.
+      await waitFor(() =>
+        expect(
+          h.messagesState.addMessage.mock.calls.some(
+            (c: any[]) => c[0].id === 'a-len' && c[0].metadata?.stopped
+          )
+        ).toBe(true)
+      )
+
+      await increaseContext()
+      expect(h.mockSetContinueFromContent).toHaveBeenCalledWith({
+        text: '',
+        reasoning: 'still thinking',
+      })
+      expect(h.mockRegenerate).toHaveBeenCalledWith({ messageId: 'a-len' })
+    })
+
+    // After a restart nothing is held in memory; the stopped reply hydration
+    // restored is resumed in place, reasoning and text both.
+    it('resumes the stored stopped partial after a restart', async () => {
+      h.modelProviderState.selectedProvider = 'llamacpp'
+      h.messagesState.messages = {
+        'thread-1': [
+          {
+            id: 'a-len',
+            role: 'assistant',
+            content: [],
+            metadata: { contextError: 'OUT_OF_CONTEXT_SIZE' },
+          },
+        ],
+      }
+      h.messagesState.getMessages = vi.fn(() => [
+        { id: 'u1', role: 'user', thread_id: 'thread-1', content: [], metadata: { parentId: null } },
+        { id: 'a-len', role: 'assistant', thread_id: 'thread-1', content: [], metadata: { stopped: true, parentId: 'u1' } },
+      ])
+      h.chatState.messages = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'q' }] },
+        {
+          id: 'a-len',
+          role: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'thinking' },
+            { type: 'text', text: 'partial answer' },
+          ],
+          metadata: { stopped: true, parentId: 'u1' },
+        },
+      ]
+      try {
+        renderComponent()
+        await increaseContext()
+        expect(h.mockSetContinueFromContent).toHaveBeenCalledWith({
+          text: 'partial answer',
+          reasoning: 'thinking',
+        })
+        expect(h.mockRegenerate).toHaveBeenCalledWith({ messageId: 'a-len' })
+
+        // The resumed reply replaces the stored partial rather than forking a
+        // second version of the same answer.
+        act(() => {
+          ;(h as any).capturedOnFinish({
+            message: {
+              id: 'a-new',
+              role: 'assistant',
+              parts: [{ type: 'text', text: 'partial answer, done' }],
+              metadata: {},
+            },
+            isAbort: false,
+            isError: false,
+          })
+        })
+        expect(h.messagesState.deleteMessage).toHaveBeenCalledWith(
+          'thread-1',
+          'a-len'
+        )
+      } finally {
+        delete h.messagesState.messages
+      }
+    })
   })
 
   it('shows PromptProgress while status is submitted', () => {
