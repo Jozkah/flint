@@ -5155,6 +5155,9 @@ async fn run_turn_cycle(
     let mut refill_guard = crate::core::agent::compaction_policy::RefillGuard::new(
         crate::core::agent::compaction_policy::RefillLimits::default(),
     );
+    // The provider's last prompt count, so the proactive trigger measures from
+    // what the request really cost instead of a characters-over-four guess.
+    let mut usage_anchor: Option<crate::core::agent::compaction_policy::UsageAnchor> = None;
     // Holds this cycle's offload budget; `None` condenses stale results in place.
     let mut offloader = json_body
         .get(BODY_OFFLOAD_ROOT)
@@ -5363,7 +5366,11 @@ async fn run_turn_cycle(
         if let Some(thresholds) = compaction_thresholds {
             use crate::core::agent::compaction_policy as cpol;
             refill_guard.on_turn();
-            if cpol::should_compact(&conversation_messages, &thresholds) {
+            if cpol::should_compact_calibrated(
+                &conversation_messages,
+                usage_anchor.as_ref(),
+                &thresholds,
+            ) {
                 match refill_guard.decide() {
                     cpol::CompactionDecision::Proceed => {
                         let before = cpol::estimate_tokens(&conversation_messages);
@@ -5375,7 +5382,12 @@ async fn run_turn_cycle(
                         );
                         // 2. Full compaction only if still over the threshold.
                         let mut full_shrunk = false;
-                        if cpol::should_compact(&projected, &thresholds) {
+                        if cpol::calibrated_tokens_after(
+                            &conversation_messages,
+                            &projected,
+                            usage_anchor.as_ref(),
+                        ) >= thresholds.compact_at
+                        {
                             let opts =
                                 crate::core::agent::compaction::CompactOptions::from_body(json_body);
                             report_compaction(
@@ -5657,6 +5669,13 @@ async fn run_turn_cycle(
             });
         }
         budget.record(&turn_usage);
+        // Right now the conversation is exactly what that request carried.
+        usage_anchor = turn_usage
+            .as_ref()
+            .and_then(|u| u.prompt_tokens)
+            .and_then(|tokens| {
+                crate::core::agent::compaction_policy::UsageAnchor::new(tokens, &conversation_messages)
+            });
         if budget.max_usd().is_some() {
             last_completion = Some(completion.clone());
         }
