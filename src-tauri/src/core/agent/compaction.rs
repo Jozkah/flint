@@ -222,6 +222,8 @@ pub(crate) async fn compact_conversation_with(
     let keep_recent = options.keep_recent;
     let sys_end = messages.iter().take_while(|m| role(m) == "system").count();
     let (system_msgs, rest) = messages.split_at(sys_end);
+    // Earlier summaries are folded into this one rather than stacked beside it.
+    let prior = PriorSummaries::from(system_msgs);
 
     if rest.len() <= keep_recent {
         return Ok(messages.to_vec());
@@ -253,13 +255,30 @@ pub(crate) async fn compact_conversation_with(
     // `trim` asks for no model call at all: the span is dropped and the model
     // is told it was, rather than shown a summary nobody wrote.
     let summary = if options.trim {
-        FALLBACK_NOTE.to_string()
+        prior.with_note(FALLBACK_NOTE)
+    } else if dropped.is_empty() && prior.brief.is_some() {
+        // Only pinned text left to drop: nothing new to fold in.
+        prior.brief.clone().unwrap_or_default()
     } else {
-        summarize(&dropped, model_id, model, options.summary_max_tokens, options.focus.as_deref()).await?
+        let written = summarize(
+            &dropped,
+            model_id,
+            model,
+            options.summary_max_tokens,
+            options.focus.as_deref(),
+            prior.brief.as_deref(),
+        )
+        .await?;
+        if written == FALLBACK_NOTE {
+            prior.with_note(FALLBACK_NOTE)
+        } else {
+            written
+        }
     };
 
-    let mut content =
-        format!("[Summary of earlier conversation, condensed to save context]\n\n{summary}");
+    let mut content = format!("{SUMMARY_HEADER}{summary}");
+    // Pinned blocks of the summaries this one replaces travel on verbatim.
+    content.push_str(&prior.pinned);
     for (index, label) in &pins {
         // The task is the user's own text sitting under the system role now, so
         // anything in it that imitates the harness is neutralized, as for text
@@ -272,10 +291,51 @@ pub(crate) async fn compact_conversation_with(
     }
 
     let mut out = Vec::with_capacity(system_msgs.len() + 1 + kept.len());
-    out.extend_from_slice(system_msgs);
+    out.extend(system_msgs.iter().filter(|m| !is_compaction_summary(m)).cloned());
     out.push(json!({ "role": "system", "content": content }));
     out.extend_from_slice(kept);
     Ok(out)
+}
+
+/// Added to the summarizer's prompt when it is handed an earlier summary.
+const MERGE_INSTRUCTION: &str = "The transcript opens with a PRIOR CHECKPOINT. Write one summary that merges it with the conversation since: keep what is still true and still needed, update what the new conversation changed, and drop what it superseded or finished. Do not repeat the checkpoint's wording for its own sake.";
+
+const SUMMARY_HEADER: &str = "[Summary of earlier conversation, condensed to save context]\n\n";
+
+/// The summaries an earlier compaction left among the system messages, split
+/// into the brief to fold into the next one and the pinned blocks to carry on.
+struct PriorSummaries {
+    brief: Option<String>,
+    pinned: String,
+}
+
+impl PriorSummaries {
+    fn from(system_msgs: &[Value]) -> Self {
+        let mut briefs: Vec<String> = Vec::new();
+        let mut pinned = String::new();
+        for msg in system_msgs.iter().filter(|m| is_compaction_summary(m)) {
+            let text = content_text(msg);
+            let body = text.strip_prefix(SUMMARY_HEADER).unwrap_or(&text);
+            let split = body.find(&format!("\n\n{PIN_HEADER}")).unwrap_or(body.len());
+            let (brief, pins) = body.split_at(split);
+            if !brief.trim().is_empty() {
+                briefs.push(brief.trim().to_string());
+            }
+            pinned.push_str(pins);
+        }
+        Self {
+            brief: (!briefs.is_empty()).then(|| briefs.join("\n\n---\n\n")),
+            pinned,
+        }
+    }
+
+    /// The prior brief followed by `note`, for a pass that wrote nothing new.
+    fn with_note(&self, note: &str) -> String {
+        match &self.brief {
+            Some(brief) => format!("{brief}\n\n{note}"),
+            None => note.to_string(),
+        }
+    }
 }
 
 /// Opens each pinned block inside a summary node; also how a later pass knows
@@ -438,6 +498,7 @@ async fn summarize(
     model: &dyn ModelInvoker,
     max_tokens: u64,
     focus: Option<&str>,
+    prior: Option<&str>,
 ) -> Result<String, HarnessError> {
     let system_prompt = match focus {
         Some(f) => format!(
@@ -448,10 +509,20 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
         ),
         None => SUMMARY_SYSTEM_PROMPT.to_string(),
     };
-    let full_transcript = render_transcript(dropped);
+    let mut full_transcript = render_transcript(dropped);
     if full_transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
     }
+    // An earlier summary leads the transcript, so the clamp keeps it and a
+    // retry that halves the input cuts from the middle of the new history.
+    let system_prompt = if let Some(prior) = prior {
+        full_transcript = format!(
+            "PRIOR CHECKPOINT (a summary of the conversation before this transcript):\n{prior}\n\nCONVERSATION SINCE THE CHECKPOINT:\n{full_transcript}"
+        );
+        format!("{system_prompt}\n\n{MERGE_INSTRUCTION}")
+    } else {
+        system_prompt
+    };
     // Character counts are only a rough proxy for tokens. Token-dense tool
     // output can make even the clamped request overflow a small local window.
     // Retry with less transcript, preserving its beginning and end each time.
@@ -569,6 +640,39 @@ mod tests {
 
     /// AH-076: `strategy = trim` compacts without a model call, and the
     /// summary cap from the policy reaches the summarizer's request.
+    #[tokio::test]
+    async fn a_second_compaction_folds_the_first_summary_in_instead_of_stacking() {
+        let stub = |text: &str| StubModel { summary: text.into(), calls: StdMutex::new(0), requests: tokio::sync::Mutex::new(Vec::new()) };
+        let opts = CompactOptions { keep_recent: 4, ..CompactOptions::default() };
+        let first = compact_conversation_with(&convo(20), "m", &stub("FIRST BRIEF"), &opts).await.unwrap();
+        assert_eq!(first.iter().filter(|m| is_compaction_summary(m)).count(), 1);
+        // The run goes on and grows again.
+        let mut grown = first.clone();
+        for i in 0..16 {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            grown.push(json!({ "role": r, "content": format!("later{i}") }));
+        }
+        let model = stub("SECOND BRIEF");
+        let second = compact_conversation_with(&grown, "m", &model, &opts).await.unwrap();
+        // One summary, holding the new brief, the pinned task, and not the old brief.
+        let summaries: Vec<String> = second.iter().filter(|m| is_compaction_summary(m)).map(content_text).collect();
+        assert_eq!(summaries.len(), 1, "{summaries:?}");
+        assert!(summaries[0].contains("SECOND BRIEF"), "{}", summaries[0]);
+        assert!(summaries[0].contains("msg0"), "the pinned task is carried on: {}", summaries[0]);
+        assert!(!summaries[0].contains("FIRST BRIEF"), "the old brief was folded in, not kept");
+        // The summarizer was handed the prior checkpoint to merge.
+        let requests = model.requests.lock().await;
+        let sys = requests[0]["messages"][0]["content"].as_str().unwrap();
+        let user = requests[0]["messages"][1]["content"].as_str().unwrap();
+        assert!(sys.contains("PRIOR CHECKPOINT"), "{sys}");
+        assert!(user.starts_with("PRIOR CHECKPOINT") && user.contains("FIRST BRIEF") && user.contains("later0"), "{user}");
+        // A pass that writes nothing keeps what the run already knew.
+        let kept = compact_conversation_with(&grown, "m", &FailingModel, &opts).await.unwrap();
+        let note = kept.iter().find(|m| is_compaction_summary(m)).map(content_text).unwrap();
+        assert!(note.contains("FIRST BRIEF") && note.contains(FALLBACK_NOTE), "{note}");
+        assert_eq!(kept.iter().filter(|m| is_compaction_summary(m)).count(), 1);
+    }
+
     #[tokio::test]
     async fn the_policy_decides_whether_a_model_is_asked_and_for_how_long_a_summary() {
         let model = StubModel {
