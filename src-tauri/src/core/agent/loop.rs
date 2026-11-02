@@ -5441,6 +5441,7 @@ async fn run_turn_cycle(
                                         "tokensAfter": after,
                                         "condensed": micro_stats.condensed,
                                         "offloaded": micro_stats.offloaded,
+                                        "images": micro_stats.images,
                                         "full": full_shrunk,
                                     }),
                                 );

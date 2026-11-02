@@ -228,6 +228,8 @@ pub struct MicrocompactStats {
     pub condensed: usize,
     /// Number of tool results moved to a file and replaced by a pointer.
     pub offloaded: usize,
+    /// Number of images from older messages replaced by a text marker.
+    pub images: usize,
     /// Estimated tokens removed (before minus after).
     pub tokens_removed: u64,
 }
@@ -432,15 +434,57 @@ pub fn microcompact_offloading(
         }
         out.push(msg.clone());
     }
+    let images = drop_stale_images(&mut out, KEEP_RECENT_IMAGE_MESSAGES);
     let after = estimate_tokens(&out);
     (
         out,
         MicrocompactStats {
             condensed,
             offloaded,
+            images,
             tokens_removed: before.saturating_sub(after),
         },
     )
+}
+
+/// The newest messages that carry an image keep theirs; the model is likely
+/// still looking at those.
+pub const KEEP_RECENT_IMAGE_MESSAGES: usize = 2;
+
+const IMAGE_OMITTED: &str =
+    "[image omitted to save context; read the file again, or ask the user to resend it, to see it]";
+
+fn is_image_part(part: &Value) -> bool {
+    part.get("type").and_then(|t| t.as_str()) == Some("image_url")
+}
+
+/// Replace the image parts of every message but the newest `keep` image-bearing
+/// ones with a short text marker. A screenshot costs thousands of tokens and
+/// goes stale as fast as the page it shows; the estimate counts one at a flat
+/// 256, so these are the largest single items a long browser or
+/// computer-use session carries. Returns how many images were dropped.
+fn drop_stale_images(messages: &mut [Value], keep: usize) -> usize {
+    let bearing: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| {
+            m.get("content")
+                .and_then(|c| c.as_array())
+                .is_some_and(|parts| parts.iter().any(is_image_part))
+        })
+        .map(|(i, _)| i)
+        .collect();
+    let stale = bearing.len().saturating_sub(keep);
+    let mut dropped = 0;
+    for &i in &bearing[..stale] {
+        if let Some(parts) = messages[i].get_mut("content").and_then(|c| c.as_array_mut()) {
+            for part in parts.iter_mut().filter(|p| is_image_part(p)) {
+                *part = serde_json::json!({ "type": "text", "text": IMAGE_OMITTED });
+                dropped += 1;
+            }
+        }
+    }
+    dropped
 }
 
 /// Build a condensed copy of one tool-result message, or `None` when its content
@@ -775,6 +819,35 @@ mod tests {
         assert!(!should_compact(&small, &t));
         let big = vec![json!({ "role": "user", "content": "x".repeat(1_000) })];
         assert!(should_compact(&big, &t));
+    }
+
+    // --- stale images ---
+
+    #[test]
+    fn microcompact_drops_images_from_all_but_the_newest_messages() {
+        let img = |tag: &str| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{tag}") } });
+        let shot = |id: &str, tag: &str| json!({
+            "role": "tool", "tool_call_id": id,
+            "content": [ { "type": "text", "text": "screenshot" }, img(tag) ],
+        });
+        let convo = vec![
+            json!({ "role": "user", "content": "go" }),
+            shot("a", "AAAA"),
+            shot("b", "BBBB"),
+            shot("c", "CCCC"),
+            shot("d", "DDDD"),
+        ];
+        let (out, stats) = microcompact_offloading(&convo, &MicrocompactConfig::default(), None);
+        assert_eq!(stats.images, 2);
+        let text = |m: &Value| m["content"].to_string();
+        assert!(!text(&out[1]).contains("AAAA") && text(&out[1]).contains("image omitted"), "{}", text(&out[1]));
+        assert!(!text(&out[2]).contains("BBBB"));
+        assert!(text(&out[3]).contains("CCCC") && text(&out[4]).contains("DDDD"), "the newest two keep theirs");
+        // The text part beside a dropped image survives, and a second pass is a no-op.
+        assert!(text(&out[1]).contains("screenshot"));
+        let (again, stats2) = microcompact_offloading(&out, &MicrocompactConfig::default(), None);
+        assert_eq!(stats2.images, 0);
+        assert_eq!(again, out);
     }
 
     // --- microcompaction ---
