@@ -193,6 +193,50 @@ pub fn should_compact(messages: &[Value], t: &Thresholds) -> bool {
     estimate_tokens(messages) >= t.compact_at
 }
 
+/// What the provider last said the prompt cost, pinned to the messages it was
+/// measured on. The character estimate cannot see the system prompt's tool
+/// schemas, nor how dense the text is for this tokenizer; the provider's own
+/// count can.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UsageAnchor {
+    prompt_tokens: u64,
+    messages: usize,
+    /// The estimate of those messages when measured. If it differs later, they
+    /// were rewritten (compacted, pruned, offloaded) and the count is stale.
+    estimate: u64,
+}
+
+impl UsageAnchor {
+    /// Anchor `prompt_tokens`, reported for a request carrying `sent`.
+    pub fn new(prompt_tokens: u64, sent: &[Value]) -> Option<Self> {
+        (prompt_tokens > 0).then(|| Self {
+            prompt_tokens,
+            messages: sent.len(),
+            estimate: estimate_tokens(sent),
+        })
+    }
+}
+
+/// The provider-reported prompt size plus an estimate of what was appended
+/// since, or the plain estimate when there is no usable anchor.
+pub fn calibrated_tokens(messages: &[Value], anchor: Option<&UsageAnchor>) -> u64 {
+    if let Some(a) = anchor {
+        if a.messages <= messages.len() && estimate_tokens(&messages[..a.messages]) == a.estimate {
+            return a.prompt_tokens + estimate_tokens(&messages[a.messages..]);
+        }
+    }
+    estimate_tokens(messages)
+}
+
+/// [`should_compact`], measured from the last provider-reported usage.
+pub fn should_compact_calibrated(
+    messages: &[Value],
+    anchor: Option<&UsageAnchor>,
+    t: &Thresholds,
+) -> bool {
+    calibrated_tokens(messages, anchor) >= t.compact_at
+}
+
 // ---------------------------------------------------------------------------
 // Microcompaction: prune stale, bulky tool results in place.
 // ---------------------------------------------------------------------------
@@ -698,6 +742,25 @@ mod tests {
     use serde_json::json;
 
     // --- thresholds ---
+
+    #[test]
+    fn calibrated_tokens_trusts_the_provider_until_the_messages_change() {
+        let msg = |t: &str| json!({ "role": "user", "content": t });
+        let mut convo = vec![msg(&"a".repeat(400)), msg(&"b".repeat(400))];
+        let anchor = UsageAnchor::new(5_000, &convo);
+        assert_eq!(UsageAnchor::new(0, &convo), None, "no usage, no anchor");
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), 5_000);
+        // Appended messages are estimated on top of the reported count.
+        convo.push(msg(&"c".repeat(400)));
+        let appended = estimate_tokens(&convo[2..]);
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), 5_000 + appended);
+        // A rewritten prefix, even at the same length, falls back to the estimate.
+        convo[0] = msg("short");
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), estimate_tokens(&convo));
+        // So does a conversation shorter than what was measured.
+        convo.truncate(1);
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), estimate_tokens(&convo));
+    }
 
     #[test]
     fn threshold_is_effective_window_minus_headroom() {
