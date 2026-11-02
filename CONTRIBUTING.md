@@ -188,6 +188,8 @@ yarn dev
 5. Push to the branch (`git push origin feature-name`)
 6. Open a new Pull Request against `main` branch
 
+**Porting from upstream:** when a change comes from Jan, Atomic Chat or another project, credit its authors. Keep them as the commit author when the code is mostly theirs, otherwise add a `Co-authored-by: login <id+login@users.noreply.github.com>` trailer, link the upstream PR in the pull request, and add a line to [CREDITS.md](CREDITS.md).
+
 ## Testing
 
 ```bash
