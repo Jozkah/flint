@@ -2547,6 +2547,12 @@ impl CompositeToolInvoker {
                 let _registered = registered;
                 let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
                 let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
+                // Only where the model can read the file back.
+                let text = if available_tools.iter().any(|t| t == "read") {
+                    crate::core::agent::compaction_policy::spill_large_result(&scratch, tool.name, &id, text)
+                } else {
+                    text
+                };
                 ToolOutcome {
                     diff,
                     images: images.unwrap_or_default(),
@@ -2741,6 +2747,11 @@ impl CompositeToolInvoker {
             // Transcript audit #12: a refusal of the arguments shows the call
             // it expected.
             let text = tauri_plugin_agent_tools::tools::call_shape::explain(name, &args, text);
+            let text = if self.available_tools.iter().any(|t| t == "read") {
+                crate::core::agent::compaction_policy::spill_large_result(&self.scratch_root, name, &id, text)
+            } else {
+                text
+            };
             out.push(ToolOutcome {
                 diff,
                 images: images.unwrap_or_default(),
