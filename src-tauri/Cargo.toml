@@ -243,7 +243,7 @@ toml_edit = "0.23"
 sha2 = "0.10"
 unicode-normalization = "0.1"
 tar = "0.4"
-zip = "0.6"
+zip = "9"
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1.4", optional = true }
 tauri-plugin-hardware = { path = "./plugins/tauri-plugin-hardware", default-features = false }

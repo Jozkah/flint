@@ -670,7 +670,10 @@ pub fn extract_pack(
         let mut entry = zip
             .by_index(i)
             .map_err(|e| AddonError::UnsafeArchive(e.to_string()))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| AddonError::UnsafeArchive(e.to_string()))?
+            .into_owned();
         if name == MANIFEST_FILE || name == SIGNATURE_FILE {
             continue;
         }
