@@ -477,6 +477,7 @@ mod tauri_glue {
     /// left of that monitor takes. Returns the offset to add to go from
     /// workspace to screen coordinates, for the monitor nearest `rect`.
     fn workspace_offset(rect: &RECT) -> (i32, i32) {
+        // SAFETY: plain Win32 calls on a stack `RECT`/`MONITORINFO`; `info` is zeroed with `cbSize` set as the API requires and the monitor handle comes from the same call chain.
         unsafe {
             let monitor = MonitorFromRect(rect, MONITOR_DEFAULTTONEAREST);
             let mut info: MONITORINFO = std::mem::zeroed();
@@ -492,6 +493,7 @@ mod tauri_glue {
     }
 
     fn read_placement(hwnd: HWND) -> Option<WINDOWPLACEMENT> {
+        // SAFETY: `hwnd` is a window handle of a live window; `wp` is zeroed with `length` set as `GetWindowPlacement` requires.
         unsafe {
             let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
             wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
@@ -553,6 +555,7 @@ mod tauri_glue {
                         wp.flags = 0;
                         wp.ptMinPosition = POINT { x: -1, y: -1 };
                         wp.ptMaxPosition = POINT { x: -1, y: -1 };
+                        // SAFETY: `hwnd` is the live window handle and `wp` is a fully initialised `WINDOWPLACEMENT` borrowed for the call.
                         if unsafe { SetWindowPlacement(hwnd, &wp) } == 0 {
                             log::warn!("window-state: could not place {label}");
                         }
