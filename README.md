@@ -129,3 +129,5 @@ Flint is licensed under the [Apache License 2.0](LICENSE), the same license as u
 ## Acknowledgements
 
 Flint builds on [Jan](https://github.com/janhq/jan), its contributors and its history. It also uses [llama.cpp](https://github.com/ggerganov/llama.cpp), [Tauri](https://tauri.app/) and [Scalar](https://github.com/scalar/scalar).
+
+Many fixes and features come from people working on Jan and [Atomic Chat](https://github.com/AtomicBot-ai/Atomic-Chat) after the fork. [CREDITS.md](CREDITS.md) lists them and what Flint took from each.
