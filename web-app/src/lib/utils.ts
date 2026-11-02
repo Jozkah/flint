@@ -4,26 +4,9 @@ import type { Node, Position } from 'unist'
 import type { Code, Paragraph, Parent, Text } from 'mdast'
 import { visit } from 'unist-util-visit'
 import { ExtensionManager } from './extension'
-import path from 'path'
 import type { VFile } from 'vfile'
 
 export { cn } from './cn'
-
-export function basenameNoExt(filePath: string): string {
-  const base = path.basename(filePath)
-  const VALID_EXTENSIONS = ['.tar.gz', '.zip']
-
-  // handle VALID extensions first
-  for (const ext of VALID_EXTENSIONS) {
-    if (base.toLowerCase().endsWith(ext)) {
-      return base.slice(0, -ext.length)
-    }
-  }
-
-  // fallback: remove only the last extension
-  const ext = path.extname(base)
-  return ext ? base.slice(0, -ext.length) : base
-}
 
 /**
  * Remark plugin that disables indented code block syntax.
@@ -236,31 +219,6 @@ export function getReadableLanguageName(language: string): string {
 export const isLocalProvider = (provider: string) => {
   const extension = ExtensionManager.getInstance().getEngine(provider)
   return extension && 'load' in extension
-}
-
-export const toGigabytes = (
-  input: number,
-  options?: { hideUnit?: boolean; toFixed?: number }
-) => {
-  if (!input) return ''
-  if (input > 1024 ** 3) {
-    return (
-      (input / 1024 ** 3).toFixed(options?.toFixed ?? 2) +
-      (options?.hideUnit ? '' : 'GB')
-    )
-  } else if (input > 1024 ** 2) {
-    return (
-      (input / 1024 ** 2).toFixed(options?.toFixed ?? 2) +
-      (options?.hideUnit ? '' : 'MB')
-    )
-  } else if (input > 1024) {
-    return (
-      (input / 1024).toFixed(options?.toFixed ?? 2) +
-      (options?.hideUnit ? '' : 'KB')
-    )
-  } else {
-    return input + (options?.hideUnit ? '' : 'B')
-  }
 }
 
 export type ByteUnit = 'B' | 'KB' | 'MB' | 'GB'

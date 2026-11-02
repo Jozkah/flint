@@ -70,7 +70,7 @@ export function GlobalEventHandler() {
       key: string
       value: string
     }) => {
-      console.log('Global settingsChanged event:', event)
+      console.log('Global settingsChanged event:', event.key)
 
       if (
         event.key === 'llamacpp_version' ||

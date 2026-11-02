@@ -125,6 +125,8 @@ class OpenAiToolCallSseSanitizer {
     if (dataIndex < 0) return frame
     const raw = lines[dataIndex]!.slice('data:'.length).trimStart()
     if (!raw || raw === '[DONE]') return frame
+    // Most frames are plain text deltas: skip the JSON parse for them.
+    if (!raw.includes('"tool_calls"')) return frame
 
     let payload: { choices?: unknown }
     try {
