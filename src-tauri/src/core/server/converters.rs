@@ -1206,6 +1206,21 @@ fn gemini_tools(body: &Value, out: &mut Value) {
             _ => "AUTO",
         };
         out["toolConfig"] = json!({"functionCallingConfig": {"mode": g_mode}});
+    } else if let Some(name) = body
+        .get("tool_choice")
+        .filter(|c| c.is_object())
+        .and_then(|c| {
+            c.pointer("/function/name")
+                .or_else(|| c.get("name"))
+                .and_then(|n| n.as_str())
+        })
+    {
+        // Forced call: OpenAI `{"type":"function","function":{"name":..}}`
+        // (or the flattened Responses form) becomes ANY limited to that name.
+        out["toolConfig"] = json!({"functionCallingConfig": {
+            "mode": "ANY",
+            "allowedFunctionNames": [name],
+        }});
     }
 }
 
@@ -2791,6 +2806,24 @@ mod google_generate_content_tests {
             out["toolConfig"],
             json!({"functionCallingConfig": {"mode": "ANY"}})
         );
+    }
+
+    #[test]
+    fn gemini_forced_object_tool_choice_limits_allowed_functions() {
+        for tc in [
+            json!({"type": "function", "function": {"name": "pick"}}),
+            json!({"type": "function", "name": "pick"}),
+        ] {
+            let body = json!({"model": "gemini-2.5-pro", "messages": [], "tool_choice": tc});
+            let out = conv().convert_request(&body);
+            assert_eq!(
+                out["toolConfig"],
+                json!({"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": ["pick"]}})
+            );
+        }
+        // An object without a name adds no toolConfig.
+        let body = json!({"model": "gemini-2.5-pro", "messages": [], "tool_choice": {"type": "auto"}});
+        assert!(conv().convert_request(&body).get("toolConfig").is_none());
     }
 
     fn image_tool_body(model: &str) -> Value {
