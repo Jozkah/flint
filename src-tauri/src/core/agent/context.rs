@@ -589,27 +589,169 @@ never run here, and a WindowsApps python.exe is only the Store alias; tell the u
     )
 }
 
+/// Most characters the memory index may take in the prompt, about 1,500
+/// tokens at four characters a token (janhq/jan#9497). One row per note grew
+/// without bound; past the budget only the most recently written notes are
+/// listed and one line counts the rest, which `memory_list` still shows.
+pub(crate) const MEMORY_INDEX_BUDGET_CHARS: usize = 6_000;
+
 /// A catalog of curated memory notes (names + one-line summaries), injected so
 /// the model can read a note on demand with `memory_read`. None when no note
 /// exists. Mirrors `load_skills`: progressive disclosure, not full bodies.
 pub(crate) fn load_memory_catalog(project_root: &Path) -> Option<String> {
-    let entries = memory::catalog(&workspace::project_store(project_root));
+    render_memory_catalog(
+        memory::catalog_by_recency(&workspace::project_store(project_root)),
+        MEMORY_INDEX_BUDGET_CHARS,
+    )
+}
+
+/// The `# Available Memories` block over `entries` (most recent first), capped
+/// at `budget` characters of rows. Listed rows are sorted by name, so the
+/// block does not reorder itself each time a note is touched.
+fn render_memory_catalog(entries: Vec<(String, String)>, budget: usize) -> Option<String> {
     if entries.is_empty() {
         return None;
     }
-    let list = entries
-        .iter()
-        .map(|(name, description)| {
-            if description.is_empty() {
-                format!("- `{name}` - no summary")
-            } else {
-                format!("- `{name}` - {description}")
+    let total = entries.len();
+    let mut used = 0;
+    let mut rows: Vec<(String, String)> = Vec::new();
+    for (name, description) in entries {
+        let row = if description.is_empty() {
+            format!("- `{name}` - no summary")
+        } else {
+            format!("- `{name}` - {description}")
+        };
+        if used + row.len() + 1 > budget {
+            break;
+        }
+        used += row.len() + 1;
+        rows.push((name, row));
+    }
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut list = rows.iter().map(|(_, row)| row.as_str()).collect::<Vec<_>>().join("\n");
+    match total - rows.len() {
+        0 => {}
+        n => {
+            if !list.is_empty() {
+                list.push('\n');
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+            list.push_str(&format!(
+                "- ... and {n} older note{} not listed; `memory_list` shows every note.",
+                if n == 1 { "" } else { "s" }
+            ));
+        }
+    }
     Some(format!(
         "# Available Memories\n\nDurable facts recorded in this project. Read a note's full contents with `memory_read` when it is relevant to the current task.\n\n{list}"
+    ))
+}
+
+/// Most names the memory changes reminder spells out before it only counts
+/// the rest, so a session that touched hundreds of notes cannot flood it.
+const MAX_CHANGED_NAMES: usize = 20;
+
+/// Sessions whose memory index is kept at once; the oldest is dropped first.
+const MAX_MEMORY_SNAPSHOTS: usize = 64;
+
+/// The memory index as a session first saw it, and a fingerprint of the notes
+/// it was rendered from (janhq/jan#9497).
+///
+/// The index sits in the system prompt, and a changed prompt is appended as a
+/// whole new system message (`upstream::set_system_prompt`), resending every
+/// byte of it. Rebuilt per run, every `memory_write` cost the next run a full
+/// copy of the prompt. So a session keeps the index it started with, and what
+/// changed since travels after the conversation instead
+/// ([`memory_changes_reminder`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MemorySnapshot {
+    block: Option<String>,
+    fingerprint: std::collections::BTreeMap<String, u64>,
+}
+
+impl MemorySnapshot {
+    fn capture(project_root: &Path) -> Self {
+        let store = workspace::project_store(project_root);
+        Self {
+            block: load_memory_catalog(project_root),
+            fingerprint: memory::fingerprint(&store),
+        }
+    }
+}
+
+type SnapshotKey = (std::path::PathBuf, String);
+
+fn memory_snapshots() -> &'static std::sync::Mutex<Vec<(SnapshotKey, MemorySnapshot)>> {
+    static SNAPSHOTS: std::sync::OnceLock<std::sync::Mutex<Vec<(SnapshotKey, MemorySnapshot)>>> =
+        std::sync::OnceLock::new();
+    SNAPSHOTS.get_or_init(Default::default)
+}
+
+/// The session's snapshot, taken now if this is its first run in this process.
+fn session_memory_snapshot(project_root: &Path, session_id: &str) -> MemorySnapshot {
+    let key = (project_root.to_path_buf(), session_id.to_string());
+    let mut snapshots = memory_snapshots().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, snapshot)) = snapshots.iter().find(|(k, _)| *k == key) {
+        return snapshot.clone();
+    }
+    let snapshot = MemorySnapshot::capture(project_root);
+    if snapshots.len() >= MAX_MEMORY_SNAPSHOTS {
+        snapshots.remove(0);
+    }
+    snapshots.push((key, snapshot.clone()));
+    snapshot
+}
+
+/// The memory index a run's prompt carries: the session's snapshot, or the
+/// live index for a run with no session.
+fn memory_catalog_for(project_root: &Path, session_id: Option<&str>) -> Option<String> {
+    match session_id {
+        Some(id) => session_memory_snapshot(project_root, id).block,
+        None => load_memory_catalog(project_root),
+    }
+}
+
+/// Notes added (`+`), changed (`~`) or deleted (`-`) since the session's
+/// memory snapshot, by this session or anything else (another session, the
+/// memory settings page), as reminder text for the end of the conversation.
+/// `None` when nothing changed or the session has no snapshot yet.
+pub(crate) fn memory_changes_reminder(project_root: &Path, session_id: &str) -> Option<String> {
+    let key = (project_root.to_path_buf(), session_id.to_string());
+    let before = memory_snapshots()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, s)| s.fingerprint.clone())?;
+    memory_changes(&before, &memory::fingerprint(&workspace::project_store(project_root)))
+}
+
+fn memory_changes(
+    before: &std::collections::BTreeMap<String, u64>,
+    after: &std::collections::BTreeMap<String, u64>,
+) -> Option<String> {
+    let mut changes: Vec<String> = Vec::new();
+    for (name, hash) in after {
+        match before.get(name) {
+            None => changes.push(format!("+ {name}")),
+            Some(old) if old != hash => changes.push(format!("~ {name}")),
+            Some(_) => {}
+        }
+    }
+    for name in before.keys().filter(|name| !after.contains_key(*name)) {
+        changes.push(format!("- {name}"));
+    }
+    if changes.is_empty() {
+        return None;
+    }
+    let total = changes.len();
+    changes.truncate(MAX_CHANGED_NAMES);
+    let more = match total - changes.len() {
+        0 => String::new(),
+        n => format!(", and {n} more"),
+    };
+    Some(format!(
+        "Memory changes this session: {}{more}\nThe memory index in your system prompt is the session-start snapshot; read a changed note by name for its current content.",
+        changes.join(", ")
     ))
 }
 
@@ -881,7 +1023,7 @@ recording in your answer instead.",
         Err(e) => log::warn!("{e}"),
     }
     if offers(offered, "memory_read") {
-        if let Some(memory) = load_memory_catalog(project_root) {
+        if let Some(memory) = memory_catalog_for(project_root, session_id) {
             blocks.push((Composer::MemoryCatalog, memory));
         }
     }
@@ -1092,6 +1234,64 @@ mod tests {
         assert!(block.contains("memory_read"));
         assert!(!block.contains("ignored.txt"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// janhq/jan#9497: a note written mid-session leaves the session's memory
+    /// index byte-identical; the change is reported by the reminder instead.
+    #[test]
+    fn a_memory_write_mid_session_does_not_change_the_index() {
+        let root = scratch_project("memsnapshot");
+        write_memory(&root, "keep.md", "Kept.");
+        write_memory(&root, "edit.md", "Before.");
+        write_memory(&root, "gone.md", "Deleted later.");
+        assert_eq!(memory_changes_reminder(&root, "s1"), None, "no snapshot yet");
+        let before = memory_catalog_for(&root, Some("s1")).expect("index");
+        assert!(before.contains("`gone`"), "{before}");
+        assert_eq!(memory_changes_reminder(&root, "s1"), None, "nothing changed yet");
+
+        write_memory(&root, "new.md", "Added.");
+        write_memory(&root, "edit.md", "After.");
+        std::fs::remove_file(root.join(".jan/agent/memory/gone.md")).unwrap();
+
+        assert_eq!(memory_catalog_for(&root, Some("s1")).as_deref(), Some(before.as_str()));
+        let changes = memory_changes_reminder(&root, "s1").expect("changes are reported");
+        assert!(changes.contains("Memory changes this session: ~ edit, + new, - gone"), "{changes}");
+        assert!(!changes.contains("keep"), "{changes}");
+
+        // Another session, and a run with no session, see the notes as they are.
+        let fresh = memory_catalog_for(&root, Some("s2")).unwrap();
+        assert!(fresh.contains("`new`") && !fresh.contains("`gone`"), "{fresh}");
+        assert_eq!(memory_catalog_for(&root, None), Some(fresh));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_memory_changes_reminder_caps_the_names_it_lists() {
+        let after: std::collections::BTreeMap<String, u64> =
+            (0..25).map(|i| (format!("n{i:02}"), 1)).collect();
+        let text = memory_changes(&Default::default(), &after).unwrap();
+        assert_eq!(text.matches("+ n").count(), MAX_CHANGED_NAMES);
+        assert!(text.contains(", and 5 more"), "{text}");
+    }
+
+    /// The index has a fixed budget: past it the most recent notes are kept,
+    /// listed by name, and one line counts the rest.
+    #[test]
+    fn the_memory_index_keeps_the_newest_notes_within_its_budget() {
+        let entries: Vec<(String, String)> = ["c", "a", "b", "old1", "old2"]
+            .iter()
+            .map(|n| (n.to_string(), "x".repeat(20)))
+            .collect();
+        let row = "- `a` - xxxxxxxxxxxxxxxxxxxx".len() + 1;
+        let block = render_memory_catalog(entries.clone(), row * 3).unwrap();
+        let listed: Vec<&str> = block.lines().filter(|l| l.starts_with("- `")).collect();
+        assert_eq!(listed.len(), 3, "{block}");
+        assert!(listed[0].starts_with("- `a`") && listed[2].starts_with("- `c`"), "{block}");
+        assert!(block.ends_with("- ... and 2 older notes not listed; `memory_list` shows every note."), "{block}");
+        assert!(!block.contains("old1"), "{block}");
+
+        let all = render_memory_catalog(entries, MEMORY_INDEX_BUDGET_CHARS).unwrap();
+        assert!(!all.contains("not listed"), "{all}");
     }
 
     #[test]
