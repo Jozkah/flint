@@ -74,12 +74,23 @@ pub fn estimate_tokens(messages: &[Value]) -> u64 {
 /// crosses the threshold does not itself overflow.
 pub const DEFAULT_HEADROOM_TOKENS: u64 = 13_000;
 
-/// The headroom for a window of this size: [`DEFAULT_HEADROOM_TOKENS`] in a big
-/// window, an eighth of the window in a small one. A fixed 13K left an 8K
+/// The headroom for a window of this size: [`DEFAULT_HEADROOM_TOKENS`] in a mid-size
+/// window, a tenth of a large one (up to 32K), an eighth of the window in a small one. A fixed 13K left an 8K
 /// window a trigger of 1 token (every turn compacted) and a 32K one under 20K.
 pub fn scaled_headroom(context_window: u64) -> u64 {
-    DEFAULT_HEADROOM_TOKENS.min(context_window / 8)
+    if context_window < LARGE_WINDOW_TOKENS {
+        return DEFAULT_HEADROOM_TOKENS.min(context_window / 8);
+    }
+    (context_window / 10).clamp(DEFAULT_HEADROOM_TOKENS, MAX_SCALED_HEADROOM_TOKENS)
 }
+
+/// From this window up, headroom grows with the window instead of staying at
+/// [`DEFAULT_HEADROOM_TOKENS`]: a single large tool result or output burst is
+/// proportionally bigger in a big window, and 13K left a 200K one compacting at
+/// 93% of its input budget, so the turn after the trigger could still overflow.
+const LARGE_WINDOW_TOKENS: u64 = 128_000;
+/// The most headroom a large window holds back.
+const MAX_SCALED_HEADROOM_TOKENS: u64 = 32_000;
 
 /// An explicit override for where compaction triggers, from configuration.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -722,7 +733,12 @@ mod tests {
             assert_eq!(t.compact_at, compact_at, "window {window}");
             assert!(t.compact_at > t.effective_window / 2, "window {window} compacts too early");
         }
-        assert_eq!(scaled_headroom(1_000_000), DEFAULT_HEADROOM_TOKENS);
+        // Large windows hold back a tenth, up to 32K; the 128K window is unchanged.
+        assert_eq!(scaled_headroom(128_000), DEFAULT_HEADROOM_TOKENS);
+        assert_eq!(scaled_headroom(200_000), 20_000);
+        assert_eq!(scaled_headroom(1_000_000), MAX_SCALED_HEADROOM_TOKENS);
+        let t = thresholds(&WindowConfig::from_config(Some(200_000), Some(16_000))).unwrap().unwrap();
+        assert_eq!(t.compact_at, 200_000 - 16_000 - 20_000);
     }
 
     #[test]
