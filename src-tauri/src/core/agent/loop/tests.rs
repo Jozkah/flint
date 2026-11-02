@@ -5716,6 +5716,37 @@ async fn tool_rules_count_calls_earlier_in_the_same_batch() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A built-in result too big to keep in context arrives as a head, a tail and
+/// the name of a file holding all of it.
+#[tokio::test]
+async fn a_huge_builtin_result_is_spilled_to_a_file() {
+    let root = std::env::temp_dir().join(format!("flint-spill-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let lines: String = (0..4000).map(|i| format!("needle line number {i} {}
+", "p".repeat(300))).collect();
+    std::fs::write(root.join("a.txt"), lines).unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        PermissionRegistry::default(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.available_tools = vec!["read".to_string(), "grep".to_string()];
+    let call = serde_json::json!({ "id": "g1", "type": "function",
+        "function": { "name": "grep", "arguments": "{\"pattern\":\"needle\",\"limit\":5000}" } });
+    let out = invoker.invoke(&[call.clone()]).await.expect("dispatch");
+    let text = &out[0].content;
+    assert!(text.contains("chars omitted") && text.contains("saved to"), "{}", &text[..text.len().min(300)]);
+    assert!(text.chars().count() < 12_000, "{}", text.chars().count());
+    // Without the read tool the model could not open the file: nothing spills.
+    invoker.available_tools = vec!["grep".to_string()];
+    let whole = invoker.invoke(&[call]).await.expect("dispatch");
+    assert!(!whole[0].content.contains("saved to"), "no read tool, no spill");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// `after` is met only by a call of the earlier tool that ran and
 /// succeeded: a failed read does not unlock the rule, a good one does.
 #[tokio::test]
