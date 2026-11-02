@@ -2649,13 +2649,10 @@ impl SseAccumulator {
 
         if let Some(tcs) = delta.get("tool_calls").and_then(|v| v.as_array()) {
             for (position, tc) in tcs.iter().enumerate() {
-                // A missing `index` falls back to the entry's position in the
-                // array, so a batch without indexes is not merged into one call.
-                let idx = tc
-                    .get("index")
-                    .and_then(|v| v.as_u64())
-                    .map(|i| i as usize)
-                    .unwrap_or(position);
+                let idx = match tc.get("index").and_then(|v| v.as_u64()) {
+                    Some(index) => index as usize,
+                    None => self.slot_for_unindexed_tool_call(tc, position, tcs.len()),
+                };
                 // A hostile or buggy server could send a huge index and force
                 // a giant allocation; no real turn has this many parallel calls.
                 const MAX_TOOL_CALL_INDEX: usize = 128;
@@ -2728,6 +2725,37 @@ impl SseAccumulator {
                 }
             }
         }
+    }
+
+    /// Slot for a streamed tool call that carries no `index` (the Gemini
+    /// OpenAI-compatible endpoint omits it, and sends each parallel call in
+    /// its own chunk). An id already seen continues that call; a new id or a
+    /// name starts a new one. A bare argument delta continues the last call,
+    /// unless it shares its chunk with other entries: then, as before, its
+    /// position in the array names the call.
+    fn slot_for_unindexed_tool_call(
+        &self,
+        tc: &serde_json::Value,
+        position: usize,
+        batch_len: usize,
+    ) -> usize {
+        fn text(value: Option<&serde_json::Value>) -> Option<&str> {
+            value.and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        }
+        if let Some(id) = text(tc.get("id")) {
+            return self
+                .tool_calls
+                .iter()
+                .position(|slot| slot.id == id)
+                .unwrap_or(self.tool_calls.len());
+        }
+        if text(tc.get("function").and_then(|f| f.get("name"))).is_some() {
+            return self.tool_calls.len();
+        }
+        if batch_len > 1 {
+            return position;
+        }
+        self.tool_calls.len().saturating_sub(1)
     }
 
     fn into_completion(self) -> serde_json::Value {
@@ -4543,6 +4571,59 @@ mod tests {
             &tx,
         );
         assert!(acc.tool_calls.len() <= 1);
+    }
+
+    #[test]
+    fn keeps_parallel_tool_calls_apart_when_the_provider_sends_no_index() {
+        let (tx, _rx) = sink();
+        let mut acc = SseAccumulator::default();
+        for delta in [
+            json!([{ "id": "call_a", "function": { "name": "read", "arguments": "{\"path\":\"a\"}" } }]),
+            json!([{ "id": "call_b", "function": { "name": "grep", "arguments": "{\"q\":" } }]),
+            json!([{ "function": { "arguments": "\"x\"" } }]),
+            // A provider that repeats the id on every delta continues that call.
+            json!([{ "id": "call_b", "function": { "arguments": "}" } }]),
+        ] {
+            acc.ingest(
+                &json!({ "choices": [{ "delta": { "tool_calls": delta } }] }).to_string(),
+                &tx,
+            );
+        }
+
+        let completion = acc.into_completion();
+        let calls = &completion["choices"][0]["message"]["tool_calls"];
+        assert_eq!(calls.as_array().map(|c| c.len()), Some(2), "{calls:#}");
+        assert_eq!(calls[0]["id"], "call_a");
+        assert_eq!(calls[0]["function"]["name"], "read");
+        assert_eq!(calls[0]["function"]["arguments"], "{\"path\":\"a\"}");
+        assert_eq!(calls[1]["id"], "call_b");
+        assert_eq!(calls[1]["function"]["name"], "grep");
+        assert_eq!(calls[1]["function"]["arguments"], "{\"q\":\"x\"}");
+    }
+
+    #[test]
+    fn an_unindexed_batch_still_maps_entries_by_position() {
+        let (tx, _rx) = sink();
+        let mut acc = SseAccumulator::default();
+        for delta in [
+            json!([
+                { "id": "call_a", "function": { "name": "read", "arguments": "{\"p\":" } },
+                { "id": "call_b", "function": { "name": "grep", "arguments": "{\"q\":" } }
+            ]),
+            json!([
+                { "function": { "arguments": "1}" } },
+                { "function": { "arguments": "2}" } }
+            ]),
+        ] {
+            acc.ingest(
+                &json!({ "choices": [{ "delta": { "tool_calls": delta } }] }).to_string(),
+                &tx,
+            );
+        }
+        let completion = acc.into_completion();
+        let calls = &completion["choices"][0]["message"]["tool_calls"];
+        assert_eq!(calls[0]["function"]["arguments"], "{\"p\":1}");
+        assert_eq!(calls[1]["function"]["arguments"], "{\"q\":2}");
     }
 
     #[test]

@@ -214,6 +214,28 @@ fn try_capture(
 	}
 }
 
+/// FLINT PATCH: the slot for a streamed tool call that carries no `index` (the Gemini
+/// OpenAI-compatible endpoint omits it, and sends each parallel call in its own chunk, so the
+/// array position is always 0 and every call merged into the first). An id already captured
+/// continues that call; a new id or a name starts a new one. A bare argument delta continues
+/// the last call, unless it shares its chunk with other entries: then its array position
+/// names the call, as before.
+fn unindexed_slot(calls: &[ToolCall], tc: &Value, position: usize, batch_len: usize) -> u32 {
+	fn text(value: Option<&Value>) -> Option<&str> {
+		value.and_then(Value::as_str).filter(|s| !s.is_empty())
+	}
+	let slot = if let Some(id) = text(tc.get("id")) {
+		calls.iter().position(|c| c.call_id == id).unwrap_or(calls.len())
+	} else if text(tc.get("function").and_then(|f| f.get("name"))).is_some() {
+		calls.len()
+	} else if batch_len > 1 {
+		position
+	} else {
+		calls.len().saturating_sub(1)
+	};
+	slot as u32
+}
+
 /// The capture as the original tests drive it: every call starts from a fresh emit record.
 #[cfg(test)]
 fn capture_into(calls: &mut Vec<ToolCall>, index: usize, tool_call: ToolCall) -> Option<ToolCall> {
@@ -342,7 +364,14 @@ impl futures::Stream for OpenAIStreamer {
 								for (position, tool_call_obj_val) in delta_tool_calls.iter().enumerate() {
 									let mut tool_call_obj = tool_call_obj_val.clone();
 									if let (Ok(index), Ok(mut function)) = (
-										tool_call_obj.x_take::<u32>("index").or(Ok::<u32, ()>(position as u32)),
+										tool_call_obj.x_take::<u32>("index").or_else(|_| {
+											Ok::<u32, ()>(unindexed_slot(
+												self.captured_data.tool_calls.as_deref().unwrap_or_default(),
+												tool_call_obj_val,
+												position,
+												delta_tool_calls.len(),
+											))
+										}),
 										tool_call_obj.x_take::<Value>("function"),
 									) {
 										let call_id = tool_call_obj
@@ -426,7 +455,14 @@ impl futures::Stream for OpenAIStreamer {
 									// Extract tool call data. A missing `index` (seen on some
 									// compatible servers) falls back to the array position.
 									if let (Ok(index), Ok(mut function)) = (
-										tool_call_obj.x_take::<u32>("index").or(Ok::<u32, ()>(position as u32)),
+										tool_call_obj.x_take::<u32>("index").or_else(|_| {
+											Ok::<u32, ()>(unindexed_slot(
+												self.captured_data.tool_calls.as_deref().unwrap_or_default(),
+												tool_call_obj_val,
+												position,
+												delta_tool_calls.len(),
+											))
+										}),
 										tool_call_obj.x_take::<Value>("function"),
 									) {
 										let call_id = tool_call_obj
@@ -557,6 +593,38 @@ mod tests {
 		assert!(capture_into(&mut calls, MAX_INDEX_GAP + 1, call("a", "f", "")).is_none());
 		assert!(capture_into(&mut calls, 2, call("b", "f", "")).is_some());
 		assert_eq!(calls.len(), 3);
+	}
+
+	#[test]
+	fn unindexed_parallel_tool_calls_stay_apart() {
+		// Gemini's OpenAI-compatible endpoint: no `index`, one call per chunk.
+		let chunks = [
+			serde_json::json!([{"id": "call_a", "function": {"name": "read", "arguments": "{\"path\":\"a\"}"}}]),
+			serde_json::json!([{"id": "call_b", "function": {"name": "grep", "arguments": "{\"q\":"}}]),
+			serde_json::json!([{"function": {"arguments": "\"x\""}}]),
+			serde_json::json!([{"id": "call_b", "function": {"arguments": "}"}}]),
+		];
+		let mut calls: Vec<ToolCall> = Vec::new();
+		for chunk in &chunks {
+			let entries = chunk.as_array().unwrap();
+			for (position, tc) in entries.iter().enumerate() {
+				let index = unindexed_slot(&calls, tc, position, entries.len()) as usize;
+				let id = tc.get("id").and_then(Value::as_str).unwrap_or("");
+				let name = tc.pointer("/function/name").and_then(Value::as_str).unwrap_or("");
+				let args = tc.pointer("/function/arguments").and_then(Value::as_str).unwrap_or("");
+				capture_into(&mut calls, index, call(id, name, args));
+			}
+		}
+		assert_eq!(calls.len(), 2, "{calls:?}");
+		assert_eq!((calls[0].call_id.as_str(), calls[0].fn_name.as_str()), ("call_a", "read"));
+		assert_eq!(calls[0].fn_arguments, Value::String("{\"path\":\"a\"}".into()));
+		assert_eq!((calls[1].call_id.as_str(), calls[1].fn_name.as_str()), ("call_b", "grep"));
+		assert_eq!(calls[1].fn_arguments, Value::String("{\"q\":\"x\"}".into()));
+		// An unindexed batch in one chunk still maps by position.
+		let batch = serde_json::json!([{"function": {"arguments": "1"}}, {"function": {"arguments": "2"}}]);
+		let entries = batch.as_array().unwrap();
+		assert_eq!(unindexed_slot(&calls, &entries[0], 0, 2), 0);
+		assert_eq!(unindexed_slot(&calls, &entries[1], 1, 2), 1);
 	}
 
 	#[test]
