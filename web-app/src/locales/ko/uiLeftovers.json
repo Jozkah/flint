@@ -76,6 +76,7 @@
     "stopped": "중지됨"
   },
   "toolOutputAlt": "도구 출력",
+  "toolOutputImageFailed": "이미지를 표시할 수 없습니다",
   "memory": {
     "exportFilter": "Flint 메모리 내보내기",
     "why": "Flint가 이를 기억하는 이유",

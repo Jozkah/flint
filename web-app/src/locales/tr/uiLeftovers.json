@@ -76,6 +76,7 @@
     "stopped": "Durduruldu"
   },
   "toolOutputAlt": "Araç çıktısı",
+  "toolOutputImageFailed": "Görsel gösterilemedi",
   "memory": {
     "exportFilter": "Flint bellek dışa aktarımı",
     "why": "Flint bunu neden hatırlıyor",

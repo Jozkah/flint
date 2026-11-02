@@ -129,6 +129,7 @@ export const ToolOutput = memo(
                     <ToolImage
                       key={index}
                       data={item.data || ''}
+                      mimeType={item.mimeType}
                       index={index}
                     />
                   ))}
@@ -169,6 +170,7 @@ export const ToolOutput = memo(
                     <ToolImage
                       key={index}
                       data={item.data ?? item.image?.url}
+                      mimeType={item.mimeType}
                       index={index}
                     />
                   ))}
