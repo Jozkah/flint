@@ -164,8 +164,8 @@ pub fn write_file_sync<R: Runtime>(
                 args[0]
             )
         })?;
-    let content = &args[1];
-    fs::write(&path, content).map_err(|e| e.to_string())
+    // Temp file + fsync + rename: a crash or full disk leaves the old file.
+    crate::core::atomic_io::write_atomic_durable(&path, args[1].as_bytes())
 }
 
 #[tauri::command(async)]
@@ -207,10 +207,14 @@ pub fn write_yaml(
 ) -> Result<(), String> {
     // TODO: have an internal function to check scope
     let (_jan_data_folder, save_path) = resolve_app_path_within_jan_data_folder(app, save_path)?;
-    let file = fs::File::create(&save_path).map_err(|e| e.to_string())?;
-    let mut writer = std::io::BufWriter::new(file);
-    serde_yaml::to_writer(&mut writer, &data).map_err(|e| e.to_string())?;
-    Ok(())
+    write_yaml_file(&save_path, &data)
+}
+
+/// Serialise first, then replace the file atomically, so a failure while
+/// writing is reported and never leaves a truncated model config behind.
+fn write_yaml_file(path: &std::path::Path, data: &serde_json::Value) -> Result<(), String> {
+    let text = serde_yaml::to_string(data).map_err(|e| e.to_string())?;
+    crate::core::atomic_io::write_atomic_durable(path, text.as_bytes())
 }
 
 #[tauri::command(async)]
@@ -575,5 +579,30 @@ mod default_path_tests {
         let (folder, name) = split_default_path("export.json");
         assert!(folder.as_os_str().is_empty());
         assert_eq!(name.as_deref(), Some("export.json"));
+    }
+}
+
+#[cfg(test)]
+mod atomic_write_tests {
+    use super::write_yaml_file;
+
+    #[test]
+    fn write_yaml_replaces_whole_file_and_leaves_no_staging_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("model.yml");
+        std::fs::write(&path, "old: a-much-longer-previous-value
+").unwrap();
+        write_yaml_file(&path, &serde_json::json!({ "name": "m" })).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "name: m
+");
+        let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+    }
+
+    #[test]
+    fn write_yaml_reports_an_unwritable_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing-dir").join("model.yml");
+        assert!(write_yaml_file(&path, &serde_json::json!({ "a": 1 })).is_err());
     }
 }
