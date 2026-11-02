@@ -310,11 +310,8 @@ pub(crate) async fn compact_conversation_with(
 /// opening user message), without its header line.
 fn first_pinned_text(pinned: &str) -> Option<String> {
     let body = pinned.trim().strip_prefix(PIN_HEADER)?;
-    let (_, text) = body.split_once("]
-")?;
-    let text = text.split(&format!("
-
-{PIN_HEADER}")).next().unwrap_or(text);
+    let (_, text) = body.split_once("]\n")?;
+    let text = text.split(&format!("\n\n{PIN_HEADER}")).next().unwrap_or(text);
     let text = text.trim();
     (!text.is_empty()).then(|| cap_pinned(text, TASK_CONTEXT_MAX_CHARS))
 }
@@ -554,10 +551,7 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
     // only: the system prompt stays the same constant whether or not there is one.
     if let Some(task) = task {
         full_transcript = format!(
-            "THE USER'S ORIGINAL TASK (kept in full elsewhere; do not copy it, use it to say how far the work has got toward it, which parts remain, and the next step):
-{task}
-
-{full_transcript}"
+            "THE USER'S ORIGINAL TASK (kept in full elsewhere; do not copy it, use it to say how far the work has got toward it, which parts remain, and the next step):\n{task}\n\n{full_transcript}"
         );
     }
     // Character counts are only a rough proxy for tokens. Token-dense tool
