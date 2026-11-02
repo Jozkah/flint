@@ -76,6 +76,7 @@
     "stopped": "Arrêté"
   },
   "toolOutputAlt": "Résultat de l’outil",
+  "toolOutputImageFailed": "Impossible d’afficher l’image",
   "memory": {
     "exportFilter": "Export de la mémoire Flint",
     "why": "Pourquoi Flint s’en souvient",

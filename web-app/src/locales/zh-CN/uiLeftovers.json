@@ -76,6 +76,7 @@
     "stopped": "已停止"
   },
   "toolOutputAlt": "工具输出",
+  "toolOutputImageFailed": "无法显示图片",
   "memory": {
     "exportFilter": "Flint 记忆导出",
     "why": "Flint 为什么记住这条",

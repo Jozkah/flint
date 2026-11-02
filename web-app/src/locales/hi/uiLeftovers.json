@@ -76,6 +76,7 @@
     "stopped": "बंद"
   },
   "toolOutputAlt": "टूल का आउटपुट",
+  "toolOutputImageFailed": "छवि नहीं दिखाई जा सकी",
   "memory": {
     "exportFilter": "Flint मेमोरी एक्सपोर्ट",
     "why": "Flint यह क्यों याद रखता है",

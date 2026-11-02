@@ -76,6 +76,7 @@
     "stopped": "Stopped"
   },
   "toolOutputAlt": "Tool output",
+  "toolOutputImageFailed": "Image could not be displayed",
   "memory": {
     "id": "ID",
     "exportFilter": "Flint memory export",

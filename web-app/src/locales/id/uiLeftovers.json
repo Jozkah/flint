@@ -76,6 +76,7 @@
     "stopped": "Berhenti"
   },
   "toolOutputAlt": "Keluaran alat",
+  "toolOutputImageFailed": "Gambar tidak dapat ditampilkan",
   "memory": {
     "exportFilter": "Ekspor memori Flint",
     "why": "Mengapa Flint mengingat ini",
