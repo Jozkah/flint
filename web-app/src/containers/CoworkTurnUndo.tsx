@@ -21,8 +21,9 @@ import { changedByText, turnActors } from '@/lib/changeActor'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { basename } from '@/lib/path'
 
-const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
+const baseName = basename
 
 export function CoworkTurnUndo({
   dataFolder: givenDataFolder,

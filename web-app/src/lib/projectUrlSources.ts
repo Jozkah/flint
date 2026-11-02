@@ -2,6 +2,7 @@ import type { FetchedPage } from '@janhq/tauri-plugin-websearch-api'
 import { createDocumentAttachment, type Attachment } from '@/types/attachment'
 import type { UploadResult } from '@/services/uploads/types'
 import type { UrlSource } from '@/stores/project-url-sources-store'
+import { errorText } from './errorText'
 
 /**
  * Add a web page to a project as a source: fetch it through the websearch
@@ -56,11 +57,7 @@ export function validateWebPageUrl(input: string): URL {
   return url
 }
 
-function messageOf(e: unknown): string {
-  return e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
-}
+const messageOf = errorText
 
 /** Map a `web_fetch` rejection onto the reasons the panel explains. */
 export function classifyFetchError(e: unknown): UrlSourceError {

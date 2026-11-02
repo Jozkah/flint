@@ -1,5 +1,6 @@
 import { webSearch, webFetch, imageSearch } from '@janhq/tauri-plugin-websearch-api'
 import { buildSearchChain, useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { errorText } from './errorText'
 
 export const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch', 'image_search'])
 
@@ -248,8 +249,4 @@ function isRateLimited(e: unknown): boolean {
   )
 }
 
-function messageOf(e: unknown): string {
-  return e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
-}
+const messageOf = errorText

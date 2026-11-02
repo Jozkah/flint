@@ -167,12 +167,7 @@ export async function proposeTeamChild(
   }
 }
 
-function messageOf(e: unknown): string {
-  if (e && typeof e === 'object' && 'message' in e) {
-    return String((e as { message: unknown }).message)
-  }
-  return errorText(e)
-}
+const messageOf = errorText
 
 /**
  * Bumped whenever a child starts or settles, so the review list re-reads
