@@ -153,7 +153,8 @@ fn keeps(composer: Composer) -> bool {
         | Composer::EagerTodoAddendum
         | Composer::ToolSchemas
         | Composer::PromptSubmitHooks
-        | Composer::TodoUpkeep => false,
+        | Composer::TodoUpkeep
+        | Composer::MemoryChanges => false,
     }
 }
 
