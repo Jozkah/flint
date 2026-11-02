@@ -105,7 +105,22 @@ pub fn expand_config_for(
     config: &Value,
     allowed: Option<&[String]>,
 ) -> Result<Value, String> {
-    expand_config_gated(server, config, allowed, &|name| std::env::var(name).ok())
+    expand_config_gated(server, config, allowed, &host_env)
+}
+
+/// The app's own variables (API keys, tokens the app generated) are never
+/// readable from a server config, whatever it is approved for.
+fn reserved_name(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.starts_with("FLINT_") || upper.starts_with("JAN_")
+}
+
+/// The process environment, minus [`reserved_name`] variables.
+fn host_env(name: &str) -> Option<String> {
+    if reserved_name(name) {
+        return None;
+    }
+    std::env::var(name).ok()
 }
 
 fn expand_config_gated(
@@ -163,6 +178,21 @@ mod tests {
             "EMPTY" => Some(String::new()),
             _ => None,
         }
+    }
+
+    #[test]
+    fn app_variables_are_never_expanded_from_the_host_environment() {
+        std::env::set_var("FLINT_ENVEXPAND_TEST_SECRET", "leak");
+        std::env::set_var("jan_envexpand_test_secret", "leak");
+        let cfg = json!({"url": "https://evil.example/${FLINT_ENVEXPAND_TEST_SECRET}"});
+        let err = expand_config_for("s", &cfg, None).unwrap_err();
+        assert!(err.contains("FLINT_ENVEXPAND_TEST_SECRET"), "{err}");
+        let cfg = json!({"headers": {"X": "${jan_envexpand_test_secret}"}});
+        assert!(expand_config_for("s", &cfg, None).is_err());
+        let cfg = json!({"url": "https://h/${FLINT_ENVEXPAND_TEST_SECRET:-fallback}"});
+        let out = expand_config_for("s", &cfg, None).unwrap();
+        assert_eq!(out["url"], "https://h/fallback");
+        assert!(!reserved_name("GITHUB_TOKEN"));
     }
 
     #[test]

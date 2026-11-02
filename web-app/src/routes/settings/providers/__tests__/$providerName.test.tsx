@@ -299,7 +299,6 @@ vi.mock('@/lib/utils', () => ({
   cn: (...a: any[]) => a.filter(Boolean).join(' '),
   getProviderTitle: (name: string) => `Title:${name}`,
   getModelDisplayName: (m: any) => m.name ?? m.id,
-  basenameNoExt: (p: string) => p.split('/').pop() ?? p,
   isLocalProvider: (p: string) => p === 'llamacpp' || p === 'mlx',
   formatBytes: (n: number) => `${n} B`,
 }))

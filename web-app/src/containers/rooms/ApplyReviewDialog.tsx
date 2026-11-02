@@ -19,14 +19,13 @@ import { ApplyChip } from './apply/ApplyChip'
 import { FileDiff } from './apply/FileDiff'
 import { PatchFileRow } from './apply/PatchFileRow'
 import { PreflightPanel } from './apply/PreflightPanel'
+import { errorText } from '@/lib/errorText'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
 /** Files open on arrival when the whole patch is at most this many rows. */
 const OPEN_ALL_ROWS = 600
 
-const errorText = (e: unknown): string =>
-  e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e)
 
 /** Kept here too: TurnChangeCard imports the diff from this module. */
 export { FileDiff }

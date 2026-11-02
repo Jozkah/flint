@@ -42,12 +42,23 @@ impl ContextWindowSource {
 /// normally the bare id, but `--model anthropic/claude-sonnet-4-6` and the
 /// desktop selection can carry the provider prefix; both must resolve alike.
 fn strip_provider_qualifier(model_id: &str) -> &str {
-    let mut parts = model_id.splitn(2, '/');
-    let first = parts.next().unwrap_or("");
-    match (first, parts.next()) {
-        ("anthropic" | "openai" | "google" | "tokamak" | "jan", Some(rest)) => rest,
-        _ => model_id,
+    let mut id = model_id;
+    // Repeat so nested qualifiers (`jan/anthropic/...`) reduce to the bare id.
+    loop {
+        let mut parts = id.splitn(2, '/');
+        let first = parts.next().unwrap_or("");
+        match (first, parts.next()) {
+            ("anthropic" | "openai" | "google" | "tokamak" | "jan", Some(rest)) => id = rest,
+            _ => return id,
+        }
     }
+}
+
+/// `id` is `base` itself or `base` followed by a `-` suffix (a date, `-mini`,
+/// `-pro`). Plain `starts_with` would also match `gpt-5.10` for `gpt-5.1`.
+fn is_version(id: &str, base: &str) -> bool {
+    id.strip_prefix(base)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('-'))
 }
 
 /// Look up the catalog window for a bare model id (provider qualifier already
@@ -55,25 +66,30 @@ fn strip_provider_qualifier(model_id: &str) -> &str {
 fn catalog_window(model_id: &str) -> Option<u64> {
     // Claude family: the two newest releases get 1M, everything else claude 200K.
     if model_id.starts_with("claude-") {
+        // Dotted ids (`claude-sonnet-4.6`) name the same models as `4-6`.
+        let model_id = model_id.replace('.', "-");
         let is_new = ["haiku", "sonnet", "opus"].iter().any(|family| {
-            let prefix = format!("claude-{family}-4-6");
-            let prefix7 = format!("claude-{family}-4-7");
-            model_id.starts_with(&prefix) || model_id.starts_with(&prefix7)
+            is_version(&model_id, &format!("claude-{family}-4-6"))
+                || is_version(&model_id, &format!("claude-{family}-4-7"))
         });
         return Some(if is_new { 1_000_000 } else { 200_000 });
     }
 
     // Codex variants are matched before the base gpt-5.x rows they contain.
-    if model_id == "gpt-5.1-codex" || model_id == "gpt-5.2-codex" || model_id == "gpt-5.3-codex" {
+    if ["gpt-5.1-codex", "gpt-5.2-codex", "gpt-5.3-codex"]
+        .iter()
+        .any(|b| is_version(model_id, b))
+    {
         return Some(272_000);
     }
-    if model_id == "gpt-5.1" || model_id == "gpt-5.2" {
+    if ["gpt-5.1", "gpt-5.2"].iter().any(|b| is_version(model_id, b)) {
         return Some(400_000);
     }
-    if model_id == "gpt-5.4" || model_id == "gpt-5.5" {
+    if ["gpt-5.4", "gpt-5.5"].iter().any(|b| is_version(model_id, b)) {
         return Some(1_050_000);
     }
-    if model_id == "gpt-4" || model_id == "gpt-4o" || model_id == "gpt-4o-mini" {
+    // Bare `gpt-4` stays exact: dated gpt-4 snapshots have a much smaller window.
+    if model_id == "gpt-4" || is_version(model_id, "gpt-4o") {
         return Some(128_000);
     }
 
@@ -155,6 +171,31 @@ mod tests {
         assert_eq!(
             resolve_context_window("gemini-3-pro", None).tokens,
             1_000_000
+        );
+    }
+
+    #[test]
+    fn dated_suffixed_dotted_and_nested_ids_resolve() {
+        assert_eq!(resolve_context_window("gpt-4o-2024-08-06", None).tokens, 128_000);
+        assert_eq!(resolve_context_window("gpt-5.2-pro", None).tokens, 400_000);
+        assert_eq!(resolve_context_window("gpt-5.1-codex-max", None).tokens, 272_000);
+        assert_eq!(
+            resolve_context_window("claude-sonnet-4.6", None).tokens,
+            1_000_000
+        );
+        assert_eq!(
+            resolve_context_window("jan/anthropic/claude-opus-4-7-20260101", None).tokens,
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn version_boundary_prevents_false_prefix_matches() {
+        assert_eq!(resolve_context_window("gpt-5.10", None).source, ContextWindowSource::Fallback);
+        assert_eq!(resolve_context_window("gpt-4-0613", None).source, ContextWindowSource::Fallback);
+        assert_eq!(
+            resolve_context_window("claude-sonnet-4-60", None).tokens,
+            200_000
         );
     }
 

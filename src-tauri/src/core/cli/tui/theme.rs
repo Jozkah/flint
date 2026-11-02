@@ -181,14 +181,55 @@ fn query_osc11_is_light() -> Option<bool> {
     parse_osc11(&String::from_utf8_lossy(&reply)).map(|(r, g, b)| luminance_is_light(r, g, b))
 }
 
-#[cfg(not(unix))]
+/// Windows terminals set no `COLORFGBG`, so fall back to the OS app theme
+/// (`AppsUseLightTheme`). Not the terminal's own scheme, but the best signal
+/// available without a console query; `theme = "light"|"dark"` overrides it.
+#[cfg(windows)]
+fn query_osc11_is_light() -> Option<bool> {
+    let out = std::process::Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v",
+            "AppsUseLightTheme",
+        ])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    parse_reg_apps_use_light_theme(&String::from_utf8_lossy(&out.stdout))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn query_osc11_is_light() -> Option<bool> {
     None
+}
+
+/// Parse `reg query ... /v AppsUseLightTheme` output (`AppsUseLightTheme REG_DWORD 0x1`).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_reg_apps_use_light_theme(output: &str) -> Option<bool> {
+    let line = output.lines().find(|l| l.contains("AppsUseLightTheme"))?;
+    let value = line.split_whitespace().last()?;
+    let n = u32::from_str_radix(value.strip_prefix("0x")?, 16).ok()?;
+    Some(n != 0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registry_light_theme_value_parses() {
+        let on = "\r\nHKEY_CURRENT_USER\\Personalize\r\n    AppsUseLightTheme    REG_DWORD    0x1\r\n";
+        let off = "    AppsUseLightTheme    REG_DWORD    0x0\r\n";
+        assert_eq!(parse_reg_apps_use_light_theme(on), Some(true));
+        assert_eq!(parse_reg_apps_use_light_theme(off), Some(false));
+        assert_eq!(parse_reg_apps_use_light_theme(""), None);
+        assert_eq!(
+            parse_reg_apps_use_light_theme("AppsUseLightTheme REG_DWORD oops"),
+            None
+        );
+    }
 
     // `luminance_is_light` and `parse_osc11` are `#[cfg(unix)]` (only the Unix
     // OSC 11 path calls them), so their tests are Unix-only too; otherwise the

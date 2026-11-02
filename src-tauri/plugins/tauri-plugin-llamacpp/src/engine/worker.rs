@@ -1095,6 +1095,7 @@ fn listener_pid(port: u16) -> Option<u32> {
     };
     use windows_sys::Win32::Networking::WinSock::AF_INET;
     let mut size = 0u32;
+    // SAFETY: a null buffer with size 0 is the documented way to ask `GetExtendedTcpTable` for the required size; `size` is a live local.
     unsafe {
         GetExtendedTcpTable(
             std::ptr::null_mut(),
@@ -1111,6 +1112,7 @@ fn listener_pid(port: u16) -> Option<u32> {
     // The table can grow between the two calls.
     let mut buf = vec![0u8; size as usize + 4096];
     size = buf.len() as u32;
+    // SAFETY: `buf` is a live allocation of at least `size` bytes and `size` is a live local the call updates.
     let rc = unsafe {
         GetExtendedTcpTable(
             buf.as_mut_ptr().cast(),
@@ -1124,8 +1126,10 @@ fn listener_pid(port: u16) -> Option<u32> {
     if rc != 0 {
         return None;
     }
+    // SAFETY: the call succeeded, so the OS wrote a `MIB_TCPTABLE_OWNER_PID` at the start of `buf`; `buf` outlives `table`.
     let table = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
     let rows =
+        // SAFETY: the table header reports `dwNumEntries` rows, which the OS wrote into `buf` (sized from the size query plus slack).
         unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
     rows.iter()
         .find(|r| u16::from_be((r.dwLocalPort & 0xffff) as u16) == port)

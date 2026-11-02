@@ -4,6 +4,7 @@ import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import type { MCPForgetReason } from '@/services/mcp/types'
+import { isRecord } from '@/lib/typeGuards'
 
 /**
  * Approval state kept by the renderer.
@@ -147,8 +148,7 @@ type ToolApprovalState = PersistedToolApproval & {
   setPermissionMode: (mode: PermissionMode) => void
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+const isObject = isRecord
 
 const isString = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0
