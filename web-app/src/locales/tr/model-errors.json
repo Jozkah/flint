@@ -16,6 +16,7 @@
     "MODEL_LOAD_TIMED_OUT": "Modelin yüklenmesi çok uzun sürdüğü için işlem durduruldu. Daha küçük bir model veya bağlam boyutu genellikle yardımcı olur.",
     "MISSING_SHARED_LIBRARY": "Motorun ihtiyaç duyduğu bir kitaplık eksik olduğundan motor başlatılamıyor.",
     "GPU_DRIVER_TOO_OLD": "GPU sürücünüz bu motor için çok eski. Sürücüyü güncellemek veya Ayarlar'dan CPU motoruna geçmek sorunu çözecektir.",
+    "GPU_NOT_SUPPORTED": "Bu NVIDIA GPU, CUDA motor eklentisi için çok eski; eklenti 7.5 (GeForce RTX 20 serisi) veya daha yeni hesaplama yeteneği gerektirir. Vulkan ile çalıştırmak için Ayarlar'daki Motor eklentileri bölümünden CUDA eklentisini kaldırın.",
     "CPU_NOT_SUPPORTED": "Bu bilgisayarın işlemcisinde motorun gerek duyduğu komutlar yok (AVX destekli bir x86 işlemci gerekir), bu yüzden motor çöktü. Flint modeli zaten bir kez yalnızca CPU ile yeniden denedi; bu iletiyi hâlâ görüyorsanız o deneme de çöktü veya motor zaten yalnızca CPU olarak ayarlıydı.",
     "OS_VERSION_UNSUPPORTED": "Bu macOS sürümü motor için çok eski. macOS'u güncellemek sorunu çözer.",
     "MODEL_QUANT_NOT_SUPPORTED": "Bu model, GPU arka ucunun çalıştıramadığı bir nicemleme türü kullanıyor. Q4_K_M gibi farklı bir nicemleme indirin veya GPU yük aktarımını kapatın.",

@@ -203,7 +203,7 @@ async fn output_with_timeout_kept(
     // Unix: it leads its own process group. Windows: it starts suspended, is
     // placed in the job, and only then runs, so nothing it starts escapes.
     #[cfg(unix)]
-    cmd.process_group(0);
+    super::proc::detach_from_terminal(cmd);
     #[cfg(windows)]
     cmd.creation_flags(
         jan_process::BACKGROUND_GROUP_FLAGS | windows_sys::Win32::System::Threading::CREATE_SUSPENDED,

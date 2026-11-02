@@ -268,13 +268,16 @@
     "stopGenerating": "停止生成"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp 内存不足",
+    "backendTitle": "GGML 后端遇到错误",
+    "contextTitle": "模型已超出上下文大小",
     "oomReduceContext": "减小上下文大小（ctx-size）",
     "oomDisableMtp": "禁用 MTP（多 Token 预测）",
     "oomLowerGpuLayers": "降低 n-gpu-layers 或切换到 CPU 后端",
     "oomSmallerModel": "使用更小 / 量化程度更高的模型",
     "serverContext": "此模型的上下文窗口由其服务器设定，Flint 无法扩大。请开始新对话、缩短对话，或在服务器上调高上限。",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "重新生成",
+    "reload": "重新加载"
   },
   "emptyRun": {
     "emptyReply": "模型返回了空回复。请重试或切换模型。",

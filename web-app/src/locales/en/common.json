@@ -3047,6 +3047,11 @@
     "title": "Factory reset was incomplete",
     "description": "{{count}} item(s) could not be removed and are still on disk:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint closed unexpectedly last time",
+    "description": "The previous run did not shut down cleanly. You can export a redacted log to attach to a bug report. Nothing is sent anywhere.",
+    "export": "Export redacted log"
+  },
   "settingsRecovered": {
     "title": "Settings file could not be read",
     "withBackup": "{{file}} was damaged, so Flint started with default settings. The damaged file was kept as {{backup}}.",

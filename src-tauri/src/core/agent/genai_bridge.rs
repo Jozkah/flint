@@ -2211,6 +2211,32 @@ mod tests {
         server.await.expect("server");
     }
 
+    /// Gemini's OpenAI-compatible endpoint streams parallel tool calls with no
+    /// `index`, one call per chunk. The position fallback gave every one of
+    /// them slot 0, merging them into a single call with spliced arguments.
+    #[tokio::test]
+    async fn unindexed_parallel_tool_calls_stay_apart() {
+        let (url, server) = serve(vec![Some(sse_response(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"id":"call_a","function":{"name":"read","arguments":"{\"path\":\"a\"}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"id":"call_b","function":{"name":"grep","arguments":"{\"q\":"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"\"x\"}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#,
+        ]))])
+        .await;
+
+        let (tx, _rx) = sink();
+        let completion = run(&url, &[], &tx).await.expect("stream succeeds");
+        let calls = &completion["choices"][0]["message"]["tool_calls"];
+        assert_eq!(calls.as_array().map(|c| c.len()), Some(2), "{calls:#}");
+        assert_eq!(calls[0]["id"], "call_a");
+        assert_eq!(calls[0]["function"]["name"], "read");
+        assert_eq!(calls[0]["function"]["arguments"], r#"{"path":"a"}"#);
+        assert_eq!(calls[1]["id"], "call_b");
+        assert_eq!(calls[1]["function"]["name"], "grep");
+        assert_eq!(calls[1]["function"]["arguments"], r#"{"q":"x"}"#);
+        server.await.expect("server");
+    }
+
     /// genai 0.7.0-beta.19 read only `delta.tool_calls[0]` of a non-final chunk, so
     /// a provider that batches several calls into one SSE chunk lost all but the
     /// first. The vendored crate (see `src-tauri/vendor/genai/FLINT-PATCH.md`)

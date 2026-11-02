@@ -231,6 +231,7 @@
   "transcript": {
     "label": "Transkrip diskusi",
     "empty": "Belum ada yang dibicarakan.",
+    "loadEarlier": "Muat pesan sebelumnya",
     "you": "Anda",
     "system": "Sistem",
     "moderator": "Moderator",

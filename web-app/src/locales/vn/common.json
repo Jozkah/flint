@@ -3025,6 +3025,11 @@
     "title": "Đặt lại chưa hoàn tất",
     "description": "Không thể xóa {{count}} mục, chúng vẫn còn trên đĩa:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Lần trước Flint đã đóng đột ngột",
+    "description": "Lần chạy trước không tắt đúng cách. Bạn có thể xuất nhật ký đã ẩn thông tin nhạy cảm để đính kèm báo cáo lỗi. Không có gì được gửi đi đâu cả.",
+    "export": "Xuất nhật ký"
+  },
   "settingsRecovered": {
     "title": "Không thể đọc tệp cài đặt",
     "withBackup": "{{file}} bị hỏng nên Flint khởi động với cài đặt mặc định. Tệp hỏng được giữ lại với tên {{backup}}.",

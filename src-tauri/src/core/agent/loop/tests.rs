@@ -1452,9 +1452,9 @@ async fn announced_results_are_shown_once_and_keep_transcript_order_and_the_nudg
     );
 }
 
-/// The composite invoker announces each outcome once, in completion order
-/// (the sequential pass first, the concurrent reads after), and the batch
-/// still comes back in call order.
+/// The composite invoker announces each outcome once as it completes (a read
+/// listed before an edit settles before it; reads after the last such call
+/// settle at the end), and the batch comes back in call order.
 #[tokio::test]
 async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
     let root = std::env::temp_dir().join(format!(
@@ -1501,7 +1501,7 @@ async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
         .unwrap();
     let returned: Vec<&str> = out.iter().map(|o| o.id.as_str()).collect();
     assert_eq!(returned, ["r", "e"], "call order, not completion order");
-    assert_eq!(*heard.lock().unwrap(), ["e", "r"], "the edit finished first");
+    assert_eq!(*heard.lock().unwrap(), ["r", "e"], "the read listed first settled before the edit");
     assert!(!out[1].content.starts_with("ERROR"), "{}", out[1].content);
     assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap().trim(), "two");
     // The plain entry point announces nothing and returns the same batch.
@@ -2718,15 +2718,17 @@ async fn an_exhausted_budget_is_announced_once_in_the_system_voice() {
     );
 }
 
-/// Passing the ceiling no longer stops a run, so a long thread only grows.
-/// Once every turn is finished, the oversized conversation is compacted
-/// before it is published -- otherwise the next run resumes this thread by
-/// sending the whole thing upstream.
+/// A spent token ceiling is cumulative spend, not live context: a long,
+/// well-cached run (a reasoning model's thinking is charged but never resent)
+/// passes a window-sized ceiling while its prompt is a fraction of the window.
+/// Finishing over the ceiling must not compact the conversation; only the
+/// window (the preflight) or a provider overflow does that.
 #[tokio::test]
-async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
+async fn an_exhausted_budget_does_not_compact_a_finished_run() {
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    // Comfortably longer than DEFAULT_KEEP_RECENT so there is a middle to drop.
+    // Comfortably longer than DEFAULT_KEEP_RECENT, so a compaction would have
+    // had a middle to drop.
     let convo: Vec<serde_json::Value> = (0..24)
         .map(|i| {
             json!({
@@ -2744,7 +2746,7 @@ async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
     let summary = json!({
         "choices": [{ "message": { "content": "SUMMARY OF THE EARLIER WORK" } }]
     });
-    // Second response is consumed by the summarizer inside compaction.
+    // Anything past the run's own turn would be a summarizer call.
     let model = MockModel::new(vec![over_budget, summary]);
     let tool = MockTool::default();
     let mut budget = SessionBudget::new(Some(50));
@@ -2771,31 +2773,15 @@ async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
     assert!(budget.exhausted(), "precondition: the ceiling was passed");
     assert_eq!(
         model.requests.lock().unwrap().len(),
-        2,
-        "one turn, plus the summarizer call compaction makes"
+        1,
+        "no summarizer call: compaction never ran"
     );
 
     let events: Vec<StreamEvent> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    // The TUI runs with logging off, so without an event this compaction is
-    // invisible to the user.
-    let phases: Vec<CompactionPhase> = events
-        .iter()
-        .filter_map(|ev| match ev {
-            StreamEvent::Compaction {
-                phase,
-                reason: CompactionReason::SessionBudget,
-                ..
-            } => Some(*phase),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        phases,
-        [CompactionPhase::Started, CompactionPhase::Finished],
-        "the budget compaction is announced, start and end"
+    assert!(
+        !events.iter().any(|ev| matches!(ev, StreamEvent::Compaction { .. })),
+        "spend is not context size: no compaction event"
     );
-    // The published history is the compacted one: shorter, and carrying the
-    // summary in place of the dropped middle.
     let published = events
         .into_iter()
         .rev()
@@ -2804,18 +2790,13 @@ async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
             _ => None,
         })
         .expect("a MessagesUpdated is published");
+    assert_eq!(published.len(), original_len, "history untouched");
     assert!(
-        published.len() < original_len,
-        "history was compacted: {} -> {}",
-        original_len,
-        published.len()
-    );
-    assert!(
-        published.iter().any(|m| m["content"]
+        !published.iter().any(|m| m["content"]
             .as_str()
             .unwrap_or_default()
             .contains("SUMMARY OF THE EARLIER WORK")),
-        "the summary replaced the dropped middle: {published:#?}"
+        "no summary replaced the history: {published:#?}"
     );
 }
 
@@ -5735,6 +5716,77 @@ async fn tool_rules_count_calls_earlier_in_the_same_batch() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A read listed before a write in the same batch sees the file as it was, and
+/// a read listed after it sees the write: reads are deferred to run together,
+/// but never past a call that could change what they return.
+#[tokio::test]
+async fn a_read_listed_before_a_write_sees_the_file_before_it() {
+    let root = std::env::temp_dir().join(format!("flint-batch-order-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.txt"), "old contents
+").unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        PermissionRegistry::default(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.record_to = Some(data);
+    invoker.auto_approve = true;
+    invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("ord-s1", "ord-s1#run-1", "");
+    let call = |id: &str, name: &str, args: &str| {
+        serde_json::json!({ "id": id, "type": "function",
+            "function": { "name": name, "arguments": args } })
+    };
+    let out = invoker
+        .invoke(&[
+            call("r1", "read", "{\"path\":\"a.txt\"}"),
+            call("w1", "write", "{\"path\":\"a.txt\",\"content\":\"new contents\\n\"}"),
+            call("r2", "read", "{\"path\":\"a.txt\"}"),
+        ])
+        .await
+        .expect("dispatch");
+    let text = |id: &str| out.iter().find(|o| o.id == id).map(|o| o.content.clone()).unwrap_or_default();
+    assert!(text("r1").contains("old contents"), "{}", text("r1"));
+    assert!(text("r2").contains("new contents"), "{}", text("r2"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A built-in result too big to keep in context arrives as a head, a tail and
+/// the name of a file holding all of it.
+#[tokio::test]
+async fn a_huge_builtin_result_is_spilled_to_a_file() {
+    let root = std::env::temp_dir().join(format!("flint-spill-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let lines: String = (0..4000).map(|i| format!("needle line number {i} {}
+", "p".repeat(300))).collect();
+    std::fs::write(root.join("a.txt"), lines).unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        PermissionRegistry::default(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.available_tools = vec!["read".to_string(), "grep".to_string()];
+    let call = serde_json::json!({ "id": "g1", "type": "function",
+        "function": { "name": "grep", "arguments": "{\"pattern\":\"needle\",\"limit\":5000}" } });
+    let out = invoker.invoke(&[call.clone()]).await.expect("dispatch");
+    let text = &out[0].content;
+    assert!(text.contains("chars omitted") && text.contains("saved to"), "{}", &text[..text.len().min(300)]);
+    assert!(text.chars().count() < 12_000, "{}", text.chars().count());
+    // Without the read tool the model could not open the file: nothing spills.
+    invoker.available_tools = vec!["grep".to_string()];
+    let whole = invoker.invoke(&[call]).await.expect("dispatch");
+    assert!(!whole[0].content.contains("saved to"), "no read tool, no spill");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// `after` is met only by a call of the earlier tool that ran and
 /// succeeded: a failed read does not unlock the rule, a good one does.
 #[tokio::test]
@@ -8094,11 +8146,12 @@ fn stuck_detector_flags_identical_calls_and_error_streaks() {
     );
 
     let mut d = StuckDetector::default();
-    assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
-    assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+    for _ in 1..REPEATED_CALLS_LIMIT {
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+    }
     assert!(matches!(
         d.observe(sig(call("{\"p\":1}")), false, ""),
-        Some(StuckReason::RepeatedCalls { count: 3, .. })
+        Some(StuckReason::RepeatedCalls { count: REPEATED_CALLS_LIMIT, .. })
     ));
 
     let mut d = StuckDetector::default();
@@ -8164,9 +8217,53 @@ async fn identical_calls_without_ui_stop_the_run() {
         tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
         "{err}"
     );
-    assert!(err.message().contains("same tool call 3 times"), "{err}");
-    assert_eq!(*calls.lock().unwrap(), STUCK_TURN_LIMIT);
-    assert_eq!(tool.calls.lock().unwrap().len(), STUCK_TURN_LIMIT);
+    assert!(err.message().contains("same tool call 8 times"), "{err}");
+    assert_eq!(*calls.lock().unwrap(), REPEATED_CALLS_LIMIT);
+    assert_eq!(tool.calls.lock().unwrap().len(), REPEATED_CALLS_LIMIT);
+}
+
+/// The model is reminded, not stopped, on the way to the limit; the first
+/// reminder is brief and the second names the repeated call.
+#[test]
+fn stuck_detector_reminds_before_it_stops() {
+    let call = |name: &str| json!([{ "id": "x", "function": { "name": name, "arguments": "{}" } }]);
+    let sig = |v: serde_json::Value| StuckDetector::signature(v.as_array().unwrap());
+    let mut d = StuckDetector::default();
+    let mut reminders = Vec::new();
+    for n in 1..REPEATED_CALLS_LIMIT {
+        assert_eq!(d.observe(sig(call("read")), false, ""), None);
+        if let Some(text) = d.take_reminder() {
+            reminders.push((n, text));
+        }
+        assert_eq!(d.take_reminder(), None, "a reminder is taken once");
+    }
+    assert_eq!(reminders.len(), 2, "{reminders:?}");
+    assert_eq!((reminders[0].0, reminders[1].0), (3, 5));
+    assert!(!reminders[0].1.contains("read("));
+    assert!(reminders[1].1.contains("read({})"), "{}", reminders[1].1);
+}
+
+/// `todo` calls neither count as a repeat nor break the chain, so interleaving
+/// them cannot hide a loop.
+#[test]
+fn stuck_detector_ignores_bookkeeping_calls() {
+    let calls = |names: &[&str]| {
+        let v: Vec<serde_json::Value> = names
+            .iter()
+            .map(|n| json!({ "id": "x", "function": { "name": n, "arguments": "{}" } }))
+            .collect();
+        StuckDetector::signature(&v)
+    };
+    assert_eq!(calls(&["read", "todo"]), calls(&["read"]));
+    assert_eq!(calls(&["todo"]), "");
+    let mut d = StuckDetector::default();
+    d.observe(calls(&["read"]), false, "");
+    d.observe(calls(&["todo"]), false, "");
+    d.observe(calls(&["read", "todo"]), false, "");
+    assert_eq!(d.repeats, 2, "the todo-only turn is transparent");
+    assert!(d.take_reminder().is_none());
+    d.observe(calls(&["read"]), false, "");
+    assert!(d.take_reminder().is_some(), "third read reminds");
 }
 
 /// A tool invoker with a UI: answers the stuck question with fixed text.
@@ -8198,13 +8295,10 @@ async fn identical_calls_with_ui_ask_the_user_and_continue() {
     let call = || tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}");
     let model = RecordingQueueModel {
         replies: StdMutex::new(
-            vec![
-                call(),
-                call(),
-                call(),
-                json!({ "choices": [{ "message": { "content": "done" } }] }),
-            ]
-            .into(),
+            (0..REPEATED_CALLS_LIMIT)
+                .map(|_| call())
+                .chain([json!({ "choices": [{ "message": { "content": "done" } }] })])
+                .collect(),
         ),
         requests: StdMutex::new(Vec::new()),
     };
@@ -8237,6 +8331,10 @@ async fn identical_calls_with_ui_ask_the_user_and_continue() {
     let requests = model.requests.lock().unwrap();
     let last = requests.last().unwrap().to_string();
     assert!(last.contains("look in b.txt instead"), "{last}");
+    assert!(
+        last.contains("same tool call several times"),
+        "the model was reminded on the way to the limit: {last}"
+    );
 }
 
 /// The user choosing to stop ends the run as cancelled.

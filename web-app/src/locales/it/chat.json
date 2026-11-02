@@ -287,13 +287,16 @@
     "stopGenerating": "Interrompi generazione"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp ha esaurito la memoria",
+    "backendTitle": "Il backend GGML ha riscontrato un errore",
+    "contextTitle": "Il modello ha esaurito la dimensione del contesto",
     "oomReduceContext": "Riduci la dimensione del contesto (ctx-size)",
     "oomDisableMtp": "Disattiva MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Riduci n-gpu-layers o passa a un backend CPU",
     "oomSmallerModel": "Usa un modello più piccolo / più quantizzato",
     "serverContext": "La finestra di contesto di questo modello è impostata dal suo server, quindi Flint non può ampliarla. Avvia una nuova chat, accorcia la conversazione o aumenta il limite sul server.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Rigenera",
+    "reload": "Ricarica"
   },
   "emptyRun": {
     "emptyReply": "Il modello ha restituito una risposta vuota. Riprova o cambia modello.",

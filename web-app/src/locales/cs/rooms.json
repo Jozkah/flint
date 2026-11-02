@@ -237,6 +237,7 @@
   "transcript": {
     "label": "Přepis diskuse",
     "empty": "Zatím nebylo nic řečeno.",
+    "loadEarlier": "Načíst starší zprávy",
     "you": "Vy",
     "system": "Systém",
     "moderator": "Moderátor",

@@ -235,6 +235,7 @@
   "transcript": {
     "label": "Trascrizione della discussione",
     "empty": "Non è stato ancora detto nulla.",
+    "loadEarlier": "Carica i messaggi precedenti",
     "you": "Tu",
     "system": "Sistema",
     "moderator": "Moderatore",

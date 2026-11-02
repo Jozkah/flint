@@ -233,6 +233,7 @@
   "transcript": {
     "label": "Diskussionstranskript",
     "empty": "Es wurde noch nichts gesagt.",
+    "loadEarlier": "Frühere Nachrichten laden",
     "you": "Du",
     "system": "System",
     "moderator": "Moderator",

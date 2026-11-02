@@ -2963,6 +2963,11 @@
     "title": "重置未完成",
     "description": "有 {{count}} 项无法删除，仍留在磁盘上：\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint 上次意外关闭",
+    "description": "上一次运行未正常退出。你可以导出已脱敏的日志，附在错误报告中。不会向任何地方发送内容。",
+    "export": "导出日志"
+  },
   "settingsRecovered": {
     "title": "无法读取设置文件",
     "withBackup": "{{file}} 已损坏，因此 Flint 使用默认设置启动。损坏的文件已保留为 {{backup}}。",

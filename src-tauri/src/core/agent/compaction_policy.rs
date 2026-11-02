@@ -193,6 +193,64 @@ pub fn should_compact(messages: &[Value], t: &Thresholds) -> bool {
     estimate_tokens(messages) >= t.compact_at
 }
 
+/// What the provider last said the prompt cost, pinned to the messages it was
+/// measured on. The character estimate cannot see the system prompt's tool
+/// schemas, nor how dense the text is for this tokenizer; the provider's own
+/// count can.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UsageAnchor {
+    prompt_tokens: u64,
+    messages: usize,
+    /// The estimate of those messages when measured. If it differs later, they
+    /// were rewritten (compacted, pruned, offloaded) and the count is stale.
+    estimate: u64,
+}
+
+impl UsageAnchor {
+    /// Anchor `prompt_tokens`, reported for a request carrying `sent`.
+    pub fn new(prompt_tokens: u64, sent: &[Value]) -> Option<Self> {
+        (prompt_tokens > 0).then(|| Self {
+            prompt_tokens,
+            messages: sent.len(),
+            estimate: estimate_tokens(sent),
+        })
+    }
+}
+
+/// The provider-reported prompt size plus an estimate of what was appended
+/// since, or the plain estimate when there is no usable anchor.
+pub fn calibrated_tokens(messages: &[Value], anchor: Option<&UsageAnchor>) -> u64 {
+    if let Some(a) = anchor {
+        if a.messages <= messages.len() && estimate_tokens(&messages[..a.messages]) == a.estimate {
+            return a.prompt_tokens + estimate_tokens(&messages[a.messages..]);
+        }
+    }
+    estimate_tokens(messages)
+}
+
+/// The calibrated size of `before` once it has become `after` (microcompaction
+/// rewrote it): the provider-reported figure less what the estimate says was
+/// freed. Using the plain estimate here instead would compare a number that
+/// leaves out the system prompt and tool schemas to a trigger measured with
+/// them, and call a still-full window "under the threshold".
+pub fn calibrated_tokens_after(
+    before: &[Value],
+    after: &[Value],
+    anchor: Option<&UsageAnchor>,
+) -> u64 {
+    calibrated_tokens(before, anchor)
+        .saturating_sub(estimate_tokens(before).saturating_sub(estimate_tokens(after)))
+}
+
+/// [`should_compact`], measured from the last provider-reported usage.
+pub fn should_compact_calibrated(
+    messages: &[Value],
+    anchor: Option<&UsageAnchor>,
+    t: &Thresholds,
+) -> bool {
+    calibrated_tokens(messages, anchor) >= t.compact_at
+}
+
 // ---------------------------------------------------------------------------
 // Microcompaction: prune stale, bulky tool results in place.
 // ---------------------------------------------------------------------------
@@ -327,6 +385,48 @@ impl Offloader {
         }
         None
     }
+}
+
+/// A fresh result longer than this (chars, about 6K tokens) is spilled: the
+/// model gets a preview and a file for the rest. Stale results are handled by
+/// [`microcompact_offloading`]; this is for one that arrives too big to keep.
+pub const SPILL_THRESHOLD_CHARS: usize = 24_000;
+const SPILL_HEAD_CHARS: usize = 6_000;
+const SPILL_TAIL_CHARS: usize = 2_000;
+
+/// Keep a head and tail of `text` and save the whole of it under `scratch`,
+/// naming the file, when a tool result is too big to sit in context whole.
+/// Returns `text` unchanged for the tools that already spill or page (`bash`,
+/// `read`), for failures (what the model most needs in front of it), for
+/// results under the threshold, and when the file cannot be written.
+pub fn spill_large_result(
+    scratch: &std::path::Path,
+    tool: &str,
+    call_id: &str,
+    text: String,
+) -> String {
+    if matches!(tool, "bash" | "read") || is_error_result(tool, &text) {
+        return text;
+    }
+    let total = text.chars().count();
+    if total <= SPILL_THRESHOLD_CHARS {
+        return text;
+    }
+    let Some(pointer) = Offloader::new(scratch).offload(call_id, tool, &text) else {
+        return text;
+    };
+    let head: String = text.chars().take(SPILL_HEAD_CHARS).collect();
+    let tail: String = text.chars().skip(total - SPILL_TAIL_CHARS).collect();
+    format!(
+        "{head}
+
+[... {} chars omitted ...]
+
+{tail}
+
+{pointer}",
+        total - SPILL_HEAD_CHARS - SPILL_TAIL_CHARS
+    )
 }
 
 fn is_pointer(content: &str) -> bool {
@@ -700,6 +800,33 @@ mod tests {
     // --- thresholds ---
 
     #[test]
+    fn calibrated_tokens_trusts_the_provider_until_the_messages_change() {
+        let msg = |t: &str| json!({ "role": "user", "content": t });
+        let mut convo = vec![msg(&"a".repeat(400)), msg(&"b".repeat(400))];
+        let anchor = UsageAnchor::new(5_000, &convo);
+        assert_eq!(UsageAnchor::new(0, &convo), None, "no usage, no anchor");
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), 5_000);
+        // Appended messages are estimated on top of the reported count.
+        convo.push(msg(&"c".repeat(400)));
+        let appended = estimate_tokens(&convo[2..]);
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), 5_000 + appended);
+        // After a rewrite that freed some, the calibrated size drops by the estimate's difference.
+        let shrunk = vec![convo[0].clone(), msg("tiny"), convo[2].clone()];
+        let freed = estimate_tokens(&convo).saturating_sub(estimate_tokens(&shrunk));
+        assert!(freed > 0);
+        assert_eq!(
+            calibrated_tokens_after(&convo, &shrunk, anchor.as_ref()),
+            (5_000 + appended).saturating_sub(freed)
+        );
+        // A rewritten prefix, even at the same length, falls back to the estimate.
+        convo[0] = msg("short");
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), estimate_tokens(&convo));
+        // So does a conversation shorter than what was measured.
+        convo.truncate(1);
+        assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), estimate_tokens(&convo));
+    }
+
+    #[test]
     fn threshold_is_effective_window_minus_headroom() {
         let cfg = WindowConfig::from_config(Some(128_000), Some(16_000));
         let t = thresholds(&cfg).unwrap().unwrap();
@@ -775,6 +902,32 @@ mod tests {
         assert!(!should_compact(&small, &t));
         let big = vec![json!({ "role": "user", "content": "x".repeat(1_000) })];
         assert!(should_compact(&big, &t));
+    }
+
+    // --- spilling a fresh large result ---
+
+    #[test]
+    fn a_large_fresh_result_keeps_head_and_tail_and_names_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = format!("HEAD{}TAIL", "m".repeat(40_000));
+        let out = spill_large_result(dir.path(), "grep", "call-1", body.clone());
+        assert!(out.starts_with("HEAD") && out.contains("TAIL"), "head and tail kept");
+        assert!(out.chars().count() < 10_000, "the middle is gone from context");
+        assert!(out.contains("chars omitted") && out.contains("saved to"), "{}", &out[out.len() - 200..]);
+        let saved = std::fs::read_to_string(dir.path().join(OFFLOAD_DIR).join("call-1.txt")).unwrap();
+        assert_eq!(saved, body, "the file holds all of it");
+    }
+
+    #[test]
+    fn spill_leaves_small_results_errors_and_self_paging_tools_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = "x".repeat(30_000);
+        assert_eq!(spill_large_result(dir.path(), "grep", "a", "small".into()), "small");
+        assert_eq!(spill_large_result(dir.path(), "read", "b", big.clone()), big, "read pages itself");
+        assert_eq!(spill_large_result(dir.path(), "bash", "c", big.clone()), big, "bash spills itself");
+        let err = format!("ERROR: {big}");
+        assert_eq!(spill_large_result(dir.path(), "grep", "d", err.clone()), err);
+        assert!(!dir.path().join(OFFLOAD_DIR).exists(), "nothing written");
     }
 
     // --- microcompaction ---

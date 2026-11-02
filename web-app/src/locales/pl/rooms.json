@@ -237,6 +237,7 @@
   "transcript": {
     "label": "Transkrypcja dyskusji",
     "empty": "Nic jeszcze nie powiedziano.",
+    "loadEarlier": "Wczytaj wcześniejsze wiadomości",
     "you": "Ty",
     "system": "System",
     "moderator": "Moderator",
