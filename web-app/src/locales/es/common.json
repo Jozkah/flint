@@ -3025,6 +3025,11 @@
     "title": "Restablecimiento incompleto",
     "description": "No se pudieron eliminar {{count}} elemento(s); siguen en el disco:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint se cerró inesperadamente la última vez",
+    "description": "La ejecución anterior no terminó correctamente. Puedes exportar un registro con datos ocultos para adjuntarlo a un informe de error. No se envía nada a ningún sitio.",
+    "export": "Exportar registro"
+  },
   "settingsRecovered": {
     "title": "No se pudo leer el archivo de ajustes",
     "withBackup": "{{file}} estaba dañado, así que Flint se inició con los ajustes predeterminados. El archivo dañado se conservó como {{backup}}.",

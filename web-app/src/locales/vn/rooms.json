@@ -235,6 +235,7 @@
   "transcript": {
     "label": "Bản ghi thảo luận",
     "empty": "Chưa có gì được nói.",
+    "loadEarlier": "Tải các tin nhắn trước đó",
     "you": "Bạn",
     "system": "Hệ thống",
     "moderator": "Người điều phối",

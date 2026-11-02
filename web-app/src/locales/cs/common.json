@@ -3084,6 +3084,11 @@
     "title": "Obnovení není úplné",
     "description": "Nepodařilo se odstranit položky ({{count}}); zůstávají na disku:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint se minule neočekávaně ukončil",
+    "description": "Předchozí běh nebyl řádně ukončen. Můžete exportovat upravený protokol a připojit ho k hlášení chyby. Nic se nikam neodesílá.",
+    "export": "Exportovat protokol"
+  },
   "settingsRecovered": {
     "title": "Soubor nastavení se nepodařilo přečíst",
     "withBackup": "Soubor {{file}} byl poškozen, proto Flint spustil s výchozím nastavením. Poškozený soubor byl uložen jako {{backup}}.",

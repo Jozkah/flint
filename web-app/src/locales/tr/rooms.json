@@ -233,6 +233,7 @@
   "transcript": {
     "label": "Tartışma dökümü",
     "empty": "Henüz hiçbir şey söylenmedi.",
+    "loadEarlier": "Önceki mesajları yükle",
     "you": "Siz",
     "system": "Sistem",
     "moderator": "Moderatör",

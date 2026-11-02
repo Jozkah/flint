@@ -65,6 +65,10 @@ describe('RoomTranscript', () => {
       }),
     ]
     render(<RoomTranscript room={room} journal={asJournal(messages)} liveTurn={null} />)
+    // Only the newest messages mount at first; reveal the rest.
+    while (screen.queryByTestId('room-transcript-load-earlier')) {
+      fireEvent.click(screen.getByTestId('room-transcript-load-earlier'))
+    }
 
     const [speech, interrupted] = byKind('speech')
     // Name in the participant's colour, role and model muted beside it.
@@ -100,6 +104,15 @@ describe('RoomTranscript', () => {
     expect(error).toHaveAttribute('data-status', 'failed')
     expect(within(error).getByText('Failed')).toBeInTheDocument()
     expect(within(error).getByTestId('message-error')).toHaveTextContent('Rate limit hit')
+  })
+
+  it('mounts only the newest messages of a long journal and loads earlier on demand', () => {
+    const messages = Array.from({ length: 30 }, (_, i) => makeMessage({ text: `line-${i}` }))
+    render(<RoomTranscript room={makeRoom()} journal={asJournal(messages)} liveTurn={null} />)
+    expect(screen.queryByText('line-0')).toBeNull()
+    expect(screen.getByText('line-29')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('room-transcript-load-earlier'))
+    expect(screen.getAllByTestId('render-markdown').length).toBeGreaterThan(10)
   })
 
   it('renders message text through the markdown renderer, never as raw HTML or scripts', () => {

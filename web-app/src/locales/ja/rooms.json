@@ -231,6 +231,7 @@
   "transcript": {
     "label": "議論のトランスクリプト",
     "empty": "まだ何も発言されていません。",
+    "loadEarlier": "以前のメッセージを読み込む",
     "you": "あなた",
     "system": "システム",
     "moderator": "モデレーター",
