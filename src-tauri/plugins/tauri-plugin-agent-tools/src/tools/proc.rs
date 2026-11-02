@@ -1472,9 +1472,38 @@ pub async fn spawn(
 
 #[cfg(unix)]
 fn set_process_group(cmd: &mut Command) {
-    // pgid 0 => the child becomes leader of a new group whose id equals its pid,
-    // so `kill_tree(pid)` can signal the whole group.
-    cmd.process_group(0);
+    detach_from_terminal(cmd);
+}
+
+/// Start the child in a new session (`setsid`), so it leads a new process group
+/// (pgid == pid, which [`kill_tree`] relies on) **and** has no controlling
+/// terminal (janhq/jan#9517).
+///
+/// A new process group alone (`process_group(0)`) is not enough when Flint
+/// runs in a terminal: the child stays in Flint's session, so anything it
+/// starts can open `/dev/tty` and make itself the terminal's foreground group
+/// with `tcsetpgrp`. Once it exits, the foreground points at a dead group and
+/// the TUI's next read stops Flint with SIGTTIN (`suspended (tty input)`).
+/// Without a controlling terminal, opening `/dev/tty` fails, so a tool that
+/// prompts there fails fast instead of stopping or hanging.
+///
+/// This replaces `process_group(0)` rather than adding to it: std applies the
+/// process group before the `pre_exec` hooks, and `setsid` refuses (EPERM) in
+/// a process that already leads a group.
+#[cfg(unix)]
+pub fn detach_from_terminal(cmd: &mut Command) {
+    // SAFETY: runs in the forked child before exec; `setsid` is
+    // async-signal-safe. It only fails in a process that already leads a
+    // group, which a freshly forked child never does; failing the spawn then
+    // is better than silently sharing Flint's terminal.
+    unsafe {
+        cmd.pre_exec(|| {
+            if nix::libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
 }
 
 #[cfg(windows)]
@@ -2381,6 +2410,42 @@ mod tests {
         unregister(pid);
         let expected = std::env::var("TMPDIR").unwrap_or_else(|_| "unset".to_string());
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), expected);
+    }
+
+    /// janhq/jan#9517: the child leads its own session and process group, so
+    /// `kill_tree` still reaches the whole tree and the child is outside
+    /// Flint's session, unable to take Flint's terminal.
+    #[tokio::test]
+    async fn spawned_child_leads_its_own_session() {
+        use nix::unistd::{getpgid, getsid, Pid};
+        let mut child = spawn(shell(), "sleep 30", &tmp(), None).await.unwrap();
+        let pid = Pid::from_raw(child.id().unwrap() as i32);
+        let (sid, pgid) = (getsid(Some(pid)), getpgid(Some(pid)));
+        kill_tree(pid.as_raw() as u32);
+        let _ = child.wait().await;
+        unregister(pid.as_raw() as u32);
+        assert_eq!(sid.unwrap(), pid, "child must lead a new session");
+        assert_eq!(pgid.unwrap(), pid, "child must lead its process group");
+        assert_ne!(sid.unwrap(), getsid(None).unwrap());
+    }
+
+    /// Without a controlling terminal the child cannot open `/dev/tty`. Only
+    /// meaningful when the test runner has a terminal; without one it passes
+    /// either way, and `spawned_child_leads_its_own_session` is the guard.
+    #[tokio::test]
+    async fn spawned_child_cannot_open_the_terminal() {
+        let child = spawn(
+            shell(),
+            "if (: </dev/tty) 2>/dev/null; then echo opened; else echo denied; fi",
+            &tmp(),
+            None,
+        )
+        .await
+        .unwrap();
+        let pid = child.id().unwrap();
+        let out = child.wait_with_output().await.unwrap();
+        unregister(pid);
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "denied");
     }
 
     #[tokio::test]

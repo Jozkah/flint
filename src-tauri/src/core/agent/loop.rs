@@ -3724,6 +3724,16 @@ async fn orchestrate_inner(
             crate::core::agent::reminder::attach(&mut conversation_messages, upkeep);
         }
     }
+    // The memory index in the prompt is the session-start snapshot, so notes
+    // written since are reported here, after the conversation, where a change
+    // does not resend the system prompt (janhq/jan#9497).
+    if offered.contains("memory_read") {
+        if let (Some(root), Some(sid)) = (project_root.as_deref(), session_id.as_deref()) {
+            if let Some(changes) = crate::core::agent::context::memory_changes_reminder(root, sid) {
+                crate::core::agent::reminder::attach(&mut conversation_messages, &changes);
+            }
+        }
+    }
     // Paired with the addendum above: force the model's very first tool call
     // to actually be `todo` rather than leaving compliance up to a prompt it
     // could silently ignore.
