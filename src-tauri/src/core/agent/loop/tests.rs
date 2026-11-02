@@ -5716,6 +5716,46 @@ async fn tool_rules_count_calls_earlier_in_the_same_batch() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A read listed before a write in the same batch sees the file as it was, and
+/// a read listed after it sees the write: reads are deferred to run together,
+/// but never past a call that could change what they return.
+#[tokio::test]
+async fn a_read_listed_before_a_write_sees_the_file_before_it() {
+    let root = std::env::temp_dir().join(format!("flint-batch-order-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.txt"), "old contents
+").unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        PermissionRegistry::default(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.record_to = Some(data);
+    invoker.auto_approve = true;
+    invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("ord-s1", "ord-s1#run-1", "");
+    let call = |id: &str, name: &str, args: &str| {
+        serde_json::json!({ "id": id, "type": "function",
+            "function": { "name": name, "arguments": args } })
+    };
+    let out = invoker
+        .invoke(&[
+            call("r1", "read", "{\"path\":\"a.txt\"}"),
+            call("w1", "write", "{\"path\":\"a.txt\",\"content\":\"new contents\\n\"}"),
+            call("r2", "read", "{\"path\":\"a.txt\"}"),
+        ])
+        .await
+        .expect("dispatch");
+    let text = |id: &str| out.iter().find(|o| o.id == id).map(|o| o.content.clone()).unwrap_or_default();
+    assert!(text("r1").contains("old contents"), "{}", text("r1"));
+    assert!(text("r2").contains("new contents"), "{}", text("r2"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// `after` is met only by a call of the earlier tool that ran and
 /// succeeded: a failed read does not unlock the rule, a good one does.
 #[tokio::test]

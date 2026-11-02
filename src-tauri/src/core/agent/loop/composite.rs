@@ -2661,6 +2661,19 @@ impl CompositeToolInvoker {
                 read_futures.push(self.schedule_read(tool, args, id, name));
                 continue;
             }
+            // Whatever follows may change what an earlier read would see, and
+            // the model listed that read first: settle the reads gathered so
+            // far, together, before this call runs. A later read is gathered
+            // afresh and waits for the next barrier or the end of the batch.
+            if !read_futures.is_empty() {
+                use futures::StreamExt;
+                let mut reads: futures::stream::FuturesUnordered<_> =
+                    std::mem::take(&mut read_futures).into_iter().collect();
+                while let Some(outcome) = reads.next().await {
+                    out.push(outcome);
+                    announce_screened(&self.project_root, tool_calls, &mut out, &mut announced, &mut screening_cfg, on_complete);
+                }
+            }
             // The harness's own word that this call ended in the null-device
             // refusal; text in the output never counts.
             let null_refusal = tauri_plugin_agent_tools::unsandboxed_retry::RefusalSignal::default();
