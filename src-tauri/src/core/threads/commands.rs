@@ -293,11 +293,6 @@ pub async fn delete_thread_permanently<R: Runtime>(
     super::storage::delete_thread_in(&data_folder, &thread_id, true).await
 }
 
-/// Move a thread directory into the archive. A thread that is already gone is
-/// not an error (a delete of nothing has always been fine); a thread that
-/// cannot be archived is, so a failed attempt to keep it never destroys it. The
-/// per-thread lock keeps a message append from landing mid-move.
-/// The old delete: remove the directory, then what was recorded about it.
 /// Lists all messages for a given thread by reading and parsing its messages.jsonl file.
 /// Returns a vector of message JSON values.
 #[tauri::command]
