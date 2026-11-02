@@ -536,10 +536,11 @@ async fn connect_in(
                     {
                         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
                     }
+                    // Its own session: pgid == pid for teardown, and no
+                    // controlling terminal, so a server cannot take the TUI's
+                    // terminal away from Flint (janhq/jan#9517).
                     #[cfg(unix)]
-                    {
-                        cmd.process_group(0);
-                    }
+                    tauri_plugin_agent_tools::tools::proc::detach_from_terminal(&mut cmd);
                     cmd.kill_on_drop(true);
                     // Flint's own gateway/worker keys are not the server's to read.
                     jan_process::WithoutAppSecrets::without_app_secrets(&mut cmd);

@@ -1452,9 +1452,9 @@ async fn announced_results_are_shown_once_and_keep_transcript_order_and_the_nudg
     );
 }
 
-/// The composite invoker announces each outcome once, in completion order
-/// (the sequential pass first, the concurrent reads after), and the batch
-/// still comes back in call order.
+/// The composite invoker announces each outcome once as it completes (a read
+/// listed before an edit settles before it; reads after the last such call
+/// settle at the end), and the batch comes back in call order.
 #[tokio::test]
 async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
     let root = std::env::temp_dir().join(format!(
@@ -1501,7 +1501,7 @@ async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
         .unwrap();
     let returned: Vec<&str> = out.iter().map(|o| o.id.as_str()).collect();
     assert_eq!(returned, ["r", "e"], "call order, not completion order");
-    assert_eq!(*heard.lock().unwrap(), ["e", "r"], "the edit finished first");
+    assert_eq!(*heard.lock().unwrap(), ["r", "e"], "the read listed first settled before the edit");
     assert!(!out[1].content.starts_with("ERROR"), "{}", out[1].content);
     assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap().trim(), "two");
     // The plain entry point announces nothing and returns the same batch.
@@ -5716,6 +5716,46 @@ async fn tool_rules_count_calls_earlier_in_the_same_batch() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A read listed before a write in the same batch sees the file as it was, and
+/// a read listed after it sees the write: reads are deferred to run together,
+/// but never past a call that could change what they return.
+#[tokio::test]
+async fn a_read_listed_before_a_write_sees_the_file_before_it() {
+    let root = std::env::temp_dir().join(format!("flint-batch-order-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.txt"), "old contents
+").unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        PermissionRegistry::default(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.record_to = Some(data);
+    invoker.auto_approve = true;
+    invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("ord-s1", "ord-s1#run-1", "");
+    let call = |id: &str, name: &str, args: &str| {
+        serde_json::json!({ "id": id, "type": "function",
+            "function": { "name": name, "arguments": args } })
+    };
+    let out = invoker
+        .invoke(&[
+            call("r1", "read", "{\"path\":\"a.txt\"}"),
+            call("w1", "write", "{\"path\":\"a.txt\",\"content\":\"new contents\\n\"}"),
+            call("r2", "read", "{\"path\":\"a.txt\"}"),
+        ])
+        .await
+        .expect("dispatch");
+    let text = |id: &str| out.iter().find(|o| o.id == id).map(|o| o.content.clone()).unwrap_or_default();
+    assert!(text("r1").contains("old contents"), "{}", text("r1"));
+    assert!(text("r2").contains("new contents"), "{}", text("r2"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A built-in result too big to keep in context arrives as a head, a tail and
 /// the name of a file holding all of it.
 #[tokio::test]
@@ -8106,11 +8146,12 @@ fn stuck_detector_flags_identical_calls_and_error_streaks() {
     );
 
     let mut d = StuckDetector::default();
-    assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
-    assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+    for _ in 1..REPEATED_CALLS_LIMIT {
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+    }
     assert!(matches!(
         d.observe(sig(call("{\"p\":1}")), false, ""),
-        Some(StuckReason::RepeatedCalls { count: 3, .. })
+        Some(StuckReason::RepeatedCalls { count: REPEATED_CALLS_LIMIT, .. })
     ));
 
     let mut d = StuckDetector::default();
@@ -8176,9 +8217,53 @@ async fn identical_calls_without_ui_stop_the_run() {
         tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
         "{err}"
     );
-    assert!(err.message().contains("same tool call 3 times"), "{err}");
-    assert_eq!(*calls.lock().unwrap(), STUCK_TURN_LIMIT);
-    assert_eq!(tool.calls.lock().unwrap().len(), STUCK_TURN_LIMIT);
+    assert!(err.message().contains("same tool call 8 times"), "{err}");
+    assert_eq!(*calls.lock().unwrap(), REPEATED_CALLS_LIMIT);
+    assert_eq!(tool.calls.lock().unwrap().len(), REPEATED_CALLS_LIMIT);
+}
+
+/// The model is reminded, not stopped, on the way to the limit; the first
+/// reminder is brief and the second names the repeated call.
+#[test]
+fn stuck_detector_reminds_before_it_stops() {
+    let call = |name: &str| json!([{ "id": "x", "function": { "name": name, "arguments": "{}" } }]);
+    let sig = |v: serde_json::Value| StuckDetector::signature(v.as_array().unwrap());
+    let mut d = StuckDetector::default();
+    let mut reminders = Vec::new();
+    for n in 1..REPEATED_CALLS_LIMIT {
+        assert_eq!(d.observe(sig(call("read")), false, ""), None);
+        if let Some(text) = d.take_reminder() {
+            reminders.push((n, text));
+        }
+        assert_eq!(d.take_reminder(), None, "a reminder is taken once");
+    }
+    assert_eq!(reminders.len(), 2, "{reminders:?}");
+    assert_eq!((reminders[0].0, reminders[1].0), (3, 5));
+    assert!(!reminders[0].1.contains("read("));
+    assert!(reminders[1].1.contains("read({})"), "{}", reminders[1].1);
+}
+
+/// `todo` calls neither count as a repeat nor break the chain, so interleaving
+/// them cannot hide a loop.
+#[test]
+fn stuck_detector_ignores_bookkeeping_calls() {
+    let calls = |names: &[&str]| {
+        let v: Vec<serde_json::Value> = names
+            .iter()
+            .map(|n| json!({ "id": "x", "function": { "name": n, "arguments": "{}" } }))
+            .collect();
+        StuckDetector::signature(&v)
+    };
+    assert_eq!(calls(&["read", "todo"]), calls(&["read"]));
+    assert_eq!(calls(&["todo"]), "");
+    let mut d = StuckDetector::default();
+    d.observe(calls(&["read"]), false, "");
+    d.observe(calls(&["todo"]), false, "");
+    d.observe(calls(&["read", "todo"]), false, "");
+    assert_eq!(d.repeats, 2, "the todo-only turn is transparent");
+    assert!(d.take_reminder().is_none());
+    d.observe(calls(&["read"]), false, "");
+    assert!(d.take_reminder().is_some(), "third read reminds");
 }
 
 /// A tool invoker with a UI: answers the stuck question with fixed text.
@@ -8210,13 +8295,10 @@ async fn identical_calls_with_ui_ask_the_user_and_continue() {
     let call = || tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}");
     let model = RecordingQueueModel {
         replies: StdMutex::new(
-            vec![
-                call(),
-                call(),
-                call(),
-                json!({ "choices": [{ "message": { "content": "done" } }] }),
-            ]
-            .into(),
+            (0..REPEATED_CALLS_LIMIT)
+                .map(|_| call())
+                .chain([json!({ "choices": [{ "message": { "content": "done" } }] })])
+                .collect(),
         ),
         requests: StdMutex::new(Vec::new()),
     };
@@ -8249,6 +8331,10 @@ async fn identical_calls_with_ui_ask_the_user_and_continue() {
     let requests = model.requests.lock().unwrap();
     let last = requests.last().unwrap().to_string();
     assert!(last.contains("look in b.txt instead"), "{last}");
+    assert!(
+        last.contains("same tool call several times"),
+        "the model was reminded on the way to the limit: {last}"
+    );
 }
 
 /// The user choosing to stop ends the run as cancelled.
