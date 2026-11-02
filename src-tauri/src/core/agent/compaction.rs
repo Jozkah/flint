@@ -133,7 +133,18 @@ pub(crate) struct CompactOptions {
     /// and the project's "Compact instructions" section. Appended to the
     /// summarizer's prompt as guidance; it never replaces the safety rules.
     pub focus: Option<String>,
+    /// The most estimated tokens the verbatim tail may hold. `keep_recent` is a
+    /// message count, and eight messages can be eight large tool results; past
+    /// this the tail is shortened (never below [`MIN_TAIL_MESSAGES`]) so the
+    /// compacted request lands well under the trigger. `None` keeps the count.
+    pub retain_tokens: Option<u64>,
 }
+
+/// The fewest messages a token-capped tail is cut to.
+const MIN_TAIL_MESSAGES: usize = 2;
+
+/// The share of the input window the verbatim tail may take.
+const RETAIN_SHARE_DIVISOR: u64 = 4;
 
 /// The most focus text a summarizer prompt carries.
 const FOCUS_MAX_CHARS: usize = 2_000;
@@ -158,6 +169,7 @@ impl Default for CompactOptions {
             summary_max_tokens:
                 tauri_plugin_agent_tools::compaction_policy::DEFAULT_SUMMARY_MAX_TOKENS,
             focus: None,
+            retain_tokens: None,
         }
     }
 }
@@ -175,6 +187,7 @@ impl CompactOptions {
             trim: policy.strategy == tauri_plugin_agent_tools::compaction_policy::Strategy::Trim,
             summary_max_tokens: policy.summary_max_tokens,
             focus: None,
+            retain_tokens: None,
         }
     }
 
@@ -200,6 +213,10 @@ impl CompactOptions {
                 .get(BODY_FOCUS)
                 .and_then(Value::as_str)
                 .and_then(|f| join_focus(&[Some(f)])),
+            retain_tokens: body
+                .get(crate::core::agent::r#loop::BODY_EFFECTIVE_WINDOW)
+                .and_then(Value::as_u64)
+                .map(|window| window / RETAIN_SHARE_DIVISOR),
         }
     }
 }
@@ -227,9 +244,23 @@ pub(crate) async fn compact_conversation_with(
         return Ok(messages.to_vec());
     }
 
-    let Some(cut) = tail_start(rest, rest.len() - keep_recent) else {
+    let Some(mut cut) = tail_start(rest, rest.len() - keep_recent) else {
         return Ok(messages.to_vec());
     };
+    // Cap the tail by what it costs, not only by how many messages it has.
+    if let Some(budget) = options.retain_tokens {
+        let mut keep = keep_recent;
+        while keep > MIN_TAIL_MESSAGES
+            && crate::core::agent::compaction_policy::estimate_tokens(&rest[cut..]) > budget
+        {
+            keep -= 1;
+            match tail_start(rest, rest.len() - keep) {
+                Some(next) if next > cut => cut = next,
+                Some(_) => {}
+                None => break,
+            }
+        }
+    }
 
     let kept = &rest[cut..];
     // The opening instruction survives verbatim: pinned messages leave the
@@ -570,6 +601,28 @@ mod tests {
     /// AH-076: `strategy = trim` compacts without a model call, and the
     /// summary cap from the policy reaches the summarizer's request.
     #[tokio::test]
+    async fn a_token_budget_shortens_the_kept_tail() {
+        let big = "x".repeat(4_000); // ~1000 tokens each
+        let mut convo = vec![json!({ "role": "system", "content": "sys" })];
+        for i in 0..20 {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            convo.push(json!({ "role": r, "content": format!("{i} {big}") }));
+        }
+        let ok = || StubModel { summary: "CONDENSED".into(), calls: StdMutex::new(0), requests: tokio::sync::Mutex::new(Vec::new()) };
+        let by_count = compact_conversation_with(&convo, "m", &ok(), &CompactOptions { keep_recent: 8, ..CompactOptions::default() }).await.unwrap();
+        let capped = compact_conversation_with(&convo, "m", &ok(), &CompactOptions { keep_recent: 8, retain_tokens: Some(3_000), ..CompactOptions::default() }).await.unwrap();
+        // system + summary + tail
+        assert_eq!(by_count.len(), 2 + 8);
+        assert!(capped.len() < by_count.len(), "{} vs {}", capped.len(), by_count.len());
+        assert!(capped.len() >= 2 + MIN_TAIL_MESSAGES, "never below the floor");
+        // The newest message always survives.
+        assert!(content_text(capped.last().unwrap()).starts_with("19 "));
+        // A generous budget changes nothing.
+        let roomy = compact_conversation_with(&convo, "m", &ok(), &CompactOptions { keep_recent: 8, retain_tokens: Some(1_000_000), ..CompactOptions::default() }).await.unwrap();
+        assert_eq!(roomy.len(), by_count.len());
+    }
+
+    #[tokio::test]
     async fn the_policy_decides_whether_a_model_is_asked_and_for_how_long_a_summary() {
         let model = StubModel {
             summary: "S".into(),
@@ -586,6 +639,7 @@ mod tests {
                 trim: true,
                 summary_max_tokens: 512,
                 focus: None,
+                retain_tokens: None,
             },
         )
         .await
@@ -609,6 +663,7 @@ mod tests {
                 trim: false,
                 summary_max_tokens: 200,
                 focus: None,
+                retain_tokens: None,
             },
         )
         .await
@@ -637,6 +692,7 @@ mod tests {
                 trim: true,
                 summary_max_tokens: 300,
                 focus: None,
+                retain_tokens: None,
             }
         );
         assert_eq!(
