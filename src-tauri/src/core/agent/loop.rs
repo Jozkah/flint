@@ -5368,7 +5368,12 @@ async fn run_turn_cycle(
                         );
                         // 2. Full compaction only if still over the threshold.
                         let mut full_shrunk = false;
-                        if cpol::should_compact(&projected, &thresholds) {
+                        if cpol::calibrated_tokens_after(
+                            &conversation_messages,
+                            &projected,
+                            usage_anchor.as_ref(),
+                        ) >= thresholds.compact_at
+                        {
                             let opts =
                                 crate::core::agent::compaction::CompactOptions::from_body(json_body);
                             report_compaction(

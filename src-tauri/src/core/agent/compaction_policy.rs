@@ -228,6 +228,20 @@ pub fn calibrated_tokens(messages: &[Value], anchor: Option<&UsageAnchor>) -> u6
     estimate_tokens(messages)
 }
 
+/// The calibrated size of `before` once it has become `after` (microcompaction
+/// rewrote it): the provider-reported figure less what the estimate says was
+/// freed. Using the plain estimate here instead would compare a number that
+/// leaves out the system prompt and tool schemas to a trigger measured with
+/// them, and call a still-full window "under the threshold".
+pub fn calibrated_tokens_after(
+    before: &[Value],
+    after: &[Value],
+    anchor: Option<&UsageAnchor>,
+) -> u64 {
+    calibrated_tokens(before, anchor)
+        .saturating_sub(estimate_tokens(before).saturating_sub(estimate_tokens(after)))
+}
+
 /// [`should_compact`], measured from the last provider-reported usage.
 pub fn should_compact_calibrated(
     messages: &[Value],
@@ -754,6 +768,14 @@ mod tests {
         convo.push(msg(&"c".repeat(400)));
         let appended = estimate_tokens(&convo[2..]);
         assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), 5_000 + appended);
+        // After a rewrite that freed some, the calibrated size drops by the estimate's difference.
+        let shrunk = vec![convo[0].clone(), msg("tiny"), convo[2].clone()];
+        let freed = estimate_tokens(&convo).saturating_sub(estimate_tokens(&shrunk));
+        assert!(freed > 0);
+        assert_eq!(
+            calibrated_tokens_after(&convo, &shrunk, anchor.as_ref()),
+            (5_000 + appended).saturating_sub(freed)
+        );
         // A rewritten prefix, even at the same length, falls back to the estimate.
         convo[0] = msg("short");
         assert_eq!(calibrated_tokens(&convo, anchor.as_ref()), estimate_tokens(&convo));
