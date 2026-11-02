@@ -234,9 +234,7 @@ type CancelToken = tauri_plugin_agent_tools::lifecycle::Token;
 async fn stopped(token: Option<&CancelToken>) {
     match token {
         Some(token) => {
-            while !token.is_stopped() {
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
+            token.stopped_signal().await;
         }
         None => std::future::pending::<()>().await,
     }

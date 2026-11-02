@@ -18,6 +18,7 @@ import type { RoomChangeDecision, RoomChangedFile, RoomTurnChanges } from '@/lib
 import { splitPatch, type ApplyPreview } from '@/lib/rooms/applyReview'
 import { ApplyReviewDialog, FileDiff as PatchFileDiff } from './ApplyReviewDialog'
 import { ChangeExcerptDiff, excerptStatus, shortenPath, type ExcerptFileStatus } from './ChangeExcerptDiff'
+import { errorText } from '@/lib/errorText'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -460,8 +461,6 @@ export function TurnChangeCard({
   )
 }
 
-const errorText = (e: unknown): string =>
-  e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e)
 
 /**
  * A path as the system writes it: a Windows path (drive letter or a

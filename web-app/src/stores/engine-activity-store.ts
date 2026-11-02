@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
 
 /**
  * A short, local history of what the engine did: finished generations with
@@ -40,6 +40,38 @@ type EngineActivityState = {
 const recent = <T extends { at: number }>(list: T[], cap: number, now: number) =>
   list.filter((s) => now - s.at < DAY_MS).slice(-cap)
 
+// Every tool call changes the lists, and each change would rewrite up to 2,000
+// samples synchronously; the write waits for a quiet moment instead (LIBC-057).
+const PERSIST_DELAY_MS = 1000
+function debouncedLocalStorage(): StateStorage {
+  const pending = new Map<string, string>()
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const flush = () => {
+    if (timer) clearTimeout(timer)
+    timer = null
+    for (const [name, value] of pending) {
+      try {
+        localStorage.setItem(name, value)
+      } catch {
+        // Storage full or unavailable: the samples stay in memory.
+      }
+    }
+    pending.clear()
+  }
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', flush)
+  return {
+    getItem: (name) => pending.get(name) ?? localStorage.getItem(name),
+    setItem: (name, value) => {
+      pending.set(name, value)
+      if (!timer) timer = setTimeout(flush, PERSIST_DELAY_MS)
+    },
+    removeItem: (name) => {
+      pending.delete(name)
+      localStorage.removeItem(name)
+    },
+  }
+}
+
 export const useEngineActivity = create<EngineActivityState>()(
   persist(
     (set) => ({
@@ -70,7 +102,7 @@ export const useEngineActivity = create<EngineActivityState>()(
     {
       name: 'flint-engine-activity',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(debouncedLocalStorage),
       partialize: (s) => ({ generations: s.generations, toolCalls: s.toolCalls }),
     }
   )

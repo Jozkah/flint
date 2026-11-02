@@ -118,12 +118,15 @@ mod imp {
         /// that it joined that thread. On the detach path it is leaked instead.
         state_cb: Option<*mut StateCallback>,
     }
+    // SAFETY: `handle` is an opaque shim pointer used only through the shim, which serialises on its own queue; `state_cb` is a leaked box freed only after the loop thread is joined.
     unsafe impl Send for Engine {}
+    // SAFETY: see the `Send` impl; every shim entry point is safe to call concurrently.
     unsafe impl Sync for Engine {}
 
     /// The C ABI entry point handed to the shim. Panics are caught rather than
     /// unwound into C++, where unwinding past a `noexcept` boundary is
     /// undefined; a poisoned callback drops its sample instead.
+    // SAFETY: called only by the shim with the `user_data` we registered (a live `StateCallback`) and NUL-terminated strings valid for the call.
     unsafe extern "C" fn state_trampoline(
         state: *const c_char,
         payload: *const c_char,
@@ -133,11 +136,14 @@ mod imp {
             return;
         }
         let _ = std::panic::catch_unwind(|| {
+            // SAFETY: non-null `user_data` is the leaked `StateCallback` registered at start, alive until the loop thread is joined.
             let cb = unsafe { &*(user_data as *const StateCallback) };
+            // SAFETY: the shim passes a NUL-terminated `state` string valid for the duration of this call.
             let state = unsafe { CStr::from_ptr(state) }.to_string_lossy();
             let payload = if payload.is_null() {
                 std::borrow::Cow::Borrowed("{}")
             } else {
+                // SAFETY: checked non-null above; the shim passes a NUL-terminated string valid for this call.
                 unsafe { CStr::from_ptr(payload) }.to_string_lossy()
             };
             cb(&state, &payload);
@@ -326,7 +332,9 @@ mod imp {
             if raw.is_null() {
                 return Err(EngineError::Unavailable);
             }
+            // SAFETY: `raw` is non-null (checked above) and NUL-terminated, owned by us until freed below.
             let json = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
+            // SAFETY: `raw` came from `jan_llama_devices_json` and is not used after this call.
             unsafe { jan_llama_string_free(raw) };
             Ok(json)
         }
@@ -383,6 +391,7 @@ mod imp {
     /// request it was made from is owned on the C++ side and outlives it.
     #[allow(dead_code)] // field 1 only keeps the shim's cancel pointer alive
     pub struct Response(ResponseHandle, Option<CancelFlag>);
+    // SAFETY: the response handle is owned solely by this value and the shim allows it to be driven from another thread; the cancel flag is `Send`.
     unsafe impl Send for Response {}
 
     impl std::fmt::Debug for Response {

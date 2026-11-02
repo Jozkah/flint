@@ -1,3 +1,4 @@
+import { basename } from './path'
 // Renderer selection and load-state modelling for the Cowork preview pane
 // (jan-internal #242). Kept pure and separate from the component so the state
 // machine and the security checks are testable without a DOM.
@@ -88,9 +89,7 @@ export function isAssetKind(kind: PreviewKind): boolean {
   return kind === 'image' || kind === 'video' || kind === 'audio'
 }
 
-export function basenameOf(path: string): string {
-  return path.split(/[/\\]/).pop() || path
-}
+export const basenameOf = basename
 
 /**
  * `HtmlArtifact` renders into an opaque-origin sandbox via `srcDoc`, so there is

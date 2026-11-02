@@ -401,9 +401,7 @@ fn client() -> Result<reqwest::Client, HarnessError> {
 async fn until_stopped(token: Option<tauri_plugin_agent_tools::lifecycle::Token>) {
     match token {
         Some(token) => {
-            while !token.is_stopped() {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
+            token.stopped_signal().await;
         }
         None => std::future::pending::<()>().await,
     }
