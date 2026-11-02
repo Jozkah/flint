@@ -1452,9 +1452,9 @@ async fn announced_results_are_shown_once_and_keep_transcript_order_and_the_nudg
     );
 }
 
-/// The composite invoker announces each outcome once, in completion order
-/// (the sequential pass first, the concurrent reads after), and the batch
-/// still comes back in call order.
+/// The composite invoker announces each outcome once as it completes (a read
+/// listed before an edit settles before it; reads after the last such call
+/// settle at the end), and the batch comes back in call order.
 #[tokio::test]
 async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
     let root = std::env::temp_dir().join(format!(
@@ -1501,7 +1501,7 @@ async fn invoke_streaming_announces_each_outcome_once_and_returns_call_order() {
         .unwrap();
     let returned: Vec<&str> = out.iter().map(|o| o.id.as_str()).collect();
     assert_eq!(returned, ["r", "e"], "call order, not completion order");
-    assert_eq!(*heard.lock().unwrap(), ["e", "r"], "the edit finished first");
+    assert_eq!(*heard.lock().unwrap(), ["r", "e"], "the read listed first settled before the edit");
     assert!(!out[1].content.starts_with("ERROR"), "{}", out[1].content);
     assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap().trim(), "two");
     // The plain entry point announces nothing and returns the same batch.
@@ -5713,6 +5713,46 @@ async fn tool_rules_count_calls_earlier_in_the_same_batch() {
         .map(|o| o.id.as_str())
         .collect();
     assert_eq!(refused, vec!["l2", "l3", "r2", "r3"]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A read listed before a write in the same batch sees the file as it was, and
+/// a read listed after it sees the write: reads are deferred to run together,
+/// but never past a call that could change what they return.
+#[tokio::test]
+async fn a_read_listed_before_a_write_sees_the_file_before_it() {
+    let root = std::env::temp_dir().join(format!("flint-batch-order-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.txt"), "old contents
+").unwrap();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let mut invoker = build_invoker_for(
+        root.clone(),
+        tx,
+        PermissionRegistry::default(),
+        ToolPermissions::allow_all(),
+        tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    );
+    invoker.record_to = Some(data);
+    invoker.auto_approve = true;
+    invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("ord-s1", "ord-s1#run-1", "");
+    let call = |id: &str, name: &str, args: &str| {
+        serde_json::json!({ "id": id, "type": "function",
+            "function": { "name": name, "arguments": args } })
+    };
+    let out = invoker
+        .invoke(&[
+            call("r1", "read", "{\"path\":\"a.txt\"}"),
+            call("w1", "write", "{\"path\":\"a.txt\",\"content\":\"new contents\\n\"}"),
+            call("r2", "read", "{\"path\":\"a.txt\"}"),
+        ])
+        .await
+        .expect("dispatch");
+    let text = |id: &str| out.iter().find(|o| o.id == id).map(|o| o.content.clone()).unwrap_or_default();
+    assert!(text("r1").contains("old contents"), "{}", text("r1"));
+    assert!(text("r2").contains("new contents"), "{}", text("r2"));
     let _ = std::fs::remove_dir_all(&root);
 }
 
