@@ -1118,14 +1118,22 @@ pub fn build_app() -> tauri::App {
             // orphaned and is not touched. Nothing is adopted on a pid alone.
             // AH-101: a job whose supervisor is still running is left alone --
             // that is the point of the supervisor. Everything else is settled.
-            let settled = tauri_plugin_agent_tools::worker::reconcile_all(
-                &get_jan_data_folder_path(app.handle().clone()),
-            );
-            if !settled.is_empty() {
-                log::info!(
-                    "background jobs: {} left by an earlier process were settled",
-                    settled.len()
-                );
+            // Off the setup thread: it reads every owner's job records and
+            // probes each live pid, none of which first paint needs.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                let _ = std::thread::Builder::new()
+                    .name("reconcile-background-jobs".into())
+                    .spawn(move || {
+                        let settled =
+                            tauri_plugin_agent_tools::worker::reconcile_all(&data_folder);
+                        if !settled.is_empty() {
+                            log::info!(
+                                "background jobs: {} left by an earlier process were settled",
+                                settled.len()
+                            );
+                        }
+                    });
             }
             // Archive: idle threads move first, before the window lists
             // threads (off by default, so this normally reads nothing); items
