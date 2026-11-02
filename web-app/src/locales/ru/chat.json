@@ -301,13 +301,16 @@
     "stopGenerating": "Остановить генерацию"
   },
   "errorBanner": {
+    "oomTitle": "У llama.cpp закончилась память",
+    "backendTitle": "Бэкенд GGML столкнулся с ошибкой",
+    "contextTitle": "У модели закончился размер контекста",
     "oomReduceContext": "Уменьшить размер контекста (ctx-size)",
     "oomDisableMtp": "Отключить MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Уменьшите n-gpu-layers или переключитесь на CPU-бэкенд",
     "oomSmallerModel": "Использовать модель поменьше / с более сильным квантованием",
     "serverContext": "Размер контекстного окна этой модели задаётся её сервером, поэтому Flint не может его увеличить. Начните новый чат, сократите разговор или увеличьте лимит на сервере.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Сгенерировать заново",
+    "reload": "Перезагрузить"
   },
   "emptyRun": {
     "emptyReply": "Модель вернула пустой ответ. Повторите попытку или смените модель.",

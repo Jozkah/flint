@@ -287,13 +287,16 @@
     "stopGenerating": "Atura la generació"
   },
   "errorBanner": {
+    "oomTitle": "Llama.cpp s'ha quedat sense memòria",
+    "backendTitle": "El backend GGML ha trobat un error",
+    "contextTitle": "El model s'ha quedat sense mida de context",
     "oomReduceContext": "Redueix la mida del context (ctx-size)",
     "oomDisableMtp": "Desactiva MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Redueix n-gpu-layers o canvia a un backend de CPU",
     "oomSmallerModel": "Utilitza un model més petit / més quantitzat",
     "serverContext": "La finestra de context d'aquest model la defineix el seu servidor, de manera que Flint no la pot ampliar. Inicia un xat nou, escurça la conversa o augmenta el límit al servidor.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Regenera",
+    "reload": "Torna a carregar"
   },
   "emptyRun": {
     "emptyReply": "El model ha retornat una resposta buida. Torna-ho a provar o canvia de model.",

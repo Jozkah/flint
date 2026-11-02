@@ -273,13 +273,16 @@
     "stopGenerating": "Generierung stoppen"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp hat keinen Speicher mehr",
+    "backendTitle": "Das GGML-Backend ist auf einen Fehler gestoßen",
+    "contextTitle": "Das Modell hat die Kontextgröße überschritten",
     "oomReduceContext": "Kontextgröße reduzieren (ctx-size)",
     "oomDisableMtp": "MTP (Multi-Token Prediction) deaktivieren",
     "oomLowerGpuLayers": "n-gpu-layers verringern oder auf ein CPU-Backend wechseln",
     "oomSmallerModel": "Ein kleineres bzw. stärker quantisiertes Modell verwenden",
     "serverContext": "Das Kontextfenster dieses Modells wird von seinem Server festgelegt, daher kann Flint es nicht vergrößern. Starten Sie einen neuen Chat, kürzen Sie die Unterhaltung oder erhöhen Sie das Limit auf dem Server.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Neu generieren",
+    "reload": "Neu laden"
   },
   "emptyRun": {
     "emptyReply": "Das Modell hat eine leere Antwort geliefert. Versuchen Sie es erneut oder wechseln Sie das Modell.",
