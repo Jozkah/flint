@@ -592,16 +592,19 @@ pub async fn run(
 pub fn redact_and_truncate(text: &str, max: usize) -> String {
     use regex::Regex;
     use std::sync::OnceLock;
-    static HEADER: OnceLock<Regex> = OnceLock::new();
-    static ASSIGN: OnceLock<Regex> = OnceLock::new();
-    static TOKEN: OnceLock<Regex> = OnceLock::new();
-    let header = HEADER.get_or_init(|| {
-        Regex::new(r"(?i)(authorization|bearer|cookie)(\s*[:=]?\s*)(basic |bearer )?\S+").unwrap()
+    // Patterns are constants; a compile failure (never expected) fails closed
+    // by dropping the whole text rather than logging it unredacted.
+    static PATTERNS: OnceLock<Option<[Regex; 3]>> = OnceLock::new();
+    let patterns = PATTERNS.get_or_init(|| {
+        Some([
+            Regex::new(r"(?i)(authorization|bearer|cookie)(\s*[:=]?\s*)(basic |bearer )?\S+").ok()?,
+            Regex::new(r"(?i)((?:api[_-]?key|token|secret|password|passwd|credential)s?\w*\s*[:=]\s*)\S+").ok()?,
+            Regex::new(r"[A-Za-z0-9_\-\.]{24,}|sk-[A-Za-z0-9_\-]{8,}").ok()?,
+        ])
     });
-    let assign = ASSIGN.get_or_init(|| {
-        Regex::new(r"(?i)((?:api[_-]?key|token|secret|password|passwd|credential)s?\w*\s*[:=]\s*)\S+").unwrap()
-    });
-    let token = TOKEN.get_or_init(|| Regex::new(r"[A-Za-z0-9_\-\.]{24,}|sk-[A-Za-z0-9_\-]{8,}").unwrap());
+    let Some([header, assign, token]) = patterns else {
+        return "[redacted]".to_string();
+    };
     let text = header.replace_all(text, "$1$2[redacted]");
     let text = assign.replace_all(&text, "$1[redacted]");
     let text = token.replace_all(&text, "[redacted]");
