@@ -589,6 +589,10 @@ pub(super) async fn run_command(
         "clear" | "new" if app.status != Status::Idle => {
             app.note("a turn is running; press Esc to stop it first");
         }
+        // The summary would replace the fresh session's history when it lands.
+        "clear" | "new" if compaction_in_flight(app) => {
+            app.note("compacting; wait for it to finish first");
+        }
         "clear" => {
             app.reset_session();
             clear_todos(app).await;
@@ -850,6 +854,12 @@ pub(super) fn compact_command(app: &mut App, focus: &str) {
     let focus = focus.trim();
     app.compact_focus = (!focus.is_empty()).then(|| focus.to_string());
     app.compact_request = Some(CompactKind::Manual);
+}
+
+/// A compaction is queued or running. Its result replaces `history` wholesale
+/// when it lands, so session resets and thread switches must wait for it.
+pub(super) fn compaction_in_flight(app: &App) -> bool {
+    app.compacting.is_some() || app.compact_request.is_some()
 }
 
 /// Compact-and-retry attempts allowed per user turn. The loop already retries
@@ -3866,6 +3876,9 @@ pub(super) const WORKTREE_CHANGE_ROWS: usize = 20;
 /// switch to it, leaving the source whole on disk. The cut turn lands in the
 /// input, as a rewind's does, so the branch opens ready to re-ask it.
 pub(super) async fn fork_at(app: &mut App, target: usize) {
+    if compaction_in_flight(app) {
+        return app.note("compacting; wait for it to finish before forking");
+    }
     // The fork is cut from what is on disk, so this turn's history and journal
     // have to be there first; the journal writer is asynchronous.
     app.persist();
@@ -4258,6 +4271,11 @@ pub(super) async fn load_thread(app: &mut App, thread: &serde_json::Value, verb:
     // here when it finishes.
     if app.status != Status::Idle {
         return app.note("a turn is running; press Esc to stop it before switching threads");
+    }
+    // The in-flight summary was cut from the current session and would land
+    // on the thread opened here.
+    if compaction_in_flight(app) {
+        return app.note("compacting; wait for it to finish before switching threads");
     }
     let full_id = thread
         .get("id")

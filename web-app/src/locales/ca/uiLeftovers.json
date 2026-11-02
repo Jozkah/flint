@@ -76,6 +76,7 @@
     "stopped": "Aturat"
   },
   "toolOutputAlt": "Sortida de l’eina",
+  "toolOutputImageFailed": "No s'ha pogut mostrar la imatge",
   "memory": {
     "exportFilter": "Exportació de memòria de Flint",
     "why": "Per què Flint ho recorda",

@@ -223,6 +223,13 @@ pub fn take_factory_reset_report<R: Runtime>(
     take_report_at(&factory_reset_report_path(&app_handle)?)
 }
 
+/// Whether the run before this one ended unexpectedly, once per boot, so the
+/// webview can offer a redacted log export. Nothing leaves the machine.
+#[tauri::command]
+pub fn take_previous_run_notice() -> Option<crate::core::crash_trace::PreviousRunNotice> {
+    crate::core::crash_trace::take_previous_run_notice()
+}
+
 /// Log what a reset could not remove and persist it for the next start. Does
 /// nothing for an empty list.
 fn report_failures<R: Runtime>(app_handle: &tauri::AppHandle<R>, failures: &[String]) {

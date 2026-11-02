@@ -462,6 +462,41 @@ async fn compact_command_is_refused_while_one_is_in_flight() {
     assert!(app.compact_request.is_none());
 }
 
+/// A manual `/compact` runs while the status is Idle; its summary replaces
+/// `history` when it lands, so a reset or thread switch in the meantime would
+/// receive the old session's compacted conversation.
+#[tokio::test]
+async fn session_switches_are_refused_while_compacting() {
+    let mut app = test_app();
+    record_full_turn(&mut app);
+    app.submit_user("and again".to_string());
+    app.on_done("stop".into(), None);
+    let thread = app.thread_id.clone().expect("saved");
+    let history_len = app.history.len();
+
+    for (queued, running) in [(true, false), (false, true)] {
+        app.compact_request = queued.then_some(CompactKind::Manual);
+        app.compacting = running.then_some(CompactKind::Manual);
+        for cmd in ["new".to_string(), "clear".to_string(), format!("resume {thread}")] {
+            app.transcript.clear();
+            run_command(&mut app, &cmd, &no_mcp()).await;
+            let text: String = app.transcript.iter().map(row_text).collect();
+            assert!(text.contains("compacting; wait for it"), "{cmd}: {text}");
+        }
+        app.transcript.clear();
+        fork_at(&mut app, 1).await;
+        let text: String = app.transcript.iter().map(row_text).collect();
+        assert!(text.contains("before forking"), "fork: {text}");
+        assert_eq!(app.thread_id.as_deref(), Some(thread.as_str()));
+        assert_eq!(app.history.len(), history_len);
+    }
+    assert_eq!(
+        super::super::super::list_threads_in(&app.agent_dir).unwrap().len(),
+        1,
+        "a refused fork must not write a thread"
+    );
+}
+
 #[test]
 fn compact_is_a_registered_command() {
     assert!(SLASH_COMMANDS.iter().any(|c| c.name == "/compact"));

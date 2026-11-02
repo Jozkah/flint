@@ -286,15 +286,20 @@ actor ModelRunner {
         var completionTokenCount = 0
         var collectedToolCalls: [ToolCallInfo] = []
         var completionInfo: GenerateCompletionInfo?
+        var stopMatcher = StopMatcher(stops: stop)
 
         do {
-            for try await item in session.streamDetails(to: currentMessage?.content ?? "", images: currentMessage?.images ?? [], videos: []) {
+            generation: for try await item in session.streamDetails(to: currentMessage?.content ?? "", images: currentMessage?.images ?? [], videos: []) {
                 try Task.checkCancellation()
 
                 switch item {
                 case .chunk(let chunk):
-                    output += chunk
+                    output += stopMatcher.feed(chunk)
                     completionTokenCount += 1
+                    if stopMatcher.matched != nil {
+                        log("[mlx] Stop sequence hit, ending generation")
+                        break generation
+                    }
 
                 case .info(let info):
                     completionInfo = info
@@ -328,6 +333,8 @@ actor ModelRunner {
             throw error
         }
 
+        output += stopMatcher.flush()
+
         let usage: UsageInfo
         if let info = completionInfo {
             usage = UsageInfo(
@@ -354,7 +361,7 @@ actor ModelRunner {
         topP: Float = 1.0,
         maxTokens: Int? = nil,
         repetitionPenalty: Float = 1.0,
-        stop: [String] = [], // Skipped for now, later should pass thru model load where container preparation - context.configuration.extraEOSTokens
+        stop: [String] = [],
         tools: [AnyCodable]? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -378,8 +385,10 @@ actor ModelRunner {
 
                 var completionTokenCount = 0
                 var hasToolCalls = false
+                var stopMatcher = StopMatcher(stops: stop)
+                var sentDone = false
                 do {
-                    for try await item in session.streamDetails(to: currentMessage?.content ?? "", images: currentMessage?.images ?? [], videos: []) {
+                    stream: for try await item in session.streamDetails(to: currentMessage?.content ?? "", images: currentMessage?.images ?? [], videos: []) {
 
                         if Task.isCancelled {
                             log("[mlx] Stream generation cancelled by client")
@@ -390,9 +399,16 @@ actor ModelRunner {
                         case .chunk(let chunk):
                             completionTokenCount += 1
 
-                            continuation.yield(.chunk(chunk))
+                            let safe = stopMatcher.feed(chunk)
+                            if !safe.isEmpty { continuation.yield(.chunk(safe)) }
+                            if stopMatcher.matched != nil {
+                                log("[mlx] Stop sequence hit, ending stream")
+                                break stream
+                            }
 
                         case .info(let info):
+                            let tail = stopMatcher.flush()
+                            if !tail.isEmpty { continuation.yield(.chunk(tail)) }
                             log("[mlx] Stream generation info: \(info.promptTokenCount) processed prompt tokens, \(info.generationTokenCount) generated tokens")
                             log("[mlx] Prompt: \(String(format: "%.1f", info.promptTokensPerSecond)) tokens/sec")
                             log("[mlx] Generation: \(String(format: "%.1f", info.tokensPerSecond)) tokens/sec")
@@ -407,6 +423,7 @@ actor ModelRunner {
                                 predicted_per_second: info.tokensPerSecond,
                                 prompt_per_second: info.promptTokensPerSecond
                             )
+                            sentDone = true
                             continuation.yield(.done(usage: usage, timings: timings, hasToolCalls: hasToolCalls))
 
                         case .toolCall(let toolCall):
@@ -427,6 +444,12 @@ actor ModelRunner {
                             log("[mlx] Stream tool call: \(toolCall.function.name)(\(argsString))")
                             continuation.yield(.toolCall(info))
                         }
+                    }
+                    if stopMatcher.matched != nil && !sentDone && !Task.isCancelled {
+                        // Stopped early: the engine never reported completion info, so close out with an estimate.
+                        let usage = UsageInfo(prompt_tokens: 0, completion_tokens: completionTokenCount, total_tokens: completionTokenCount)
+                        let timings = TimingsInfo(predicted_n: completionTokenCount, predicted_per_second: 0, prompt_per_second: 0)
+                        continuation.yield(.done(usage: usage, timings: timings, hasToolCalls: hasToolCalls))
                     }
                     continuation.finish()
                 } catch {

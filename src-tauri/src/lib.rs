@@ -117,6 +117,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
         core::system::commands::take_factory_reset_report,
+        core::system::commands::take_previous_run_notice,
         core::system::commands::read_logs,
         core::system::commands::read_logs_since,
         core::system::commands::export_redacted_logs,
@@ -1059,6 +1060,7 @@ pub fn build_app() -> tauri::App {
             tauri_plugin_agent_tools::breadcrumb::set_sink(core::crash_trace::breadcrumb);
             // The logger is attached further down, so what to say about the
             // earlier run and the stack is kept and logged once it is.
+            core::crash_trace::set_previous_run_notice(earlier_run.is_some(), earlier_report.is_some());
             let mut crash_notes: Vec<(log::Level, String)> = Vec::new();
             match (earlier_run, earlier_report) {
                 (Some(run), report) => crash_notes.push((
@@ -1118,14 +1120,22 @@ pub fn build_app() -> tauri::App {
             // orphaned and is not touched. Nothing is adopted on a pid alone.
             // AH-101: a job whose supervisor is still running is left alone --
             // that is the point of the supervisor. Everything else is settled.
-            let settled = tauri_plugin_agent_tools::worker::reconcile_all(
-                &get_jan_data_folder_path(app.handle().clone()),
-            );
-            if !settled.is_empty() {
-                log::info!(
-                    "background jobs: {} left by an earlier process were settled",
-                    settled.len()
-                );
+            // Off the setup thread: it reads every owner's job records and
+            // probes each live pid, none of which first paint needs.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                let _ = std::thread::Builder::new()
+                    .name("reconcile-background-jobs".into())
+                    .spawn(move || {
+                        let settled =
+                            tauri_plugin_agent_tools::worker::reconcile_all(&data_folder);
+                        if !settled.is_empty() {
+                            log::info!(
+                                "background jobs: {} left by an earlier process were settled",
+                                settled.len()
+                            );
+                        }
+                    });
             }
             // Archive: idle threads move first, before the window lists
             // threads (off by default, so this normally reads nothing); items

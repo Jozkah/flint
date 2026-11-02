@@ -1,11 +1,12 @@
 import type { GenerationSample } from '@/stores/engine-activity-store'
+import { basename } from './path'
 
 /** Providers whose models run inside Flint's own engine on this machine. */
 export const isEngineProviderName = (provider: string) =>
   provider === 'llamacpp' || provider === 'mlx'
 
 /** The last path segment, on either separator. */
-export const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
+export const baseName = basename
 
 /** A model's configured context length, when it has one. */
 export function contextLengthOf(model: Model): number | undefined {

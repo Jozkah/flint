@@ -29,6 +29,14 @@ actor ActiveGenerations {
 
 /// HTTP server that exposes an OpenAI-compatible API backed by MLX
 struct MLXHTTPServer {
+    /// Reads the optional generation id from a /v1/cancel body.
+    static func parseCancelId(from buffer: ByteBuffer) -> String? {
+        guard buffer.readableBytes > 0,
+              let json = try? JSONSerialization.jsonObject(with: Data(buffer.readableBytesView)) as? [String: Any],
+              let id = json["id"] as? String, !id.isEmpty else { return nil }
+        return id
+    }
+
     let modelRunner: ModelRunner
     let modelId: String
     let apiKey: String
@@ -213,8 +221,17 @@ struct MLXHTTPServer {
             if let denied = try self.unauthorizedResponse(for: request) {
                 return denied
             }
-            let cancelled = await self.activeGenerations.cancelAll()
-            log("[mlx] Cancel requested: \(cancelled) active generation(s) cancelled")
+            // Optional {"id": "<generation id>"} (the `id` of the streamed chunks)
+            // cancels just that generation; no id keeps the cancel-everything behaviour.
+            let body = try? await request.body.collect(upTo: 4096)
+            let targetId = body.flatMap { Self.parseCancelId(from: $0) }
+            let cancelled: Int
+            if let targetId = targetId {
+                cancelled = await self.activeGenerations.cancel(targetId) ? 1 : 0
+            } else {
+                cancelled = await self.activeGenerations.cancelAll()
+            }
+            log("[mlx] Cancel requested (id=\(targetId ?? "all")): \(cancelled) active generation(s) cancelled")
 
             let response: [String: Any] = [
                 "status": cancelled > 0 ? "cancelled" : "no_active_generation",

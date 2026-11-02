@@ -1,3 +1,4 @@
+import { isRecord } from './typeGuards'
 const ELLIPSIS = '...'
 
 /**
@@ -14,11 +15,7 @@ export function parseToolInput(input: unknown): unknown {
   }
 }
 
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' && value !== null && !Array.isArray(value)
-  )
-}
+export const isPlainObject = isRecord
 
 /** Pretty JSON for the raw view and for copying. */
 export function stringifyToolInput(input: unknown): string {

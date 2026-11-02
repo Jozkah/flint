@@ -1299,9 +1299,7 @@ async fn blocking_with_cancel<T: Send + 'static>(
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let watcher = cancelled.clone();
     let mirror = tokio::spawn(async move {
-        while !token.is_stopped() {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        token.stopped_signal().await;
         watcher.store(true, std::sync::atomic::Ordering::Relaxed);
     });
     let result = tokio::task::spawn_blocking(move || work(&cancelled)).await;
@@ -3726,6 +3724,16 @@ async fn orchestrate_inner(
             crate::core::agent::reminder::attach(&mut conversation_messages, upkeep);
         }
     }
+    // The memory index in the prompt is the session-start snapshot, so notes
+    // written since are reported here, after the conversation, where a change
+    // does not resend the system prompt (janhq/jan#9497).
+    if offered.contains("memory_read") {
+        if let (Some(root), Some(sid)) = (project_root.as_deref(), session_id.as_deref()) {
+            if let Some(changes) = crate::core::agent::context::memory_changes_reminder(root, sid) {
+                crate::core::agent::reminder::attach(&mut conversation_messages, &changes);
+            }
+        }
+    }
     // Paired with the addendum above: force the model's very first tool call
     // to actually be `todo` rather than leaving compliance up to a prompt it
     // could silently ignore.
@@ -4560,6 +4568,64 @@ fn report_compaction(
     let _ = events.send(StreamEvent::Compaction { phase, reason, messages });
 }
 
+#[cfg(feature = "cli")]
+impl HttpModelInvoker {
+    /// An invoker for a helper dispatch inside a run (compaction, goal
+    /// evaluation, utility call): upstream resolved for `model_id`, no quota
+    /// (the run is judged at every turn of its own, AH-191/AH-192), no
+    /// fallbacks (bookkeeping is not worth a second provider behind the user's
+    /// back), its own invocation ids, and a snapshot identity naming `agent`.
+    async fn for_helper(
+        args: &OrchestrationArgs,
+        model_id: &str,
+        agent: &str,
+        kind: tauri_plugin_agent_tools::snapshot::DispatchKind,
+    ) -> Result<Self, HarnessError> {
+        let (upstream_url, api_keys) =
+            resolve_upstream_for_model(model_id, args.provider_configs.clone()).await?;
+        let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
+        let provenance = ProvenanceIdentity::resolve(
+            model_id,
+            &args.provider_configs,
+            args.session_id.as_deref(),
+            args.run_id.as_deref(),
+        )
+        .await;
+        Ok(Self {
+            secrets: crate::core::agent::secrets::for_run(),
+            provenance,
+            quota: None,
+            // Billed to the same session, so one correlation lookup finds it.
+            client_request_id: crate::core::agent::correlation::session_request_id(
+                args.session_id.as_deref(),
+            ),
+            client: args.client.clone(),
+            upstream_url,
+            api_keys,
+            provider_configs: args.provider_configs.clone(),
+            converter,
+            api_type,
+            converter_client: converter_http_client(),
+            invocations: std::sync::Arc::new(Invocations::default()),
+            fallbacks: Vec::new(),
+            snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
+                session: args.session_id.clone().unwrap_or_default(),
+                run: String::new(),
+                thread: args.session_id.clone().unwrap_or_default(),
+                agent: agent.to_string(),
+                provider: model_id
+                    .split_once('/')
+                    .map(|(p, _)| p.to_string())
+                    .unwrap_or_default(),
+                invocation: String::new(),
+                turn: String::new(),
+                attempt: 1,
+                kind,
+            },
+        })
+    }
+}
+
 /// Manually compact `messages` for the given model, resolving the upstream from
 /// `args` and reusing the same summarization path as the reactive loop. Used by
 /// the TUI `/compact` command, which holds `OrchestrationArgs` + a model id but
@@ -4572,65 +4638,7 @@ pub(crate) async fn compact_history(
     keep_recent: usize,
     focus: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, HarnessError> {
-    let (upstream_url, api_keys) = resolve_upstream_for_model(
-        model_id,
-        args.provider_configs.clone(),
-        #[cfg(not(feature = "cli"))]
-        args.llama_state.clone(),
-        #[cfg(not(feature = "cli"))]
-        args.mlx_sessions.clone(),
-    )
-    .await?;
-    let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
-    let provenance = ProvenanceIdentity::resolve(
-        model_id,
-        &args.provider_configs,
-        args.session_id.as_deref(),
-        args.run_id.as_deref(),
-    )
-    .await;
-    let model = HttpModelInvoker {
-        secrets: crate::core::agent::secrets::for_run(),
-        provenance,
-        // The run this compaction belongs to is judged at every turn of its
-        // own (AH-191/AH-192). Stopping a compaction against a ceiling would
-        // strand the run with a history it cannot send.
-        quota: None,
-        // Billed to the same session, so one correlation lookup finds it.
-        client_request_id: crate::core::agent::correlation::session_request_id(
-            args.session_id.as_deref(),
-        ),
-        client: args.client.clone(),
-        upstream_url,
-        api_keys,
-        provider_configs: args.provider_configs.clone(),
-        converter,
-        api_type,
-        converter_client: converter_http_client(),
-        // Its own ids: a compaction is a dispatch of its own, and folding it
-        // into the turn's numbering would renumber the turn's requests.
-        invocations: std::sync::Arc::new(Invocations::default()),
-        // A compaction or an evaluation is the run's own bookkeeping: it is
-        // not worth sending to a second provider behind the user's back.
-        fallbacks: Vec::new(),
-        // A compaction request is a dispatch like any other, and AH-078 says
-        // every dispatch leaves a snapshot. `Compaction` is what separates it
-        // from the turn's own requests when the snapshots are read back.
-        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
-            session: args.session_id.clone().unwrap_or_default(),
-            run: String::new(),
-            thread: args.session_id.clone().unwrap_or_default(),
-            agent: "compaction".to_string(),
-            provider: model_id
-                .split_once('/')
-                .map(|(p, _)| p.to_string())
-                .unwrap_or_default(),
-            invocation: String::new(),
-            turn: String::new(),
-            attempt: 1,
-            kind: tauri_plugin_agent_tools::snapshot::DispatchKind::Compaction,
-        },
-    };
+    let model = HttpModelInvoker::for_helper(args, model_id, "compaction", tauri_plugin_agent_tools::snapshot::DispatchKind::Compaction).await?;
     // AH-076: the manual and automatic compactions a surface asks for follow
     // the same strategy and summary cap as the run's own.
     let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
@@ -4667,60 +4675,7 @@ pub(crate) async fn evaluate_goal(
     condition: &str,
     messages: &[serde_json::Value],
 ) -> Result<crate::core::agent::goal::GoalVerdict, HarnessError> {
-    let (upstream_url, api_keys) = resolve_upstream_for_model(
-        smol_model_id,
-        args.provider_configs.clone(),
-        #[cfg(not(feature = "cli"))]
-        args.llama_state.clone(),
-        #[cfg(not(feature = "cli"))]
-        args.mlx_sessions.clone(),
-    )
-    .await?;
-    let (converter, api_type) = wire_for(smol_model_id, args.provider_configs.clone()).await;
-    let provenance = ProvenanceIdentity::resolve(
-        smol_model_id,
-        &args.provider_configs,
-        args.session_id.as_deref(),
-        args.run_id.as_deref(),
-    )
-    .await;
-    let model = HttpModelInvoker {
-        secrets: crate::core::agent::secrets::for_run(),
-        provenance,
-        // As above: this is a helper dispatch inside a run already judged.
-        quota: None,
-        // Billed to the same session, so one correlation lookup finds it.
-        client_request_id: crate::core::agent::correlation::session_request_id(
-            args.session_id.as_deref(),
-        ),
-        client: args.client.clone(),
-        upstream_url,
-        api_keys,
-        provider_configs: args.provider_configs.clone(),
-        converter,
-        api_type,
-        converter_client: converter_http_client(),
-        invocations: std::sync::Arc::new(Invocations::default()),
-        // A compaction or an evaluation is the run's own bookkeeping: it is
-        // not worth sending to a second provider behind the user's back.
-        fallbacks: Vec::new(),
-        // The goal evaluator is a separate agent making its own single call,
-        // so it is named as one rather than folded into the main dispatch.
-        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
-            session: args.session_id.clone().unwrap_or_default(),
-            run: String::new(),
-            thread: args.session_id.clone().unwrap_or_default(),
-            agent: "goal".to_string(),
-            provider: smol_model_id
-                .split_once('/')
-                .map(|(p, _)| p.to_string())
-                .unwrap_or_default(),
-            invocation: String::new(),
-            turn: String::new(),
-            attempt: 1,
-            kind: Default::default(),
-        },
-    };
+    let model = HttpModelInvoker::for_helper(args, smol_model_id, "goal", Default::default()).await?;
     crate::core::agent::goal::evaluate(smol_model_id, condition, messages, &model).await
 }
 
@@ -4735,54 +4690,7 @@ pub(crate) async fn utility_completion(
     agent_name: &str,
     request: &serde_json::Value,
 ) -> Result<serde_json::Value, HarnessError> {
-    let (upstream_url, api_keys) = resolve_upstream_for_model(
-        model_id,
-        args.provider_configs.clone(),
-        #[cfg(not(feature = "cli"))]
-        args.llama_state.clone(),
-        #[cfg(not(feature = "cli"))]
-        args.mlx_sessions.clone(),
-    )
-    .await?;
-    let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
-    let provenance = ProvenanceIdentity::resolve(
-        model_id,
-        &args.provider_configs,
-        args.session_id.as_deref(),
-        args.run_id.as_deref(),
-    )
-    .await;
-    let model = HttpModelInvoker {
-        secrets: crate::core::agent::secrets::for_run(),
-        provenance,
-        quota: None,
-        client_request_id: crate::core::agent::correlation::session_request_id(
-            args.session_id.as_deref(),
-        ),
-        client: args.client.clone(),
-        upstream_url,
-        api_keys,
-        provider_configs: args.provider_configs.clone(),
-        converter,
-        api_type,
-        converter_client: converter_http_client(),
-        invocations: std::sync::Arc::new(Invocations::default()),
-        fallbacks: Vec::new(),
-        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
-            session: args.session_id.clone().unwrap_or_default(),
-            run: String::new(),
-            thread: args.session_id.clone().unwrap_or_default(),
-            agent: agent_name.to_string(),
-            provider: model_id
-                .split_once('/')
-                .map(|(p, _)| p.to_string())
-                .unwrap_or_default(),
-            invocation: String::new(),
-            turn: String::new(),
-            attempt: 1,
-            kind: Default::default(),
-        },
-    };
+    let model = HttpModelInvoker::for_helper(args, model_id, agent_name, Default::default()).await?;
     // The call's own tokens are not a user-facing stream.
     let (sink, _rx) = mpsc::unbounded_channel();
     model.invoke(request, &sink).await
@@ -5984,96 +5892,14 @@ Address it and continue."
                 }
             }
 
-            // Every turn is finished and the run passed its token ceiling, so
-            // the conversation is both complete and oversized. Compact it here,
-            // while nothing is waiting on the result: the ceiling no longer
-            // stops a run, so without this the thread only grows, and the next
-            // run resumes it by sending the whole oversized history upstream.
-            // The reactive path above cannot help with that -- it only fires
-            // once an upstream has already rejected a request.
-            //
-            // Only when it actually shrinks: `compact_conversation` returns the
-            // input untouched when there is too little to drop, and publishing
-            // an unchanged history would spend a summarizer call for nothing.
-            if budget.exhausted() {
-                if let Some(record) = record {
-                    record.note(
-                        "compaction.started",
-                        serde_json::json!({
-                            "reason": "budget-exhausted",
-                            "messages": conversation_messages.len(),
-                        }),
-                    );
-                }
-                report_compaction(
-                    events,
-                    CompactionPhase::Started,
-                    CompactionReason::SessionBudget,
-                    None,
-                );
-                tools.observe_compaction(HookEvent::PreCompact);
-                match crate::core::agent::compaction::compact_conversation_with(
-                    &conversation_messages,
-                    model_id,
-                    model,
-                    &crate::core::agent::compaction::CompactOptions::from_body(json_body),
-                )
-                .await
-                {
-                    Ok(compacted) if compacted.len() < conversation_messages.len() => {
-                        report_compaction(
-                            events,
-                            CompactionPhase::Finished,
-                            CompactionReason::SessionBudget,
-                            Some(conversation_messages.len() - compacted.len()),
-                        );
-                        tools.observe_compaction(HookEvent::PostCompact);
-                        log::info!(
-                            "agent: budget exhausted at end of run, compacted {} -> {} messages",
-                            conversation_messages.len(),
-                            compacted.len()
-                        );
-                        if let Some(record) = record {
-                            record.note(
-                                "compaction.succeeded",
-                                serde_json::json!({
-                                    "reason": "budget-exhausted",
-                                    "from": conversation_messages.len(),
-                                    "to": compacted.len(),
-                                }),
-                            );
-                        }
-                        conversation_messages = compacted;
-                    }
-                    // Too little to drop: not a failure, and not a compaction
-                    // either, so the record says nothing happened. The event
-                    // still closes the `Started` a consumer is showing.
-                    Ok(_) => report_compaction(
-                        events,
-                        CompactionPhase::Failed,
-                        CompactionReason::SessionBudget,
-                        None,
-                    ),
-                    Err(error) => {
-                        report_compaction(
-                            events,
-                            CompactionPhase::Failed,
-                            CompactionReason::SessionBudget,
-                            None,
-                        );
-                        log::warn!("agent: budget exhausted but compaction failed: {error}");
-                        if let Some(record) = record {
-                            record.note(
-                                "compaction.failed",
-                                serde_json::json!({
-                                    "reason": "budget-exhausted",
-                                    "detail": bound_detail(error.message()),
-                                }),
-                            );
-                        }
-                    }
-                }
-            }
+            // A spent token ceiling does not compact here. Spend is not context
+            // size: every completion is charged in full, but thinking is not
+            // resent, so a long run on a reasoning model passes a window-sized
+            // ceiling while its prompt is a fraction of the window. Compacting
+            // then throws away live context and saves no spend. A history that
+            // really is oversized is compacted by the preflight above, on the
+            // next request that would carry it, and the overflow path covers a
+            // route with no known window once a provider rejects a request.
             let _ = events.send(StreamEvent::MessagesUpdated {
                 messages: conversation_messages.clone(),
             });

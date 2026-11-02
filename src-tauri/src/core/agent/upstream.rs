@@ -885,6 +885,30 @@ fn credentialed(config: &ProviderConfig) -> bool {
     config.api_key.is_some() || !config.api_keys.is_empty()
 }
 
+/// Pick the provider entry that serves `model_id`. Shared by upstream and
+/// wire-API resolution so both always land on the same provider. The `cli`
+/// build prefers a reachable (has base_url), credentialed entry, with a stable
+/// name tiebreak; the desktop build takes the first entry offering the model.
+fn pick_provider<'a>(
+    pc: &'a HashMap<String, ProviderConfig>,
+    model_id: &str,
+) -> Option<(&'a String, &'a ProviderConfig)> {
+    let offers = |config: &ProviderConfig| config.models.iter().any(|m| m == model_id);
+    #[cfg(feature = "cli")]
+    {
+        pc.iter()
+            .filter(|(_, config)| {
+                config.base_url.as_deref().is_some_and(|u| !u.is_empty()) && offers(config)
+            })
+            .min_by_key(|(name, config)| (Reverse(credentialed(config)), name.to_string()))
+            .or_else(|| pc.iter().find(|(_, config)| offers(config)))
+    }
+    #[cfg(not(feature = "cli"))]
+    {
+        pc.iter().find(|(_, config)| offers(config))
+    }
+}
+
 /// Resolve `model_id` to an upstream URL + key chain. The desktop build also
 /// resolves local engines (MLX session, llama-server router); the `cli` build is
 /// remote-only, so a model with no provider entry is unresolvable.
@@ -897,8 +921,6 @@ pub(crate) async fn resolve_upstream_for_model(
     let destination_path = "/chat/completions";
 
     let pc = provider_configs.lock().await;
-    let offers = |config: &ProviderConfig| config.models.iter().any(|m| m == model_id);
-
     // The same model id can be listed by several providers, e.g. a cloud
     // provider and an OpenAI-compatible gateway that both carry e.g.
     // `gpt-4o`. `HashMap` iteration order is randomized, so pick determin-
@@ -909,16 +931,7 @@ pub(crate) async fn resolve_upstream_for_model(
     // though a signed-in provider offering the same model would have worked.
     // Sort key is `(has_credential DESC, name ASC)` so equally-credentialed
     // entries still resolve to a stable, alphabetical name.
-    #[cfg(feature = "cli")]
-    let first_match = pc
-        .iter()
-        .filter(|(_, config)| {
-            config.base_url.as_deref().is_some_and(|u| !u.is_empty()) && offers(config)
-        })
-        .min_by_key(|(name, config)| (Reverse(credentialed(config)), name.to_string()))
-        .or_else(|| pc.iter().find(|(_, config)| offers(config)));
-    #[cfg(not(feature = "cli"))]
-    let first_match = pc.iter().find(|(_, config)| offers(config));
+    let first_match = pick_provider(&pc, model_id);
 
     let provider_name = first_match
         .map(|(_, config)| config.provider.clone())
@@ -1050,21 +1063,10 @@ pub(crate) async fn resolve_api_type_for_model(
     provider_configs: Arc<Mutex<HashMap<String, ProviderConfig>>>,
 ) -> Option<String> {
     let pc = provider_configs.lock().await;
-    let offers = |config: &ProviderConfig| config.models.iter().any(|m| m == model_id);
-
     // A converter is only meaningful for an HTTP provider (it needs a base_url
     // to append the native path to), so prefer a reachable entry and otherwise
     // fall back to the first model-claiming entry, exactly as resolution does.
-    #[cfg(feature = "cli")]
-    let first_match = pc
-        .iter()
-        .filter(|(_, config)| {
-            config.base_url.as_deref().is_some_and(|u| !u.is_empty()) && offers(config)
-        })
-        .min_by_key(|(name, config)| (Reverse(credentialed(config)), name.to_string()))
-        .or_else(|| pc.iter().find(|(_, config)| offers(config)));
-    #[cfg(not(feature = "cli"))]
-    let first_match = pc.iter().find(|(_, config)| offers(config));
+    let first_match = pick_provider(&pc, model_id);
 
     let provider_name = first_match
         .map(|(_, config)| config.provider.clone())
@@ -2647,13 +2649,10 @@ impl SseAccumulator {
 
         if let Some(tcs) = delta.get("tool_calls").and_then(|v| v.as_array()) {
             for (position, tc) in tcs.iter().enumerate() {
-                // A missing `index` falls back to the entry's position in the
-                // array, so a batch without indexes is not merged into one call.
-                let idx = tc
-                    .get("index")
-                    .and_then(|v| v.as_u64())
-                    .map(|i| i as usize)
-                    .unwrap_or(position);
+                let idx = match tc.get("index").and_then(|v| v.as_u64()) {
+                    Some(index) => index as usize,
+                    None => self.slot_for_unindexed_tool_call(tc, position, tcs.len()),
+                };
                 // A hostile or buggy server could send a huge index and force
                 // a giant allocation; no real turn has this many parallel calls.
                 const MAX_TOOL_CALL_INDEX: usize = 128;
@@ -2726,6 +2725,37 @@ impl SseAccumulator {
                 }
             }
         }
+    }
+
+    /// Slot for a streamed tool call that carries no `index` (the Gemini
+    /// OpenAI-compatible endpoint omits it, and sends each parallel call in
+    /// its own chunk). An id already seen continues that call; a new id or a
+    /// name starts a new one. A bare argument delta continues the last call,
+    /// unless it shares its chunk with other entries: then, as before, its
+    /// position in the array names the call.
+    fn slot_for_unindexed_tool_call(
+        &self,
+        tc: &serde_json::Value,
+        position: usize,
+        batch_len: usize,
+    ) -> usize {
+        fn text(value: Option<&serde_json::Value>) -> Option<&str> {
+            value.and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        }
+        if let Some(id) = text(tc.get("id")) {
+            return self
+                .tool_calls
+                .iter()
+                .position(|slot| slot.id == id)
+                .unwrap_or(self.tool_calls.len());
+        }
+        if text(tc.get("function").and_then(|f| f.get("name"))).is_some() {
+            return self.tool_calls.len();
+        }
+        if batch_len > 1 {
+            return position;
+        }
+        self.tool_calls.len().saturating_sub(1)
     }
 
     fn into_completion(self) -> serde_json::Value {
@@ -3681,6 +3711,27 @@ mod tests {
         );
     }
 
+    /// Upstream and wire-API resolution share `pick_provider`, so the converter
+    /// always belongs to the provider the request is sent to.
+    #[tokio::test]
+    async fn api_type_follows_the_provider_upstream_resolution_picks() {
+        let mk = |name: &str, key: Option<&str>, api: &str| ProviderConfig {
+            provider: name.into(),
+            api_key: key.map(Into::into),
+            base_url: Some(format!("https://{name}.example/v1")),
+            models: vec!["shared-model".into()],
+            api_type: Some(api.into()),
+            ..Default::default()
+        };
+        let mut configs = HashMap::new();
+        configs.insert("aaa".to_string(), mk("aaa", None, "google"));
+        configs.insert("zzz".to_string(), mk("zzz", Some("k"), "anthropic"));
+        let picked = pick_provider(&configs, "shared-model").expect("a provider offers it");
+        let api = resolve_api_type_for_model("shared-model", Arc::new(Mutex::new(configs.clone())))
+            .await;
+        assert_eq!(api, picked.1.api_type);
+    }
+
     /// A model served both by a Flint desktop API server (reachable over HTTP) and
     /// by local engine descriptors (no base_url) must always resolve to the
     /// server. `HashMap` order is randomized, so the local entries outnumber the
@@ -4520,6 +4571,59 @@ mod tests {
             &tx,
         );
         assert!(acc.tool_calls.len() <= 1);
+    }
+
+    #[test]
+    fn keeps_parallel_tool_calls_apart_when_the_provider_sends_no_index() {
+        let (tx, _rx) = sink();
+        let mut acc = SseAccumulator::default();
+        for delta in [
+            json!([{ "id": "call_a", "function": { "name": "read", "arguments": "{\"path\":\"a\"}" } }]),
+            json!([{ "id": "call_b", "function": { "name": "grep", "arguments": "{\"q\":" } }]),
+            json!([{ "function": { "arguments": "\"x\"" } }]),
+            // A provider that repeats the id on every delta continues that call.
+            json!([{ "id": "call_b", "function": { "arguments": "}" } }]),
+        ] {
+            acc.ingest(
+                &json!({ "choices": [{ "delta": { "tool_calls": delta } }] }).to_string(),
+                &tx,
+            );
+        }
+
+        let completion = acc.into_completion();
+        let calls = &completion["choices"][0]["message"]["tool_calls"];
+        assert_eq!(calls.as_array().map(|c| c.len()), Some(2), "{calls:#}");
+        assert_eq!(calls[0]["id"], "call_a");
+        assert_eq!(calls[0]["function"]["name"], "read");
+        assert_eq!(calls[0]["function"]["arguments"], "{\"path\":\"a\"}");
+        assert_eq!(calls[1]["id"], "call_b");
+        assert_eq!(calls[1]["function"]["name"], "grep");
+        assert_eq!(calls[1]["function"]["arguments"], "{\"q\":\"x\"}");
+    }
+
+    #[test]
+    fn an_unindexed_batch_still_maps_entries_by_position() {
+        let (tx, _rx) = sink();
+        let mut acc = SseAccumulator::default();
+        for delta in [
+            json!([
+                { "id": "call_a", "function": { "name": "read", "arguments": "{\"p\":" } },
+                { "id": "call_b", "function": { "name": "grep", "arguments": "{\"q\":" } }
+            ]),
+            json!([
+                { "function": { "arguments": "1}" } },
+                { "function": { "arguments": "2}" } }
+            ]),
+        ] {
+            acc.ingest(
+                &json!({ "choices": [{ "delta": { "tool_calls": delta } }] }).to_string(),
+                &tx,
+            );
+        }
+        let completion = acc.into_completion();
+        let calls = &completion["choices"][0]["message"]["tool_calls"];
+        assert_eq!(calls[0]["function"]["arguments"], "{\"p\":1}");
+        assert_eq!(calls[1]["function"]["arguments"], "{\"q\":2}");
     }
 
     #[test]

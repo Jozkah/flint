@@ -259,13 +259,16 @@
     "stopGenerating": "Hentikan pembuatan"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp kehabisan memori",
+    "backendTitle": "Backend GGML mengalami error",
+    "contextTitle": "Model kehabisan ukuran konteks",
     "oomReduceContext": "Kurangi ukuran konteks (ctx-size)",
     "oomDisableMtp": "Nonaktifkan MTP (Multi-Token Prediction)",
     "oomLowerGpuLayers": "Turunkan n-gpu-layers atau beralih ke backend CPU",
     "oomSmallerModel": "Gunakan model yang lebih kecil / lebih terkuantisasi",
     "serverContext": "Jendela konteks model ini ditentukan oleh servernya, jadi Flint tidak dapat memperbesarnya. Mulai obrolan baru, persingkat percakapan, atau naikkan batas di server.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Buat ulang",
+    "reload": "Muat ulang"
   },
   "emptyRun": {
     "emptyReply": "Model mengembalikan balasan kosong. Coba lagi atau ganti model.",

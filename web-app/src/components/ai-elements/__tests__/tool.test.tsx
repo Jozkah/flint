@@ -605,6 +605,21 @@ const renderOutput = (
   )
 
 describe('ToolOutput', () => {
+  // janhq/jan#9547: an MCP image result is shown as the type it declares.
+  it('renders an MCP image result with its mimeType', () => {
+    const { container } = renderOutput({
+      output: {
+        content: [{ type: 'image', data: 'UklGRg==', mimeType: 'image/webp' }],
+      },
+    })
+    const raw = screen.queryByText('tools:toolCall.viewRaw')
+    if (raw) fireEvent.click(raw)
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      'data:image/webp;base64,UklGRg=='
+    )
+  })
+
   it('offers no expand control for a short payload', () => {
     renderOutput()
     expect(screen.queryByText('tools:toolCall.showMore')).not.toBeInTheDocument()

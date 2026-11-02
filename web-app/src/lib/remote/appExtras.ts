@@ -69,6 +69,7 @@ import type {
   HfModelCard,
   UsingSection,
 } from './protocol'
+import { errorText } from '../errorText'
 
 /** The context card's Tailwind swatches as colours a phone can draw. */
 const SWATCH: Record<string, string> = {
@@ -118,7 +119,7 @@ async function dataFolder(): Promise<string> {
   return folder
 }
 
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const messageOf = errorText
 
 /** Chats: details, effort, assistant, forks, versions, compaction and titles. */
 const chatExtras: Pick<RemoteExtras, 'chatDetails' | 'setChatEffort' | 'setChatAssistant' | 'assistants' | 'forkChat' | 'selectVersion' | 'compactChat' | 'regenerateTitle'> = {

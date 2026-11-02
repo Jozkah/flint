@@ -21,8 +21,12 @@ Only `src/adapter/adapters/openai/streamer.rs` (search for `FLINT PATCH`).
    The finish-reason chunk path now announces every call too, not only the first.
 2. `function.arguments` sent as a JSON object (or other non-string) was read as
    `String` and became empty; it is now serialised to a string.
-3. A tool call without `index` falls back to its array position instead of being
-   skipped.
+3. A tool call without `index` is no longer skipped. A delta with an id already
+   captured continues that call, a new id or a name starts a new call, and a bare
+   argument delta continues the last call (or, in a multi-entry chunk, the call
+   at its array position). Gemini's OpenAI-compatible endpoint sends each
+   parallel call unindexed in its own chunk, which a plain position fallback
+   merged into one call (`unindexed_parallel_tool_calls_stay_apart`).
 
 Regression tests live in `src/core/agent/genai_bridge.rs`
 (`two_tool_calls_in_one_chunk_are_both_delivered`,

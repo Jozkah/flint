@@ -2582,9 +2582,7 @@ async fn run_child(task: ChildTask) {
                         Some(_) => Err(SubagentError::Cancelled),
                     },
                     _ = async {
-                        while !token.is_stopped() {
-                            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                        }
+                        token.stopped_signal().await;
                     } => Err(SubagentError::Cancelled),
                 }
             })

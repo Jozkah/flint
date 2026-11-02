@@ -391,6 +391,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'set_compaction_policy',
       'set_usage_ceilings',
       'take_factory_reset_report',
+      'take_previous_run_notice',
       'take_pending_webdata_reset',
       'take_settings_recovery_notice',
       'utility_agent_record',

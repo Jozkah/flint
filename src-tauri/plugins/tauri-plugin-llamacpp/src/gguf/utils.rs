@@ -4,6 +4,20 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 
+/// True when the URL's host is a loopback address or `localhost`.
+fn is_loopback_url(url: &str) -> bool {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let auth = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let auth = auth.rsplit('@').next().unwrap_or(auth);
+    let host = if let Some(v6) = auth.strip_prefix('[') {
+        v6.split(']').next().unwrap_or("")
+    } else {
+        auth.split(':').next().unwrap_or("")
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
 /// Runs a parse over a gguf, local or remote.
 ///
 /// A remote file is fetched in range chunks and the parse retried after each
@@ -17,9 +31,16 @@ where
 {
     if path.starts_with("http://") || path.starts_with("https://") {
         // Remote: read in 2MB chunks until successful
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_secs(120));
+        // A loopback server is never behind the user's proxy. Honouring an
+        // HTTP_PROXY here made fetches from a local server fail whenever a
+        // proxy env var was set (including by a parallel test in this process).
+        if is_loopback_url(path) {
+            builder = builder.no_proxy();
+        }
+        let client = builder
             .build()
             .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
         let chunk_size = 2 * 1024 * 1024; // Fixed 2MB chunks

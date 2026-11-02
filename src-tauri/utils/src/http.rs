@@ -31,12 +31,15 @@ fn is_local_interface_ip(ip: std::net::IpAddr) -> bool {
     bindable && std::net::UdpSocket::bind((ip, 0)).is_ok()
 }
 
-/// Validates if host is in trusted hosts list
+/// Validates that a `Host` header names this server: loopback, a private-range
+/// or local-interface IP literal, `host.docker.internal`, or a hostname the
+/// user listed.
+///
+/// A `*` entry does not widen this. It means "any web page may call the API"
+/// and is handled by `is_trusted_origin`; letting it also accept every `Host`
+/// would switch off the check that refuses DNS-rebinding pages, which reach
+/// the server under their own hostname.
 pub fn is_valid_host(host: &str, trusted_hosts: &[Vec<String>]) -> bool {
-    if trusted_hosts.iter().any(|hosts| hosts.contains(&"*".to_string())) {
-        return true;
-    }
-
     if host.is_empty() {
         return false;
     }
@@ -255,6 +258,31 @@ mod tests {
         assert!(is_valid_host("[::1]:1337", &trusted)); // IPv6 loopback
         // A public IP literal is NOT auto-trusted.
         assert!(!is_valid_host("8.8.8.8:1337", &trusted));
+    }
+
+    // `*` means "any web page may call the API" (see `is_trusted_origin`). It
+    // must not also mean "any Host header": a DNS-rebinding page reaches the
+    // server under its own hostname, and the Host check is what refuses it.
+    #[test]
+    fn wildcard_does_not_make_every_host_valid() {
+        let wildcard = vec![vec!["*".to_string()]];
+        assert!(!is_valid_host("evil-rebind.attacker.com", &wildcard));
+        assert!(!is_valid_host("evil-rebind.attacker.com:1337", &wildcard));
+        assert!(!is_valid_host("8.8.8.8", &wildcard));
+        assert!(!is_valid_host("", &wildcard));
+        // The server's own names still pass, as they do with an empty list.
+        assert!(is_valid_host("127.0.0.1:1337", &wildcard));
+        assert!(is_valid_host("localhost", &wildcard));
+        assert!(is_valid_host("192.168.1.20:1337", &wildcard));
+        // The wildcard keeps its CORS meaning.
+        assert!(is_trusted_origin("https://any-web-app.example", &wildcard));
+    }
+
+    #[test]
+    fn wildcard_still_honours_a_hostname_listed_next_to_it() {
+        let listed = vec![vec!["*".to_string(), "myserver.local".to_string()]];
+        assert!(is_valid_host("myserver.local:1337", &listed));
+        assert!(!is_valid_host("evil-rebind.attacker.com", &listed));
     }
 
     // A full origin typed into the allowlist must match the origin's host part.

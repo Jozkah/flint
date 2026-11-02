@@ -16,11 +16,10 @@ import {
   loadSlashCatalog,
   type SlashSurface,
 } from '@/lib/slashCatalog'
+import { errorText } from '@/lib/errorText'
 
 export type { SlashSurface }
 
-const errorText = (e: unknown) =>
-  e instanceof Error ? e.message : typeof e === 'string' ? e : String(e)
 
 export interface UseSlashCommandsOptions {
   surface: SlashSurface

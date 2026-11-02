@@ -251,9 +251,7 @@ impl CompositeToolInvoker {
         let outcome: Result<Option<PermissionDecision>, StopReason> = tokio::select! {
             answer = rx => Ok(answer.ok()),
             _ = async {
-                while !waiting.is_stopped() {
-                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                }
+                waiting.stopped_signal().await;
             } => Err(waiting.stopped().unwrap_or(StopReason::Cancelled)),
         };
         self.permission_requests.lock().await.remove(request_id);
@@ -389,9 +387,7 @@ impl CompositeToolInvoker {
         let decision = tokio::select! {
             answer = rx => answer.unwrap_or(PermissionDecision::Deny),
             _ = async {
-                while !waiting.is_stopped() {
-                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                }
+                waiting.stopped_signal().await;
             } => PermissionDecision::Deny,
         };
         self.permission_requests.lock().await.remove(&request_id);
@@ -2802,9 +2798,7 @@ impl CompositeToolInvoker {
                     }
                 }
                 _ = async {
-                    while !waiting.is_stopped() {
-                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                    }
+                    waiting.stopped_signal().await;
                 } => {
                     let reason = waiting
                         .stopped()
@@ -3174,9 +3168,7 @@ impl CompositeToolInvoker {
                 tokio::select! {
                     answer = rx => answer.unwrap_or(PermissionDecision::Deny),
                     _ = async {
-                        while !waiting.is_stopped() {
-                            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-                        }
+                        waiting.stopped_signal().await;
                     } => PermissionDecision::Deny,
                 }
             }

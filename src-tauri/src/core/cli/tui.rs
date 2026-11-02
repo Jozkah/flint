@@ -171,6 +171,255 @@ fn panic_restore_sequence() -> String {
     )
 }
 
+/// Run a terminal call again while it fails with EINTR. A `tcsetattr` from the
+/// background stops Flint with SIGTTOU and, once continued, can return EINTR
+/// (macOS). Bounded in practice: each retry needs another stop and continue.
+fn retry_interrupted(mut f: impl FnMut() -> io::Result<()>) -> io::Result<()> {
+    loop {
+        match f() {
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            other => return other,
+        }
+    }
+}
+
+/// Whether the render loop must keep off the terminal: Unix only, while a
+/// SIGTTIN stop is owed a re-arm or another process group holds the
+/// terminal's foreground.
+fn tty_input_paused() -> bool {
+    #[cfg(unix)]
+    {
+        tty_stop::rearm_pending() || tty_stop::stop_if_terminal_taken()
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+/// A read from the background (another group took the terminal's foreground)
+/// stops Flint with SIGTTIN, by default with every mode still on, so the shell
+/// prompt fills with mouse reports (janhq/jan#9517). The handler writes the
+/// restore bytes once and then stops for real; the render loop re-enters the
+/// modes once Flint owns the foreground again.
+#[cfg(unix)]
+mod tty_stop {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};
+
+    /// What `panic_restore_sequence` writes on Unix, prebuilt because the
+    /// handler cannot allocate. A test pins the two together.
+    pub(super) const RESTORE_BYTES: &[u8] =
+        b"\x1b[?2026l\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[<u\x1b[?1007r\x1b[?1049l\x1b[?25h";
+
+    /// Set when the handler wrote the restore bytes; cleared by the re-arm.
+    /// While set the modes are off, so a second stop writes nothing (a second
+    /// kitty pop would pop the shell's own entry).
+    static REARM: AtomicBool = AtomicBool::new(false);
+    /// The handler is running, possibly stopped inside: no re-arm under it.
+    static STOPPING: AtomicBool = AtomicBool::new(false);
+    /// The SIGTTIN disposition Flint inherited, while its handler is installed.
+    static INHERITED: std::sync::Mutex<Option<SigAction>> = std::sync::Mutex::new(None);
+
+    fn action() -> SigAction {
+        SigAction::new(SigHandler::Handler(on_tty_input_stop), SaFlags::SA_RESTART, SigSet::empty())
+    }
+
+    /// Installed once the modes are on. A parent that ignores SIGTTIN (a
+    /// background read then fails with EIO instead of stopping) is left alone.
+    pub(super) fn install_handler() {
+        // SAFETY: the handler only makes async-signal-safe calls.
+        let Ok(old) = (unsafe { nix::sys::signal::sigaction(Signal::SIGTTIN, &action()) }) else {
+            return;
+        };
+        if old.handler() == SigHandler::SigIgn {
+            // SAFETY: putting back what was there a moment ago.
+            let _ = unsafe { nix::sys::signal::sigaction(Signal::SIGTTIN, &old) };
+            return;
+        }
+        *INHERITED.lock().unwrap_or_else(|e| e.into_inner()) = Some(old);
+    }
+
+    pub(super) fn reset_handler() {
+        let old = INHERITED.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(old) = old {
+            // SAFETY: restoring the disposition Flint started with.
+            let _ = unsafe { nix::sys::signal::sigaction(Signal::SIGTTIN, &old) };
+        }
+    }
+
+    fn installed() -> bool {
+        INHERITED.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+    }
+
+    /// Whether Flint's group is, positively, the terminal's foreground.
+    /// Async-signal-safe; an unreadable answer is a no.
+    fn foreground_is_ours() -> bool {
+        // SAFETY: plain queries.
+        unsafe {
+            let fg = nix::libc::tcgetpgrp(nix::libc::STDOUT_FILENO);
+            fg >= 0 && fg == nix::libc::getpgrp()
+        }
+    }
+
+    /// Whether Flint's group owns the foreground; an unreadable answer is a
+    /// yes, since re-arming wrongly only means the next read stops again.
+    fn owns_foreground() -> bool {
+        // SAFETY: a plain query on stdout's descriptor.
+        let fg = unsafe { nix::libc::tcgetpgrp(nix::libc::STDOUT_FILENO) };
+        fg < 0 || fg == nix::unistd::getpgrp().as_raw()
+    }
+
+    /// Async-signal-safe only: one write of the restore bytes, then the real
+    /// stop. No `disable_raw_mode`: from the background a `tcsetattr` raises
+    /// SIGTTOU, and a job-control shell restores its own termios when it takes
+    /// the terminal back. SIGTTOU is ignored around the write, so under `stty
+    /// tostop` the restore still lands before the stop.
+    extern "C" fn on_tty_input_stop(_: nix::libc::c_int) {
+        use nix::errno::Errno;
+        use nix::sys::signal::{pthread_sigmask, raise, sigaction, SigmaskHow};
+        let saved = Errno::last_raw();
+        if foreground_is_ours() {
+            Errno::set_raw(saved);
+            return;
+        }
+        STOPPING.store(true, Ordering::SeqCst);
+        if !REARM.load(Ordering::SeqCst) {
+            let ignore = SigAction::new(SigHandler::SigIgn, SaFlags::empty(), SigSet::empty());
+            // SAFETY: async-signal-safe; put back right after the write.
+            let ttou = unsafe { sigaction(Signal::SIGTTOU, &ignore) };
+            let mut rest: &[u8] = RESTORE_BYTES;
+            for _ in 0..8 {
+                if rest.is_empty() {
+                    break;
+                }
+                // SAFETY: writes from a static buffer.
+                let n = unsafe {
+                    nix::libc::write(nix::libc::STDOUT_FILENO, rest.as_ptr().cast(), rest.len())
+                };
+                if n > 0 {
+                    // Not before the first byte lands: a terminal that refuses
+                    // every write had nothing restored, so nothing to re-arm.
+                    REARM.store(true, Ordering::SeqCst);
+                    rest = &rest[n as usize..];
+                } else if n == 0 || Errno::last() != Errno::EINTR {
+                    break;
+                }
+            }
+            if let Ok(ttou) = ttou {
+                // SAFETY: as above.
+                let _ = unsafe { sigaction(Signal::SIGTTOU, &ttou) };
+            }
+        }
+        if !foreground_is_ours() {
+            let default = SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::empty());
+            // SAFETY: async-signal-safe; the default action is what stops.
+            let _ = unsafe { sigaction(Signal::SIGTTIN, &default) };
+            let _ = raise(Signal::SIGTTIN);
+            // SIGTTIN is blocked while its handler runs; unblocking delivers
+            // the pending one, and the process stops here until SIGCONT.
+            let mut ttin = SigSet::empty();
+            ttin.add(Signal::SIGTTIN);
+            let _ = pthread_sigmask(SigmaskHow::SIG_UNBLOCK, Some(&ttin), None);
+            // SAFETY: as above.
+            let _ = unsafe { sigaction(Signal::SIGTTIN, &action()) };
+        }
+        STOPPING.store(false, Ordering::SeqCst);
+        Errno::set_raw(saved);
+    }
+
+    pub(super) fn rearm_pending() -> bool {
+        REARM.load(Ordering::SeqCst)
+    }
+
+    /// Another group holds the foreground: stop now, from the render loop,
+    /// instead of inside a blocking read that would resume into the same read.
+    /// Returns whether it stopped (or tried to).
+    pub(super) fn stop_if_terminal_taken() -> bool {
+        use nix::sys::signal::kill;
+        if !installed() || owns_foreground() {
+            return false;
+        }
+        let _ = kill(nix::unistd::Pid::from_raw(0), Signal::SIGTTIN);
+        true
+    }
+
+    /// After a SIGTTIN stop, once Flint is the foreground again: whether the
+    /// modes must be re-entered now. Consumes the pending re-arm.
+    pub(super) fn take_rearm() -> bool {
+        if !REARM.load(Ordering::SeqCst) || STOPPING.load(Ordering::SeqCst) || !owns_foreground() {
+            return false;
+        }
+        REARM.swap(false, Ordering::SeqCst)
+    }
+}
+
+/// Re-enter the terminal modes the SIGTTIN handler turned off, and repaint.
+#[cfg(unix)]
+fn rearm_after_tty_stop(app: &mut App) {
+    if !tty_stop::take_rearm() {
+        return;
+    }
+    // crossterm's enable is a no-op while it believes raw mode is on, and the
+    // handler could not turn it off; disable first so the termios is re-read.
+    let _ = retry_interrupted(disable_raw_mode);
+    let mut stdout = io::stdout();
+    let result = retry_interrupted(enable_raw_mode).and_then(|()| {
+        execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)?;
+        stdout.write_all(startup_modes(crate::core::agent::global_config::mouse_enabled()).as_bytes())?;
+        stdout.flush()
+    });
+    if let Err(e) = result {
+        app.note(&format!("could not restore the terminal after a stop: {e}"));
+    }
+    app.request_repaint();
+}
+
+#[cfg(test)]
+mod tty_stop_tests {
+    /// The SIGTTIN handler cannot format, so it writes a prebuilt copy of the
+    /// restore; it must stay byte-for-byte what every other exit writes.
+    #[cfg(unix)]
+    #[test]
+    fn tty_stop_restore_bytes_match_the_panic_restore() {
+        assert_eq!(
+            String::from_utf8_lossy(super::tty_stop::RESTORE_BYTES),
+            super::panic_restore_sequence()
+        );
+    }
+
+    /// No stop pending and no handler installed: the loop reads and draws.
+    #[cfg(unix)]
+    #[test]
+    fn nothing_pauses_the_loop_without_a_stop() {
+        assert!(!super::tty_input_paused());
+        assert!(!super::tty_stop::take_rearm());
+    }
+
+    #[test]
+    fn retry_interrupted_retries_only_eintr() {
+        let mut calls = 0;
+        let r = super::retry_interrupted(|| {
+            calls += 1;
+            if calls < 3 {
+                Err(std::io::Error::from(std::io::ErrorKind::Interrupted))
+            } else {
+                Ok(())
+            }
+        });
+        assert!(r.is_ok());
+        assert_eq!(calls, 3);
+        let mut calls = 0;
+        let r = super::retry_interrupted(|| {
+            calls += 1;
+            Err(std::io::Error::other("no"))
+        });
+        assert!(r.is_err());
+        assert_eq!(calls, 1);
+    }
+}
+
 /// The thread running the render loop while it owns the terminal, or `None`
 /// once restored. A panic hook is process-wide, but only a panic on this thread
 /// ends the session; a spawned job's panic is a `JoinError` the loop survives,
@@ -184,6 +433,10 @@ fn release_terminal() -> bool {
     let mut owner = TERMINAL_OWNER.lock().unwrap_or_else(|e| e.into_inner());
     if *owner == Some(std::thread::current().id()) {
         *owner = None;
+        // Back to the default stop, so whatever runs after the session (the
+        // resume hint, a panic message) behaves like any other program.
+        #[cfg(unix)]
+        tty_stop::reset_handler();
         true
     } else {
         false
@@ -838,7 +1091,9 @@ pub async fn run(
         raw: false,
     };
 
-    enable_raw_mode().map_err(|e| e.to_string())?;
+    // Started in the background (`flint &`), the `tcsetattr` stops with
+    // SIGTTOU and, once `fg` continues it, can fail with EINTR; try again.
+    retry_interrupted(enable_raw_mode).map_err(|e| e.to_string())?;
     guard.raw = true;
     // From here a panic must not leave the shell in raw mode on the alternate
     // screen: install before anything that can panic runs.
@@ -856,6 +1111,8 @@ pub async fn run(
     let modes = startup_modes(crate::core::agent::global_config::mouse_enabled());
     let _ = stdout.write_all(modes.as_bytes());
     let _ = stdout.flush();
+    #[cfg(unix)]
+    tty_stop::install_handler();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).map_err(|e| e.to_string())?;
 
@@ -1368,7 +1625,8 @@ impl LoopTasks {
         // OSC 9999 payload is not re-sent, only the title frame.
         app.agent_status.animate();
         let mut queued = Vec::new();
-        while event::poll(Duration::ZERO).unwrap_or(false) {
+        // The terminal is not ours: a read would only stop again.
+        while !tty_input_paused() && event::poll(Duration::ZERO).unwrap_or(false) {
             match event::read() {
                 Ok(event) => queued.push(event),
                 Err(_) => break,
@@ -1509,6 +1767,11 @@ async fn chat_loop<B: Backend>(
     let sync_output = use_synchronized_output();
 
     while !app.should_quit {
+        // Back from a SIGTTIN stop: re-enter the modes once the terminal is
+        // ours again, and draw nothing while it is not.
+        #[cfg(unix)]
+        rearm_after_tty_stop(app);
+        let tty_away = tty_input_paused();
         // Drive the background jobs the last frame asked for, then start a queued
         // run if everything it waits on is ready.
         tasks.start_requested_jobs(app, args, mcp_servers);
@@ -1522,18 +1785,25 @@ async fn chat_loop<B: Backend>(
         // buffer and emits ANSI only for changed cells. Skipped under kitty,
         // whose resize handling drops the frame behind a held synchronized
         // frame (see `use_synchronized_output`).
-        if sync_output {
+        // Not while another group holds the terminal (a SIGTTIN stop is owed
+        // or pending): the frame would paint over the shell. A requested
+        // repaint stays pending for the re-arm.
+        if sync_output && !tty_away {
             let _ = execute!(io::stdout(), BeginSynchronizedUpdate);
         }
         // A repaint was asked for (Ctrl-L, or a resize): reset the diff
         // baseline so this draw re-emits every cell. Inside the synchronized
         // frame, so the terminal flips from the damaged frame straight to the
         // repaired one and never presents the cleared screen in between.
-        if app.take_repaint() {
+        if !tty_away && app.take_repaint() {
             apply_repaint(terminal);
         }
-        let draw_result = terminal.draw(|f| draw(f, app)).map_err(|e| e.to_string());
-        if sync_output {
+        let draw_result = if tty_away {
+            Ok(())
+        } else {
+            terminal.draw(|f| draw(f, app)).map(|_| ()).map_err(|e| e.to_string())
+        };
+        if sync_output && !tty_away {
             let _ = execute!(io::stdout(), EndSynchronizedUpdate);
         }
         draw_result?;

@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/typeGuards'
 /**
  * Type checks for an MCP server config typed or pasted as JSON.
  *
@@ -7,9 +8,6 @@
  * checks run before the save and name the offending field.
  */
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
 
 function stringMap(value: unknown): boolean {
   return isRecord(value) && Object.values(value).every((v) => typeof v === 'string')

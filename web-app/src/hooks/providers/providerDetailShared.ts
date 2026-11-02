@@ -1,10 +1,11 @@
+import { basename } from '@/lib/path'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Remote lists longer than this get a filter box; rows render this many at a time.
 export const MODEL_FILTER_MIN = 20
 
 /** The last path segment, on either separator. */
-export const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
+export const baseName = basename
 
 /** A model's configured context length, when it has one. */
 export function contextLengthOf(model: Model): number | undefined {
