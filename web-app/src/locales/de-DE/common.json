@@ -2965,6 +2965,11 @@
     "title": "Zurücksetzen unvollständig",
     "description": "{{count}} Element(e) konnten nicht entfernt werden und liegen noch auf dem Datenträger:\n{{list}}"
   },
+  "previousRunNotice": {
+    "title": "Flint wurde beim letzten Mal unerwartet beendet",
+    "description": "Der vorherige Lauf wurde nicht sauber beendet. Sie können ein bereinigtes Protokoll exportieren und einem Fehlerbericht beifügen. Es wird nichts gesendet.",
+    "export": "Protokoll exportieren"
+  },
   "settingsRecovered": {
     "title": "Einstellungsdatei konnte nicht gelesen werden",
     "withBackup": "{{file}} war beschädigt, daher hat Flint mit den Standardeinstellungen gestartet. Die beschädigte Datei wurde als {{backup}} aufbewahrt.",

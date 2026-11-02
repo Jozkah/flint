@@ -268,13 +268,16 @@
     "stopGenerating": "生成を停止"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp のメモリが不足しました",
+    "backendTitle": "GGML バックエンドでエラーが発生しました",
+    "contextTitle": "モデルのコンテキストサイズが上限に達しました",
     "oomReduceContext": "コンテキストサイズ(ctx-size)を小さくする",
     "oomDisableMtp": "MTP(マルチトークン予測)を無効にする",
     "oomLowerGpuLayers": "n-gpu-layers を下げるか、CPU バックエンドに切り替える",
     "oomSmallerModel": "より小さい/量子化の強いモデルを使う",
     "serverContext": "このモデルのコンテキストウィンドウはサーバー側で設定されているため、Flint では拡大できません。新しいチャットを始める、会話を短くする、またはサーバー側の上限を引き上げてください。",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "再生成",
+    "reload": "再読み込み"
   },
   "emptyRun": {
     "emptyReply": "モデルが空の返信を返しました。もう一度試すか、モデルを切り替えてください。",

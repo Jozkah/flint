@@ -117,6 +117,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
         core::system::commands::take_factory_reset_report,
+        core::system::commands::take_previous_run_notice,
         core::system::commands::read_logs,
         core::system::commands::read_logs_since,
         core::system::commands::export_redacted_logs,
@@ -1059,6 +1060,7 @@ pub fn build_app() -> tauri::App {
             tauri_plugin_agent_tools::breadcrumb::set_sink(core::crash_trace::breadcrumb);
             // The logger is attached further down, so what to say about the
             // earlier run and the stack is kept and logged once it is.
+            core::crash_trace::set_previous_run_notice(earlier_run.is_some(), earlier_report.is_some());
             let mut crash_notes: Vec<(log::Level, String)> = Vec::new();
             match (earlier_run, earlier_report) {
                 (Some(run), report) => crash_notes.push((

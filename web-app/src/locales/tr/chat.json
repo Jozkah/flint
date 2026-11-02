@@ -273,13 +273,16 @@
     "stopGenerating": "Üretimi durdur"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp belleği tükendi",
+    "backendTitle": "GGML arka ucunda bir hata oluştu",
+    "contextTitle": "Model bağlam boyutunu aştı",
     "oomReduceContext": "Bağlam boyutunu küçült (ctx-size)",
     "oomDisableMtp": "MTP'yi (Multi-Token Prediction) devre dışı bırak",
     "oomLowerGpuLayers": "n-gpu-layers değerini düşür veya CPU arka ucuna geç",
     "oomSmallerModel": "Daha küçük / daha fazla nicemlenmiş bir model kullan",
     "serverContext": "Bu modelin bağlam penceresini sunucusu belirler, bu yüzden Flint onu büyütemez. Yeni bir sohbet başlatın, konuşmayı kısaltın veya sunucudaki sınırı yükseltin.",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "Yeniden oluştur",
+    "reload": "Yeniden yükle"
   },
   "emptyRun": {
     "emptyReply": "Model boş bir yanıt döndürdü. Tekrar deneyin veya modeli değiştirin.",

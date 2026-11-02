@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { liveStatus } from '@/lib/rooms/liveStatus'
+import { useMessageWindow } from '@/hooks/useMessageWindow'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
 import {
@@ -1128,6 +1129,9 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
     return null
   })
 
+  // Only the tail of a long journal is mounted; see useMessageWindow.
+  const { start, loadEarlier, hasEarlier } = useMessageWindow(items ? items.length : messages.length, room.id)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   // Whether new content should pull the viewport down. True only while the user
   // is at (or near) the bottom; a scroll upward turns it off so streaming tokens
@@ -1219,9 +1223,20 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
             {t('rooms:transcript.empty')}
           </p>
         )}
+        {hasEarlier && (
+          <button
+            type="button"
+            data-testid="room-transcript-load-earlier"
+            onClick={loadEarlier}
+            className="self-center rounded-md border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-accent"
+          >
+            {t('rooms:transcript.loadEarlier')}
+          </button>
+        )}
         {items
-          ? items.map((item, i) =>
-              item.kind === 'message' ? (
+          ? items.slice(start).map((item, j) => {
+              const i = start + j
+              return item.kind === 'message' ? (
                 <TranscriptMessage key={`msg:${item.message.id}`} m={item.message} {...shared} />
               ) : (
                 <CompareRow
@@ -1236,8 +1251,8 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
                   approvalTool={approvalTool}
                 />
               )
-            )
-          : messages.map((m) => <TranscriptMessage key={m.id} m={m} {...shared} />)}
+            })
+          : messages.slice(start).map((m) => <TranscriptMessage key={m.id} m={m} {...shared} />)}
       </div>
       {items && compareLives.length > 0 && !items.some((x) => x.kind === 'compare') && (
         <CompareRow answers={[]} lives={compareLives} {...shared} approvalTool={approvalTool} />

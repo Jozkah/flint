@@ -273,13 +273,16 @@
     "stopGenerating": "जनरेशन रोकें"
   },
   "errorBanner": {
+    "oomTitle": "llama.cpp की मेमोरी समाप्त हो गई",
+    "backendTitle": "GGML बैकएंड में त्रुटि हुई",
+    "contextTitle": "मॉडल का कॉन्टेक्स्ट आकार समाप्त हो गया",
     "oomReduceContext": "कॉन्टेक्स्ट आकार घटाएँ (ctx-size)",
     "oomDisableMtp": "MTP (Multi-Token Prediction) बंद करें",
     "oomLowerGpuLayers": "n-gpu-layers घटाएँ या CPU बैकएंड पर स्विच करें",
     "oomSmallerModel": "छोटा / अधिक क्वांटाइज़्ड मॉडल उपयोग करें",
     "serverContext": "इस मॉडल की कॉन्टेक्स्ट विंडो उसके सर्वर द्वारा तय होती है, इसलिए Flint इसे बड़ा नहीं कर सकता। नई चैट शुरू करें, बातचीत छोटी करें, या सर्वर पर सीमा बढ़ाएँ।",
-    "regenerate": "Regenerate",
-    "reload": "Reload"
+    "regenerate": "फिर से बनाएँ",
+    "reload": "फिर से लोड करें"
   },
   "emptyRun": {
     "emptyReply": "मॉडल ने खाली उत्तर लौटाया। फिर कोशिश करें या मॉडल बदलें।",

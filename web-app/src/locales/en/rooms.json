@@ -233,6 +233,7 @@
   "transcript": {
     "label": "Discussion transcript",
     "empty": "Nothing has been said yet.",
+    "loadEarlier": "Load earlier messages",
     "you": "You",
     "system": "System",
     "moderator": "Moderator",

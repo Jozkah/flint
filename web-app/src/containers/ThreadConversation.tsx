@@ -3532,10 +3532,10 @@ export function ThreadConversation({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-destructive mb-1">
                         {oomError
-                          ? 'llama.cpp ran out of memory'
+                          ? t('chat:errorBanner.oomTitle')
                           : backendError
-                            ? 'GGML backend encountered an error'
-                            : 'Model ran out of context size'}
+                            ? t('chat:errorBanner.backendTitle')
+                            : t('chat:errorBanner.contextTitle')}
                       </p>
                       <div className="table table-fixed w-full">
                         <span

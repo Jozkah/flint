@@ -334,6 +334,30 @@ pub fn take_crash_report(data_folder: &Path) -> Option<String> {
     Some(text)
 }
 
+/// What the webview is told once about the run before this one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviousRunNotice {
+    pub unclean: bool,
+    pub report_present: bool,
+}
+
+static PREVIOUS_RUN: std::sync::Mutex<Option<PreviousRunNotice>> = std::sync::Mutex::new(None);
+
+/// Remember how the earlier run ended so the webview can say so. Nothing is
+/// recorded for a clean shutdown.
+pub fn set_previous_run_notice(unclean: bool, report_present: bool) {
+    let notice = (unclean || report_present).then_some(PreviousRunNotice { unclean, report_present });
+    if let Ok(mut slot) = PREVIOUS_RUN.lock() {
+        *slot = notice;
+    }
+}
+
+/// The notice for the earlier run, once per boot: taking it clears it.
+pub fn take_previous_run_notice() -> Option<PreviousRunNotice> {
+    PREVIOUS_RUN.lock().ok().and_then(|mut slot| slot.take())
+}
+
 /// The warning for a run that did not shut down cleanly.
 pub fn unclean_message(earlier: &str, report: Option<&str>) -> String {
     let lead = format!(
@@ -707,6 +731,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_previous_run_notice_is_taken_once() {
+        let _turn = TRAIL.lock().unwrap_or_else(|e| e.into_inner());
+        set_previous_run_notice(false, false);
+        assert_eq!(take_previous_run_notice(), None);
+        set_previous_run_notice(true, true);
+        assert_eq!(
+            take_previous_run_notice(),
+            Some(PreviousRunNotice { unclean: true, report_present: true })
+        );
+        assert_eq!(take_previous_run_notice(), None);
     }
 
     #[test]
