@@ -2718,15 +2718,17 @@ async fn an_exhausted_budget_is_announced_once_in_the_system_voice() {
     );
 }
 
-/// Passing the ceiling no longer stops a run, so a long thread only grows.
-/// Once every turn is finished, the oversized conversation is compacted
-/// before it is published -- otherwise the next run resumes this thread by
-/// sending the whole thing upstream.
+/// A spent token ceiling is cumulative spend, not live context: a long,
+/// well-cached run (a reasoning model's thinking is charged but never resent)
+/// passes a window-sized ceiling while its prompt is a fraction of the window.
+/// Finishing over the ceiling must not compact the conversation; only the
+/// window (the preflight) or a provider overflow does that.
 #[tokio::test]
-async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
+async fn an_exhausted_budget_does_not_compact_a_finished_run() {
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    // Comfortably longer than DEFAULT_KEEP_RECENT so there is a middle to drop.
+    // Comfortably longer than DEFAULT_KEEP_RECENT, so a compaction would have
+    // had a middle to drop.
     let convo: Vec<serde_json::Value> = (0..24)
         .map(|i| {
             json!({
@@ -2744,7 +2746,7 @@ async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
     let summary = json!({
         "choices": [{ "message": { "content": "SUMMARY OF THE EARLIER WORK" } }]
     });
-    // Second response is consumed by the summarizer inside compaction.
+    // Anything past the run's own turn would be a summarizer call.
     let model = MockModel::new(vec![over_budget, summary]);
     let tool = MockTool::default();
     let mut budget = SessionBudget::new(Some(50));
@@ -2771,31 +2773,15 @@ async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
     assert!(budget.exhausted(), "precondition: the ceiling was passed");
     assert_eq!(
         model.requests.lock().unwrap().len(),
-        2,
-        "one turn, plus the summarizer call compaction makes"
+        1,
+        "no summarizer call: compaction never ran"
     );
 
     let events: Vec<StreamEvent> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-    // The TUI runs with logging off, so without an event this compaction is
-    // invisible to the user.
-    let phases: Vec<CompactionPhase> = events
-        .iter()
-        .filter_map(|ev| match ev {
-            StreamEvent::Compaction {
-                phase,
-                reason: CompactionReason::SessionBudget,
-                ..
-            } => Some(*phase),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        phases,
-        [CompactionPhase::Started, CompactionPhase::Finished],
-        "the budget compaction is announced, start and end"
+    assert!(
+        !events.iter().any(|ev| matches!(ev, StreamEvent::Compaction { .. })),
+        "spend is not context size: no compaction event"
     );
-    // The published history is the compacted one: shorter, and carrying the
-    // summary in place of the dropped middle.
     let published = events
         .into_iter()
         .rev()
@@ -2804,18 +2790,13 @@ async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
             _ => None,
         })
         .expect("a MessagesUpdated is published");
+    assert_eq!(published.len(), original_len, "history untouched");
     assert!(
-        published.len() < original_len,
-        "history was compacted: {} -> {}",
-        original_len,
-        published.len()
-    );
-    assert!(
-        published.iter().any(|m| m["content"]
+        !published.iter().any(|m| m["content"]
             .as_str()
             .unwrap_or_default()
             .contains("SUMMARY OF THE EARLIER WORK")),
-        "the summary replaced the dropped middle: {published:#?}"
+        "no summary replaced the history: {published:#?}"
     );
 }
 
