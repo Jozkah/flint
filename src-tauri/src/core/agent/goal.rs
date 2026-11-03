@@ -296,6 +296,17 @@ Keep going until it is satisfied. Do not stop to ask for confirmation."
     )
 }
 
+/// The instruction injected as the final turn once the goal is met, so the run
+/// ends on a closing message for the user instead of a bare tool result. An
+/// unprompted closing tends to invent file-level detail, hence the last rule.
+pub(crate) fn wrapup_prompt(condition: &str) -> String {
+    format!(
+        "The goal is met: {condition}
+
+Write a brief closing message for the user. Do not call any tools. Say what was done, how it was verified, which files or artifacts changed, and anything worth following up. Report only what you actually did and observed in this conversation; do not invent detail."
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,5 +411,12 @@ mod tests {
         let p = continuation_prompt("tests pass", "2 failing");
         assert!(p.contains("tests pass"));
         assert!(p.contains("2 failing"));
+    }
+
+    #[test]
+    fn wrapup_prompt_asks_for_a_grounded_closing_without_tools() {
+        let p = wrapup_prompt("tests pass");
+        assert!(p.contains("tests pass") && p.contains("Do not call any tools"));
+        assert!(p.contains("do not invent detail"));
     }
 }
