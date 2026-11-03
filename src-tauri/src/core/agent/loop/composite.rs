@@ -2198,6 +2198,25 @@ impl CompositeToolInvoker {
             out.push(ToolOutcome::plain(id, content));
             return true;
         }
+        if name == crate::core::agent::goal::TOOL_NAME {
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if !self.goal_tool {
+                out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
+                return true;
+            }
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                return true;
+            };
+            // Only a receipt: the claim is read back from the transcript and
+            // the evaluator, not this call, decides the goal.
+            let content = match crate::core::agent::goal::parse_claim(&args) {
+                Ok(claim) => crate::core::agent::goal::claim_receipt(&claim),
+                Err(e) => format!("ERROR: {e}"),
+            };
+            out.push(ToolOutcome::plain(id, content));
+            return true;
+        }
         if name == "todo" {
             let id = tc
                 .get("id")

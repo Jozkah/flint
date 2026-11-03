@@ -1076,6 +1076,8 @@ struct CompositeToolInvoker {
     /// `[tools] code_mode`: the `code` tool is offered and may run. Off, a call
     /// to it is refused even when nothing else stops it.
     code_mode: bool,
+    /// `update_goal` is offered (a top-level `/goal` run). Off, a call is refused.
+    goal_tool: bool,
     run_mode: crate::core::agent::plan::RunMode,
     /// Who this dispatch acts as, for the permission gate. AH-007. The same
     /// subject the run's tools were advertised under: a run offered a tool and
@@ -3949,6 +3951,16 @@ async fn orchestrate_inner(
             .unwrap_or(false)
         && allowed_names.as_ref().is_none_or(|set| set.contains(crate::core::agent::code_mode::TOOL_NAME))
         && !permissions.is_denied(crate::core::agent::code_mode::TOOL_NAME, subject);
+    // `update_goal`: only a top-level run under an active `/goal`.
+    let goal_tool = goal_mode
+        && args.parent_run.is_none()
+        && child_run_id.is_none()
+        && system_prompt_override.is_none()
+        && allowed_names.as_ref().is_none_or(|set| set.contains(crate::core::agent::goal::TOOL_NAME))
+        && !permissions.is_denied(crate::core::agent::goal::TOOL_NAME, subject);
+    if goal_tool {
+        openai_tools.push(crate::core::agent::goal::tool_schema());
+    }
     if code_mode {
         openai_tools.push(crate::core::agent::code_mode::schema());
     }
@@ -4221,6 +4233,7 @@ async fn orchestrate_inner(
             approvals,
             call_log: Default::default(),
             code_mode,
+            goal_tool,
             format_on_edit: settings.format_on_edit,
             check_syntax: settings.check_syntax,
             nul_programs: settings.nul_programs.clone(),
@@ -4711,9 +4724,10 @@ pub(crate) async fn evaluate_goal(
     smol_model_id: &str,
     condition: &str,
     messages: &[serde_json::Value],
+    claim: Option<&crate::core::agent::goal::GoalClaim>,
 ) -> Result<crate::core::agent::goal::GoalVerdict, HarnessError> {
     let model = HttpModelInvoker::for_helper(args, smol_model_id, "goal", Default::default()).await?;
-    crate::core::agent::goal::evaluate(smol_model_id, condition, messages, &model).await
+    crate::core::agent::goal::evaluate(smol_model_id, condition, messages, claim, &model).await
 }
 
 /// One stateless, tool-free model call against `model_id`, through the same

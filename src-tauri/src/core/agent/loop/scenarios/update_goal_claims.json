@@ -1,0 +1,23 @@
+{
+  "name": "update_goal_claims",
+  "description": "update_goal answers with a receipt that says the claim is not final, rejects a bad status, and is refused when the run is not a /goal run.",
+  "goal_tool": true,
+  "files": { "a.txt": "x\n" },
+  "task": "Work toward the goal.",
+  "model": [
+    { "calls": [ { "id": "g1", "name": "update_goal", "args": { "status": "in_progress", "note": "read a.txt" } } ] },
+    { "calls": [ { "id": "g2", "name": "update_goal", "args": { "status": "finished", "note": "bad status" } } ] },
+    { "calls": [ { "id": "g3", "name": "update_goal", "args": { "status": "complete", "note": "a.txt exists" } } ] },
+    { "say": "Reported complete." }
+  ],
+  "expect": {
+    "requests": 4,
+    "final_text_contains": ["Reported complete"],
+    "tool_results": [
+      { "call": "g1", "contains": "Progress noted" },
+      { "call": "g2", "contains": "status must be one of" },
+      { "call": "g3", "contains": "the goal ends only if it confirms" }
+    ],
+    "unchanged": ["a.txt"]
+  }
+}

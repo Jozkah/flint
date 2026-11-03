@@ -13,6 +13,7 @@
 //! {
 //!   "name": "…", "description": "…",
 //!   "files": { "a.txt": "old\n" },            // the workspace before the run
+//!   "goal_tool": true,                        // optional: offer `update_goal` as a /goal run does
 //!   "task": "the user's first message",
 //!   "model": [                                // one entry per model reply
 //!     { "calls": [ { "id": "c1", "name": "read", "args": { "path": "a.txt" } } ] },
@@ -44,6 +45,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ("batch_order.json", include_str!("scenarios/batch_order.json")),
     ("repeat_reminder.json", include_str!("scenarios/repeat_reminder.json")),
     ("empty_glob.json", include_str!("scenarios/empty_glob.json")),
+    ("update_goal_claims.json", include_str!("scenarios/update_goal_claims.json")),
 ];
 
 /// A model that answers from the script and records what it was shown.
@@ -130,6 +132,8 @@ async fn replay(name: &str, fixture: &str) -> Vec<String> {
     invoker.record_to = Some(data);
     invoker.auto_approve = true;
     invoker.sandbox = false;
+    // A `/goal` run offers `update_goal`; every other fixture leaves it refused.
+    invoker.goal_tool = f["goal_tool"].as_bool().unwrap_or(false);
     invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("scn", "scn#run-1", "");
 
     let model = Scripted {

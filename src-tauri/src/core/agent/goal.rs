@@ -66,6 +66,10 @@ pub(crate) struct GoalState {
     /// Why the goal stopped as blocked ("" otherwise).
     #[serde(default)]
     pub blocked_reason: String,
+    /// What the model last said through `update_goal` since the previous
+    /// evaluation. A hint for the evaluator, never a verdict.
+    #[serde(default)]
+    pub claim: Option<GoalClaim>,
 }
 
 fn default_max_turns() -> u32 {
@@ -99,7 +103,14 @@ impl GoalState {
             max_turns: DEFAULT_MAX_TURNS,
             blocked_streak: 0,
             blocked_reason: String::new(),
+            claim: None,
         }
+    }
+
+    /// Remember the model's latest `update_goal` report until the next
+    /// evaluation. Changes no status: only [`Self::apply_verdict`] does.
+    pub fn note_claim(&mut self, claim: GoalClaim) {
+        self.claim = Some(claim);
     }
 
     /// Fold one evaluation into the goal and say what happens next. A goal is
@@ -107,6 +118,7 @@ impl GoalState {
     /// its turns; either way it stops rather than loop on nothing.
     pub fn apply_verdict(&mut self, verdict: &GoalVerdict) -> NextStep {
         self.last_reason = verdict.reason.clone();
+        self.claim = None;
         if verdict.met {
             self.status = GoalStatus::Achieved;
             self.blocked_streak = 0;
@@ -135,6 +147,7 @@ impl GoalState {
         self.status = GoalStatus::Active;
         self.blocked_streak = 0;
         self.blocked_reason.clear();
+        self.claim = None;
         self.max_turns = self.turns.saturating_add(DEFAULT_MAX_TURNS);
     }
 
@@ -176,6 +189,105 @@ pub(crate) struct GoalVerdict {
     pub blocked: bool,
     /// A short human-readable reason (guidance when `met` is false).
     pub reason: String,
+}
+
+/// Name of the model-facing tool a `/goal` run offers.
+pub(crate) const TOOL_NAME: &str = "update_goal";
+/// Cap on the note a claim carries, so a chatty model cannot bloat the evaluator prompt.
+const MAX_NOTE_CHARS: usize = 500;
+
+/// What the model says about its own progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ClaimStatus {
+    InProgress,
+    Complete,
+    Blocked,
+}
+
+/// One `update_goal` call. Unverified: the evaluator weighs it against the
+/// transcript and stays authoritative.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct GoalClaim {
+    pub status: ClaimStatus,
+    pub note: String,
+}
+
+/// The `update_goal` tool schema, offered only while a goal runs.
+pub(crate) fn tool_schema() -> Value {
+    json!({
+        "type": "function",
+        "function": {
+            "name": TOOL_NAME,
+            "description": "Report progress on the active /goal. status \"in_progress\": a short \
+progress note. \"complete\": you believe the goal condition now holds. \"blocked\": you cannot go on \
+without something only the user can give. This is a report, not a decision: an independent evaluator \
+checks the transcript after your turn and may disagree, so run the verifying commands first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": { "type": "string", "enum": ["in_progress", "complete", "blocked"] },
+                    "note": { "type": "string", "description": "One or two sentences: what is done, the evidence, or what is needed." }
+                },
+                "required": ["status", "note"]
+            }
+        }
+    })
+}
+
+/// Parse `update_goal` arguments.
+pub(crate) fn parse_claim(args: &Value) -> Result<GoalClaim, String> {
+    let status = match args.get("status").and_then(Value::as_str) {
+        Some("in_progress") => ClaimStatus::InProgress,
+        Some("complete") => ClaimStatus::Complete,
+        Some("blocked") => ClaimStatus::Blocked,
+        _ => return Err("status must be one of in_progress, complete, blocked".to_string()),
+    };
+    let note: String = args
+        .get("note")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(MAX_NOTE_CHARS)
+        .collect();
+    if note.is_empty() {
+        return Err("note is required".to_string());
+    }
+    Ok(GoalClaim { status, note })
+}
+
+/// What the tool answers the model: a receipt that says the report is not final.
+pub(crate) fn claim_receipt(claim: &GoalClaim) -> String {
+    match claim.status {
+        ClaimStatus::InProgress => "Progress noted. Keep working.".to_string(),
+        ClaimStatus::Complete => "Completion noted. An evaluator will now check the transcript; \
+the goal ends only if it confirms. Finish your turn."
+            .to_string(),
+        ClaimStatus::Blocked => "Blocker noted. An evaluator will check it; if it disagrees you will be \
+asked to continue. Finish your turn."
+            .to_string(),
+    }
+}
+
+/// The last `update_goal` claim in the turn that just ended (messages after
+/// the final user message), if the model made one.
+pub(crate) fn latest_claim(messages: &[Value]) -> Option<GoalClaim> {
+    let start = messages
+        .iter()
+        .rposition(|m| m.get("role").and_then(Value::as_str) == Some("user"))
+        .map_or(0, |i| i + 1);
+    messages[start..]
+        .iter()
+        .filter(|m| m.get("role").and_then(Value::as_str) == Some("assistant"))
+        .filter_map(|m| m.get("tool_calls").and_then(Value::as_array))
+        .flatten()
+        .filter(|c| c.pointer("/function/name").and_then(Value::as_str) == Some(TOOL_NAME))
+        .filter_map(|c| {
+            let raw = c.pointer("/function/arguments").and_then(Value::as_str)?;
+            parse_claim(&serde_json::from_str::<Value>(raw).ok()?).ok()
+        })
+        .next_back()
 }
 
 const EVALUATOR_SYSTEM_PROMPT: &str = "You are a strict completion evaluator for an autonomous \
@@ -242,11 +354,23 @@ pub(crate) fn build_evaluator_request(
     model_id: &str,
     condition: &str,
     messages: &[Value],
+    claim: Option<&GoalClaim>,
 ) -> Value {
-    let user = format!(
+    let mut user = format!(
         "GOAL:\n{condition}\n\nTRANSCRIPT:\n{}",
         serialize_transcript(messages)
     );
+    if let Some(c) = claim {
+        user.push_str(&format!(
+            "\n\nAGENT REPORT (unverified, not evidence; judge the transcript, not this): {} -- {}",
+            match c.status {
+                ClaimStatus::InProgress => "in progress",
+                ClaimStatus::Complete => "says the goal is complete",
+                ClaimStatus::Blocked => "says it is blocked",
+            },
+            c.note
+        ));
+    }
     json!({
         "model": model_id,
         "messages": [
@@ -355,9 +479,10 @@ pub(crate) async fn evaluate(
     model_id: &str,
     condition: &str,
     messages: &[Value],
+    claim: Option<&GoalClaim>,
     model: &dyn ModelInvoker,
 ) -> Result<GoalVerdict, HarnessError> {
-    let request = build_evaluator_request(model_id, condition, messages);
+    let request = build_evaluator_request(model_id, condition, messages, claim);
     // The evaluator's tokens are internal: a dropped receiver keeps them off the
     // user-facing stream.
     let (sink, _rx) = mpsc::unbounded_channel();
@@ -372,6 +497,21 @@ pub(crate) async fn evaluate(
 /// The guidance message injected as the next user turn when the goal is unmet.
 /// Phrased as a continuation so the agent keeps working rather than re-asking.
 pub(crate) fn continuation_prompt(condition: &str, reason: &str) -> String {
+    continuation_prompt_for(condition, reason, None)
+}
+
+/// As [`continuation_prompt`], telling the model when its `update_goal` claim
+/// was overruled so it does not simply repeat it.
+pub(crate) fn continuation_prompt_for(condition: &str, reason: &str, claim: Option<&GoalClaim>) -> String {
+    let overruled = match claim.map(|c| c.status) {
+        Some(ClaimStatus::Complete) => "The evaluator did not accept your completion report. ",
+        Some(ClaimStatus::Blocked) => "The evaluator did not accept your blocked report. ",
+        _ => "",
+    };
+    format!("{overruled}{}", base_continuation(condition, reason))
+}
+
+fn base_continuation(condition: &str, reason: &str) -> String {
     format!(
         "Continue working toward this goal: {condition}\n\n\
 The goal is not yet met: {reason}\n\n\
@@ -484,7 +624,7 @@ mod tests {
             reply: r#"{"met": true, "reason": "ok"}"#.into(),
         };
         let msgs = vec![json!({ "role": "user", "content": "hi" })];
-        let v = evaluate("smol", "cond", &msgs, &model).await.unwrap();
+        let v = evaluate("smol", "cond", &msgs, None, &model).await.unwrap();
         assert!(v.met);
         assert_eq!(v.reason, "ok");
     }
@@ -541,5 +681,76 @@ mod tests {
         let p = wrapup_prompt("tests pass");
         assert!(p.contains("tests pass") && p.contains("Do not call any tools"));
         assert!(p.contains("do not invent detail"));
+    }
+
+    fn claim(status: ClaimStatus) -> GoalClaim {
+        GoalClaim { status, note: "n".into() }
+    }
+
+    #[test]
+    fn a_complete_claim_never_ends_the_goal_alone() {
+        let mut g = GoalState::new("tests pass");
+        g.turns = 2;
+        g.note_claim(claim(ClaimStatus::Complete));
+        assert!(g.is_active() && g.claim.is_some());
+        // Evaluator disagrees: still active, claim consumed.
+        let v = GoalVerdict { met: false, blocked: false, reason: "2 failing".into() };
+        assert_eq!(g.apply_verdict(&v), NextStep::Continue);
+        assert!(g.is_active() && g.claim.is_none());
+        // Evaluator agrees: only now achieved.
+        g.note_claim(claim(ClaimStatus::Complete));
+        let v = GoalVerdict { met: true, blocked: false, reason: "ok".into() };
+        assert_eq!(g.apply_verdict(&v), NextStep::Achieved);
+        assert_eq!(g.status, GoalStatus::Achieved);
+    }
+
+    #[test]
+    fn a_blocked_claim_does_not_count_toward_the_blocked_streak() {
+        let mut g = GoalState::new("x");
+        g.turns = 1;
+        g.note_claim(claim(ClaimStatus::Blocked));
+        let v = GoalVerdict { met: false, blocked: false, reason: "keep going".into() };
+        assert_eq!(g.apply_verdict(&v), NextStep::Continue);
+        assert_eq!(g.blocked_streak, 0);
+        // Resume drops a stale claim.
+        g.note_claim(claim(ClaimStatus::Complete));
+        g.resume();
+        assert!(g.claim.is_none());
+    }
+
+    #[test]
+    fn claims_parse_validate_and_are_found_in_the_last_turn_only() {
+        assert!(parse_claim(&json!({"status": "done", "note": "x"})).is_err());
+        assert!(parse_claim(&json!({"status": "complete", "note": "  "})).is_err());
+        let c = parse_claim(&json!({"status": "complete", "note": "all green"})).unwrap();
+        assert_eq!(c.status, ClaimStatus::Complete);
+        let call = |status: &str| json!({ "role": "assistant", "content": "", "tool_calls": [
+            { "id": "1", "function": { "name": TOOL_NAME, "arguments": json!({"status": status, "note": "n"}).to_string() } }
+        ]});
+        let msgs = vec![
+            json!({ "role": "user", "content": "go" }),
+            call("complete"),
+            json!({ "role": "user", "content": "continue" }),
+            call("in_progress"),
+            call("blocked"),
+        ];
+        assert_eq!(latest_claim(&msgs).unwrap().status, ClaimStatus::Blocked);
+        assert!(latest_claim(&msgs[..3]).is_none());
+    }
+
+    #[test]
+    fn the_evaluator_sees_the_claim_as_unverified_and_a_disputed_claim_is_called_out() {
+        let msgs = vec![json!({ "role": "user", "content": "hi" })];
+        let c = claim(ClaimStatus::Complete);
+        let req = build_evaluator_request("m", "cond", &msgs, Some(&c));
+        let user = req["messages"][1]["content"].as_str().unwrap();
+        assert!(user.contains("AGENT REPORT (unverified"));
+        assert!(!build_evaluator_request("m", "cond", &msgs, None)["messages"][1]["content"]
+            .as_str()
+            .unwrap()
+            .contains("AGENT REPORT"));
+        let p = continuation_prompt_for("cond", "2 failing", Some(&c));
+        assert!(p.starts_with("The evaluator did not accept your completion report."));
+        assert_eq!(continuation_prompt_for("cond", "r", None), continuation_prompt("cond", "r"));
     }
 }

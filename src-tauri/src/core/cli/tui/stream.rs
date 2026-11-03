@@ -1880,9 +1880,17 @@ impl App {
     /// acts on the verdict.
     pub(super) fn begin_goal_evaluation(&mut self) -> Option<GoalEvalTask> {
         self.goal_eval_pending = false;
-        let goal = self.goal.clone()?;
+        let mut goal = self.goal.clone()?;
         if !goal.is_active() {
             return None;
+        }
+        // What the model reported this turn through `update_goal`: a hint the
+        // evaluator weighs, never a verdict.
+        if let Some(claim) = crate::core::agent::goal::latest_claim(&self.history) {
+            goal.note_claim(claim.clone());
+            if let Some(g) = self.goal.as_mut() {
+                g.note_claim(claim);
+            }
         }
         // No live session (e.g. tests): cannot evaluate. Leave control with
         // the user rather than looping blindly.
@@ -1899,6 +1907,7 @@ impl App {
                 &model,
                 &goal.condition,
                 &history,
+                goal.claim.as_ref(),
             )
             .await;
             (goal, verdict)
@@ -1973,8 +1982,11 @@ impl App {
                         Level::Info,
                         &format!("goal not met: {} — continuing", v.reason),
                     );
-                    let prompt =
-                        crate::core::agent::goal::continuation_prompt(&goal.condition, &v.reason);
+                    let prompt = crate::core::agent::goal::continuation_prompt_for(
+                        &goal.condition,
+                        &v.reason,
+                        goal.claim.as_ref(),
+                    );
                     self.submit_user(prompt);
                 }
             }
