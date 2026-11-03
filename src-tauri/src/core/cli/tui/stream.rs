@@ -1936,13 +1936,19 @@ impl App {
         }
         match verdict {
             Ok(v) => {
-                if let Some(g) = self.goal.as_mut() {
-                    g.last_reason = v.reason.clone();
-                }
-                if v.met {
-                    if let Some(g) = self.goal.as_mut() {
-                        g.status = crate::core::agent::goal::GoalStatus::Achieved;
-                    }
+                use crate::core::agent::goal::NextStep;
+                let step = self
+                    .goal
+                    .as_mut()
+                    .map(|g| g.apply_verdict(&v))
+                    .unwrap_or(NextStep::Continue);
+                if let NextStep::Blocked(why) = &step {
+                    // It cannot go on without the user (or has used its turns):
+                    // stop here and say what is needed, rather than loop.
+                    self.system_marked(GOAL_GLYPH, Level::Warn, &format!("goal blocked: {why}"));
+                    self.system_detail_text("/goal resume to continue, /goal clear to stop");
+                    self.persist();
+                } else if step == NextStep::Achieved {
                     let turns = self.goal.as_ref().map(|g| g.turns).unwrap_or(0);
                     let elapsed = self.goal.as_ref().map(|g| g.elapsed_secs()).unwrap_or(0);
                     self.system_marked(
