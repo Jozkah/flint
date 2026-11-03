@@ -17,7 +17,6 @@
 //!   sees the content directly via the injected block, not raw `@` tokens.
 
 use once_cell::sync::Lazy;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Regex scanning `@token` candidates in text; `ref_matches` applies the
@@ -376,8 +375,8 @@ fn floor_char_boundary(s: &str, max: usize) -> usize {
 ///
 /// Searches `root_dir` for files/directories whose path or name contains
 /// `query` (case-insensitive). Returns `(relative_path, basename, is_dir)`
-/// tuples, up to `max_results`. Performs a limited walk (up to 3 levels deep)
-/// so it returns quickly enough for interactive use.
+/// tuples, up to `max_results`. Only the immediate children of the directory named by
+/// the query are scanned (capped), so it returns quickly for interactive use.
 pub fn search_files_sync(
     root_dir: &Path,
     query: &str,
@@ -442,15 +441,11 @@ fn image_note(raw: &str, abs: &Path) -> String {
         .unwrap_or("")
         .to_lowercase();
     let mime = image_mime(&ext);
-    let mut f = match std::fs::File::open(abs) {
-        Ok(f) => f,
-        Err(_) => return format!("[{}: cannot read image]", raw),
-    };
-    let mut buf = Vec::new();
-    if f.read_to_end(&mut buf).is_ok() {
-        format!("{} (image: {}, {} bytes)", abs.display(), mime, buf.len())
-    } else {
-        format!("[{}: cannot read image]", raw)
+    // The size is already known from the metadata; opening confirms the file is
+    // readable without reading it into memory.
+    match (std::fs::File::open(abs), std::fs::metadata(abs)) {
+        (Ok(_), Ok(m)) => format!("{} (image: {}, {} bytes)", abs.display(), mime, m.len()),
+        _ => format!("[{}: cannot read image]", raw),
     }
 }
 

@@ -14,7 +14,7 @@ use super::rpc_schema::{
     SessionModelSetParams, SessionStartParams, SessionToolsSetParams, ToolRespondParams,
     ToolResultContent, TurnStartParams, TurnSteerParams,
 };
-use super::stream_input::{parse_input_line, MAX_LINE_BYTES};
+use super::stream_input::{check_content_parts, parse_input_line, MAX_LINE_BYTES};
 use super::turn_host::{
     begin_turn, neutralize_user_content, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
 };
@@ -859,11 +859,12 @@ impl RpcServer {
         if self.busy(&session_id) {
             return error(id, -32001, "another turn is active; retry after turn/completed");
         }
-        let parsed = json!({"type":"user","content":input});
         let content = if let Some(text) = input.as_str() {
             parse_input_line(&json!({"type":"user","text":text}).to_string()).map(|_| Value::String(text.to_owned()))
-        } else if input.is_array() {
-            parse_input_line(&parsed.to_string()).map(|_| input)
+        } else if let Some(parts) = input.as_array() {
+            // Checked in place: re-serialising a part list with images only to
+            // parse it back copies megabytes of base64 on the dispatcher loop.
+            check_content_parts(parts, "user").map(|_| input)
         } else {
             Err("input must be text or content parts".to_string())
         };

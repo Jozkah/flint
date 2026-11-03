@@ -196,6 +196,36 @@ fn label(role: &str) -> &'static str {
     }
 }
 
+/// Rewrites `@path` references as Obsidian wiki links, leaving fenced code
+/// blocks and inline code alone (`@types/node` there is a package, not a note).
+fn link_at_refs(text: &str) -> String {
+    let mut in_fence = false;
+    let mut out: Vec<String> = Vec::new();
+    for line in text.split('\n') {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            out.push(line.to_string());
+        } else if in_fence {
+            out.push(line.to_string());
+        } else {
+            // Odd segments between backticks are inline code.
+            let linked: Vec<String> = line
+                .split('`')
+                .enumerate()
+                .map(|(i, seg)| {
+                    if i % 2 == 1 {
+                        seg.to_string()
+                    } else {
+                        AT_REF.replace_all(seg, "${1}[[$2]]").into_owned()
+                    }
+                })
+                .collect();
+            out.push(linked.join("`"));
+        }
+    }
+    out.join("\n")
+}
+
 fn render_turn(t: &Turn, verbose: bool, obsidian: bool) -> String {
     let when = stamp(t.at);
     let mut parts = vec![format!("## {}{}", label(&t.role), if when.is_empty() { String::new() } else { format!(" · {when}") })];
@@ -206,7 +236,7 @@ fn render_turn(t: &Turn, verbose: bool, obsidian: bool) -> String {
     if !text.is_empty() {
         let mut text = if verbose { text.to_string() } else { strip_absolute_paths(text) };
         if obsidian {
-            text = AT_REF.replace_all(&text, "${1}[[$2]]").to_string();
+            text = link_at_refs(&text);
         }
         parts.push(text);
     }
@@ -399,6 +429,16 @@ mod tests {
         assert!(verbose.contains("thinking hard"));
         assert!(verbose.contains("Input:"));
         assert!(verbose.contains("C:\\a\\b.txt"));
+    }
+
+    #[test]
+    fn wiki_links_skip_code() {
+        let text = "see @src/lib.rs and `@types/node`\n```\nnpm i @angular/core\n```\nmail a@b.com";
+        let out = link_at_refs(text);
+        assert_eq!(
+            out,
+            "see [[src/lib.rs]] and `@types/node`\n```\nnpm i @angular/core\n```\nmail a@b.com"
+        );
     }
 
     #[test]

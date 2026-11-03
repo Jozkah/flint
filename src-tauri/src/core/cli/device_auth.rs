@@ -127,16 +127,23 @@ impl BeginError {
     }
 }
 
+/// One client for the whole flow, so each poll reuses the kept-alive connection
+/// instead of building a pool and TLS config per request (cloning is a refcount).
 fn http() -> reqwest::Client {
-    crate::core::net::tls::apply12(reqwest::Client::builder().timeout(HTTP_TIMEOUT))
-        .build()
-        // Never a client without the configured roots: one that trusts nothing.
-        .unwrap_or_else(|_| {
-            reqwest::Client::builder()
-                .tls_built_in_root_certs(false)
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            crate::core::net::tls::apply12(reqwest::Client::builder().timeout(HTTP_TIMEOUT))
                 .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
+                // Never a client without the configured roots: one that trusts nothing.
+                .unwrap_or_else(|_| {
+                    reqwest::Client::builder()
+                        .tls_built_in_root_certs(false)
+                        .build()
+                        .unwrap_or_else(|_| reqwest::Client::new())
+                })
         })
+        .clone()
 }
 
 /// Base64url (no padding) SHA-256 of `input` -- the S256 PKCE derivation.
