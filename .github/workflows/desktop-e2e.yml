@@ -1,0 +1,53 @@
+name: Desktop e2e
+# Manual only: it compiles the desktop app and drives it with WebdriverIO,
+# which is not cheap. Run it on the branch that changes startup, setup or
+# settings. The suite is macOS only (see e2e/README.md).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: e2e (macos)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+          key: desktop-e2e
+          # Branches restore but never save, as in rust-check.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - name: Enable yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build the core package
+        run: yarn build:core
+
+      - name: Build the app and run the suite
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: yarn e2e

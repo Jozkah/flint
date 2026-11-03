@@ -185,11 +185,23 @@ export default class mlx_extension extends AIEngine {
         continue
       }
 
-      const children = await fs.readdirSync(currentDir)
+      // One unreadable entry (locked folder, junction, AV quarantine) must not
+      // blank the whole MLX list.
+      let children: string[] = []
+      try {
+        children = await fs.readdirSync(currentDir)
+      } catch (err) {
+        logger.warn(`list: readdir failed for ${currentDir}: ${String(err)}`)
+        continue
+      }
       for (const child of children) {
-        const dirInfo = await fs.fileStat(child)
-        if (!dirInfo.isDirectory) continue
-        stack.push(child)
+        try {
+          const dirInfo = await fs.fileStat(child)
+          if (!dirInfo?.isDirectory) continue
+          stack.push(child)
+        } catch (err) {
+          logger.warn(`list: stat failed for ${child}: ${String(err)}`)
+        }
       }
     }
 
@@ -298,8 +310,13 @@ export default class mlx_extension extends AIEngine {
       }
 
       const allLoadedModels = await this.getLoadedModels()
-      if (allLoadedModels.length > 0) {
-        await Promise.all(allLoadedModels.map((id) => this.unload(id)))
+      // Keep embedders: RAG would only reload one on its next query.
+      const evictable: string[] = []
+      for (const id of allLoadedModels) {
+        if (!(await this.isEmbeddingModel(id))) evictable.push(id)
+      }
+      if (evictable.length > 0) {
+        await Promise.all(evictable.map((id) => this.unload(id)))
       }
     }
 
@@ -496,15 +513,18 @@ export default class mlx_extension extends AIEngine {
       () => combinedController.abort(new Error('Request timed out')),
       this.timeout * 1000
     )
+    const onExternalAbort = () =>
+      combinedController.abort(abortController?.signal.reason)
+    // Without this the listener stays on the caller's signal for every request.
+    const removeExternalAbort = () =>
+      abortController?.signal.removeEventListener('abort', onExternalAbort)
     if (abortController?.signal) {
       if (abortController.signal.aborted) {
         combinedController.abort(abortController.signal.reason)
       } else {
-        abortController.signal.addEventListener(
-          'abort',
-          () => combinedController.abort(abortController.signal.reason),
-          { once: true }
-        )
+        abortController.signal.addEventListener('abort', onExternalAbort, {
+          once: true,
+        })
       }
     }
     const response = await fetch(url, {
@@ -512,9 +532,15 @@ export default class mlx_extension extends AIEngine {
       headers,
       body,
       signal: combinedController.signal,
-    }).finally(() => clearTimeout(timeoutId))
+    })
+      .catch((e) => {
+        removeExternalAbort()
+        throw e
+      })
+      .finally(() => clearTimeout(timeoutId))
 
     if (!response.ok) {
+      removeExternalAbort()
       const errorData = await response.json().catch(() => null)
       throw new Error(
         `MLX API request failed with status ${response.status}: ${JSON.stringify(errorData)}`
@@ -522,6 +548,7 @@ export default class mlx_extension extends AIEngine {
     }
 
     if (!response.body) {
+      removeExternalAbort()
       throw new Error('Response body is null')
     }
 
@@ -571,7 +598,15 @@ export default class mlx_extension extends AIEngine {
         }
       }
     } finally {
-      reader.releaseLock()
+      removeExternalAbort()
+      // Cancel first so an early consumer exit closes the HTTP body instead of
+      // leaving it open until the abort signal fires.
+      await reader.cancel().catch(() => {})
+      try {
+        reader.releaseLock()
+      } catch {
+        // already released
+      }
     }
   }
 
@@ -727,9 +762,8 @@ export default class mlx_extension extends AIEngine {
       throw new Error(`Folder not found: ${sourcePath}`)
     }
 
-    // Get folder size
-    const stat = await fs.fileStat(sourcePath)
-    const size_bytes = stat.size
+    // fileStat on a folder reports the folder entry, not its contents.
+    const size_bytes = await this.folderSize(sourcePath)
 
     // Detect capabilities by checking model folder
     const isVision = await this.isVisionSupported(sourcePath)
@@ -808,6 +842,47 @@ export default class mlx_extension extends AIEngine {
       }
     } catch (deleteError) {
       logger.warn('Failed to delete model directory:', deleteError)
+    }
+  }
+
+  /** Total bytes of the files under a folder; unreadable entries count as 0. */
+  private async folderSize(dir: string): Promise<number> {
+    let total = 0
+    const stack = [dir]
+    while (stack.length > 0) {
+      const current = stack.pop() as string
+      let children: string[] = []
+      try {
+        children = await fs.readdirSync(current)
+      } catch (err) {
+        logger.warn(`size: readdir failed for ${current}: ${String(err)}`)
+        continue
+      }
+      for (const child of children) {
+        try {
+          const info = await fs.fileStat(child)
+          if (info?.isDirectory) stack.push(child)
+          else total += info?.size ?? 0
+        } catch (err) {
+          logger.warn(`size: stat failed for ${child}: ${String(err)}`)
+        }
+      }
+    }
+    return total
+  }
+
+  private async isEmbeddingModel(modelId: string): Promise<boolean> {
+    try {
+      const configPath = await joinPath([
+        await this.getProviderPath(),
+        'models',
+        modelId,
+        'model.yml',
+      ])
+      const mc = await invoke<ModelConfig>('read_yaml', { path: configPath })
+      return mc?.embedding === true
+    } catch {
+      return false
     }
   }
 

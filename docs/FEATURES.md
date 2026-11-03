@@ -170,11 +170,12 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Agent tools from the terminal:** process tree, test triage, health scan, licence check, transcript search, quotas and spend, compaction, bundles, agent imports, policy import and export, repository index, run state, agent mail, Git helpers, change impact and context inspection.
 - **Run records:** event export and inspection, run replay and the permission audit (`agent events-export`, `replays`, `replay`, `audit`).
 - **Management parity with the desktop settings:** threads (create, rename, favourite, export to Markdown, Obsidian or JSON), the archive (list, restore, purge, settings), scheduled tasks (add, edit, preview, enable, run, cancel, OS entry), skills, memory by scope, worktrees (list, merge, guarded discard), MCP tools and trust, model search, download and import, the data folder, certificate and endpoint checks, Claude Code import and the JAN migration assistant.
+- **Headless server:** `flint serve` runs Flint with a browser client and no desktop window; see [SERVE.md](SERVE.md) for flags, credential recovery and proxy setups.
 - **Background jobs** that outlive the process (`flint cli job`).
 - **MCP from the terminal:** prompts, logs, tools, trust and OAuth sign-in management.
 - **`flint launch claude|codex|aider`:** starts the installed tool with environment and arguments pointing at the local API server (address from Settings, else `http://127.0.0.1:1337/v1`; key from `--api-key` or `FLINT_API_KEY`). `--dry-run` prints the command with the key masked and runs nothing. The server answers the OpenAI Responses API at `/v1/responses` (streaming or not), mapped onto its chat route, so Codex works; it keeps no response state, so send the whole `input` each time.
 - **Benchmarks** (`flint cli bench`) and **bug reports** (`flint bug-report`, `/bug` in the TUI) with a local log file.
-- **Slash commands** with arguments from built-ins, skills and plugins (command line only).
+- **Slash commands** with arguments from built-ins, skills and plugins.
 - **What stays in the app:** Studio image and video generation, the agent browser pane, themes, phone pairing, Discussion Rooms and Jev routing.
 
 ## Platforms
@@ -232,7 +233,6 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 
 - Semantic code search is built but has not been verified against a real embedding model.
 - Custom CA certificates are verified on Windows only.
-- The desktop app has no slash commands or marketplace browsing; those are available from the command line or as agent tools only.
 - A full screen-reader pass has not been done.
 - PDF export through print and PNG export have not been verified on macOS and Linux. PNG refuses pages taller than about 16,000 pixels.
 - The scheduler's closed-app entry is built and unit-tested, but the real `schtasks`, `launchctl` and `systemctl` calls have not been exercised.

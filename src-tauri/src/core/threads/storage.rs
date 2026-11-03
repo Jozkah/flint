@@ -15,6 +15,17 @@ use super::utils::{
     get_thread_metadata_path, validate_thread_id,
 };
 
+/// Run file work off the async runtime's worker threads (PERF-011): the writes
+/// fsync, and a Windows rename retry sleeps. The caller keeps its async
+/// per-thread lock across the await, so ordering is unchanged.
+async fn blocking<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(task).await.map_err(|e| e.to_string())?
+}
+
 pub fn create_thread_in(root: &Path, mut thread: Value) -> Result<Value, String> {
     // Indexing a non-object `Value` by key panics; a body of `"x"` or `[1]`
     // is a bad request, not a crash.
@@ -44,7 +55,8 @@ pub async fn modify_thread_in(root: &Path, thread: Value) -> Result<(), String> 
     validate_thread_id(&id)?;
     let lock = get_lock_for_thread(&id).await;
     let _guard = lock.lock().await;
-    modify_thread_unlocked(root, thread)
+    let root = root.to_path_buf();
+    blocking(move || modify_thread_unlocked(&root, thread)).await
 }
 
 /// `modify_thread_in` without the in-process lock, for callers with no async
@@ -163,31 +175,39 @@ pub async fn create_message_in(root: &Path, mut message: Value) -> Result<Value,
     }
     let lock = get_lock_for_thread(&id).await;
     let _guard = lock.lock().await;
-    ensure_thread_dir_exists(root, &id)?;
-    let message_id = message.get("id").and_then(Value::as_str);
-    append_message_line_if_new(&get_messages_path(root, &id), &message, message_id)?;
-    Ok(message)
+    let root = root.to_path_buf();
+    blocking(move || {
+        ensure_thread_dir_exists(&root, &id)?;
+        let message_id = message.get("id").and_then(Value::as_str);
+        append_message_line_if_new(&get_messages_path(&root, &id), &message, message_id)?;
+        Ok(message)
+    })
+    .await
 }
 
 pub async fn modify_message_in(root: &Path, message: Value) -> Result<Value, String> {
     let thread_id = message.get("thread_id").and_then(Value::as_str)
-        .ok_or("Missing thread_id")?;
-    validate_thread_id(thread_id)?;
+        .ok_or("Missing thread_id")?.to_owned();
+    validate_thread_id(&thread_id)?;
     let message_id = message.get("id").and_then(Value::as_str)
-        .ok_or("Missing message id")?;
-    let lock = get_lock_for_thread(thread_id).await;
+        .ok_or("Missing message id")?.to_owned();
+    let lock = get_lock_for_thread(&thread_id).await;
     let _guard = lock.lock().await;
-    ensure_thread_dir_exists(root, thread_id)?;
-    let path = get_messages_path(root, thread_id);
-    // An update is one appended revision line, not a rewrite of the whole
-    // file: readers fold it onto the message (or add it, for a new id).
-    let revisions = append_message_revision(&path, &message, message_id)?;
-    // Compact once enough revisions piled up, or when this process does not
-    // know how many there are (another writer touched the file).
-    if revisions.is_none_or(|n| n >= MAX_REVISIONS) {
-        compact_messages_unlocked(root, thread_id)?;
-    }
-    Ok(message)
+    let root = root.to_path_buf();
+    blocking(move || {
+        ensure_thread_dir_exists(&root, &thread_id)?;
+        let path = get_messages_path(&root, &thread_id);
+        // An update is one appended revision line, not a rewrite of the whole
+        // file: readers fold it onto the message (or add it, for a new id).
+        let revisions = append_message_revision(&path, &message, &message_id)?;
+        // Compact once enough revisions piled up, or when this process does not
+        // know how many there are (another writer touched the file).
+        if revisions.is_none_or(|n| n >= MAX_REVISIONS) {
+            compact_messages_unlocked(&root, &thread_id)?;
+        }
+        Ok(message)
+    })
+    .await
 }
 
 /// Rewrite a thread's messages file with its revisions folded in, if it
@@ -209,22 +229,29 @@ pub async fn delete_message_in(root: &Path, thread_id: &str, message_id: &str) -
     validate_thread_id(thread_id)?;
     let lock = get_lock_for_thread(thread_id).await;
     let _guard = lock.lock().await;
-    let read = read_messages_lossy(root, thread_id)?;
-    let messages = read.messages;
-    preserve_bad_lines(root, thread_id, &read.bad_lines)?;
-    let meta_path = get_thread_metadata_path(root, thread_id);
-    if let Ok(raw) = fs::read_to_string(&meta_path) {
-        if let Ok(mut thread) = serde_json::from_str::<Value>(&raw) {
-            let change = super::branching::active_root_after_delete(
-                &messages, message_id, super::branching::thread_active_root(&thread).as_deref(),
-            );
-            if super::branching::apply_active_root(&mut thread, change) {
-                update_thread_metadata(root, thread_id, &thread)?;
+    let (root, thread_id, message_id) =
+        (root.to_path_buf(), thread_id.to_owned(), message_id.to_owned());
+    blocking(move || {
+        let (root, thread_id, message_id) =
+            (root.as_path(), thread_id.as_str(), message_id.as_str());
+        let read = read_messages_lossy(root, thread_id)?;
+        let messages = read.messages;
+        preserve_bad_lines(root, thread_id, &read.bad_lines)?;
+        let meta_path = get_thread_metadata_path(root, thread_id);
+        if let Ok(raw) = fs::read_to_string(&meta_path) {
+            if let Ok(mut thread) = serde_json::from_str::<Value>(&raw) {
+                let change = super::branching::active_root_after_delete(
+                    &messages, message_id, super::branching::thread_active_root(&thread).as_deref(),
+                );
+                if super::branching::apply_active_root(&mut thread, change) {
+                    update_thread_metadata(root, thread_id, &thread)?;
+                }
             }
         }
-    }
-    let messages = super::branching::remove_message(messages, message_id);
-    write_messages_to_file(&messages, &get_messages_path(root, thread_id))
+        let messages = super::branching::remove_message(messages, message_id);
+        write_messages_to_file(&messages, &get_messages_path(root, thread_id))
+    })
+    .await
 }
 
 #[cfg(test)]

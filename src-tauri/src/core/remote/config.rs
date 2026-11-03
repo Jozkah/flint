@@ -173,6 +173,59 @@ pub(crate) fn tailscale_command() -> std::process::Command {
     cmd
 }
 
+/// How long a `tailscale` call may take before it is killed. A wedged
+/// tailscaled would otherwise hold a blocking-pool thread forever (NET-049).
+pub(crate) const TAILSCALE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// `Command::output` with a deadline: the child is killed once `timeout` has
+/// passed, and `None` comes back. A cert request may need longer than a status
+/// call, so the caller picks the limit.
+pub(crate) fn output_within(
+    mut cmd: std::process::Command,
+    timeout: std::time::Duration,
+) -> Option<std::process::Output> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    // Drained on their own threads so a chatty child cannot fill a pipe and
+    // block before it exits.
+    fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            buf
+        })
+    }
+    let out = drain(child.stdout.take());
+    let err = drain(child.stderr.take());
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    Some(std::process::Output {
+        status,
+        stdout: out.join().unwrap_or_default(),
+        stderr: err.join().unwrap_or_default(),
+    })
+}
+
 /// This machine's Tailscale IPv4. 100.100.100.100 is Tailscale's own resolver
 /// and only routes through the tailnet interface, so the source address the
 /// OS picks for it is the tailnet address. Falls back to `tailscale ip -4`.
@@ -182,10 +235,9 @@ pub fn detect_tailscale_ip() -> Option<Ipv4Addr> {
     {
         return Some(ip);
     }
-    let out = tailscale_command()
-        .args(["ip", "-4"])
-        .output()
-        .ok()?;
+    let mut cmd = tailscale_command();
+    cmd.args(["ip", "-4"]);
+    let out = output_within(cmd, TAILSCALE_TIMEOUT)?;
     if !out.status.success() {
         return None;
     }

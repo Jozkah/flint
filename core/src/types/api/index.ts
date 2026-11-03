@@ -159,8 +159,6 @@ export const CoreRoutes = [
   ...Object.values(ExtensionRoute),
   ...Object.values(FileSystemRoute),
   ...Object.values(FileManagerRoute),
-  'launchClaudeCodeWithConfig',
-  'writeEnvFileToConfig',
 ]
 
 export const APIRoutes = [...CoreRoutes, ...Object.values(NativeRoute)]
