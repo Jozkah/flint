@@ -455,6 +455,9 @@ pub async fn create_thread_assistant<R: Runtime>(
         let data = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         serde_json::from_str(&data).map_err(|e| e.to_string())?
     };
+    if !thread.is_object() {
+        return Err("thread.json is not a JSON object".to_string());
+    }
     if let Some(assistants) = thread.get_mut("assistants").and_then(|a| a.as_array_mut()) {
         assistants.push(assistant.clone());
     } else {

@@ -8,7 +8,7 @@ export class ModelManager {
   public models = new Map<string, Model>()
 
   constructor() {
-    if (window) {
+    if (typeof window !== 'undefined' && window.core) {
       window.core.modelManager = this
     }
   }

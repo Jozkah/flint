@@ -5,7 +5,7 @@ import { SystemInformation } from '../types'
  *
  * @returns {Promise<string>} A Promise that resolves with Flint's data folder path.
  */
-const getJanDataFolderPath = (): Promise<string> => globalThis.core.api?.getJanDataFolderPath()
+const getJanDataFolderPath = (): Promise<string> => globalThis.core?.api?.getJanDataFolderPath()
 
 /**
  * Opens the file explorer at a specific path.
@@ -13,7 +13,7 @@ const getJanDataFolderPath = (): Promise<string> => globalThis.core.api?.getJanD
  * @returns {Promise<any>} A promise that resolves when the file explorer is opened.
  */
 const openFileExplorer: (path: string) => Promise<any> = (path) =>
-  globalThis.core.api?.openFileExplorer({ path })
+  globalThis.core?.api?.openFileExplorer({ path })
 
 /**
  * Joins multiple paths together.
@@ -21,21 +21,21 @@ const openFileExplorer: (path: string) => Promise<any> = (path) =>
  * @returns {Promise<string>} A promise that resolves with the joined path.
  */
 const joinPath: (args: string[]) => Promise<string> = (args) =>
-  globalThis.core.api?.joinPath({ args })
+  globalThis.core?.api?.joinPath({ args })
 
 /**
  * Get dirname of a file path.
  * @param path - The file path to retrieve dirname.
  * @returns {Promise<string>} A promise that resolves the dirname.
  */
-const dirName: (path: string) => Promise<string> = (path) => globalThis.core.api?.dirName(path)
+const dirName: (path: string) => Promise<string> = (path) => globalThis.core?.api?.dirName(path)
 
 /**
  * Retrieve the basename from an url.
  * @param path - The path to retrieve.
  * @returns {Promise<string>} A promise that resolves with the basename.
  */
-const baseName: (paths: string) => Promise<string> = (path) => globalThis.core.api?.baseName(path)
+const baseName: (paths: string) => Promise<string> = (path) => globalThis.core?.api?.baseName(path)
 
 /**
  * Opens an external URL in the default web browser.
@@ -48,7 +48,7 @@ const openExternalUrl: (url: string) => Promise<any> = (url) => {
   if (!/^https?:\/\//i.test(String(url).trim())) {
     return Promise.reject(new Error('Only http(s) URLs can be opened'))
   }
-  return globalThis.core.api?.openExternalUrl(url)
+  return globalThis.core?.api?.openExternalUrl(url)
 }
 
 /**
@@ -56,13 +56,13 @@ const openExternalUrl: (url: string) => Promise<any> = (url) => {
  *
  * @returns {Promise<string>} - A promise that resolves with the resource path.
  */
-const getResourcePath: () => Promise<string> = () => globalThis.core.api?.getResourcePath()
+const getResourcePath: () => Promise<string> = () => globalThis.core?.api?.getResourcePath()
 
 /**
  * Gets the user's home path.
  * @returns return user's home path
  */
-const getUserHomePath = (): Promise<string> => globalThis.core.api?.getUserHomePath()
+const getUserHomePath = (): Promise<string> => globalThis.core?.api?.getUserHomePath()
 
 /**
  * Log to file from browser processes.
@@ -70,7 +70,7 @@ const getUserHomePath = (): Promise<string> => globalThis.core.api?.getUserHomeP
  * @param message - Message to log.
  */
 const log: (message: string, fileName?: string) => void = (message, fileName) =>
-  globalThis.core.api?.log(message, fileName)
+  globalThis.core?.api?.log(message, fileName)
 
 /**
  * Check whether the path is a subdirectory of another path.
@@ -81,7 +81,7 @@ const log: (message: string, fileName?: string) => void = (message, fileName) =>
  * @returns {Promise<boolean>} - A promise that resolves with a boolean indicating whether the path is a subdirectory.
  */
 const isSubdirectory: (from: string, to: string) => Promise<boolean> = (from: string, to: string) =>
-  globalThis.core.api?.isSubdirectory(from, to)
+  globalThis.core?.api?.isSubdirectory(from, to)
 
 /**
  * Show toast message from browser processes.
@@ -90,7 +90,7 @@ const isSubdirectory: (from: string, to: string) => Promise<boolean> = (from: st
  * @returns
  */
 const showToast: (title: string, message: string) => void = (title, message) =>
-  globalThis.core.api?.showToast(title, message)
+  globalThis.core?.api?.showToast(title, message)
 
 /**
  * Register extension point function type definition

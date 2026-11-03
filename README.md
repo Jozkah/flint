@@ -88,7 +88,7 @@ scoop install flint                    # Scoop (Windows)
 npm install -g @jozkah/flint           # npm (any platform above)
 ```
 
-To build the CLI from source, see [AGENT-TUI.md](AGENT-TUI.md). Package-manager availability follows the release setup in [docs/PACKAGING.md](docs/PACKAGING.md).
+To build the CLI from source, see [AGENT-TUI.md](AGENT-TUI.md). To run Flint headless with a browser client, see [docs/SERVE.md](docs/SERVE.md). Package-manager availability follows the release setup in [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## Getting started
 
