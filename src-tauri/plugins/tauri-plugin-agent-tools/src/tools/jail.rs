@@ -199,14 +199,14 @@ impl Policy {
         self.start_dir.as_deref().unwrap_or(&self.workspace)
     }
 
-    /// Attach read-only roots. See [`Policy::read_roots`] for why their bind
-    /// order relative to the masks and the workspace is load-bearing.
     /// Authorize the shell to write under `write_roots`, as the file tools are.
     pub fn with_write_roots(mut self, write_roots: Vec<PathBuf>) -> Self {
         self.write_roots = write_roots;
         self
     }
 
+    /// Attach read-only roots. See [`Policy::read_roots`] for why their bind
+    /// order relative to the masks and the workspace is load-bearing.
     pub fn with_read_roots(mut self, read_roots: Vec<PathBuf>) -> Self {
         self.read_roots = read_roots;
         self
@@ -271,8 +271,6 @@ fn home_dir() -> Option<PathBuf> {
     Some(path)
 }
 
-/// The active backend, probed once. Probing runs a subprocess on Linux, so it is
-/// cached for the life of the process.
 /// Can this backend confine a shell to a repository the user authorized?
 ///
 /// Direct editing is only offered where the shell and the file tools can be
@@ -318,6 +316,8 @@ pub fn can_confine_write_roots(backend: Backend, _roots: &[PathBuf], _owned: Opt
     supports_write_roots(backend)
 }
 
+/// The active backend, probed once. Probing runs a subprocess on Linux, so it is
+/// cached for the life of the process.
 pub fn backend() -> Backend {
     static BACKEND: std::sync::Mutex<Option<Backend>> = std::sync::Mutex::new(None);
     if let Some(cached) = *BACKEND.lock().unwrap_or_else(|e| e.into_inner()) {

@@ -17,9 +17,26 @@ extern "C" {
     fn CGEventSetIntegerValueField(event: Event, field: u32, value: i64);
     fn CGEventCreateScrollWheelEvent(source: Event, units: u32, wheels: u32, ...) -> Event;
     fn CGEventPost(tap: u32, event: Event);
+    fn CGDisplayCopyDisplayMode(display: u32) -> *mut c_void;
+    fn CGDisplayModeGetPixelWidth(mode: *mut c_void) -> usize;
+    fn CGDisplayModeRelease(mode: *mut c_void);
 }
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" { fn CFRelease(object: Event); }
+/// Image pixels per logical point on the main display (2.0 on Retina), the
+/// factor the capture is scaled by. 1.0 when the mode cannot be read.
+pub fn image_pixels_per_point() -> f64 {
+    // SAFETY: the mode is checked for null, read once and released; the display bounds are plain values.
+    unsafe {
+        let display = CGMainDisplayID();
+        let points = CGDisplayBounds(display).size.width;
+        let mode = CGDisplayCopyDisplayMode(display);
+        if mode.is_null() || points <= 0.0 { return 1.0; }
+        let pixels = CGDisplayModeGetPixelWidth(mode) as f64;
+        CGDisplayModeRelease(mode);
+        if pixels >= points { pixels / points } else { 1.0 }
+    }
+}
 pub fn capture_note(width: u32, height: u32) -> String {
     // SAFETY: CGMainDisplayID and CGDisplayBounds take and return plain values.
     let bounds = unsafe { CGDisplayBounds(CGMainDisplayID()) };

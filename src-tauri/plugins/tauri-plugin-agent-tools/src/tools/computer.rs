@@ -136,12 +136,46 @@ async fn check_app(action: &Action, allowed: &[String]) -> Result<(), String> {
     }
 }
 
+/// Input coordinates are in the units of the desktop pixels regions are
+/// drawn in on every platform except macOS, where input uses logical points
+/// and the picker records regions on the capture, in image pixels (O06-006).
+/// This is image pixels per input unit: 1.0 except on a scaled macOS display.
+fn input_to_image_scale() -> f64 {
+    #[cfg(target_os = "macos")]
+    {
+        macos::image_pixels_per_point()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        1.0
+    }
+}
+
 fn check_excluded(action: &Action, regions: &[Region]) -> Result<(), String> {
+    check_excluded_scaled(action, regions, input_to_image_scale())
+}
+
+/// [`check_excluded`] with an explicit image-pixels-per-input-unit `scale`.
+/// A point covers the `scale` x `scale` block of image pixels it was divided
+/// from, and is refused when any pixel of that block is inside a region.
+fn check_excluded_scaled(action: &Action, regions: &[Region], scale: f64) -> Result<(), String> {
     let (x, y) = match action {
         Action::Screenshot => return Ok(()),
         Action::Move { x, y } | Action::Click { x, y, .. } | Action::Type { x, y, .. } | Action::Key { x, y, .. } | Action::Scroll { x, y, .. } => (*x, *y),
     };
-    match regions.iter().find(|r| r.contains(x, y)) {
+    let scale = if scale.is_finite() && scale >= 1.0 { scale } else { 1.0 };
+    let block = |v: i32| {
+        let lo = (f64::from(v) * scale).floor();
+        let hi = (f64::from(v + 1) * scale).ceil() - 1.0;
+        (lo as i32, hi.max(lo) as i32)
+    };
+    let (xs, ys) = (block(x), block(y));
+    let hit = |r: &Region| {
+        // The block's corners, or a region corner inside the block: regions are rectangles.
+        [xs.0, xs.1].iter().any(|&px| [ys.0, ys.1].iter().any(|&py| r.contains(px, py)))
+            || (r.x >= xs.0 && r.x <= xs.1 && r.y >= ys.0 && r.y <= ys.1)
+    };
+    match regions.iter().find(|r| hit(r)) {
         Some(r) => Err(format!("({x}, {y}) is inside a screen region the user marked off-limits ({}x{} at {}, {}). Nothing was sent. Choose a target outside it, or ask the user to change the region in Settings > Agent tools.", r.width, r.height, r.x, r.y)),
         None => Ok(()),
     }
@@ -361,6 +395,22 @@ mod tests {
         for args in [json!({"action":"click","x":140,"y":50}), json!({"action":"click","x":99,"y":50}), json!({"action":"click","x":100,"y":70}), json!({"action":"screenshot"})] {
             assert!(check_excluded(&plan(&args).unwrap(), &r).is_ok(), "{args}");
         }
+    }
+    #[test]
+    fn excluded_regions_are_compared_in_image_pixels_on_a_scaled_display() {
+        // Region drawn on a 2x capture: pixels 200..280 x 100..140 are points 100..140 x 50..70.
+        let r = [Region { x: 200, y: 100, width: 80, height: 40 }];
+        let at = |x: i32, y: i32| check_excluded_scaled(&plan(&json!({"action":"click","x":x,"y":y})).unwrap(), &r, 2.0);
+        assert!(at(100, 50).is_err());
+        assert!(at(139, 69).is_err());
+        assert!(at(140, 50).is_ok());
+        assert!(at(99, 50).is_ok());
+        assert!(at(100, 70).is_ok());
+        // The unscaled reading would have missed the inside of the region.
+        assert!(check_excluded_scaled(&plan(&json!({"action":"click","x":100,"y":50})).unwrap(), &r, 1.0).is_ok());
+        // A region smaller than one point's block is still caught.
+        let tiny = [Region { x: 201, y: 101, width: 1, height: 1 }];
+        assert!(check_excluded_scaled(&plan(&json!({"action":"click","x":100,"y":50})).unwrap(), &tiny, 2.0).is_err());
     }
     #[test]
     fn exclusions_round_trip_and_drop_empty_regions() {

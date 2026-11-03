@@ -390,7 +390,6 @@ impl<'a> ToolContext<'a> {
         self
     }
 
-    /// Confine the background commands this call starts or touches to
     /// Where a background job's durable record goes. See
     /// [`Self::job_record_to`].
     pub fn with_job_record_to(mut self, data_folder: &'a Path) -> Self {
@@ -398,7 +397,6 @@ impl<'a> ToolContext<'a> {
         self
     }
 
-    /// `owner`. See [`Self::job_owner`].
     /// Say what this run may do, so a skill can be checked against it.
     pub fn with_permissions(
         mut self,
@@ -460,6 +458,8 @@ impl<'a> ToolContext<'a> {
         self
     }
 
+    /// Confine the background commands this call starts or touches to
+    /// `owner`. See [`Self::job_owner`].
     pub fn with_job_owner(mut self, owner: &'a str) -> Self {
         self.job_owner = Some(owner);
         self
@@ -471,8 +471,6 @@ impl<'a> ToolContext<'a> {
         self
     }
 
-    /// Attach folders the tools may read but never write. Callers pass the
-    /// canonical form from [`crate::workspace::validate_read_root`].
     /// Bind this context to a conversation, and say whether it is temporary.
     ///
     /// Both together, because both decide what may be remembered and a caller
@@ -488,6 +486,8 @@ impl<'a> ToolContext<'a> {
         self
     }
 
+    /// Attach folders the tools may read but never write. Callers pass the
+    /// canonical form from [`crate::workspace::validate_read_root`].
     pub fn with_read_roots(mut self, read_roots: &'a [PathBuf]) -> Self {
         self.read_roots = read_roots;
         self
@@ -551,13 +551,6 @@ impl<'a> ToolContext<'a> {
         self
     }
 
-    /// Run `bash` under OS confinement (the default). See [`Self::sandbox`].
-    ///
-    /// Turning it off also drops the scratch: the scratch only makes sense as
-    /// the thing bound over the sandbox's `/tmp`. Unconfined, the shell sees the
-    /// real `/tmp`, and leaving the scratch set would have the filesystem tools
-    /// still rewriting `/tmp/...` into a directory the shell never looks at --
-    /// two tools disagreeing about what one path means.
     /// Add programs known to open the null device. See [`Self::nul_programs`].
     pub fn with_nul_programs(mut self, programs: &'a [String]) -> Self {
         self.nul_programs = programs;
@@ -596,6 +589,13 @@ impl<'a> ToolContext<'a> {
         self
     }
 
+    /// Run `bash` under OS confinement (the default). See [`Self::sandbox`].
+    ///
+    /// Turning it off also drops the scratch: the scratch only makes sense as
+    /// the thing bound over the sandbox's `/tmp`. Unconfined, the shell sees the
+    /// real `/tmp`, and leaving the scratch set would have the filesystem tools
+    /// still rewriting `/tmp/...` into a directory the shell never looks at --
+    /// two tools disagreeing about what one path means.
     pub fn with_sandbox(mut self, sandbox: bool) -> Self {
         self.sandbox = sandbox;
         if !sandbox {
