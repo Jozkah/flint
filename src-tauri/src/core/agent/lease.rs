@@ -358,21 +358,14 @@ impl Lease {
     /// dropped. On loss, the run in `session` is stopped and the loss is
     /// remembered for [`take_lost`].
     pub fn keep_alive(self: &Arc<Self>, session: &str) -> HeartbeatGuard {
-        let stop = Arc::new(AtomicBool::new(false));
+        // The thread parks on this channel for a whole interval; dropping the
+        // sender (the guard) wakes it at once, so it neither polls nor lingers.
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
         let lease = self.clone();
-        let stop_flag = stop.clone();
         let session = session.to_string();
         let every = (self.ttl / 3).max(Duration::from_millis(10));
         let handle = std::thread::spawn(move || {
-            let step = Duration::from_millis(10).min(every);
-            let mut waited = Duration::ZERO;
-            while !stop_flag.load(Ordering::SeqCst) {
-                std::thread::sleep(step);
-                waited += step;
-                if waited < every {
-                    continue;
-                }
-                waited = Duration::ZERO;
+            while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every) {
                 match lease.heartbeat() {
                     Ok(()) => {}
                     Err(e) if e.kind() == ErrorKind::LeaseLost => {
@@ -390,20 +383,20 @@ impl Lease {
                 }
             }
         });
-        HeartbeatGuard { stop, handle: Some(handle), lease: self.clone() }
+        HeartbeatGuard { stop: Some(stop), handle: Some(handle), lease: self.clone() }
     }
 }
 
 /// Stops the heartbeat and releases the lease when dropped.
 pub struct HeartbeatGuard {
-    stop: Arc<AtomicBool>,
+    stop: Option<std::sync::mpsc::Sender<()>>,
     handle: Option<std::thread::JoinHandle<()>>,
     lease: Arc<Lease>,
 }
 
 impl Drop for HeartbeatGuard {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
+        drop(self.stop.take());
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }

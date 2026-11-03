@@ -300,9 +300,13 @@ fn save(data_folder: &Path, project: &Path, review: &Review) -> Result<(), Revie
     }
     let body = serde_json::to_string_pretty(review)
         .map_err(|e| ReviewError::new(ReviewErrorKind::Io, format!("review: {e}")))?;
-    std::fs::write(&path, body)
+    tauri_plugin_agent_tools::atomic_file::write_atomic(&path, body.as_bytes())
         .map_err(|e| ReviewError::new(ReviewErrorKind::Io, format!("review: {e}")))
 }
+
+/// Serializes the read-modify-write in [`reply`], so two answers recorded at
+/// once cannot overwrite each other.
+static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// The review this project is working through, if any.
 pub fn current(data_folder: &Path, project: &Path) -> Option<Review> {
@@ -322,6 +326,7 @@ pub fn reply(
     outcome: Outcome,
     reply: &str,
 ) -> Result<Comment, ReviewError> {
+    let _guard = STORE.lock().unwrap_or_else(|e| e.into_inner());
     let mut review = current(data_folder, project).ok_or_else(|| {
         ReviewError::new(
             ReviewErrorKind::Malformed,
@@ -581,6 +586,9 @@ fn untracked_as_diff(repo: &Path, rel: &str) -> Option<String> {
 /// that is not a commit.
 pub fn collect_diff(repo: &Path, base: Option<&str>) -> Result<DiffInput, String> {
     use crate::core::agent::worktree::run;
+    // The repository's own config can name filter programs that `git diff` runs
+    // on working-tree files; refuse such a repository as vcs.rs does.
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     let base = base.map(str::trim).filter(|b| !b.is_empty()).unwrap_or("HEAD");
     if base.starts_with('-') {
         return Err(format!("{base} is not a branch or commit"));
@@ -727,16 +735,25 @@ fn text_of(completion: &Value) -> String {
 /// reasoning blocks and code fences. Entries without a file or a problem are
 /// dropped; a reply with no array is no findings.
 pub fn parse_findings(reply: &str) -> Vec<Finding> {
+    parse_findings_checked(reply).unwrap_or_default()
+}
+
+/// [`parse_findings`], but `None` when the reply holds no readable JSON array,
+/// so "nothing found" is not confused with "could not read the answer". The
+/// first `[` that starts a valid array wins, so prose such as `[high] ...`
+/// before the array does not hide it.
+pub fn parse_findings_checked(reply: &str) -> Option<Vec<Finding>> {
     let text = strip_reasoning(reply);
-    let (Some(start), Some(end)) = (text.find('['), text.rfind(']')) else {
-        return Vec::new();
-    };
-    if end < start {
-        return Vec::new();
-    }
-    let Ok(Value::Array(items)) = serde_json::from_str::<Value>(&text[start..=end]) else {
-        return Vec::new();
-    };
+    let items = text.match_indices('[').find_map(|(start, _)| {
+        match serde_json::Deserializer::from_str(&text[start..]).into_iter::<Value>().next() {
+            Some(Ok(Value::Array(items))) => Some(items),
+            _ => None,
+        }
+    })?;
+    Some(findings_from(&items))
+}
+
+fn findings_from(items: &[Value]) -> Vec<Finding> {
     items
         .iter()
         .filter_map(|item| {
@@ -827,7 +844,14 @@ pub(crate) async fn review_diff(
     model: &dyn ModelInvoker,
 ) -> Result<DiffReview, HarnessError> {
     let reply = ask(model, &build_review_request(model_id, input, security)).await?;
-    let mut candidates = parse_findings(&reply);
+    let Some(mut candidates) = parse_findings_checked(&reply) else {
+        use tauri_plugin_agent_tools::harness_error::ErrorKind;
+        let excerpt: String = reply.trim().chars().take(200).collect();
+        return Err(HarnessError::new(
+            ErrorKind::Upstream,
+            format!("the reviewer's answer could not be read as a list of findings: {excerpt}"),
+        ));
+    };
     let mut kept = Vec::new();
     let mut refuted = 0usize;
     for (i, mut finding) in candidates.drain(..).enumerate() {
@@ -1145,6 +1169,14 @@ mod diff_review_tests {
         assert_eq!(f[1].severity, Severity::Low);
         assert!(parse_findings("nothing wrong").is_empty());
         assert!(parse_findings("[]").is_empty());
+    }
+
+    #[test]
+    fn prose_before_the_array_and_unreadable_replies_are_told_apart() {
+        let reply = r#"[high] first thing. [{"file":"a.rs","problem":"p"}] done"#;
+        assert_eq!(parse_findings_checked(reply).map(|f| f.len()), Some(1));
+        assert!(parse_findings_checked("no findings here").is_none());
+        assert_eq!(parse_findings_checked("[]").map(|f| f.len()), Some(0));
     }
 
     #[test]

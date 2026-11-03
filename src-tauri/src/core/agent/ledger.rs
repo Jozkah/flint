@@ -147,15 +147,36 @@ fn within(root: &Path, path: &str) -> Option<PathBuf> {
         return None;
     }
     let full = if rel.is_absolute() { rel.to_path_buf() } else { root.join(rel) };
-    full.starts_with(root).then_some(full)
+    starts_with_root(&full, root).then_some(full)
+}
+
+/// `Path::starts_with`, but on Windows a path spelled `C:\Proj\a.rs` is under
+/// root `C:\proj` too (the file system ignores case).
+fn starts_with_root(full: &Path, root: &Path) -> bool {
+    if full.starts_with(root) {
+        return true;
+    }
+    cfg!(windows) && {
+        let lower = |p: &Path| {
+            p.components()
+                .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+                .collect::<Vec<_>>()
+        };
+        lower(full).starts_with(&lower(root))
+    }
 }
 
 fn hash_file(path: &Path) -> Hashed {
-    let meta = match std::fs::metadata(path) {
+    // Not followed: a link inside the project must not record the hash of a
+    // file outside it.
+    let meta = match std::fs::symlink_metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Hashed::Missing,
         Err(_) => return Hashed::Skipped("unreadable"),
     };
+    if meta.file_type().is_symlink() {
+        return Hashed::Skipped("symbolic link");
+    }
     if !meta.is_file() {
         return Hashed::Skipped("not a regular file");
     }
@@ -181,6 +202,10 @@ fn cut(text: &str) -> String {
 /// the writes are about to change. `root` is the project folder (`None` for an
 /// invoker that has none, which records writes without hashes).
 pub(crate) fn before_batch(root: Option<&Path>, calls: &[Value]) -> Vec<Pending> {
+    // Every write target is hashed before any call in the batch runs, so a
+    // second write to one file would claim the pre-batch hash as its own
+    // "before". Later writes to a path already seen are marked instead.
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     calls
         .iter()
         .filter_map(|call| {
@@ -197,8 +222,13 @@ pub(crate) fn before_batch(root: Option<&Path>, calls: &[Value]) -> Vec<Pending>
             let (path, before) = match (kind, path, root) {
                 (EffectKind::FileWrite, Some(p), Some(root)) => match within(root, &p) {
                     Some(full) => {
-                        let before = hash_file(&full);
-                        (Some(full), before)
+                        let key = if cfg!(windows) { PathBuf::from(full.to_string_lossy().to_lowercase()) } else { full.clone() };
+                        if seen.insert(key) {
+                            let before = hash_file(&full);
+                            (Some(full), before)
+                        } else {
+                            (Some(full), Hashed::Skipped("earlier call in the same batch wrote this file"))
+                        }
                     }
                     None => (None, Hashed::Skipped("outside the project")),
                 },

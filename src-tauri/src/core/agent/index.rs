@@ -120,8 +120,8 @@ pub struct FileEntry {
     /// Modification time in milliseconds since the epoch, as the filesystem
     /// reports it.
     pub modified_ms: u64,
-    /// Of the file's bytes, so a change that keeps size and mtime (a restore,
-    /// a same-second write) is still seen.
+    /// Of the file's bytes. Reuse is stat-based (size and mtime); the hash
+    /// tells a changed file from a merely touched one once it is re-read.
     pub hash: String,
     pub symbols: Vec<Symbol>,
 }
@@ -169,8 +169,18 @@ impl Update {
 /// state about a checkout, not part of it, and writing it into the repository
 /// would put it in someone's diff.
 pub fn path_for(data_folder: &Path, project: &Path) -> PathBuf {
-    let digest = format!("{:x}", Sha256::digest(project.to_string_lossy().as_bytes()));
+    let digest = format!("{:x}", Sha256::digest(project_key(&project.to_string_lossy()).as_bytes()));
     data_folder.join("index").join(format!("{}.json", &digest[..24]))
+}
+
+/// A project path as a comparison key. On Windows `C:\Repo`, `c:\repo` and
+/// `C:/Repo` name one folder, so separators and case are folded there.
+fn project_key(path: &str) -> String {
+    if cfg!(windows) {
+        path.replace('\\', "/").trim_end_matches('/').to_lowercase()
+    } else {
+        path.to_string()
+    }
 }
 
 fn ignored(name: &str) -> bool {
@@ -215,7 +225,8 @@ fn head_commit(project: &Path) -> Option<String> {
 pub fn load(data_folder: &Path, project: &Path) -> Option<Index> {
     let raw = std::fs::read_to_string(path_for(data_folder, project)).ok()?;
     let index: Index = serde_json::from_str(&raw).ok()?;
-    (index.version == INDEX_VERSION && index.project == project.to_string_lossy()).then_some(index)
+    (index.version == INDEX_VERSION && project_key(&index.project) == project_key(&project.to_string_lossy()))
+        .then_some(index)
 }
 
 fn save(data_folder: &Path, index: &Index) -> Result<(), IndexError> {
@@ -274,7 +285,6 @@ pub fn refresh(
     let mut update = Update { reconciled, ..Update::default() };
     let mut files: BTreeMap<String, FileEntry> = BTreeMap::new();
     let mut truncated = false;
-    let _ = &truncated;
     let mut queue = std::collections::VecDeque::from([(project.to_path_buf(), 0usize)]);
     while let Some((dir, depth)) = queue.pop_front() {
         if depth > MAX_DEPTH {
@@ -289,6 +299,12 @@ pub fn refresh(
         }
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(IndexError::new(
+                    IndexErrorKind::Cancelled,
+                    "the index build was stopped; nothing was written",
+                ));
+            }
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') || ignored(&name) {
@@ -559,6 +575,24 @@ fn contains_word(line: &str, needle: &str) -> bool {
     false
 }
 
+/// Whether `line` has `needle` as a whole word followed by `(` (after optional
+/// spaces), so `payload(` is not a call of `load`.
+fn is_called(line: &str, needle: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut from = 0;
+    while let Some(at) = line[from..].find(needle) {
+        let start = from + at;
+        let end = start + needle.len();
+        let before_ok = start == 0 || !is_word_byte(bytes[start - 1]);
+        let after = line[end..].trim_start();
+        if before_ok && after.starts_with('(') {
+            return true;
+        }
+        from = end;
+    }
+    false
+}
+
 fn is_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
 }
@@ -621,7 +655,7 @@ pub fn hierarchy(index: &Index, name: &str, limit: usize) -> Hierarchy {
     // Callers: every place the name is called, with the function it is called
     // from. The definition line itself is not a call.
     for reference in find_references(index, needle, MAX_CALLS) {
-        if reference.is_definition || !reference.text.contains(&format!("{needle}(")) {
+        if reference.is_definition || !is_called(&reference.text, needle) {
             continue;
         }
         if result.callers.len() >= limit {
@@ -762,6 +796,13 @@ mod concurrent_save_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_call_is_a_whole_word_followed_by_a_paren() {
+        assert!(is_called("let x = load (1);", "load"));
+        assert!(!is_called("let load = payload();", "load"));
+        assert!(is_called("a = payload(); load(2)", "load"));
+    }
 
     struct Fixture {
         data: PathBuf,
