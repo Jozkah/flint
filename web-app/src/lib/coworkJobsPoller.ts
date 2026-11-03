@@ -47,8 +47,18 @@ function pollOne(sid: string) {
     .finally(() => inFlight.delete(sid))
 }
 
+const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+
 function tick() {
+  // A hidden window shows nothing; catch up as soon as it is visible again.
+  if (hidden()) return
   for (const sid of listeners.keys()) pollOne(sid)
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!hidden()) tick()
+  })
 }
 
 /** Watch a session's jobs until the returned function is called. */

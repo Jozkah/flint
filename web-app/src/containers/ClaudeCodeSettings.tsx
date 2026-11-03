@@ -180,13 +180,11 @@ export function ClaudeCodeSettings() {
 
     const startServer = async (): Promise<void> => {
       const helperModelsToStart = [
-        { id: chosen.fable, role: 'Fable' },
-        { id: chosen.big, role: 'Big' },
-        { id: chosen.medium, role: 'Medium' },
-        { id: chosen.small, role: 'Small' },
-      ]
-        .filter((m) => m.id)
-        .map((m) => m.id as string)
+        chosen.fable,
+        chosen.big,
+        chosen.medium,
+        chosen.small,
+      ].filter((id): id is string => !!id)
 
       const loadedModels = (await serviceHub.models().getActiveModels()) || []
       const modelsToStart = helperModelsToStart.filter(
@@ -209,9 +207,6 @@ export function ClaudeCodeSettings() {
               await serviceHub
                 .models()
                 .startModel(providerWithModel, modelId, true)
-                .then(() => {
-                  console.log(`Model ${modelId} started successfully`)
-                })
             }
           }
         } finally {
@@ -222,9 +217,7 @@ export function ClaudeCodeSettings() {
           .getActiveModels()
           .then((models) => setActiveModels(models || []))
         await new Promise((resolve) => setTimeout(resolve, 500))
-      } else if (loadedModels.length > 0) {
-        console.log(`Using already loaded models: ${loadedModels.join(', ')}`)
-      } else if (helperModelsToStart.length === 0) {
+      } else if (loadedModels.length === 0 && helperModelsToStart.length === 0) {
         const modelToStart = getModelToStart({
           selectedModel,
           selectedProvider,
@@ -237,7 +230,6 @@ export function ClaudeCodeSettings() {
             .models()
             .startModel(modelToStart.provider, modelToStart.model, true)
             .then(() => {
-              console.log(`Model ${modelToStart.model} started successfully`)
               setIsModelLoading(false)
               serviceHub
                 .models()

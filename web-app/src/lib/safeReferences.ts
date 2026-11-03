@@ -116,12 +116,12 @@ export async function searchReferences(
   }
   out.sort(
     (a, b) =>
+      b.score - a.score ||
       (a.entry.kind === b.entry.kind
         ? 0
         : a.entry.kind === 'directory'
           ? -1
           : 1) ||
-      b.score - a.score ||
       a.entry.path.length - b.entry.path.length
   )
   return out.slice(0, limit).map((x) => x.entry)

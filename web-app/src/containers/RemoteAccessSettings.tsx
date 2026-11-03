@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useCopiedFlag } from '@/hooks/useCopiedFlag'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
@@ -160,7 +161,13 @@ export function RemoteAccessSettings({
               onChange={(e) => setPortInput(e.target.value)}
               onBlur={() => {
                 const port = Number(portInput)
-                if (Number.isInteger(port) && port !== cfg.port) void save({ port })
+                if (
+                  Number.isInteger(port) &&
+                  port >= 1024 &&
+                  port <= 65535 &&
+                  port !== cfg.port
+                )
+                  void save({ port })
                 else setPortInput(String(cfg.port))
               }}
               className="h-8 w-24 rounded border border-border bg-card px-2 text-xs"
@@ -353,7 +360,7 @@ export function PairPhoneDialog({
   const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
   const [copyError, setCopyError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useCopiedFlag(1800)
   const lastPaired = useRemoteAccess((s) => s.lastPaired)
 
   const start = useCallback(async () => {
@@ -388,7 +395,6 @@ export function PairPhoneDialog({
       await navigator.clipboard.writeText(pairing.url)
       setCopyError(null)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
     } catch {
       setCopied(false)
       setCopyError(t('remote:pairCopyFailed'))

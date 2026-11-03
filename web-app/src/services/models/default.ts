@@ -262,7 +262,7 @@ export class DefaultModelsService implements ModelsService {
       if (engine && typeof engine.checkMmprojExists === 'function') {
         const exists = await engine.checkMmprojExists(modelId)
 
-        // If we have the store functions, use them; otherwise fall back to localStorage
+        // If we have the store functions, use them; without them only report whether mmproj exists
         if (updateProvider && getProviderByName) {
           const provider = getProviderByName('llamacpp')
           if (provider) {
@@ -301,48 +301,6 @@ export class DefaultModelsService implements ModelsService {
                 settingsUpdated = true
               }
             }
-          }
-        } else {
-          // Fall back to localStorage approach for backwards compatibility
-          try {
-            const modelProviderData = JSON.parse(
-              localStorage.getItem('model-provider') || '{}'
-            )
-            const llamacppProvider = modelProviderData.state?.providers?.find(
-              (p: { provider: string }) => p.provider === 'llamacpp'
-            )
-            const model = llamacppProvider?.models?.find(
-              (m: { id: string; settings?: Record<string, unknown> }) =>
-                m.id === modelId
-            )
-
-            if (model?.settings) {
-              // If mmproj exists, add offload_mmproj setting (only if it doesn't exist)
-              if (exists) {
-                if (!model.settings.offload_mmproj) {
-                  model.settings.offload_mmproj = {
-                    key: 'offload_mmproj',
-                    title: 'Offload MMProj',
-                    description: 'Offload multimodal projection layers to GPU',
-                    controller_type: 'checkbox',
-                    controller_props: {
-                      value: true,
-                    },
-                  }
-                  // Save updated settings back to localStorage
-                  localStorage.setItem(
-                    'model-provider',
-                    JSON.stringify(modelProviderData)
-                  )
-                  settingsUpdated = true
-                }
-              }
-            }
-          } catch (localStorageError) {
-            console.error(
-              `Error checking localStorage for model ${modelId}:`,
-              localStorageError
-            )
           }
         }
 

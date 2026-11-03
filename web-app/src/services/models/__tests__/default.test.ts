@@ -170,42 +170,13 @@ describe('DefaultModelsService - additional coverage', () => {
       expect(result).toEqual({ exists: true, settingsUpdated: false })
     })
 
-    it('falls back to localStorage when no store functions', async () => {
+    it('without store functions only reports mmproj existence', async () => {
       mockEngine.checkMmprojExists.mockResolvedValue(true)
-      const storageData = {
-        state: { providers: [{ provider: 'llamacpp', models: [{ id: 'm1', settings: {} }] }] },
-      }
-      const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(JSON.stringify(storageData))
-      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {})
-      const result = await svc.checkMmprojExistsAndUpdateOffloadMMprojSetting('m1')
-      expect(result).toEqual({ exists: true, settingsUpdated: true })
-      expect(setItemSpy).toHaveBeenCalled()
-      getItemSpy.mockRestore()
-      setItemSpy.mockRestore()
-    })
-
-    it('localStorage: does not add setting if already exists', async () => {
-      mockEngine.checkMmprojExists.mockResolvedValue(true)
-      const storageData = {
-        state: { providers: [{ provider: 'llamacpp', models: [{ id: 'm1', settings: { offload_mmproj: {} } }] }] },
-      }
-      const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(JSON.stringify(storageData))
-      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {})
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem')
       const result = await svc.checkMmprojExistsAndUpdateOffloadMMprojSetting('m1')
       expect(result).toEqual({ exists: true, settingsUpdated: false })
       expect(setItemSpy).not.toHaveBeenCalled()
-      getItemSpy.mockRestore()
       setItemSpy.mockRestore()
-    })
-
-    it.each([
-      ['error', () => { throw new Error('denied') }],
-    ])('handles localStorage %s gracefully', async (_label, mockImpl) => {
-      mockEngine.checkMmprojExists.mockResolvedValue(true)
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(mockImpl)
-      const result = await svc.checkMmprojExistsAndUpdateOffloadMMprojSetting('m1')
-      expect(result).toEqual({ exists: true, settingsUpdated: false })
-      vi.restoreAllMocks()
     })
 
     it.each([
@@ -215,18 +186,6 @@ describe('DefaultModelsService - additional coverage', () => {
       setup()
       const result = await svc.checkMmprojExistsAndUpdateOffloadMMprojSetting('m1')
       expect(result).toEqual({ exists: false, settingsUpdated: false })
-    })
-
-    it.each([
-      ['missing provider', { state: { providers: [] } }],
-      ['mmproj false', { state: { providers: [{ provider: 'llamacpp', models: [{ id: 'm1', settings: {} }] }] } }],
-    ])('localStorage: %s', async (_label, storageData) => {
-      if (_label === 'mmproj false') mockEngine.checkMmprojExists.mockResolvedValue(false)
-      else mockEngine.checkMmprojExists.mockResolvedValue(true)
-      vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(JSON.stringify(storageData))
-      const result = await svc.checkMmprojExistsAndUpdateOffloadMMprojSetting('m1')
-      expect(result.settingsUpdated).toBe(false)
-      vi.restoreAllMocks()
     })
   })
 

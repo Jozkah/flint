@@ -52,6 +52,8 @@ function paneAccounting(busy?: ReadonlySet<string>) {
   const sessions = useCoworkSessions.getState().sessions
   const queue = useMessageQueue.getState()
   const t = Date.now()
+  // Past the grace window an entry no longer matters; keep the map bounded.
+  for (const [sid, at] of openedAt) if (t - at >= PANE_START_GRACE_MS) openedAt.delete(sid)
   const recent = new Set(
     [...openedAt]
       .filter(([, at]) => t - at < PANE_START_GRACE_MS)
