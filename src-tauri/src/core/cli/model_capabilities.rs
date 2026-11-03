@@ -88,6 +88,9 @@ fn catalog_window(model_id: &str) -> Option<u64> {
     if ["gpt-5.4", "gpt-5.5"].iter().any(|b| is_version(model_id, b)) {
         return Some(1_050_000);
     }
+    if is_version(model_id, "gpt-4.1") {
+        return Some(1_047_576);
+    }
     // Bare `gpt-4` stays exact: dated gpt-4 snapshots have a much smaller window.
     if model_id == "gpt-4" || is_version(model_id, "gpt-4o") {
         return Some(128_000);
@@ -179,6 +182,8 @@ mod tests {
         assert_eq!(resolve_context_window("gpt-4o-2024-08-06", None).tokens, 128_000);
         assert_eq!(resolve_context_window("gpt-5.2-pro", None).tokens, 400_000);
         assert_eq!(resolve_context_window("gpt-5.1-codex-max", None).tokens, 272_000);
+        assert_eq!(resolve_context_window("gpt-4.1-mini", None).tokens, 1_047_576);
+        assert_eq!(resolve_context_window("gpt-4.1-2025-04-14", None).tokens, 1_047_576);
         assert_eq!(
             resolve_context_window("claude-sonnet-4.6", None).tokens,
             1_000_000

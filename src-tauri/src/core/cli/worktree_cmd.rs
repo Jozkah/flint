@@ -102,7 +102,7 @@ fn count<T>(r: &Result<Vec<T>, String>) -> String {
 pub fn list(project: &str, json_out: bool) -> Result<(), String> {
     let repo = repo_of(project)?;
     git::worktree_prune(&repo);
-    let base = base_branch(&repo, None).unwrap_or_default();
+    let base = base_branch(&repo, None).unwrap_or_else(|_| "HEAD".to_string());
     let rows = checkouts(&repo)?;
     if json_out {
         let v: Vec<_> = rows
@@ -140,7 +140,7 @@ pub fn list(project: &str, json_out: bool) -> Result<(), String> {
 pub fn discard(project: &str, id: &str, force: bool) -> Result<(), String> {
     let repo = repo_of(project)?;
     let c = find(&repo, id)?;
-    let base = base_branch(&repo, None).unwrap_or_default();
+    let base = base_branch(&repo, None).unwrap_or_else(|_| "HEAD".to_string());
     if !force {
         // If either check cannot be made, say so: "could not look" is not "clean".
         let dirty = pending(&c).map_err(|e| format!("could not check worktree {id} for uncommitted work ({e}); pass --force to discard it anyway"))?;

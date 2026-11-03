@@ -1181,6 +1181,33 @@ pub fn model_listing(
     output
 }
 
+/// Restores `JAN_DATA_FOLDER` (and the test server settings file) when dropped,
+/// so a panicking assertion cannot leave later tests on a deleted data folder.
+#[cfg(test)]
+struct TestEnvRestore {
+    prev: Option<String>,
+}
+
+#[cfg(test)]
+impl TestEnvRestore {
+    fn set_data_folder(dir: &std::path::Path) -> Self {
+        let prev = std::env::var("JAN_DATA_FOLDER").ok();
+        std::env::set_var("JAN_DATA_FOLDER", dir);
+        Self { prev }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestEnvRestore {
+    fn drop(&mut self) {
+        TEST_SERVER_SETTINGS.with(|f| *f.borrow_mut() = None);
+        match &self.prev {
+            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1951,15 +1978,9 @@ mod tests {
     fn with_temp_secrets<T>(f: impl FnOnce() -> T) -> T {
         let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::var("JAN_DATA_FOLDER").ok();
-        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        let _restore = TestEnvRestore::set_data_folder(dir.path());
         crate::core::server::provider_secrets::force_file_secrets();
-        let result = f();
-        match &prev {
-            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
-            None => std::env::remove_var("JAN_DATA_FOLDER"),
-        }
-        result
+        f()
     }
 
     #[test]
@@ -2125,15 +2146,9 @@ mod credential_origin_tests {
     fn with_store<T>(f: impl FnOnce() -> T) -> T {
         let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::var("JAN_DATA_FOLDER").ok();
-        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        let _restore = TestEnvRestore::set_data_folder(dir.path());
         crate::core::server::provider_secrets::force_file_secrets();
-        let result = with_temp_home(|_| f());
-        match &prev {
-            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
-            None => std::env::remove_var("JAN_DATA_FOLDER"),
-        }
-        result
+        with_temp_home(|_| f())
     }
 
     fn trust(name: &str, base_url: &str, models: &[&str]) {
@@ -2494,17 +2509,10 @@ mod server_settings_tests {
         let file = dir.path().join("web-server").join("settings.json");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(&file, raw).unwrap();
-        let prev = std::env::var("JAN_DATA_FOLDER").ok();
-        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        let _restore = TestEnvRestore::set_data_folder(dir.path());
         crate::core::server::provider_secrets::force_file_secrets();
         TEST_SERVER_SETTINGS.with(|f| *f.borrow_mut() = Some(file));
-        let result = with_temp_home(|_| f());
-        TEST_SERVER_SETTINGS.with(|f| *f.borrow_mut() = None);
-        match &prev {
-            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
-            None => std::env::remove_var("JAN_DATA_FOLDER"),
-        }
-        result
+        with_temp_home(|_| f())
     }
 
     fn project(name: &str, base_url: &str, models: &[&str]) -> tempfile::TempDir {
