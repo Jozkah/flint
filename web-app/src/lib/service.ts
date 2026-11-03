@@ -44,11 +44,6 @@ const MESSAGE_ROUTES = new Set([
   'deleteMessage',
 ])
 
-// Function to open an external URL in a new browser window
-export function openExternalUrl(url: string) {
-  window?.open(url, '_blank')
-}
-
 export const APIs = {
   ...Object.values(Routes).reduce((acc, proxy) => {
     return {
@@ -144,5 +139,4 @@ export const APIs = {
       },
     }
   }, {}),
-  openExternalUrl,
 }
