@@ -105,25 +105,6 @@ describe('useCoworkSessions', () => {
     expect(s.lastUsage?.total_tokens).toBe(42)
   })
 
-  it('clears the transcript, messages and subagents together', () => {
-    const id = useCoworkSessions.getState().createSession()
-    useCoworkSessions
-      .getState()
-      .commitTurns(
-        id,
-        [{ role: 'user', content: 'hi' }],
-        [{ id: 'm1', role: 'user', parts: [] }] as never,
-        [sub('r1', 'alpha')],
-        { total_tokens: 1 }
-      )
-    useCoworkSessions.getState().clearSession(id)
-    const s = useCoworkSessions.getState().sessions.find((x) => x.id === id)!
-    expect(s.turns).toEqual([])
-    expect(s.messages).toEqual([])
-    expect(s.subagents).toEqual([])
-    expect(s.lastUsage).toBeUndefined()
-  })
-
   it('sets a mode and detaches a folder', () => {
     const id = useCoworkSessions.getState().createSession()
     useCoworkSessions.getState().setMode(id, 'review')

@@ -41,6 +41,21 @@ describe('useProxyConfig', () => {
     store.setNoProxy('')
   })
 
+  it('writes only the newest password to the keyring when typing outruns the writes', async () => {
+    invoke.mockClear()
+    const store = useProxyConfig.getState()
+    store.setProxyPassword('a')
+    store.setProxyPassword('ab')
+    store.setProxyPassword('abc')
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 0))
+    const values = (invoke.mock.calls as unknown as [string, { value: string }][]).map(
+      (c) => c[1].value
+    )
+    expect(values[values.length - 1]).toBe('abc')
+    expect(values).not.toContain('ab')
+  })
+
   it('should initialize with default values', () => {
     const { result } = renderHook(() => useProxyConfig())
 
