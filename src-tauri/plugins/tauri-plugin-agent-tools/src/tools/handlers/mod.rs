@@ -177,6 +177,90 @@ fn powershell_guard_text(args: &serde_json::Value) -> Option<&str> {
     arg_str(args, "script").or_else(|| arg_str(args, "command"))
 }
 
+/// What the `pre-tool` hooks decided about one call, for a caller that runs
+/// them itself ahead of its permission gate.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PreToolHooks {
+    /// The finished `ERROR ...` result when a hook refused the call (or the
+    /// hooks file could not be read): the call must not run.
+    pub refusal: Option<String>,
+    /// A hook asked for the call to be confirmed (its reason).
+    pub ask: Option<String>,
+    /// A hook rewrote the call's input. The caller must send this back through
+    /// its gate as if the model had asked for it.
+    pub updated_input: Option<serde_json::Value>,
+    /// Failures to say on the call's result, as `[pre-tool hook] ...` text.
+    pub warnings: Vec<String>,
+}
+
+/// Run the project's `pre-tool` hooks for a call and report what they decided
+/// (see [`ToolContext::pre_tool_hooks_done`] for the other half).
+pub async fn run_pre_tool_hooks(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> PreToolHooks {
+    let project_root = ctx.project_root;
+    let hooks = match crate::hooks::load(project_root) {
+        Ok(hooks) => hooks,
+        Err(error) => {
+            let harness: crate::harness_error::HarnessError = (&error).into();
+            return PreToolHooks {
+                refusal: Some(format!(
+                    "ERROR [{}]: this project's hooks could not be read, so no tool ran: {}",
+                    harness.kind().tag(),
+                    error.message
+                )),
+                ..Default::default()
+            };
+        }
+    };
+    if hooks.is_empty() {
+        return PreToolHooks::default();
+    }
+    let hook_ctx = crate::hooks::Context {
+        project_root,
+        allow_network: ctx.allow_network,
+        home_readonly: ctx.home_readonly,
+        sandbox: ctx.sandbox,
+        mask_root: ctx.mask_root,
+        cancel: ctx.cancel.clone(),
+    };
+    let hook_input = crate::hooks::HookInput {
+        tool_name: tool.name.to_string(),
+        tool_input: args.clone(),
+        tool_response: None,
+        session_id: ctx.session_id.map(str::to_string),
+        run_id: ctx.run_id.map(str::to_string),
+        last_assistant_message: None,
+    };
+    let before = crate::hooks::run_with_input(
+        &hooks,
+        crate::hooks::Event::PreTool,
+        Some(tool.name),
+        &hook_ctx,
+        &hook_input,
+    )
+    .await;
+    if let Some(blocked) = before.blocked {
+        let harness: crate::harness_error::HarnessError = (&blocked).into();
+        return PreToolHooks {
+            refusal: Some(format!(
+                "ERROR [{}]: a pre-tool hook refused this call: {}",
+                harness.kind().tag(),
+                blocked.message
+            )),
+            ..Default::default()
+        };
+    }
+    PreToolHooks {
+        refusal: None,
+        ask: before.ask,
+        updated_input: before.updated_input,
+        warnings: before.warnings.iter().map(|w| format!("[pre-tool hook] {}", w.message)).collect(),
+    }
+}
+
 /// Execute a built-in tool. Returns the tool-result text plus, for a `read` of
 /// an image file, the base64 `image_url` content parts the model needs to see
 /// the image. Errors are returned as a String STARTING WITH "ERROR" rather than
@@ -241,14 +325,20 @@ pub async fn execute_builtin(
         run_id: ctx.run_id.map(str::to_string),
         last_assistant_message: None,
     };
-    let before = crate::hooks::run_with_input(
-        &hooks,
-        crate::hooks::Event::PreTool,
-        Some(tool.name),
-        &hook_ctx,
-        &hook_input,
-    )
-    .await;
+    // Where the caller ran them already (before its permission gate, so it could
+    // honour `ask` and `updatedInput`), they are not run twice.
+    let before = if ctx.pre_tool_hooks_done {
+        crate::hooks::Decision::default()
+    } else {
+        crate::hooks::run_with_input(
+            &hooks,
+            crate::hooks::Event::PreTool,
+            Some(tool.name),
+            &hook_ctx,
+            &hook_input,
+        )
+        .await
+    };
     if let Some(blocked) = before.blocked {
         let harness: crate::harness_error::HarnessError = (&blocked).into();
         return (
@@ -256,6 +346,16 @@ pub async fn execute_builtin(
                 "ERROR [{}]: a pre-tool hook refused this call: {}",
                 harness.kind().tag(),
                 blocked.message
+            ),
+            None,
+        );
+    }
+    // Nothing here can put a question to a person, so a hook's `ask` is a
+    // refusal; and the call's input is never rewritten after its gate.
+    if let Some(why) = &before.ask {
+        return (
+            format!(
+                "ERROR [policy_violation]: a pre-tool hook asked for confirmation, which cannot be raised here, so the call is refused: {why}"
             ),
             None,
         );
@@ -316,6 +416,9 @@ pub async fn execute_builtin(
     }
     for warning in &before.warnings {
         content.push_str(&format!("\n\n[pre-tool hook] {}", warning.message));
+    }
+    for warning in &ctx.pre_tool_warnings {
+        content.push_str(&format!("\n\n{warning}"));
     }
     // A project whose hooks are off because its folder is not trusted says so,
     // once per run, where the model and the person reading will both see it:
