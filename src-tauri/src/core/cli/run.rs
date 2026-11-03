@@ -1012,6 +1012,17 @@ pub async fn run_durable_subagent(
     // The data folder the parent uses: its providers, and where the record of
     // this run belongs. Set before anything reads it.
     if !spec.data_folder.is_empty() {
+        let folder = std::path::Path::new(&spec.data_folder);
+        if !folder.is_absolute() || !folder.is_dir() {
+            return Err(HarnessError::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "durable subagent data_folder is not an existing absolute directory: {}",
+                    spec.data_folder
+                ),
+            )
+            .at(Stage::Startup));
+        }
         std::env::set_var("JAN_DATA_FOLDER", &spec.data_folder);
     }
     let session = prepare_agent_session(
