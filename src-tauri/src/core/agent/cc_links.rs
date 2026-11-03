@@ -145,6 +145,19 @@ pub fn fingerprint(path: &Path) -> u64 {
     hasher.finish()
 }
 
+/// Like `fingerprint`, but over only the listed paths under `root` (relative),
+/// for sources where the import copies just a known subset of the tree.
+pub fn fingerprint_selected(root: &Path, rel: &[&str]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for r in rel {
+        let p = root.join(r);
+        if p.exists() {
+            walk(root, &p, &mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
 fn walk(root: &Path, dir: &Path, hasher: &mut DefaultHasher) {
     if dir.is_file() {
         stamp(root, dir, hasher);
@@ -205,6 +218,19 @@ mod tests {
 
         std::fs::write(dir.path().join("SKILL.md"), "longer body").unwrap();
         assert_ne!(before, fingerprint(dir.path()));
+    }
+
+    #[test]
+    fn selected_fingerprint_ignores_paths_outside_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("skills")).unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        std::fs::write(dir.path().join("skills").join("a.md"), "one").unwrap();
+        let before = fingerprint_selected(dir.path(), &["skills", "README.md"]);
+        std::fs::write(dir.path().join("data").join("big.bin"), "x").unwrap();
+        assert_eq!(before, fingerprint_selected(dir.path(), &["skills", "README.md"]));
+        std::fs::write(dir.path().join("skills").join("a.md"), "longer").unwrap();
+        assert_ne!(before, fingerprint_selected(dir.path(), &["skills", "README.md"]));
     }
 
     #[test]

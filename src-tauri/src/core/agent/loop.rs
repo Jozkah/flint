@@ -5013,12 +5013,7 @@ fn assemble_verification_input(
     conversation: &[serde_json::Value],
     worker_claims: &str,
 ) -> crate::core::agent::verification::VerificationInput {
-    let task_spec = conversation
-        .iter()
-        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
-        .and_then(|m| m.get("content").and_then(|c| c.as_str()))
-        .unwrap_or_default()
-        .to_string();
+    let task_spec = first_user_text(conversation).unwrap_or_default();
     let test_build_output = conversation
         .iter()
         .rev()
