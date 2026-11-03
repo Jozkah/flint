@@ -42,4 +42,17 @@ describe('thread prefetch', () => {
     expect(await loadThreadMessages('t-fail', fetch)).toBe(msgs)
     expect(fetch).toHaveBeenCalledTimes(2)
   })
+
+  it('drops a prefetch nobody opened once it is stale', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn().mockResolvedValue(msgs)
+      prefetchThreadMessages('t-stale', fetch)
+      await vi.advanceTimersByTimeAsync(31_000)
+      expect(await loadThreadMessages('t-stale', fetch)).toBe(msgs)
+      expect(fetch).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

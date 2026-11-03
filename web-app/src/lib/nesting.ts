@@ -101,7 +101,11 @@ export function buildNestTree(items: readonly NestItem[]): NestRoot[] {
   for (const id of byId.keys()) {
     const r = findRoot(id)
     if (r === id) roots.push(id)
-    else nested.set(r, [...(nested.get(r) ?? []), id])
+    else {
+      const list = nested.get(r)
+      if (list) list.push(id)
+      else nested.set(r, [id])
+    }
   }
   return roots.map((id) => ({
     id,

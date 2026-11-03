@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -64,6 +64,9 @@ export function StudioDiscover({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
+  // Repos whose file listing and family guess already ran, and the row open now.
+  const loadedRepos = useRef(new Set<string>())
+  const openRepo = useRef<string | null>(null)
   const [files, setFiles] = useState<Record<string, HuggingFaceFile[]>>({})
   const [family, setFamily] = useState<Record<string, string>>({})
   const [adding, setAdding] = useState<string | null>(null)
@@ -120,6 +123,8 @@ export function StudioDiscover({
   )
 
   const loadFiles = async (repo: string) => {
+    if (loadedRepos.current.has(repo)) return
+    loadedRepos.current.add(repo)
     let known = files[repo] ?? []
     // The search lists file names only; sizes (and the order they give) come from the file listing.
     if (!known.length || known.some((f) => f.size == null)) {
@@ -136,9 +141,11 @@ export function StudioDiscover({
           ...current,
           [repo]: err instanceof Error ? err.message : String(err),
         }))
+        loadedRepos.current.delete(repo)
         return
       }
     }
+    if (openRepo.current !== repo) return
     const first = weightsFiles(known)[0]
     if (first) {
       const guess = await studioApi.guessFamily(repo, first.name).catch(() => null)
@@ -149,6 +156,7 @@ export function StudioDiscover({
 
   const toggle = async (repo: string) => {
     const opening = open !== repo
+    openRepo.current = opening ? repo : null
     setOpen(opening ? repo : null)
     if (!opening) return
     await loadFiles(repo)

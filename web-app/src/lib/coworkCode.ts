@@ -4,6 +4,7 @@
 
 import { extensionOf, basenameOf, previewKindFor } from '@/lib/coworkPreview'
 import type { CoworkTurn } from '@/types/coworkSession'
+import { fenceFor } from '@/lib/coworkAttachments'
 
 /** Matches the Rust backend's `MAX_READ_BYTES`: files above this are shown as
  * an oversized notice, never loaded into the renderer. */
@@ -655,11 +656,13 @@ export function codeRefBlock(ref: CodeRef): string {
     ref.startLine === ref.endLine
       ? `line ${ref.startLine}`
       : `lines ${ref.startLine}-${ref.endLine}`
+  const code = ref.code.replace(/\n$/, '')
+  const fence = fenceFor(code)
   return [
     `Referenced code from ${originLabel(ref.origin)} — ${ref.path} (${range}):`,
-    '```' + (lang === 'text' ? '' : lang),
-    ref.code.replace(/\n$/, ''),
-    '```',
+    fence + (lang === 'text' ? '' : lang),
+    code,
+    fence,
   ].join('\n')
 }
 

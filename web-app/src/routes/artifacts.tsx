@@ -337,12 +337,35 @@ function ArtifactsPage() {
   }, [])
   const [viewing, setViewing] = useState<GalleryItem | null>(null)
 
+  // The turn walk (writes + artifacts, a regex per write result) is cached by
+  // the turns array's identity, which only changes on a real commit: a title
+  // change or queue update replaces `sessions` but not each session's turns.
+  const scanCache = useRef(
+    new WeakMap<
+      CoworkTurn[],
+      {
+        root: string | null
+        writes: ReturnType<typeof writesOf>
+        artifacts: ReturnType<typeof artifactsFromTurns>
+      }
+    >()
+  )
   const rows = useMemo<Row[]>(
     () => [
       ...sessions.flatMap((session) => {
         const root = workspaces[session.id] ?? null
-        const writes = writesOf(session.turns)
-        return artifactsFromTurns(session.turns, root).map((artifact) => ({
+        const turns = session.turns ?? []
+        let scan = scanCache.current.get(turns)
+        if (!scan || scan.root !== root) {
+          scan = {
+            root,
+            writes: writesOf(turns),
+            artifacts: artifactsFromTurns(turns, root),
+          }
+          scanCache.current.set(turns, scan)
+        }
+        const { writes, artifacts } = scan
+        return artifacts.map((artifact) => ({
           ...artifact,
           kind: kindOf(artifact),
           bytes: writes.get(artifact.path)?.bytes,
@@ -421,13 +444,18 @@ function ArtifactsPage() {
     [navigate]
   )
 
-  const sessionCount = new Set(
-    rows.filter((r) => !r.studio && r.sessionId).map((r) => r.sessionId)
-  ).size
-  const now = Date.now()
-  const thisWeek = rows.filter((r) => r.updated && now - r.updated < WEEK_MS)
-  const sized = rows.filter((r) => r.bytes)
-  const diskBytes = sized.reduce((sum, r) => sum + (r.bytes ?? 0), 0)
+  const { sessionCount, thisWeek, sized, diskBytes } = useMemo(() => {
+    const now = Date.now()
+    const sized = rows.filter((r) => r.bytes)
+    return {
+      sessionCount: new Set(
+        rows.filter((r) => !r.studio && r.sessionId).map((r) => r.sessionId)
+      ).size,
+      thisWeek: rows.filter((r) => r.updated && now - r.updated < WEEK_MS),
+      sized,
+      diskBytes: sized.reduce((sum, r) => sum + (r.bytes ?? 0), 0),
+    }
+  }, [rows])
   const convertFileSrc = useAssetUrl()
   const htmlPage = t('engine:library.htmlPage')
 

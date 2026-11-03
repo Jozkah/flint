@@ -416,15 +416,24 @@ export async function generateCloudImages(
   }
 
   const images: string[] = []
+  let firstFailure: unknown
   for (const picture of answer.pictures) {
     if (picture.b64) {
       images.push(picture.b64)
       continue
     }
     // A URL answer: fetched once, so the gallery does not depend on the link.
-    const bytes = await downloadPicture(picture.url as string, target.provider.label, signal, fetchImpl)
-    images.push(bytesToBase64(bytes))
+    // One bad link must not throw away pictures already paid for: keep the
+    // ones that arrived and fail only when none did.
+    try {
+      const bytes = await downloadPicture(picture.url as string, target.provider.label, signal, fetchImpl)
+      images.push(bytesToBase64(bytes))
+    } catch (error) {
+      if (signal.aborted) throw error
+      firstFailure ??= error
+    }
   }
+  if (images.length === 0 && firstFailure) throw firstFailure
 
   const { width, height } = fitCloudSize(target.provider, params.width, params.height)
   return studioApi.saveExternalImages({

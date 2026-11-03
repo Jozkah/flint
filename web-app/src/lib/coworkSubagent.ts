@@ -474,8 +474,10 @@ export function subagentTools(
 }
 
 /** Tool names a child may call, for narrowing a nested request. */
-export function parentToolNames(tools: Record<string, Tool>): string[] {
-  return Object.keys(tools).filter((n) => !WITHHELD_FROM_SUBAGENTS.has(n))
+export function parentToolNames(tools: Record<string, Tool>, limits?: SpawnLimits): string[] {
+  return Object.keys(tools).filter(
+    (n) => !WITHHELD_FROM_SUBAGENTS.has(n) || (n === TASK_TOOL_NAME && canSpawn(limits))
+  )
 }
 
 /**

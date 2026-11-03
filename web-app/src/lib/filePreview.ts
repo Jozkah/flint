@@ -180,12 +180,18 @@ async function readEntry(b: Uint8Array, e: ZipEntry): Promise<string | null> {
   return bytes ? new TextDecoder().decode(bytes) : null
 }
 
+function codePoint(n: number, fallback: string): string {
+  return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : fallback
+}
+
 function unescapeXml(s: string): string {
   return s
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => codePoint(parseInt(h, 16), m))
+    .replace(/&#(\d+);/g, (m, d) => codePoint(Number(d), m))
     .replace(/&amp;/g, '&')
 }
 
@@ -262,9 +268,9 @@ export async function xlsxPreview(
   if (sst) {
     const xml = await readEntry(b, sst)
     if (xml) {
-      const re = /<si>([\s\S]*?)<\/si>/g
+      const re = /<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g
       for (let m = re.exec(xml); m && strings.length < 2000; m = re.exec(xml))
-        strings.push(textRuns(m[1], 't'))
+        strings.push(textRuns(m[1].replace(/<rPh(?:\s[^>]*)?>[\s\S]*?<\/rPh>/g, ''), 't'))
     }
   }
   const xml = await readEntry(b, sheet)
@@ -273,10 +279,14 @@ export async function xlsxPreview(
   const rowRe = /<row\b[^>]*>([\s\S]*?)<\/row>/g
   for (let r = rowRe.exec(xml); r && rows.length < maxRows; r = rowRe.exec(xml)) {
     const cells: string[] = []
+    let nextCol = 0
     const cellRe = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g
     for (let c = cellRe.exec(r[1]); c; c = cellRe.exec(r[1])) {
       const attrs = c[1]
-      const idx = colIndex(/\br="([A-Z]+\d+)"/.exec(attrs)?.[1] ?? 'A1')
+      const ref = /\br="([A-Z]+\d+)"/.exec(attrs)?.[1]
+      // A cell without a ref follows the previous one.
+      const idx = ref ? colIndex(ref) : nextCol
+      nextCol = idx + 1
       if (idx >= maxCols) continue
       const inner = c[2] ?? ''
       let v: string

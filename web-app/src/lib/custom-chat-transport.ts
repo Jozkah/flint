@@ -2000,6 +2000,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       this.carriedCompaction = this.sentCompaction ?? this.carriedCompaction
       this.turnModel = target
       currentProvider = target.selectedProvider
+      // Entries of threads that never send again would otherwise stay forever.
+      if (primaryDown.size > 100) {
+        const now = Date.now()
+        for (const [key, entry] of primaryDown) {
+          if (entry.until <= now) primaryDown.delete(key)
+        }
+      }
       primaryDown.set(threadKey, {
         selection: selectionKey,
         until: Date.now() + PRIMARY_DOWN_MS,

@@ -29,6 +29,10 @@ export function prefetchThreadMessages(threadId: string, fetch: Fetch): void {
   const promise = fetch(threadId)
   promise.catch(() => pending.delete(threadId))
   pending.set(threadId, { at: Date.now(), promise })
+  // An entry past FRESH_MS is never used, so drop it rather than pin the messages.
+  setTimeout(() => {
+    if (pending.get(threadId)?.promise === promise) pending.delete(threadId)
+  }, FRESH_MS)
 }
 
 /**

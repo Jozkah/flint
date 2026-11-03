@@ -162,9 +162,9 @@ export const WebToolWidget = memo(
         {!running && !errorText && bar.variant === 'search' && (
           searchResults.length > 0 ? (
             <div className="flex flex-col">
-              {searchResults.map((citation) => (
+              {searchResults.map((citation, index) => (
                 <ResultRow
-                  key={citation.url}
+                  key={`${citation.url}#${index}`}
                   url={citation.url}
                   title={citation.title}
                 />
