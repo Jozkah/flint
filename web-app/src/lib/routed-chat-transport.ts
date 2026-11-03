@@ -78,10 +78,10 @@ export class RoutedChatTransport extends CustomChatTransport {
   ) {
     const latest = latestUserMessage(messages)
     if (!latest || latest.id === this.lastRoutedUserMessageId) return
-    this.lastRoutedUserMessageId = latest.id
     // A previous turn's advice must never leak when routing is now disabled,
     // shadowed, unavailable, or a custom assistant has been pinned.
     this.routedMode = null
+    this.activeSkills = []
 
     const [skills] = await Promise.all([
       // Skills that apply to this message (always-active, triggered, or Jev's
@@ -103,10 +103,16 @@ export class RoutedChatTransport extends CustomChatTransport {
             this.temporary ? undefined : workProfileAsker(useJevSettings.getState().rerankMode)
           ).catch(() => undefined)
         : Promise.resolve(undefined),
-      this.routeAssistantFor(latest, signal),
-      this.routeModelFor(latest, messages, signal),
+      this.routeAssistantFor(latest, signal).catch((e) =>
+        console.warn('Assistant routing failed', e)
+      ),
+      this.routeModelFor(latest, messages, signal).catch((e) =>
+        console.warn('Model routing failed', e)
+      ),
     ])
     this.activeSkills = skills
+    // Marked only once routing is done, so a retry of the same message routes again.
+    this.lastRoutedUserMessageId = latest.id
   }
 
   /**
