@@ -9,14 +9,24 @@ export const CARD_PREVIEW_BYTES = 4096
 /** How many lines a card shows at most. */
 export const CARD_PREVIEW_LINES = 12
 
+/** Most previews kept; the least recently used one is dropped past this. */
+const MAX_CACHED_PREVIEWS = 300
 const cache = new Map<string, Promise<string | null>>()
 
 /** Reads up to `CARD_PREVIEW_BYTES` of `url` as text; null when unreadable. */
 export function loadPreviewText(url: string): Promise<string | null> {
   const hit = cache.get(url)
-  if (hit) return hit
+  if (hit) {
+    cache.delete(url)
+    cache.set(url, hit)
+    return hit
+  }
   const job = readHead(url).catch(() => null)
   cache.set(url, job)
+  if (cache.size > MAX_CACHED_PREVIEWS) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
   return job
 }
 
