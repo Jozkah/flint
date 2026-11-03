@@ -335,9 +335,6 @@ vi.mock('@/containers/dialogs/JanBrowserExtensionDialog', () => ({
   __esModule: true,
   default: () => null,
 }))
-vi.mock('@/containers/MovingBorder', () => ({
-  MovingBorder: ({ children }: any) => <div>{children}</div>,
-}))
 vi.mock('@/components/TokenCounter', () => ({
   TokenCounter: () => <div data-testid="stub-token-counter" />,
 }))

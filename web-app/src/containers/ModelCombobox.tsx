@@ -1,4 +1,5 @@
 import {
+  useId,
   useState,
   useMemo,
   useRef,
@@ -176,7 +177,9 @@ const ModelsList = ({
   highlightedIndex,
   onModelSelect,
   onHighlight,
+  listId,
 }: {
+  listId: string
   filteredModels: string[]
   value: string
   query: string
@@ -208,7 +211,7 @@ const ModelsList = ({
   }, [highlightedIndex, filteredModels])
 
   return (
-    <div ref={listRef} role="listbox" className="relative">
+    <div ref={listRef} id={listId} role="listbox" className="relative">
       <span
         aria-hidden
         data-slot="model-pill"
@@ -220,6 +223,7 @@ const ModelsList = ({
       {filteredModels.map((model, index) => (
         <div
           key={model}
+          id={`${listId}-${index}`}
           role="option"
           aria-selected={value === model}
           data-model={model}
@@ -381,6 +385,7 @@ export function ModelCombobox({
   className,
   onOpenChange,
 }: ModelComboboxProps) {
+  const listId = useId()
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState(value)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
@@ -535,6 +540,15 @@ export function ModelCombobox({
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onClick={handleInputClick}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={
+            open && highlightedIndex >= 0
+              ? `${listId}-${highlightedIndex}`
+              : undefined
+          }
           placeholder={placeholder ?? t('uiLeftovers:modelCombobox.placeholder')}
           disabled={disabled}
           className="pr-16"
@@ -612,6 +626,7 @@ export function ModelCombobox({
                   <EmptySection inputValue={inputValue} t={t} />
                 ) : (
                   <ModelsList
+                    listId={listId}
                     filteredModels={filteredModels}
                     value={value}
                     query={inputValue}
