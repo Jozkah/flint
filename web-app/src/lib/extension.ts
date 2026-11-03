@@ -167,7 +167,14 @@ export class ExtensionManager {
    */
   unload() {
     this.listExtensions().forEach((ext) => {
-      ext.onUnload()
+      // One extension failing to unload must not skip the rest.
+      try {
+        void Promise.resolve(ext.onUnload()).catch((error) => {
+          console.error(`Extension onUnload failed (${ext.name}):`, error)
+        })
+      } catch (error) {
+        console.error(`Extension onUnload failed (${ext.name}):`, error)
+      }
     })
   }
 
@@ -250,9 +257,15 @@ export class ExtensionManager {
       (e) => !only || only.includes(e.name)
     )
     // Activate all
-    await Promise.all(
+    const results = await Promise.allSettled(
       activeExtensions.map((ext: Extension) => this.activateExtension(ext))
     )
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        const name = activeExtensions[i]?.name ?? `index ${i}`
+        console.error(`Extension activation failed (${name}):`, r.reason)
+      }
+    })
   }
 
   /**
