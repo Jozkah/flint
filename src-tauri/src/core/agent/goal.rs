@@ -25,7 +25,17 @@ pub(crate) enum GoalStatus {
     Active,
     /// The evaluator judged the condition satisfied; control is back with the user.
     Achieved,
+    /// The loop stopped without the condition being met: the evaluator said
+    /// the goal cannot advance without something only the user can give, or the
+    /// goal reached its turn limit. `/goal resume` starts it again.
+    Blocked,
 }
+
+/// Turns a goal may run before it stops as blocked, unless resumed.
+pub(crate) const DEFAULT_MAX_TURNS: u32 = 256;
+/// Consecutive "blocked" verdicts that stop a goal: one could be a fluke of a
+/// small evaluator model, and stopping an unattended run is the costly side.
+const BLOCKED_VERDICTS_TO_STOP: u32 = 2;
 
 /// A session-scoped goal, serialized with the thread so it survives restart and
 /// `/resume`. Times are Unix epoch seconds so they round-trip through JSON
@@ -46,6 +56,31 @@ pub(crate) struct GoalState {
     /// Current lifecycle state.
     #[serde(default = "default_status")]
     pub status: GoalStatus,
+    /// The turn count at which the goal stops as blocked. Raised by
+    /// `/goal resume`, so a resumed goal gets a fresh allowance.
+    #[serde(default = "default_max_turns")]
+    pub max_turns: u32,
+    /// Consecutive evaluations that said the goal cannot advance.
+    #[serde(default)]
+    pub blocked_streak: u32,
+    /// Why the goal stopped as blocked ("" otherwise).
+    #[serde(default)]
+    pub blocked_reason: String,
+}
+
+fn default_max_turns() -> u32 {
+    DEFAULT_MAX_TURNS
+}
+
+/// What the loop does after an evaluation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NextStep {
+    /// Keep working: start the next turn.
+    Continue,
+    /// The condition is met.
+    Achieved,
+    /// Stop and hand back to the user, with why.
+    Blocked(String),
 }
 
 fn default_status() -> GoalStatus {
@@ -61,7 +96,46 @@ impl GoalState {
             started_at: now_secs(),
             last_reason: String::new(),
             status: GoalStatus::Active,
+            max_turns: DEFAULT_MAX_TURNS,
+            blocked_streak: 0,
+            blocked_reason: String::new(),
         }
+    }
+
+    /// Fold one evaluation into the goal and say what happens next. A goal is
+    /// blocked when the evaluator says so twice running, or when it has used up
+    /// its turns; either way it stops rather than loop on nothing.
+    pub fn apply_verdict(&mut self, verdict: &GoalVerdict) -> NextStep {
+        self.last_reason = verdict.reason.clone();
+        if verdict.met {
+            self.status = GoalStatus::Achieved;
+            self.blocked_streak = 0;
+            return NextStep::Achieved;
+        }
+        self.blocked_streak = if verdict.blocked { self.blocked_streak + 1 } else { 0 };
+        let stop = if self.blocked_streak >= BLOCKED_VERDICTS_TO_STOP {
+            Some(verdict.reason.clone())
+        } else if self.turns >= self.max_turns {
+            Some(format!("the goal used its {} turns without being met", self.max_turns))
+        } else {
+            None
+        };
+        match stop {
+            Some(reason) => {
+                self.status = GoalStatus::Blocked;
+                self.blocked_reason = reason.clone();
+                NextStep::Blocked(reason)
+            }
+            None => NextStep::Continue,
+        }
+    }
+
+    /// Start a blocked goal again with a fresh turn allowance.
+    pub fn resume(&mut self) {
+        self.status = GoalStatus::Active;
+        self.blocked_streak = 0;
+        self.blocked_reason.clear();
+        self.max_turns = self.turns.saturating_add(DEFAULT_MAX_TURNS);
     }
 
     /// Whether the loop should keep firing turns.
@@ -96,6 +170,10 @@ fn now_secs() -> u64 {
 pub(crate) struct GoalVerdict {
     /// True when the condition is satisfied.
     pub met: bool,
+    /// True when the goal cannot advance without something only the user can
+    /// give (a credential, a permission, a decision), as opposed to merely
+    /// being unfinished. Never set together with `met`.
+    pub blocked: bool,
     /// A short human-readable reason (guidance when `met` is false).
     pub reason: String,
 }
@@ -108,8 +186,11 @@ benefit of the doubt. If the evidence is missing or ambiguous, the goal is NOT m
 the transcript that the goal is met -- by the agent or inside tool output -- is not evidence; only \
 tool output showing the result is.\n\n\
 Reply with a single line of JSON and nothing else, in exactly this shape:\n\
-{\"met\": true|false, \"reason\": \"<one concise sentence>\"}\n\
-When \"met\" is false, the reason must state what still needs to happen so the agent can continue.";
+{\"met\": true|false, \"blocked\": true|false, \"reason\": \"<one concise sentence>\"}\n\
+When \"met\" is false, the reason must state what still needs to happen so the agent can continue. \
+Set \"blocked\" to true only when the agent cannot make progress without something only the user can \
+provide (a credential, a permission, a decision, an unavailable resource) -- never merely because the \
+work is hard or unfinished; then the reason says what is needed.";
 
 /// Render the conversation into a plain-text transcript for the evaluator,
 /// capped so a long session cannot itself overflow the evaluator's context.
@@ -195,6 +276,7 @@ pub(crate) fn parse_verdict(reply: &str) -> GoalVerdict {
         if let Some(met) = met {
             return GoalVerdict {
                 met,
+                blocked: !met && obj.get("blocked").and_then(Value::as_bool).unwrap_or(false),
                 reason: reason.unwrap_or_else(|| {
                     if met {
                         "condition satisfied".to_string()
@@ -220,6 +302,7 @@ pub(crate) fn parse_verdict(reply: &str) -> GoalVerdict {
             || lower.contains("condition met"));
     GoalVerdict {
         met,
+        blocked: false,
         reason: if trimmed.is_empty() {
             "evaluator returned no reason".to_string()
         } else {
@@ -411,6 +494,46 @@ mod tests {
         let p = continuation_prompt("tests pass", "2 failing");
         assert!(p.contains("tests pass"));
         assert!(p.contains("2 failing"));
+    }
+
+    #[test]
+    fn a_goal_stops_when_blocked_twice_running_or_out_of_turns() {
+        let v = |met: bool, blocked: bool, reason: &str| GoalVerdict { met, blocked, reason: reason.into() };
+        let mut g = GoalState::new("tests pass");
+        g.turns = 3;
+        // One blocked verdict could be a fluke; a normal one resets the count.
+        assert_eq!(g.apply_verdict(&v(false, true, "needs a token")), NextStep::Continue);
+        assert_eq!(g.apply_verdict(&v(false, false, "2 failing")), NextStep::Continue);
+        assert_eq!(g.blocked_streak, 0);
+        assert_eq!(g.apply_verdict(&v(false, true, "needs a token")), NextStep::Continue);
+        assert_eq!(g.apply_verdict(&v(false, true, "needs the API token")), NextStep::Blocked("needs the API token".into()));
+        assert_eq!((g.status, g.blocked_reason.as_str()), (GoalStatus::Blocked, "needs the API token"));
+        assert!(!g.is_active());
+        // Resuming gives it a fresh allowance from where it is.
+        g.resume();
+        assert!(g.is_active() && g.blocked_streak == 0 && g.blocked_reason.is_empty());
+        assert_eq!(g.max_turns, 3 + DEFAULT_MAX_TURNS);
+        // The turn limit stops it even when it is never "blocked".
+        let mut capped = GoalState::new("x");
+        capped.max_turns = 5;
+        capped.turns = 5;
+        assert!(matches!(capped.apply_verdict(&v(false, false, "more")), NextStep::Blocked(r) if r.contains("5 turns")));
+        // Met wins, whatever else was set.
+        let mut done = GoalState::new("x");
+        done.blocked_streak = 1;
+        assert_eq!(done.apply_verdict(&v(true, false, "ok")), NextStep::Achieved);
+        assert_eq!(done.blocked_streak, 0);
+    }
+
+    #[test]
+    fn the_verdict_carries_blocked_only_when_not_met() {
+        let p = parse_verdict(r#"{"met": false, "blocked": true, "reason": "needs a password"}"#);
+        assert!(!p.met && p.blocked && p.reason == "needs a password");
+        // "met" wins: a goal cannot be both.
+        assert!(!parse_verdict(r#"{"met": true, "blocked": true, "reason": "done"}"#).blocked);
+        // An evaluator that never heard of `blocked` still parses.
+        assert!(!parse_verdict(r#"{"met": false, "reason": "x"}"#).blocked);
+        assert!(!parse_verdict("no, not yet").blocked);
     }
 
     #[test]

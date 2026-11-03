@@ -297,6 +297,16 @@ pub struct HookOutput {
     pub reason: Option<String>,
     #[serde(default)]
     pub additional_context: Option<String>,
+    /// A rewritten tool input (`pre-tool` only). Honoured only where the caller
+    /// can send the new input back through the permission gate; see
+    /// [`Decision::updated_input`].
+    #[serde(default, rename = "updatedInput")]
+    pub updated_input: Option<serde_json::Value>,
+    /// The Claude Code shape, `{"hookSpecificOutput": {"permissionDecision":
+    /// "allow|deny|ask", "permissionDecisionReason", "updatedInput",
+    /// "additionalContext"}}`. Folded into the fields above by [`HookOutput::parse`].
+    #[serde(default, rename = "hookSpecificOutput")]
+    pub hook_specific_output: Option<serde_json::Value>,
 }
 
 impl HookOutput {
@@ -305,12 +315,39 @@ impl HookOutput {
         if !t.starts_with('{') {
             return None;
         }
-        serde_json::from_str(t).ok()
+        let mut out: Self = serde_json::from_str(t).ok()?;
+        // A hook written for Claude Code answers under `hookSpecificOutput`.
+        if let Some(specific) = out.hook_specific_output.take() {
+            let text = |key: &str| specific.get(key).and_then(|v| v.as_str()).map(str::to_string);
+            if out.decision.is_none() {
+                out.decision = text("permissionDecision");
+            }
+            if out.reason.is_none() {
+                out.reason = text("permissionDecisionReason");
+            }
+            if out.additional_context.is_none() {
+                out.additional_context = text("additionalContext");
+            }
+            if out.updated_input.is_none() {
+                out.updated_input = specific.get("updatedInput").cloned();
+            }
+        }
+        Some(out)
     }
-    /// The refusal this output asks for, if any.
-    fn refusal(&self) -> Option<String> {
+    /// Whether this output asks for confirmation rather than deciding.
+    fn asks(&self) -> bool {
+        self.decision.as_deref().is_some_and(|d| d.eq_ignore_ascii_case("ask"))
+    }
+    fn ask_reason(&self) -> String {
+        self.reason.clone().unwrap_or_else(|| "a hook asked for confirmation".into())
+    }
+    /// The refusal this output asks for, if any. `ask` is one only where the
+    /// event cannot raise a prompt; before a tool call it is reported separately
+    /// (see [`Decision::ask`]) so the caller that can prompt does.
+    fn refusal(&self, event: Event) -> Option<String> {
         match self.decision.as_deref()?.to_ascii_lowercase().as_str() {
             "deny" | "block" => Some(self.reason.clone().unwrap_or_else(|| "refused by a hook decision".into())),
+            "ask" if event == Event::PreTool => None,
             "ask" => Some(format!(
                 "a hook asked for confirmation, which cannot be raised here, so the call is refused{}",
                 self.reason.as_deref().map(|r| format!(": {r}")).unwrap_or_default()
@@ -716,6 +753,16 @@ pub struct Decision {
     /// the model as a labelled hook note, never as user text.
     #[serde(default)]
     pub notes: Vec<String>,
+    /// A `pre-tool` hook asked for the call to be confirmed (its reason). The
+    /// caller that can put a question to a person does so; one that cannot
+    /// treats it as a refusal. Never set for another event.
+    #[serde(default)]
+    pub ask: Option<String>,
+    /// A `pre-tool` hook rewrote the call's input. Only a caller that sends the
+    /// new input back through its permission gate may use it: a hook cannot
+    /// widen what the gate allows, only change what the gate is asked about.
+    #[serde(default)]
+    pub updated_input: Option<serde_json::Value>,
     pub runs: Vec<HookRun>,
 }
 
@@ -862,7 +909,15 @@ async fn run_with_env(
             if let Some(note) = out.additional_context.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
                 decision.notes.push(bound(&crate::harness_error::scrub(note)));
             }
-            if let Some(why) = out.refusal() {
+            if event == Event::PreTool {
+                if out.asks() {
+                    decision.ask.get_or_insert_with(|| bound(&crate::harness_error::scrub(&out.ask_reason())));
+                }
+                if let Some(new_input) = out.updated_input.clone() {
+                    decision.updated_input = Some(new_input);
+                }
+            }
+            if let Some(why) = out.refusal(event) {
                 if event.can_block() {
                     decision.blocked = Some(HookError::new(
                         HookErrorKind::Failed,
@@ -1591,6 +1646,54 @@ json_output = true
         // `allow` on a hook that cannot block, and on one that can, changes nothing.
         let d = run_with_input(&hooks, Event::PostTool, Some("bash"), &ctx(&root), &input).await;
         assert!(d.blocked.is_none() && d.notes.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_claude_code_hook_answer_is_read_from_its_specific_output() {
+        let out = HookOutput::parse(
+            r#"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"confirm this","updatedInput":{"command":"ls"},"additionalContext":"careful"}}"#,
+        )
+        .expect("parses");
+        assert!(out.asks());
+        assert_eq!(out.reason.as_deref(), Some("confirm this"));
+        assert_eq!(out.updated_input, Some(serde_json::json!({"command": "ls"})));
+        assert_eq!(out.additional_context.as_deref(), Some("careful"));
+        // The plain shape still works, and a top-level answer wins over the nested one.
+        let plain = HookOutput::parse(r#"{"decision":"deny","reason":"no"}"#).expect("parses");
+        assert!(!plain.asks());
+        assert_eq!(plain.refusal(Event::PreTool).as_deref(), Some("no"));
+    }
+
+    #[tokio::test]
+    async fn a_pre_tool_ask_and_rewrite_are_reported_not_refused() {
+        let root = dir("pre-ask");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"echo '{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"check it\\\",\\\"updatedInput\\\":{\\\"path\\\":\\\"safe.txt\\\"}}'\"
+json_output = true
+",
+        );
+        let hooks = load(&root).unwrap();
+        let input = HookInput { tool_name: "write".into(), ..HookInput::default() };
+        let d = run_with_input(&hooks, Event::PreTool, Some("write"), &ctx(&root), &input).await;
+        assert!(d.blocked.is_none(), "an ask is not a refusal before a tool call: {d:?}");
+        assert_eq!(d.ask.as_deref(), Some("check it"));
+        assert_eq!(d.updated_input, Some(serde_json::json!({"path": "safe.txt"})));
+        // Where nothing can be asked (the run's end), the same answer refuses.
+        write_config(
+            &root,
+            "[[hook]]
+event = \"run-end\"
+command = \"echo '{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"really finish?\\\"}'\"
+json_output = true
+",
+        );
+        let hooks = load(&root).unwrap();
+        let end = run_with_input(&hooks, Event::RunEnd, None, &ctx(&root), &HookInput::default()).await;
+        assert!(end.blocked.is_some() && end.ask.is_none(), "{end:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

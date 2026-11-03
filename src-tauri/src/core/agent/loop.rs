@@ -184,9 +184,17 @@ pub(crate) struct OrchestrationArgs {
     /// its parent's pause and ceilings. `None` for a top-level run.
     pub spend_ledger: Option<Arc<crate::core::agent::session::SpendLedger>>,
     pub dispatch_id: Option<String>,
-    /// Whether this run may dispatch subagents. `false` for child runs, which
-    /// caps recursion depth at one (a subagent cannot spawn grandchildren).
+    /// Whether this run may dispatch subagents. A child's is `false` once it is
+    /// as deep as `max_subagent_depth` allows (by default one level: a subagent
+    /// cannot spawn grandchildren).
     pub subagents_enabled: bool,
+    /// How many dispatches deep this run is: 0 for a top-level run, its
+    /// parent's plus one for a child.
+    pub subagent_depth: u32,
+    /// The deepest a chain of dispatches may go (`[agent].max_subagent_depth`,
+    /// default 1: children cannot dispatch). Every run in the chain carries the
+    /// same value, so a child cannot raise it.
+    pub max_subagent_depth: u32,
     /// Cap on concurrently-running background subagents for this run
     /// (`[agent].max_parallel_subagents` in agent.toml, default 10). Snapshot
     /// taken at run start: a mid-run config edit affects the *next* run only.
@@ -2138,6 +2146,8 @@ pub(crate) async fn run_server_side_openai_orchestration(
         todo_registry: None,
         system_prompt_override: None,
         subagents_enabled: false,
+        subagent_depth: 0,
+        max_subagent_depth: crate::core::agent::subagent::DEFAULT_MAX_SUBAGENT_DEPTH,
         max_parallel_subagents: crate::core::agent::subagent::DEFAULT_MAX_PARALLEL_SUBAGENTS,
         auto_approve: false,
         bypass: false,
@@ -3231,6 +3241,8 @@ async fn orchestrate_inner(
         todo_registry,
         system_prompt_override,
         subagents_enabled,
+        subagent_depth: _,
+        max_subagent_depth: _,
         max_parallel_subagents,
         auto_approve,
         bypass,

@@ -1410,7 +1410,7 @@ fn a_met_goal_asks_for_a_closing_message() {
     app.goal = Some(goal.clone());
     app.finish_goal_evaluation(
         goal,
-        Ok(GoalVerdict { met: true, reason: "all green".into() }),
+        Ok(GoalVerdict { met: true, blocked: false, reason: "all green".into() }),
     );
     assert_eq!(app.goal.as_ref().unwrap().status, GoalStatus::Achieved);
     let sent = app.history.last().unwrap()["content"].to_string();
@@ -1418,6 +1418,34 @@ fn a_met_goal_asks_for_a_closing_message() {
     let rendered: Vec<String> = app.transcript.iter().map(row_text).collect();
     assert!(rendered.iter().any(|l| l.contains("goal achieved")));
     assert!(!rendered.iter().any(|l| l.contains("closing message")), "hidden turn");
+}
+
+/// A goal the evaluator says is blocked twice running stops instead of
+/// looping, says why, and `/goal resume` starts it again.
+#[test]
+fn a_blocked_goal_stops_and_can_be_resumed() {
+    use crate::core::agent::goal::{GoalState, GoalStatus, GoalVerdict};
+    let mut app = test_app();
+    let goal = GoalState::new("deploy to staging");
+    app.goal = Some(goal.clone());
+    let blocked = |why: &str| Ok(GoalVerdict { met: false, blocked: true, reason: why.into() });
+    // First blocked verdict: carry on (it could be a fluke).
+    app.finish_goal_evaluation(goal.clone(), blocked("needs the deploy key"));
+    assert_eq!(app.goal.as_ref().unwrap().status, GoalStatus::Active);
+    let after_first = app.history.len();
+    assert!(after_first > 0, "the next turn was started");
+    // Second: stop, say why, start nothing.
+    app.finish_goal_evaluation(goal.clone(), blocked("needs the deploy key"));
+    assert_eq!(app.goal.as_ref().unwrap().status, GoalStatus::Blocked);
+    assert_eq!(app.history.len(), after_first, "no further turn was started");
+    let rendered: Vec<String> = app.transcript.iter().map(row_text).collect();
+    assert!(rendered.iter().any(|l| l.contains("goal blocked") && l.contains("deploy key")), "{rendered:?}");
+    // Resume: active again, with a fresh allowance, and a turn is started.
+    app.status = Status::Idle;
+    super::super::commands::goal_command(&mut app, "resume");
+    let g = app.goal.as_ref().unwrap();
+    assert_eq!((g.status, g.blocked_streak, g.blocked_reason.as_str()), (GoalStatus::Active, 0, ""));
+    assert!(app.history.len() > after_first, "resuming started a turn");
 }
 
 #[test]
@@ -2154,6 +2182,8 @@ fn reload_provider_configs_picks_up_login_credentials() {
             todo_registry: None,
             system_prompt_override: None,
             subagents_enabled: true,
+            subagent_depth: 0,
+            max_subagent_depth: 1,
             max_parallel_subagents: 4,
             auto_approve: false,
             bypass: false,
