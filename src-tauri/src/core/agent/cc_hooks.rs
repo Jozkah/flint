@@ -66,6 +66,8 @@ const MAX_TIMEOUT_SECS: u64 = 60;
 /// What one hook may add to the prompt. A hook printing a log file would
 /// otherwise eat the context window.
 const MAX_CONTEXT_CHARS: usize = 32 * 1024;
+/// Stdout bytes kept per hook; enough for the context cap plus JSON framing.
+const MAX_STDOUT_BYTES: u64 = 1024 * 1024;
 
 /// `~/.claude` under the app's own home (`jan_home_dir`), so an isolated
 /// profile (explicit home override, tests) never reads the real one.
@@ -101,10 +103,17 @@ pub fn discover(claude_home: &Path, links: &Links) -> Vec<Hook> {
             parse_into(&file, Some(&root), &mut out);
         }
     }
-    // The same command declared twice (settings and a plugin) runs once.
+    // The same command declared twice (settings and a plugin) runs once. Two
+    // plugins declaring the same ${CLAUDE_PLUGIN_ROOT} text are different
+    // files, so the plugin root is part of the key for those.
     let mut seen = std::collections::HashSet::new();
-    out.retain(|h| seen.insert((h.event as u8, h.command.clone())));
+    out.retain(|h| seen.insert((h.event as u8, h.command.clone(), root_matters(h).then(|| h.plugin_root.clone()))));
     out
+}
+
+/// The plugin root changes what a command means only when it names it.
+fn root_matters(hook: &Hook) -> bool {
+    hook.command.contains("${CLAUDE_PLUGIN_ROOT}")
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -250,6 +259,18 @@ pub async fn run_cancellable(
     cwd: &Path,
     cancel: Option<&CancelToken>,
 ) -> Result<Vec<String>, Interrupted> {
+    run_reporting(hooks, event, payload, cwd, cancel).await.map(|(out, _)| out)
+}
+
+/// [`run_cancellable`], also saying whether any hook failed (could not start,
+/// exited non-zero, timed out) as opposed to printing nothing.
+async fn run_reporting(
+    hooks: &[Hook],
+    event: Event,
+    payload: &Value,
+    cwd: &Path,
+    cancel: Option<&CancelToken>,
+) -> Result<(Vec<String>, bool), Interrupted> {
     use tauri_plugin_agent_tools::lifecycle::StopReason;
     let interrupted = || {
         cancel
@@ -257,6 +278,7 @@ pub async fn run_cancellable(
             .map(Interrupted)
     };
     let mut out = Vec::new();
+    let mut failed = false;
     for hook in hooks.iter().filter(|h| h.event == event) {
         if let Some(why) = interrupted() {
             return Err(why);
@@ -267,8 +289,10 @@ pub async fn run_cancellable(
                 return Err(interrupted().unwrap_or(Interrupted(StopReason::Cancelled)));
             }
             text = exec(hook, payload, cwd) => {
-                if let Some(text) = text {
-                    out.push(text);
+                match text {
+                    Ok(Some(text)) => out.push(text),
+                    Ok(None) => {}
+                    Err(()) => failed = true,
                 }
             }
         }
@@ -277,7 +301,7 @@ pub async fn run_cancellable(
     if let Some(why) = interrupted() {
         return Err(why);
     }
-    Ok(out)
+    Ok((out, failed))
 }
 
 /// Ends a hook's whole process tree when dropped with a pid still set: the
@@ -292,14 +316,15 @@ impl Drop for TreeGuard {
     }
 }
 
-async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
+/// `Err` when the hook failed; `Ok(None)` when it ran and printed nothing.
+async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Result<Option<String>, ()> {
     use tauri_plugin_agent_tools::tools::proc;
     use tokio::io::AsyncWriteExt;
 
     let shell = proc::shell();
     if shell.via_stdin {
         log::warn!("cc hook: the resolved shell reads commands from stdin; skipped");
-        return None;
+        return Err(());
     }
     let mut command = hook.command.clone();
     if let Some(root) = &hook.plugin_root {
@@ -334,7 +359,7 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
         Ok(child) => child,
         Err(e) => {
             log::warn!("cc hook: could not start `{}`: {e}", hook.command);
-            return None;
+            return Err(());
         }
     };
     // Dropping the child ends the shell and nothing else: what the shell
@@ -352,7 +377,23 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
         })
     });
     let limit = Duration::from_secs(hook.timeout_secs);
-    let waited = tokio::time::timeout(limit, child.wait_with_output()).await;
+    // Stdout is read through a cap: a hook that prints a huge log must not be
+    // buffered whole before MAX_CONTEXT_CHARS applies. Past the cap the rest is
+    // drained and dropped so the hook is not blocked on a full pipe.
+    let stdout = child.stdout.take();
+    let read_and_wait = async {
+        use tokio::io::AsyncReadExt;
+        let mut buf = Vec::new();
+        if let Some(stdout) = stdout {
+            let mut stdout = stdout.take(MAX_STDOUT_BYTES);
+            stdout.read_to_end(&mut buf).await?;
+            let mut rest = stdout.into_inner();
+            let _ = tokio::io::copy(&mut rest, &mut tokio::io::sink()).await;
+        }
+        let status = child.wait().await?;
+        Ok::<_, std::io::Error>((status, buf))
+    };
+    let waited = tokio::time::timeout(limit, read_and_wait).await;
     if waited.is_ok() {
         tree.0 = None;
     }
@@ -361,20 +402,20 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
         writer.abort();
     }
     match waited {
-        Ok(Ok(out)) if out.status.success() => {
-            context_from_output(&String::from_utf8_lossy(&out.stdout))
+        Ok(Ok((status, stdout))) if status.success() => {
+            Ok(context_from_output(&String::from_utf8_lossy(&stdout)))
         }
-        Ok(Ok(out)) => {
-            log::warn!("cc hook: `{}` exited with {}", hook.command, out.status);
-            None
+        Ok(Ok((status, _))) => {
+            log::warn!("cc hook: `{}` exited with {}", hook.command, status);
+            Err(())
         }
         Ok(Err(e)) => {
             log::warn!("cc hook: `{}` could not be waited on: {e}", hook.command);
-            None
+            Err(())
         }
         Err(_) => {
             log::warn!("cc hook: `{}` outlived its {}s limit", hook.command, hook.timeout_secs);
-            None
+            Err(())
         }
     }
 }
@@ -396,10 +437,13 @@ pub async fn session_start_context(
     // Keyed by the hook set too, so editing `~/.claude` mid-session is picked
     // up on the next message instead of never.
     let key = session_id.map(|id| {
-        let mut commands: Vec<&str> = hooks
+        let mut commands: Vec<String> = hooks
             .iter()
             .filter(|h| h.event == Event::SessionStart)
-            .map(|h| h.command.as_str())
+            .map(|h| {
+                let root = root_matters(h).then(|| h.plugin_root.as_deref().map(|p| p.to_string_lossy().into_owned())).flatten();
+                format!("{}\u{0}{}", root.unwrap_or_default(), h.command)
+            })
             .collect();
         commands.sort_unstable();
         format!("{id}\u{0}{}", commands.join("\u{0}"))
@@ -417,7 +461,12 @@ pub async fn session_start_context(
         "hook_event_name": Event::SessionStart.name(),
         "source": "startup",
     });
-    let fresh = run(hooks, Event::SessionStart, &payload, cwd).await;
+    let (fresh, failed) = run_reporting(hooks, Event::SessionStart, &payload, cwd, None)
+        .await
+        .unwrap_or_default();
+    // A failed hook (cold disk, a scan, a network call) is retried on the next
+    // message instead of being replayed as "nothing to add" all session.
+    let key = key.filter(|_| !failed);
     if let Some(key) = key {
         if let Ok(mut cache) = SESSION_CACHE.lock() {
             let cache = cache.get_or_insert_with(HashMap::new);

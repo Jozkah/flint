@@ -333,12 +333,19 @@ pub fn judge_input(tool_name: &str, args: &serde_json::Value, task: &str) -> Jud
     JudgeInput {
         tool_name: tool_name.to_string(),
         args: sanitize_value(None, args),
-        task: redact(&clip(task, MAX_JUDGE_TASK_CHARS)),
+        task: redact_clipped(task, MAX_JUDGE_TASK_CHARS),
     }
 }
 
 fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
+}
+
+/// Redact, then clip. Clipping first could cut a secret in half so the
+/// remainder no longer matches a pattern; the slack before the first cut keeps
+/// any token that straddles it beyond the final clip.
+fn redact_clipped(text: &str, max: usize) -> String {
+    clip(&redact(&clip(text, max + 4096)), max)
 }
 
 fn redact(text: &str) -> String {
@@ -360,7 +367,7 @@ fn sanitize_value(key: Option<&str>, value: &serde_json::Value) -> serde_json::V
         return Value::String("<redacted>".into());
     }
     match value {
-        Value::String(s) => Value::String(redact(&clip(s, MAX_JUDGE_ARG_CHARS))),
+        Value::String(s) => Value::String(redact_clipped(s, MAX_JUDGE_ARG_CHARS)),
         Value::Array(items) => Value::Array(items.iter().map(|v| sanitize_value(None, v)).collect()),
         Value::Object(map) => Value::Object(
             map.iter()
@@ -800,12 +807,9 @@ fn classify_write(path: &str) -> Option<Block> {
             reason: reason.to_string(),
         })
     };
-    // Self-modification: the agent's own configuration.
-    if p.contains(".claude/")
-        || p.ends_with("claude.md")
-        || p.contains("/settings.json")
-        || p.starts_with("settings.json")
-    {
+    // Self-modification: the agent's own configuration. A bare `settings.json`
+    // is an ordinary project file; `.claude/settings.json` is under `.claude/`.
+    if p.contains(".claude/") || p.ends_with("claude.md") {
         return block(
             "self-modification",
             "editing the agent's own configuration lets it grant itself capability",
