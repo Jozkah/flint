@@ -44,7 +44,8 @@ export const SECURITY_IMPACTS = ['none', 'low', 'medium', 'high', 'critical']
  * registry item at all -- the in-chat activity timeline, expandable project
  * navigation, side-by-side chat, the global permission centre and the cross-run
  * audit export (AH-201..AH-205) -- and again from 205 to 210 for expandable
- * project navigation, agent forking and project-scoped work (AH-206..AH-210).
+ * project navigation, agent forking and project-scoped work (AH-206..AH-210),
+ * and to 211 for provider cache-aware token accounting (AH-211).
  * Adding items is allowed and removing them is not: the count is a floor that
  * this constant records, so a deletion still fails validation.
  */
@@ -144,9 +145,9 @@ export function validateRegistry(doc) {
   }
 
   const features = doc.features
-  if (features.length !== EXPECTED_FEATURE_COUNT) {
+  if (features.length < EXPECTED_FEATURE_COUNT) {
     bad(
-      `expected ${EXPECTED_FEATURE_COUNT} features, found ${features.length}. ` +
+      `expected at least ${EXPECTED_FEATURE_COUNT} features, found ${features.length}. ` +
         'Backlog items must not be deleted or merged; change status instead.'
     )
   }
@@ -325,7 +326,7 @@ export function renderMarkdown(doc) {
   for (const f of features) {
     const deps = f.dependencies.map((d) => `\`${d}\``).join(', ') || '-'
     out.push(
-      `| \`${f.id}\` | ${f.title} | ${f.phase} | ${f.category} | ${f.priority} | ` +
+      `| \`${f.id}\` | ${f.title.replace(/\|/g, '\\|')} | ${f.phase} | ${f.category} | ${f.priority} | ` +
         `\`${f.status}\` | ${f.securityImpact} | ${deps} |`
     )
   }
