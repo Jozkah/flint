@@ -146,11 +146,9 @@ export const useMCPServers = create<MCPServerStoreState>()((set, get) => ({
 
       return { mcpServers }
     }),
-  setServers: (servers) =>
-    set((state) => {
-      const mcpServers = { ...state.mcpServers, ...servers }
-      return { mcpServers }
-    }),
+  // Replaces the whole record: a server the loaded config no longer lists
+  // must leave the store too.
+  setServers: (servers) => set({ mcpServers: { ...servers } }),
   setSettings: (settings) =>
     set(() => ({
       settings: {

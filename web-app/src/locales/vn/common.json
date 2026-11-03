@@ -2934,7 +2934,9 @@
     "pagesAsImages": "Gửi các trang dưới dạng hình ảnh",
     "pagesAsImagesHint": "Gửi các trang của PDF này dưới dạng hình ảnh để mô hình thấy bản quét, biểu đồ và bố cục",
     "pdfPagesCut": "Đã gửi {{sent}} trên {{total}} trang đầu của {{name}} dưới dạng hình ảnh",
-    "pdfScannedAsImages": "{{name}} không có văn bản nên các trang đã được gửi dưới dạng hình ảnh"
+    "pdfScannedAsImages": "{{name}} không có văn bản nên các trang đã được gửi dưới dạng hình ảnh",
+    "ingestImageFailed": "Không thể xử lý ảnh đính kèm",
+    "ingestFailed": "Không thể lập chỉ mục các tệp đính kèm"
   },
   "fileViewer": {
     "openFull": "Mở bản xem trước đầy đủ",

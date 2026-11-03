@@ -35,5 +35,12 @@ export function looksLikeFilesystemPath(name: string): boolean {
   // separator with something either side, so an ordinary title that happens to
   // contain a slash ("Research / notes") is left alone by the surrounding
   // spaces rather than by luck.
-  return /^[^\s\\/]+[\\/][^\s\\/]+/.test(value)
+  const bare = /^([^\s\\/]+)[\\/]([^\s\\/]+)/.exec(value)
+  if (!bare) return false
+  // A single forward slash between short words or acronyms is prose, not a
+  // path: "and/or", "w/o", "TCP/IP", "24/7", "Q3/Q4". A backslash or a second
+  // separator still reads as a path.
+  const proseish = (part: string) => part.length <= 2 || /^[A-Z0-9]+$/.test(part)
+  const single = !value.includes('\\') && value.split('/').length === 2
+  return !(single && (proseish(bare[1]) || proseish(bare[2])))
 }
