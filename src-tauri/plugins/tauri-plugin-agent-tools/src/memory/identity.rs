@@ -240,7 +240,12 @@ mod tests {
         let root = unique_project("Casing");
         let derived_upper = derive_id(Path::new(r"C:\Src\Jan"));
         let derived_lower = derive_id(Path::new(r"c:\src\jan"));
-        assert_eq!(derived_upper, derived_lower);
+        // Folded only where the filesystem folds case (O04-016): on Linux the
+        // two spellings are different folders and stay different projects.
+        assert_eq!(
+            derived_upper == derived_lower,
+            cfg!(any(windows, target_os = "macos"))
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
