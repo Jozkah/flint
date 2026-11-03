@@ -4,6 +4,7 @@
  * per-room queue, run slots, persistence and store) and merges the groups.
  */
 import { clearRoomScratch, clearsKnowledge, clearsScratch } from './clearRoom'
+import { forgetRoomTodos } from './fullTools'
 import type { AbortIntent, RunCommand } from './engine'
 import { clearSuspensions } from './availability'
 import { parseAddress } from './addressing'
@@ -616,6 +617,7 @@ export function roomCommands(
         })
         if (clearsScratch(scope)) {
           await clearRoomScratch(roomId)
+          forgetRoomTodos(roomId)
           // Only "clear everything" drops the isolated workspaces and the
           // changes waiting in them; a chat or knowledge clear keeps them.
           await workspace.remove?.(roomId).catch(() => {})
@@ -634,6 +636,7 @@ export function roomCommands(
           await port.deleteRoom(roomId)
         }
       })
+      forgetRoomTodos(roomId)
       slots.delete(roomId)
       store().removeRoomLocally(roomId)
     },
