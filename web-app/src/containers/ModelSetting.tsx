@@ -568,7 +568,6 @@ export function SpecDraftPanel({ modelId }: { modelId: string }) {
             placeholder="16"
             value={info.spec_draft_n_max}
             min={1}
-            step={1}
             onChange={(raw) => updateNumber('spec_draft_n_max', raw)}
           />
           <NumberRow
@@ -577,7 +576,6 @@ export function SpecDraftPanel({ modelId }: { modelId: string }) {
             placeholder="0"
             value={info.spec_draft_n_min}
             min={0}
-            step={1}
             onChange={(raw) => updateNumber('spec_draft_n_min', raw)}
           />
           <NumberRow
@@ -587,7 +585,6 @@ export function SpecDraftPanel({ modelId }: { modelId: string }) {
             value={info.spec_draft_p_min}
             min={0}
             max={1}
-            step={0.05}
             onChange={(raw) => updateNumber('spec_draft_p_min', raw)}
           />
           <div className="space-y-2">
@@ -634,7 +631,6 @@ function NumberRow({
   value: number | undefined
   min?: number
   max?: number
-  step?: number
   onChange: (raw: string) => void
 }) {
   return (

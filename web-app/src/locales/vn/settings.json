@@ -1354,7 +1354,9 @@
     "confirmBody": "Thao tác này chỉ ghi đúng mục bên dưới vào tài khoản người dùng của bạn, không ghi gì khác. Không cần quyền quản trị.",
     "confirmUndo": "Tắt công tắc sẽ xóa mục này.",
     "confirm": "Thêm mục",
-    "failed": "Không thể thay đổi mục khởi động"
+    "failed": "Không thể thay đổi mục khởi động",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Mục trên thanh bên",

@@ -121,7 +121,7 @@ export function HuggingFaceDownloadAction({
       if (format === 'mlx') {
         const runtimeFiles = files.filter(isMlxRuntimeFile)
         if (!runtimeFiles.some((file) => file.name.toLowerCase().endsWith('.safetensors'))) {
-          throw new Error('This repository does not contain MLX safetensors files.')
+          throw new Error(t('sweep:hub.noMlxSafetensors'))
         }
         const finish = {
           kind: 'mlx' as const,
@@ -146,7 +146,7 @@ export function HuggingFaceDownloadAction({
         return
       }
 
-      if (!group) throw new Error('No GGUF variant selected.')
+      if (!group) throw new Error(t('sweep:hub.noVariantSelected'))
       await startGgufBundle({
         bundleId,
         repo,

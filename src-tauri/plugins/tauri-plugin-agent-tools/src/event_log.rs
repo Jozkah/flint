@@ -590,6 +590,61 @@ pub fn read_session(data_folder: &Path, session: &str) -> Result<Vec<Envelope>, 
     Ok(out)
 }
 
+/// One page of a session's events: those after `after`, at most `limit`, in
+/// `seq` order, plus the cursor to ask with next.
+///
+/// Reads under the same rules as [`read_session`] (a torn last line skipped,
+/// any other bad line an error) but holds only the page, not every envelope
+/// of a long session. `cursor` is the `seq` of the last event returned, so a
+/// caller that advances `after` to it never skips an event of a truncated
+/// page; with nothing newer it is `after` itself.
+pub fn read_session_after(
+    data_folder: &Path,
+    session: &str,
+    after: u64,
+    limit: usize,
+) -> Result<SessionPage, LogError> {
+    let Ok(bytes) = std::fs::read(log_path(data_folder, session)) else {
+        return Ok(SessionPage { events: Vec::new(), cursor: after, truncated: false });
+    };
+    let mut lines: Vec<&[u8]> = bytes
+        .split(|b| *b == b'\n')
+        .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
+        .collect();
+    let last = lines.iter().rposition(|l| !l.iter().all(u8::is_ascii_whitespace));
+    let mut seen = BTreeSet::new();
+    let mut newer: Vec<Envelope> = Vec::new();
+    for (i, line) in lines.drain(..).enumerate() {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        match decode_line(&String::from_utf8_lossy(line)) {
+            Ok(e) if e.session == session => {
+                if seen.insert(e.id.clone()) && e.seq > after {
+                    newer.push(e);
+                }
+            }
+            Ok(_) => return Err(LogError::Corrupt("an event of another session".into())),
+            Err(LogError::Corrupt(_)) if Some(i) == last => {}
+            Err(e) => return Err(e),
+        }
+    }
+    newer.sort_by_key(|e| e.seq);
+    let limit = limit.max(1);
+    let truncated = newer.len() > limit;
+    newer.truncate(limit);
+    let cursor = newer.last().map_or(after, |e| e.seq);
+    Ok(SessionPage { events: newer, cursor, truncated })
+}
+
+/// What [`read_session_after`] returns.
+#[derive(Debug)]
+pub struct SessionPage {
+    pub events: Vec<Envelope>,
+    pub cursor: u64,
+    pub truncated: bool,
+}
+
 /// Forget what this process loaded, as a restart would. Tests only.
 #[cfg(test)]
 pub(crate) fn forget_loaded() {
@@ -600,6 +655,17 @@ pub(crate) fn forget_loaded() {
 /// [`read_session`]. A log that cannot be read is reported and skipped, so one
 /// damaged session never hides the others. Order: by session log, then `seq`.
 pub fn read_all_sessions(data_folder: &Path) -> Vec<Envelope> {
+    read_sessions_modified_since(data_folder, None)
+}
+
+/// [`read_all_sessions`], leaving out every session whose log was last written
+/// before `since`. Such a log holds no event recorded after `since`, so a
+/// caller that only wants a recent window never loads the older sessions.
+/// `None` reads them all. A log whose time cannot be read is read, not skipped.
+pub fn read_sessions_modified_since(
+    data_folder: &Path,
+    since: Option<std::time::SystemTime>,
+) -> Vec<Envelope> {
     let Ok(entries) = std::fs::read_dir(events_dir(data_folder)) else {
         return Vec::new();
     };
@@ -607,6 +673,12 @@ pub fn read_all_sessions(data_folder: &Path) -> Vec<Envelope> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .filter(|p| {
+            let Some(since) = since else { return true };
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .map_or(true, |written| written >= since)
+        })
         .collect();
     paths.sort();
     let mut out = Vec::new();
@@ -698,6 +770,55 @@ mod tests {
         assert_eq!(back.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), ["run.started", "tool.requested", "tool.succeeded", "run.ended"]);
         assert!(back.windows(2).all(|w| w[0].seq < w[1].seq));
         assert!(read_session(&d, "other").unwrap().is_empty(), "sessions do not see each other");
+    }
+
+    /// CAGA-037: a page after a seq returns its own last seq as the cursor, so
+    /// walking the pages loses nothing even when the page is cut short.
+    #[test]
+    fn a_page_after_a_seq_carries_its_own_cursor() {
+        let d = dir("page-after");
+        for i in 0..5 {
+            append(&d, ev(&format!("e{i}"), "s1", "tool.succeeded", json!({ "n": i }))).unwrap();
+        }
+        let first = read_session_after(&d, "s1", 0, 2).unwrap();
+        assert_eq!(first.events.iter().map(|e| e.seq).collect::<Vec<_>>(), [1, 2]);
+        assert!(first.truncated);
+        assert_eq!(first.cursor, 2, "the cursor is the page's last event, not the log's end");
+        let mut after = first.cursor;
+        let mut got = first.events.len();
+        loop {
+            let page = read_session_after(&d, "s1", after, 2).unwrap();
+            got += page.events.len();
+            after = page.cursor;
+            if !page.truncated {
+                break;
+            }
+        }
+        assert_eq!((got, after), (5, 5));
+        let none = read_session_after(&d, "s1", 5, 2).unwrap();
+        assert!(none.events.is_empty() && !none.truncated && none.cursor == 5);
+        assert!(read_session_after(&d, "other", 3, 2).unwrap().events.is_empty());
+    }
+
+    /// O09-043: a session last written before the window is not read.
+    #[test]
+    fn sessions_written_before_the_window_are_not_loaded() {
+        let d = dir("modified-since");
+        append(&d, ev("old", "s-old", "tool.succeeded", json!({}))).unwrap();
+        append(&d, ev("new", "s-new", "tool.succeeded", json!({}))).unwrap();
+        let week = std::time::Duration::from_secs(7 * 24 * 3600);
+        let aged = std::time::SystemTime::now() - week;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(log_path(&d, "s-old"))
+            .unwrap()
+            .set_modified(aged)
+            .unwrap();
+        let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let recent = read_sessions_modified_since(&d, Some(cutoff));
+        assert_eq!(recent.iter().map(|e| e.session.as_str()).collect::<Vec<_>>(), ["s-new"]);
+        assert_eq!(read_sessions_modified_since(&d, None).len(), 2);
+        assert_eq!(read_all_sessions(&d).len(), 2);
     }
 
     #[test]

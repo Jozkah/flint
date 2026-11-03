@@ -125,7 +125,9 @@
     "searchPlaceholderShort": "搜尋或貼上 URL…",
     "resultLimit": "顯示",
     "recommendedHere": "建議用於這台電腦",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "匯入 GGUF 模型檔案，將其加入你的收藏。啟用多模態支援可附加 mmproj 以輸入影像或音訊；啟用草稿模型支援可用於推測解碼。嵌入模型會自動偵測。",

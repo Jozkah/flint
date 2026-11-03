@@ -2876,7 +2876,9 @@
     "pagesAsImages": "पेज इमेज के रूप में भेजें",
     "pagesAsImagesHint": "इस PDF के पेज इमेज के रूप में भेजें, ताकि मॉडल स्कैन, चार्ट और लेआउट देख सके",
     "pdfPagesCut": "{{name}} के {{total}} में से पहले {{sent}} पेज इमेज के रूप में भेजे गए",
-    "pdfScannedAsImages": "{{name}} में कोई टेक्स्ट नहीं है, इसलिए इसके पेज इमेज के रूप में भेजे गए"
+    "pdfScannedAsImages": "{{name}} में कोई टेक्स्ट नहीं है, इसलिए इसके पेज इमेज के रूप में भेजे गए",
+    "ingestImageFailed": "इमेज अटैचमेंट प्रोसेस नहीं हो सका",
+    "ingestFailed": "अटैचमेंट इंडेक्स नहीं हो सके"
   },
   "fileViewer": {
     "openFull": "पूरा पूर्वावलोकन खोलें",
@@ -3417,5 +3419,11 @@
     "discard": "ड्राफ़्ट हटाएँ",
     "resurvey": "दोबारा सर्वेक्षण करें",
     "accept": "स्वीकार करें और FLINT.md लिखें"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

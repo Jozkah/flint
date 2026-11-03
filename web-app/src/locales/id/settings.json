@@ -1335,7 +1335,9 @@
     "confirmBody": "Ini menulis persis entri di bawah ke akun pengguna Anda, dan tidak ada yang lain. Tidak perlu hak administrator.",
     "confirmUndo": "Mematikan sakelar akan menghapus entri ini.",
     "confirm": "Tambah entri",
-    "failed": "Tidak dapat mengubah entri startup"
+    "failed": "Tidak dapat mengubah entri startup",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Item sidebar",

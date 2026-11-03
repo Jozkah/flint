@@ -2871,7 +2871,9 @@
     "pagesAsImages": "ページを画像として送信",
     "pagesAsImagesHint": "この PDF のページを画像として送信し、モデルがスキャン・グラフ・レイアウトを読めるようにします",
     "pdfPagesCut": "{{name}} の全 {{total}} ページのうち最初の {{sent}} ページを画像として送信しました",
-    "pdfScannedAsImages": "{{name}} にはテキストがないため、ページを画像として送信しました"
+    "pdfScannedAsImages": "{{name}} にはテキストがないため、ページを画像として送信しました",
+    "ingestImageFailed": "画像の添付ファイルを取り込めませんでした",
+    "ingestFailed": "添付ファイルをインデックスできませんでした"
   },
   "fileViewer": {
     "openFull": "完全なプレビューを開く",
@@ -3398,5 +3400,11 @@
     "discard": "下書きを破棄",
     "resurvey": "再調査",
     "accept": "承認して FLINT.md を書き込む"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

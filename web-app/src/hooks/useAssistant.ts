@@ -185,13 +185,16 @@ export const useAssistant = create<AssistantState>((set, get) => ({
     // or an open conversation keeps answering to the instructions it started
     // with (janhq/jan#8524).
     const threadStore = useThreads.getState()
+    const patches: Record<string, Partial<Thread>> = {}
     for (const thread of Object.values(threadStore.threads)) {
       const bound = thread.assistants?.[0]
       if (!bound || bound.id !== assistant.id) continue
-      threadStore.updateThread(thread.id, {
+      patches[thread.id] = {
         assistants: [{ ...assistant, model: bound.model ?? thread.model }],
-      })
+      }
     }
+    // One store write for every bound thread, not one per thread.
+    if (Object.keys(patches).length > 0) threadStore.updateThreads(patches)
   },
   deleteAssistant: async (id) => {
     // Delete on the backend first: when it fails the assistant stays in the

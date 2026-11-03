@@ -41,6 +41,11 @@ describe('an ordinary collection name', () => {
     'Design and / or copy',
     'C: the language',
     'ratio 1/2 scale',
+    'TCP/IP',
+    'and/or',
+    '24/7',
+    'w/o notes',
+    'Q3/Q4 plan',
   ])('is left alone: %s', (name) => {
     expect(looksLikeFilesystemPath(name)).toBe(false)
   })

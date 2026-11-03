@@ -574,7 +574,7 @@ export const MessageItem = memo(
           <div key={`${message.id}-${partIndex}`} className="my-2">
             <img
               src={part.url}
-              alt={part.filename || 'Generated image'}
+              alt={part.filename || t('chat:messageItem.generatedImage')}
               className="max-w-full rounded-md cursor-pointer"
               onClick={() =>
                 setViewer({
@@ -814,7 +814,7 @@ export const MessageItem = memo(
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-destructive">
-                Generation failed
+                {t('chat:messageItem.generationFailed')}
               </div>
               <div className="text-fg-2 break-words">{messageError}</div>
             </div>

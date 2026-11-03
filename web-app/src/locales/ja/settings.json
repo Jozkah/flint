@@ -1338,7 +1338,9 @@
     "confirmBody": "下のエントリだけをそのままユーザーアカウントに書き込み、ほかには何も書き込みません。管理者権限は不要です。",
     "confirmUndo": "スイッチをオフにするとこのエントリは削除されます。",
     "confirm": "エントリを追加",
-    "failed": "スタートアップのエントリを変更できませんでした"
+    "failed": "スタートアップのエントリを変更できませんでした",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "サイドバーの項目",

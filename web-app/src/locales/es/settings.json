@@ -1527,7 +1527,9 @@
     "confirmBody": "Esto escribe exactamente la entrada de abajo en tu cuenta de usuario, y nada más. No necesita derechos de administrador.",
     "confirmUndo": "Al desactivar el interruptor se quita esta entrada.",
     "confirm": "Añadir entrada",
-    "failed": "No se pudo cambiar la entrada de inicio"
+    "failed": "No se pudo cambiar la entrada de inicio",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Elementos de la barra lateral",

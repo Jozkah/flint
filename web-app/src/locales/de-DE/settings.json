@@ -1338,7 +1338,9 @@
     "confirmBody": "Das schreibt genau den Eintrag unten in dein Benutzerkonto und sonst nichts. Es sind keine Administratorrechte nötig.",
     "confirmUndo": "Wenn du den Schalter ausschaltest, wird dieser Eintrag entfernt.",
     "confirm": "Eintrag hinzufügen",
-    "failed": "Der Autostart-Eintrag konnte nicht geändert werden"
+    "failed": "Der Autostart-Eintrag konnte nicht geändert werden",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Seitenleisten-Einträge",

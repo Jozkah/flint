@@ -102,6 +102,8 @@
       "idle": "空闲",
       "awaiting_approval": "等待批准",
       "awaiting_answer": "等待回答"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

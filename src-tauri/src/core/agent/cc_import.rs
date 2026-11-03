@@ -96,14 +96,37 @@ pub(crate) fn set_test_cc_home(dir: Option<PathBuf>) {
     TEST_CC_HOME.with(|d| *d.borrow_mut() = dir);
 }
 
-#[cfg(not(test))]
-fn default_scan_root() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join("Desktop").join("Coding"))
+/// The project folders scanned when the caller names no root: the projects the
+/// user has registered with Flint, and nothing else. There is no built-in
+/// guess at where someone keeps their code (the scan once assumed
+/// `~/Desktop/Coding`, one person's layout).
+#[cfg(all(not(test), not(feature = "cli")))]
+fn default_project_dirs() -> Vec<PathBuf> {
+    crate::core::agent::projects_registry::list_projects()
+        .into_iter()
+        .map(|p| PathBuf::from(p.folder))
+        .collect()
+}
+
+/// The CLI has no project registry: it scans only a root it is given.
+#[cfg(all(not(test), feature = "cli"))]
+fn default_project_dirs() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 #[cfg(test)]
-fn default_scan_root() -> Option<PathBuf> {
-    TEST_SCAN_ROOT.with(|d| d.borrow().clone())
+fn default_project_dirs() -> Vec<PathBuf> {
+    TEST_SCAN_ROOT
+        .with(|d| d.borrow().clone())
+        .map(|root| child_dirs(&root))
+        .unwrap_or_default()
+}
+
+/// The immediate sub-directories of `root`, each taken as a project folder.
+fn child_dirs(root: &Path) -> Vec<PathBuf> {
+    fs::read_dir(root)
+        .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -211,8 +234,16 @@ fn skill_exists(name: &str, base: Option<PathBuf>) -> bool {
         .unwrap_or(false)
 }
 
+/// Walks `~/.claude` and every project's `.claude`: disk work, so it runs on a
+/// blocking thread rather than on the async runtime.
 #[cfg_attr(not(feature = "cli"), tauri::command)]
 pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
+    tokio::task::spawn_blocking(move || scan_blocking(root))
+        .await
+        .map_err(|e| format!("the scan did not finish: {e}"))?
+}
+
+fn scan_blocking(root: Option<String>) -> Result<CcScan, String> {
     let mut skill_hits: Vec<(String, PathBuf, String)> = Vec::new();
     let mut plugin_hits: Vec<(String, PathBuf, String)> = Vec::new();
 
@@ -221,23 +252,19 @@ pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
         scan_installed_plugins(&home, "cc-user", &mut plugin_hits);
     }
 
-    let scan_root = root.map(PathBuf::from).or_else(default_scan_root);
-    if let Some(scan_root) = scan_root {
-        if let Ok(entries) = fs::read_dir(&scan_root) {
-            for entry in entries.flatten() {
-                let project_dir = entry.path();
-                if !project_dir.is_dir() {
-                    continue;
-                }
-                let Some(project_name) = project_dir.file_name().and_then(|n| n.to_str()) else {
-                    continue;
-                };
-                let origin = format!("project:{project_name}");
-                let project_claude = project_dir.join(".claude");
-                scan_skills_under(&project_claude.join("skills"), &origin, &mut skill_hits);
-                scan_project_plugins(&project_claude, &origin, &mut plugin_hits);
-            }
-        }
+    // A named root is a folder of projects; with none, the registered projects.
+    let project_dirs = match root {
+        Some(root) => child_dirs(Path::new(&root)),
+        None => default_project_dirs(),
+    };
+    for project_dir in project_dirs {
+        let Some(project_name) = project_dir.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let origin = format!("project:{project_name}");
+        let project_claude = project_dir.join(".claude");
+        scan_skills_under(&project_claude.join("skills"), &origin, &mut skill_hits);
+        scan_project_plugins(&project_claude, &origin, &mut plugin_hits);
     }
 
     let global_skills = user_skills_dir();
@@ -461,8 +488,20 @@ fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<Stri
     Ok("imported".to_string())
 }
 
+/// Copies directory trees into the skill and plugin stores: disk work, so it
+/// runs on a blocking thread rather than on the async runtime.
 #[cfg_attr(not(feature = "cli"), tauri::command)]
 pub async fn agent_cc_import(
+    items: Vec<CcImportSelection>,
+    overwrite: bool,
+    link_hooks: Option<bool>,
+) -> Result<CcImportResult, String> {
+    tokio::task::spawn_blocking(move || import_blocking(items, overwrite, link_hooks))
+        .await
+        .map_err(|e| format!("the import did not finish: {e}"))?
+}
+
+fn import_blocking(
     items: Vec<CcImportSelection>,
     overwrite: bool,
     link_hooks: Option<bool>,
@@ -720,6 +759,19 @@ mod tests {
         fs::write(skill_dir.join("SKILL.md"), body).unwrap();
     }
 
+    /// CAGA-038 / F1a-011: with no root and no registered project, no folder
+    /// is guessed at: the scan finds nothing in projects.
+    #[test]
+    fn no_root_and_no_registered_project_scans_no_project_folder() {
+        set_test_scan_root(None);
+        assert!(default_project_dirs().is_empty());
+        let home = tempdir().unwrap();
+        set_test_cc_home(Some(home.path().to_path_buf()));
+        let scan = scan_blocking(None).unwrap();
+        assert!(scan.items.iter().all(|i| !i.origin.starts_with("project:")));
+        set_test_cc_home(None);
+    }
+
     #[test]
     fn scan_finds_cc_user_skill_and_flags_existing() {
         let cc_home = tempdir().unwrap();
@@ -739,7 +791,7 @@ mod tests {
         fs::create_dir_all(&global_skills_dir).unwrap();
         write_skill(&global_skills_dir, "my-skill", "# existing");
 
-        let scan = tokio_test_block_on(agent_cc_scan(None)).unwrap();
+        let scan = scan_blocking(None).unwrap();
         let hit = scan
             .items
             .iter()
@@ -796,7 +848,7 @@ mod tests {
             .join("bar");
         fs::create_dir_all(&project_plugin_dir).unwrap();
 
-        let scan = tokio_test_block_on(agent_cc_scan(None)).unwrap();
+        let scan = scan_blocking(None).unwrap();
         let cc_hit = scan
             .items
             .iter()
@@ -828,7 +880,7 @@ mod tests {
         write_skill(&cc_home.path().join("skills-src"), "cool-skill", "# body");
         let src = cc_home.path().join("skills-src").join("cool-skill");
 
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "cool-skill".to_string(),
@@ -836,7 +888,7 @@ mod tests {
             }],
             false,
             None,
-        ))
+        )
         .unwrap();
 
         assert_eq!(result.imported, vec!["cool-skill".to_string()]);
@@ -862,7 +914,7 @@ mod tests {
         write_skill(&skills, "keep", "# mine");
 
         let missing = cc_home.path().join("nowhere");
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "keep".to_string(),
@@ -870,13 +922,13 @@ mod tests {
             }],
             true,
             None,
-        ))
+        )
         .unwrap();
         assert!(result.imported.is_empty() && !result.errors.is_empty());
         assert_eq!(std::fs::read_to_string(skills.join("keep").join("SKILL.md")).unwrap(), "# mine");
 
         write_skill(&cc_home.path().join("src"), "keep", "# theirs");
-        tokio_test_block_on(agent_cc_import(
+        import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "keep".to_string(),
@@ -884,7 +936,7 @@ mod tests {
             }],
             true,
             None,
-        ))
+        )
         .unwrap();
         assert!(std::fs::read_to_string(skills.join("keep").join("SKILL.md")).unwrap().contains("theirs"));
         let leftovers: Vec<_> = std::fs::read_dir(&skills)
@@ -909,7 +961,7 @@ mod tests {
         fs::write(skills.join("foo.md"), "# flat").unwrap();
         write_skill(&cc_home.path().join("src"), "foo", "# cc");
         assert!(skill_exists("foo", Some(skills.clone())));
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "foo".to_string(),
@@ -917,7 +969,7 @@ mod tests {
             }],
             false,
             None,
-        ))
+        )
         .unwrap();
         assert!(result.imported.is_empty(), "{result:?}");
         assert!(!skills.join("foo").exists(), "the flat skill was shadowed");
@@ -941,7 +993,7 @@ mod tests {
             source_path: cc_home.path().join(dir).join("foo").to_string_lossy().into_owned(),
         };
         for overwrite in [false, true] {
-            let result = tokio_test_block_on(agent_cc_import(vec![pick("a"), pick("b")], overwrite, None)).unwrap();
+            let result = import_blocking(vec![pick("a"), pick("b")], overwrite, None).unwrap();
             assert!(result.imported.is_empty() && result.skipped.is_empty(), "{result:?}");
             assert_eq!(result.errors.len(), 1, "{result:?}");
             assert!(result.errors[0].contains("2 places"));
@@ -972,7 +1024,7 @@ mod tests {
         fs::write(plugin_src.join(".mcp.json"), "{}").unwrap();
         fs::write(plugin_src.join("README.md"), "readme").unwrap();
 
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Plugin,
                 name: "my-plugin".to_string(),
@@ -980,7 +1032,7 @@ mod tests {
             }],
             false,
             None,
-        ))
+        )
         .unwrap();
 
         assert_eq!(result.imported, vec!["my-plugin".to_string()]);
@@ -1008,7 +1060,7 @@ mod tests {
         write_skill(src_root.path(), "existing", "# new content");
         let src = src_root.path().join("existing");
 
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "existing".to_string(),
@@ -1016,7 +1068,7 @@ mod tests {
             }],
             false,
             None,
-        ))
+        )
         .unwrap();
 
         assert!(result.imported.is_empty());
@@ -1034,7 +1086,7 @@ mod tests {
         set_test_user_skills(Some(global_store.path().to_path_buf()));
         set_test_user_plugins(None);
 
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "../evil".to_string(),
@@ -1042,7 +1094,7 @@ mod tests {
             }],
             false,
             None,
-        ))
+        )
         .unwrap();
 
         assert!(result.imported.is_empty());
@@ -1068,7 +1120,7 @@ mod tests {
             .join("caveman")
             .join("SKILL.md");
 
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "caveman".into(),
@@ -1076,7 +1128,7 @@ mod tests {
             }],
             false,
             Some(true),
-        ))
+        )
         .unwrap();
         assert_eq!(result.imported, vec!["caveman".to_string()]);
         assert!(cc_links::load().is_linked(LinkKind::Skill, "caveman"));
@@ -1121,7 +1173,7 @@ mod tests {
         let dir = tauri_plugin_agent_tools::skills::skills_dir(store.path());
         write_skill(&dir, "mine", "flint copy");
 
-        let result = tokio_test_block_on(agent_cc_import(
+        let result = import_blocking(
             vec![CcImportSelection {
                 kind: CcItemKind::Skill,
                 name: "mine".into(),
@@ -1134,7 +1186,7 @@ mod tests {
             }],
             false,
             None,
-        ))
+        )
         .unwrap();
         assert_eq!(result.skipped, vec!["mine".to_string()]);
         // Linking it would let the next sync overwrite a copy the user kept.
@@ -1186,30 +1238,5 @@ mod tests {
         copy_dir_recursive(src.path(), dst.path()).unwrap();
         assert!(dst.path().join("SKILL.md").exists());
         assert!(!dst.path().join("key").exists(), "a file link must not be copied");
-    }
-
-    /// Minimal blocking executor for these `async fn`s (they contain no real
-    /// `.await` points -- everything is sync `std::fs` -- so a tiny no-dependency
-    /// poll loop is enough without pulling in `#[tokio::test]` machinery.
-    fn tokio_test_block_on<F: std::future::Future>(fut: F) -> F::Output {
-        use std::future::Future as _;
-        use std::pin::Pin;
-        use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-        fn noop(_: *const ()) {}
-        fn clone(_: *const ()) -> RawWaker {
-            RawWaker::new(std::ptr::null(), &VTABLE)
-        }
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, noop, noop, noop);
-        let raw_waker = RawWaker::new(std::ptr::null(), &VTABLE);
-        let waker = unsafe { Waker::from_raw(raw_waker) };
-        let mut cx = Context::from_waker(&waker);
-        let mut fut = Box::pin(fut);
-        loop {
-            match Pin::new(&mut fut).as_mut().poll(&mut cx) {
-                Poll::Ready(v) => return v,
-                Poll::Pending => continue,
-            }
-        }
     }
 }

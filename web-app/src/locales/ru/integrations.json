@@ -102,6 +102,8 @@
       "idle": "простаивает",
       "awaiting_approval": "ждёт одобрения",
       "awaiting_answer": "ждёт ответа"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

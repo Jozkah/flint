@@ -1338,7 +1338,9 @@
     "confirmBody": "这只会向你的用户账户写入下面这一条内容，不会写入其他任何内容。不需要管理员权限。",
     "confirmUndo": "关闭开关会移除此条目。",
     "confirm": "添加条目",
-    "failed": "无法更改启动项"
+    "failed": "无法更改启动项",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "侧边栏项目",

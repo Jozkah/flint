@@ -45,7 +45,9 @@ export function ServerSessionDialog({
           setMissing(info.missing.join('; ') || t('integrations:serverSession.notReady'))
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (live) setMissing(t('integrations:serverSession.checkFailed'))
+      })
     listRunModels()
       .then((out) => {
         if (!live) return
@@ -58,7 +60,11 @@ export function ServerSessionDialog({
           ''
         setModel(pick)
       })
-      .catch(() => live && setModels([]))
+      .catch(() => {
+        if (!live) return
+        setModels([])
+        setMissing((m) => m ?? t('integrations:serverSession.modelsFailed'))
+      })
     return () => {
       live = false
     }

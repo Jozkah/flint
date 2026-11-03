@@ -38,6 +38,14 @@ describe('WebPreviewHost', () => {
     expect(frame.getAttribute('src')).toBe('https://a.com')
   })
 
+  it('does not request a favicon from the previewed origin', () => {
+    useWebPreview.getState().openUrl('https://a.com')
+    useWebPreview.setState({ surface: 'pip' })
+    const { container } = render(<WebPreviewHost />)
+    expect(container.querySelector('img[src*="favicon"]')).toBeNull()
+    expect(screen.getAllByTestId('page-tab-icon').length).toBeGreaterThan(0)
+  })
+
   it('never frames a page from the app origin', () => {
     useWebPreview.getState().openUrl(window.location.origin + '/x')
     render(<WebPreviewHost />)
