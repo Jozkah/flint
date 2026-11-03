@@ -2876,7 +2876,9 @@
     "pagesAsImages": "Seiten als Bilder senden",
     "pagesAsImagesHint": "Die Seiten dieses PDFs als Bilder senden, damit das Modell Scans, Diagramme und Layout sieht",
     "pdfPagesCut": "Die ersten {{sent}} von {{total}} Seiten von {{name}} wurden als Bilder gesendet",
-    "pdfScannedAsImages": "{{name}} enthält keinen Text, daher wurden die Seiten als Bilder gesendet"
+    "pdfScannedAsImages": "{{name}} enthält keinen Text, daher wurden die Seiten als Bilder gesendet",
+    "ingestImageFailed": "Bildanhang konnte nicht verarbeitet werden",
+    "ingestFailed": "Anhänge konnten nicht indiziert werden"
   },
   "fileViewer": {
     "openFull": "Vollständige Vorschau öffnen",

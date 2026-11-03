@@ -2933,7 +2933,9 @@
     "pagesAsImages": "Invia le pagine come immagini",
     "pagesAsImagesHint": "Invia le pagine di questo PDF come immagini, così il modello vede scansioni, grafici e impaginazione",
     "pdfPagesCut": "Sono state inviate come immagini le prime {{sent}} pagine su {{total}} di {{name}}",
-    "pdfScannedAsImages": "{{name}} non contiene testo, quindi le sue pagine sono state inviate come immagini"
+    "pdfScannedAsImages": "{{name}} non contiene testo, quindi le sue pagine sono state inviate come immagini",
+    "ingestImageFailed": "Impossibile elaborare l'immagine allegata",
+    "ingestFailed": "Impossibile indicizzare gli allegati"
   },
   "fileViewer": {
     "openFull": "Apri anteprima completa",

@@ -415,7 +415,6 @@ type CoworkSessionsState = {
    */
   appendTurns: (id: string, turns: CoworkTurn[]) => void
   rewindToLastUser: (id: string) => void
-  clearSession: (id: string) => void
 }
 
 import {
@@ -1071,22 +1070,6 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               updated: now(),
             }
           }),
-        })),
-
-      clearSession: (id) =>
-        set((s) => ({
-          sessions: s.sessions.map((x) =>
-            x.id === id
-              ? {
-                  ...x,
-                  turns: [],
-                  messages: [],
-                  subagents: [],
-                  lastUsage: undefined,
-                  updated: now(),
-                }
-              : x
-          ),
         })),
     }),
     {

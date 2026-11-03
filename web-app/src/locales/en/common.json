@@ -3005,7 +3005,9 @@
     "pagesAsImages": "Send pages as images",
     "pagesAsImagesHint": "Send this PDF's pages as images, so the model sees scans, charts and layout",
     "pdfPagesCut": "Sent the first {{sent}} of {{total}} pages of {{name}} as images",
-    "pdfScannedAsImages": "{{name}} has no text, so its pages were sent as images"
+    "pdfScannedAsImages": "{{name}} has no text, so its pages were sent as images",
+    "ingestImageFailed": "Failed to ingest image attachment",
+    "ingestFailed": "Failed to index attachments"
   },
   "fileViewer": {
     "openFull": "Open full preview",

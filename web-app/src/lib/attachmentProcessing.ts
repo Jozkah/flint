@@ -362,7 +362,7 @@ export const processAttachmentsForSend = async (
         console.error(`Failed to ingest image ${img.name}:`, err)
         notifyUpdate(img.name, 'error')
         const desc = formatAttachmentError(err)
-        toast.error('Failed to ingest image attachment', { description: desc })
+        toast.error(i18n.t('common:composerChip.ingestImageFailed'), { description: desc })
         throw err instanceof Error ? err : new Error(desc)
       }
     }
@@ -543,7 +543,7 @@ export const processAttachmentsForSend = async (
       notifyUpdate(doc.name, 'error')
       const desc = formatAttachmentError(err)
       if (!(err instanceof MissingAttachmentError)) {
-        toast.error('Failed to index attachments', { description: desc })
+        toast.error(i18n.t('common:composerChip.ingestFailed'), { description: desc })
       }
       throw err instanceof Error ? err : new Error(desc)
     }
