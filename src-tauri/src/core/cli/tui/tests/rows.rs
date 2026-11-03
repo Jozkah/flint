@@ -2154,6 +2154,8 @@ fn reload_provider_configs_picks_up_login_credentials() {
             todo_registry: None,
             system_prompt_override: None,
             subagents_enabled: true,
+            subagent_depth: 0,
+            max_subagent_depth: 1,
             max_parallel_subagents: 4,
             auto_approve: false,
             bypass: false,
