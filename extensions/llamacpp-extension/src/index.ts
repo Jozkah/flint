@@ -789,7 +789,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const saved = await this.getSettings()
     const config: Record<string, unknown> = {}
     for (const item of settings) {
-      const value = saved.find((s) => s.key === item.key)?.controllerProps.value
+      const value = saved.find((s) => s.key === item.key)?.controllerProps?.value
       config[item.key] = value ?? item.controllerProps.value
     }
     return config
@@ -832,7 +832,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // preset kept the old value until something else rewrote it.
     if (current.length) {
       for (const p of componentProps) {
-        if (!p.key || current.some((s) => s.key === p.key)) continue
+        if (!p.key || !p.controllerProps || current.some((s) => s.key === p.key)) continue
         const value = (p.controllerProps as { value?: unknown } | undefined)?.value
         updated.push(p as SettingComponentProps)
         changed.push({ key: p.key, value })
@@ -2322,7 +2322,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
             'Point the import at a file already on this machine.'
         )
       }
-      if (path.split(/[\/]/).includes('..')) {
+      if (path.split(/[\\/]/).includes('..')) {
         throw new Error(`Refusing path with '..' segment: ${path}`)
       }
       // The Hugging Face downloader returns a path relative to the data

@@ -1265,7 +1265,8 @@ pub fn merge(
                 .filter(|l| !l.is_empty())
                 .map(str::to_string)
                 .collect();
-            if tree.is_empty() || conflicts.is_empty() {
+            let is_oid = tree.len() >= 40 && tree.bytes().all(|b| b.is_ascii_hexdigit());
+            if !is_oid || conflicts.is_empty() {
                 return Err(
                     "git could not test this merge (git 2.38 or newer is needed)".to_string(),
                 );

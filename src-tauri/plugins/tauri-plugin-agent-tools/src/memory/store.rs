@@ -145,7 +145,18 @@ fn save_keeping(store_root: &Path, scope: Scope, records: &[MemoryRecord], kept:
     // Unique per process so two Jan windows writing at once cannot land on the
     // same temp file and corrupt each other's write.
     let temp = path.with_extension(format!("jsonl.tmp-{}", std::process::id()));
-    std::fs::write(&temp, body.as_bytes()).map_err(|e| format!("ERROR: {e}"))?;
+    // Synced before the rename, so a power loss cannot leave an empty file
+    // under the final name.
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::File::create(&temp).map_err(|e| format!("ERROR: {e}"))?;
+        file.write_all(body.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&temp);
+                format!("ERROR: {e}")
+            })?;
+    }
     let renamed = rename_with_retry(&temp, &path);
     if renamed.is_err() {
         let _ = std::fs::remove_file(&temp);
