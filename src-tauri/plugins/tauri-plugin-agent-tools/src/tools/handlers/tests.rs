@@ -3081,6 +3081,38 @@ async fn grep_accepts_query_as_the_pattern() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// An optional filter or directory sent as `""` means "not given": no glob
+/// filter and the default directory, not a pattern that matches nothing.
+#[tokio::test]
+async fn grep_and_find_treat_empty_optional_arguments_as_omitted() {
+    let root = unique_root();
+    std::fs::write(root.join("a.txt"), "needle here
+").unwrap();
+    let out = execute_builtin(
+        lookup("grep").unwrap(),
+        &json!({ "pattern": "needle", "glob": "", "path": "" }),
+        &root,
+    )
+    .await;
+    assert!(out.contains("a.txt"), "{out}");
+    let found = execute_builtin(
+        lookup("find").unwrap(),
+        &json!({ "pattern": "*.txt", "path": "" }),
+        &root,
+    )
+    .await;
+    assert!(found.contains("a.txt"), "{found}");
+    // Whitespace is still a value, not "omitted".
+    let spaced = execute_builtin(
+        lookup("grep").unwrap(),
+        &json!({ "pattern": "needle", "glob": " " }),
+        &root,
+    )
+    .await;
+    assert!(!spaced.contains("a.txt"), "{spaced}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[tokio::test]
 async fn bash_missing_command_and_job_id_errors() {
     let root = unique_root();

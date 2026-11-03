@@ -16,6 +16,7 @@
     "MODEL_LOAD_TIMED_OUT": "Wczytywanie modelu trwało zbyt długo i zostało zatrzymane. Zwykle pomaga mniejszy model lub mniejszy rozmiar kontekstu.",
     "MISSING_SHARED_LIBRARY": "Brakuje biblioteki potrzebnej silnikowi, więc nie może się uruchomić.",
     "GPU_DRIVER_TOO_OLD": "Sterownik GPU jest zbyt stary dla tego silnika. Zaktualizowanie sterownika lub przełączenie na silnik CPU w Ustawieniach rozwiąże problem.",
+    "GPU_NOT_SUPPORTED": "Ten procesor graficzny NVIDIA jest zbyt stary dla dodatku silnika CUDA, który wymaga compute capability 7.5 (GeForce RTX serii 20) lub nowszej. Usuń dodatek CUDA w sekcji Dodatki silnika w Ustawieniach, aby uruchamiać przez Vulkan.",
     "CPU_NOT_SUPPORTED": "Procesor tego komputera nie ma instrukcji potrzebnych silnikowi (wymagany jest procesor x86 z AVX), więc silnik uległ awarii. Flint już raz ponowił próbę z modelem wyłącznie na CPU; jeśli nadal widzisz ten komunikat, ta próba również zakończyła się awarią albo silnik był już ustawiony tylko na CPU.",
     "OS_VERSION_UNSUPPORTED": "Ta wersja macOS jest zbyt stara dla silnika. Zaktualizowanie macOS rozwiąże problem.",
     "MODEL_QUANT_NOT_SUPPORTED": "Ten model używa typu kwantyzacji, którego backend GPU nie obsługuje. Pobierz inną kwantyzację, na przykład Q4_K_M, lub wyłącz odciążanie na GPU.",

@@ -93,7 +93,67 @@ pub fn apply_worker_env<R: tauri::Runtime>(
     let dir = addon::active_addon(&root, addon::pubkey().as_deref(), &exp.as_expect())?;
     log::info!("engine add-on in use: {}", dir.display());
     envs.insert(addon::WORKER_ADDON_ENV.into(), dir.to_string_lossy().into_owned());
+    hide_unsupported_gpus(envs, std::env::var_os(addon::CUDA_VISIBLE_DEVICES).is_some(), || {
+        tauri_plugin_hardware::vendor::nvidia::get_nvidia_gpus()
+            .iter()
+            .filter_map(|g| {
+                let cc = addon::parse_compute(&g.nvidia_info.as_ref()?.compute_capability)?;
+                Some((g.uuid.clone(), cc))
+            })
+            .collect()
+    });
     Some(dir)
+}
+
+/// Sets `CUDA_VISIBLE_DEVICES` so the add-on only sees GPUs it has kernels
+/// for, unless the user already chose devices (model env or app environment).
+fn hide_unsupported_gpus(
+    envs: &mut HashMap<String, String>,
+    set_in_process: bool,
+    gpus: impl FnOnce() -> Vec<(String, u32)>,
+) {
+    let user_set = set_in_process
+        || envs.keys().any(|k| k.eq_ignore_ascii_case(addon::CUDA_VISIBLE_DEVICES));
+    if user_set {
+        return;
+    }
+    if let Some(value) = addon::cuda_visible_devices(&gpus(), addon::CUDA13_MIN_COMPUTE) {
+        log::info!(
+            "hiding NVIDIA GPUs older than compute {}.{} from the CUDA add-on: {}={value}",
+            addon::CUDA13_MIN_COMPUTE / 10,
+            addon::CUDA13_MIN_COMPUTE % 10,
+            addon::CUDA_VISIBLE_DEVICES
+        );
+        envs.insert(addon::CUDA_VISIBLE_DEVICES.into(), value);
+    }
+}
+
+#[cfg(test)]
+mod hide_tests {
+    use super::*;
+
+    fn gpus() -> Vec<(String, u32)> {
+        vec![("aaa".into(), 61), ("bbb".into(), 89)]
+    }
+
+    #[test]
+    fn a_mixed_rig_hides_the_pascal_card() {
+        let mut envs = HashMap::new();
+        hide_unsupported_gpus(&mut envs, false, gpus);
+        assert_eq!(envs.get("CUDA_VISIBLE_DEVICES").map(String::as_str), Some("GPU-bbb"));
+    }
+
+    #[test]
+    fn a_user_choice_is_kept() {
+        let mut envs = HashMap::from([("cuda_visible_devices".to_string(), "0".to_string())]);
+        hide_unsupported_gpus(&mut envs, false, gpus);
+        assert_eq!(envs.len(), 1);
+        assert_eq!(envs["cuda_visible_devices"], "0");
+
+        let mut envs = HashMap::new();
+        hide_unsupported_gpus(&mut envs, true, || panic!("not probed when the user set it"));
+        assert!(envs.is_empty());
+    }
 }
 
 #[derive(Debug, Serialize)]

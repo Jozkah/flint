@@ -155,7 +155,6 @@ pub fn free_vram_mb() -> Option<u64> {
 
 /// Invalidates cached hardware info so the next `get_system_info()` re-detects GPUs.
 pub fn invalidate_system_info() {
-    #[cfg(target_os = "linux")]
     vendor::nvidia::invalidate_nvml();
     let mut guard = SYSTEM_INFO.write().unwrap_or_else(|e| e.into_inner());
     *guard = None;

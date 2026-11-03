@@ -55,6 +55,9 @@ export function buildPageIndex(t: Translate): PageEntry[] {
   return out
 }
 
+// One Fuse index per index array, so a keystroke does not rebuild it.
+const fuseCache = new WeakMap<PageEntry[], Fuse<PageEntry>>()
+
 /** Typo-tolerant match on a page's name first, its aliases second. */
 export function searchPages(
   index: PageEntry[],
@@ -63,13 +66,17 @@ export function searchPages(
 ): PageEntry[] {
   const q = query.trim()
   if (!q) return []
-  const fuse = new Fuse(index, {
-    keys: [
-      { name: 'title', weight: 0.75 },
-      { name: 'keywords', weight: 0.25 },
-    ],
-    threshold: 0.3,
-    ignoreLocation: true,
-  })
+  let fuse = fuseCache.get(index)
+  if (!fuse) {
+    fuse = new Fuse(index, {
+      keys: [
+        { name: 'title', weight: 0.75 },
+        { name: 'keywords', weight: 0.25 },
+      ],
+      threshold: 0.3,
+      ignoreLocation: true,
+    })
+    fuseCache.set(index, fuse)
+  }
   return fuse.search(q, { limit }).map((r) => r.item)
 }

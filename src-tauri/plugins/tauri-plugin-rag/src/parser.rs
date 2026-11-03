@@ -509,7 +509,8 @@ fn parse_csv(file_path: &str) -> Result<String, RagError> {
 
 /// Renders a cell for the model. Date cells arrive as Excel serial numbers,
 /// which a model cannot read as dates, so they become ISO 8601 text.
-/// calamine 0.36 already resolves the 1900/1904 epoch in `to_ymd_hms_milli`.
+/// calamine resolves the 1900/1904 epoch in `to_ymd_hms_milli` (0.37 also
+/// keeps an `x15:workbookPr` extension from resetting the 1904 flag).
 fn format_cell(cell: &Data) -> String {
     match cell {
         Data::DateTime(dt) if dt.is_duration() => excel_duration(dt.as_f64()),
@@ -681,13 +682,14 @@ fn parse_pptx(file_path: &str) -> Result<String, RagError> {
     let mut zip = ZipArchive::new(file).map_err(|e| RagError::ParseError(e.to_string()))?;
 
     // Collect slide files: ppt/slides/slide*.xml
-    let mut slides = Vec::new();
-    for i in 0..zip.len() {
-        let name = zip.by_index(i).map(|f| f.name().to_string()).unwrap_or_default();
-        if name.starts_with("ppt/slides/") && name.ends_with(".xml") {
-            slides.push(name);
-        }
-    }
+    // `file_names` reads the central directory only; `by_index` would build a
+    // decompressing reader for every entry just to get its name.
+    let mut slides: Vec<String> = zip
+        .file_names()
+        .filter_map(|n| n.ok())
+        .filter(|n| n.starts_with("ppt/slides/") && n.ends_with(".xml"))
+        .map(|n| n.into_owned())
+        .collect();
     slides.sort_by_key(|n| slide_sort_key(n));
 
     let mut output = String::new();
@@ -831,7 +833,7 @@ mod tests {
             let file = fs::File::create(&path).unwrap();
             let mut zip = zip::ZipWriter::new(file);
             for (entry, body) in entries {
-                zip.start_file(*entry, zip::write::FileOptions::default())
+                zip.start_file(*entry, zip::write::SimpleFileOptions::default())
                     .unwrap();
                 zip.write_all(body.as_bytes()).unwrap();
             }
@@ -955,6 +957,59 @@ mod tests {
             false,
         ));
         assert_eq!(format_cell(&d), "36:00:00");
+    }
+
+    #[test]
+    fn serial_in_a_1904_workbook_is_the_same_calendar_date() {
+        // 2023-07-16 is 45123 in the 1900 system and 43661 in the 1904 one.
+        let d = Data::DateTime(calamine::ExcelDateTime::new(
+            43661.0,
+            calamine::ExcelDateTimeType::DateTime,
+            true,
+        ));
+        assert_eq!(format_cell(&d), "2023-07-16");
+    }
+
+    /// A 1904-epoch xlsx read end to end. The `x15:workbookPr` extension is
+    /// what Excel writes beside it; calamine before 0.37 let it reset the
+    /// 1904 flag, shifting every date by four years.
+    #[test]
+    fn xlsx_1904_workbook_dates_survive_the_calamine_read() {
+        const REL: &str = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#;
+        let root_rels = format!(
+            r#"{REL}<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#
+        );
+        let wb_rels = format!(
+            r#"{REL}<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>"#
+        );
+        let dir = TempDir::new("xlsx1904");
+        let path = dir.zip(
+            "date1904.xlsx",
+            &[
+                (
+                    "[Content_Types].xml",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>"#,
+                ),
+                ("_rels/.rels", &root_rels),
+                (
+                    "xl/workbook.xml",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"><workbookPr date1904="1"/><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets><extLst><ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}"><x15:workbookPr chartTrackingRefBase="1"/></ext></extLst></workbook>"#,
+                ),
+                ("xl/_rels/workbook.xml.rels", &wb_rels),
+                (
+                    "xl/styles.xml",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/></cellXfs></styleSheet>"#,
+                ),
+                (
+                    "xl/worksheets/sheet1.xml",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>when</t></is></c><c r="B1" s="1"><v>43661.5</v></c></row></sheetData></worksheet>"#,
+                ),
+            ],
+        );
+        assert_eq!(
+            parse_spreadsheet(&path).unwrap(),
+            "# Sheet: Data\nwhen\t2023-07-16T12:00:00\n\n"
+        );
     }
 
     #[test]

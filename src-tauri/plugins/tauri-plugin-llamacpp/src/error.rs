@@ -12,6 +12,8 @@ pub enum ErrorCode {
     ModelLoadCancelled,
     MissingSharedLibrary,
     GpuDriverTooOld,
+    /// The GPU is older than any architecture the CUDA engine has kernels for.
+    GpuNotSupported,
     CpuNotSupported,
     OsVersionUnsupported,
     ModelQuantNotSupported,
@@ -153,6 +155,17 @@ impl LlamacppError {
             );
             err.missing_libraries = (!libs.is_empty()).then_some(libs);
             return Some(err);
+        }
+
+        // CUDA 13 has no kernels for Maxwell, Pascal or Volta, so the first
+        // kernel launch on such a GPU fails (janhq/jan#9501). Checked before
+        // the driver markers: the driver is fine, the card is too old.
+        if lower.contains("no kernel image is available") {
+            return Some(Self::new(
+                ErrorCode::GpuNotSupported,
+                "This GPU is too old for the CUDA engine (compute capability 7.5 or newer is required).".into(),
+                Some(output.into()),
+            ));
         }
 
         if is_driver_too_old(&lower) {
@@ -386,6 +399,7 @@ mod tests {
             (ErrorCode::ModelLoadCancelled, "MODEL_LOAD_CANCELLED"),
             (ErrorCode::MissingSharedLibrary, "MISSING_SHARED_LIBRARY"),
             (ErrorCode::GpuDriverTooOld, "GPU_DRIVER_TOO_OLD"),
+            (ErrorCode::GpuNotSupported, "GPU_NOT_SUPPORTED"),
             (ErrorCode::CpuNotSupported, "CPU_NOT_SUPPORTED"),
             (ErrorCode::OsVersionUnsupported, "OS_VERSION_UNSUPPORTED"),
             (ErrorCode::ModelQuantNotSupported, "MODEL_QUANT_NOT_SUPPORTED"),
@@ -585,6 +599,16 @@ mod tests {
             let err = classify(stderr);
             assert!(matches!(err.code, ErrorCode::GpuDriverTooOld), "{stderr} -> {err:?}");
         }
+    }
+
+    #[test]
+    fn classifies_a_missing_cuda_kernel_image_as_an_unsupported_gpu() {
+        // janhq/jan#9501: a Pascal card under the CUDA 13 engine.
+        let stderr = "CUDA error: no kernel image is available for execution on the device
+                        current device: 0, in function ggml_cuda_kernel_can_use_pdl at ggml-cuda/common.cuh:1679";
+        let err = LlamacppError::from_engine_exit(stderr);
+        assert!(matches!(err.code, ErrorCode::GpuNotSupported), "{err:?}");
+        assert_eq!(err.details.as_deref(), Some(stderr));
     }
 
     #[test]

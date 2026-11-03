@@ -949,6 +949,10 @@ export function buildSettingsIndex(
   return entries
 }
 
+// Fuse builds its index in the constructor; cache one per index array so a
+// keystroke does not re-index every entry.
+const fuseCache = new WeakMap<SettingsIndexEntry[], Fuse<SettingsIndexEntry>>()
+
 /** Typo-tolerant search over the index. Case-insensitive by Fuse default. */
 export function searchSettings(
   index: SettingsIndexEntry[],
@@ -957,16 +961,20 @@ export function searchSettings(
 ): SettingsIndexEntry[] {
   const trimmed = query.trim()
   if (!trimmed) return []
-  const fuse = new Fuse(index, {
-    keys: [
-      { name: 'title', weight: 0.6 },
-      { name: 'keywords', weight: 0.25 },
-      { name: 'section', weight: 0.1 },
-      { name: 'description', weight: 0.05 },
-    ],
-    threshold: 0.35,
-    ignoreLocation: true,
-  })
+  let fuse = fuseCache.get(index)
+  if (!fuse) {
+    fuse = new Fuse(index, {
+      keys: [
+        { name: 'title', weight: 0.6 },
+        { name: 'keywords', weight: 0.25 },
+        { name: 'section', weight: 0.1 },
+        { name: 'description', weight: 0.05 },
+      ],
+      threshold: 0.35,
+      ignoreLocation: true,
+    })
+    fuseCache.set(index, fuse)
+  }
   const found = fuse.search(trimmed, { limit }).map((result) => result.item)
   // Fuzzy matching can rank a loose hit above a title that contains the words
   // typed; keep the order otherwise, but put those exact hits first.

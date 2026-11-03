@@ -1955,6 +1955,10 @@ impl App {
                     );
                     self.system_detail_text(&v.reason);
                     self.persist();
+                    // End on a closing message for the user, not a bare tool
+                    // result. The goal is no longer active, so this turn is
+                    // not evaluated again.
+                    self.submit_user_hidden(crate::core::agent::goal::wrapup_prompt(&goal.condition));
                 } else {
                     // Goal unmet: surface the reason as guidance and start the
                     // next turn automatically, no user prompt needed.

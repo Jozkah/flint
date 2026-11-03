@@ -1400,6 +1400,26 @@ fn submit_user_attaches_pending_images_and_renders_label() {
     assert!(rendered.iter().any(|l| l.contains("[IMAGE] shot.png")));
 }
 
+/// A met goal ends on a closing turn the model sees and the transcript does
+/// not, and the goal stays achieved (so that turn is not evaluated again).
+#[test]
+fn a_met_goal_asks_for_a_closing_message() {
+    use crate::core::agent::goal::{GoalState, GoalStatus, GoalVerdict};
+    let mut app = test_app();
+    let goal = GoalState::new("tests pass");
+    app.goal = Some(goal.clone());
+    app.finish_goal_evaluation(
+        goal,
+        Ok(GoalVerdict { met: true, reason: "all green".into() }),
+    );
+    assert_eq!(app.goal.as_ref().unwrap().status, GoalStatus::Achieved);
+    let sent = app.history.last().unwrap()["content"].to_string();
+    assert!(sent.contains("closing message"), "{sent}");
+    let rendered: Vec<String> = app.transcript.iter().map(row_text).collect();
+    assert!(rendered.iter().any(|l| l.contains("goal achieved")));
+    assert!(!rendered.iter().any(|l| l.contains("closing message")), "hidden turn");
+}
+
 #[test]
 fn base_snapshot_is_queued_off_loop_not_run_inline() {
     let mut app = test_app();
