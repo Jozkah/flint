@@ -134,6 +134,17 @@ fn verification_input_is_assembled_from_the_run() {
     assert!(input.test_build_output.contains("test health ... ok"));
 }
 
+/// A multimodal first user message (content-part array) still yields a task spec.
+#[test]
+fn verification_task_spec_reads_content_part_arrays() {
+    let convo = vec![json!({ "role": "user", "content": [
+        { "type": "text", "text": "fix the bug in the screenshot" },
+        { "type": "image_url", "image_url": { "url": "data:image/png;base64,AAAA" } },
+    ] })];
+    let input = assemble_verification_input(&convo, "done");
+    assert_eq!(input.task_spec, "fix the bug in the screenshot");
+}
+
 /// Opt-in: verification is off unless the request asks for it, and the retry
 /// budget defaults to 1 and is capped.
 #[test]

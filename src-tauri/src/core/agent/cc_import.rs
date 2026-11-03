@@ -403,6 +403,21 @@ fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<Strin
 const PLUGIN_SUBDIRS: [&str; 3] = ["skills", "commands", "agents"];
 const PLUGIN_TOP_FILES: [&str; 3] = ["SKILL.md", "README.md", "plugin.json"];
 
+/// Change-detector for a linked source: a plugin is fingerprinted over only the
+/// paths `import_plugin` copies, so edits to its data/build folders neither
+/// cost a full walk nor trigger a re-import.
+fn link_fingerprint(kind: LinkKind, source: &Path) -> u64 {
+    match kind {
+        LinkKind::Skill => cc_links::fingerprint(source),
+        LinkKind::Plugin => {
+            let mut rel: Vec<&str> = PLUGIN_SUBDIRS.to_vec();
+            rel.extend(PLUGIN_TOP_FILES);
+            rel.push(".claude-plugin/plugin.json");
+            cc_links::fingerprint_selected(source, &rel)
+        }
+    }
+}
+
 fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<String, String> {
     let dest_root =
         user_plugins_dir().ok_or_else(|| "no global plugins store resolved".to_string())?;
@@ -505,7 +520,13 @@ pub async fn agent_cc_import(
                     name: name.to_string(),
                     origin: origin_of(&item.source_path),
                     source_path: item.source_path.clone(),
-                    fingerprint: cc_links::fingerprint(&source_path),
+                    fingerprint: link_fingerprint(
+                        match item.kind {
+                            CcItemKind::Skill => LinkKind::Skill,
+                            CcItemKind::Plugin => LinkKind::Plugin,
+                        },
+                        &source_path,
+                    ),
                 });
                 result.imported.push(name.to_string());
             }
@@ -645,7 +666,7 @@ pub(crate) fn sync_links() -> usize {
         }
         let source = current_source(&link);
         if source.exists() {
-            let fingerprint = cc_links::fingerprint(&source);
+            let fingerprint = link_fingerprint(link.kind, &source);
             let moved = source.to_string_lossy() != link.source_path;
             if fingerprint != link.fingerprint || moved {
                 let outcome = match link.kind {
