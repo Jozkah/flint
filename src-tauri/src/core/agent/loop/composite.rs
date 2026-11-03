@@ -2940,7 +2940,8 @@ impl CompositeToolInvoker {
                 Touch::Update | Touch::MoveFrom => ("edit", "change"),
                 Touch::Add | Touch::MoveTo | Touch::Delete => ("write", "write"),
             };
-            let path_tool = lookup(tool_name).expect("write and edit are built in");
+            let path_tool = lookup(tool_name)
+                .ok_or_else(|| format!("ERROR: apply_patch cannot judge {path}: no `{tool_name}` tool."))?;
             let one = serde_json::json!({ "path": path });
             let decision = resolve_decision(
                 path_tool,
