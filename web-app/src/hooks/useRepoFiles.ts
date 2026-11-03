@@ -50,7 +50,11 @@ export function useRepoFiles(token: string | undefined) {
       const mine = epoch.current
       inFlight.current.add(repo)
       setLoadingFiles((state) => ({ ...state, [repo]: true }))
-      setFileErrors(({ [repo]: _cleared, ...rest }) => rest)
+      setFileErrors((state) => {
+        const next = { ...state }
+        delete next[repo]
+        return next
+      })
       try {
         const files = await getHuggingFaceFiles(repo, token)
         if (mine !== epoch.current) return []
