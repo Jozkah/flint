@@ -138,17 +138,18 @@ where
     }
 }
 
-/// Invalidates the NVML handle so the next use re-initializes. Call after system
-/// resume on Linux when the GPU driver state has been reset.
-#[cfg(target_os = "linux")]
+/// Invalidates the NVML handle so the next use re-initializes. Call after a
+/// system resume, a GPU reset (TDR) or a driver restart, when the cached handle
+/// no longer works.
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
 pub fn invalidate_nvml() {
     let mut guard = NVML.write().unwrap_or_else(|e| e.into_inner());
     *guard = None;
-    log::debug!("NVML invalidated (e.g. after resume); will re-init on next use");
+    log::debug!("NVML invalidated; will re-init on next use");
 }
 
-/// No-op on non-Linux; invalidation is only needed for Linux sleep/resume.
-#[cfg(not(target_os = "linux"))]
+/// No NVML on these targets.
+#[cfg(any(target_os = "android", target_os = "ios", target_os = "macos"))]
 pub fn invalidate_nvml() {}
 
 impl GpuInfo {
@@ -171,6 +172,12 @@ impl GpuInfo {
             self.get_nvidia_memory_usage(index)
                 .unwrap_or_else(|e| {
                     log::error!("Failed to get memory usage for NVIDIA GPU {}: {}", index, e);
+                    // A reset GPU or restarted driver leaves the cached handle dead
+                    // for good; drop it so the next poll re-initialises. The guard
+                    // from with_nvml is released by now.
+                    if !matches!(e, NvmlError::NotSupported) {
+                        invalidate_nvml();
+                    }
                     self.get_usage_unsupported()
                 })
         }

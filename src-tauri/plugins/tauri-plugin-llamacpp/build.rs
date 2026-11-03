@@ -341,15 +341,21 @@ mod engine {
     pub fn build() {
         println!("cargo:rerun-if-changed=shim/jan_llama_shim.cpp");
         println!("cargo:rerun-if-changed=shim/jan_llama_shim.h");
-        println!("cargo:rerun-if-env-changed=JAN_LLAMA_PREBUILT_DIR");
-        println!("cargo:rerun-if-env-changed=JAN_LLAMA_CPP_DIR");
-        println!("cargo:rerun-if-env-changed=JAN_ENGINE_CUDA_ARCHS");
+        // compat_var reads FLINT_ first and JAN_ second, so both must rebuild.
+        for suffix in [
+            "LLAMA_PREBUILT_DIR",
+            "LLAMA_CPP_DIR",
+            "ENGINE_CUDA_ARCHS",
+            "ENGINE_HIP_TARGETS",
+            "ENGINE_BUILD_LOG",
+            "ENGINE_BUILD_DIR",
+        ] {
+            println!("cargo:rerun-if-env-changed=FLINT_{suffix}");
+            println!("cargo:rerun-if-env-changed=JAN_{suffix}");
+        }
         for var in ["CUDACXX", "CUDA_PATH", "CUDA_HOME", "CUDAToolkit_ROOT"] {
             println!("cargo:rerun-if-env-changed={var}");
         }
-        println!("cargo:rerun-if-env-changed=JAN_ENGINE_HIP_TARGETS");
-        println!("cargo:rerun-if-env-changed=JAN_ENGINE_BUILD_LOG");
-        println!("cargo:rerun-if-env-changed=JAN_ENGINE_BUILD_DIR");
 
         // The worker reports this in its handshake so the app can set it
         // against the NVIDIA driver (janhq/jan#9189). Read on the prebuilt path
@@ -646,14 +652,13 @@ mod engine {
         let archs = compat_var("ENGINE_CUDA_ARCHS").unwrap_or_default();
         let archs = archs.trim();
         if !archs.is_empty() {
-            println!("cargo:rerun-if-env-changed=JAN_ENGINE_CUDA_ARCHS");
             cfg.arg(format!("-DCMAKE_CUDA_ARCHITECTURES={archs}"));
         } else if feature_enabled("engine-cuda")
             && env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "x86_64"
         {
             // A foreign JAN_LLAMA_CPP_DIR tree is not the pin the list was
             // copied from, so only the vendored source is held to it.
-            if env::var_os("JAN_LLAMA_CPP_DIR").is_none() {
+            if compat_var_os("LLAMA_CPP_DIR").is_none() {
                 check_upstream_cuda_archs(src);
             }
             let (nvcc, v) = nvcc_version().unwrap_or_else(|| {
@@ -682,7 +687,7 @@ mod engine {
             cfg.arg(format!("-DCMAKE_CUDA_ARCHITECTURES={archs}"));
         }
         if feature_enabled("engine-hip") {
-            let targets = env::var("JAN_ENGINE_HIP_TARGETS").unwrap_or_default();
+            let targets = compat_var("ENGINE_HIP_TARGETS").unwrap_or_default();
             let targets = targets.trim();
             let targets = if targets.is_empty() {
                 HIP_TARGETS

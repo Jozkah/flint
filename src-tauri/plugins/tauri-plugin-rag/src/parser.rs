@@ -682,17 +682,14 @@ fn parse_pptx(file_path: &str) -> Result<String, RagError> {
     let mut zip = ZipArchive::new(file).map_err(|e| RagError::ParseError(e.to_string()))?;
 
     // Collect slide files: ppt/slides/slide*.xml
-    let mut slides = Vec::new();
-    for i in 0..zip.len() {
-        let name = zip
-            .by_index(i)
-            .ok()
-            .and_then(|f| f.name().ok().map(|n| n.into_owned()))
-            .unwrap_or_default();
-        if name.starts_with("ppt/slides/") && name.ends_with(".xml") {
-            slides.push(name);
-        }
-    }
+    // `file_names` reads the central directory only; `by_index` would build a
+    // decompressing reader for every entry just to get its name.
+    let mut slides: Vec<String> = zip
+        .file_names()
+        .filter_map(|n| n.ok())
+        .filter(|n| n.starts_with("ppt/slides/") && n.ends_with(".xml"))
+        .map(|n| n.into_owned())
+        .collect();
     slides.sort_by_key(|n| slide_sort_key(n));
 
     let mut output = String::new();
