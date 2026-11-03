@@ -35,6 +35,9 @@ export function StudioPage() {
   const [viewing, setViewing] = useState<number | null>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const targets = useCloudTargets(kind)
+  // A remix from the Video tab of a hosted picture needs the image targets
+  // before the kind switch lands.
+  const imageTargets = useCloudTargets('image')
 
   // A hosted model whose provider lost its key must not come back selected, and
   // billed, when the key is added again.
@@ -76,7 +79,9 @@ export function StudioPage() {
       prompt: item.recipe.prompt,
       negative: item.recipe.negativePrompt,
       seed: '',
-      cloud: targets.some((t) => t.key === item.recipe.modelId)
+      cloud: (item.kind === 'image' ? imageTargets : []).some(
+        (t) => t.key === item.recipe.modelId
+      )
         ? item.recipe.modelId
         : '',
       localModel: status?.models.some((m) => m.id === item.recipe.modelId)

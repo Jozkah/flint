@@ -29,6 +29,12 @@ export function roomTodoList(roomId: string, owner: string): TodoList | undefine
   return roomTodos.get(todoKey(roomId, owner))
 }
 
+/** Drop every participant's plan for a room that was deleted or cleared. */
+export function forgetRoomTodos(roomId: string): void {
+  const prefix = `${roomId}:`
+  for (const key of [...roomTodos.keys()]) if (key.startsWith(prefix)) roomTodos.delete(key)
+}
+
 /** Steps a subagent a participant starts may take. Rooms are bounded, and a
  * turn that delegates is one participant's single reply. */
 export const ROOM_CHILD_MAX_STEPS = 10

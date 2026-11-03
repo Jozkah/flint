@@ -23,6 +23,7 @@ const granted = new Set<string>()
 export function ensureAssetAccess(path: string, recursive = false): Promise<void> {
   if (!inTauri()) return Promise.resolve()
   const key = `${recursive ? 'r' : 'f'}:${path}`
+  if (granted.has(key)) return Promise.resolve()
   const known = pending.get(key)
   if (known) return known
   const run = invoke<void>('allow_asset_path', { path, recursive })
@@ -34,6 +35,8 @@ export function ensureAssetAccess(path: string, recursive = false): Promise<void
       granted.add(key) // refused is final; do not retry on every render
     })
   pending.set(key, run)
+  // Settled: `granted` answers from here on, so the promise need not be kept.
+  void run.then(() => pending.delete(key))
   return run
 }
 

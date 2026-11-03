@@ -4,6 +4,7 @@
  * per-room queue, run slots, persistence and store) and merges the groups.
  */
 import { clearRoomScratch, clearsKnowledge, clearsScratch } from './clearRoom'
+import { forgetRoomTodos } from './fullTools'
 import type { AbortIntent, RunCommand } from './engine'
 import { clearSuspensions } from './availability'
 import { parseAddress } from './addressing'
@@ -401,21 +402,24 @@ export function editorCommands(
               (m, p) => Math.max(m, p.order + 1),
               0
             )
-            participants = [
-              ...participants,
-              normaliseParticipant(
-                {
-                  name: edit.name,
-                  role: edit.role,
-                  model: edit.model,
-                  toolAccess: edit.toolAccess,
-                  pricing: edit.pricing,
-                  reasoning: edit.reasoning ?? undefined,
-                  order: edit.order ?? order,
-                },
-                participantDeps
-              ),
-            ]
+            const added = normaliseParticipant(
+              {
+                name: edit.name,
+                role: edit.role,
+                model: edit.model,
+                toolAccess: edit.toolAccess,
+                pricing: edit.pricing,
+                reasoning: edit.reasoning ?? undefined,
+                assistantId: edit.assistantId,
+                workProfile: edit.workProfile,
+                order: edit.order ?? order,
+              },
+              participantDeps
+            )
+            if (edit.compareSkip) added.compareSkip = true
+            const addedOff = cleanDisabledTools(edit.disabledTools)
+            if (addedOff.length) added.disabledTools = addedOff
+            participants = [...participants, added]
             continue
           }
           const prev = participants[idx]
@@ -613,6 +617,7 @@ export function roomCommands(
         })
         if (clearsScratch(scope)) {
           await clearRoomScratch(roomId)
+          forgetRoomTodos(roomId)
           // Only "clear everything" drops the isolated workspaces and the
           // changes waiting in them; a chat or knowledge clear keeps them.
           await workspace.remove?.(roomId).catch(() => {})
@@ -631,6 +636,7 @@ export function roomCommands(
           await port.deleteRoom(roomId)
         }
       })
+      forgetRoomTodos(roomId)
       slots.delete(roomId)
       store().removeRoomLocally(roomId)
     },

@@ -33,7 +33,7 @@ const splitLines = (text: string): string[] => {
 }
 
 /** Above this many cells the middle is one modified block rather than LCS'd. */
-const MAX_LCS_CELLS = 4_000_000
+const MAX_LCS_CELLS = 250_000
 
 export function computeHunks(base: string, text: string): ChangeHunk[] {
   const a = splitLines(base)

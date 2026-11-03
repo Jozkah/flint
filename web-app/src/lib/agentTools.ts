@@ -306,8 +306,18 @@ export async function getAgentToolSchemas(
     // Keep the last list only for the same surface: a thread's list handed to
     // a Cowork run would silently drop the session-messaging tools.
     try {
-      const [, , cachedScope] = JSON.parse(schemaCacheKey) as [string, unknown, string]
-      if (cachedScope === (scope ?? 'thread')) return schemaCache ?? []
+      const [cachedRoot, , cachedScope, cachedBrowser, cachedShell] = JSON.parse(
+        schemaCacheKey
+      ) as [string, unknown, string, boolean, boolean]
+      // The key also holds the folder and the shell/browser toggles: another
+      // folder's list, or one built under a flipped toggle, is not reusable.
+      if (
+        cachedScope === (scope ?? 'thread') &&
+        cachedRoot === (projectRoot ?? '') &&
+        cachedBrowser === useAgentToolsConfig.getState().browserAgentEnabled &&
+        cachedShell === useAgentToolsConfig.getState().shellEnabled
+      )
+        return schemaCache ?? []
     } catch {
       // No usable key: fall through to an empty list.
     }
