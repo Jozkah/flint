@@ -4133,6 +4133,7 @@ pub(super) fn header_spans(app: &App) -> Vec<Span<'static>> {
                 Style::new().cyan().bold(),
             ),
             GoalStatus::Achieved => ("  ◎ /goal done".to_string(), Style::new().green()),
+            GoalStatus::Blocked => ("  ◎ /goal blocked".to_string(), Style::new().yellow().bold()),
         };
         spans.push(Span::styled(label, gstyle));
     }

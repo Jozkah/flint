@@ -1029,6 +1029,7 @@ pub(super) fn goal_command(app: &mut App, arg: &str) {
                 app.note("no active goal");
             }
         }
+        "resume" => resume_goal(app),
         "" => show_goal_status(app),
         condition => set_goal(app, condition),
     }
@@ -2511,6 +2512,7 @@ pub(super) fn show_goal_status(app: &mut App) {
     let state = match goal.status {
         GoalStatus::Active => "active",
         GoalStatus::Achieved => "achieved",
+        GoalStatus::Blocked => "blocked",
     };
     app.system_marked(GOAL_GLYPH, Level::Info, &format!("goal [{state}]"));
     app.system_detail_text(&format!("condition: {}", goal.condition));
@@ -2525,6 +2527,12 @@ pub(super) fn show_goal_status(app: &mut App) {
         &goal.last_reason
     };
     app.system_detail_text(&format!("evaluator: {reason}"));
+    if goal.status == GoalStatus::Blocked {
+        app.system_detail_text(&format!(
+            "blocked: {}   (/goal resume to continue)",
+            goal.blocked_reason
+        ));
+    }
 }
 
 /// Set a new goal from `condition` and immediately start a turn toward it (the
@@ -2543,6 +2551,25 @@ pub(super) fn set_goal(app: &mut App, condition: &str) {
     // Start the first turn with the condition as the prompt; on_done triggers
     // the evaluator, which drives the loop from there.
     app.submit_user(cond);
+}
+
+/// `/goal resume`: start a blocked goal again with a fresh turn allowance.
+pub(super) fn resume_goal(app: &mut App) {
+    use crate::core::agent::goal::GoalStatus;
+    if app.status != Status::Idle {
+        app.note("cannot resume a goal while a turn is running");
+        return;
+    }
+    let Some(goal) = app.goal.as_mut().filter(|g| g.status == GoalStatus::Blocked) else {
+        app.note("no blocked goal to resume");
+        return;
+    };
+    goal.resume();
+    let cond = goal.condition.clone();
+    app.goal_eval_pending = false;
+    app.note(&format!("◎ goal resumed: {cond}"));
+    app.persist();
+    app.submit_user(crate::core::agent::goal::continuation_prompt(&cond, "the user resumed it"));
 }
 
 /// Format a duration in whole seconds as `Nh Nm Ns` / `Nm Ns` / `Ns`.
