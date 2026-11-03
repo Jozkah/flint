@@ -176,3 +176,20 @@ mod cpu_tests {
         assert!(json_str.contains("extensions"));
     }
 }
+
+/// Every registered command needs a guest-js wrapper, so callers never reach
+/// for a raw `invoke('plugin:hardware|...')`.
+#[test]
+fn every_command_has_a_guest_js_wrapper() {
+    let lib = include_str!("lib.rs");
+    let start = lib.find("generate_handler![").expect("handler list") + "generate_handler![".len();
+    let end = start + lib[start..].find("])").expect("handler list end");
+    let guest_js = include_str!("../guest-js/index.ts");
+    let names: Vec<_> = lib[start..end].split(',').filter_map(|c| c.trim().strip_prefix("commands::")).collect();
+    assert!(!names.is_empty());
+    let missing: Vec<_> = names
+        .iter()
+        .filter(|c| !guest_js.contains(&format!("'plugin:hardware|{c}'")))
+        .collect();
+    assert!(missing.is_empty(), "commands with no guest-js wrapper: {missing:?}");
+}
