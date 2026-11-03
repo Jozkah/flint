@@ -97,7 +97,11 @@ export function backendGpuFamily(backend: string | undefined): BackendGpuFamily 
   return 'cpu'
 }
 
-/** Vulkan is driver-provided on every modern GPU; CUDA and HIP are vendor-locked. */
+/**
+ * Vulkan is driver-provided on every modern GPU; CUDA and HIP are vendor-locked.
+ * SYCL, OpenCL, MUSA and CANN are vendor-neutral or name vendors this module
+ * does not classify, so the build running at all is the better evidence.
+ */
 export function vendorSupportsFamily(
   vendor: GpuVendor,
   family: BackendGpuFamily
@@ -109,8 +113,6 @@ export function vendorSupportsFamily(
       return vendor === 'amd'
     case 'vulkan':
     case 'metal':
-    // Vendor-neutral or vendors this module does not classify (Moore Threads,
-    // Ascend): the build running at all is the better evidence.
     case 'sycl':
     case 'opencl':
     case 'musa':
