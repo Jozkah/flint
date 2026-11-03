@@ -25,7 +25,16 @@ function dispatch(event: string, payload: unknown): void {
 
 const LINE_BREAK = String.fromCharCode(10)
 const CRLF = String.fromCharCode(13) + LINE_BREAK
+/**
+ * Dispatched to this page after the stream reconnects. One-shot events the
+ * server published during the gap are gone, so a page that waits on one
+ * (a loading spinner) re-reads what it needs when this fires (LIBC-043).
+ * Spelled out where it is used, so the desktop build never imports this shim.
+ */
+export const EVENT_STREAM_RESYNC = 'flint-event-stream-resync'
 let streaming = false
+/** Whether a connection has been established before, so the next is a reconnect. */
+let hadConnection = false
 /** The open event connection, so it can be closed when nobody is listening. */
 let connection: AbortController | null = null
 
@@ -41,6 +50,8 @@ async function readStream(): Promise<'ended' | 'unavailable'> {
   if (!response.ok || response.redirected || !response.body || !type.includes('text/event-stream')) {
     return 'unavailable'
   }
+  if (hadConnection) dispatch(EVENT_STREAM_RESYNC, null)
+  hadConnection = true
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffered = ''

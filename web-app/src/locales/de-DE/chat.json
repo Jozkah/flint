@@ -307,5 +307,13 @@
     "imageNotEncoded": "das Bild konnte nicht kodiert werden"
   },
   "growingTheMind": "Growing the Mind...",
-  "copyMessageFailed": "Could not copy the message."
+  "copyMessageFailed": "Could not copy the message.",
+  "rawToolCallNotice": "Der Tool-Aufruf wurde als Text ausgegeben. Es wurde kein Tool ausgeführt. Prüfe die Tool-Unterstützung dieses Modells und versuche es erneut.",
+  "transport": {
+    "noUserMessage": "Diese Unterhaltung enthält keine Nutzernachricht, auf die geantwortet werden kann. Füge eine Nachricht hinzu oder generiere ab einer Runde neu, die deine Frage enthält.",
+    "promptHooksStopped": "Der Durchlauf wurde angehalten, während seine Prompt-Hooks liefen, daher wurde der Prompt nicht gesendet.",
+    "reasoningLoop": "Das Denken wurde gestoppt, weil derselbe Text wiederholt wurde. Probiere ein anderes Modell oder ein niedrigeres Denkbudget.",
+    "serviceUnavailable": "Der Modelldienst ist nicht bereit, oder es ist kein Modell oder Anbieter ausgewählt.",
+    "contextUsed": "({{used}} von {{total}} Kontext-Tokens verwendet.)"
+  }
 }

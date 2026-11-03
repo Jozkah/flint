@@ -188,9 +188,10 @@ export async function handleMobileMutation(
     const id = str(p.id)
     if (!id) throw new Error('Session id is required')
     // Archived like a delete on the desktop (the worktree is left alone), and
-    // stops the session's run and drops everything held for it. With the
-    // archive off, or if it cannot be written, this is the plain delete.
-    const archived = await archiveCoworkSession(id, false).catch(() => false)
+    // stops the session's run and drops everything held for it. Only with the
+    // archive off is this the plain delete: if the archive write fails the
+    // error goes back to the phone and the session stays, as on the desktop.
+    const archived = await archiveCoworkSession(id, false)
     if (!archived) deleteCoworkSession(id)
     return { ok: true }
   }

@@ -57,7 +57,9 @@ export function VoiceInputButton({
     toast.error(
       error.kind === 'recorder'
         ? t('sweep:voice.microphone')
-        : t('sweep:voice.stopped'),
+        : error.kind === 'phrase-dropped'
+          ? t('sweep:voice.phraseDropped')
+          : t('sweep:voice.stopped'),
       { description: error.message }
     )
     useVoiceInput.getState().clearError()

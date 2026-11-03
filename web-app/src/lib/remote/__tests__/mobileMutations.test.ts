@@ -123,10 +123,12 @@ describe('handleMobileMutation privilege limits', () => {
     expect(h.deleteCoworkSession).not.toHaveBeenCalled()
   })
 
-  it('cowork.delete falls back to the plain delete when the archive fails', async () => {
+  it('cowork.delete reports the failure and keeps the session when the archive fails', async () => {
     h.deleteCoworkSession.mockClear()
     h.archiveCoworkSession.mockRejectedValueOnce(new Error('disk full'))
-    await handleMobileMutation({ mobileOp: 'cowork.delete', id: 's3' })
-    expect(h.deleteCoworkSession).toHaveBeenCalledWith('s3')
+    await expect(
+      handleMobileMutation({ mobileOp: 'cowork.delete', id: 's3' })
+    ).rejects.toThrow('disk full')
+    expect(h.deleteCoworkSession).not.toHaveBeenCalled()
   })
 })

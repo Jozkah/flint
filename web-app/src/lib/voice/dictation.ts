@@ -23,6 +23,8 @@ export type DictationError =
   | { kind: 'recorder'; message: string }
   | { kind: 'model-missing'; message: string }
   | { kind: 'transcription'; message: string }
+  /** Non-fatal: one phrase failed twice and was left out; dictation goes on. */
+  | { kind: 'phrase-dropped'; message: string }
 
 export type DictationHandlers = {
   onState?: (state: DictationState) => void
@@ -43,7 +45,7 @@ export type DictationDeps = {
   isModelMissing?: (error: unknown) => boolean
 }
 
-/** Failures in a row, with no phrase between, that end the session. */
+/** Lost phrases (failed, then failed again on retry) in a row that end the session. */
 const MAX_CONSECUTIVE_FAILURES = 2
 /** How long stopping waits for phrases still being transcribed. */
 const DRAIN_TIMEOUT_MS = 15_000
@@ -56,6 +58,8 @@ export class DictationSession {
   private queue: Float32Array[] = []
   private working: Promise<void> | null = null
   private failures = 0
+  /** The phrase being retried after its first failure, if any. */
+  private retrying: Float32Array | null = null
   private cancelled = false
   private ended = false
 
@@ -125,6 +129,8 @@ export class DictationSession {
   private async work(): Promise<void> {
     while (this.queue.length > 0 && !this.cancelled && !this.ended) {
       const phrase = this.queue.shift() as Float32Array
+      const isRetry = this.retrying === phrase
+      this.retrying = null
       const seconds = phrase.length / SAMPLE_RATE
       try {
         const raw = await this.deps.transcribe(encodeWav(phrase, SAMPLE_RATE), {
@@ -151,6 +157,13 @@ export class DictationSession {
           void this.shutdown()
           return
         }
+        // A failed phrase gets one more try before it counts as lost; the
+        // person's words are not dropped on a blip.
+        if (!isRetry) {
+          this.retrying = phrase
+          this.queue.unshift(phrase)
+          continue
+        }
         this.failures += 1
         if (this.failures >= MAX_CONSECUTIVE_FAILURES) {
           this.fail({
@@ -162,6 +175,13 @@ export class DictationSession {
           void this.shutdown()
           return
         }
+        // Retried and still failing, but not yet enough to end the session:
+        // say so, since those words are not in the transcript.
+        this.fail({
+          kind: 'phrase-dropped',
+          message:
+            error instanceof Error ? error.message : 'Transcription failed.',
+        })
       }
     }
   }

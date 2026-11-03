@@ -4,6 +4,7 @@
  * pill opens can be tested without rendering the shell.
  */
 import type { CoworkTurn } from '@/types/coworkSession'
+import { formatCompactDuration } from '@/lib/duration'
 
 export type WaitingApprovalRow = {
   requestId: string
@@ -84,12 +85,10 @@ export function runningRows(
     }))
 }
 
-/** "45 s", "3 min", "2 h 5 min": short enough for a pill's card. */
-export function formatWait(ms: number): string {
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s} s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m} min`
-  const h = Math.floor(m / 60)
-  return m % 60 ? `${h} h ${m % 60} min` : `${h} h`
+/** Short, translated duration for a pill's card: "45s", "3m", "2h 5m". */
+export function formatWait(
+  ms: number,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  return formatCompactDuration(Math.round(ms / 1000), t)
 }

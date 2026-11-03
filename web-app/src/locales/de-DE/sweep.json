@@ -220,6 +220,7 @@
       "notNow": "Jetzt nicht",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Eine Phrase konnte nicht transkribiert werden"
   }
 }

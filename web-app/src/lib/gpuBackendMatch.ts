@@ -16,6 +16,10 @@ export type BackendGpuFamily =
   | 'cuda'
   | 'vulkan'
   | 'hip'
+  | 'sycl'
+  | 'opencl'
+  | 'musa'
+  | 'cann'
   | 'metal'
   | 'cpu'
   | 'unknown'
@@ -68,6 +72,10 @@ const FAMILY_MARKERS: [BackendGpuFamily, RegExp][] = [
   ['cuda', /cuda|\bcu\d/i],
   ['vulkan', /vulkan/i],
   ['hip', /\bhip\b|rocm/i],
+  ['sycl', /sycl|oneapi/i],
+  ['opencl', /opencl/i],
+  ['musa', /musa/i],
+  ['cann', /cann/i],
   // The engine names Metal devices `MTL<N>`, so the observed backend is `mtl`.
   ['metal', /\bmtl|metal/i],
 ]
@@ -101,6 +109,12 @@ export function vendorSupportsFamily(
       return vendor === 'amd'
     case 'vulkan':
     case 'metal':
+    // Vendor-neutral or vendors this module does not classify (Moore Threads,
+    // Ascend): the build running at all is the better evidence.
+    case 'sycl':
+    case 'opencl':
+    case 'musa':
+    case 'cann':
       return true
     case 'cpu':
     case 'unknown':

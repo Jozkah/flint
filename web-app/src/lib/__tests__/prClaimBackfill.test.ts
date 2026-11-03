@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { EventEnvelope, EventsPage } from '@/lib/eventLog'
-import { backfillPrClaims, collectPrClaims, createdPrNumber } from '@/lib/prClaimBackfill'
+import { backfillPrClaims, collectPrClaims, createdPrNumber, sessionPrFromTool } from '@/lib/prClaimBackfill'
 import { claimKey, usePrStatusStore } from '@/stores/pr-status-store'
 
 const OPENER = '8411d403-b788-4b60-b78e-45672ae39826'
@@ -53,6 +53,16 @@ describe('PR claim backfill', () => {
       createdPrNumber(event(OTHER, 3, { tool: 'git', output: '$ gh pr view 31\nhttps://github.com/o/r/pull/31' }))
     ).toBeNull()
     expect(createdPrNumber({ ...ghCreate, kind: 'tool.failed' })).toBeNull()
+  })
+
+  it('reads a pull request on a GitHub Enterprise host', () => {
+    const out = '$ gh pr create\nhttps://ghe.corp.example/team/app/pull/12\n'
+    expect(createdPrNumber(event(OPENER, 5, { tool: 'git', output: out }))).toBe(12)
+    expect(sessionPrFromTool('git', '', out)).toMatchObject({
+      url: 'https://ghe.corp.example/team/app/pull/12',
+      repo: 'team/app',
+      number: 12,
+    })
   })
 
   it('claims PR #31 for session 8411d403, not the session sharing its checkout', async () => {

@@ -217,6 +217,7 @@
       "notNow": "Nanti saja",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Satu frasa tidak dapat ditranskripsikan"
   }
 }

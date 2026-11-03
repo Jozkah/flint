@@ -142,6 +142,11 @@ export function withOpenRouterReasoningDetails(
           const lines = buf.split('\n')
           buf = lines.pop() ?? ''
           for (const l of lines) feedSseLine(c, l.trim())
+          // Not only in flush(): a cancelled read (Stop, or the SDK ending after
+          // the finish chunk) never reaches it, and the tool loop's next request
+          // would then go out without the details and get a 400. The stored
+          // array is the collector's own, so later chunks still extend it.
+          c.commit()
         },
         flush() {
           if (buf) feedSseLine(c, buf.trim())

@@ -74,8 +74,12 @@ describe('chat.send', () => {
     })
     expect(r).toEqual({ result: { kind: 'chat', id: 'c-new', delivery: 'sent' } })
     expect(a.setWebSearch).toHaveBeenCalledWith(false)
-    expect(a.setChatReasoning).toHaveBeenCalledWith(null, 'on', { id: 'qwen', provider: 'llamacpp' })
-    expect(a.createChat).toHaveBeenCalledWith({ text: 'Hello', model: { id: 'qwen', provider: 'llamacpp' } })
+    expect(a.setChatReasoning).not.toHaveBeenCalled()
+    expect(a.createChat).toHaveBeenCalledWith({
+      text: 'Hello',
+      model: { id: 'qwen', provider: 'llamacpp' },
+      reasoning: 'on',
+    })
   })
 
   it('sends into an idle chat through its own composer, after opening it', async () => {

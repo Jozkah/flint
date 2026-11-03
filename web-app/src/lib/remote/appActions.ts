@@ -107,7 +107,7 @@ export function appActions(navigate: Navigate): RemoteActions {
     chatExists: (id) => Boolean(useThreads.getState().threads[id]),
     chatBusy: (id) => Boolean(useAppState.getState().busyThreads[id]),
 
-    createChat: async ({ text, model, files, docs }) => {
+    createChat: async ({ text, model, reasoning, files, docs }) => {
       const providers = useModelProvider.getState()
       // The phone's new chat names no model until one is chosen. Then the
       // computer picks the way its own composer does: the selected model, else
@@ -133,6 +133,9 @@ export function appActions(navigate: Navigate): RemoteActions {
           'No model is installed or connected on the computer to answer with.'
         )
       }
+      // The phone's Reasoning toggle belongs to the model the chat really got,
+      // which is only known here once the fallback has been resolved.
+      if (reasoning) setModelSetting({ id: modelId, provider }, 'reasoning', 'Reasoning', reasoning)
       const thread = await useThreads.getState().createThread({ id: modelId, provider }, text)
       // Documents wait in the composer's store, as if attached there.
       if (docs?.length) useChatAttachments.getState().setAttachments(thread.id, (prev) => [...prev, ...docs])

@@ -64,6 +64,11 @@ export function ActiveModelsSync() {
         if ((event.payload?.value ?? 0) >= 1) refresh()
       }
     ).catch(() => () => {})
+    // The browser build's event stream dropped and came back: a load that
+    // finished in the gap sent its event to nobody.
+    const unlistenResync = listen('flint-event-stream-resync', refresh).catch(
+      () => () => {}
+    )
 
     return () => {
       alive = false
@@ -72,6 +77,7 @@ export function ActiveModelsSync() {
       window.removeEventListener('focus', refresh)
       unsubscribe()
       void unlistenLoad.then((fn) => fn?.())
+      void unlistenResync.then((fn) => fn?.())
     }
   }, [serviceHub])
 

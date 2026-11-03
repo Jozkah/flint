@@ -337,5 +337,13 @@
     "imageNotEncoded": "obrázek se nepodařilo zakódovat"
   },
   "growingTheMind": "Growing the Mind...",
-  "copyMessageFailed": "Could not copy the message."
+  "copyMessageFailed": "Could not copy the message.",
+  "rawToolCallNotice": "Volání nástroje bylo vypsáno jako text. Žádný nástroj se nespustil. Zkontrolujte podporu nástrojů u tohoto modelu a zkuste to znovu.",
+  "transport": {
+    "noUserMessage": "Tato konverzace neobsahuje žádnou zprávu uživatele, na kterou by šlo odpovědět. Přidejte zprávu nebo vygenerujte znovu od tahu, který obsahuje váš dotaz.",
+    "promptHooksStopped": "Tah byl zastaven během běhu jeho hooků promptu, proto nebyl prompt odeslán.",
+    "reasoningLoop": "Uvažování se zastavilo po opakování stejného textu. Zkuste jiný model nebo nižší rozpočet na uvažování.",
+    "serviceUnavailable": "Služba modelů není připravená, nebo není vybrán žádný model či poskytovatel.",
+    "contextUsed": "(Využito {{used}} z {{total}} tokenů kontextu.)"
+  }
 }

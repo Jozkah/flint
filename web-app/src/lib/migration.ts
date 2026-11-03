@@ -7,6 +7,7 @@
  * (all `snake_case`) and forwards calls. Nothing here does filesystem work.
  */
 import { invokeCommand as invoke } from '@/lib/backend'
+import { formatSizeCompact } from '@/lib/formatBytes'
 
 /** How the migration treats the source JAN data. */
 export type MigrationMode = 'copy' | 'reuse' | 'move' | 'fresh'
@@ -168,17 +169,7 @@ export const CONFLICT_LABELS: Record<Conflict, string> = {
 }
 
 /** Human-readable byte size. */
-export function formatBytes(n: number): string {
-  if (!n || n < 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let v = n
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i += 1
-  }
-  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
-}
+export const formatBytes = formatSizeCompact
 
 /** Detect a legacy JAN install and whether the first-launch prompt is due. */
 export function migrationDetect(): Promise<DetectResult> {

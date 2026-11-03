@@ -96,6 +96,25 @@ describe('browser event bus', () => {
     await vi.waitFor(() => expect(seen).toEqual([7]))
   })
 
+  it('tells listeners to resync after the stream reconnects (LIBC-043)', async () => {
+    const stream = () => ({
+      ok: true,
+      redirected: false,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: sse([': hello']),
+    })
+    const fetch = vi.fn().mockImplementation(async () => stream())
+    vi.stubGlobal('fetch', fetch)
+    const { listen, EVENT_STREAM_RESYNC } = await import('@/lib/tauriEventShim')
+    const seen: unknown[] = []
+    const unlisten = await listen(EVENT_STREAM_RESYNC, () => seen.push(1))
+    await vi.waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(2), {
+      timeout: 4000,
+    })
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    unlisten()
+  })
+
   it('does not treat a sign-in page as an event stream', async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true,

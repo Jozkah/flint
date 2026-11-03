@@ -49,6 +49,46 @@ describe('OpenRouter reasoning_details round trip (#283)', () => {
     expect(sent[1].messages[0].reasoning_details).toBeUndefined()
   })
 
+  it('records details even when the reader cancels before the stream ends', async () => {
+    const sent: Array<Record<string, any>> = []
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        const enc = new TextEncoder()
+        const ev = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}
+
+`)
+        c.enqueue(ev({ choices: [{ delta: { reasoning_details: [{ type: 'reasoning.encrypted', id: 't9', data: 'S' }] } }] }))
+        c.enqueue(ev({ choices: [{ delta: { tool_calls: [{ index: 0, id: 't9', function: { name: 'f', arguments: '' } }] } }] }))
+      },
+    })
+    const inner = (async (_u: unknown, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)))
+      return new Response(sent.length === 1 ? body : sse([]), {
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as typeof fetch
+    const f = withOpenRouterReasoningDetails(inner)
+    const r1 = await f('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    })
+    const reader = r1.body!.getReader()
+    await reader.read()
+    await reader.read()
+    await reader.cancel()
+    await f('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          { role: 'assistant', content: '', tool_calls: [{ id: 't9', type: 'function', function: { name: 'f', arguments: '{}' } }] },
+        ],
+      }),
+    })
+    expect(sent[1].messages[0].reasoning_details).toEqual([
+      { type: 'reasoning.encrypted', id: 't9', data: 'S' },
+    ])
+  })
+
   it('records from a non-streaming JSON response', async () => {
     const sent: Array<Record<string, any>> = []
     const inner = (async (_u: unknown, init?: RequestInit) => {

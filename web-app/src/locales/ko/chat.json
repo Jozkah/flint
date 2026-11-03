@@ -302,5 +302,13 @@
     "imageNotEncoded": "이미지를 인코딩할 수 없었습니다"
   },
   "growingTheMind": "Growing the Mind...",
-  "copyMessageFailed": "Could not copy the message."
+  "copyMessageFailed": "Could not copy the message.",
+  "rawToolCallNotice": "도구 호출이 텍스트로 출력되었습니다. 실행된 도구는 없습니다. 이 모델의 도구 지원을 확인한 뒤 다시 시도하세요.",
+  "transport": {
+    "noUserMessage": "이 대화에는 응답할 사용자 메시지가 없습니다. 메시지를 추가하거나 질문이 포함된 턴부터 다시 생성하세요.",
+    "promptHooksStopped": "프롬프트 훅이 실행되는 동안 턴이 중단되어 프롬프트가 제출되지 않았습니다.",
+    "reasoningLoop": "같은 텍스트가 반복되어 추론이 중단되었습니다. 다른 모델을 사용하거나 사고 예산을 낮춰 보세요.",
+    "serviceUnavailable": "모델 서비스가 준비되지 않았거나 선택된 모델 또는 제공자가 없습니다.",
+    "contextUsed": "(컨텍스트 토큰 {{total}}개 중 {{used}}개 사용.)"
+  }
 }

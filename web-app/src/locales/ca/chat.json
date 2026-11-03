@@ -322,5 +322,13 @@
     "imageNotEncoded": "no s'ha pogut codificar la imatge"
   },
   "growingTheMind": "Growing the Mind...",
-  "copyMessageFailed": "Could not copy the message."
+  "copyMessageFailed": "Could not copy the message.",
+  "rawToolCallNotice": "La crida a l’eina s’ha emès com a text. No s’ha executat cap eina. Comprova la compatibilitat d’aquest model amb eines i torna-ho a provar.",
+  "transport": {
+    "noUserMessage": "Aquesta conversa no té cap missatge d’usuari al qual respondre. Afegeix un missatge o regenera des d’un torn que inclogui la teva pregunta.",
+    "promptHooksStopped": "El torn s’ha aturat mentre s’executaven els seus hooks del prompt, de manera que el prompt no s’ha enviat.",
+    "reasoningLoop": "El raonament s’ha aturat després de repetir el mateix text. Prova un altre model o un pressupost de raonament més baix.",
+    "serviceUnavailable": "El servei de models no està a punt, o no hi ha cap model o proveïdor seleccionat.",
+    "contextUsed": "(S’han fet servir {{used}} de {{total}} tokens de context.)"
+  }
 }

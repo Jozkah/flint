@@ -223,6 +223,7 @@
       "notNow": "Ara no",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "No s’ha pogut transcriure una frase"
   }
 }

@@ -226,6 +226,7 @@
       "notNow": "Teď ne",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "Jednu frázi se nepodařilo přepsat"
   }
 }

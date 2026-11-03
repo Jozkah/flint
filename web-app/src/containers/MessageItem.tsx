@@ -512,12 +512,12 @@ export const MessageItem = memo(
                 content={
                   grounding && !isStreaming
                     ? injectCitationMarkers(
-                        explainRawToolCall(part.text),
+                        explainRawToolCall(part.text, t('chat:rawToolCallNotice')),
                         grounding.sentenceCitations,
                         `cite-${message.id}`
                       )
                     : message.role === 'assistant'
-                      ? explainRawToolCall(part.text)
+                      ? explainRawToolCall(part.text, t('chat:rawToolCallNotice'))
                       : part.text
                 }
                 isStreaming={isStreaming && isLastPart}

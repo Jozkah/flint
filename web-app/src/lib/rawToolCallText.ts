@@ -1,10 +1,19 @@
 import { sanitizeInvalidJsonEscapes, stripCodeFence } from '@/lib/toolCallRepair'
 
-/** Explain tool markup emitted as plain text, which never executes a tool. */
-export function explainRawToolCall(text: string): string {
+const RAW_TOOL_CALL_NOTICE =
+  'Tool call was emitted as text. No tool ran. Check this model’s tool support and try again.'
+
+/**
+ * Explain tool markup emitted as plain text, which never executes a tool.
+ * `notice` is the translated sentence; the English one is the fallback.
+ */
+export function explainRawToolCall(
+  text: string,
+  notice: string = RAW_TOOL_CALL_NOTICE
+): string {
   return text.replace(
     /<tool_call>\s*<function=[\s\S]*?(?:<\/tool_call>|$)/gi,
-    'Tool call was emitted as text. No tool ran. Check this model’s tool support and try again.'
+    () => notice
   )
 }
 

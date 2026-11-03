@@ -307,5 +307,13 @@
     "imageNotEncoded": "चित्र एन्कोड नहीं किया जा सका"
   },
   "growingTheMind": "Growing the Mind...",
-  "copyMessageFailed": "Could not copy the message."
+  "copyMessageFailed": "Could not copy the message.",
+  "rawToolCallNotice": "टूल कॉल टेक्स्ट के रूप में आया। कोई टूल नहीं चला। इस मॉडल का टूल सपोर्ट जाँचें और फिर कोशिश करें।",
+  "transport": {
+    "noUserMessage": "इस बातचीत में जवाब देने के लिए कोई उपयोगकर्ता संदेश नहीं है। कोई संदेश जोड़ें, या ऐसे टर्न से दोबारा बनाएँ जिसमें आपका प्रश्न हो।",
+    "promptHooksStopped": "टर्न तब रोका गया जब उसके प्रॉम्प्ट हुक चल रहे थे, इसलिए प्रॉम्प्ट नहीं भेजा गया।",
+    "reasoningLoop": "एक ही टेक्स्ट दोहराने के बाद रीज़निंग रुक गई। कोई दूसरा मॉडल या कम थिंकिंग बजट आज़माएँ।",
+    "serviceUnavailable": "मॉडल सेवा तैयार नहीं है, या कोई मॉडल या प्रदाता चुना नहीं गया है।",
+    "contextUsed": "({{total}} में से {{used}} संदर्भ टोकन उपयोग हुए।)"
+  }
 }

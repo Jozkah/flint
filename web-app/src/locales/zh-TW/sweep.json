@@ -217,6 +217,7 @@
       "notNow": "暫時不要",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "有一段話無法轉寫"
   }
 }

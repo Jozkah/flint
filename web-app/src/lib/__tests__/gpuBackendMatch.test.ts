@@ -115,6 +115,16 @@ describe('vendorSupportsFamily', () => {
     }
   })
 
+  it('reads sycl, opencl, musa and cann builds as GPU builds', () => {
+    for (const name of ['linux-sycl-x64', 'win-opencl-adreno-arm64', 'linux-musa-x64', 'linux-cann-arm64']) {
+      expect(backendGpuFamily(name), name).not.toBe('cpu')
+      expect(
+        evaluateBackendGpuMatch([{ name: 'Intel Arc', vendor: 'Intel' }], name).kind,
+        name
+      ).toBe('ok')
+    }
+  })
+
   it('never satisfies a cpu build', () => {
     expect(vendorSupportsFamily('nvidia', 'cpu')).toBe(false)
   })

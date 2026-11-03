@@ -217,6 +217,7 @@
       "notNow": "今はしない",
       "downloading": "Downloading…",
       "download": "Download ({{size}})"
-    }
+    },
+    "phraseDropped": "一部のフレーズを文字起こしできませんでした"
   }
 }

@@ -302,5 +302,13 @@
     "imageNotEncoded": "無法對圖片進行編碼"
   },
   "growingTheMind": "Growing the Mind...",
-  "copyMessageFailed": "Could not copy the message."
+  "copyMessageFailed": "Could not copy the message.",
+  "rawToolCallNotice": "工具呼叫被當作文字輸出，沒有執行任何工具。請檢查此模型的工具支援後再試一次。",
+  "transport": {
+    "noUserMessage": "此對話中沒有可回覆的使用者訊息。請新增一則訊息，或從包含你問題的回合重新產生。",
+    "promptHooksStopped": "提示掛鉤執行期間該回合被停止，因此提示未送出。",
+    "reasoningLoop": "因重複相同文字，推理已停止。請嘗試其他模型或調低思考預算。",
+    "serviceUnavailable": "模型服務尚未就緒，或未選擇模型或提供者。",
+    "contextUsed": "（已使用 {{used}} / {{total}} 個上下文 token。）"
+  }
 }

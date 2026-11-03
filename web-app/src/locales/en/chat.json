@@ -307,5 +307,13 @@
     "pageNotDrawn": "the page could not be drawn",
     "noCanvas": "no canvas is available to draw the image",
     "imageNotEncoded": "the image could not be encoded"
+  },
+  "rawToolCallNotice": "Tool call was emitted as text. No tool ran. Check this model’s tool support and try again.",
+  "transport": {
+    "noUserMessage": "This conversation has no user message to respond to. Add a message, or regenerate from a turn that includes your question.",
+    "promptHooksStopped": "The turn was stopped while its prompt hooks ran, so the prompt was not submitted.",
+    "reasoningLoop": "Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.",
+    "serviceUnavailable": "The model service is not ready, or no model or provider is selected.",
+    "contextUsed": "(Used {{used}} of {{total}} context tokens.)"
   }
 }

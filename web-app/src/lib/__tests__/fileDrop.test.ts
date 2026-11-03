@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decideDrop,
+  droppedDirectoryNames,
   fileUriPaths,
   inlineDroppedTexts,
   pastedPath,
@@ -34,6 +35,29 @@ describe('where a drop goes', () => {
 
   it('ignores an empty drop', () => {
     expect(decideDrop('code', []).action).toBe('ignore')
+  })
+})
+
+describe('folders reported by the browser', () => {
+  it('are found even with a dot in the name', () => {
+    expect(
+      decideDrop('code', [file('v1.2', 0, '')], new Set(['v1.2'])).action
+    ).toBe('offer-folder')
+  })
+
+  it('do not turn an empty extensionless file into a folder', () => {
+    const files = [file('Makefile', 0, ''), file('a.ts')]
+    expect(decideDrop('code', files, new Set()).action).toBe('open')
+  })
+
+  it('reads directory names from webkitGetAsEntry', () => {
+    const item = (name: string, isDirectory: boolean) => ({
+      kind: 'file',
+      webkitGetAsEntry: () => ({ name, isDirectory }),
+    })
+    const dt = { items: [item('my.app', true), item('Makefile', false)] }
+    expect(droppedDirectoryNames(dt as never)).toEqual(new Set(['my.app']))
+    expect(droppedDirectoryNames({ items: [] } as never)).toBeNull()
   })
 })
 

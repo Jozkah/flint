@@ -32,12 +32,36 @@ export type DropIntent =
  * a real file with no extension and no type is rare, and being asked about a
  * folder that was a file is a smaller harm than silently reading a tree.
  */
-export function looksLikeDirectory(file: {
-  name: string
-  size: number
-  type: string
-}): boolean {
+export function looksLikeDirectory(
+  file: { name: string; size: number; type: string },
+  knownDirectories?: ReadonlySet<string> | null
+): boolean {
+  // The browser's own answer beats the guess: it is right for a dotted folder
+  // name, and for an empty `Makefile` that the guess would call a folder.
+  if (knownDirectories) return knownDirectories.has(file.name)
   return file.size === 0 && file.type === '' && !file.name.includes('.')
+}
+
+/**
+ * Names of the dropped entries the browser says are directories, or null when
+ * it cannot say (no `webkitGetAsEntry`). Must be called synchronously inside
+ * the drop handler: the items are cleared once it returns.
+ */
+export function droppedDirectoryNames(
+  dt: Pick<DataTransfer, 'items'> | null | undefined
+): Set<string> | null {
+  const items = dt?.items
+  if (!items || items.length === 0) return null
+  const names = new Set<string>()
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.kind !== 'file') continue
+    if (typeof item.webkitGetAsEntry !== 'function') return null
+    const entry = item.webkitGetAsEntry()
+    if (!entry) return null
+    if (entry.isDirectory) names.add(entry.name)
+  }
+  return names
 }
 
 /**
@@ -47,10 +71,14 @@ export function looksLikeDirectory(file: {
  * and also switch your project" into one gesture is not something the user
  * can have meant.
  */
-export function decideDrop(target: DropTarget, files: File[]): DropIntent {
+export function decideDrop(
+  target: DropTarget,
+  files: File[],
+  knownDirectories?: ReadonlySet<string> | null
+): DropIntent {
   if (files.length === 0) return { action: 'ignore' }
 
-  const folder = files.find(looksLikeDirectory)
+  const folder = files.find((f) => looksLikeDirectory(f, knownDirectories))
   if (folder) return { action: 'offer-folder', name: folder.name }
 
   return target === 'code'
