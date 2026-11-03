@@ -401,21 +401,24 @@ export function editorCommands(
               (m, p) => Math.max(m, p.order + 1),
               0
             )
-            participants = [
-              ...participants,
-              normaliseParticipant(
-                {
-                  name: edit.name,
-                  role: edit.role,
-                  model: edit.model,
-                  toolAccess: edit.toolAccess,
-                  pricing: edit.pricing,
-                  reasoning: edit.reasoning ?? undefined,
-                  order: edit.order ?? order,
-                },
-                participantDeps
-              ),
-            ]
+            const added = normaliseParticipant(
+              {
+                name: edit.name,
+                role: edit.role,
+                model: edit.model,
+                toolAccess: edit.toolAccess,
+                pricing: edit.pricing,
+                reasoning: edit.reasoning ?? undefined,
+                assistantId: edit.assistantId,
+                workProfile: edit.workProfile,
+                order: edit.order ?? order,
+              },
+              participantDeps
+            )
+            if (edit.compareSkip) added.compareSkip = true
+            const addedOff = cleanDisabledTools(edit.disabledTools)
+            if (addedOff.length) added.disabledTools = addedOff
+            participants = [...participants, added]
             continue
           }
           const prev = participants[idx]
