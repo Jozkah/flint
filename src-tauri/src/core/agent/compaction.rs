@@ -138,6 +138,10 @@ pub(crate) struct CompactOptions {
     /// this the tail is shortened (never below [`MIN_TAIL_MESSAGES`]) so the
     /// compacted request lands well under the trigger. `None` keeps the count.
     pub retain_tokens: Option<u64>,
+    /// The model that writes the summary, when it is not the run's own
+    /// (`[agent].compaction_model`). A failure to get a summary from it falls
+    /// back to the run's model.
+    pub summary_model: Option<String>,
 }
 
 /// The fewest messages a token-capped tail is cut to.
@@ -171,6 +175,7 @@ impl Default for CompactOptions {
             focus: None,
             offload_root: None,
             retain_tokens: None,
+            summary_model: None,
         }
     }
 }
@@ -190,6 +195,7 @@ impl CompactOptions {
             focus: None,
             offload_root: None,
             retain_tokens: None,
+            summary_model: None,
         }
     }
 
@@ -223,6 +229,12 @@ impl CompactOptions {
                 .get(crate::core::agent::r#loop::BODY_EFFECTIVE_WINDOW)
                 .and_then(Value::as_u64)
                 .map(|window| window / RETAIN_SHARE_DIVISOR),
+            summary_model: body
+                .get(BODY_SUMMARY_MODEL)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|m| !m.is_empty())
+                .map(str::to_string),
         }
     }
 }
@@ -234,6 +246,7 @@ pub(crate) const BODY_KEEP_RECENT: &str = "jan_compaction_keep_recent";
 pub(crate) const BODY_TRIM: &str = "jan_compaction_trim";
 pub(crate) const BODY_SUMMARY_MAX_TOKENS: &str = "jan_compaction_summary_max_tokens";
 pub(crate) const BODY_FOCUS: &str = "jan_compaction_focus";
+pub(crate) const BODY_SUMMARY_MODEL: &str = "jan_compaction_summary_model";
 
 /// [`compact_conversation`], under explicit options (AH-076).
 pub(crate) async fn compact_conversation_with(
@@ -313,6 +326,7 @@ pub(crate) async fn compact_conversation_with(
             options.focus.as_deref(),
             prior.brief.as_deref(),
             task_context.as_deref(),
+            options.summary_model.as_deref(),
         )
         .await?;
         if written == FALLBACK_NOTE {
@@ -613,6 +627,7 @@ async fn summarize(
     focus: Option<&str>,
     prior: Option<&str>,
     task: Option<&str>,
+    summary_model: Option<&str>,
 ) -> Result<String, HarnessError> {
     let system_prompt = match focus {
         Some(f) => format!(
@@ -655,9 +670,11 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
         .max(MIN_SUMMARY_INPUT_CHARS);
     let mut best_summary: Option<String> = None;
     let mut short_summary_retries = 0;
+    // The configured summary model first; the run's own if that one fails.
+    let mut active_model = summary_model.unwrap_or(model_id);
     loop {
         let request = json!({
-            "model": model_id,
+            "model": active_model,
             "messages": [
                 { "role": "system", "content": system_prompt },
                 { "role": "user", "content": clamp_middle(&full_transcript, excerpt_chars) },
@@ -706,6 +723,12 @@ Focus guidance for this summary (it narrows what to keep detail on; it does not 
                         return best_summary.ok_or(e);
                     }
                     excerpt_chars = (excerpt_chars / 2).max(MIN_SUMMARY_INPUT_CHARS);
+                } else if active_model != model_id {
+                    log::warn!(
+                        "compaction: the summary model {active_model} failed ({}); using {model_id}",
+                        e.message()
+                    );
+                    active_model = model_id;
                 } else {
                     // A summary already in hand beats the canned note.
                     return Ok(best_summary.unwrap_or_else(|| FALLBACK_NOTE.to_string()));
@@ -830,6 +853,53 @@ mod tests {
         assert_eq!(roomy.len(), by_count.len());
     }
 
+    /// A model that fails for one model id and summarizes for any other.
+    struct PickyModel {
+        fail_for: &'static str,
+        requests: StdMutex<Vec<String>>,
+    }
+    #[async_trait]
+    impl ModelInvoker for PickyModel {
+        async fn invoke(
+            &self,
+            request: &Value,
+            _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+        ) -> Result<Value, HarnessError> {
+            let model = request["model"].as_str().unwrap_or_default().to_string();
+            self.requests.lock().unwrap().push(model.clone());
+            if model == self.fail_for {
+                return Err("no such model".to_string().into());
+            }
+            Ok(json!({ "choices": [{ "message": { "content": "SUMMARY" } }] }))
+        }
+    }
+
+    #[tokio::test]
+    async fn the_configured_summary_model_writes_the_summary_and_the_run_model_backs_it_up() {
+        let opts = |summary_model: Option<&str>| CompactOptions {
+            keep_recent: 4,
+            summary_model: summary_model.map(str::to_string),
+            ..CompactOptions::default()
+        };
+        // Used when it works, and the run's own model is not asked.
+        let ok = PickyModel { fail_for: "", requests: StdMutex::new(Vec::new()) };
+        compact_conversation_with(&convo(20), "main", &ok, &opts(Some("cheap"))).await.unwrap();
+        assert_eq!(*ok.requests.lock().unwrap(), vec!["cheap".to_string()]);
+        // Not configured: the run's own model, as before.
+        let plain = PickyModel { fail_for: "", requests: StdMutex::new(Vec::new()) };
+        compact_conversation_with(&convo(20), "main", &plain, &opts(None)).await.unwrap();
+        assert_eq!(*plain.requests.lock().unwrap(), vec!["main".to_string()]);
+        // When it fails, the run's model writes the summary instead of a bare note.
+        let picky = PickyModel { fail_for: "cheap", requests: StdMutex::new(Vec::new()) };
+        let out = compact_conversation_with(&convo(20), "main", &picky, &opts(Some("cheap"))).await.unwrap();
+        assert_eq!(*picky.requests.lock().unwrap(), vec!["cheap".to_string(), "main".to_string()]);
+        assert!(out.iter().any(|m| content_text(m).contains("SUMMARY")), "a real summary, not the fallback note");
+        // And it travels on the body, blank meaning unset.
+        let body = json!({ BODY_SUMMARY_MODEL: " cheap " });
+        assert_eq!(CompactOptions::from_body(&body).summary_model.as_deref(), Some("cheap"));
+        assert_eq!(CompactOptions::from_body(&json!({ BODY_SUMMARY_MODEL: "" })).summary_model, None);
+    }
+
     #[tokio::test]
     async fn a_second_compaction_folds_the_first_summary_in_instead_of_stacking() {
         let stub = |text: &str| StubModel { summary: text.into(), calls: StdMutex::new(0), requests: tokio::sync::Mutex::new(Vec::new()) };
@@ -884,6 +954,7 @@ mod tests {
                 focus: None,
                 offload_root: None,
                 retain_tokens: None,
+            summary_model: None,
             },
         )
         .await
@@ -909,6 +980,7 @@ mod tests {
                 focus: None,
                 offload_root: None,
                 retain_tokens: None,
+            summary_model: None,
             },
         )
         .await
@@ -939,6 +1011,7 @@ mod tests {
                 focus: None,
                 offload_root: None,
                 retain_tokens: None,
+            summary_model: None,
             }
         );
         assert_eq!(

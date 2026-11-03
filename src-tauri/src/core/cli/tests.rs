@@ -2083,6 +2083,7 @@ fn limits_with(max_turns: Option<u64>, max_session_tokens: u64) -> SessionLimits
         max_turns,
         cost_ceiling: None,
         pause_at_usd: None,
+        compaction_model: None,
     }
 }
 
