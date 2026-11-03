@@ -16,6 +16,7 @@
     "MODEL_LOAD_TIMED_OUT": "Model terlalu lama dimuat dan dihentikan. Model yang lebih kecil atau ukuran konteks yang lebih kecil biasanya membantu.",
     "MISSING_SHARED_LIBRARY": "Library yang dibutuhkan engine tidak ada, sehingga tidak dapat dimulai.",
     "GPU_DRIVER_TOO_OLD": "Driver GPU Anda terlalu lama untuk engine ini. Memperbarui driver, atau beralih ke engine CPU di Pengaturan, akan memperbaikinya.",
+    "GPU_NOT_SUPPORTED": "GPU NVIDIA ini terlalu lama untuk add-on engine CUDA, yang membutuhkan compute capability 7.5 (GeForce RTX seri 20) atau lebih baru. Hapus add-on CUDA di Add-on engine pada Pengaturan untuk menjalankan dengan Vulkan.",
     "CPU_NOT_SUPPORTED": "Prosesor komputer ini tidak memiliki instruksi yang dibutuhkan mesin (diperlukan CPU x86 dengan AVX), sehingga mesin mogok. Flint sudah mencoba ulang model sekali hanya dengan CPU; jika Anda masih melihat ini, percobaan ulang itu juga mogok, atau mesin sudah diatur hanya CPU.",
     "OS_VERSION_UNSUPPORTED": "Versi macOS ini terlalu lama untuk engine. Memperbarui macOS akan memperbaikinya.",
     "MODEL_QUANT_NOT_SUPPORTED": "Model ini memakai tipe kuantisasi yang tidak dapat dijalankan backend GPU. Unduh kuantisasi lain seperti Q4_K_M, atau matikan GPU offload.",
