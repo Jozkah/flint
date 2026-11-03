@@ -3574,5 +3574,6 @@
     "discard": "Zahodit koncept",
     "resurvey": "Prohlédnout znovu",
     "accept": "Přijmout a zapsat FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

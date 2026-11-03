@@ -3495,5 +3495,6 @@
     "discard": "Descarta l'esborrany",
     "resurvey": "Torna a analitzar",
     "accept": "Accepta i escriu FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

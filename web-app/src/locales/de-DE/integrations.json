@@ -102,6 +102,8 @@
       "idle": "inaktiv",
       "awaiting_approval": "wartet auf Freigabe",
       "awaiting_answer": "wartet auf Antwort"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

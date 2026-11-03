@@ -3417,5 +3417,6 @@
     "discard": "Entwurf verwerfen",
     "resurvey": "Erneut untersuchen",
     "accept": "Übernehmen und FLINT.md schreiben"
-  }
+  },
+  "toggleModelList": "Show models"
 }

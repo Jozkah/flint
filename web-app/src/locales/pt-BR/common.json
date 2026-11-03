@@ -3495,5 +3495,6 @@
     "discard": "Descartar rascunho",
     "resurvey": "Analisar novamente",
     "accept": "Aceitar e escrever FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

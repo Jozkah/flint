@@ -3400,5 +3400,6 @@
     "discard": "초안 삭제",
     "resurvey": "다시 조사",
     "accept": "수락하고 FLINT.md 기록"
-  }
+  },
+  "toggleModelList": "Show models"
 }

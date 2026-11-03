@@ -3575,5 +3575,6 @@
     "discard": "Odrzuć szkic",
     "resurvey": "Przejrzyj ponownie",
     "accept": "Zaakceptuj i zapisz FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

@@ -3496,5 +3496,6 @@
     "discard": "Descartar borrador",
     "resurvey": "Analizar de nuevo",
     "accept": "Aceptar y escribir FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

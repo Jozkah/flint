@@ -3496,5 +3496,6 @@
     "discard": "Hủy bản nháp",
     "resurvey": "Khảo sát lại",
     "accept": "Chấp nhận và ghi FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

@@ -3417,5 +3417,6 @@
     "discard": "ड्राफ़्ट हटाएँ",
     "resurvey": "दोबारा सर्वेक्षण करें",
     "accept": "स्वीकार करें और FLINT.md लिखें"
-  }
+  },
+  "toggleModelList": "Show models"
 }

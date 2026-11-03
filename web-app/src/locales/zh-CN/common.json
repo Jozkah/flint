@@ -3403,5 +3403,6 @@
     "discard": "丢弃草稿",
     "resurvey": "重新勘察",
     "accept": "接受并写入 FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

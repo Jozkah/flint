@@ -3574,5 +3574,6 @@
     "discard": "Отбросить черновик",
     "resurvey": "Повторить обзор",
     "accept": "Принять и записать FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

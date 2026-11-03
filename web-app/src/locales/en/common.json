@@ -3415,5 +3415,6 @@
     "discard": "Discard draft",
     "resurvey": "Survey again",
     "accept": "Accept and write FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models"
 }

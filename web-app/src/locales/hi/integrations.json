@@ -102,6 +102,8 @@
       "idle": "निष्क्रिय",
       "awaiting_approval": "स्वीकृति की प्रतीक्षा",
       "awaiting_answer": "उत्तर की प्रतीक्षा"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }
