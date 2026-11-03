@@ -49,6 +49,8 @@ export function persistedProxyConfigState(
 }
 
 let passwordWriteChain: Promise<void> = Promise.resolve()
+// Newest typed value; a queued write for an older one is skipped.
+let latestPassword = ''
 
 export const useProxyConfig = create<ProxyConfigState>()(
   persist(
@@ -71,7 +73,10 @@ export const useProxyConfig = create<ProxyConfigState>()(
         set({ proxyPassword })
         // A secret: kept in the OS keyring, never in settings.json.
         // Chained so keystroke writes land in order and the last one wins.
+        latestPassword = proxyPassword
         passwordWriteChain = passwordWriteChain.then(async () => {
+          // Superseded while queued: only the newest value needs the keyring.
+          if (proxyPassword !== latestPassword) return
           await persistStoreSecret(PROXY_PASSWORD_SECRET, proxyPassword)
         })
       },

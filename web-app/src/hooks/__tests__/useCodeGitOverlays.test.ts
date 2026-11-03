@@ -64,6 +64,18 @@ describe('useCodeGitOverlays caches', () => {
     expect(keys).toHaveLength(1)
   })
 
+  it('remounting a file with a different HEAD text reuses the cached blame', async () => {
+    loadGitHeadFile.mockResolvedValueOnce('one')
+    const first = run('reuse.ts', 0)
+    await waitFor(() => expect(loadGitBlame).toHaveBeenCalledTimes(1))
+    first.unmount()
+    loadGitHeadFile.mockResolvedValueOnce('a much longer head text')
+    const second = run('reuse.ts', 0)
+    await waitFor(() => expect(loadGitHeadFile).toHaveBeenCalledTimes(2))
+    second.unmount()
+    expect(loadGitBlame).toHaveBeenCalledTimes(1)
+  })
+
   it('a rejected blame is not cached', async () => {
     loadGitBlame.mockRejectedValueOnce(new Error('git busy'))
     const { unmount } = run('bad.ts')

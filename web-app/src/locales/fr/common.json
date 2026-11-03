@@ -2933,7 +2933,9 @@
     "pagesAsImages": "Envoyer les pages en images",
     "pagesAsImagesHint": "Envoyer les pages de ce PDF en images pour que le modèle voie les scans, graphiques et la mise en page",
     "pdfPagesCut": "Les {{sent}} premières pages sur {{total}} de {{name}} ont été envoyées en images",
-    "pdfScannedAsImages": "{{name}} ne contient pas de texte, ses pages ont donc été envoyées en images"
+    "pdfScannedAsImages": "{{name}} ne contient pas de texte, ses pages ont donc été envoyées en images",
+    "ingestImageFailed": "Impossible de traiter l'image jointe",
+    "ingestFailed": "Impossible d'indexer les pièces jointes"
   },
   "fileViewer": {
     "openFull": "Ouvrir l’aperçu complet",

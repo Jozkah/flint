@@ -112,14 +112,14 @@ describe('useMCPServers', () => {
   })
 
   describe('setServers', () => {
-    it('should merge and overwrite servers', () => {
+    it('should replace the server record, dropping servers the config no longer lists', () => {
       const { result } = renderHook(() => useMCPServers())
       const existing = makeConfig({ args: ['existing.js'] })
       const newSrv = makeConfig({ command: 'python', args: ['new.py'] })
 
       act(() => { result.current.addServer('existing', existing) })
       act(() => { result.current.setServers({ 'new-srv': newSrv }) })
-      expect(result.current.mcpServers['existing']).toEqual(existing)
+      expect(result.current.mcpServers['existing']).toBeUndefined()
       expect(result.current.mcpServers['new-srv']).toEqual(newSrv)
 
       const overwrite = makeConfig({ args: ['updated.js'] })

@@ -1079,6 +1079,9 @@ export async function withdrawAgentToolUnsandboxed(
   }
 }
 
+/** Out-of-order output chunks held while waiting for a missing one. */
+const MAX_EARLY_CHUNKS = 256
+
 /**
  * `executeTool` over the streaming command, forwarding each output chunk to
  * `options.onOutput` in order. Same arguments, same result.
@@ -1097,6 +1100,11 @@ async function runStreaming(
   // Chunks carry a monotonic `seq`; deliver strictly in order.
   channel.onmessage = (chunk) => {
     early.set(chunk.seq, chunk.text)
+    // A seq that never arrives must not hold every later chunk in memory:
+    // past the cap, skip the gap and carry on from the oldest chunk held.
+    if (early.size > MAX_EARLY_CHUNKS && !early.has(next)) {
+      next = Math.min(...early.keys())
+    }
     while (early.has(next)) {
       onOutput?.(early.get(next) as string)
       early.delete(next)
