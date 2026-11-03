@@ -105,6 +105,7 @@ import { threadChanged, useRefreshWhenVisible } from '@/lib/threadRefresh'
 import { followSentMessage } from '@/lib/followSentMessage'
 import {
   convertThreadMessagesToUIMessages,
+  countTerminalToolParts,
   mergeSettledToolParts,
   uiMessageHasMeaningfulContent,
   threadMessageIsEmpty,
@@ -1550,14 +1551,22 @@ export function ThreadConversation({
   // Tool results land after onFinish saved the reply, so write them (and the
   // error of a failed or denied call) back to the stored message once they
   // exist; otherwise a reopened chat shows those calls as still running.
+  const mergedTerminalRef = useRef<{ id: string; count: number } | null>(null)
   useEffect(() => {
     const live = chatMessages[chatMessages.length - 1]
     if (!live || live.role !== 'assistant') return
+    // Only a newly settled tool part can change the stored copy; skip the
+    // store lookup and the full content extraction on every other delta.
+    const terminal = countTerminalToolParts(live)
+    if (terminal === 0) return
+    const done = mergedTerminalRef.current
+    if (done && done.id === live.id && done.count === terminal) return
     const stored = useMessages
       .getState()
       .getMessages(threadId)
       .find((m) => m.id === live.id)
     if (!stored) return
+    mergedTerminalRef.current = { id: live.id, count: terminal }
     const merged = mergeSettledToolParts(stored, live)
     if (merged) updateMessage(merged)
   }, [chatMessages, threadId, updateMessage])

@@ -3,6 +3,8 @@ import {
   answerSubagent,
   askParent,
   MAX_QUESTIONS_PER_CHILD,
+  MAX_SETTLED_PER_SESSION,
+  pruneSettled,
   __questionsTesting,
   useSubagentQuestions,
 } from '../coworkSubagentQuestions'
@@ -25,6 +27,29 @@ describe('subagent questions', () => {
     clearNotices('s1')
   })
   afterEach(() => vi.useRealTimers())
+
+  it('keeps only the newest settled questions per session, and every open one', () => {
+    const mk = (i: number, status: 'open' | 'expired', sessionId = 's1') => ({
+      id: `q${i}`,
+      sessionId,
+      taskId: 't',
+      agentName: 'a',
+      question: 'q',
+      status,
+      askedAt: i,
+    })
+    const rows = [
+      mk(-1, 'open'),
+      ...Array.from({ length: MAX_SETTLED_PER_SESSION + 5 }, (_, i) => mk(i, 'expired')),
+      mk(900, 'expired', 's2'),
+    ]
+    const kept = pruneSettled(rows, 's1')
+    const s1Settled = kept.filter((q) => q.sessionId === 's1' && q.status !== 'open')
+    expect(s1Settled).toHaveLength(MAX_SETTLED_PER_SESSION)
+    expect(s1Settled[0].id).toBe('q5')
+    expect(kept.some((q) => q.id === 'q-1')).toBe(true)
+    expect(kept.some((q) => q.sessionId === 's2')).toBe(true)
+  })
 
   it('notifies the parent, and the answer returns to the child as data', async () => {
     const p = ask()

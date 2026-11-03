@@ -303,6 +303,10 @@
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "도구 호출이 텍스트로 출력되었습니다. 실행된 도구는 없습니다. 이 모델의 도구 지원을 확인한 뒤 다시 시도하세요.",
   "transport": {
     "noUserMessage": "이 대화에는 응답할 사용자 메시지가 없습니다. 메시지를 추가하거나 질문이 포함된 턴부터 다시 생성하세요.",

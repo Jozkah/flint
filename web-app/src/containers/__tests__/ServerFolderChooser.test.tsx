@@ -64,6 +64,16 @@ describe('server folder chooser', () => {
     await expect(picked).resolves.toBeNull()
   })
 
+  it('names the git marker through the translations', async () => {
+    render(<ServerFolderPickerHost />)
+    act(() => {
+      void pickServerFolder()
+    })
+    fireEvent.click(await screen.findByText(ROOT))
+    await screen.findByText('app')
+    expect(screen.getByLabelText('common:gitRepository')).toBeInTheDocument()
+  })
+
   it('says how to share folders when the server has no --agent-root', async () => {
     info.mockResolvedValue({ agent: false })
     render(<ServerFolderPickerHost />)

@@ -105,7 +105,7 @@ export default function AddEditCustomCliDialog({
             <Input
               value={customCli}
               onChange={(e) => setCustomCli(e.target.value)}
-              placeholder="Enter custom CLI command"
+              placeholder={t('common:enterCustomCliCommand')}
             />
           </div> */}
 

@@ -1042,17 +1042,31 @@ pub(crate) fn append_event(data_folder: &Path, id: &str, kind: &str, task: Optio
         "detail": detail.chars().take(MAX_DETAIL).collect::<String>(),
     });
     let _ = std::fs::create_dir_all(&dir);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("events.jsonl")) {
+    let path = dir.join("events.jsonl");
+    // Bounded: past the cap the log moves to `events.old.jsonl` (replacing the
+    // one before), so a campaign that runs for months keeps its recent trail
+    // without the file growing for as long as it lives.
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() >= MAX_EVENTS_FILE_BYTES) {
+        let _ = std::fs::rename(&path, dir.join("events.old.jsonl"));
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(f, "{line}");
     }
 }
 
-/// Every line of `events.jsonl`, oldest first. Lines that do not parse are
-/// skipped.
+/// Size at which `events.jsonl` is rotated.
+const MAX_EVENTS_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// The recorded events, oldest first: the rotated-out file (when there is
+/// one), then `events.jsonl`. Lines that do not parse are skipped.
 pub fn events(data_folder: &Path, id: &str) -> Result<Vec<serde_json::Value>, CampaignError> {
     let dir = campaign_dir(data_folder, id)?;
-    let text = std::fs::read_to_string(dir.join("events.jsonl")).unwrap_or_default();
-    Ok(text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
+    let mut out = Vec::new();
+    for name in ["events.old.jsonl", "events.jsonl"] {
+        let text = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+        out.extend(text.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()));
+    }
+    Ok(out)
 }
 
 fn read_raw(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
@@ -1081,6 +1095,15 @@ fn read_raw(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
 pub(crate) fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
     let mut c = read_raw(data_folder, id)?;
     let me = epoch();
+    // A finished campaign with no task left mid-flight has nothing to
+    // reconcile: skip the process probe and the rewrite. Without this the first
+    // `list` in every app run rewrote every historical campaign file.
+    let needs_reconcile = |t: &CampaignTask| {
+        t.status.is_live() || matches!(t.status, TaskStatus::Resolving | TaskStatus::Verifying)
+    };
+    if c.status.is_terminal() && !c.tasks.iter().any(needs_reconcile) {
+        return Ok(c);
+    }
     // Another live process (the desktop app and `flint serve` share a data
     // folder) is driving it: its running work is not interrupted.
     // A record with no live work (finished, paused, pending) has nothing to
@@ -1116,7 +1139,11 @@ pub(crate) fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, 
     if project_cut || !changed.is_empty() {
         c.updated_at = now();
     }
-    save(data_folder, &c)?;
+    // Nothing was interrupted: only the owner would change, and that is
+    // recorded the next time the campaign is saved for a real reason.
+    if project_cut || !changed.is_empty() {
+        save(data_folder, &c)?;
+    }
     for (task, from) in changed {
         append_event(data_folder, id, "task-interrupted", Some(&task), &format!("was {from:?} when the app stopped"));
     }
@@ -1854,12 +1881,28 @@ pub fn claim_notice(data_folder: &Path, id: &str, key: &str) -> Result<bool, Cam
     }
     let _held = lock(data_folder);
     let c = load_reconciled(data_folder, id)?;
-    let seen = events(data_folder, &c.id)?
-        .iter()
-        .any(|e| e["kind"] == "desktop-notified" && e["detail"] == key.as_str());
+    // The claimed keys live in a small file of their own: scanning the event
+    // log on every check cost more as a campaign aged, under the global lock.
+    let dir = campaign_dir(data_folder, &c.id)?;
+    let path = dir.join("notices.jsonl");
+    if !path.exists() {
+        // A campaign from before the file existed: carry its claims over once.
+        let claimed: String = events(data_folder, &c.id)?
+            .iter()
+            .filter(|e| e["kind"] == "desktop-notified")
+            .filter_map(|e| e["detail"].as_str())
+            .map(|k| format!("{}\n", serde_json::Value::from(k)))
+            .collect();
+        std::fs::write(&path, claimed).map_err(io)?;
+    }
+    let wanted = serde_json::Value::from(key.as_str()).to_string();
+    let seen = std::fs::read_to_string(&path).map_err(io)?.lines().any(|l| l == wanted);
     if seen {
         return Ok(false);
     }
+    let mut f = std::fs::OpenOptions::new().append(true).open(&path).map_err(io)?;
+    writeln!(f, "{wanted}").map_err(io)?;
+    drop(f);
     append_event(data_folder, id, "desktop-notified", None, &key);
     Ok(true)
 }
@@ -3306,5 +3349,42 @@ pub(crate) mod tests {
         assert!(!claim_notice(&d, "c", "reviewing").unwrap());
         assert!(claim_notice(&d, "c", "done").unwrap());
         assert!(!claim_notice(&d, "c", "  ").unwrap());
+    }
+
+    /// CAGA-020: a claim recorded only in the event log (an older campaign) is
+    /// still honoured, and the event log stays bounded.
+    #[test]
+    fn notice_claims_carry_over_and_the_event_log_rotates() {
+        let d = data_dir("notice-legacy");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        append_event(&d, "c", "desktop-notified", None, "reviewing");
+        assert!(!claim_notice(&d, "c", "reviewing").unwrap(), "an old claim holds");
+        assert!(claim_notice(&d, "c", "other").unwrap());
+
+        let dir = campaign_dir(&d, "c").unwrap();
+        std::fs::write(dir.join("events.jsonl"), vec![b' '; MAX_EVENTS_FILE_BYTES as usize]).unwrap();
+        append_event(&d, "c", "decision", None, "after rotation");
+        assert!(dir.join("events.old.jsonl").exists());
+        let kinds: Vec<String> = events(&d, "c").unwrap().iter().map(|e| e["kind"].as_str().unwrap().to_string()).collect();
+        assert_eq!(kinds.last().map(String::as_str), Some("decision"));
+        assert!(std::fs::metadata(dir.join("events.jsonl")).unwrap().len() < 4096);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// F1a-008: a finished campaign is not rewritten when it is read.
+    #[test]
+    fn reading_a_finished_campaign_does_not_rewrite_it() {
+        let d = data_dir("terminal-read");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        let mut c = read_raw(&d, "c").unwrap();
+        c.status = CampaignStatus::Done;
+        c.process_epoch = "an-earlier-process".into();
+        save(&d, &c).unwrap();
+        let file = campaign_dir(&d, "c").unwrap().join("campaign.json");
+        let before = std::fs::read(&file).unwrap();
+        let got = get(&d, "c").unwrap();
+        assert_eq!(got.status, CampaignStatus::Done);
+        assert_eq!(std::fs::read(&file).unwrap(), before);
+        std::fs::remove_dir_all(&d).ok();
     }
 }

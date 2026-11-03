@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type ComponentType } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
@@ -38,6 +39,9 @@ export function CampaignRunHost({
 }: {
   renderPane?: PaneComponent
 }) {
+  const { t } = useTranslation()
+  const tRef = useRef(t)
+  tRef.current = t
   const { campaigns } = useCampaigns()
   // Ids only: the session array changes identity on every run checkpoint.
   const sessionIds = useCoworkSessions(useShallow((s) => s.sessions.map((x) => x.id)))
@@ -67,6 +71,17 @@ export function CampaignRunHost({
     const timer = setInterval(() => {
       const run = useCoworkRun.getState()
       const queue = useMessageQueue.getState()
+      // Forget tasks that left the record so these sets do not grow for the
+      // life of the window.
+      const known = new Set(
+        campaignsRef.current.flatMap((c) => c.tasks.map((x) => x.id))
+      )
+      for (const id of [...firstSeen.current.keys()]) {
+        if (!known.has(id)) firstSeen.current.delete(id)
+      }
+      for (const id of [...already.current]) {
+        if (!known.has(id)) already.current.delete(id)
+      }
       const due = stalledToRequeue({
         campaigns: campaignsRef.current,
         live: new Set(Object.keys(run.runs)),
@@ -87,7 +102,7 @@ export function CampaignRunHost({
               task: {
                 id: taskId,
                 to: 'queued',
-                patch: { detail: 'its run was lost when the window reloaded' },
+                patch: { detail: tRef.current('common:campaignRunLost') },
               },
             })
             .catch(() => undefined)

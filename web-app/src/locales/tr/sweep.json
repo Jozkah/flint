@@ -128,7 +128,9 @@
     "resultLimit": "Göster",
     "recommendedHere": "Bu bilgisayar için önerilen",
     "shards_one": "{{count}} shard",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Koleksiyonuna eklemek için bir GGUF model dosyası içe aktar. Görsel veya ses girdisi için mmproj eklemek üzere çok kipli desteği, ya da spekülatif kod çözme için taslak model desteğini aç. Gömme (embedding) modelleri otomatik algılanır.",

@@ -60,3 +60,35 @@ export function availableHelperModels(
     small: usable(chosen.small),
   }
 }
+
+/**
+ * Waits until every id in `ids` is reported active, polling `getActive`, and
+ * gives up quietly after `timeoutMs`. Replaces a fixed sleep after a model
+ * start: it returns at once when the models are already up and waits longer
+ * only when the engine is slow to report them.
+ */
+export async function waitForModelsActive(
+  getActive: () => Promise<string[] | null | undefined>,
+  ids: string[],
+  { timeoutMs = 5000, intervalMs = 100 }: { timeoutMs?: number; intervalMs?: number } = {}
+): Promise<boolean> {
+  if (ids.length === 0) return true
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const active = (await getActive().catch(() => [])) ?? []
+    if (ids.every((id) => active.includes(id))) return true
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
+/** The running models that belong to a known provider, as the server-restore list. */
+export function serverModelsToPersist(
+  activeModels: string[],
+  providers: Array<{ provider: string; models?: Array<{ id: string }> }>
+): Array<{ model: string; provider: string }> {
+  return activeModels.flatMap((id) => {
+    const p = providers.find((p) => p?.models?.some((m) => m.id === id))
+    return p ? [{ model: id, provider: p.provider }] : []
+  })
+}

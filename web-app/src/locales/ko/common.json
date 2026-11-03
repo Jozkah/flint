@@ -2873,7 +2873,9 @@
     "pagesAsImages": "페이지를 이미지로 보내기",
     "pagesAsImagesHint": "이 PDF의 페이지를 이미지로 보내 모델이 스캔, 차트, 레이아웃을 볼 수 있게 합니다",
     "pdfPagesCut": "{{name}}의 전체 {{total}}페이지 중 처음 {{sent}}페이지를 이미지로 보냈습니다",
-    "pdfScannedAsImages": "{{name}}에 텍스트가 없어 페이지를 이미지로 보냈습니다"
+    "pdfScannedAsImages": "{{name}}에 텍스트가 없어 페이지를 이미지로 보냈습니다",
+    "ingestImageFailed": "이미지 첨부 파일을 처리하지 못했습니다",
+    "ingestFailed": "첨부 파일을 색인하지 못했습니다"
   },
   "fileViewer": {
     "openFull": "전체 미리보기 열기",
@@ -3400,5 +3402,11 @@
     "discard": "초안 삭제",
     "resurvey": "다시 조사",
     "accept": "수락하고 FLINT.md 기록"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

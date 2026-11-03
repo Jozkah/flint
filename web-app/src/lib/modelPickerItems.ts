@@ -165,6 +165,31 @@ export function remoteLabelFor(
 }
 
 /**
+ * `remoteLabelFor` for many providers over one item list: counts the providers
+ * behind each title once, so labelling every row is O(1) instead of a scan of
+ * all items per row.
+ */
+export function makeRemoteLabeler(
+  items: SearchableModel[]
+): (p: ModelProvider) => string {
+  const byTitle = new Map<string, Set<string>>()
+  for (const i of items) {
+    const title = getProviderTitle(i.provider.provider)
+    let ids = byTitle.get(title)
+    if (!ids) byTitle.set(title, (ids = new Set()))
+    ids.add(i.provider.provider)
+  }
+  return (p) => {
+    const title = getProviderTitle(p.provider)
+    const ids = byTitle.get(title)
+    const twin = ids && (ids.size > 1 || !ids.has(p.provider))
+    if (!twin) return title
+    const host = hostOf(p.base_url)
+    return host ? `${title} · ${host}` : `${title} · ${p.provider}`
+  }
+}
+
+/**
  * The models a search keeps. Each word must appear verbatim (case-insensitive)
  * in the model's name or id, or in its remote: "gpt-4o work" is the copy of
  * gpt-4o behind the remote called "work". Order is the list order.

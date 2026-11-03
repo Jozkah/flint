@@ -4,7 +4,12 @@
  * passed in by reference.
  */
 import type { CampaignApi } from '@/lib/campaignApi'
-import { isLiveTask, isServerDriven, type Campaign } from '@/lib/campaignModel'
+import {
+  isLiveTask,
+  isServerDriven,
+  type Campaign,
+  type CampaignStatus,
+} from '@/lib/campaignModel'
 import type { RunnerHost, RunnerResult } from '@/lib/campaignRunner'
 
 /** How long after starting a task its run may take to appear before the pane is judged closed. */
@@ -31,13 +36,14 @@ export function createSweeper(ctx: SweepContext) {
    * wall-clock, step or token limit (it fails with that reason), mirror who a
    * run waits on, and re-queue a task whose pane closed before its run began.
    */
-  const sweep = (id: string): Promise<void> =>
+  const sweep = (id: string): Promise<CampaignStatus | undefined> =>
     ctx.serialize(id, async () => {
       const c = await api.get(id)
-      if (isServerDriven(c)) return
+      if (isServerDriven(c)) return undefined
       if (c.status !== 'running') {
         await announce(c).catch(() => undefined)
-        return
+        // The caller drops a campaign that has ended (see campaignHost).
+        return c.status
       }
       const t0 = now()
       const live = host.liveSessions()
@@ -108,6 +114,7 @@ export function createSweeper(ctx: SweepContext) {
       }
       await tick(id).catch(() => undefined)
       await announce(await api.get(id)).catch(() => undefined)
+      return undefined
     })
 
   return { sweep }

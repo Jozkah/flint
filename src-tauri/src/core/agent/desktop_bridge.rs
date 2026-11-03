@@ -305,9 +305,9 @@ impl<U: DesktopUi> DesktopBridge<U> {
 }
 
 /// Resolve a workspace-relative path and refuse anything that escapes the
-/// workspace. Lexical only (no filesystem access, no symlink following), so a
-/// path that does not exist yet still validates and a planted symlink cannot
-/// redirect the check.
+/// workspace: by component first, then through the filesystem so a link
+/// inside the workspace cannot lead out of it. A path that does not exist yet
+/// still validates (its longest existing prefix is what is resolved).
 fn resolve_in_workspace(workspace: &Path, rel: &str) -> Result<PathBuf, String> {
     let trimmed = rel.trim();
     if trimmed.is_empty() {
@@ -320,7 +320,16 @@ fn resolve_in_workspace(workspace: &Path, rel: &str) -> Result<PathBuf, String> 
     let mut out = workspace.to_path_buf();
     for comp in candidate.components() {
         match comp {
-            Component::Normal(part) => out.push(part),
+            Component::Normal(part) => {
+                // A colon names an NTFS alternate data stream (`a.txt:s`);
+                // a device name (`CON`, `NUL`) or a trailing dot or space is
+                // not the file it looks like on Windows.
+                let name = part.to_string_lossy();
+                if name.contains(':') || is_reserved_name(&name) {
+                    return Err(format!("{rel:?} names a stream or device, not a workspace file"));
+                }
+                out.push(part)
+            }
             Component::CurDir => {}
             Component::ParentDir => {
                 return Err(format!("{rel:?} must not climb out of the workspace"));
@@ -334,7 +343,40 @@ fn resolve_in_workspace(workspace: &Path, rel: &str) -> Result<PathBuf, String> 
     if !out.starts_with(workspace) || out == workspace {
         return Err(format!("{rel:?} does not resolve to a file inside the workspace"));
     }
+    // A symlink or junction inside the workspace can lead out of it. Resolve
+    // the longest prefix that exists (the file itself may not yet) and require
+    // it to stay under the real workspace.
+    if let Ok(real_workspace) = std::fs::canonicalize(workspace) {
+        let mut probe = out.as_path();
+        let real = loop {
+            match std::fs::canonicalize(probe) {
+                Ok(real) => break Some(real),
+                Err(_) => match probe.parent() {
+                    Some(parent) if parent != workspace => probe = parent,
+                    _ => break None,
+                },
+            }
+        };
+        if let Some(real) = real {
+            if !real.starts_with(&real_workspace) {
+                return Err(format!("{rel:?} leads out of the workspace through a link"));
+            }
+        }
+    }
     Ok(out)
+}
+
+/// A Windows device name (with or without an extension) or a name Windows
+/// would silently strip a trailing dot or space from.
+fn is_reserved_name(name: &str) -> bool {
+    if name.ends_with('.') || name.ends_with(' ') {
+        return true;
+    }
+    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit())
 }
 
 fn has_drive_or_root(s: &str) -> bool {
@@ -443,7 +485,13 @@ impl DesktopUi for FileSettingsUi {
             .parent()
             .ok_or_else(|| "settings path has no parent".to_string())?;
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        let tmp = dir.join(format!(".settings.tmp-{}", std::process::id()));
+        // Unique per call: two concurrent writers must not share a temp file.
+        static NEXT_TMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let tmp = dir.join(format!(
+            ".settings.tmp-{}-{}",
+            std::process::id(),
+            NEXT_TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         std::fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &self.settings_path).map_err(|e| e.to_string())?;
         Ok(SettingChange {
@@ -536,6 +584,40 @@ mod tests {
 
     fn bridge() -> DesktopBridge<FakeUi> {
         DesktopBridge::new(FakeUi::default())
+    }
+
+    /// CAGA-027: stream names, device names and trailing dots are refused.
+    #[test]
+    fn workspace_paths_refuse_streams_and_device_names() {
+        let ws = ctx("s").workspace_root;
+        for bad in ["a.txt:stream", "dir/CON", "nul.txt", "COM1", "a."] {
+            assert!(resolve_in_workspace(&ws, bad).is_err(), "{bad}");
+        }
+        assert!(resolve_in_workspace(&ws, "src/console.rs").is_ok());
+        assert!(resolve_in_workspace(&ws, "COM10").is_ok());
+    }
+
+    /// CAGA-027: a link inside the workspace that leads out is refused.
+    #[test]
+    fn workspace_paths_refuse_links_that_leave() {
+        let base = std::env::temp_dir().join(format!("flint-bridge-link-{}", std::process::id()));
+        let ws = base.join("ws");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.txt"), "x").unwrap();
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&outside, ws.join("link")).is_ok();
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&outside, ws.join("link")).is_ok();
+        if linked {
+            assert!(resolve_in_workspace(&ws, "link/secret.txt").is_err());
+            assert!(resolve_in_workspace(&ws, "link/new.txt").is_err());
+        }
+        std::fs::write(ws.join("ok.txt"), "x").unwrap();
+        assert!(resolve_in_workspace(&ws, "ok.txt").is_ok());
+        assert!(resolve_in_workspace(&ws, "not/yet/there.txt").is_ok());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

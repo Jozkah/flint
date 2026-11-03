@@ -338,6 +338,10 @@
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "Вызов инструмента был выведен как текст. Ни один инструмент не запускался. Проверьте поддержку инструментов в этой модели и повторите попытку.",
   "transport": {
     "noUserMessage": "В этой беседе нет сообщения пользователя, на которое можно ответить. Добавьте сообщение или перегенерируйте с хода, содержащего ваш вопрос.",

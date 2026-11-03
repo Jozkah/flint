@@ -1338,7 +1338,9 @@
     "confirmBody": "Bu işlem aşağıdaki girdiyi kullanıcı hesabınıza yazar, başka hiçbir şey yazmaz. Yönetici hakkı gerekmez.",
     "confirmUndo": "Anahtarı kapatmak bu girdiyi kaldırır.",
     "confirm": "Girdiyi ekle",
-    "failed": "Başlangıç girdisi değiştirilemedi"
+    "failed": "Başlangıç girdisi değiştirilemedi",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Kenar çubuğu öğeleri",

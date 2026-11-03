@@ -303,6 +303,10 @@
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "ツール呼び出しがテキストとして出力されました。ツールは実行されていません。このモデルのツール対応を確認して、もう一度お試しください。",
   "transport": {
     "noUserMessage": "この会話には応答できるユーザーメッセージがありません。メッセージを追加するか、質問を含むターンから再生成してください。",

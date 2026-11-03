@@ -125,7 +125,9 @@
     "searchPlaceholderShort": "검색 또는 URL 붙여넣기…",
     "resultLimit": "표시",
     "recommendedHere": "이 컴퓨터에 권장",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "GGUF 모델 파일을 가져와 컬렉션에 추가하세요. 이미지나 오디오 입력용 mmproj를 첨부하려면 멀티모달 지원을, 추측 디코딩을 쓰려면 초안 모델 지원을 켜세요. 임베딩 모델은 자동으로 감지됩니다.",

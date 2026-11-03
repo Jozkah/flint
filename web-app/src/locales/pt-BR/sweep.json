@@ -131,7 +131,9 @@
     "recommendedHere": "Recomendado para este computador",
     "shards_one": "{{count}} shard",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Importe um arquivo de modelo GGUF para adicioná-lo à sua coleção. Ative o suporte multimodal para anexar um mmproj (entrada de imagem ou áudio), ou o suporte a modelos rascunho para decodificação especulativa. Modelos de embedding são detectados automaticamente.",

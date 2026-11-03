@@ -2991,7 +2991,9 @@
     "pagesAsImages": "Odeslat stránky jako obrázky",
     "pagesAsImagesHint": "Odeslat stránky tohoto PDF jako obrázky, aby model viděl skeny, grafy a rozvržení",
     "pdfPagesCut": "Jako obrázky bylo odesláno prvních {{sent}} z {{total}} stránek souboru {{name}}",
-    "pdfScannedAsImages": "{{name}} neobsahuje text, proto byly jeho stránky odeslány jako obrázky"
+    "pdfScannedAsImages": "{{name}} neobsahuje text, proto byly jeho stránky odeslány jako obrázky",
+    "ingestImageFailed": "Obrázkovou přílohu se nepodařilo zpracovat",
+    "ingestFailed": "Přílohy se nepodařilo indexovat"
   },
   "fileViewer": {
     "openFull": "Otevřít celý náhled",
@@ -3574,5 +3576,11 @@
     "discard": "Zahodit koncept",
     "resurvey": "Prohlédnout znovu",
     "accept": "Přijmout a zapsat FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

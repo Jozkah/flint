@@ -53,6 +53,10 @@ export type SubagentDefinition = {
 
 let cache: SubagentDefinition[] | null = null
 
+/** How long a failed load is left alone before the next attempt. */
+const FAILED_LOAD_RETRY_MS = 15_000
+let retryAfter = 0
+
 /**
  * Saved definitions, cached for the app's lifetime.
  *
@@ -62,10 +66,15 @@ let cache: SubagentDefinition[] | null = null
  */
 export async function listSubagents(): Promise<SubagentDefinition[]> {
   if (cache) return cache
+  // A load that just failed is not retried on every step, only after a pause.
+  if (Date.now() < retryAfter) return []
   try {
     cache = await invoke<SubagentDefinition[]>('agent_subagent_list')
   } catch {
-    cache = []
+    // Not cached for good: a transient failure (plugin not ready, folder
+    // locked) must not hide every saved subagent for the rest of the app's life.
+    retryAfter = Date.now() + FAILED_LOAD_RETRY_MS
+    return []
   }
   return cache
 }
@@ -73,10 +82,12 @@ export async function listSubagents(): Promise<SubagentDefinition[]> {
 /** Drop the cache so a newly written definition shows up without a restart. */
 export function refreshSubagents(): void {
   cache = null
+  retryAfter = 0
 }
 
 export const __testing = {
   reset: () => {
     cache = null
+    retryAfter = 0
   },
 }

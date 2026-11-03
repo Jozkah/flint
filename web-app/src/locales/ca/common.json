@@ -2933,7 +2933,9 @@
     "pagesAsImages": "Envia les pàgines com a imatges",
     "pagesAsImagesHint": "Envia les pàgines d'aquest PDF com a imatges perquè el model vegi escanejats, gràfics i disseny",
     "pdfPagesCut": "S'han enviat les primeres {{sent}} de {{total}} pàgines de {{name}} com a imatges",
-    "pdfScannedAsImages": "{{name}} no té text, així que les seves pàgines s'han enviat com a imatges"
+    "pdfScannedAsImages": "{{name}} no té text, així que les seves pàgines s'han enviat com a imatges",
+    "ingestImageFailed": "No s'ha pogut processar la imatge adjunta",
+    "ingestFailed": "No s'han pogut indexar els adjunts"
   },
   "fileViewer": {
     "openFull": "Obre la vista prèvia completa",
@@ -3495,5 +3497,11 @@
     "discard": "Descarta l'esborrany",
     "resurvey": "Torna a analitzar",
     "accept": "Accepta i escriu FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

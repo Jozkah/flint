@@ -322,6 +322,7 @@ vi.mock('@/lib/extension', () => ({
 
 vi.mock('@/lib/messages', () => ({
   mergeSettledToolParts: () => null,
+  countTerminalToolParts: () => 0,
   threadMessageIsEmpty: () => false,
   convertThreadMessagesToUIMessages: (msgs: any[]) =>
     msgs.map((m) => ({

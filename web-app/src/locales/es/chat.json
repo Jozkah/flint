@@ -323,6 +323,10 @@
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "La llamada a la herramienta se emitió como texto. No se ejecutó ninguna herramienta. Comprueba la compatibilidad de este modelo con herramientas e inténtalo de nuevo.",
   "transport": {
     "noUserMessage": "Esta conversación no tiene ningún mensaje de usuario al que responder. Añade un mensaje o regenera desde un turno que incluya tu pregunta.",

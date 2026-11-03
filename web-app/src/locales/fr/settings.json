@@ -1354,7 +1354,9 @@
     "confirmBody": "Cela écrit exactement l'entrée ci-dessous dans votre compte utilisateur, et rien d'autre. Aucun droit d'administrateur n'est requis.",
     "confirmUndo": "Désactiver l'interrupteur supprime cette entrée.",
     "confirm": "Ajouter l'entrée",
-    "failed": "Impossible de modifier l'entrée de démarrage"
+    "failed": "Impossible de modifier l'entrée de démarrage",
+    "loadFailed": "Could not read the startup setting.",
+    "retry": "Try again"
   },
   "sidebarItems": {
     "title": "Éléments de la barre latérale",

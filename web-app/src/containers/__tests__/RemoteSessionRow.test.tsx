@@ -60,18 +60,20 @@ describe('a server session row', () => {
     ])
   })
 
-  it('deletes only after a confirmation', async () => {
+  it('deletes only after a confirmation dialog, not a blocking confirm', async () => {
     const fetch = stubFetch()
     const onChanged = vi.fn()
     const confirm = vi.spyOn(window, 'confirm')
     render(<SessionRow session={session()} info={{ allowBypass: true }} models={models} onChanged={onChanged} />)
-    confirm.mockReturnValueOnce(false)
     fireEvent.click(screen.getByTestId('remote-session-delete'))
     expect(fetch).not.toHaveBeenCalled()
-    confirm.mockReturnValueOnce(true)
+    fireEvent.click(await screen.findByText('common:cancel'))
+    expect(fetch).not.toHaveBeenCalled()
     fireEvent.click(screen.getByTestId('remote-session-delete'))
+    fireEvent.click(await screen.findByTestId('remote-session-delete-confirm'))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     expect(fetch.mock.calls[0][0]).toBe('/api/v1/rpc/agent_run_delete')
+    expect(confirm).not.toHaveBeenCalled()
   })
 
   it('renames in place', async () => {

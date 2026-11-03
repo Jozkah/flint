@@ -131,7 +131,9 @@
     "recommendedHere": "Được khuyến nghị cho máy tính này",
     "shards_one": "{{count}} shard",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Nhập một tệp mô hình GGUF để thêm vào bộ sưu tập của bạn. Bật hỗ trợ đa phương thức để đính kèm mmproj cho đầu vào hình ảnh hoặc âm thanh, hoặc bật hỗ trợ mô hình nháp cho giải mã suy đoán. Mô hình embedding được nhận diện tự động.",

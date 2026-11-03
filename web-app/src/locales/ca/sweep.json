@@ -131,7 +131,9 @@
     "recommendedHere": "Recomanat per a aquest ordinador",
     "shards_one": "{{count}} shard",
     "shards_many": "{{count}} shards",
-    "shards_other": "{{count}} shards"
+    "shards_other": "{{count}} shards",
+    "noMlxSafetensors": "This repository does not contain MLX safetensors files.",
+    "noVariantSelected": "No GGUF variant selected."
   },
   "llamaImport": {
     "description": "Importa un fitxer de model GGUF per afegir-lo a la teva col·lecció. Activa el suport multimodal per adjuntar un mmproj (entrada d’imatge o àudio), o el suport de models esborrany per a la descodificació especulativa. Els models d’embedding es detecten automàticament.",

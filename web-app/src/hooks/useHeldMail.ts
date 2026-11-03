@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useRef } from 'react'
 import {
   useMessageQueue,
   type QueuedMessage,
@@ -49,10 +49,25 @@ export function useHeldMailCount(sessionId: string | undefined): number {
 
 /** Sessions with held mail, for the notifications menu. */
 export function useHeldMailSummary(): HeldMailSummary[] {
-  // A string snapshot is stable between renders; the objects are rebuilt
-  // from it only when it changes.
-  const key = useMessageQueue((s) => JSON.stringify(summarizeHeldMail(s.queues)))
-  return useMemo(() => JSON.parse(key) as HeldMailSummary[], [key])
+  // The selector rebuilds the (small) summary and hands back the previous
+  // array while nothing in it changed, so subscribers re-render only on a real
+  // change and no JSON round trip is needed.
+  const last = useRef<HeldMailSummary[]>([])
+  return useMessageQueue((s) => {
+    const next = summarizeHeldMail(s.queues)
+    const prev = last.current
+    const same =
+      prev.length === next.length &&
+      next.every(
+        (n, i) =>
+          n.sessionId === prev[i].sessionId &&
+          n.count === prev[i].count &&
+          n.from === prev[i].from
+      )
+    if (same) return prev
+    last.current = next
+    return next
+  })
 }
 
 /**

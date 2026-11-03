@@ -303,6 +303,10 @@
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "工具调用被当作文本输出，没有运行任何工具。请检查该模型的工具支持后重试。",
   "transport": {
     "noUserMessage": "此对话中没有可回复的用户消息。请添加一条消息，或从包含你问题的轮次重新生成。",

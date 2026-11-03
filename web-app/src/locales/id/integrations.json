@@ -102,6 +102,8 @@
       "idle": "diam",
       "awaiting_approval": "menunggu persetujuan",
       "awaiting_answer": "menunggu jawaban"
-    }
+    },
+    "checkFailed": "Could not check whether this server can run sessions.",
+    "modelsFailed": "Could not load the models available on this server."
   }
 }

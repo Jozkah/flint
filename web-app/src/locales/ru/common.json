@@ -2991,7 +2991,9 @@
     "pagesAsImages": "Отправить страницы как изображения",
     "pagesAsImagesHint": "Отправить страницы этого PDF как изображения, чтобы модель видела сканы, графики и вёрстку",
     "pdfPagesCut": "Как изображения отправлены первые {{sent}} из {{total}} страниц файла {{name}}",
-    "pdfScannedAsImages": "В {{name}} нет текста, поэтому его страницы отправлены как изображения"
+    "pdfScannedAsImages": "В {{name}} нет текста, поэтому его страницы отправлены как изображения",
+    "ingestImageFailed": "Не удалось обработать вложенное изображение",
+    "ingestFailed": "Не удалось проиндексировать вложения"
   },
   "fileViewer": {
     "openFull": "Открыть полный просмотр",
@@ -3574,5 +3576,11 @@
     "discard": "Отбросить черновик",
     "resurvey": "Повторить обзор",
     "accept": "Принять и записать FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

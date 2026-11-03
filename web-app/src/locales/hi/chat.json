@@ -308,6 +308,10 @@
   },
   "growingTheMind": "Growing the Mind...",
   "copyMessageFailed": "Could not copy the message.",
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "टूल कॉल टेक्स्ट के रूप में आया। कोई टूल नहीं चला। इस मॉडल का टूल सपोर्ट जाँचें और फिर कोशिश करें।",
   "transport": {
     "noUserMessage": "इस बातचीत में जवाब देने के लिए कोई उपयोगकर्ता संदेश नहीं है। कोई संदेश जोड़ें, या ऐसे टर्न से दोबारा बनाएँ जिसमें आपका प्रश्न हो।",

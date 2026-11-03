@@ -2876,7 +2876,9 @@
     "pagesAsImages": "将页面作为图片发送",
     "pagesAsImagesHint": "将此 PDF 的页面作为图片发送，让模型能看到扫描件、图表和版式",
     "pdfPagesCut": "已将 {{name}} 共 {{total}} 页中的前 {{sent}} 页作为图片发送",
-    "pdfScannedAsImages": "{{name}} 没有文本，因此已将其页面作为图片发送"
+    "pdfScannedAsImages": "{{name}} 没有文本，因此已将其页面作为图片发送",
+    "ingestImageFailed": "无法处理图片附件",
+    "ingestFailed": "无法为附件建立索引"
   },
   "fileViewer": {
     "openFull": "打开完整预览",
@@ -3403,5 +3405,11 @@
     "discard": "丢弃草稿",
     "resurvey": "重新勘察",
     "accept": "接受并写入 FLINT.md"
-  }
+  },
+  "toggleModelList": "Show models",
+  "campaignRunLost": "its run was lost when the window reloaded",
+  "textFormattingToolbar": "Text formatting",
+  "gitRepository": "Git repository",
+  "enterCustomCliCommand": "Enter custom CLI command",
+  "openAssistantSettings": "Open assistant settings"
 }

@@ -308,6 +308,10 @@
     "noCanvas": "no canvas is available to draw the image",
     "imageNotEncoded": "the image could not be encoded"
   },
+  "messageItem": {
+    "generationFailed": "Generation failed",
+    "generatedImage": "Generated image"
+  },
   "rawToolCallNotice": "Tool call was emitted as text. No tool ran. Check this model’s tool support and try again.",
   "transport": {
     "noUserMessage": "This conversation has no user message to respond to. Add a message, or regenerate from a turn that includes your question.",

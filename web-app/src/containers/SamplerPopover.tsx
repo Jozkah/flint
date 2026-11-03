@@ -325,7 +325,7 @@ export function SamplerPopover({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Open assistant settings</p>
+                <p>{t('common:openAssistantSettings')}</p>
               </TooltipContent>
             </Tooltip>
           </div>
