@@ -269,6 +269,13 @@ export function useSidebarResize({
 		[enableDrag, isCollapsed, currentWidth, isNested],
 	);
 
+	// The listeners below are bound once and call the latest handlers, so a
+	// width update mid-drag does not remove and re-add them.
+	const handlersRef = React.useRef<{
+		move: (e: MouseEvent) => void;
+		up: () => void;
+	} | null>(null);
+
 	// Handle mouse movement and resizing
 	React.useEffect(() => {
 		const handleMouseMove = (e: MouseEvent) => {
@@ -452,13 +459,7 @@ export function useSidebarResize({
 			setIsDraggingRail(false);
 		};
 
-		document.addEventListener("mousemove", handleMouseMove);
-		document.addEventListener("mouseup", handleMouseUp);
-
-		return () => {
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-		};
+		handlersRef.current = { move: handleMouseMove, up: handleMouseUp };
 	}, [
 		onResize,
 		onToggle,
@@ -476,6 +477,17 @@ export function useSidebarResize({
 		expandThreshold,
 		enableToggle,
 	]);
+
+	React.useEffect(() => {
+		const move = (e: MouseEvent) => handlersRef.current?.move(e);
+		const up = () => handlersRef.current?.up();
+		document.addEventListener("mousemove", move);
+		document.addEventListener("mouseup", up);
+		return () => {
+			document.removeEventListener("mousemove", move);
+			document.removeEventListener("mouseup", up);
+		};
+	}, []);
 
 	return {
 		dragRef,
