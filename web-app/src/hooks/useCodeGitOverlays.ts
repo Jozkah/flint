@@ -133,7 +133,7 @@ export function useCodeGitOverlays(input: {
     return () => {
       alive = false
     }
-  }, [inlineBlame, root, path, head, savedCount])
+  }, [inlineBlame, root, path, savedCount])
 
   const base = original !== undefined ? original : head
   const hunks = useMemo<ChangeHunk[]>(
