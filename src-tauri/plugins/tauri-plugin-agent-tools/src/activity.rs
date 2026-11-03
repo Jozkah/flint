@@ -34,7 +34,9 @@
 //! never inline.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, Write};
+#[cfg(test)]
+use std::io::BufRead;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 

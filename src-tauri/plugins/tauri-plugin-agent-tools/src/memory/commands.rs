@@ -995,11 +995,14 @@ pub async fn memory_import(
             at,
             |i, m| MemoryId::new(format!("mem-{at}-{:016x}", fnv(&format!("{}#{i}#{}", file.export_id, m.id)))),
         );
-        // Committed one by one through the same path as a reviewed memory, so the
-        // per-scope cap applies; a record the store refuses is reported as such.
+        // Committed in one pass through the same cap as a reviewed memory; a
+        // record the store refuses is reported as such.
+        let proposals: Vec<&_> = accepted.iter().map(|(_, p)| p).collect();
+        let results = super::create::commit_many(&store_root, scope, &proposals)
+            .map_err(AgentToolsError::from)?;
         let mut stored = Vec::new();
-        for ((index, proposal), id) in accepted.iter().zip(report.imported.clone()) {
-            match super::create::commit(&store_root, proposal) {
+        for (((index, _), id), result) in accepted.iter().zip(report.imported.clone()).zip(results) {
+            match result {
                 Ok(_) => stored.push(id),
                 Err(e) => report.refused.push(transfer::Skipped {
                     index: *index,

@@ -345,6 +345,41 @@ pub fn insert_capped(store_root: &Path, record: &MemoryRecord, cap: usize) -> Re
     })
 }
 
+/// [`insert_capped`] for several records of one scope in a single locked
+/// read-modify-write, so an import of n records rewrites the file once rather
+/// than n times (O04-026). One result per record, in order: a record that would
+/// pass the cap is refused with the same message and the rest still land.
+pub fn insert_many_capped(
+    store_root: &Path,
+    scope: super::record::Scope,
+    batch: &[&MemoryRecord],
+    cap: usize,
+) -> Result<Vec<Result<(), String>>, String> {
+    update(store_root, scope, |records| {
+        let mut results = Vec::with_capacity(batch.len());
+        let mut changed = false;
+        for record in batch {
+            let live = records
+                .iter()
+                .filter(|r| !matches!(r.status, super::record::Status::Deleted) && r.id != record.id)
+                .count();
+            if live >= cap {
+                results.push(Err(format!(
+                    "ERROR: this scope already holds {cap} memories; forget some before saving more"
+                )));
+                continue;
+            }
+            match records.iter_mut().find(|r| r.id == record.id) {
+                Some(existing) => *existing = (*record).clone(),
+                None => records.push((*record).clone()),
+            }
+            changed = true;
+            results.push(Ok(()));
+        }
+        Ok((changed, results))
+    })
+}
+
 /// Store a pending (proposed) record under the same ceiling as
 /// [`insert_capped`], so unanswered questions cannot grow a scope without
 /// bound (O04-007). A proposal with the same content already waiting is not

@@ -1681,6 +1681,10 @@ pub(super) struct App {
     /// Filesystem-backed slash matches cached for the unchanged input buffer.
     /// Rendering asks for these every tick, so discovery must not run per frame.
     pub(super) slash_matches_cache: RefCell<Option<(String, Vec<SlashMatch>)>>,
+    /// `[skills].enabled` as last parsed from agent.toml, with the file's
+    /// modification time it was parsed at (F2x1-005): the popup re-parses only
+    /// when the file changed, not on every keystroke.
+    pub(super) slash_enabled_cache: RefCell<Option<(Option<std::time::SystemTime>, Vec<String>)>>,
     /// File-path hint entries matching the current `@query` in the input buffer.
     pub(super) path_hints: Vec<PathHintItem>,
     /// An edit asked for fresh hints. The search runs at most once per tick,
@@ -2197,6 +2201,7 @@ impl App {
             slash_selected: 0,
             slash_dismissed: false,
             slash_matches_cache: RefCell::new(None),
+            slash_enabled_cache: RefCell::new(None),
             slash_catalog,
             path_hints: Vec::new(),
             path_hints_dirty: false,
@@ -3351,6 +3356,25 @@ impl App {
         self.slash_matches_cache.replace(None);
     }
 
+    /// `[skills].enabled`, re-read from agent.toml only when its modification
+    /// time changed since the last parse.
+    fn skills_enabled_cached(&self) -> Vec<String> {
+        let stamp = std::fs::metadata(self.agent_dir.join("agent.toml"))
+            .and_then(|m| m.modified())
+            .ok();
+        if let Some((seen, enabled)) = self.slash_enabled_cache.borrow().as_ref() {
+            if *seen == stamp {
+                return enabled.clone();
+            }
+        }
+        let enabled = crate::core::agent::project::load_agent_config(&self.project_root)
+            .ok()
+            .map(|c| c.skills.enabled)
+            .unwrap_or_default();
+        self.slash_enabled_cache.replace(Some((stamp, enabled.clone())));
+        enabled
+    }
+
     pub(super) fn refresh_slash_catalog(&mut self) {
         self.slash_catalog = SlashCatalog::load(&self.project_root);
         self.slash_matches_cache.replace(None);
@@ -3400,10 +3424,7 @@ impl App {
             .collect();
         let skill_colon = self.input.starts_with("/skill:");
         let command_colon = self.input.starts_with("/command:");
-        let enabled = crate::core::agent::project::load_agent_config(&self.project_root)
-            .ok()
-            .map(|c| c.skills.enabled)
-            .unwrap_or_default();
+        let enabled = self.skills_enabled_cached();
         // Plugin commands sit between built-ins and skills in precedence.
         // Short-form ownership: a command's plain name is claimed by the
         // command - a skill of the same name loses its short form (explicit
