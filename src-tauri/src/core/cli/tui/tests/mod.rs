@@ -123,6 +123,7 @@ pub(super) fn test_app() -> TestApp {
         max_turns: None,
         cost_ceiling: None,
         pause_at_usd: None,
+        compaction_model: None,
     };
     let app = App::new(
         "m".into(),
@@ -196,6 +197,7 @@ pub(super) fn skill_test_app_fm(
                 max_turns: None,
                 cost_ceiling: None,
                 pause_at_usd: None,
+                compaction_model: None,
             },
             false,
             agent_dir,

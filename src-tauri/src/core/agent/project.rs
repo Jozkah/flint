@@ -565,6 +565,12 @@ pub(crate) struct AgentSection {
     /// run only.
     #[serde(default)]
     pub max_parallel_subagents: Option<u32>,
+    /// The model that writes compaction summaries, when it should not be the
+    /// run's own (a cheaper one, or one with a larger window). It must be
+    /// reachable through the same configured providers; if a summary request
+    /// to it fails, the run's own model is asked instead.
+    #[serde(default)]
+    pub compaction_model: Option<String>,
     /// Expand `<think>` reasoning blocks in the TUI transcript instead of
     /// folding them to a `[thinking]`/`[thought for Ns]` status and a summary
     /// row. Default false (hidden); Ctrl-O still reveals a folded block, and
@@ -718,6 +724,7 @@ const AGENT_TOML_TEMPLATE: &str = r#"[agent]
 # compaction_reserve_tokens = 16384  # headroom before auto-compaction; defaults to 16K
 # max_tokens = 4096  # cap on tokens the model generates per response (OpenAI max_tokens); omitted if unset
 # max_parallel_subagents = 10  # max concurrently-running subagents per run; extra dispatches queue FIFO
+# compaction_model = "gpt-5-mini"  # model that writes compaction summaries; defaults to the run's own model
 # Checks a run must pass before it hands back a final answer: files that must
 # exist and commands that must exit 0 (commands run only in a trusted folder).
 # A failure gives the model one retry turn; after that the answer is marked unverified.

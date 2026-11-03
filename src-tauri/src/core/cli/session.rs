@@ -195,6 +195,9 @@ pub(crate) struct SessionLimits {
     /// to go on. Metered by `cost_ceiling`'s rates (an infinite ceiling when
     /// only the pause is set). `None` never pauses.
     pub pause_at_usd: Option<f64>,
+    /// `[agent].compaction_model`: the model that writes compaction summaries
+    /// when it is not the run's own. `None` uses the run's model.
+    pub compaction_model: Option<String>,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -280,6 +283,10 @@ pub(super) fn request_body(
     // Reasoning resend policy: the request-level flag the loop reads to
     // decide whether prior assistant `reasoning_content` goes back out.
     body["send_reasoning"] = serde_json::json!(send_reasoning);
+    // A separate model for compaction summaries, when one is configured.
+    if let Some(model) = &limits.compaction_model {
+        body[crate::core::agent::compaction::BODY_SUMMARY_MODEL] = serde_json::json!(model);
+    }
     body
 }
 
@@ -765,6 +772,13 @@ fn resolve_limits(
         max_turns: flags.max_turns,
         cost_ceiling,
         pause_at_usd,
+        compaction_model: cfg
+            .agent
+            .compaction_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .map(str::to_string),
     })
 }
 
