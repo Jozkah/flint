@@ -2221,6 +2221,11 @@ pub(crate) fn configure_child_args(
 ) -> crate::core::agent::r#loop::OrchestrationArgs {
     let name = resolved.definition.name.clone();
     let mut child_args = parent_args;
+    // One level deeper than its parent. It may dispatch only while that is
+    // within the chain's `max_subagent_depth`; at the cap it is told so, rather
+    // than being offered a tool whose call would be refused.
+    child_args.subagent_depth = child_args.subagent_depth.saturating_add(1);
+    child_args.subagents_enabled = child_args.subagent_depth < child_args.max_subagent_depth;
     // AH-103: a child that can be written to has to know who to answer. The
     // parent's run id is the harness's, not the model's, so this is the only
     // place the child can learn it -- and without it `message_send` has no
@@ -2234,6 +2239,14 @@ pub(crate) fn configure_child_args(
          make it self-contained -- what you found or changed (with file paths), what you could not \
          do, and anything you did not verify.",
     );
+    child_prompt.push_str(&if child_args.subagents_enabled {
+        format!(
+            "\n\nYou may dispatch subagents of your own for parts of the work (you are {} level(s) deep; the limit is {}).",
+            child_args.subagent_depth, child_args.max_subagent_depth
+        )
+    } else {
+        "\n\nYou cannot dispatch further subagents: do the work yourself.".to_string()
+    });
     if let Some(parent_run) = child_args.parent_run.as_deref() {
         child_prompt.push_str(&format!(
             "\n\nThe run that dispatched you is `{parent_run}`. While you work you can send it \
@@ -2243,7 +2256,6 @@ pub(crate) fn configure_child_args(
         ));
     }
     child_args.system_prompt_override = Some(child_prompt);
-    child_args.subagents_enabled = false;
     // AH-008: the dispatch this run answers, so the parent's record of asking
     // for it and this run's own events name each other.
     child_args.dispatch_id = Some(run_id.to_string());
@@ -2278,6 +2290,14 @@ pub(crate) fn configure_child_args(
     child_args
 }
 
+/// Dispatches deep a chain may go unless `[agent].max_subagent_depth` says
+/// otherwise: the top-level run dispatches, its children do not.
+pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 1;
+/// The most `[agent].max_subagent_depth` is honoured at. Each level can run its
+/// own `max_parallel_subagents` children, so depth multiplies the concurrent
+/// model calls; past a few levels that is never what anyone meant.
+pub const MAX_SUBAGENT_DEPTH_CAP: u32 = 3;
+
 /// Everything that can refuse a spawn before anything is started: nesting,
 /// the active project, the project's spawn rules and failure policy, and the
 /// name and permission resolution. Synchronous, so a bad request errors at the
@@ -2288,7 +2308,10 @@ fn authorize_spawn(
 ) -> Result<(FailurePolicy, ResolvedDispatch), SubagentError> {
     if !parent_args.subagents_enabled {
         return Err(SubagentError::PermissionDenied(
-            "subagents cannot dispatch nested subagents".to_string(),
+            format!(
+                "this run is already {} level(s) deep and subagents may nest at most {}; do the work directly",
+                parent_args.subagent_depth, parent_args.max_subagent_depth
+            ),
         ));
     }
     let project_root = parent_args.project_root.as_ref().ok_or_else(|| {
@@ -4871,6 +4894,44 @@ auto_compact_window = 9000
 
     // ── max-parallel admission (semaphore queue) ───────────────────────────
 
+    /// A chain may go as deep as `max_subagent_depth` allows and no deeper: by
+    /// default (1) a child cannot dispatch, at 2 it can but its own child
+    /// cannot, and each is told which it is.
+    #[cfg(feature = "cli")]
+    #[test]
+    fn a_child_may_dispatch_only_within_the_chains_depth_limit() {
+        let reg = registry_with("reviewer", None);
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &ToolPermissions::allow_all())
+            .expect("resolves");
+        let prompt = |a: &crate::core::agent::r#loop::OrchestrationArgs| {
+            a.system_prompt_override.clone().unwrap_or_default()
+        };
+
+        // Default depth 1: the top-level run dispatches, its child does not.
+        let top = max_par_args(&std::env::temp_dir());
+        assert_eq!((top.subagent_depth, top.max_subagent_depth), (0, 1));
+        let child = configure_child_args(top.clone(), &resolved, "run-1");
+        assert_eq!(child.subagent_depth, 1);
+        assert!(!child.subagents_enabled);
+        assert!(prompt(&child).contains("cannot dispatch further subagents"));
+
+        // Depth 2: the child may, the grandchild may not.
+        let mut deep = top.clone();
+        deep.max_subagent_depth = 2;
+        let child = configure_child_args(deep, &resolved, "run-1");
+        assert!(child.subagents_enabled, "one level of nesting is allowed");
+        assert!(prompt(&child).contains("You may dispatch subagents of your own"));
+        let grandchild = configure_child_args(child.clone(), &resolved, "run-2");
+        assert_eq!(grandchild.subagent_depth, 2);
+        assert_eq!(grandchild.max_subagent_depth, 2, "a child cannot raise the limit");
+        assert!(!grandchild.subagents_enabled);
+
+        // A run at the cap that tries anyway is refused with the reason.
+        let err = authorize_spawn(&grandchild, &req("reviewer", None)).unwrap_err();
+        let text = format!("{err}");
+        assert!(text.contains("2 level(s) deep") && text.contains("at most 2"), "{text}");
+    }
+
     #[cfg(feature = "cli")]
     #[test]
     fn build_child_args_roots_the_child_in_its_checkout() {
@@ -4925,6 +4986,8 @@ auto_compact_window = 9000
             todo_registry: None,
             system_prompt_override: None,
             subagents_enabled: true,
+            subagent_depth: 0,
+            max_subagent_depth: DEFAULT_MAX_SUBAGENT_DEPTH,
             max_parallel_subagents: 1,
             auto_approve: false,
             bypass: false,

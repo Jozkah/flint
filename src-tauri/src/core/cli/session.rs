@@ -842,7 +842,7 @@ pub(crate) fn prepare_agent_session(
         .as_ref()
         .map(|w| w.path.clone())
         .unwrap_or_else(|| project_root.clone());
-    let args = build_cli_orchestration_args(
+    let mut args = build_cli_orchestration_args(
         tool_root,
         permissions,
         provider_configs,
@@ -864,6 +864,11 @@ pub(crate) fn prepare_agent_session(
         cfg.agent.fallback.clone(),
         flags.profile.clone(),
     );
+    args.max_subagent_depth = cfg
+        .agent
+        .max_subagent_depth
+        .unwrap_or(crate::core::agent::subagent::DEFAULT_MAX_SUBAGENT_DEPTH)
+        .clamp(1, crate::core::agent::subagent::MAX_SUBAGENT_DEPTH_CAP);
 
     let limits = resolve_limits(&cfg, &flags, project, &model)?;
 

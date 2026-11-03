@@ -776,6 +776,41 @@ tools = [\"write\"]
 }
 
 #[tokio::test]
+async fn a_hook_that_asks_refuses_where_nothing_can_be_asked_and_is_reported_where_something_can() {
+    let root = unique_root();
+    write_hooks(
+        &root,
+        "[[hook]]
+event = \"pre-tool\"
+command = \"echo '{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"check it\\\"}'\"
+json_output = true
+tools = [\"write\"]
+",
+    );
+    let args = json!({ "path": "new.txt", "content": "hello" });
+    // The handler alone cannot prompt: the ask is a refusal and nothing runs.
+    let out = execute_builtin(lookup("write").unwrap(), &args, &root).await;
+    assert!(
+        out.starts_with("ERROR [policy_violation]:") && out.contains("asked for confirmation") && out.contains("check it"),
+        "{out}"
+    );
+    assert!(!root.join("new.txt").exists());
+    // A caller that runs the hooks itself is told, and can ask.
+    let tool = lookup("write").unwrap();
+    let store = crate::workspace::project_store(&root);
+    let ctx = ToolContext::new(&root, &store, &[]);
+    let pre = super::run_pre_tool_hooks(tool, &args, &ctx).await;
+    assert_eq!(pre.ask.as_deref(), Some("check it"));
+    assert!(pre.refusal.is_none() && pre.updated_input.is_none());
+    // And a handler told they already ran does not run them a second time.
+    let done = ToolContext::new(&root, &store, &[]).with_pre_tool_hooks_done(true);
+    let (ran, _) = super::execute_builtin(tool, &args, &done).await;
+    assert!(!ran.starts_with("ERROR"), "{ran}");
+    assert!(root.join("new.txt").exists());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
 async fn a_warn_hook_lets_the_call_through_and_says_it_failed() {
     let root = unique_root();
     write_hooks(

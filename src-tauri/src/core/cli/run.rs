@@ -101,6 +101,8 @@ pub(super) fn build_cli_orchestration_args(
         todo_registry: None,
         system_prompt_override: None,
         subagents_enabled: true,
+        subagent_depth: 0,
+        max_subagent_depth: crate::core::agent::subagent::DEFAULT_MAX_SUBAGENT_DEPTH,
         max_parallel_subagents,
         auto_approve,
         bypass,
