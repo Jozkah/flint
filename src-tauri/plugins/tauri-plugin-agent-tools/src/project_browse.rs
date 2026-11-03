@@ -122,7 +122,7 @@ pub fn is_sensitive_name(name: &str) -> bool {
         || lower == "secrets.json"
         || lower == "wp-config.php"
         || lower == "settings-security.xml"
-        || (lower.starts_with("appsettings.") && lower.ends_with(".json") && lower.len() > "appsettings..json".len() && lower !="appsettings.development.json")
+        || lower == "appsettings.production.json"
     {
         return true;
     }

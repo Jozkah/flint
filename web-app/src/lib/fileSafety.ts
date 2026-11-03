@@ -24,6 +24,11 @@ const SECRET_EXTENSIONS = [
   '.asc',
   '.gpg',
   '.kdbx',
+  '.ppk',
+  '.p8',
+  '.tfvars',
+  '.tfstate',
+  '.auto.tfvars.json',
 ]
 
 /** Exact names that are credentials. */
@@ -42,6 +47,14 @@ const SECRET_NAMES = new Set([
   'credentials',
   'credentials.json',
   'service-account.json',
+  'terraform.tfstate',
+  'terraform.tfstate.backup',
+  'secrets.yml',
+  'secrets.yaml',
+  'secrets.json',
+  'wp-config.php',
+  'settings-security.xml',
+  'appsettings.production.json',
 ])
 
 /** Private-key file prefixes. */
