@@ -244,11 +244,30 @@ fn write_checkpoint(dir: &Path, now_ms: u64) -> Result<(), String> {
 /// output (or the bookkeeping files) is never new, so an unchanged store is a
 /// no-op.
 pub(crate) fn has_new_since(dir: &Path, checkpoint: Option<u64>) -> bool {
-    let notes = read_source_notes(dir, usize::MAX, usize::MAX);
-    match checkpoint {
-        None => !notes.is_empty(),
-        Some(cp) => notes.iter().any(|n| n.modified_ms > cp),
-    }
+    // Metadata only: this runs on every idle poll, so it must not read bodies.
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    rd.flatten().any(|entry| {
+        let path = entry.path();
+        let is_source = path.extension().and_then(|x| x.to_str()) == Some("md")
+            && path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .is_some_and(|stem| stem != OUTPUT_NOTE);
+        if !is_source {
+            return false;
+        }
+        match checkpoint {
+            None => true,
+            Some(cp) => entry
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .is_some_and(|d| d.as_millis() as u64 > cp),
+        }
+    })
 }
 
 // -- planning --------------------------------------------------------------

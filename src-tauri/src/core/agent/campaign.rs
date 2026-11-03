@@ -1083,6 +1083,15 @@ pub(crate) fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, 
     let me = epoch();
     // Another live process (the desktop app and `flint serve` share a data
     // folder) is driving it: its running work is not interrupted.
+    // A record with no live work (finished, paused, pending) has nothing to
+    // reconcile: skip the process probe and the rewrite (F1a-008).
+    let has_live_work = matches!(c.status, CampaignStatus::Running | CampaignStatus::Merging)
+        || c.tasks.iter().any(|t| {
+            t.status.is_live() || matches!(t.status, TaskStatus::Resolving | TaskStatus::Verifying)
+        });
+    if !has_live_work {
+        return Ok(c);
+    }
     if c.process_epoch == me || epoch_alive(&c.process_epoch) {
         return Ok(c);
     }

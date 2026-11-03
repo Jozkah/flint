@@ -205,10 +205,17 @@ const MANIFEST_DIR: &str = "flint-agent-checkpoints";
 /// Where older builds wrote manifests; still read so their checkpoints verify.
 const LEGACY_MANIFEST_DIR: &str = "jan-agent-checkpoints";
 
-fn manifest_in(root: &Path, sha: &str, dir: &str) -> Result<PathBuf, String> {
+/// Refuse anything that is not a bare hex object id, so an id that came over
+/// IPC can never reach the VCS as an option (`--output=...`).
+fn require_commit_id(sha: &str) -> Result<(), String> {
     if sha.is_empty() || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(format!("{sha:?} is not a commit id"));
     }
+    Ok(())
+}
+
+fn manifest_in(root: &Path, sha: &str, dir: &str) -> Result<PathBuf, String> {
+    require_commit_id(sha)?;
     Ok(git::common_git_dir(root)?.join(dir).join(format!("{sha}.json")))
 }
 
@@ -275,6 +282,7 @@ pub fn verify(checkpoint: &Checkpoint) -> Result<Integrity, String> {
     };
     let root = PathBuf::from(&checkpoint.root);
     let sha = checkpoint.sha.as_str();
+    require_commit_id(sha).map_err(refuse)?;
     match git::object_kind(&root, sha) {
         Ok(kind) if kind == "commit" => {}
         Ok(kind) => return Err(refuse(format!("it names a {kind}, not a snapshot commit"))),
@@ -405,6 +413,7 @@ pub enum RewindPlan {
 /// scope instead of asking someone to agree to an unnamed overwrite.
 pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String> {
     verify(checkpoint)?;
+    require_commit_id(latest)?;
     if checkpoint.destination.may_hard_restore() {
         let root = PathBuf::from(&checkpoint.root);
         let files = git::changed_since(&root, &checkpoint.sha)?;
@@ -488,6 +497,10 @@ pub fn restore(checkpoint: &Checkpoint, latest: &str, guard: &RestoreGuard) -> R
     // Before anything is compared or written: a checkpoint that is not the
     // snapshot it claims to be is never restored from.
     verify(checkpoint)?;
+    require_commit_id(latest)?;
+    if let Some(safety) = guard.safety.as_deref() {
+        require_commit_id(safety)?;
+    }
     let root = PathBuf::from(&checkpoint.root);
     require_top_level(&root)?;
 
