@@ -226,6 +226,20 @@ const SENSITIVE_UNDER_HOME: &[&str] = &[
     "AppData/Roaming/Opera Software",
     "AppData/Local/Vivaldi",
     "AppData/Roaming/GitHub CLI",
+    ".cargo/credentials.toml",
+    ".cargo/credentials",
+    ".npm",
+    ".m2/settings.xml",
+    ".config/op",
+    ".config/rclone",
+    ".local/share/keyrings",
+    ".bash_history",
+    ".zsh_history",
+    ".python_history",
+    ".claude",
+    "AppData/Roaming/Code",
+    "AppData/Roaming/discord",
+    "AppData/Roaming/Slack",
 ];
 
 /// File names that are key material or credentials in their own right.

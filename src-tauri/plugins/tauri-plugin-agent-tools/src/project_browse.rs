@@ -115,6 +115,22 @@ pub fn is_sensitive_name(name: &str) -> bool {
         || lower == "kubeconfig"
         || lower == "credentials.tfrc.json"
         || lower == "_netrc"
+        || lower == "terraform.tfstate"
+        || lower == "terraform.tfstate.backup"
+        || lower == "secrets.yml"
+        || lower == "secrets.yaml"
+        || lower == "secrets.json"
+        || lower == "wp-config.php"
+        || lower == "settings-security.xml"
+        || lower == "appsettings.production.json"
+        || lower == "appsettings.prod.json"
+        || lower == "appsettings.staging.json"
+        || lower == "appsettings.stage.json"
+        || lower == "appsettings.preprod.json"
+        || lower == "appsettings.live.json"
+        || lower == "appsettings.qa.json"
+        || lower == "appsettings.uat.json"
+        || lower == "appsettings.test.json"
     {
         return true;
     }
@@ -137,6 +153,11 @@ pub fn is_sensitive_name(name: &str) -> bool {
         ".asc",
         ".gpg",
         ".kdbx",
+        ".ppk",
+        ".p8",
+        ".tfvars",
+        ".tfstate",
+        ".auto.tfvars.json",
     ] {
         if lower.ends_with(ext) {
             return true;
@@ -427,6 +448,20 @@ fn read_head(file: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn common_secret_file_names_are_flagged() {
+        for n in [
+            ".pypirc", ".htpasswd","prod.tfvars", "terraform.tfstate", "key.ppk",
+            "AuthKey_ABC.p8", "secrets.yml", "secrets.json", ".dockercfg", "kubeconfig",
+            "wp-config.php", "appsettings.Production.json", ".git-credentials",
+        ] {
+            assert!(is_sensitive_name(n), "{n} must be flagged");
+        }
+        for n in ["main.rs", "README.md", "appsettings.json"] {
+            assert!(!is_sensitive_name(n), "{n} must not be flagged");
+        }
+    }
 
     #[test]
     fn missing_file_error_has_no_verbatim_prefix() {
